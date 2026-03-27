@@ -103,6 +103,207 @@ class HashingContractTests(unittest.TestCase):
         self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "test_alpha")), "test_alpha")
         self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "test_beta")), "test_beta")
 
+    def test_global_hash_resolver_registers_names_from_text_file(self) -> None:
+        register_file_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["register_names_file"],
+        )
+        resolve_symbol_value = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["resolve_hash"],
+        )
+        clear_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["clear_hash_resolver"],
+        )
+        hash_symbol = resolve_symbol(
+            ["fivefury.hashing", "fivefury"],
+            ["jenk_hash", "hash_jenk", "GenHash", "JenkHash"],
+        )
+        if None in (register_file_symbol, resolve_symbol_value, clear_symbol, hash_symbol):
+            self.skipTest("text-file resolver API not implemented yet")
+
+        clear_symbol.value()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "names.txt"
+            path.write_text(
+                "# comment\n"
+                "prop_tree_pine_01\n"
+                "\n"
+                "prop_sign_road_01\n"
+                "; another comment\n"
+                "// one more comment\n",
+                encoding="utf-8",
+            )
+            hashes = register_file_symbol.value(path)
+
+        self.assertEqual(len(hashes), 2)
+        self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "prop_tree_pine_01")), "prop_tree_pine_01")
+        self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "prop_sign_road_01")), "prop_sign_road_01")
+
+    def test_metahash_exposes_string_and_integer_views(self) -> None:
+        metahash_symbol = resolve_symbol(
+            ["fivefury.metahash", "fivefury"],
+            ["MetaHash", "HashString"],
+        )
+        register_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["register_name"],
+        )
+        clear_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["clear_hash_resolver"],
+        )
+        hash_symbol = resolve_symbol(
+            ["fivefury.hashing", "fivefury"],
+            ["jenk_hash", "hash_jenk", "GenHash", "JenkHash"],
+        )
+        if None in (metahash_symbol, register_symbol, clear_symbol, hash_symbol):
+            self.skipTest("MetaHash API not implemented yet")
+
+        clear_symbol.value()
+        register_symbol.value("prop_tree_pine_01")
+        prop_hash = _hash_value(hash_symbol, "prop_tree_pine_01")
+
+        value = metahash_symbol.value(prop_hash)
+
+        self.assertEqual(int(value), prop_hash)
+        self.assertEqual(value.hash, prop_hash)
+        self.assertEqual(value.uint, prop_hash)
+        self.assertEqual(value.string, "prop_tree_pine_01")
+        self.assertEqual(str(value), "prop_tree_pine_01")
+
+    def test_metahash_serializes_through_meta_builder(self) -> None:
+        metahash_symbol = resolve_symbol(
+            ["fivefury.metahash", "fivefury"],
+            ["MetaHash", "HashString"],
+        )
+        build_symbol = resolve_symbol(
+            ["fivefury.meta", "fivefury"],
+            ["build_meta_system"],
+        )
+        struct_symbol = resolve_symbol(
+            ["fivefury.meta", "fivefury"],
+            ["MetaStructInfo"],
+        )
+        field_symbol = resolve_symbol(
+            ["fivefury.meta", "fivefury"],
+            ["MetaFieldInfo"],
+        )
+        type_symbol = resolve_symbol(
+            ["fivefury.meta", "fivefury"],
+            ["MetaDataType"],
+        )
+        hash_symbol = resolve_symbol(
+            ["fivefury.hashing", "fivefury"],
+            ["jenk_hash", "hash_jenk", "GenHash", "JenkHash"],
+        )
+        if None in (metahash_symbol, build_symbol, struct_symbol, field_symbol, type_symbol, hash_symbol):
+            self.skipTest("MetaBuilder API not implemented yet")
+
+        root_name_hash = _hash_value(hash_symbol, "CTestHash")
+        field_hash = _hash_value(hash_symbol, "name")
+        struct_info = struct_symbol.value(
+            name_hash=root_name_hash,
+            key=1,
+            unknown=0,
+            structure_size=4,
+            entries=[
+                field_symbol.value(
+                    name_hash=field_hash,
+                    data_offset=0,
+                    data_type=type_symbol.value.HASH,
+                    unknown_9h=0,
+                    reference_type_index=0,
+                    reference_key=0,
+                )
+            ],
+        )
+
+        payload_from_str = build_symbol.value(
+            root_name_hash=root_name_hash,
+            root_value={"name": "prop_tree_pine_01"},
+            struct_infos=[struct_info],
+            enum_infos=[],
+        )
+        payload_from_hash = build_symbol.value(
+            root_name_hash=root_name_hash,
+            root_value={"name": metahash_symbol.value("prop_tree_pine_01")},
+            struct_infos=[struct_info],
+            enum_infos=[],
+        )
+
+        self.assertEqual(payload_from_hash, payload_from_str)
+
+    def test_ymap_and_ytyp_store_hash_fields_as_metahash(self) -> None:
+        metahash_symbol = resolve_symbol(
+            ["fivefury.metahash", "fivefury"],
+            ["MetaHash", "HashString"],
+        )
+        entity_symbol = resolve_symbol(
+            ["fivefury.ymap", "fivefury"],
+            ["Entity", "EntityDef"],
+        )
+        archetype_symbol = resolve_symbol(
+            ["fivefury.ytyp", "fivefury"],
+            ["Archetype", "BaseArchetypeDef"],
+        )
+        ymap_symbol = resolve_symbol(
+            ["fivefury.ymap", "fivefury"],
+            ["Ymap"],
+        )
+        ytyp_symbol = resolve_symbol(
+            ["fivefury.ytyp", "fivefury"],
+            ["Ytyp"],
+        )
+        hash_symbol = resolve_symbol(
+            ["fivefury.hashing", "fivefury"],
+            ["jenk_hash", "hash_jenk", "GenHash", "JenkHash"],
+        )
+        register_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["register_name"],
+        )
+        clear_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["clear_hash_resolver"],
+        )
+        if None in (
+            metahash_symbol,
+            entity_symbol,
+            archetype_symbol,
+            ymap_symbol,
+            ytyp_symbol,
+            hash_symbol,
+            register_symbol,
+            clear_symbol,
+        ):
+            self.skipTest("MetaHash model integration not implemented yet")
+
+        clear_symbol.value()
+        register_symbol.value("prop_tree_pine_01")
+        prop_hash = _hash_value(hash_symbol, "prop_tree_pine_01")
+
+        entity = entity_symbol.value(archetype_name=prop_hash)
+        archetype = archetype_symbol.value(name=prop_hash, asset_name=prop_hash)
+        ymap = ymap_symbol.value(name="sample.ymap", parent=prop_hash, physics_dictionaries=[prop_hash])
+        ytyp = ytyp_symbol.value(name="sample.ytyp", dependencies=[prop_hash])
+
+        self.assertIsInstance(entity.archetype_name, metahash_symbol.value)
+        self.assertEqual(int(entity.archetype_name), prop_hash)
+        self.assertEqual(str(entity.archetype_name), "prop_tree_pine_01")
+        self.assertIsInstance(archetype.name, metahash_symbol.value)
+        self.assertEqual(str(archetype.name), "prop_tree_pine_01")
+        self.assertEqual(str(archetype.asset_name), "prop_tree_pine_01")
+        self.assertIsInstance(ymap.name, metahash_symbol.value)
+        self.assertEqual(str(ymap.name), "sample")
+        self.assertEqual(str(ymap.parent), "prop_tree_pine_01")
+        self.assertEqual(str(ymap.physics_dictionaries[0]), "prop_tree_pine_01")
+        self.assertIsInstance(ytyp.name, metahash_symbol.value)
+        self.assertEqual(str(ytyp.name), "sample")
+        self.assertEqual(str(ytyp.dependencies[0]), "prop_tree_pine_01")
+
 
 if __name__ == "__main__":
     unittest.main()

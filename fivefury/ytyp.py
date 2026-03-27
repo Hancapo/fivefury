@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from .extensions import EXTENSION_STRUCT_INFOS, extensions_from_meta, extensions_to_meta
+from .metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .meta import Meta, MetaBuilder, MetaEnumEntry, MetaEnumInfo, MetaFieldInfo, MetaStructInfo, RawStruct, read_meta
 from .meta_defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
 from .resource import build_rsc7
-from .ymap import EntityDef, MloInstanceDef, _arrayinfo, _entry, _enum_info, _suggest_resource_path
+from .ymap import EntityDef, MloInstanceDef, _arrayinfo, _ensure_base_name, _entry, _enum_info, _suggest_resource_path
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive, RpfFileEntry
@@ -194,7 +195,9 @@ YTYP_ENUM_INFOS = [
 
 
 @dataclasses.dataclass(slots=True)
-class BaseArchetypeDef:
+class BaseArchetypeDef(MetaHashFieldsMixin):
+    _hash_fields = ("name", "texture_dictionary", "clip_dictionary", "drawable_dictionary", "physics_dictionary", "asset_name")
+
     lod_dist: float = 0.0
     flags: int = 0
     special_attribute: int = 0
@@ -203,13 +206,13 @@ class BaseArchetypeDef:
     bs_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
     bs_radius: float = 0.0
     hd_texture_dist: float = 0.0
-    name: int | str = 0
-    texture_dictionary: int | str = 0
-    clip_dictionary: int | str = 0
-    drawable_dictionary: int | str = 0
-    physics_dictionary: int | str = 0
+    name: MetaHash | HashLike = 0
+    texture_dictionary: MetaHash | HashLike = 0
+    clip_dictionary: MetaHash | HashLike = 0
+    drawable_dictionary: MetaHash | HashLike = 0
+    physics_dictionary: MetaHash | HashLike = 0
     asset_type: int = 0
-    asset_name: int | str = 0
+    asset_name: MetaHash | HashLike = 0
     extensions: list[Any] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -279,13 +282,15 @@ class TimeArchetypeDef(BaseArchetypeDef):
 
 
 @dataclasses.dataclass(slots=True)
-class MloRoomDef:
+class MloRoomDef(MetaHashFieldsMixin):
+    _hash_fields = ("timecycle_name", "secondary_timecycle_name")
+
     name: str = ""
     bb_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
     bb_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
     blend: float = 0.0
-    timecycle_name: int | str = 0
-    secondary_timecycle_name: int | str = 0
+    timecycle_name: MetaHash | HashLike = 0
+    secondary_timecycle_name: MetaHash | HashLike = 0
     flags: int = 0
     portal_count: int = 0
     floor_id: int = 0
@@ -364,8 +369,10 @@ class MloPortalDef:
 
 
 @dataclasses.dataclass(slots=True)
-class MloEntitySet:
-    name: int | str = 0
+class MloEntitySet(MetaHashFieldsMixin):
+    _hash_fields = ("name",)
+
+    name: MetaHash | HashLike = 0
     locations: list[int] = dataclasses.field(default_factory=list)
     entities: list[EntityDef | MloInstanceDef | RawStruct | dict[str, Any]] = dataclasses.field(default_factory=list)
 
@@ -391,8 +398,10 @@ class MloEntitySet:
 
 
 @dataclasses.dataclass(slots=True)
-class MloTimeCycleModifier:
-    name: int | str = 0
+class MloTimeCycleModifier(MetaHashFieldsMixin):
+    _hash_fields = ("name",)
+
+    name: MetaHash | HashLike = 0
     sphere: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     percentage: float = 0.0
     range: float = 0.0
@@ -469,17 +478,19 @@ class MloArchetypeDef(BaseArchetypeDef):
 
 
 @dataclasses.dataclass(slots=True)
-class Ytyp:
+class Ytyp(MetaHashFieldsMixin):
+    _hash_fields = ("name",)
+    _hash_list_fields = ("dependencies",)
+
     extensions: list[Any] = dataclasses.field(default_factory=list)
     archetypes: list[BaseArchetypeDef | TimeArchetypeDef | MloArchetypeDef | RawStruct | dict[str, Any]] = dataclasses.field(default_factory=list)
-    name: int | str = 0
-    dependencies: list[int | str] = dataclasses.field(default_factory=list)
+    name: MetaHash | HashLike = 0
+    dependencies: list[MetaHash | HashLike] = dataclasses.field(default_factory=list)
     composite_entity_types: list[Any] = dataclasses.field(default_factory=list)
     meta_name: str = ""
 
     def __post_init__(self) -> None:
-        if isinstance(self.name, str) and self.name.lower().endswith(".ytyp"):
-            self.name = self.name[:-5]
+        self.name = _ensure_base_name(self.name, ".ytyp")
 
     @property
     def resource_name(self) -> str:
@@ -492,20 +503,20 @@ class Ytyp:
     def add_archetype(self, archetype: BaseArchetypeDef | TimeArchetypeDef | MloArchetypeDef) -> None:
         self.archetypes.append(archetype)
 
-    def archetype(self, name: int | str, **kwargs: Any) -> BaseArchetypeDef:
+    def archetype(self, name: HashLike, **kwargs: Any) -> BaseArchetypeDef:
         archetype = BaseArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
         self.add_archetype(archetype)
         return archetype
 
-    def create_archetype(self, name: int | str, **kwargs: Any) -> BaseArchetypeDef:
+    def create_archetype(self, name: HashLike, **kwargs: Any) -> BaseArchetypeDef:
         return self.archetype(name, **kwargs)
 
-    def time_archetype(self, name: int | str, **kwargs: Any) -> TimeArchetypeDef:
+    def time_archetype(self, name: HashLike, **kwargs: Any) -> TimeArchetypeDef:
         archetype = TimeArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
         self.add_archetype(archetype)
         return archetype
 
-    def mlo_archetype(self, name: int | str, **kwargs: Any) -> MloArchetypeDef:
+    def mlo_archetype(self, name: HashLike, **kwargs: Any) -> MloArchetypeDef:
         archetype = MloArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
         self.add_archetype(archetype)
         return archetype

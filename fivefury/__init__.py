@@ -20,6 +20,7 @@ from .extensions import (
 )
 from .gamefile import GameFile, GameFileType
 from .hashing import jenk_hash
+from .metahash import HashString, MetaHash
 from .meta import Meta, read_meta
 from .resolver import (
     HashResolver,
@@ -28,6 +29,7 @@ from .resolver import (
     hash_matches,
     register_name,
     register_names,
+    register_names_file,
     register_path_name,
     register_path_names,
     resolve_hash,
@@ -108,6 +110,7 @@ __all__ = [
     "InstancedData",
     "InstancedMapData",
     "HashResolver",
+    "HashString",
     "LadderExtension",
     "LightAttrDef",
     "LightEffectExtension",
@@ -116,6 +119,7 @@ __all__ = [
     "LodLights",
     "LodLightsSoa",
     "Meta",
+    "MetaHash",
     "MloArchetype",
     "MloArchetypeDef",
     "MloInstance",
@@ -151,6 +155,7 @@ __all__ = [
     "read_ytyp",
     "register_name",
     "register_names",
+    "register_names_file",
     "register_path_name",
     "register_path_names",
     "resolve_hash",

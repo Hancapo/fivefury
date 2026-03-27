@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .binary import align, pad_bytes
+from .metahash import MetaHash
 from .meta_defs import (
     ENUMS_BY_HASH,
     GRAPHICS_BASE,
@@ -1025,6 +1026,8 @@ def _primitive_block_hash(data_type: MetaDataType) -> int:
 def _coerce_hash(value: Any) -> int:
     if value is None:
         return 0
+    if isinstance(value, MetaHash):
+        return int(value)
     if isinstance(value, str):
         return jenk_hash(value)
     return int(value)

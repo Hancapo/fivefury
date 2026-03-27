@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from .extensions import EXTENSION_STRUCT_INFOS, extensions_from_meta, extensions_to_meta
+from .metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .meta import (
     Meta,
     MetaBuilder,
@@ -59,6 +60,31 @@ def _enum_info(name: str) -> MetaEnumInfo:
         key=info.key,
         entries=[MetaEnumEntry(meta_name(entry_name), entry_value) for entry_name, entry_value in info.items],
     )
+
+
+def _resource_text(value: HashLike | None) -> str:
+    if isinstance(value, MetaHash):
+        return value.text or ""
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _ensure_base_name(value: HashLike | None, extension: str) -> HashLike:
+    if isinstance(value, MetaHash):
+        raw = value.raw
+        if isinstance(raw, str):
+            text = raw
+            if text.lower().endswith(extension):
+                text = text[: -len(extension)]
+            return MetaHash.from_value(text or raw)
+        return value
+    if isinstance(value, str):
+        text = value
+        if text.lower().endswith(extension):
+            text = text[: -len(extension)]
+        return MetaHash.from_value(text or value)
+    return MetaHash.from_value(value or 0)
 
 
 YMAP_STRUCT_INFOS = [
@@ -296,13 +322,15 @@ YMAP_ENUM_INFOS = [
 ]
 
 
-def _suggest_resource_path(value: int | str, meta_name_value: str, extension: str, fallback: str) -> str:
-    if isinstance(meta_name_value, str) and meta_name_value:
-        lowered = meta_name_value.lower()
-        return meta_name_value if lowered.endswith(extension) else f"{meta_name_value}{extension}"
-    if isinstance(value, str) and value:
-        lowered = value.lower()
-        return value if lowered.endswith(extension) else f"{value}{extension}"
+def _suggest_resource_path(value: HashLike, meta_name_value: str, extension: str, fallback: str) -> str:
+    meta_text = _resource_text(meta_name_value)
+    if meta_text:
+        lowered = meta_text.lower()
+        return meta_text if lowered.endswith(extension) else f"{meta_text}{extension}"
+    value_text = _resource_text(value)
+    if value_text:
+        lowered = value_text.lower()
+        return value_text if lowered.endswith(extension) else f"{value_text}{extension}"
     return fallback
 
 
@@ -392,8 +420,10 @@ class BlockDesc:
 
 
 @dataclasses.dataclass(slots=True)
-class TimeCycleModifier:
-    name: int | str = 0
+class TimeCycleModifier(MetaHashFieldsMixin):
+    _hash_fields = ("name",)
+
+    name: MetaHash | HashLike = 0
     min_extents: tuple[float, float, float] = (0.0, 0.0, 0.0)
     max_extents: tuple[float, float, float] = (0.0, 0.0, 0.0)
     percentage: float = 0.0
@@ -427,18 +457,20 @@ class TimeCycleModifier:
 
 
 @dataclasses.dataclass(slots=True)
-class CarGen:
+class CarGen(MetaHashFieldsMixin):
+    _hash_fields = ("car_model", "pop_group")
+
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     orient_x: float = 0.0
     orient_y: float = 0.0
     perpendicular_length: float = 0.0
-    car_model: int | str = 0
+    car_model: MetaHash | HashLike = 0
     flags: int = 0
     body_color_remap1: int = -1
     body_color_remap2: int = -1
     body_color_remap3: int = -1
     body_color_remap4: int = -1
-    pop_group: int | str = 0
+    pop_group: MetaHash | HashLike = 0
     livery: int = -1
 
     def to_meta(self) -> dict[str, Any]:
@@ -477,8 +509,10 @@ class CarGen:
 
 
 @dataclasses.dataclass(slots=True)
-class EntityDef:
-    archetype_name: int | str = 0
+class EntityDef(MetaHashFieldsMixin):
+    _hash_fields = ("archetype_name",)
+
+    archetype_name: MetaHash | HashLike = 0
     flags: int = 0
     guid: int = 0
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -547,9 +581,11 @@ class EntityDef:
 
 @dataclasses.dataclass(slots=True)
 class MloInstanceDef(EntityDef):
+    _hash_list_fields = ("default_entity_sets",)
+
     group_id: int = 0
     floor_id: int = 0
-    default_entity_sets: list[int | str] = dataclasses.field(default_factory=list)
+    default_entity_sets: list[MetaHash | HashLike] = dataclasses.field(default_factory=list)
     num_exit_portals: int = 0
     mlo_inst_flags: int = 0
 
@@ -597,9 +633,12 @@ class MloInstanceDef(EntityDef):
 
 
 @dataclasses.dataclass(slots=True)
-class Ymap:
-    name: int | str = 0
-    parent: int | str = 0
+class Ymap(MetaHashFieldsMixin):
+    _hash_fields = ("name", "parent")
+    _hash_list_fields = ("physics_dictionaries",)
+
+    name: MetaHash | HashLike = 0
+    parent: MetaHash | HashLike = 0
     flags: int = 0
     content_flags: int = 0
     streaming_extents_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -610,7 +649,7 @@ class Ymap:
     container_lods: list[Any] = dataclasses.field(default_factory=list)
     box_occluders: list[BoxOccluder | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
     occlude_models: list[OccludeModel | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
-    physics_dictionaries: list[int | str] = dataclasses.field(default_factory=list)
+    physics_dictionaries: list[MetaHash | HashLike] = dataclasses.field(default_factory=list)
     instanced_data: InstancedMapData | dict[str, Any] | None = None
     time_cycle_modifiers: list[TimeCycleModifier | dict[str, Any]] = dataclasses.field(default_factory=list)
     car_generators: list[CarGen | dict[str, Any]] = dataclasses.field(default_factory=list)
@@ -620,8 +659,7 @@ class Ymap:
     meta_name: str = ""
 
     def __post_init__(self) -> None:
-        if isinstance(self.name, str) and self.name.lower().endswith(".ymap"):
-            self.name = self.name[:-5]
+        self.name = _ensure_base_name(self.name, ".ymap")
 
     @property
     def resource_name(self) -> str:
@@ -634,15 +672,15 @@ class Ymap:
     def add_entity(self, entity: EntityDef | MloInstanceDef) -> None:
         self.entities.append(entity)
 
-    def entity(self, archetype_name: int | str, **kwargs: Any) -> EntityDef:
+    def entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
         entity = EntityDef(archetype_name=archetype_name, **kwargs)
         self.add_entity(entity)
         return entity
 
-    def create_entity(self, archetype_name: int | str, **kwargs: Any) -> EntityDef:
+    def create_entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
         return self.entity(archetype_name, **kwargs)
 
-    def mlo_instance(self, archetype_name: int | str, **kwargs: Any) -> MloInstanceDef:
+    def mlo_instance(self, archetype_name: HashLike, **kwargs: Any) -> MloInstanceDef:
         entity = MloInstanceDef(archetype_name=archetype_name, **kwargs)
         self.add_entity(entity)
         return entity
