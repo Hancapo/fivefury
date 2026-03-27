@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 import time
 import unittest
 import zipfile
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -787,9 +789,16 @@ class MetaAndArchiveContractTests(unittest.TestCase):
 
             self.assertEqual(cache.dlc_names, ["mpalpha", "mpbeta"])
             self.assertEqual(cache.active_dlc_names, ["mpalpha"])
+            self.assertEqual(cache.ignored_folders, ("scratch",))
             self.assertIsNotNone(cache.find_path("update/x64/dlcpacks/mpalpha/dlc.rpf/x64/data/alpha.bin"))
             self.assertIsNone(cache.find_path("update/x64/dlcpacks/mpbeta/dlc.rpf/x64/data/beta.bin"))
             self.assertIsNone(cache.find_path("scratch/misc.rpf/scratch/hidden.bin"))
+
+            cache = GameFileCache(root)
+            cache.use_dlc("mpalpha")
+            cache.ignore_folders("scratch", "mods")
+            self.assertEqual(cache.dlc_level, "mpalpha")
+            self.assertEqual(cache.ignored_folders, ("scratch", "mods"))
 
     def test_gamefilecache_reuses_persistent_index_cache_and_reports_timings(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -887,6 +896,99 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             self.assertEqual(cache.read_bytes("pack_1.rpf/stream/item_1.ydr"), b"payload-1")
             self.assertEqual(cache.read_bytes("pack_2.rpf/stream/item_2.ydr"), b"payload-2")
             self.assertLessEqual(cache.open_archive_count, 2)
+
+    def test_gamefilecache_exposes_simple_scan_state(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("pack.rpf")
+            archive.add("stream/a.ydr", b"a")
+            archive.save(root / "pack.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            self.assertFalse(cache.scan_complete)
+            self.assertFalse(cache.scan_ok)
+            self.assertFalse(cache.has_assets)
+            self.assertFalse(cache.has_scan_errors)
+
+            cache.scan(use_index_cache=False)
+            summary = cache.summary()
+
+            self.assertTrue(cache.scan_complete)
+            self.assertTrue(cache.scan_ok)
+            self.assertTrue(cache.has_assets)
+            self.assertFalse(cache.has_scan_errors)
+            self.assertEqual(summary["asset_count"], 1)
+            self.assertTrue(summary["scan_complete"])
+            self.assertTrue(summary["scan_ok"])
+            self.assertFalse(summary["has_scan_errors"])
+            self.assertEqual(summary["scan_error_count"], 0)
+
+    def test_gamefilecache_verbose_prints_scan_and_read_activity(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("pack.rpf")
+            archive.add("stream/a.ydr", b"a")
+            archive.save(root / "pack.rpf")
+
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                cache = GameFileCache(root, use_index_cache=False, verbose=True)
+                cache.scan(use_index_cache=False)
+                self.assertEqual(cache.read_bytes("pack.rpf/stream/a.ydr"), b"a")
+
+            output = buffer.getvalue()
+            self.assertIn("[GameFileCache] scan start", output)
+            self.assertIn("[GameFileCache] scan archive pack.rpf", output)
+            self.assertIn("[GameFileCache] scan done", output)
+            self.assertIn("[GameFileCache] read bytes pack.rpf/stream/a.ydr logical=True", output)
+
+    def test_gamefilecache_uses_native_index_backend(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("pack.rpf")
+            archive.add("stream/a.ydr", b"a")
+            archive.add("stream/b.ydr", b"b")
+            archive.save(root / "pack.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            self.assertTrue(hasattr(cache, "_index"))
+            self.assertEqual(len(cache._index), 2)
+            self.assertEqual(cache._index.get_path(0), "pack.rpf/stream/a.ydr")
+            self.assertEqual(cache._index.get_path(1), "pack.rpf/stream/b.ydr")
+
+    def test_gamefilecache_bounds_loaded_file_cache(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("pack.rpf")
+            archive.add("stream/a.ydr", b"a")
+            archive.add("stream/b.ydr", b"b")
+            archive.add("stream/c.ydr", b"c")
+            archive.save(root / "pack.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False, max_loaded_files=2)
+            cache.scan(use_index_cache=False)
+
+            self.assertIsNotNone(cache.get_file("pack.rpf/stream/a.ydr"))
+            self.assertIsNotNone(cache.get_file("pack.rpf/stream/b.ydr"))
+            self.assertEqual(cache.open_file_count, 2)
+            self.assertIn("pack.rpf/stream/a.ydr", cache.files)
+            self.assertIn("pack.rpf/stream/b.ydr", cache.files)
+
+            self.assertIsNotNone(cache.get_file("pack.rpf/stream/c.ydr"))
+            self.assertEqual(cache.open_file_count, 2)
+            self.assertNotIn("pack.rpf/stream/a.ydr", cache.files)
+            self.assertIn("pack.rpf/stream/b.ydr", cache.files)
+            self.assertIn("pack.rpf/stream/c.ydr", cache.files)
 
 
 if __name__ == "__main__":

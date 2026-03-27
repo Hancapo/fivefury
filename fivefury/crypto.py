@@ -380,14 +380,17 @@ class GameCrypto:
     aes_key: bytes
     ng_keys: tuple[bytes, ...]
     ng_tables: tuple[tuple[tuple[int, ...], ...], ...]
+    ng_blob: bytes = b""
     magic_path: str = ""
     _aes: _AesEcbCipher = field(init=False, repr=False, compare=False)
     _ng_subkeys: tuple[tuple[tuple[int, int, int, int], ...], ...] = field(init=False, repr=False, compare=False)
+    _native_context: object | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.aes_key = bytes(self.aes_key)
         self.ng_keys = tuple(bytes(key) for key in self.ng_keys)
         self.ng_tables = tuple(tuple(tuple(table) for table in round_tables) for round_tables in self.ng_tables)
+        self.ng_blob = bytes(self.ng_blob)
         self._aes = _AesEcbCipher(self.aes_key)
         self._ng_subkeys = tuple(
             tuple(
@@ -406,19 +409,41 @@ class GameCrypto:
         source_path = Path(magic_path) if magic_path is not None else None
         if source_path is not None:
             if source_path.name.lower() == "ng.dat" or source_path.stat().st_size == _NG_BLOB_SIZE:
-                ng_keys, ng_tables = _load_ng_sections(source_path)
+                ng_blob = source_path.read_bytes()
+                ng_keys, ng_tables = _decode_ng_blob(ng_blob)
             else:
-                ng_keys, ng_tables = _decode_magic_sections(aes_bytes, source_path)
-            return cls(aes_key=aes_bytes, ng_keys=ng_keys, ng_tables=ng_tables, magic_path=str(source_path))
+                ng_blob = _decode_magic_payload(aes_bytes, source_path.read_bytes())
+                ng_keys, ng_tables = _decode_ng_blob(ng_blob)
+            return cls(
+                aes_key=aes_bytes,
+                ng_keys=ng_keys,
+                ng_tables=ng_tables,
+                ng_blob=ng_blob,
+                magic_path=str(source_path),
+            )
 
         packaged_ng = _read_packaged_data("ng.dat")
         if packaged_ng is not None:
-            ng_keys, ng_tables = _decode_ng_blob(packaged_ng[0])
-            return cls(aes_key=aes_bytes, ng_keys=ng_keys, ng_tables=ng_tables, magic_path=packaged_ng[1])
+            ng_blob = packaged_ng[0]
+            ng_keys, ng_tables = _decode_ng_blob(ng_blob)
+            return cls(
+                aes_key=aes_bytes,
+                ng_keys=ng_keys,
+                ng_tables=ng_tables,
+                ng_blob=ng_blob,
+                magic_path=packaged_ng[1],
+            )
 
         magic = _default_magic_path()
-        ng_keys, ng_tables = _decode_magic_sections(aes_bytes, magic)
-        return cls(aes_key=aes_bytes, ng_keys=ng_keys, ng_tables=ng_tables, magic_path=str(magic))
+        ng_blob = _decode_magic_payload(aes_bytes, magic.read_bytes())
+        ng_keys, ng_tables = _decode_ng_blob(ng_blob)
+        return cls(
+            aes_key=aes_bytes,
+            ng_keys=ng_keys,
+            ng_tables=ng_tables,
+            ng_blob=ng_blob,
+            magic_path=str(magic),
+        )
 
     @classmethod
     def from_game(
@@ -498,10 +523,31 @@ class GameCrypto:
         clone.aes_key = self.aes_key
         clone.ng_keys = self.ng_keys
         clone.ng_tables = self.ng_tables
+        clone.ng_blob = self.ng_blob
         clone.magic_path = self.magic_path
         clone._aes = _AesEcbCipher(self.aes_key)
         clone._ng_subkeys = self._ng_subkeys
+        clone._native_context = self._native_context
         return clone
+
+    def _build_ng_blob(self) -> bytes:
+        if self.ng_blob:
+            return self.ng_blob
+        keys_blob = b"".join(self.ng_keys)
+        tables_blob = b"".join(
+            struct.pack("<256I", *table)
+            for round_tables in self.ng_tables
+            for table in round_tables
+        )
+        self.ng_blob = keys_blob + tables_blob
+        return self.ng_blob
+
+    def native_context(self) -> object:
+        if self._native_context is None:
+            from ._native import NativeCryptoContext
+
+            self._native_context = NativeCryptoContext(self.aes_key, self._build_ng_blob())
+        return self._native_context
 
     def _decrypt_ng_block(self, data: bytes, subkeys: tuple[tuple[int, int, int, int], ...]) -> bytes:
         buffer = data

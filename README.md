@@ -1,6 +1,6 @@
 # FiveFury
 
-FiveFury is a pure-Python toolkit for working with GTA V resource files.
+FiveFury is a Python toolkit with a bundled native backend for working with GTA V resource files.
 
 It focuses on practical asset I/O:
 
@@ -11,7 +11,7 @@ It focuses on practical asset I/O:
 - `ZIP -> RPF` and `RPF -> ZIP`
 - lazy file indexing with `GameFileCache`
 
-The package has no runtime dependencies and does not include any XML layer.
+The package does not include any XML layer. `GameFileCache` requires the bundled native extension and is not available without it.
 
 ## Status
 
@@ -93,7 +93,8 @@ register_name("prop_tree_pine_01")
 register_names_file("common_names.txt")
 
 cache = GameFileCache("mods_root")
-cache.scan()  # registers loose-file and archive entry stems in the global resolver
+cache.scan()
+cache.populate_resolver()
 
 print(resolve_hash(jenk_hash("prop_tree_pine_01")))
 ```
@@ -163,16 +164,51 @@ If a directory contains folders ending in `.rpf`, they are packed as nested RPF 
 ```python
 from fivefury import GameFileCache
 
-cache = GameFileCache("mods_root")
-cache.scan()
+cache = GameFileCache("mods_root", scan_workers=8, max_loaded_files=16)
+cache.scan(use_index_cache=True)
 
+print(cache.scan_ok)
+print(cache.asset_count)
+print(cache.summary())
+
+asset = cache.get_asset("example_map")
+data = cache.read_bytes("some_archive.rpf/stream/example_map.ymap")
 game_file = cache.get_file("some_archive.rpf/stream/example_map.ymap")
-if game_file is not None:
-    print(game_file.kind.name)
-    print(type(game_file.parsed).__name__)
 ```
 
-`GameFileCache` indexes both loose files and `.rpf` contents, then parses supported file types lazily on demand.
+`GameFileCache` indexes both loose files and `.rpf` contents, then parses supported file types lazily on demand. The easiest way to reason about its state is:
+
+- `cache.scan_complete`: a scan has run
+- `cache.scan_ok`: the last scan finished without recorded archive errors
+- `cache.has_scan_errors`: one or more sources failed during scan
+- `cache.has_assets`: the cache contains indexed assets
+- `cache.summary()`: compact dict with counts, cache flags and scan timings
+
+### Restrict DLC level and ignore folders
+
+```python
+from fivefury import GameFileCache
+
+cache = GameFileCache(
+    r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V",
+    dlc_level="mpbattle",
+    exclude_folders="mods;scratch",
+)
+
+cache.scan_game(use_index_cache=True)
+
+print(cache.active_dlc_names[-1])
+print(cache.ignored_folders)
+```
+
+You can also configure it after construction:
+
+```python
+cache = GameFileCache(r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V")
+cache.use_dlc("mpbattle")
+cache.ignore_folders("mods", "scratch")
+cache.scan_game()
+```
 
 ## API
 

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import importlib
 import os
 import pickle
 import re
-import threading
 import time
 from collections import OrderedDict
+from collections.abc import Iterator as AbcIterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,13 +16,22 @@ from typing import Any, Iterator, Optional
 
 from .crypto import GameCrypto, load_game_keys
 from .gamefile import GameFile, GameFileType, guess_game_file_type
-from .hashing import jenk_hash
+from .hashing import _get_lut, jenk_hash
 from .metahash import MetaHash
 from .resolver import HashResolver, get_hash_resolver
 from .rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
 
-_SCAN_INDEX_VERSION = 1
-_WORKER_STATE = threading.local()
+try:
+    from ._native import CompactIndex, NativeCryptoContext, scan_rpf_into_index
+except ImportError as exc:
+    raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
+
+_SCAN_INDEX_VERSION = 2
+_SCAN_GC_INTERVAL = 8
+
+_FLAG_LOOSE = 1
+_FLAG_RESOURCE = 2
+_FLAG_ENCRYPTED = 4
 
 
 def _try_load_decoder(module_name: str, attribute: str) -> Any | None:
@@ -79,18 +89,20 @@ def _coerce_kind(value: GameFileType | str | int | None) -> GameFileType | None:
         return guessed if guessed is not GameFileType.UNKNOWN else None
 
 
-def _append_index(index: dict[Any, list[int]], key: Any, value: int) -> None:
-    bucket = index.get(key)
-    if bucket is None:
-        index[key] = [value]
-        return
-    if not bucket or bucket[-1] != value:
-        bucket.append(value)
+def _path_name(path: str) -> str:
+    slash = path.rfind("/")
+    return path[slash + 1 :] if slash >= 0 else path
+
+
+def _path_stem(path: str) -> str:
+    name = _path_name(path)
+    dot = name.rfind(".")
+    return name[:dot] if dot > 0 else name
 
 
 def _maybe_hash_name(value: str) -> tuple[int, int]:
-    lower_name = value.lower()
-    stem = Path(lower_name).stem
+    lower_name = _path_name(value).lower()
+    stem = _path_stem(lower_name)
     return jenk_hash(lower_name), jenk_hash(stem)
 
 
@@ -140,91 +152,107 @@ def _default_index_cache_dir() -> Path:
     return base / "fivefury" / "scan-index"
 
 
-def _get_worker_crypto(crypto: GameCrypto | None) -> GameCrypto | None:
-    if crypto is None:
-        return None
-    cached_source = getattr(_WORKER_STATE, "crypto_source", None)
-    cached_crypto = getattr(_WORKER_STATE, "crypto_instance", None)
-    if cached_source is crypto and cached_crypto is not None:
-        return cached_crypto
-    worker_crypto = crypto.clone_for_worker()
-    _WORKER_STATE.crypto_source = crypto
-    _WORKER_STATE.crypto_instance = worker_crypto
-    return worker_crypto
+def _scan_archive_source(
+    path: str | Path,
+    source_prefix: str,
+    index: CompactIndex,
+    crypto: NativeCryptoContext | None,
+    hash_lut: bytes,
+) -> int:
+    return int(scan_rpf_into_index(index, str(path), source_prefix, hash_lut, crypto))
 
 
-def _collect_archive_payloads(archive: RpfArchive, source_prefix: str) -> list[tuple[Any, ...]]:
-    prefix = source_prefix.replace("\\", "/").strip("/")
-    records: list[tuple[Any, ...]] = []
-    stack = [archive]
-    while stack:
-        current = stack.pop()
-        for entry in current.iter_entries(include_directories=False):
-            if not isinstance(entry, RpfFileEntry):
-                continue
-            logical_path = f"{prefix}/{entry.full_path}".strip("/") if prefix else entry.full_path
-            size = entry.get_file_size()
-            name_hash, short_hash = _maybe_hash_name(Path(logical_path).name)
-            records.append(
-                (
-                    logical_path,
-                    int(guess_game_file_type(entry.full_path, GameFileType.UNKNOWN)),
-                    int(size),
-                    int(size),
-                    int(getattr(entry, "file_uncompressed_size", size) or size),
-                    False,
-                    isinstance(entry, RpfFileEntry) and entry.__class__.__name__.lower().startswith("rpfresource"),
-                    bool(entry.is_encrypted),
-                    int(current.encryption),
-                    int(name_hash),
-                    int(short_hash),
-                )
-            )
-        stack.extend(reversed(current.children))
-    return records
-
-
-def _scan_archive_source(path: str | Path, source_prefix: str, crypto: GameCrypto | None) -> tuple[str, list[tuple[Any, ...]]]:
-    archive = RpfArchive.from_path(path, crypto=_get_worker_crypto(crypto))
-    return source_prefix, _collect_archive_payloads(archive, source_prefix)
-
-
-@dataclass(slots=True)
 class AssetRecord:
-    id: int
-    path: str
-    kind: GameFileType = GameFileType.UNKNOWN
-    size: int = 0
-    stored_size: int = 0
-    uncompressed_size: int = 0
-    entry: Optional[RpfFileEntry] = None
-    archive: Optional[RpfArchive] = None
-    loose_path: Optional[Path] = None
-    is_resource: bool = False
-    is_encrypted: bool = False
-    archive_encryption: int = 0
-    name_hash: int = 0
-    short_hash: int = 0
+    __slots__ = ("_cache", "id")
+
+    def __init__(self, cache: GameFileCache, asset_id: int) -> None:
+        self._cache = cache
+        self.id = int(asset_id)
+
+    def __repr__(self) -> str:
+        return (
+            "AssetRecord("
+            f"id={self.id}, path={self.path!r}, kind={self.kind.name}, size={self.size}, "
+            f"stored_size={self.stored_size}, uncompressed_size={self.uncompressed_size})"
+        )
+
+    @classmethod
+    def from_cache(cls, cache: GameFileCache, asset_id: int) -> AssetRecord:
+        return cls(cache, asset_id)
+
+    @property
+    def path(self) -> str:
+        return self._cache._index.get_path(self.id)
+
+    @property
+    def kind(self) -> GameFileType:
+        return GameFileType(int(self._cache._index.get_kind(self.id)))
+
+    @property
+    def size(self) -> int:
+        return int(self._cache._index.get_size(self.id))
+
+    @property
+    def stored_size(self) -> int:
+        return self.size
+
+    @property
+    def uncompressed_size(self) -> int:
+        return int(self._cache._index.get_uncompressed_size(self.id))
+
+    @property
+    def entry(self) -> Optional[RpfFileEntry]:
+        return self._cache._live_entries.get(self.id)
+
+    @property
+    def archive(self) -> Optional[RpfArchive]:
+        return self._cache._live_archives.get(self.id)
+
+    @property
+    def loose_path(self) -> Optional[Path]:
+        return self._cache._loose_path_for_id(self.id)
+
+    @property
+    def is_resource(self) -> bool:
+        return self._cache._flag_is_set(self.id, _FLAG_RESOURCE)
+
+    @property
+    def is_encrypted(self) -> bool:
+        return self._cache._flag_is_set(self.id, _FLAG_ENCRYPTED)
+
+    @property
+    def archive_encryption(self) -> int:
+        return int(self._cache._index.get_archive_encryption(self.id))
+
+    @property
+    def name_hash(self) -> int:
+        return int(self._cache._index.get_name_hash(self.id))
+
+    @property
+    def short_hash(self) -> int:
+        return int(self._cache._index.get_short_hash(self.id))
 
     @property
     def key(self) -> str:
-        return _normalize_key(self.path)
+        return self.path
 
     @property
     def name(self) -> str:
-        return Path(self.path).name
+        return _path_name(self.path)
 
     @property
     def extension(self) -> str:
-        return Path(self.path).suffix.lower()
+        name = self.name
+        dot = name.rfind(".")
+        return name[dot:].lower() if dot >= 0 else ""
 
     @property
     def stem(self) -> str:
-        return Path(self.path).stem
+        return _path_stem(self.path)
 
     @property
     def is_loose(self) -> bool:
-        return self.loose_path is not None
+        return self._cache._flag_is_set(self.id, _FLAG_LOOSE)
 
     @property
     def is_archive_entry(self) -> bool:
@@ -232,10 +260,12 @@ class AssetRecord:
 
     @property
     def source_path(self) -> str:
-        if self.loose_path is not None:
-            return str(self.loose_path)
-        if self.archive is not None and self.archive.source_path:
-            return self.archive.source_path
+        loose = self.loose_path
+        if loose is not None:
+            return str(loose)
+        archive = self.archive
+        if archive is not None and archive.source_path:
+            return archive.source_path
         return self.path
 
     @property
@@ -251,6 +281,50 @@ class AssetRecord:
         return split[1]
 
 
+class _AssetRecordList(Sequence[AssetRecord]):
+    __slots__ = ("_cache",)
+
+    def __init__(self, cache: GameFileCache) -> None:
+        self._cache = cache
+
+    def __len__(self) -> int:
+        return self._cache.asset_count
+
+    def __getitem__(self, index: int | slice) -> AssetRecord | list[AssetRecord]:
+        if isinstance(index, slice):
+            return [self._cache._record_from_id(i) for i in range(*index.indices(len(self)))]
+        return self._cache._record_from_id(index)
+
+    def __iter__(self) -> AbcIterator[AssetRecord]:
+        for asset_id in range(len(self)):
+            yield self._cache._record_from_id(asset_id)
+
+
+class _AssetRecordMap(Mapping[str, AssetRecord]):
+    __slots__ = ("_cache",)
+
+    def __init__(self, cache: GameFileCache) -> None:
+        self._cache = cache
+
+    def __len__(self) -> int:
+        return self._cache.asset_count
+
+    def __iter__(self) -> AbcIterator[str]:
+        yield from self._cache.iter_paths()
+
+    def __getitem__(self, key: str) -> AssetRecord:
+        asset_id = self._cache._index.find_path_id(_normalize_key(key))
+        if asset_id is None:
+            raise KeyError(key)
+        return self._cache._record_from_id(asset_id)
+
+    def get(self, key: str | Path, default: AssetRecord | None = None) -> AssetRecord | None:
+        asset_id = self._cache._index.find_path_id(_normalize_key(key))
+        if asset_id is None:
+            return default
+        return self._cache._record_from_id(asset_id)
+
+
 @dataclass(slots=True)
 class ScanStats:
     elapsed_seconds: float = 0.0
@@ -263,7 +337,7 @@ class ScanStats:
     archive_workers: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class GameFileCache:
     root: str | Path | None = None
     resolver: HashResolver | None = None
@@ -274,21 +348,22 @@ class GameFileCache:
     index_cache_path: str | Path | None = None
     scan_workers: int | None = None
     max_open_archives: int = 8
+    max_loaded_files: int = 32
+    register_resolver_names: bool = False
+    verbose: bool = False
     archives: list[RpfArchive] = field(default_factory=list)
-    files: dict[str, GameFile] = field(default_factory=dict)
+    files: OrderedDict[str, GameFile] = field(default_factory=OrderedDict)
     entries: dict[str, RpfEntry] = field(default_factory=dict)
-    loose_files: dict[str, Path] = field(default_factory=dict)
-    assets: dict[str, AssetRecord] = field(default_factory=dict)
-    records: list[AssetRecord] = field(default_factory=list)
+    assets: Mapping[str, AssetRecord] = field(init=False, repr=False)
+    records: Sequence[AssetRecord] = field(init=False, repr=False)
     scan_errors: dict[str, str] = field(default_factory=dict)
     dlc_names: list[str] = field(default_factory=list)
     active_dlc_names: list[str] = field(default_factory=list)
     last_scan: ScanStats | None = None
-    _assets_by_name: dict[str, list[int]] = field(default_factory=dict, repr=False)
-    _assets_by_stem: dict[str, list[int]] = field(default_factory=dict, repr=False)
-    _assets_by_name_hash: dict[int, list[int]] = field(default_factory=dict, repr=False)
-    _assets_by_short_hash: dict[int, list[int]] = field(default_factory=dict, repr=False)
-    _assets_by_type: dict[GameFileType, list[int]] = field(default_factory=dict, repr=False)
+    _index: CompactIndex = field(default_factory=CompactIndex, init=False, repr=False)
+    _live_entries: dict[int, RpfFileEntry] = field(default_factory=dict, init=False, repr=False)
+    _live_archives: dict[int, RpfArchive] = field(default_factory=dict, init=False, repr=False)
+    _explicit_loose_paths: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _exclude_prefixes: tuple[str, ...] = field(default_factory=tuple, init=False, repr=False)
     _active_dlc_filter: set[str] | None = field(default=None, init=False, repr=False)
     _archive_lookup: OrderedDict[str, RpfArchive] = field(default_factory=OrderedDict, init=False, repr=False)
@@ -297,47 +372,141 @@ class GameFileCache:
         if self.resolver is None:
             self.resolver = get_hash_resolver()
         self._exclude_prefixes = _coerce_folder_prefixes(self.exclude_folders)
+        self.assets = _AssetRecordMap(self)
+        self.records = _AssetRecordList(self)
 
     @property
     def asset_count(self) -> int:
-        return len(self.records)
+        return len(self._index)
+
+    @property
+    def scan_complete(self) -> bool:
+        return self.last_scan is not None
+
+    @property
+    def has_assets(self) -> bool:
+        return bool(len(self._index))
+
+    @property
+    def has_scan_errors(self) -> bool:
+        return bool(self.scan_errors)
+
+    @property
+    def scan_ok(self) -> bool:
+        return self.scan_complete and not self.has_scan_errors
+
+    @property
+    def used_index_cache(self) -> bool:
+        return bool(self.last_scan.used_index_cache) if self.last_scan is not None else False
+
+    @property
+    def saved_index_cache(self) -> bool:
+        return bool(self.last_scan.saved_index_cache) if self.last_scan is not None else False
 
     @property
     def open_archive_count(self) -> int:
         return len(self._archive_lookup)
 
+    @property
+    def open_file_count(self) -> int:
+        return len(self.files)
+
     def clear(self) -> None:
         self.archives.clear()
         self.files.clear()
         self.entries.clear()
-        self.loose_files.clear()
-        self.assets.clear()
-        self.records.clear()
+        self._index.clear()
+        self._live_entries.clear()
+        self._live_archives.clear()
+        self._explicit_loose_paths.clear()
         self.scan_errors.clear()
         self.dlc_names.clear()
         self.active_dlc_names.clear()
         self._active_dlc_filter = None
-        self._assets_by_name.clear()
-        self._assets_by_stem.clear()
-        self._assets_by_name_hash.clear()
-        self._assets_by_short_hash.clear()
-        self._assets_by_type.clear()
         self._archive_lookup.clear()
 
     def clear_runtime_cache(self, *, loaded_files: bool = False) -> None:
         self.archives.clear()
         self.entries.clear()
         self._archive_lookup.clear()
+        self._live_entries.clear()
+        self._live_archives.clear()
         if loaded_files:
             self.files.clear()
+
+    def _log(self, message: str) -> None:
+        if self.verbose:
+            print(f"[GameFileCache] {message}", flush=True)
+
+    def _flag_is_set(self, asset_id: int, flag: int) -> bool:
+        return bool(int(self._index.get_flags(asset_id)) & flag)
+
+    def _loose_path_for_id(self, asset_id: int) -> Path | None:
+        explicit = self._explicit_loose_paths.get(asset_id)
+        if explicit is not None:
+            return Path(explicit)
+        if not self._flag_is_set(asset_id, _FLAG_LOOSE) or self.root is None:
+            return None
+        return Path(self.root) / self._index.get_path(asset_id)
+
+    def summary(self) -> dict[str, Any]:
+        stats = self.last_scan
+        return {
+            "root": str(self.root) if self.root is not None else None,
+            "scan_complete": self.scan_complete,
+            "scan_ok": self.scan_ok,
+            "has_assets": self.has_assets,
+            "has_scan_errors": self.has_scan_errors,
+            "asset_count": self.asset_count,
+            "scan_error_count": len(self.scan_errors),
+            "used_index_cache": self.used_index_cache,
+            "saved_index_cache": self.saved_index_cache,
+            "open_archive_count": self.open_archive_count,
+            "open_file_count": self.open_file_count,
+            "dlc_level": self.dlc_level,
+            "elapsed_seconds": float(stats.elapsed_seconds) if stats is not None else None,
+            "source_count": int(stats.source_count) if stats is not None else 0,
+            "rpf_count": int(stats.rpf_count) if stats is not None else 0,
+            "loose_count": int(stats.loose_count) if stats is not None else 0,
+            "archive_workers": int(stats.archive_workers) if stats is not None else 0,
+        }
+
+    def populate_resolver(self, resolver: HashResolver | None = None) -> int:
+        target = resolver or self.resolver
+        if target is None:
+            return 0
+        before = len(target.hash_to_name)
+        for asset_id in range(self.asset_count):
+            target.register_path_name(self._index.get_path(asset_id))
+        added = len(target.hash_to_name) - before
+        self._log(f"resolver populated added={added}")
+        return added
 
     def set_dlc_level(self, value: str | int | None) -> str | int | None:
         self.dlc_level = value
         return self.dlc_level
 
+    def use_dlc(self, value: str | int | None) -> str | int | None:
+        return self.set_dlc_level(value)
+
     def set_exclude_folders(self, value: str | Path | list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
         self.exclude_folders = value
         self._exclude_prefixes = _coerce_folder_prefixes(value)
+        return self._exclude_prefixes
+
+    def ignore_folders(self, *values: str | Path) -> tuple[str, ...]:
+        if len(values) == 1 and isinstance(values[0], (list, tuple)):
+            raw_values = tuple(values[0])
+        else:
+            raw_values = values
+        merged = [*self._exclude_prefixes, *_coerce_folder_prefixes(raw_values)]
+        deduped = tuple(dict.fromkeys(merged))
+        self.exclude_folders = list(deduped)
+        self._exclude_prefixes = deduped
+        return self._exclude_prefixes
+
+    @property
+    def ignored_folders(self) -> tuple[str, ...]:
         return self._exclude_prefixes
 
     def get_index_cache_path(self) -> Path:
@@ -410,50 +579,18 @@ class GameFileCache:
             manifest.append((rel, stat.st_size, stat.st_mtime_ns))
         return manifest
 
-    def _serialize_record(self, record: AssetRecord, root: Path) -> tuple[Any, ...]:
-        is_loose = record.loose_path is not None and _split_archive_asset_path(record.path) is None
-        return (
-            record.path,
-            int(record.kind),
-            int(record.size),
-            int(record.stored_size),
-            int(record.uncompressed_size),
-            bool(is_loose),
-            bool(record.is_resource),
-            bool(record.is_encrypted),
-            int(record.archive_encryption),
-            int(record.name_hash),
-            int(record.short_hash),
-        )
+    def _pack_index_columns(self) -> dict[str, Any]:
+        return dict(self._index.export_state())
 
-    def _deserialize_record(self, payload: tuple[Any, ...], root: Path) -> AssetRecord:
-        (
-            path,
-            kind_value,
-            size,
-            stored_size,
-            uncompressed_size,
-            is_loose,
-            is_resource,
-            is_encrypted,
-            archive_encryption,
-            name_hash,
-            short_hash,
-        ) = payload
-        return AssetRecord(
-            id=0,
-            path=str(path),
-            kind=GameFileType(int(kind_value)),
-            size=int(size),
-            stored_size=int(stored_size),
-            uncompressed_size=int(uncompressed_size),
-            loose_path=(root / str(path)) if bool(is_loose) else None,
-            is_resource=bool(is_resource),
-            is_encrypted=bool(is_encrypted),
-            archive_encryption=int(archive_encryption),
-            name_hash=int(name_hash),
-            short_hash=int(short_hash),
-        )
+    def _restore_index_columns(self, payload: dict[str, Any]) -> bool:
+        try:
+            self._index.import_state(payload)
+        except Exception:
+            return False
+        self._live_entries.clear()
+        self._live_archives.clear()
+        self._explicit_loose_paths.clear()
+        return True
 
     def _load_index_payload(self, path: Path) -> dict[str, Any] | None:
         try:
@@ -465,26 +602,10 @@ class GameFileCache:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
 
-    def _restore_records(self, records: list[AssetRecord]) -> None:
-        self.records = []
-        self.assets.clear()
-        self.loose_files.clear()
-        self._assets_by_name.clear()
-        self._assets_by_stem.clear()
-        self._assets_by_name_hash.clear()
-        self._assets_by_short_hash.clear()
-        self._assets_by_type.clear()
-        for record in records:
-            record.id = len(self.records)
-            self.records.append(record)
-            self.assets[record.key] = record
-            if record.loose_path is not None:
-                self.loose_files[record.key] = record.loose_path
-            _append_index(self._assets_by_name, record.name.lower(), record.id)
-            _append_index(self._assets_by_stem, record.stem.lower(), record.id)
-            _append_index(self._assets_by_name_hash, record.name_hash, record.id)
-            _append_index(self._assets_by_short_hash, record.short_hash, record.id)
-            _append_index(self._assets_by_type, record.kind, record.id)
+    def _record_from_id(self, asset_id: int) -> AssetRecord:
+        if asset_id < 0 or asset_id >= self.asset_count:
+            raise IndexError(asset_id)
+        return AssetRecord.from_cache(self, asset_id)
 
     def _load_index_cache(self, root: Path, manifest: list[tuple[str, int, int]], cache_path: Path) -> bool:
         payload = self._load_index_payload(cache_path)
@@ -500,17 +621,16 @@ class GameFileCache:
             return False
         if payload.get("manifest") != manifest:
             return False
-        cached_records = payload.get("records")
-        if not isinstance(cached_records, list):
+        columns = payload.get("columns")
+        if not isinstance(columns, dict):
             return False
         self.scan_errors = dict(payload.get("scan_errors") or {})
         self.dlc_names = list(payload.get("dlc_names") or self.dlc_names)
         self.active_dlc_names = self._resolve_active_dlc_names()
-        records = [self._deserialize_record(item, root) for item in cached_records]
-        self._restore_records(records)
-        if self.resolver is not None:
-            for asset in self.records:
-                self.resolver.register_path_name(asset.path)
+        if not self._restore_index_columns(columns):
+            return False
+        if self.register_resolver_names and self.resolver is not None:
+            self.populate_resolver(self.resolver)
         return True
 
     def _save_index_cache(self, root: Path, manifest: list[tuple[str, int, int]], cache_path: Path) -> None:
@@ -522,7 +642,7 @@ class GameFileCache:
                 "exclude_folders": list(self._exclude_prefixes),
             },
             "manifest": manifest,
-            "records": [self._serialize_record(record, root) for record in self.records],
+            "columns": self._pack_index_columns(),
             "scan_errors": dict(self.scan_errors),
             "dlc_names": list(self.dlc_names),
         }
@@ -542,6 +662,7 @@ class GameFileCache:
         source = exe_path or root_or_exe or self.root
         if source is None:
             raise ValueError("A game root or executable path is required")
+        self._log(f"loading keys source={source}")
         self.crypto = load_game_keys(
             source,
             magic_path=magic_path,
@@ -563,6 +684,8 @@ class GameFileCache:
         refresh_index_cache: bool = False,
         index_cache_path: str | Path | None = None,
         scan_workers: int | None = None,
+        register_resolver_names: bool | None = None,
+        verbose: bool | None = None,
         exe_path: str | Path | None = None,
         magic_path: str | Path | None = None,
         aes_key: bytes | str | None = None,
@@ -583,9 +706,21 @@ class GameFileCache:
             self.index_cache_path = index_cache_path
         if scan_workers is not None:
             self.scan_workers = scan_workers
+        if register_resolver_names is not None:
+            self.register_resolver_names = bool(register_resolver_names)
+        if verbose is not None:
+            self.verbose = bool(verbose)
         cache_enabled = self.use_index_cache if use_index_cache is None else bool(use_index_cache)
 
         root_path = Path(self.root)
+        self._log(
+            "scan start "
+            f"root={root_path} "
+            f"dlc_level={self.dlc_level!r} "
+            f"exclude_folders={self._exclude_prefixes!r} "
+            f"use_index_cache={cache_enabled} "
+            f"scan_workers={self.scan_workers}"
+        )
         should_load_keys = bool(load_keys)
         if load_keys is None:
             should_load_keys = (root_path / "gta5.exe").is_file() or (root_path / "gta5_enhanced.exe").is_file() or exe_path is not None or aes_key is not None
@@ -609,6 +744,7 @@ class GameFileCache:
         loose_count = len(manifest) - rpf_count
         index_path = self.get_index_cache_path()
         if cache_enabled and not refresh_index_cache and self._load_index_cache(root_path, manifest, index_path):
+            self._log(f"index cache hit path={index_path}")
             self.last_scan = self._make_scan_stats(
                 started_at=started_at,
                 used_index_cache=True,
@@ -621,62 +757,87 @@ class GameFileCache:
             return
 
         archive_workers = self._resolve_scan_workers(rpf_count)
-        archive_futures: dict[str, Future[tuple[str, list[tuple[Any, ...]]]]] = {}
+        archive_futures: dict[str, Future[int]] = {}
         executor: ThreadPoolExecutor | None = None
+        processed_archives = 0
+        total_sources = len(manifest)
+        archive_rels = [rel for rel, _, _ in manifest if rel.lower().endswith(".rpf")]
+        archive_iter = iter(archive_rels)
+        native_crypto = self.crypto.native_context() if self.crypto is not None else None
+        hash_lut = _get_lut()
+
+        def submit_pending_archives() -> None:
+            if executor is None:
+                return
+            while len(archive_futures) < archive_workers:
+                try:
+                    next_rel = next(archive_iter)
+                except StopIteration:
+                    return
+                next_path = root_path / next_rel
+                archive_futures[next_rel] = executor.submit(
+                    _scan_archive_source,
+                    next_path,
+                    next_rel,
+                    self._index,
+                    native_crypto,
+                    hash_lut,
+                )
+
         try:
             if archive_workers > 1:
                 executor = ThreadPoolExecutor(max_workers=archive_workers, thread_name_prefix="fivefury-scan")
-                for rel, _, _ in manifest:
-                    path = root_path / rel
-                    if path.suffix.lower() == ".rpf":
-                        archive_futures[rel] = executor.submit(_scan_archive_source, path, rel, self.crypto)
+                submit_pending_archives()
 
-            for rel, _, _ in manifest:
+            for source_index, (rel, _, _) in enumerate(manifest, start=1):
                 path = root_path / rel
                 if path.suffix.lower() == ".rpf":
+                    self._log(
+                        f"scan archive {rel} "
+                        f"[archive {processed_archives + 1}/{rpf_count}, source {source_index}/{total_sources}]"
+                    )
                     try:
                         if executor is None:
-                            _, payloads = _scan_archive_source(path, rel, self.crypto)
+                            payload_count = _scan_archive_source(path, rel, self._index, native_crypto, hash_lut)
                         else:
-                            _, payloads = archive_futures[rel].result()
+                            future = archive_futures.pop(rel)
+                            try:
+                                payload_count = future.result()
+                            finally:
+                                submit_pending_archives()
                     except Exception as exc:
+                        self._log(f"scan error {rel}: {exc}")
                         self.scan_errors[_normalize_key(rel)] = str(exc)
                         continue
-                    for payload in payloads:
-                        self._register_asset(
-                            path=str(payload[0]),
-                            kind=GameFileType(int(payload[1])),
-                            size=int(payload[2]),
-                            stored_size=int(payload[3]),
-                            uncompressed_size=int(payload[4]),
-                            is_resource=bool(payload[6]),
-                            is_encrypted=bool(payload[7]),
-                            archive_encryption=int(payload[8]),
-                            name_hash=int(payload[9]),
-                            short_hash=int(payload[10]),
-                        )
+                    processed_archives += 1
+                    self._log(
+                        f"scan archive done {rel} "
+                        f"entries={payload_count} assets={self.asset_count}"
+                    )
+                    if processed_archives % _SCAN_GC_INTERVAL == 0:
+                        gc.collect()
                     continue
-                key = _normalize_key(rel)
-                self.loose_files[key] = path
+                self._log(f"scan file {rel} [source {source_index}/{total_sources}]")
                 stat = path.stat()
                 self._register_asset(
                     path=rel,
                     kind=guess_game_file_type(rel, GameFileType.UNKNOWN),
                     size=stat.st_size,
-                    stored_size=stat.st_size,
                     uncompressed_size=stat.st_size,
-                    loose_path=path,
+                    flags=_FLAG_LOOSE,
                 )
         finally:
             if executor is not None:
                 executor.shutdown(wait=True)
-        if self.resolver is not None:
-            for asset in self.records:
-                self.resolver.register_path_name(asset.path)
+            archive_futures.clear()
+        gc.collect()
+        if self.register_resolver_names and self.resolver is not None:
+            self.populate_resolver(self.resolver)
         saved_index_cache = False
         if cache_enabled:
             self._save_index_cache(root_path, manifest, index_path)
             saved_index_cache = True
+            self._log(f"index cache saved path={index_path}")
         self.last_scan = self._make_scan_stats(
             started_at=started_at,
             used_index_cache=False,
@@ -685,6 +846,12 @@ class GameFileCache:
             rpf_count=rpf_count,
             loose_count=loose_count,
             archive_workers=archive_workers,
+        )
+        self._log(
+            "scan done "
+            f"assets={self.asset_count} "
+            f"errors={len(self.scan_errors)} "
+            f"elapsed={self.last_scan.elapsed_seconds:.3f}s"
         )
 
     def scan_game(self, root: str | Path | None = None, **kwargs: Any) -> None:
@@ -785,25 +952,26 @@ class GameFileCache:
         if prefix:
             self._remember_archive(_normalize_key(prefix), archive)
         for entry in archive.iter_entries(include_directories=False):
+            if not isinstance(entry, RpfFileEntry):
+                continue
             logical_path = f"{prefix}/{entry.full_path}".strip("/") if prefix else entry.full_path
-            key = _normalize_key(logical_path)
-            self.entries[key] = entry
-            if self.resolver is not None:
-                self.resolver.register_path_name(entry.full_path)
-            if isinstance(entry, RpfFileEntry):
-                size = entry.get_file_size()
-                self._register_asset(
-                    path=logical_path,
-                    kind=guess_game_file_type(entry.full_path, GameFileType.UNKNOWN),
-                    size=size,
-                    stored_size=size,
-                    uncompressed_size=getattr(entry, "file_uncompressed_size", size) or size,
-                    entry=entry,
-                    archive=entry._archive,
-                    is_resource=entry.__class__.__name__.lower().startswith("rpfresource"),
-                    is_encrypted=entry.is_encrypted,
-                    archive_encryption=archive.encryption,
-                )
+            self.entries[_normalize_key(logical_path)] = entry
+            size = entry.get_file_size()
+            flags = 0
+            if entry.__class__.__name__.lower().startswith("rpfresource"):
+                flags |= _FLAG_RESOURCE
+            if entry.is_encrypted:
+                flags |= _FLAG_ENCRYPTED
+            self._register_asset(
+                path=logical_path,
+                kind=guess_game_file_type(entry.full_path, GameFileType.UNKNOWN),
+                size=size,
+                uncompressed_size=getattr(entry, "file_uncompressed_size", size) or size,
+                entry=entry,
+                archive=entry._archive,
+                flags=flags,
+                archive_encryption=archive.encryption,
+            )
         for child in archive.children:
             self.register_archive(child, source_prefix=prefix)
 
@@ -824,85 +992,84 @@ class GameFileCache:
         path: str,
         kind: GameFileType,
         size: int,
-        stored_size: int,
         uncompressed_size: int,
         entry: RpfFileEntry | None = None,
         archive: RpfArchive | None = None,
         loose_path: Path | None = None,
-        is_resource: bool = False,
-        is_encrypted: bool = False,
+        flags: int = 0,
         archive_encryption: int = 0,
         name_hash: int | None = None,
         short_hash: int | None = None,
-    ) -> AssetRecord:
+    ) -> int:
+        normalized_path = _normalize_key(path)
         if name_hash is None or short_hash is None:
-            name_hash, short_hash = _maybe_hash_name(Path(path).name)
-        record = AssetRecord(
-            id=len(self.records),
-            path=path,
-            kind=kind,
-            size=size,
-            stored_size=stored_size,
-            uncompressed_size=uncompressed_size,
-            entry=entry,
-            archive=archive,
-            loose_path=loose_path,
-            is_resource=is_resource,
-            is_encrypted=is_encrypted,
-            archive_encryption=archive_encryption,
-            name_hash=name_hash,
-            short_hash=short_hash,
+            name_hash, short_hash = _maybe_hash_name(normalized_path)
+        if loose_path is not None:
+            flags |= _FLAG_LOOSE
+        asset_id = int(
+            self._index.add(
+                normalized_path,
+                int(kind),
+                int(size),
+                int(uncompressed_size),
+                int(flags) & 0xFF,
+                int(archive_encryption),
+                int(name_hash),
+                int(short_hash),
+            )
         )
-        self.records.append(record)
-        self.assets[record.key] = record
-        _append_index(self._assets_by_name, record.name.lower(), record.id)
-        _append_index(self._assets_by_stem, record.stem.lower(), record.id)
-        _append_index(self._assets_by_name_hash, record.name_hash, record.id)
-        _append_index(self._assets_by_short_hash, record.short_hash, record.id)
-        _append_index(self._assets_by_type, record.kind, record.id)
-        return record
+        if entry is not None:
+            self._live_entries[asset_id] = entry
+        if archive is not None:
+            self._live_archives[asset_id] = archive
+        if loose_path is not None:
+            self._explicit_loose_paths[asset_id] = str(loose_path)
+        return asset_id
 
     def _iter_ids(self, ids: list[int], *, kind: GameFileType | str | int | None = None) -> Iterator[AssetRecord]:
         kind_value = _coerce_kind(kind)
         seen: set[int] = set()
         for asset_id in ids:
-            if asset_id in seen or asset_id < 0 or asset_id >= len(self.records):
+            if asset_id in seen or asset_id < 0 or asset_id >= self.asset_count:
                 continue
-            asset = self.records[asset_id]
-            if kind_value is not None and asset.kind is not kind_value:
+            if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
                 continue
             seen.add(asset_id)
-            yield asset
+            yield self._record_from_id(asset_id)
 
     def iter_assets(self, kind: GameFileType | str | int | None = None) -> Iterator[AssetRecord]:
         kind_value = _coerce_kind(kind)
         if kind_value is None:
-            yield from self.records
+            for asset_id in range(self.asset_count):
+                yield self._record_from_id(asset_id)
             return
-        for asset_id in self._assets_by_type.get(kind_value, []):
-            yield self.records[asset_id]
+        for asset_id in self._index.find_kind_ids(int(kind_value)):
+            yield self._record_from_id(asset_id)
 
     def iter_paths(self, kind: GameFileType | str | int | None = None) -> Iterator[str]:
+        if kind is None:
+            for asset_id in range(self.asset_count):
+                yield self._index.get_path(asset_id)
+            return
         for asset in self.iter_assets(kind=kind):
             yield asset.path
 
     def find_path(self, path: str | Path, *, kind: GameFileType | str | int | None = None) -> AssetRecord | None:
-        asset = self.assets.get(_normalize_key(path))
-        if asset is None:
+        asset_id = self._index.find_path_id(_normalize_key(path))
+        if asset_id is None:
             return None
         kind_value = _coerce_kind(kind)
-        if kind_value is not None and asset.kind is not kind_value:
+        if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
             return None
-        return asset
+        return self._record_from_id(asset_id)
 
     def find_hash(self, value: int | MetaHash | str, *, kind: GameFileType | str | int | None = None, limit: int | None = None) -> list[AssetRecord]:
         if isinstance(value, str):
-            name_hash = jenk_hash(Path(value).name.lower())
-            short_hash = jenk_hash(Path(value).stem.lower())
+            name_hash = jenk_hash(_path_name(value).lower())
+            short_hash = jenk_hash(_path_stem(value).lower())
+            ids = [*self._index.find_hash_ids(short_hash), *self._index.find_hash_ids(name_hash)]
         else:
-            name_hash = int(value)
-            short_hash = int(value)
-        ids = [*self._assets_by_short_hash.get(short_hash, []), *self._assets_by_name_hash.get(name_hash, [])]
+            ids = list(self._index.find_hash_ids(int(value)))
         result = list(self._iter_ids(ids, kind=kind))
         return result[:limit] if limit is not None else result
 
@@ -914,20 +1081,39 @@ class GameFileCache:
         exact: bool = True,
         limit: int | None = None,
     ) -> list[AssetRecord]:
-        text = Path(str(name)).name
+        text = _path_name(str(name)).lower()
         if not text:
             return []
         if exact:
-            ids = [*self._assets_by_name.get(text.lower(), []), *self._assets_by_stem.get(Path(text).stem.lower(), [])]
-            result = list(self._iter_ids(ids, kind=kind))
+            stem = _path_stem(text)
+            ids = [*self._index.find_hash_ids(jenk_hash(stem)), *self._index.find_hash_ids(jenk_hash(text))]
+            result: list[AssetRecord] = []
+            seen: set[int] = set()
+            kind_value = _coerce_kind(kind)
+            for asset_id in ids:
+                if asset_id in seen or asset_id < 0 or asset_id >= self.asset_count:
+                    continue
+                if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
+                    continue
+                path_value = self._index.get_path(asset_id)
+                if _path_name(path_value) != text and _path_stem(path_value) != stem:
+                    continue
+                seen.add(asset_id)
+                result.append(self._record_from_id(asset_id))
+                if limit is not None and len(result) >= limit:
+                    break
             if not result:
                 result = self.find_hash(text, kind=kind, limit=limit)
             return result[:limit] if limit is not None else result
-        lower = text.lower()
+        lower = text
         result: list[AssetRecord] = []
-        for asset in self.iter_assets(kind=kind):
-            if lower in asset.stem.lower() or lower in asset.name.lower() or lower in asset.path.lower():
-                result.append(asset)
+        kind_value = _coerce_kind(kind)
+        for asset_id in range(self.asset_count):
+            if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
+                continue
+            path_value = self._index.get_path(asset_id)
+            if lower in path_value:
+                result.append(self._record_from_id(asset_id))
                 if limit is not None and len(result) >= limit:
                     break
         return result
@@ -966,6 +1152,16 @@ class GameFileCache:
     def iter_files(self) -> Iterator[GameFile]:
         yield from self.files.values()
 
+    def _remember_file(self, key: str, game_file: GameFile) -> None:
+        limit = max(0, int(self.max_loaded_files))
+        if limit <= 0:
+            return
+        self.files.pop(key, None)
+        self.files[key] = game_file
+        while len(self.files) > limit:
+            evicted_key, _ = self.files.popitem(last=False)
+            self._log(f"evict file {evicted_key}")
+
     def _open_archive_for_asset(self, asset: AssetRecord) -> RpfArchive | None:
         archive_rel = asset.archive_rel
         if archive_rel is None or self.root is None:
@@ -974,10 +1170,12 @@ class GameFileCache:
         cached = self._archive_lookup.get(key)
         if cached is not None:
             self._archive_lookup.move_to_end(key)
+            self._log(f"archive cache hit {archive_rel}")
             return cached
         archive_path = Path(self.root) / archive_rel
         if not archive_path.is_file():
             return None
+        self._log(f"open archive {archive_rel}")
         archive = RpfArchive.from_path(archive_path, crypto=self.crypto)
         self._remember_archive(key, archive)
         return archive
@@ -1013,12 +1211,15 @@ class GameFileCache:
             return None
         cached = self.files.get(asset.key)
         if cached is not None:
+            self.files.move_to_end(asset.key)
+            self._log(f"file cache hit {asset.path}")
             return cached
 
         entry = self._get_entry_for_asset(asset)
         if entry is not None:
             if entry._archive is None:
                 raise ValueError(f"Entry is detached from archive: {asset.path}")
+            self._log(f"read file {asset.path}")
             stored = entry.read(logical=False)
             logical = entry.read(logical=True)
             parsed, kind = _decode_payload(asset.path, logical)
@@ -1031,16 +1232,17 @@ class GameFileCache:
                 parsed=parsed,
                 loaded=True,
             )
-            self.files[asset.key] = game_file
+            self._remember_file(asset.key, game_file)
             return game_file
 
-        loose = self.loose_files.get(asset.key) or asset.loose_path
+        loose = asset.loose_path
         if loose is None:
             return None
+        self._log(f"read file {asset.path}")
         data = loose.read_bytes()
         parsed, kind = _decode_payload(asset.path, data)
         game_file = GameFile(path=asset.path, kind=kind, raw=data, parsed=parsed, loaded=True)
-        self.files[asset.key] = game_file
+        self._remember_file(asset.key, game_file)
         return game_file
 
     def load_asset(self, query: str | Path | int | MetaHash | AssetRecord) -> GameFile | None:
@@ -1052,8 +1254,10 @@ class GameFileCache:
             return None
         entry = self._get_entry_for_asset(asset)
         if isinstance(entry, RpfFileEntry):
+            self._log(f"read bytes {asset.path} logical={logical}")
             return entry.read(logical=logical)
         if asset.loose_path is not None:
+            self._log(f"read bytes {asset.path} logical={logical}")
             return asset.loose_path.read_bytes()
         return None
 

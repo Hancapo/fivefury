@@ -85,7 +85,7 @@ class HashingContractTests(unittest.TestCase):
         self.assertEqual(resolve_symbol_value.value(prop_hash), "prop_tree_pine_01")
         self.assertTrue(matches_symbol.value(prop_hash, "prop_tree_pine_01"))
 
-    def test_gamefilecache_registers_loose_file_stems_in_global_resolver(self) -> None:
+    def test_gamefilecache_can_populate_global_resolver_from_indexed_assets(self) -> None:
         cache_symbol = resolve_symbol(
             ["fivefury.cache", "fivefury"],
             ["GameFileCache"],
@@ -116,6 +116,9 @@ class HashingContractTests(unittest.TestCase):
 
             cache = cache_symbol.value(root)
             cache.scan()
+            populate = getattr(cache, "populate_resolver", None)
+            if callable(populate):
+                populate()
 
         self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "test_alpha")), "test_alpha")
         self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "test_beta")), "test_beta")
