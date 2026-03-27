@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional
@@ -84,6 +85,35 @@ def _maybe_hash_name(value: str) -> tuple[int, int]:
     return jenk_hash(lower_name), jenk_hash(stem)
 
 
+def _normalize_folder_prefix(value: str | Path) -> str:
+    text = str(value).replace("\\", "/").strip().strip("/").lower()
+    while "//" in text:
+        text = text.replace("//", "/")
+    return text
+
+
+def _coerce_folder_prefixes(value: str | Path | list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, Path)):
+        parts = str(value).replace("\n", ";").split(";")
+    else:
+        parts = list(value)
+    return tuple(prefix for prefix in (_normalize_folder_prefix(part) for part in parts) if prefix)
+
+
+def _parse_dlc_names_from_text(data: bytes) -> list[str]:
+    text = data.decode("utf-8", errors="ignore")
+    names: list[str] = []
+    for item in re.findall(r"<item>\s*([^<]+)\s*</item>", text, flags=re.IGNORECASE):
+        normalized = _normalize_folder_prefix(item.replace("platform:", "x64"))
+        if normalized.startswith("dlcpacks:"):
+            suffix = normalized.split(":", 1)[1].strip("/")
+            if suffix:
+                names.append(suffix.split("/", 1)[0])
+    return names
+
+
 @dataclass(slots=True)
 class AssetRecord:
     id: int
@@ -139,6 +169,8 @@ class GameFileCache:
     root: str | Path | None = None
     resolver: HashResolver | None = None
     crypto: GameCrypto | None = None
+    dlc_level: str | int | None = None
+    exclude_folders: str | Path | list[str] | tuple[str, ...] | None = None
     archives: list[RpfArchive] = field(default_factory=list)
     files: dict[str, GameFile] = field(default_factory=dict)
     entries: dict[str, RpfEntry] = field(default_factory=dict)
@@ -146,15 +178,20 @@ class GameFileCache:
     assets: dict[str, AssetRecord] = field(default_factory=dict)
     records: list[AssetRecord] = field(default_factory=list)
     scan_errors: dict[str, str] = field(default_factory=dict)
+    dlc_names: list[str] = field(default_factory=list)
+    active_dlc_names: list[str] = field(default_factory=list)
     _assets_by_name: dict[str, list[int]] = field(default_factory=dict, repr=False)
     _assets_by_stem: dict[str, list[int]] = field(default_factory=dict, repr=False)
     _assets_by_name_hash: dict[int, list[int]] = field(default_factory=dict, repr=False)
     _assets_by_short_hash: dict[int, list[int]] = field(default_factory=dict, repr=False)
     _assets_by_type: dict[GameFileType, list[int]] = field(default_factory=dict, repr=False)
+    _exclude_prefixes: tuple[str, ...] = field(default_factory=tuple, init=False, repr=False)
+    _active_dlc_filter: set[str] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.resolver is None:
             self.resolver = get_hash_resolver()
+        self._exclude_prefixes = _coerce_folder_prefixes(self.exclude_folders)
 
     @property
     def asset_count(self) -> int:
@@ -168,11 +205,23 @@ class GameFileCache:
         self.assets.clear()
         self.records.clear()
         self.scan_errors.clear()
+        self.dlc_names.clear()
+        self.active_dlc_names.clear()
+        self._active_dlc_filter = None
         self._assets_by_name.clear()
         self._assets_by_stem.clear()
         self._assets_by_name_hash.clear()
         self._assets_by_short_hash.clear()
         self._assets_by_type.clear()
+
+    def set_dlc_level(self, value: str | int | None) -> str | int | None:
+        self.dlc_level = value
+        return self.dlc_level
+
+    def set_exclude_folders(self, value: str | Path | list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
+        self.exclude_folders = value
+        self._exclude_prefixes = _coerce_folder_prefixes(value)
+        return self._exclude_prefixes
 
     def load_keys(
         self,
@@ -203,6 +252,8 @@ class GameFileCache:
         root: str | Path | None = None,
         *,
         load_keys: bool | None = None,
+        dlc_level: str | int | None = None,
+        exclude_folders: str | Path | list[str] | tuple[str, ...] | None = None,
         exe_path: str | Path | None = None,
         magic_path: str | Path | None = None,
         aes_key: bytes | str | None = None,
@@ -214,6 +265,10 @@ class GameFileCache:
             self.root = root
         if self.root is None:
             raise ValueError("A root directory is required")
+        if dlc_level is not None:
+            self.dlc_level = dlc_level
+        if exclude_folders is not None:
+            self.set_exclude_folders(exclude_folders)
 
         root_path = Path(self.root)
         should_load_keys = bool(load_keys)
@@ -231,6 +286,9 @@ class GameFileCache:
             )
 
         self.clear()
+        self.dlc_names = self._discover_dlc_names(root_path)
+        self.active_dlc_names = self._resolve_active_dlc_names()
+        self._active_dlc_filter = set(self.active_dlc_names) if self._should_restrict_dlc() else None
         for rel, path in self._iter_files(root_path):
             if path.suffix.lower() == ".rpf":
                 try:
@@ -259,12 +317,92 @@ class GameFileCache:
 
     def _iter_files(self, root: Path) -> Iterator[tuple[str, Path]]:
         for base, dirnames, filenames in os.walk(root):
+            rel_base = "" if Path(base) == root else Path(base).relative_to(root).as_posix()
+            dirnames[:] = [
+                dirname
+                for dirname in dirnames
+                if not self._should_skip_path(f"{rel_base}/{dirname}" if rel_base else dirname)
+            ]
             dirnames.sort(key=str.lower)
             filenames.sort(key=str.lower)
             base_path = Path(base)
             for filename in filenames:
                 path = base_path / filename
-                yield path.relative_to(root).as_posix(), path
+                rel = path.relative_to(root).as_posix()
+                if self._should_skip_path(rel):
+                    continue
+                yield rel, path
+
+    def _discover_dlc_names(self, root: Path) -> list[str]:
+        update_rpf = root / "update" / "update.rpf"
+        if update_rpf.is_file():
+            try:
+                archive = RpfArchive.from_path(update_rpf, crypto=self.crypto)
+                entry = archive.find_entry("common/data/dlclist.xml")
+                if isinstance(entry, RpfFileEntry):
+                    names = _parse_dlc_names_from_text(entry.read(logical=True))
+                    if names:
+                        return names
+            except Exception:
+                pass
+        dlcpacks_dir = root / "update" / "x64" / "dlcpacks"
+        if not dlcpacks_dir.is_dir():
+            return []
+        return sorted((item.name.lower() for item in dlcpacks_dir.iterdir() if item.is_dir()), key=str.lower)
+
+    def _should_restrict_dlc(self) -> bool:
+        level = self.dlc_level
+        if level is None:
+            return False
+        if isinstance(level, str):
+            return level.strip().lower() not in ("", "all")
+        return True
+
+    def _resolve_active_dlc_names(self) -> list[str]:
+        if not self.dlc_names:
+            return []
+        level = self.dlc_level
+        if level is None:
+            return list(self.dlc_names)
+        if isinstance(level, str):
+            normalized = level.strip().lower()
+            if normalized in ("", "all"):
+                return list(self.dlc_names)
+            if normalized == "base":
+                return []
+            try:
+                index = self.dlc_names.index(normalized)
+            except ValueError as exc:
+                raise ValueError(f"Unknown DLC level: {level}") from exc
+            return self.dlc_names[: index + 1]
+        index = int(level)
+        if index < 0:
+            return []
+        if index >= len(self.dlc_names):
+            return list(self.dlc_names)
+        return self.dlc_names[: index + 1]
+
+    def _extract_dlc_name(self, rel_path: str) -> str | None:
+        normalized = _normalize_folder_prefix(rel_path)
+        prefix = "update/x64/dlcpacks/"
+        if not normalized.startswith(prefix):
+            return None
+        suffix = normalized[len(prefix) :]
+        if not suffix:
+            return None
+        return suffix.split("/", 1)[0]
+
+    def _should_skip_path(self, rel_path: str | Path) -> bool:
+        normalized = _normalize_folder_prefix(rel_path)
+        if not normalized:
+            return False
+        for prefix in self._exclude_prefixes:
+            if normalized == prefix or normalized.startswith(prefix + "/"):
+                return True
+        if self._active_dlc_filter is None:
+            return False
+        dlc_name = self._extract_dlc_name(normalized)
+        return dlc_name is not None and dlc_name not in self._active_dlc_filter
 
     def register_archive(self, archive: RpfArchive, *, source_prefix: str | None = None) -> None:
         self.archives.append(archive)

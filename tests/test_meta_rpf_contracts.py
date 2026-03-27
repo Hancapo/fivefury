@@ -746,6 +746,49 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             self.assertIsNotNone(extracted)
             self.assertEqual(Path(extracted).read_bytes(), b"alpha-bytes")
 
+    def test_gamefilecache_supports_dlc_level_and_excluded_folders(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "update").mkdir(parents=True, exist_ok=True)
+            (root / "update" / "x64" / "dlcpacks" / "mpalpha").mkdir(parents=True, exist_ok=True)
+            (root / "update" / "x64" / "dlcpacks" / "mpbeta").mkdir(parents=True, exist_ok=True)
+            (root / "scratch").mkdir(parents=True, exist_ok=True)
+
+            update_archive = create_rpf("update.rpf")
+            update_archive.add(
+                "common/data/dlclist.xml",
+                (
+                    b"<SMandatoryPacksData><Paths>"
+                    b"<Item>dlcpacks:/mpalpha/</Item>"
+                    b"<Item>dlcpacks:/mpbeta/</Item>"
+                    b"</Paths></SMandatoryPacksData>"
+                ),
+            )
+            update_archive.save(root / "update" / "update.rpf")
+
+            alpha = create_rpf("dlc.rpf")
+            alpha.add("x64/data/alpha.bin", b"alpha")
+            alpha.save(root / "update" / "x64" / "dlcpacks" / "mpalpha" / "dlc.rpf")
+
+            beta = create_rpf("dlc.rpf")
+            beta.add("x64/data/beta.bin", b"beta")
+            beta.save(root / "update" / "x64" / "dlcpacks" / "mpbeta" / "dlc.rpf")
+
+            misc = create_rpf("misc.rpf")
+            misc.add("scratch/hidden.bin", b"hidden")
+            misc.save(root / "scratch" / "misc.rpf")
+
+            cache = GameFileCache(root, dlc_level="mpalpha", exclude_folders="scratch")
+            cache.scan()
+
+            self.assertEqual(cache.dlc_names, ["mpalpha", "mpbeta"])
+            self.assertEqual(cache.active_dlc_names, ["mpalpha"])
+            self.assertIsNotNone(cache.find_path("update/x64/dlcpacks/mpalpha/dlc.rpf/x64/data/alpha.bin"))
+            self.assertIsNone(cache.find_path("update/x64/dlcpacks/mpbeta/dlc.rpf/x64/data/beta.bin"))
+            self.assertIsNone(cache.find_path("scratch/misc.rpf/scratch/hidden.bin"))
+
 
 if __name__ == "__main__":
     unittest.main()
