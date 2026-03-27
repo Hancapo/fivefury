@@ -21,6 +21,18 @@ from .extensions import (
 from .gamefile import GameFile, GameFileType
 from .hashing import jenk_hash
 from .meta import Meta, read_meta
+from .resolver import (
+    HashResolver,
+    clear_hash_resolver,
+    get_hash_resolver,
+    hash_matches,
+    register_name,
+    register_names,
+    register_path_name,
+    register_path_names,
+    resolve_hash,
+    resolve_name,
+)
 from .resource import RSC7_MAGIC, ResourceHeader, build_rsc7, parse_rsc7
 from .rpf import RpfArchive, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
 from .ymap import (
@@ -95,6 +107,7 @@ __all__ = [
     "GrassInstanceBatch",
     "InstancedData",
     "InstancedMapData",
+    "HashResolver",
     "LadderExtension",
     "LightAttrDef",
     "LightEffectExtension",
@@ -126,13 +139,22 @@ __all__ = [
     "Ymap",
     "Ytyp",
     "build_rsc7",
+    "clear_hash_resolver",
     "create_rpf",
+    "get_hash_resolver",
+    "hash_matches",
     "jenk_hash",
     "load_rpf",
     "parse_rsc7",
     "read_meta",
     "read_ymap",
     "read_ytyp",
+    "register_name",
+    "register_names",
+    "register_path_name",
+    "register_path_names",
+    "resolve_hash",
+    "resolve_name",
     "rpf_to_zip",
     "save_ymap",
     "save_ytyp",

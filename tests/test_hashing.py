@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from tests.helpers import resolve_symbol
 
@@ -34,6 +36,72 @@ class HashingContractTests(unittest.TestCase):
         self.assertEqual(_hash_value(symbol, "test"), 0x3F75CCC1)
         self.assertEqual(_hash_value(symbol, "CMapData"), 0xD3593FA6)
         self.assertEqual(_hash_value(symbol, "ymap"), 0xCBADADE4)
+
+    def test_global_hash_resolver_register_and_resolve(self) -> None:
+        register_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["register_name"],
+        )
+        resolve_symbol_value = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["resolve_hash"],
+        )
+        clear_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["clear_hash_resolver"],
+        )
+        matches_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["hash_matches"],
+        )
+        hash_symbol = resolve_symbol(
+            ["fivefury.hashing", "fivefury"],
+            ["jenk_hash", "hash_jenk", "GenHash", "JenkHash"],
+        )
+        if None in (register_symbol, resolve_symbol_value, clear_symbol, matches_symbol, hash_symbol):
+            self.skipTest("hash resolver API not implemented yet")
+
+        clear_symbol.value()
+        register_symbol.value("prop_tree_pine_01")
+        prop_hash = _hash_value(hash_symbol, "prop_tree_pine_01")
+
+        self.assertEqual(resolve_symbol_value.value(prop_hash), "prop_tree_pine_01")
+        self.assertTrue(matches_symbol.value(prop_hash, "prop_tree_pine_01"))
+
+    def test_gamefilecache_registers_loose_file_stems_in_global_resolver(self) -> None:
+        cache_symbol = resolve_symbol(
+            ["fivefury.cache", "fivefury"],
+            ["GameFileCache"],
+        )
+        resolve_symbol_value = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["resolve_hash"],
+        )
+        clear_symbol = resolve_symbol(
+            ["fivefury.resolver", "fivefury"],
+            ["clear_hash_resolver"],
+        )
+        hash_symbol = resolve_symbol(
+            ["fivefury.hashing", "fivefury"],
+            ["jenk_hash", "hash_jenk", "GenHash", "JenkHash"],
+        )
+        if None in (cache_symbol, resolve_symbol_value, clear_symbol, hash_symbol):
+            self.skipTest("resolver/cache API not implemented yet")
+
+        clear_symbol.value()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            maps = root / "maps"
+            maps.mkdir(parents=True, exist_ok=True)
+            (maps / "test_alpha.ymap").write_bytes(b"dummy")
+            (maps / "test_beta.ytyp").write_bytes(b"dummy")
+
+            cache = cache_symbol.value(root)
+            cache.scan()
+
+        self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "test_alpha")), "test_alpha")
+        self.assertEqual(resolve_symbol_value.value(_hash_value(hash_symbol, "test_beta")), "test_beta")
 
 
 if __name__ == "__main__":

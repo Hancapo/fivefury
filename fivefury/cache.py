@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
 from .gamefile import GameFile, GameFileType, guess_game_file_type
+from .resolver import HashResolver, get_hash_resolver
 from .rpf import RpfArchive, RpfEntry, RpfFileEntry, load_rpf, _normalize_key
 
 
@@ -46,10 +47,15 @@ def _decode_payload(path: str, data: bytes) -> tuple[Any, GameFileType]:
 @dataclass
 class GameFileCache:
     root: str | Path | None = None
+    resolver: HashResolver | None = None
     archives: list[RpfArchive] = field(default_factory=list)
     files: dict[str, GameFile] = field(default_factory=dict)
     entries: dict[str, RpfEntry] = field(default_factory=dict)
     loose_files: dict[str, Path] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.resolver is None:
+            self.resolver = get_hash_resolver()
 
     def clear(self) -> None:
         self.archives.clear()
@@ -74,6 +80,8 @@ class GameFileCache:
                 self.register_archive(archive, source_prefix=rel)
             else:
                 self.loose_files[_normalize_key(rel)] = path
+                if self.resolver is not None:
+                    self.resolver.register_path_name(rel)
 
     def register_archive(self, archive: RpfArchive, *, source_prefix: str | None = None) -> None:
         self.archives.append(archive)
@@ -81,6 +89,8 @@ class GameFileCache:
         for entry in archive.iter_entries(include_directories=False):
             key = _normalize_key(f"{prefix}/{entry.full_path}" if prefix else entry.full_path)
             self.entries[key] = entry
+            if self.resolver is not None:
+                self.resolver.register_path_name(entry.full_path)
         for child in archive.children:
             self.register_archive(child, source_prefix=prefix)
 

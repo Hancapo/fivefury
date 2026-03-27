@@ -84,6 +84,21 @@ print(len(ymap.entities))
 print(ymap.flags, ymap.content_flags)
 ```
 
+### Resolve hashes globally
+
+```python
+from fivefury import GameFileCache, jenk_hash, register_name, resolve_hash
+
+register_name("prop_tree_pine_01")
+
+cache = GameFileCache("mods_root")
+cache.scan()  # registers loose-file and archive entry stems in the global resolver
+
+print(resolve_hash(jenk_hash("prop_tree_pine_01")))
+```
+
+The resolver is global and optional. It does not change parsed values in place; it gives you a shared `hash <-> name` registry that tools can query.
+
 ### Create a YTYP
 
 ```python
