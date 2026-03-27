@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "pybind11>=2.12"]
+requires = ["setuptools>=68", "wheel>=0.42"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 authors = [
   { name = "Codex" },
 ]
-license = { text = "MIT" }
+license = "MIT"
 dependencies = []
 
 [tool.setuptools]
@@ -22,4 +22,3 @@ include = ["fivefury*"]
 
 [tool.setuptools.package-data]
 fivefury = ["data/*.dat"]
-

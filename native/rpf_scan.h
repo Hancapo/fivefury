@@ -10,6 +10,8 @@
 
 namespace fivefury_native {
 
+using ScanLogFn = void(*)(void* context, const char* message, std::size_t length);
+
 class NativeCryptoContext {
 public:
     NativeCryptoContext(std::vector<std::uint8_t> aes_key, std::vector<std::uint8_t> ng_blob);
@@ -38,7 +40,10 @@ std::size_t scan_rpf_into_index(
     const std::string& path,
     const std::string& source_prefix,
     const std::string& hash_lut,
-    const NativeCryptoContext* crypto
+    const NativeCryptoContext* crypto,
+    std::uint32_t skip_mask = 0,
+    ScanLogFn log_fn = nullptr,
+    void* log_context = nullptr
 );
 
 }  // namespace fivefury_native

@@ -750,6 +750,98 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             self.assertIsNotNone(extracted)
             self.assertEqual(Path(extracted).read_bytes(), b"alpha-bytes")
 
+    def test_gamefilecache_can_skip_audio_vehicle_and_ped_assets_during_scan(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            audio = create_rpf("audio_pack.rpf")
+            audio.add("x64/audio/sfx/test.awc", b"audio")
+            audio.save(root / "audio_pack.rpf")
+
+            vehicles = create_rpf("vehicle_pack.rpf")
+            vehicles.add("stream/vehicles.meta", b"vehicles")
+            vehicles.save(root / "vehicle_pack.rpf")
+
+            peds = create_rpf("ped_pack.rpf")
+            peds.add("stream/peds.ymt", b"peds")
+            peds.save(root / "ped_pack.rpf")
+
+            write_bytes(root / "maps" / "example.ymap", b"map")
+
+            cache = GameFileCache(root, load_audio=False, load_vehicles=False, load_peds=False)
+            cache.scan(use_index_cache=False)
+
+            self.assertEqual(cache.scan_errors, {})
+            self.assertEqual(cache.asset_count, 1)
+            self.assertEqual(cache.find_name("test.awc"), [])
+            self.assertEqual(cache.find_name("vehicles.meta"), [])
+            self.assertEqual(cache.find_name("peds.ymt"), [])
+            self.assertIsNotNone(cache.find_path("maps/example.ymap"))
+
+    def test_gamefilecache_skips_matching_sources_before_scanning_them(self) -> None:
+        import fivefury.cache as cache_module
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "x64" / "audio").mkdir(parents=True, exist_ok=True)
+            (root / "x64" / "levels" / "gta5").mkdir(parents=True, exist_ok=True)
+            (root / "x64" / "models" / "cdimages").mkdir(parents=True, exist_ok=True)
+            (root / "mods").mkdir(parents=True, exist_ok=True)
+
+            audio = create_rpf("audio_rel.rpf")
+            audio.add("sfx/test.awc", b"audio")
+            audio.save(root / "x64" / "audio" / "audio_rel.rpf")
+
+            vehicles = create_rpf("vehicles.rpf")
+            vehicles.add("stream/vehicles.meta", b"vehicles")
+            vehicles.save(root / "x64" / "levels" / "gta5" / "vehicles.rpf")
+
+            peds = create_rpf("pedprops.rpf")
+            peds.add("stream/peds.ymt", b"peds")
+            peds.save(root / "x64" / "models" / "cdimages" / "pedprops.rpf")
+
+            world = create_rpf("world.rpf")
+            world.add("stream/keep.ydr", b"keep")
+            world.save(root / "mods" / "world.rpf")
+
+            original = cache_module._scan_archive_source
+
+            baseline_calls: list[str] = []
+            filtered_calls: list[str] = []
+
+            def delayed_scan(path, source_prefix, index, crypto, hash_lut, skip_mask=0, verbose=False):
+                target = filtered_calls if skip_mask else baseline_calls
+                target.append(str(source_prefix))
+                time.sleep(0.03)
+                return original(path, source_prefix, index, crypto, hash_lut, skip_mask, verbose)
+
+            with patch.object(cache_module, "_scan_archive_source", side_effect=delayed_scan):
+                baseline = GameFileCache(root, use_index_cache=False, scan_workers=1)
+                baseline.scan(use_index_cache=False)
+
+                filtered = GameFileCache(
+                    root,
+                    use_index_cache=False,
+                    scan_workers=1,
+                    load_audio=False,
+                    load_vehicles=False,
+                    load_peds=False,
+                )
+                filtered.scan(use_index_cache=False)
+
+            self.assertEqual(set(baseline_calls), {
+                "mods/world.rpf",
+                "x64/audio/audio_rel.rpf",
+                "x64/levels/gta5/vehicles.rpf",
+                "x64/models/cdimages/pedprops.rpf",
+            })
+            self.assertEqual(filtered_calls, ["mods/world.rpf"])
+            self.assertEqual(filtered.asset_count, 1)
+            self.assertLess(filtered.last_scan.elapsed_seconds, baseline.last_scan.elapsed_seconds * 0.6)
+
     def test_gamefilecache_supports_dlc_level_and_excluded_folders(self) -> None:
         from fivefury import GameFileCache, create_rpf
 
@@ -801,6 +893,7 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             self.assertEqual(cache.ignored_folders, ("scratch", "mods"))
 
     def test_gamefilecache_reuses_persistent_index_cache_and_reports_timings(self) -> None:
+        import fivefury.cache as cache_module
         from fivefury import GameFileCache, create_rpf
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -816,8 +909,15 @@ class MetaAndArchiveContractTests(unittest.TestCase):
                     )
                 archive.save(root / f"pack_{archive_index}.rpf")
 
-            first = GameFileCache(root, index_cache_path=index_path)
-            first.scan(use_index_cache=True)
+            original = cache_module._scan_archive_source
+
+            def delayed_scan(*args, **kwargs):
+                time.sleep(0.01)
+                return original(*args, **kwargs)
+
+            first = GameFileCache(root, index_cache_path=index_path, scan_workers=1)
+            with patch.object(cache_module, "_scan_archive_source", side_effect=delayed_scan):
+                first.scan(use_index_cache=True)
 
             self.assertTrue(index_path.exists())
             self.assertIsNotNone(first.last_scan)
@@ -825,7 +925,7 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             self.assertTrue(first.last_scan.saved_index_cache)
             self.assertEqual(first.asset_count, 16 * 96)
 
-            second = GameFileCache(root, index_cache_path=index_path)
+            second = GameFileCache(root, index_cache_path=index_path, scan_workers=1)
             second.scan(use_index_cache=True)
 
             self.assertIsNotNone(second.last_scan)
@@ -933,6 +1033,7 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             archive = create_rpf("pack.rpf")
             archive.add("stream/a.ydr", b"a")
             archive.save(root / "pack.rpf")
+            write_bytes(root / "maps" / "example.ymap", b"map")
 
             buffer = io.StringIO()
             with redirect_stdout(buffer):
@@ -943,6 +1044,8 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             output = buffer.getvalue()
             self.assertIn("[GameFileCache] scan start", output)
             self.assertIn("[GameFileCache] scan archive pack.rpf", output)
+            self.assertIn("[GameFileCache] scan asset pack.rpf/stream/a.ydr", output)
+            self.assertIn("[GameFileCache] scan file maps/example.ymap", output)
             self.assertIn("[GameFileCache] scan done", output)
             self.assertIn("[GameFileCache] read bytes pack.rpf/stream/a.ydr logical=True", output)
 

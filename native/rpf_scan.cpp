@@ -37,6 +37,9 @@ constexpr std::size_t NG_BLOB_SIZE = NG_KEYS_SIZE + NG_TABLES_SIZE;
 
 constexpr std::uint8_t FLAG_RESOURCE = 2;
 constexpr std::uint8_t FLAG_ENCRYPTED = 4;
+constexpr std::uint32_t SKIP_AUDIO = 1U << 0U;
+constexpr std::uint32_t SKIP_VEHICLES = 1U << 1U;
+constexpr std::uint32_t SKIP_PEDS = 1U << 2U;
 
 enum class EntryType : std::uint8_t {
     Directory = 0,
@@ -104,6 +107,10 @@ bool ends_with(std::string_view value, std::string_view suffix) noexcept {
     return value.size() >= suffix.size() && value.substr(value.size() - suffix.size()) == suffix;
 }
 
+bool starts_with(std::string_view value, std::string_view prefix) noexcept {
+    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
 std::string path_name(std::string_view path) {
     const auto slash = path.find_last_of('/');
     return slash == std::string_view::npos ? std::string(path) : std::string(path.substr(slash + 1));
@@ -113,6 +120,59 @@ std::string path_stem(std::string_view path) {
     const auto name = path_name(path);
     const auto dot = name.find_last_of('.');
     return dot == std::string::npos ? name : name.substr(0, dot);
+}
+
+std::uint32_t asset_category_mask(std::string_view normalized_path) {
+    const auto name = path_name(normalized_path);
+    std::uint32_t mask = 0;
+
+    if (
+        ends_with(name, ".awc") ||
+        ends_with(name, ".rel") ||
+        ends_with(name, ".nametable") ||
+        normalized_path.find("/audio/") != std::string_view::npos ||
+        normalized_path.find("/audioconfig/") != std::string_view::npos ||
+        starts_with(name, "audioconfig") ||
+        name == "audio_rel.rpf"
+    ) {
+        mask |= SKIP_AUDIO;
+    }
+
+    if (
+        name == "vehicles.rpf" ||
+        normalized_path.find("/vehicles.rpf/") != std::string_view::npos ||
+        normalized_path.find("/vehicles/") != std::string_view::npos ||
+        normalized_path.find("/vehiclemods/") != std::string_view::npos ||
+        normalized_path.find("/streamedvehicles/") != std::string_view::npos ||
+        starts_with(name, "streamedvehicles") ||
+        starts_with(name, "vehiclemods") ||
+        name == "vehicles.meta" ||
+        starts_with(name, "vehiclelayouts") ||
+        starts_with(name, "carvariations") ||
+        starts_with(name, "carcols") ||
+        name == "handling.meta" ||
+        name == "vfxvehicleinfo.ymt"
+    ) {
+        mask |= SKIP_VEHICLES;
+    }
+
+    if (
+        name == "peds.rpf" ||
+        name == "pedprops.rpf" ||
+        normalized_path.find("/peds.rpf/") != std::string_view::npos ||
+        normalized_path.find("/streamedpeds_") != std::string_view::npos ||
+        normalized_path.find("/componentpeds_") != std::string_view::npos ||
+        normalized_path.find("/pedprops/") != std::string_view::npos ||
+        normalized_path.find("/peds/") != std::string_view::npos ||
+        starts_with(name, "streamedpeds_") ||
+        starts_with(name, "componentpeds_") ||
+        name == "peds.meta" ||
+        name == "peds.ymt"
+    ) {
+        mask |= SKIP_PEDS;
+    }
+
+    return mask;
 }
 
 std::uint32_t read_u32_le(const std::uint8_t* data) noexcept {
@@ -200,6 +260,13 @@ std::uint32_t jenk_hash(std::string_view value, std::string_view lut) {
     }
     const auto tail = static_cast<std::uint32_t>(9U * result);
     return static_cast<std::uint32_t>(32769U * (((tail >> 11U) ^ tail) & 0xFFFFFFFFU));
+}
+
+void log_scan(ScanLogFn log_fn, void* log_context, std::string_view message) {
+    if (log_fn == nullptr) {
+        return;
+    }
+    log_fn(log_context, message.data(), message.size());
 }
 
 struct FileReader {
@@ -637,7 +704,10 @@ void collect_records(
     const ArchiveContext& archive,
     const std::string_view hash_lut,
     const NativeCryptoContext* crypto,
-    std::vector<AssetRecordData>& out_records
+    std::vector<AssetRecordData>& out_records,
+    const std::uint32_t skip_mask,
+    ScanLogFn log_fn,
+    void* log_context
 ) {
     const auto header = reader.read(archive.base_offset, 16U);
     const auto encryption = read_u32_le(header.data() + 12U);
@@ -652,8 +722,22 @@ void collect_records(
             const auto& child = entries[i];
             const auto archive_path = join_path(prefix, child.name_lower);
             const auto logical_path = normalize_path(join_path(archive.source_prefix, archive_path));
+            const auto category_mask = asset_category_mask(logical_path);
             if (child.type == EntryType::Directory) {
+                if ((category_mask & skip_mask) != 0U) {
+                    log_scan(log_fn, log_context, std::string("[GameFileCache] skip dir ") + logical_path);
+                    continue;
+                }
                 walk_dir(i, archive_path);
+                continue;
+            }
+
+            if ((category_mask & skip_mask) != 0U) {
+                if (child.type == EntryType::Binary && ends_with(child.name_lower, ".rpf")) {
+                    log_scan(log_fn, log_context, std::string("[GameFileCache] skip archive subtree ") + logical_path);
+                } else {
+                    log_scan(log_fn, log_context, std::string("[GameFileCache] skip asset ") + logical_path);
+                }
                 continue;
             }
 
@@ -673,6 +757,7 @@ void collect_records(
             }
             const auto lower_name = ascii_lower(path_name(logical_path));
             const auto stem = ascii_lower(path_stem(lower_name));
+            log_scan(log_fn, log_context, std::string("[GameFileCache] scan asset ") + logical_path);
             out_records.push_back(AssetRecordData{
                 logical_path,
                 guess_kind(logical_path),
@@ -692,7 +777,7 @@ void collect_records(
                         child.name,
                         logical_path,
                     };
-                    collect_records(reader, nested, hash_lut, crypto, out_records);
+                    collect_records(reader, nested, hash_lut, crypto, out_records, skip_mask, log_fn, log_context);
                 } catch (...) {
                 }
             }
@@ -709,7 +794,10 @@ std::size_t scan_rpf_into_index(
     const std::string& path,
     const std::string& source_prefix,
     const std::string& hash_lut,
-    const NativeCryptoContext* crypto
+    const NativeCryptoContext* crypto,
+    const std::uint32_t skip_mask,
+    ScanLogFn log_fn,
+    void* log_context
 ) {
     if (hash_lut.size() != 256U) {
         throw std::invalid_argument("hash LUT must contain 256 bytes");
@@ -724,7 +812,7 @@ std::size_t scan_rpf_into_index(
     };
     std::vector<AssetRecordData> records;
     records.reserve(4096U);
-    collect_records(reader, archive, hash_lut, crypto, records);
+    collect_records(reader, archive, hash_lut, crypto, records, skip_mask, log_fn, log_context);
     return index.add_many(std::move(records));
 }
 
