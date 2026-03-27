@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from fivefury.meta import RawStruct
 from fivefury.meta_defs import meta_name
@@ -788,6 +790,103 @@ class MetaAndArchiveContractTests(unittest.TestCase):
             self.assertIsNotNone(cache.find_path("update/x64/dlcpacks/mpalpha/dlc.rpf/x64/data/alpha.bin"))
             self.assertIsNone(cache.find_path("update/x64/dlcpacks/mpbeta/dlc.rpf/x64/data/beta.bin"))
             self.assertIsNone(cache.find_path("scratch/misc.rpf/scratch/hidden.bin"))
+
+    def test_gamefilecache_reuses_persistent_index_cache_and_reports_timings(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            index_path = root / "scan.ffindex"
+
+            for archive_index in range(16):
+                archive = create_rpf(f"pack_{archive_index}.rpf")
+                for file_index in range(96):
+                    archive.add(
+                        f"stream/item_{archive_index}_{file_index}.ydr",
+                        f"payload-{archive_index}-{file_index}".encode("ascii"),
+                    )
+                archive.save(root / f"pack_{archive_index}.rpf")
+
+            first = GameFileCache(root, index_cache_path=index_path)
+            first.scan(use_index_cache=True)
+
+            self.assertTrue(index_path.exists())
+            self.assertIsNotNone(first.last_scan)
+            self.assertFalse(first.last_scan.used_index_cache)
+            self.assertTrue(first.last_scan.saved_index_cache)
+            self.assertEqual(first.asset_count, 16 * 96)
+
+            second = GameFileCache(root, index_cache_path=index_path)
+            second.scan(use_index_cache=True)
+
+            self.assertIsNotNone(second.last_scan)
+            self.assertTrue(second.last_scan.used_index_cache)
+            self.assertFalse(second.last_scan.saved_index_cache)
+            self.assertEqual(second.asset_count, first.asset_count)
+            self.assertEqual(
+                second.read_bytes("pack_0.rpf/stream/item_0_0.ydr"),
+                b"payload-0-0",
+            )
+            self.assertLess(second.last_scan.elapsed_seconds, first.last_scan.elapsed_seconds)
+
+    def test_gamefilecache_parallel_scan_reduces_elapsed_time_for_many_archives(self) -> None:
+        import fivefury.cache as cache_module
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for archive_index in range(12):
+                archive = create_rpf(f"pack_{archive_index}.rpf")
+                for file_index in range(24):
+                    archive.add(
+                        f"stream/item_{archive_index}_{file_index}.ydr",
+                        f"payload-{archive_index}-{file_index}".encode("ascii"),
+                    )
+                archive.save(root / f"pack_{archive_index}.rpf")
+
+            original = cache_module._scan_archive_source
+
+            def delayed_scan(*args, **kwargs):
+                time.sleep(0.03)
+                return original(*args, **kwargs)
+
+            with patch.object(cache_module, "_scan_archive_source", side_effect=delayed_scan):
+                serial = GameFileCache(root, scan_workers=1)
+                serial.scan(use_index_cache=False)
+
+                parallel = GameFileCache(root, scan_workers=4)
+                parallel.scan(use_index_cache=False)
+
+            self.assertEqual(serial.asset_count, 12 * 24)
+            self.assertEqual(parallel.asset_count, serial.asset_count)
+            self.assertEqual(serial.last_scan.archive_workers, 1)
+            self.assertEqual(parallel.last_scan.archive_workers, 4)
+            self.assertLess(parallel.last_scan.elapsed_seconds, serial.last_scan.elapsed_seconds * 0.8)
+
+    def test_gamefilecache_scan_keeps_archive_handles_lazy_and_bounded(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for archive_index in range(4):
+                archive = create_rpf(f"pack_{archive_index}.rpf")
+                archive.add(f"stream/item_{archive_index}.ydr", f"payload-{archive_index}".encode("ascii"))
+                archive.save(root / f"pack_{archive_index}.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False, max_open_archives=2, scan_workers=2)
+            cache.scan(use_index_cache=False)
+
+            self.assertEqual(cache.open_archive_count, 0)
+            self.assertEqual(cache.archives, [])
+            self.assertEqual(cache.entries, {})
+            self.assertTrue(
+                all(record.entry is None and record.archive is None for record in cache.records if record.archive_rel),
+            )
+
+            self.assertEqual(cache.read_bytes("pack_0.rpf/stream/item_0.ydr"), b"payload-0")
+            self.assertEqual(cache.read_bytes("pack_1.rpf/stream/item_1.ydr"), b"payload-1")
+            self.assertEqual(cache.read_bytes("pack_2.rpf/stream/item_2.ydr"), b"payload-2")
+            self.assertLessEqual(cache.open_archive_count, 2)
 
 
 if __name__ == "__main__":

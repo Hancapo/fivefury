@@ -121,116 +121,140 @@ class _AesEcbCipher:
 
 
 def _build_windows_aes_decryptor(key: bytes):
-    bcrypt = ctypes.WinDLL("bcrypt")
-    c_void_p = ctypes.c_void_p
-    u32 = ctypes.c_ulong
-    uchar_p = ctypes.POINTER(ctypes.c_ubyte)
+    class _WindowsAesDecryptor:
+        def __init__(self, material: bytes) -> None:
+            bcrypt = ctypes.WinDLL("bcrypt")
+            self._c_void_p = ctypes.c_void_p
+            self._u32 = ctypes.c_ulong
+            self._uchar_p = ctypes.POINTER(ctypes.c_ubyte)
+            self._bcrypt = bcrypt
 
-    BCryptOpenAlgorithmProvider = bcrypt.BCryptOpenAlgorithmProvider
-    BCryptOpenAlgorithmProvider.argtypes = [ctypes.POINTER(c_void_p), ctypes.c_wchar_p, ctypes.c_wchar_p, u32]
-    BCryptOpenAlgorithmProvider.restype = ctypes.c_long
+            self._BCryptOpenAlgorithmProvider = bcrypt.BCryptOpenAlgorithmProvider
+            self._BCryptOpenAlgorithmProvider.argtypes = [ctypes.POINTER(self._c_void_p), ctypes.c_wchar_p, ctypes.c_wchar_p, self._u32]
+            self._BCryptOpenAlgorithmProvider.restype = ctypes.c_long
 
-    BCryptSetProperty = bcrypt.BCryptSetProperty
-    BCryptSetProperty.argtypes = [c_void_p, ctypes.c_wchar_p, uchar_p, u32, u32]
-    BCryptSetProperty.restype = ctypes.c_long
+            self._BCryptSetProperty = bcrypt.BCryptSetProperty
+            self._BCryptSetProperty.argtypes = [self._c_void_p, ctypes.c_wchar_p, self._uchar_p, self._u32, self._u32]
+            self._BCryptSetProperty.restype = ctypes.c_long
 
-    BCryptGetProperty = bcrypt.BCryptGetProperty
-    BCryptGetProperty.argtypes = [c_void_p, ctypes.c_wchar_p, uchar_p, u32, ctypes.POINTER(u32), u32]
-    BCryptGetProperty.restype = ctypes.c_long
+            self._BCryptGetProperty = bcrypt.BCryptGetProperty
+            self._BCryptGetProperty.argtypes = [self._c_void_p, ctypes.c_wchar_p, self._uchar_p, self._u32, ctypes.POINTER(self._u32), self._u32]
+            self._BCryptGetProperty.restype = ctypes.c_long
 
-    BCryptGenerateSymmetricKey = bcrypt.BCryptGenerateSymmetricKey
-    BCryptGenerateSymmetricKey.argtypes = [c_void_p, ctypes.POINTER(c_void_p), uchar_p, u32, uchar_p, u32, u32]
-    BCryptGenerateSymmetricKey.restype = ctypes.c_long
+            self._BCryptGenerateSymmetricKey = bcrypt.BCryptGenerateSymmetricKey
+            self._BCryptGenerateSymmetricKey.argtypes = [self._c_void_p, ctypes.POINTER(self._c_void_p), self._uchar_p, self._u32, self._uchar_p, self._u32, self._u32]
+            self._BCryptGenerateSymmetricKey.restype = ctypes.c_long
 
-    BCryptDecrypt = bcrypt.BCryptDecrypt
-    BCryptDecrypt.argtypes = [c_void_p, uchar_p, u32, c_void_p, uchar_p, u32, uchar_p, u32, ctypes.POINTER(u32), u32]
-    BCryptDecrypt.restype = ctypes.c_long
+            self._BCryptDecrypt = bcrypt.BCryptDecrypt
+            self._BCryptDecrypt.argtypes = [self._c_void_p, self._uchar_p, self._u32, self._c_void_p, self._uchar_p, self._u32, self._uchar_p, self._u32, ctypes.POINTER(self._u32), self._u32]
+            self._BCryptDecrypt.restype = ctypes.c_long
 
-    BCryptDestroyKey = bcrypt.BCryptDestroyKey
-    BCryptDestroyKey.argtypes = [c_void_p]
-    BCryptDestroyKey.restype = ctypes.c_long
+            self._BCryptDestroyKey = bcrypt.BCryptDestroyKey
+            self._BCryptDestroyKey.argtypes = [self._c_void_p]
+            self._BCryptDestroyKey.restype = ctypes.c_long
 
-    BCryptCloseAlgorithmProvider = bcrypt.BCryptCloseAlgorithmProvider
-    BCryptCloseAlgorithmProvider.argtypes = [c_void_p, u32]
-    BCryptCloseAlgorithmProvider.restype = ctypes.c_long
+            self._BCryptCloseAlgorithmProvider = bcrypt.BCryptCloseAlgorithmProvider
+            self._BCryptCloseAlgorithmProvider.argtypes = [self._c_void_p, self._u32]
+            self._BCryptCloseAlgorithmProvider.restype = ctypes.c_long
 
-    def check(status: int, message: str) -> None:
-        if status < 0:
-            raise OSError(f"{message} failed with NTSTATUS 0x{status & 0xFFFFFFFF:08X}")
+            self._alg = self._c_void_p()
+            self._key_handle = self._c_void_p()
+            self._key_obj = None
+            self._key_buf = None
 
-    alg = c_void_p()
-    check(BCryptOpenAlgorithmProvider(ctypes.byref(alg), "AES", None, 0), "BCryptOpenAlgorithmProvider")
-    try:
-        mode = ctypes.create_unicode_buffer("ChainingModeECB")
-        check(
-            BCryptSetProperty(
-                alg,
-                "ChainingMode",
-                ctypes.cast(mode, uchar_p),
-                ctypes.sizeof(mode),
-                0,
-            ),
-            "BCryptSetProperty",
-        )
-        obj_len = u32()
-        cb_result = u32()
-        check(
-            BCryptGetProperty(
-                alg,
-                "ObjectLength",
-                ctypes.cast(ctypes.byref(obj_len), uchar_p),
-                ctypes.sizeof(obj_len),
-                ctypes.byref(cb_result),
-                0,
-            ),
-            "BCryptGetProperty",
-        )
-        key_obj = (ctypes.c_ubyte * obj_len.value)()
-        key_handle = c_void_p()
-        key_buf = (ctypes.c_ubyte * len(key)).from_buffer_copy(key)
-        check(
-            BCryptGenerateSymmetricKey(
-                alg,
-                ctypes.byref(key_handle),
-                key_obj,
-                obj_len.value,
-                key_buf,
-                len(key),
-                0,
-            ),
-            "BCryptGenerateSymmetricKey",
-        )
-        try:
-            def decrypt(payload: bytes) -> bytes:
-                if not payload:
-                    return b""
-                in_buf = (ctypes.c_ubyte * len(payload)).from_buffer_copy(payload)
-                out_buf = (ctypes.c_ubyte * len(payload))()
-                out_len = u32()
-                check(
-                    BCryptDecrypt(
-                        key_handle,
-                        in_buf,
-                        len(payload),
-                        None,
-                        None,
-                        0,
-                        out_buf,
-                        len(payload),
-                        ctypes.byref(out_len),
+            self._check(
+                self._BCryptOpenAlgorithmProvider(ctypes.byref(self._alg), "AES", None, 0),
+                "BCryptOpenAlgorithmProvider",
+            )
+            try:
+                mode = ctypes.create_unicode_buffer("ChainingModeECB")
+                self._check(
+                    self._BCryptSetProperty(
+                        self._alg,
+                        "ChainingMode",
+                        ctypes.cast(mode, self._uchar_p),
+                        ctypes.sizeof(mode),
                         0,
                     ),
-                    "BCryptDecrypt",
+                    "BCryptSetProperty",
                 )
-                return bytes(out_buf[: out_len.value])
+                obj_len = self._u32()
+                cb_result = self._u32()
+                self._check(
+                    self._BCryptGetProperty(
+                        self._alg,
+                        "ObjectLength",
+                        ctypes.cast(ctypes.byref(obj_len), self._uchar_p),
+                        ctypes.sizeof(obj_len),
+                        ctypes.byref(cb_result),
+                        0,
+                    ),
+                    "BCryptGetProperty",
+                )
+                self._key_obj = (ctypes.c_ubyte * obj_len.value)()
+                self._key_buf = (ctypes.c_ubyte * len(material)).from_buffer_copy(material)
+                self._check(
+                    self._BCryptGenerateSymmetricKey(
+                        self._alg,
+                        ctypes.byref(self._key_handle),
+                        self._key_obj,
+                        obj_len.value,
+                        self._key_buf,
+                        len(material),
+                        0,
+                    ),
+                    "BCryptGenerateSymmetricKey",
+                )
+            except Exception:
+                self.close()
+                raise
 
-            return decrypt
-        except Exception:
-            BCryptDestroyKey(key_handle)
-            raise
-    except Exception:
-        BCryptCloseAlgorithmProvider(alg, 0)
-        raise
+        @staticmethod
+        def _check(status: int, message: str) -> None:
+            if status < 0:
+                raise OSError(f"{message} failed with NTSTATUS 0x{status & 0xFFFFFFFF:08X}")
+
+        def decrypt(self, payload: bytes) -> bytes:
+            if not payload:
+                return b""
+            in_buf = (ctypes.c_ubyte * len(payload)).from_buffer_copy(payload)
+            out_buf = (ctypes.c_ubyte * len(payload))()
+            out_len = self._u32()
+            self._check(
+                self._BCryptDecrypt(
+                    self._key_handle,
+                    in_buf,
+                    len(payload),
+                    None,
+                    None,
+                    0,
+                    out_buf,
+                    len(payload),
+                    ctypes.byref(out_len),
+                    0,
+                ),
+                "BCryptDecrypt",
+            )
+            return bytes(out_buf[: out_len.value])
+
+        def close(self) -> None:
+            if getattr(self, "_key_handle", None) is not None and self._key_handle.value:
+                try:
+                    self._BCryptDestroyKey(self._key_handle)
+                except Exception:
+                    pass
+                self._key_handle = self._c_void_p()
+            if getattr(self, "_alg", None) is not None and self._alg.value:
+                try:
+                    self._BCryptCloseAlgorithmProvider(self._alg, 0)
+                except Exception:
+                    pass
+                self._alg = self._c_void_p()
+
+        def __del__(self) -> None:
+            self.close()
+
+    return _WindowsAesDecryptor(key).decrypt
 
 
 def _decompress_any(data: bytes) -> bytes:
@@ -468,6 +492,16 @@ class GameCrypto:
         if encryption == NG_ENCRYPTION:
             return self.decrypt_ng(data, entry_name, entry_length)
         return data
+
+    def clone_for_worker(self) -> "GameCrypto":
+        clone = object.__new__(GameCrypto)
+        clone.aes_key = self.aes_key
+        clone.ng_keys = self.ng_keys
+        clone.ng_tables = self.ng_tables
+        clone.magic_path = self.magic_path
+        clone._aes = _AesEcbCipher(self.aes_key)
+        clone._ng_subkeys = self._ng_subkeys
+        return clone
 
     def _decrypt_ng_block(self, data: bytes, subkeys: tuple[tuple[int, int, int, int], ...]) -> bytes:
         buffer = data

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,21 @@ def _hash_value(symbol, value: str) -> int:
 
 
 class HashingContractTests(unittest.TestCase):
+    def test_windows_aes_decryptor_reuses_handles_across_many_calls(self) -> None:
+        if os.name != "nt":
+            self.skipTest("Windows CNG AES regression test is only relevant on Windows")
+
+        import fivefury.crypto as crypto_module
+
+        decryptor = crypto_module._build_windows_aes_decryptor(  # type: ignore[attr-defined]
+            bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
+        )
+        ciphertext = bytes.fromhex("3ad77bb40d7a3660a89ecaf32466ef97")
+        plaintext = bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")
+
+        for _ in range(64):
+            self.assertEqual(decryptor(ciphertext), plaintext)
+
     def test_jenk_hash_known_vectors(self) -> None:
         symbol = resolve_symbol(
             [

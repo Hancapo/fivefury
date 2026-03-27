@@ -1,4 +1,4 @@
-from .cache import AssetRecord, GameFileCache
+from .cache import AssetRecord, GameFileCache, ScanStats
 from .crypto import (
     AES_ENCRYPTION,
     NG_ENCRYPTION,
@@ -116,6 +116,7 @@ __all__ = [
     "GameFileCache",
     "GameCrypto",
     "GameFileType",
+    "ScanStats",
     "GrassBatch",
     "GrassInstance",
     "GrassInstanceBatch",
