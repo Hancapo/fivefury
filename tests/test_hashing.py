@@ -34,7 +34,8 @@ class HashingContractTests(unittest.TestCase):
         self.assertEqual(_hash_value(symbol, ""), 0)
         self.assertEqual(_hash_value(symbol, "a"), 0xCA2E9442)
         self.assertEqual(_hash_value(symbol, "test"), 0x3F75CCC1)
-        self.assertEqual(_hash_value(symbol, "CMapData"), 0xD3593FA6)
+        self.assertEqual(_hash_value(symbol, "CMapData"), 0x62CAD9F0)
+        self.assertEqual(_hash_value(symbol, "CMapData"), _hash_value(symbol, "cmapdata"))
         self.assertEqual(_hash_value(symbol, "ymap"), 0xCBADADE4)
 
     def test_global_hash_resolver_register_and_resolve(self) -> None:

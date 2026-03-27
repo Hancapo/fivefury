@@ -20,3 +20,6 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["fivefury*"]
 
+[tool.setuptools.package-data]
+fivefury = ["data/*.dat"]
+

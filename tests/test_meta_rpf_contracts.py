@@ -710,6 +710,42 @@ class MetaAndArchiveContractTests(unittest.TestCase):
                     break
             self.assertIsNotNone(found, "Cache did not resolve a known file path")
 
+    def test_gamefilecache_supports_name_hash_read_and_extract_workflows(self) -> None:
+        from fivefury import GameFileCache, create_rpf, jenk_hash
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive_path = root / "assets.rpf"
+            archive = create_rpf("assets.rpf")
+            archive.add("stream/alpha.ydr", b"alpha-bytes")
+            archive.add("stream/bravo.ytd", b"bravo-bytes")
+            archive.save(archive_path)
+            write_bytes(root / "maps" / "charlie.ymap", b"charlie-bytes")
+
+            cache = GameFileCache(root)
+            cache.scan()
+            self.assertEqual(cache.scan_errors, {})
+
+            by_path = cache.find_path("assets.rpf/stream/alpha.ydr")
+            self.assertIsNotNone(by_path)
+            self.assertEqual(by_path.path, "assets.rpf/stream/alpha.ydr")
+
+            by_name = cache.find_name("alpha", kind=".ydr")
+            self.assertEqual(len(by_name), 1)
+            self.assertEqual(by_name[0].path, "assets.rpf/stream/alpha.ydr")
+
+            by_hash = cache.find_hash(jenk_hash("alpha"), kind=".ydr")
+            self.assertEqual(len(by_hash), 1)
+            self.assertEqual(by_hash[0].path, "assets.rpf/stream/alpha.ydr")
+
+            payload = cache.read_asset("assets.rpf/stream/alpha.ydr")
+            self.assertEqual(payload, b"alpha-bytes")
+            self.assertEqual(cache.read_bytes("alpha"), b"alpha-bytes")
+
+            extracted = cache.extract_asset("alpha", root / "out")
+            self.assertIsNotNone(extracted)
+            self.assertEqual(Path(extracted).read_bytes(), b"alpha-bytes")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,12 +8,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Optional
 
+from .crypto import (
+    AES_ENCRYPTION,
+    NG_ENCRYPTION,
+    NONE_ENCRYPTION,
+    OPEN_ENCRYPTION,
+    GameCrypto,
+    get_game_crypto,
+)
 from .resource import get_resource_flags_from_size, get_resource_size_from_flags, parse_rsc7
 
 RPF_MAGIC = 0x52504637
 RSC7_MAGIC = 0x37435352
 RPF_BLOCK_SIZE = 512
-OPEN_ENCRYPTION = 0x4E45504F  # "OPEN"
 
 
 def _normalize_path(path: str | Path) -> str:
@@ -218,31 +225,42 @@ class RpfArchive:
     children: list["RpfArchive"] = field(default_factory=list)
     parent: Optional["RpfArchive"] = None
     parent_file_entry: Optional[RpfBinaryFileEntry] = None
+    crypto: GameCrypto | None = field(default=None, repr=False, compare=False)
     _source_bytes: bytes | None = field(default=None, repr=False, compare=False)
     _source_file: Optional[Path] = field(default=None, repr=False, compare=False)
     _index: dict[str, RpfEntry] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.name = self.name or "archive.rpf"
+        if self.crypto is None:
+            self.crypto = get_game_crypto()
         self.root.name = ""
         self.root.path = ""
         self.root._archive = self
 
     @classmethod
-    def empty(cls, name: str = "archive.rpf", *, prefix: str = "") -> "RpfArchive":
-        return cls(name=_archive_name(name), prefix=prefix)
+    def empty(cls, name: str = "archive.rpf", *, prefix: str = "", crypto: GameCrypto | None = None) -> "RpfArchive":
+        return cls(name=_archive_name(name), prefix=prefix, crypto=crypto)
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "RpfArchive":
+    def from_path(cls, path: str | Path, *, crypto: GameCrypto | None = None) -> "RpfArchive":
         p = Path(path)
-        data = p.read_bytes()
-        archive = cls.from_bytes(data, source_path=str(p))
+        archive = cls(name=p.name, source_path=str(p), crypto=crypto)
         archive._source_file = p
+        archive._parse()
         return archive
 
     @classmethod
-    def from_bytes(cls, data: bytes, *, source_path: str = "", prefix: str = "") -> "RpfArchive":
-        archive = cls(source_path=source_path, prefix=prefix)
+    def from_bytes(
+        cls,
+        data: bytes,
+        *,
+        name: str = "",
+        source_path: str = "",
+        prefix: str = "",
+        crypto: GameCrypto | None = None,
+    ) -> "RpfArchive":
+        archive = cls(name=name or Path(source_path).name or "archive.rpf", source_path=source_path, prefix=prefix, crypto=crypto)
         archive._source_bytes = bytes(data)
         archive._parse()
         return archive
@@ -279,17 +297,39 @@ class RpfArchive:
                 self._attach_archive(child)
 
     def _parse(self) -> None:
-        if self._source_bytes is None or len(self._source_bytes) < 16:
+        header = self._source_read(0, 16)
+        if len(header) < 16:
             raise ValueError("Invalid RPF archive")
 
-        version, entry_count, names_length, encryption = struct.unpack_from("<4I", self._source_bytes, 0)
+        version, entry_count, names_length, encryption = struct.unpack_from("<4I", header, 0)
         if version != RPF_MAGIC:
             raise ValueError("Invalid RPF7 magic")
         self.version = version
         self.encryption = encryption
 
-        entries_data = self._source_bytes[16 : 16 + entry_count * 16]
-        names_data = self._source_bytes[16 + entry_count * 16 : 16 + entry_count * 16 + names_length]
+        entries_offset = 16
+        entries_size = entry_count * 16
+        names_offset = entries_offset + entries_size
+
+        entries_data = self._source_read(entries_offset, entries_size)
+        names_data = self._source_read(names_offset, names_length)
+        if encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+            if self.crypto is None:
+                raise ValueError(
+                    f"RPF archive '{self.name}' uses encryption 0x{encryption:08X} and no game crypto is configured"
+                )
+            entries_data = self.crypto.decrypt_archive_table(
+                entries_data,
+                encryption,
+                archive_name=self.name,
+                archive_size=self._archive_size(),
+            )
+            names_data = self.crypto.decrypt_archive_table(
+                names_data,
+                encryption,
+                archive_name=self.name,
+                archive_size=self._archive_size(),
+            )
 
         names: dict[int, str] = {0: ""}
         i = 0
@@ -325,6 +365,7 @@ class RpfArchive:
                     encryption_type=struct.unpack_from("<I", blob, 12)[0],
                 )
                 entry.name_offset = low & 0xFFFF
+                entry.is_encrypted = bool(entry.encryption_type & 0x1)
             else:
                 name_offset = struct.unpack_from("<H", blob, 0)[0]
                 file_size = int.from_bytes(blob[2:5], "little")
@@ -339,6 +380,15 @@ class RpfArchive:
                     graphics_flags=RpfResourcePageFlags(gfx_flags),
                 )
                 entry.name_offset = name_offset
+                if entry.file_size == 0xFFFFFF:
+                    raw_header = self._source_read(entry.file_offset * RPF_BLOCK_SIZE, 16)
+                    if len(raw_header) == 16:
+                        entry.file_size = (
+                            (raw_header[7] << 0)
+                            | (raw_header[14] << 8)
+                            | (raw_header[5] << 16)
+                            | (raw_header[2] << 24)
+                        )
             entries.append(entry)
 
         root = entries[0]
@@ -363,14 +413,18 @@ class RpfArchive:
                     dir_entry.directories.append(child)
                     build_dir(child, child.path)
                 else:
+                    if child.name.lower().endswith(".ysc"):
+                        child.is_encrypted = True
                     dir_entry.files.append(child)
                     if child.name.lower().endswith(".rpf"):
                         try:
                             nested_bytes = child.read(logical=True)
                             nested = RpfArchive.from_bytes(
                                 nested_bytes,
+                                name=child.name,
                                 source_path=self._nested_source_path(child),
                                 prefix=child.full_path,
+                                crypto=self.crypto,
                             )
                             nested.parent = self
                             nested.parent_file_entry = child if isinstance(child, RpfBinaryFileEntry) else None
@@ -382,6 +436,16 @@ class RpfArchive:
 
         build_dir(self.root, "")
         self._rebuild_index()
+
+    def _archive_size(self) -> int:
+        if self._source_bytes is not None:
+            return len(self._source_bytes)
+        if self._source_file is not None:
+            try:
+                return self._source_file.stat().st_size
+            except OSError:
+                return 0
+        return 0
 
     def _nested_source_path(self, entry: RpfEntry) -> str:
         base = self.source_path or self.name
@@ -415,6 +479,8 @@ class RpfArchive:
         return self._index.get(_normalize_key(path))
 
     def read_entry_raw(self, entry: RpfFileEntry) -> bytes:
+        if getattr(entry, "_data", None) is not None:
+            return bytes(entry._data)  # type: ignore[attr-defined]
         size = entry.get_file_size()
         if size <= 0:
             return b""
@@ -427,9 +493,47 @@ class RpfArchive:
         if isinstance(entry, RpfResourceFileEntry):
             if _is_rsc7(raw):
                 return parse_rsc7(raw)[1]
-            return raw
+            payload = raw[16:] if len(raw) > 16 else b""
+            if entry.is_encrypted:
+                payload = self.crypto.decrypt_entry_payload(
+                    payload,
+                    self.encryption,
+                    entry_name=entry.name,
+                    entry_length=entry.file_size,
+                )
+            try:
+                return _decompress_deflate(payload)
+            except ValueError:
+                return payload
+        if entry.is_encrypted:
+            raw = self._decrypt_entry_raw(entry, raw)
         if isinstance(entry, RpfBinaryFileEntry) and entry.file_size > 0:
             return _decompress_deflate(raw)
+        return raw
+
+    def _decrypt_entry_raw(self, entry: RpfFileEntry, raw: bytes) -> bytes:
+        if self.encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+            return raw
+        if self.crypto is None:
+            raise ValueError(f"Entry '{entry.full_path}' is encrypted and no game crypto is configured")
+        if isinstance(entry, RpfResourceFileEntry):
+            if len(raw) <= 16:
+                return raw
+            header = raw[:16]
+            payload = self.crypto.decrypt_entry_payload(
+                raw[16:],
+                self.encryption,
+                entry_name=entry.name,
+                entry_length=entry.file_size,
+            )
+            return header + payload
+        if isinstance(entry, RpfBinaryFileEntry):
+            return self.crypto.decrypt_entry_payload(
+                raw,
+                self.encryption,
+                entry_name=entry.name,
+                entry_length=entry.file_uncompressed_size,
+            )
         return raw
 
     def _ensure_dir(self, segments: list[str]) -> RpfDirectoryEntry:
@@ -469,7 +573,7 @@ class RpfArchive:
             entry = RpfBinaryFileEntry(name=leaf, path=normalized, parent=parent, file_uncompressed_size=0, file_size=0, _archive=self)
             parent.files.append(entry)
         child_prefix = f"{self.prefix}/{normalized}".strip("/") if self.prefix else normalized
-        child = RpfArchive.empty(leaf, prefix=child_prefix)
+        child = RpfArchive.empty(leaf, prefix=child_prefix, crypto=self.crypto)
         child.parent = self
         child.parent_file_entry = entry
         entry.child_archive = child
@@ -488,7 +592,13 @@ class RpfArchive:
         if leaf.lower().endswith(".rpf") and data[:4] == struct.pack("<I", RPF_MAGIC):
             entry = RpfBinaryFileEntry(name=leaf, path=normalized, parent=parent, file_uncompressed_size=len(data), file_size=0, _archive=self, _data=data)
             child_prefix = f"{self.prefix}/{normalized}".strip("/") if self.prefix else normalized
-            child = RpfArchive.from_bytes(data, source_path=self._nested_source_path(entry), prefix=child_prefix)
+            child = RpfArchive.from_bytes(
+                data,
+                name=leaf,
+                source_path=self._nested_source_path(entry),
+                prefix=child_prefix,
+                crypto=self.crypto,
+            )
             child.parent = self
             child.parent_file_entry = entry
             entry.child_archive = child
@@ -637,6 +747,8 @@ class RpfArchive:
         return raw_entry, payload
 
     def to_bytes(self) -> bytes:
+        if self.encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+            raise NotImplementedError("Writing AES/NG-encrypted RPF archives is not supported")
         entries = self._collect_entries()
         names, _ = self._build_names(entries)
         entry_count = len(entries)
