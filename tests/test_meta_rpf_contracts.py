@@ -777,6 +777,50 @@ class MetaAndArchiveContractTests(PytestCompat):
             )
             self.assertEqual(cache.list_kind_paths(".ymap"), ["maps/charlie.ymap"])
 
+    def test_gamefilecache_builds_lazy_global_archetype_dict(self) -> None:
+        from fivefury import Archetype, GameFileCache, Ytyp, jenk_hash
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "types").mkdir(parents=True, exist_ok=True)
+            ytyp = Ytyp(name="example_types")
+            ytyp.add_archetype(Archetype(name="prop_tree_pine_01", lod_dist=100.0))
+            ytyp.add_archetype(Archetype(name="prop_sign_road_01", lod_dist=50.0))
+            ytyp.save(root / "types" / "example_types.ytyp")
+
+            cache = GameFileCache(root, use_index_cache=False, max_loaded_files=0)
+            cache.scan(use_index_cache=False)
+
+            archetype_dict = cache.archetype_dict
+            self.assertEqual(
+                int(archetype_dict[jenk_hash("prop_tree_pine_01")].name),
+                jenk_hash("prop_tree_pine_01"),
+            )
+            self.assertEqual(
+                int(cache.ArchetypeDict[jenk_hash("prop_sign_road_01")].name),
+                jenk_hash("prop_sign_road_01"),
+            )
+            self.assertEqual(
+                int(cache.get_archetype("prop_tree_pine_01").name),
+                jenk_hash("prop_tree_pine_01"),
+            )
+            self.assertTrue(cache.has_archetype("prop_sign_road_01"))
+            self.assertEqual(
+                sorted(int(archetype.name) for archetype in cache.iter_archetypes()),
+                sorted([jenk_hash("prop_tree_pine_01"), jenk_hash("prop_sign_road_01")]),
+            )
+
+            extra = Ytyp(name="more_types")
+            extra.add_archetype(Archetype(name="prop_bench_01", lod_dist=25.0))
+            extra.save(root / "types" / "more_types.ytyp")
+            cache.scan(use_index_cache=False)
+
+            self.assertIn(jenk_hash("prop_bench_01"), archetype_dict)
+            self.assertEqual(
+                int(cache.find_archetype("prop_bench_01").name),
+                jenk_hash("prop_bench_01"),
+            )
+
     def test_gamefilecache_supports_name_hash_read_and_extract_workflows(self) -> None:
         from fivefury import GameFileCache, create_rpf, jenk_hash
 

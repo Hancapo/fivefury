@@ -103,6 +103,10 @@ def _path_stem(path: str) -> str:
     return name[:dot] if dot > 0 else name
 
 
+def _coerce_hash_value(value: int | MetaHash | str) -> int:
+    return int(value) if not isinstance(value, str) else jenk_hash(value)
+
+
 def _asset_category_mask(path: str | Path) -> int:
     normalized = _normalize_key(path)
     name = _path_name(normalized)
@@ -450,6 +454,63 @@ class _KindHashRecordMap(Mapping[int, AssetRecord]):
         return self._cache._record_from_id(asset_id)
 
 
+class _ArchetypeMap(Mapping[int, Any]):
+    __slots__ = ("_cache", "_generation", "_hash_to_archetype")
+
+    def __init__(self, cache: GameFileCache) -> None:
+        self._cache = cache
+        self._generation = -1
+        self._hash_to_archetype: dict[int, Any] = {}
+
+    def _ensure_index(self) -> None:
+        if self._generation == self._cache._view_generation:
+            return
+        hash_to_archetype: dict[int, Any] = {}
+        for asset in self._cache.iter_assets(kind=GameFileType.YTYP):
+            game_file = self._cache.get_file(asset)
+            if game_file is None:
+                continue
+            parsed = game_file.parsed
+            archetypes = getattr(parsed, "archetypes", None)
+            if not isinstance(archetypes, list):
+                continue
+            for archetype in archetypes:
+                name = getattr(archetype, "name", None)
+                if name in (None, "", 0):
+                    continue
+                try:
+                    name_hash = int(name)
+                except Exception:
+                    continue
+                if name_hash == 0:
+                    continue
+                hash_to_archetype[name_hash] = archetype
+        self._hash_to_archetype = hash_to_archetype
+        self._generation = self._cache._view_generation
+
+    def __len__(self) -> int:
+        self._ensure_index()
+        return len(self._hash_to_archetype)
+
+    def __iter__(self) -> AbcIterator[int]:
+        self._ensure_index()
+        yield from self._hash_to_archetype
+
+    def __getitem__(self, key: int) -> Any:
+        self._ensure_index()
+        try:
+            return self._hash_to_archetype[int(key)]
+        except KeyError as exc:
+            raise KeyError(key) from exc
+
+    def get(self, key: int | str | MetaHash, default: Any = None) -> Any:
+        self._ensure_index()
+        try:
+            return self._hash_to_archetype[_coerce_hash_value(key)]
+        except KeyError:
+            return default
+
+
 @dataclass(slots=True)
 class ScanStats:
     elapsed_seconds: float = 0.0
@@ -496,6 +557,7 @@ class GameFileCache:
     _active_dlc_filter: set[str] | None = field(default=None, init=False, repr=False)
     _archive_lookup: OrderedDict[str, RpfArchive] = field(default_factory=OrderedDict, init=False, repr=False)
     _kind_dict_views: dict[int, _KindHashRecordMap] = field(default_factory=dict, init=False, repr=False)
+    _archetype_view: _ArchetypeMap | None = field(default=None, init=False, repr=False)
     _view_generation: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -550,6 +612,7 @@ class GameFileCache:
     def _invalidate_views(self) -> None:
         self._view_generation += 1
         self._kind_dict_views.clear()
+        self._archetype_view = None
 
     def clear(self) -> None:
         self.archives.clear()
@@ -628,6 +691,16 @@ class GameFileCache:
 
     def kind_dict(self, kind: GameFileType | str | int) -> Mapping[int, AssetRecord]:
         return self.get_kind_dict(kind)
+
+    @property
+    def archetype_dict(self) -> Mapping[int, Any]:
+        if self._archetype_view is None:
+            self._archetype_view = _ArchetypeMap(self)
+        return self._archetype_view
+
+    @property
+    def ArchetypeDict(self) -> Mapping[int, Any]:
+        return self.archetype_dict
 
     def populate_resolver(self, resolver: HashResolver | None = None) -> int:
         target = resolver or self.resolver
@@ -1249,6 +1322,21 @@ class GameFileCache:
 
     def list_kind_paths(self, kind: GameFileType | str | int) -> list[str]:
         return self.list_paths(kind=kind)
+
+    def iter_archetypes(self) -> Iterator[Any]:
+        yield from self.archetype_dict.values()
+
+    def archetype_items(self) -> Iterator[tuple[int, Any]]:
+        yield from self.archetype_dict.items()
+
+    def get_archetype(self, value: int | MetaHash | str) -> Any | None:
+        return self.archetype_dict.get(value)
+
+    def find_archetype(self, value: int | MetaHash | str) -> Any | None:
+        return self.get_archetype(value)
+
+    def has_archetype(self, value: int | MetaHash | str) -> bool:
+        return self.get_archetype(value) is not None
 
     def find_path(self, path: str | Path, *, kind: GameFileType | str | int | None = None) -> AssetRecord | None:
         asset_id = self._index.find_path_id(_normalize_key(path))
