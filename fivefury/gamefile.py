@@ -47,27 +47,29 @@ class GameFileType(IntEnum):
     BINARY = 101
 
 
+_FILE_TYPE_MAP: dict[str, GameFileType] = {
+    ".ymap": GameFileType.YMAP,
+    ".ytyp": GameFileType.YTYP,
+    ".ytd": GameFileType.YTD,
+    ".ydr": GameFileType.YDR,
+    ".ydd": GameFileType.YDD,
+    ".yft": GameFileType.YFT,
+    ".ybn": GameFileType.YBN,
+    ".ycd": GameFileType.YCD,
+    ".ypt": GameFileType.YPT,
+    ".ynd": GameFileType.YND,
+    ".ynv": GameFileType.YNV,
+    ".rel": GameFileType.REL,
+    ".ywr": GameFileType.YWR,
+    ".yvr": GameFileType.YVR,
+    ".gxt2": GameFileType.GTXD,
+    ".rpf": GameFileType.RPF,
+}
+
+
 def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.UNKNOWN) -> GameFileType:
     ext = Path(str(path)).suffix.lower()
-    mapping = {
-        ".ymap": GameFileType.YMAP,
-        ".ytyp": GameFileType.YTYP,
-        ".ytd": GameFileType.YTD,
-        ".ydr": GameFileType.YDR,
-        ".ydd": GameFileType.YDD,
-        ".yft": GameFileType.YFT,
-        ".ybn": GameFileType.YBN,
-        ".ycd": GameFileType.YCD,
-        ".ypt": GameFileType.YPT,
-        ".ynd": GameFileType.YND,
-        ".ynv": GameFileType.YNV,
-        ".rel": GameFileType.REL,
-        ".ywr": GameFileType.YWR,
-        ".yvr": GameFileType.YVR,
-        ".gxt2": GameFileType.GTXD,
-        ".rpf": GameFileType.RPF,
-    }
-    return mapping.get(ext, default)
+    return _FILE_TYPE_MAP.get(ext, default)
 
 
 @dataclass(slots=True)
