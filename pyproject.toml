@@ -22,3 +22,9 @@ include = ["fivefury*"]
 
 [tool.setuptools.package-data]
 fivefury = ["data/*.dat"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["*Tests"]
+python_functions = ["test_*"]

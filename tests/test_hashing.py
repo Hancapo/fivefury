@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import os
 import tempfile
-import unittest
 from pathlib import Path
 
+from tests.compat import PytestCompat
 from tests.helpers import resolve_symbol
 
 
@@ -18,7 +18,7 @@ def _hash_value(symbol, value: str) -> int:
     raise AssertionError(f"Unsupported hash API: {symbol.module_name}.{symbol.symbol_name}")
 
 
-class HashingContractTests(unittest.TestCase):
+class HashingContractTests(PytestCompat):
     def test_windows_aes_decryptor_reuses_handles_across_many_calls(self) -> None:
         if os.name != "nt":
             self.skipTest("Windows CNG AES regression test is only relevant on Windows")

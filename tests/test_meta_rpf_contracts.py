@@ -4,7 +4,6 @@ import io
 import os
 import tempfile
 import time
-import unittest
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -12,6 +11,7 @@ from unittest.mock import patch
 
 from fivefury.meta import RawStruct
 from fivefury.meta_defs import meta_name
+from tests.compat import PytestCompat
 from tests.helpers import resolve_symbol, touch, write_bytes
 
 
@@ -111,7 +111,7 @@ def _raw_occlude_model():
     }
 
 
-class MetaAndArchiveContractTests(unittest.TestCase):
+class MetaAndArchiveContractTests(PytestCompat):
     def test_ymap_high_level_save_helper_if_available(self) -> None:
         ymap = _make_ymap("unit_test.ymap")
         if ymap is None:
