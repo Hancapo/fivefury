@@ -5,6 +5,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final
 
+from . import _native_abi3 as _ffi
+
 _IDENTITY_LUT: Final[bytes] = bytes(range(256))
 
 
@@ -28,14 +30,8 @@ def _get_lut() -> bytes:
 
 
 def jenk_hash(value: str | bytes, *, encoding: str = "utf-8") -> int:
-    data = value.encode(encoding) if isinstance(value, str) else bytes(value)
-    lut = _get_lut()
-    result = 0
-    for byte in data:
-        temp = (1025 * (lut[byte] + result)) & 0xFFFFFFFF
-        result = ((temp >> 6) ^ temp) & 0xFFFFFFFF
-    tail = (9 * result) & 0xFFFFFFFF
-    return (32769 * (((tail >> 11) ^ tail) & 0xFFFFFFFF)) & 0xFFFFFFFF
+    text = value if isinstance(value, str) else value.decode(encoding)
+    return _ffi.jenk_hash(text, _get_lut())
 
 
 __all__ = [
