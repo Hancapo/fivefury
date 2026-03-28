@@ -229,6 +229,7 @@ class RpfArchive:
     _source_bytes: bytes | None = field(default=None, repr=False, compare=False)
     _source_file: Optional[Path] = field(default=None, repr=False, compare=False)
     _index: dict[str, RpfEntry] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _index_dirty: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.name = self.name or "archive.rpf"
@@ -453,6 +454,13 @@ class RpfArchive:
             return f"{base}/{entry.path}"
         return entry.path
 
+    def _invalidate_index(self) -> None:
+        self._index_dirty = True
+
+    def _ensure_index(self) -> None:
+        if self._index_dirty:
+            self._rebuild_index()
+
     def _rebuild_index(self) -> None:
         self._index.clear()
         for entry in self.iter_entries(include_directories=True, include_root=False):
@@ -460,6 +468,7 @@ class RpfArchive:
         for child in self.children:
             child._rebuild_index()
             self._index.update(child._index)
+        self._index_dirty = False
 
     def iter_entries(self, *, include_directories: bool = False, include_root: bool = False) -> Iterator[RpfEntry]:
         if include_root:
@@ -476,6 +485,7 @@ class RpfArchive:
         yield from walk(self.root)
 
     def find_entry(self, path: str | Path) -> Optional[RpfEntry]:
+        self._ensure_index()
         return self._index.get(_normalize_key(path))
 
     def read_entry_raw(self, entry: RpfFileEntry) -> bytes:
@@ -559,7 +569,7 @@ class RpfArchive:
             return existing
         entry = RpfDirectoryEntry(name=leaf, path=normalized, parent=parent, _archive=self)
         parent.directories.append(entry)
-        self._rebuild_index()
+        self._invalidate_index()
         return entry
 
     def add_nested_archive(self, path: str | Path) -> tuple[RpfBinaryFileEntry, "RpfArchive"]:
@@ -578,7 +588,7 @@ class RpfArchive:
         child.parent_file_entry = entry
         entry.child_archive = child
         self.children.append(child)
-        self._rebuild_index()
+        self._invalidate_index()
         return entry, child
 
     def add_file(self, path: str | Path, data: bytes | bytearray | memoryview | object, *, compress_binary: bool = False) -> RpfFileEntry:
@@ -651,7 +661,7 @@ class RpfArchive:
                     _data=data,
                 )
         parent.files.append(entry)
-        self._rebuild_index()
+        self._invalidate_index()
         return entry
 
     def add_object(self, path: str | Path, value: bytes | bytearray | memoryview | object, *, compress_binary: bool = False) -> RpfFileEntry:
