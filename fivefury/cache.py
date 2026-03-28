@@ -511,6 +511,50 @@ class _ArchetypeMap(Mapping[int, Any]):
             return default
 
 
+class _KindCountsView(Mapping[GameFileType, int]):
+    __slots__ = ("_cache", "_generation", "_counts")
+
+    def __init__(self, cache: GameFileCache) -> None:
+        self._cache = cache
+        self._generation = -1
+        self._counts: dict[GameFileType, int] = {}
+
+    def _ensure_index(self) -> None:
+        if self._generation == self._cache._view_generation:
+            return
+        counts: dict[GameFileType, int] = {}
+        for asset_id in range(self._cache.asset_count):
+            kind = GameFileType(int(self._cache._index.get_kind(asset_id)))
+            counts[kind] = counts.get(kind, 0) + 1
+        self._counts = counts
+        self._generation = self._cache._view_generation
+
+    def __len__(self) -> int:
+        self._ensure_index()
+        return len(self._counts)
+
+    def __iter__(self) -> AbcIterator[GameFileType]:
+        self._ensure_index()
+        yield from self._counts
+
+    def __getitem__(self, key: GameFileType | str | int) -> int:
+        self._ensure_index()
+        kind = _coerce_kind(key)
+        if kind is None:
+            raise KeyError(key)
+        try:
+            return self._counts[kind]
+        except KeyError as exc:
+            raise KeyError(key) from exc
+
+    def get(self, key: GameFileType | str | int, default: int | None = None) -> int | None:
+        self._ensure_index()
+        kind = _coerce_kind(key)
+        if kind is None:
+            return default
+        return self._counts.get(kind, default)
+
+
 @dataclass(slots=True)
 class ScanStats:
     elapsed_seconds: float = 0.0
@@ -558,6 +602,7 @@ class GameFileCache:
     _archive_lookup: OrderedDict[str, RpfArchive] = field(default_factory=OrderedDict, init=False, repr=False)
     _kind_dict_views: dict[int, _KindHashRecordMap] = field(default_factory=dict, init=False, repr=False)
     _archetype_view: _ArchetypeMap | None = field(default=None, init=False, repr=False)
+    _kind_counts_view: _KindCountsView | None = field(default=None, init=False, repr=False)
     _view_generation: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -613,6 +658,7 @@ class GameFileCache:
         self._view_generation += 1
         self._kind_dict_views.clear()
         self._archetype_view = None
+        self._kind_counts_view = None
 
     def clear(self) -> None:
         self.archives.clear()
@@ -667,6 +713,7 @@ class GameFileCache:
             "saved_index_cache": self.saved_index_cache,
             "open_archive_count": self.open_archive_count,
             "open_file_count": self.open_file_count,
+            "kind_counts": self.stats_by_kind(),
             "dlc_level": self.dlc_level,
             "load_vehicles": self.load_vehicles,
             "load_peds": self.load_peds,
@@ -701,6 +748,18 @@ class GameFileCache:
     @property
     def ArchetypeDict(self) -> Mapping[int, Any]:
         return self.archetype_dict
+
+    @property
+    def kind_counts(self) -> Mapping[GameFileType, int]:
+        if self._kind_counts_view is None:
+            self._kind_counts_view = _KindCountsView(self)
+        return self._kind_counts_view
+
+    def stats_by_kind(self) -> dict[str, int]:
+        return {
+            kind.name: count
+            for kind, count in sorted(self.kind_counts.items(), key=lambda item: item[0].name)
+        }
 
     def populate_resolver(self, resolver: HashResolver | None = None) -> int:
         target = resolver or self.resolver
@@ -1556,12 +1615,15 @@ class GameFileCache:
         query: str | Path | int | MetaHash | AssetRecord,
         destination: str | Path,
         *,
-        logical: bool = True,
+        logical: bool = False,
     ) -> Path | None:
         asset = self._coerce_asset(query) if not isinstance(query, (str, Path)) else self.get_asset(query)
         if asset is None:
             return None
         data = self.read_bytes(asset, logical=logical)
+        entry = self._get_entry_for_asset(asset)
+        if not logical and isinstance(entry, RpfFileEntry) and entry._archive is not None:
+            data = entry._archive.read_entry_standalone(entry)
         if data is None:
             return None
         target = Path(destination)

@@ -83,6 +83,10 @@ def _is_rsc7(data: bytes) -> bool:
     return len(data) >= 4 and struct.unpack_from("<I", data, 0)[0] == RSC7_MAGIC
 
 
+def _resource_version_from_flags(system_flags: int, graphics_flags: int) -> int:
+    return (((system_flags >> 28) & 0xF) << 4) | ((graphics_flags >> 28) & 0xF)
+
+
 def _resource_flags_from_size(size: int, version: int = 0) -> int:
     return get_resource_flags_from_size(size, version)
 
@@ -519,6 +523,33 @@ class RpfArchive:
             raw = self._decrypt_entry_raw(entry, raw)
         if isinstance(entry, RpfBinaryFileEntry) and entry.file_size > 0:
             return _decompress_deflate(raw)
+        return raw
+
+    def read_entry_standalone(self, entry: RpfFileEntry) -> bytes:
+        raw = self.read_entry_raw(entry)
+        if isinstance(entry, RpfResourceFileEntry):
+            if _is_rsc7(raw):
+                return raw
+            payload = raw[16:] if len(raw) > 16 else b""
+            if entry.is_encrypted:
+                if self.crypto is None:
+                    raise ValueError(f"Entry '{entry.full_path}' is encrypted and no game crypto is configured")
+                payload = self.crypto.decrypt_entry_payload(
+                    payload,
+                    self.encryption,
+                    entry_name=entry.name,
+                    entry_length=entry.file_size,
+                )
+            version = _resource_version_from_flags(entry.system_flags.value, entry.graphics_flags.value)
+            return struct.pack(
+                "<IIII",
+                RSC7_MAGIC,
+                version,
+                entry.system_flags.value,
+                entry.graphics_flags.value,
+            ) + payload
+        if entry.is_encrypted:
+            return self._decrypt_entry_raw(entry, raw)
         return raw
 
     def _decrypt_entry_raw(self, entry: RpfFileEntry, raw: bytes) -> bytes:

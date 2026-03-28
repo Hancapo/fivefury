@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import struct
 import tempfile
 import time
 import zipfile
@@ -821,6 +822,33 @@ class MetaAndArchiveContractTests(PytestCompat):
                 jenk_hash("prop_bench_01"),
             )
 
+    def test_gamefilecache_exposes_kind_counts_and_stats(self) -> None:
+        from fivefury import GameFileCache, GameFileType, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("assets.rpf")
+            archive.add("stream/alpha.ydr", b"alpha")
+            archive.add("stream/bravo.ytd", b"bravo")
+            archive.save(root / "assets.rpf")
+            write_bytes(root / "maps" / "charlie.ymap", b"charlie")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            counts = cache.kind_counts
+            self.assertEqual(counts[GameFileType.YDR], 1)
+            self.assertEqual(counts[".ytd"], 1)
+            self.assertEqual(counts["ymap"], 1)
+            self.assertEqual(cache.stats_by_kind(), {"YDR": 1, "YMAP": 1, "YTD": 1})
+            self.assertEqual(cache.summary()["kind_counts"], {"YDR": 1, "YMAP": 1, "YTD": 1})
+
+            write_bytes(root / "maps" / "delta.ymap", b"delta")
+            cache.scan(use_index_cache=False)
+
+            self.assertEqual(counts[GameFileType.YMAP], 2)
+            self.assertEqual(cache.stats_by_kind()["YMAP"], 2)
+
     def test_gamefilecache_supports_name_hash_read_and_extract_workflows(self) -> None:
         from fivefury import GameFileCache, create_rpf, jenk_hash
 
@@ -856,6 +884,35 @@ class MetaAndArchiveContractTests(PytestCompat):
             extracted = cache.extract_asset("alpha", root / "out")
             self.assertIsNotNone(extracted)
             self.assertEqual(Path(extracted).read_bytes(), b"alpha-bytes")
+
+    def test_gamefilecache_extracts_resource_assets_as_stored_bytes_by_default(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+        from fivefury.resource import RSC7_MAGIC, parse_rsc7
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive_path = root / "assets.rpf"
+            archive = create_rpf("assets.rpf")
+            archive.add("stream/example.ymap", b"payload-bytes")
+            archive.save(archive_path)
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            extracted = cache.extract_asset("assets.rpf/stream/example.ymap", root / "out")
+            self.assertIsNotNone(extracted)
+
+            stored = Path(extracted).read_bytes()
+            self.assertEqual(stored[:4], struct.pack("<I", RSC7_MAGIC))
+            self.assertEqual(parse_rsc7(stored)[1], b"payload-bytes")
+
+            logical = cache.extract_asset(
+                "assets.rpf/stream/example.ymap",
+                root / "logical.ymap",
+                logical=True,
+            )
+            self.assertIsNotNone(logical)
+            self.assertEqual(Path(logical).read_bytes(), b"payload-bytes")
 
     def test_gamefilecache_can_skip_audio_vehicle_and_ped_assets_during_scan(self) -> None:
         from fivefury import GameFileCache, create_rpf
