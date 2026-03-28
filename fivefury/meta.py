@@ -602,6 +602,7 @@ class MetaBuilder:
         self.used_struct_hashes: set[int] = set()
         self.used_enum_hashes: set[int] = set()
         self.blocks: list[_WritableBlock] = []
+        self._block_group: dict[int, list[int]] = {}
 
     def register_struct(self, info: MetaStructInfo) -> None:
         if info.name_hash not in self.struct_infos:
@@ -615,6 +616,7 @@ class MetaBuilder:
 
     def build(self, root_name_hash: int = 0, root_value: Mapping[str, Any] | RawStruct | None = None) -> bytes:
         self.blocks.clear()
+        self._block_group.clear()
         self.used_struct_hashes.clear()
         self.used_enum_hashes.clear()
         if root_name_hash and root_value is not None:
@@ -627,7 +629,9 @@ class MetaBuilder:
 
     def _reserve_block(self, name_hash: int) -> int:
         self.blocks.append(_WritableBlock(name_hash=name_hash))
-        return len(self.blocks)
+        block_id = len(self.blocks)
+        self._block_group.setdefault(name_hash, []).append(block_id - 1)
+        return block_id
 
     def _set_block(self, block_id: int, data: bytes) -> None:
         self.blocks[block_id - 1].data = pad_bytes(data, 16)
@@ -642,9 +646,8 @@ class MetaBuilder:
     ) -> MetaPointer:
         item = pad_bytes(data, align_item) if align_item > 1 else bytes(data)
         if group:
-            for index, block in enumerate(self.blocks):
-                if block.name_hash != name_hash:
-                    continue
+            for index in self._block_group.get(name_hash, ()):
+                block = self.blocks[index]
                 if len(block.data) + len(item) > self.MAX_BLOCK_LENGTH:
                     continue
                 pointer = MetaPointer(block_id=index + 1, offset=len(block.data))
@@ -995,15 +998,21 @@ def build_meta_system(
 
 def _pack_primitive_array(data_type: MetaDataType, items: list[Any]) -> bytes:
     if data_type is MetaDataType.FLOAT:
-        return b"".join(struct.pack("<f", float(item)) for item in items)
+        vals = [float(v) for v in items]
+        return struct.pack(f"<{len(vals)}f", *vals)
     if data_type in (MetaDataType.UNSIGNED_INT, MetaDataType.HASH):
-        return b"".join(struct.pack("<I", _coerce_hash(item) if data_type is MetaDataType.HASH else int(item)) for item in items)
+        vals = [_coerce_hash(v) if data_type is MetaDataType.HASH else int(v) for v in items]
+        return struct.pack(f"<{len(vals)}I", *vals)
     if data_type is MetaDataType.UNSIGNED_SHORT:
-        return b"".join(struct.pack("<H", int(item)) for item in items)
+        vals = [int(v) for v in items]
+        return struct.pack(f"<{len(vals)}H", *vals)
     if data_type is MetaDataType.UNSIGNED_BYTE:
         return bytes(int(item) & 0xFF for item in items)
     if data_type is MetaDataType.FLOAT_XYZ:
-        return b"".join(struct.pack("<fff", *_coerce_vector(item, 3)) for item in items)
+        flat = []
+        for item in items:
+            flat.extend(_coerce_vector(item, 3))
+        return struct.pack(f"<{len(flat)}f", *flat)
     raise NotImplementedError(f"Unsupported array element type {data_type}")
 
 
@@ -1117,20 +1126,20 @@ def _pack_inline_array(data_type: MetaDataType, value: Any, count: int) -> bytes
         items.extend(0 for _ in range(count - len(items)))
     items = items[:count]
     if data_type is MetaDataType.FLOAT:
-        return b"".join(struct.pack("<f", float(item)) for item in items)
+        return struct.pack(f"<{count}f", *(float(v) for v in items))
     if data_type is MetaDataType.UNSIGNED_INT:
-        return b"".join(struct.pack("<I", int(item)) for item in items)
+        return struct.pack(f"<{count}I", *(int(v) for v in items))
     if data_type is MetaDataType.HASH:
-        return b"".join(struct.pack("<I", _coerce_hash(item)) for item in items)
+        return struct.pack(f"<{count}I", *(_coerce_hash(v) for v in items))
     if data_type is MetaDataType.SIGNED_INT:
-        return b"".join(struct.pack("<i", int(item)) for item in items)
+        return struct.pack(f"<{count}i", *(int(v) for v in items))
     if data_type is MetaDataType.UNSIGNED_SHORT:
-        return b"".join(struct.pack("<H", int(item)) for item in items)
+        return struct.pack(f"<{count}H", *(int(v) for v in items))
     if data_type is MetaDataType.SIGNED_SHORT:
-        return b"".join(struct.pack("<h", int(item)) for item in items)
+        return struct.pack(f"<{count}h", *(int(v) for v in items))
     if data_type is MetaDataType.UNSIGNED_BYTE:
         return bytes(int(item) & 0xFF for item in items)
     if data_type is MetaDataType.SIGNED_BYTE:
-        return b"".join(struct.pack("<b", int(item)) for item in items)
+        return struct.pack(f"<{count}b", *(int(v) for v in items))
     raw = bytes(value or b"")[:count]
     return raw + (b"\x00" * (count - len(raw)))

@@ -7,7 +7,7 @@ from .hashing import jenk_hash
 
 
 class MetaHash:
-    __slots__ = ("_value",)
+    __slots__ = ("_value", "_cached_uint")
 
     @classmethod
     def from_value(cls, value: "HashLike | None" = 0, *, text: str | None = None) -> "MetaHash":
@@ -23,12 +23,17 @@ class MetaHash:
     def __init__(self, value: "HashLike | None" = 0) -> None:
         if isinstance(value, MetaHash):
             self._value = value.raw
+            self._cached_uint = value._cached_uint
         elif value in (None, ""):
             self._value = 0
+            self._cached_uint = 0
         elif isinstance(value, str):
             self._value = value
+            self._cached_uint = None
         else:
-            self._value = int(value)
+            int_val = int(value)
+            self._value = int_val
+            self._cached_uint = int_val
 
     @property
     def raw(self) -> int | str:
@@ -40,9 +45,12 @@ class MetaHash:
 
     @property
     def uint(self) -> int:
-        if isinstance(self._value, str):
-            return jenk_hash(self._value)
-        return int(self._value)
+        cached = self._cached_uint
+        if cached is not None:
+            return cached
+        result = jenk_hash(self._value)
+        self._cached_uint = result
+        return result
 
     @property
     def meta_hash(self) -> int:

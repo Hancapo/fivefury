@@ -252,16 +252,6 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     return UNKNOWN;
 }
 
-std::uint32_t jenk_hash(std::string_view value, std::string_view lut) {
-    std::uint32_t result = 0;
-    for (const unsigned char byte : value) {
-        const auto temp = static_cast<std::uint32_t>(1025U * (static_cast<std::uint8_t>(lut[byte]) + result));
-        result = ((temp >> 6U) ^ temp) & 0xFFFFFFFFU;
-    }
-    const auto tail = static_cast<std::uint32_t>(9U * result);
-    return static_cast<std::uint32_t>(32769U * (((tail >> 11U) ^ tail) & 0xFFFFFFFFU));
-}
-
 void log_scan(ScanLogFn log_fn, void* log_context, std::string_view message) {
     if (log_fn == nullptr) {
         return;
@@ -434,6 +424,16 @@ private:
 
 }  // namespace
 
+std::uint32_t jenk_hash(std::string_view value, std::string_view lut) {
+    std::uint32_t result = 0;
+    for (const unsigned char byte : value) {
+        const auto temp = static_cast<std::uint32_t>(1025U * (static_cast<std::uint8_t>(lut[byte]) + result));
+        result = ((temp >> 6U) ^ temp) & 0xFFFFFFFFU;
+    }
+    const auto tail = static_cast<std::uint32_t>(9U * result);
+    return static_cast<std::uint32_t>(32769U * (((tail >> 11U) ^ tail) & 0xFFFFFFFFU));
+}
+
 struct NativeCryptoContext::Impl {
     explicit Impl(std::vector<std::uint8_t> aes_key_bytes, std::vector<std::uint8_t> ng_blob_bytes)
 #ifdef _WIN32
@@ -600,6 +600,32 @@ std::vector<std::uint8_t> NativeCryptoContext::decrypt_archive_table(
         throw std::runtime_error("crypto context is not initialized");
     }
     return impl_->decrypt_archive_table(data, encryption, archive_name, archive_size, hash_lut);
+}
+
+std::vector<std::uint8_t> NativeCryptoContext::decrypt_data(
+    const std::vector<std::uint8_t>& data,
+    const std::uint32_t encryption,
+    const std::string& entry_name,
+    const std::uint32_t entry_length,
+    const std::string& hash_lut
+) const {
+    if (impl_ == nullptr) {
+        throw std::runtime_error("crypto context is not initialized");
+    }
+    if (data.empty()) {
+        return {};
+    }
+    if (encryption == AES_ENCRYPTION) {
+#ifdef _WIN32
+        return impl_->aes->decrypt_aligned(data);
+#else
+        throw std::runtime_error("AES decryption is unavailable");
+#endif
+    }
+    if (encryption == NG_ENCRYPTION) {
+        return impl_->decrypt_ng(data, entry_name, entry_length, hash_lut);
+    }
+    return data;
 }
 
 namespace {
