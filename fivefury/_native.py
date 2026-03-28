@@ -134,8 +134,39 @@ def scan_rpf_into_index(
     )
 
 
+def scan_rpf_batch_into_index(
+    index: CompactIndex,
+    sources: list[tuple[str, str]] | tuple[tuple[str, str], ...],
+    hash_lut: bytes | bytearray | memoryview,
+    crypto: NativeCryptoContext | None = None,
+    skip_mask: int = 0,
+    workers: int = 0,
+    verbose: bool = False,
+) -> list[tuple[str, int, str | None]]:
+    crypto_capsule: Any = None if crypto is None else crypto._capsule
+    normalized = [(str(path), str(source_prefix)) for path, source_prefix in sources]
+    raw_results = _ffi.scan_rpf_batch_into_index(
+        index._capsule,
+        normalized,
+        bytes(hash_lut),
+        crypto_capsule,
+        int(skip_mask),
+        int(workers),
+        bool(verbose),
+    )
+    return [
+        (
+            str(source_prefix),
+            int(count),
+            None if error is None else str(error),
+        )
+        for source_prefix, count, error in raw_results
+    ]
+
+
 __all__ = [
     "CompactIndex",
     "NativeCryptoContext",
+    "scan_rpf_batch_into_index",
     "scan_rpf_into_index",
 ]

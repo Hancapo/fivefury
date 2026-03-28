@@ -9,7 +9,6 @@ import re
 import time
 from collections import OrderedDict
 from collections.abc import Iterator as AbcIterator, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional
@@ -22,7 +21,7 @@ from .resolver import HashResolver, get_hash_resolver
 from .rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
 
 try:
-    from ._native import CompactIndex, NativeCryptoContext, scan_rpf_into_index
+    from ._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index, scan_rpf_into_index
 except ImportError as exc:
     raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
 
@@ -217,6 +216,29 @@ def _scan_archive_source(
     verbose: bool = False,
 ) -> int:
     return int(scan_rpf_into_index(index, str(path), source_prefix, hash_lut, crypto, int(skip_mask), bool(verbose)))
+
+
+def _scan_archive_sources_batch(
+    sources: Sequence[tuple[str | Path, str]],
+    index: CompactIndex,
+    crypto: NativeCryptoContext | None,
+    hash_lut: bytes,
+    skip_mask: int = 0,
+    workers: int = 0,
+    verbose: bool = False,
+) -> list[tuple[str, int, str | None]]:
+    normalized = [(str(path), str(source_prefix)) for path, source_prefix in sources]
+    return list(
+        scan_rpf_batch_into_index(
+            index,
+            normalized,
+            hash_lut,
+            crypto,
+            int(skip_mask),
+            int(workers),
+            bool(verbose),
+        )
+    )
 
 
 class AssetRecord:
@@ -874,75 +896,34 @@ class GameFileCache:
 
         archive_workers = self._resolve_scan_workers(rpf_count)
         asset_skip_mask = self._asset_skip_mask()
-        archive_futures: dict[str, Future[int]] = {}
-        executor: ThreadPoolExecutor | None = None
         processed_archives = 0
         total_sources = len(manifest)
         archive_rels = [rel for rel, _, _ in manifest if rel.lower().endswith(".rpf")]
-        archive_iter = iter(archive_rels)
         native_crypto = self.crypto.native_context() if self.crypto is not None else None
         hash_lut = _get_lut()
 
-        def submit_pending_archives() -> None:
-            if executor is None:
-                return
-            while len(archive_futures) < archive_workers:
-                try:
-                    next_rel = next(archive_iter)
-                except StopIteration:
-                    return
-                next_path = root_path / next_rel
-                archive_futures[next_rel] = executor.submit(
-                    _scan_archive_source,
-                    next_path,
-                    next_rel,
+        try:
+            if archive_rels:
+                archive_sources = [(root_path / rel, rel) for rel in archive_rels]
+                for rel, payload_count, error in _scan_archive_sources_batch(
+                    archive_sources,
                     self._index,
                     native_crypto,
                     hash_lut,
                     asset_skip_mask,
+                    archive_workers,
                     self.verbose,
-                )
-
-        try:
-            if archive_workers > 1:
-                executor = ThreadPoolExecutor(max_workers=archive_workers, thread_name_prefix="fivefury-scan")
-                submit_pending_archives()
+                ):
+                    if error:
+                        self.scan_errors[_normalize_key(rel)] = error
+                        continue
+                    processed_archives += 1
+                    if processed_archives % _SCAN_GC_INTERVAL == 0:
+                        gc.collect()
 
             for source_index, (rel, _, _) in enumerate(manifest, start=1):
                 path = root_path / rel
                 if path.suffix.lower() == ".rpf":
-                    self._log(
-                        f"scan archive {rel} "
-                        f"[archive {processed_archives + 1}/{rpf_count}, source {source_index}/{total_sources}]"
-                    )
-                    try:
-                        if executor is None:
-                            payload_count = _scan_archive_source(
-                                path,
-                                rel,
-                                self._index,
-                                native_crypto,
-                                hash_lut,
-                                asset_skip_mask,
-                                self.verbose,
-                            )
-                        else:
-                            future = archive_futures.pop(rel)
-                            try:
-                                payload_count = future.result()
-                            finally:
-                                submit_pending_archives()
-                    except Exception as exc:
-                        self._log(f"scan error {rel}: {exc}")
-                        self.scan_errors[_normalize_key(rel)] = str(exc)
-                        continue
-                    processed_archives += 1
-                    self._log(
-                        f"scan archive done {rel} "
-                        f"entries={payload_count} assets={self.asset_count}"
-                    )
-                    if processed_archives % _SCAN_GC_INTERVAL == 0:
-                        gc.collect()
                     continue
                 self._log(f"scan file {rel} [source {source_index}/{total_sources}]")
                 if not self._should_index_asset(rel):
@@ -956,9 +937,7 @@ class GameFileCache:
                     flags=_FLAG_LOOSE,
                 )
         finally:
-            if executor is not None:
-                executor.shutdown(wait=True)
-            archive_futures.clear()
+            pass
         gc.collect()
         if self.register_resolver_names and self.resolver is not None:
             self.populate_resolver(self.resolver)

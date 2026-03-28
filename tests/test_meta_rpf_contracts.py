@@ -807,18 +807,18 @@ class MetaAndArchiveContractTests(PytestCompat):
             world.add("stream/keep.ydr", b"keep")
             world.save(root / "mods" / "world.rpf")
 
-            original = cache_module._scan_archive_source
+            original = cache_module._scan_archive_sources_batch
 
             baseline_calls: list[str] = []
             filtered_calls: list[str] = []
 
-            def delayed_scan(path, source_prefix, index, crypto, hash_lut, skip_mask=0, verbose=False):
+            def delayed_scan(sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False):
                 target = filtered_calls if skip_mask else baseline_calls
-                target.append(str(source_prefix))
-                time.sleep(0.03)
-                return original(path, source_prefix, index, crypto, hash_lut, skip_mask, verbose)
+                target.extend(str(source_prefix) for _, source_prefix in sources)
+                time.sleep(0.03 * len(sources))
+                return original(sources, index, crypto, hash_lut, skip_mask, workers, verbose)
 
-            with patch.object(cache_module, "_scan_archive_source", side_effect=delayed_scan):
+            with patch.object(cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan):
                 baseline = GameFileCache(root, use_index_cache=False, scan_workers=1)
                 baseline.scan(use_index_cache=False)
 
@@ -909,14 +909,14 @@ class MetaAndArchiveContractTests(PytestCompat):
                     )
                 archive.save(root / f"pack_{archive_index}.rpf")
 
-            original = cache_module._scan_archive_source
+            original = cache_module._scan_archive_sources_batch
 
-            def delayed_scan(*args, **kwargs):
-                time.sleep(0.01)
-                return original(*args, **kwargs)
+            def delayed_scan(sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False):
+                time.sleep(0.01 * len(sources))
+                return original(sources, index, crypto, hash_lut, skip_mask, workers, verbose)
 
             first = GameFileCache(root, index_cache_path=index_path, scan_workers=1)
-            with patch.object(cache_module, "_scan_archive_source", side_effect=delayed_scan):
+            with patch.object(cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan):
                 first.scan(use_index_cache=True)
 
             self.assertTrue(index_path.exists())
@@ -953,13 +953,13 @@ class MetaAndArchiveContractTests(PytestCompat):
                     )
                 archive.save(root / f"pack_{archive_index}.rpf")
 
-            original = cache_module._scan_archive_source
+            original = cache_module._scan_archive_sources_batch
 
-            def delayed_scan(*args, **kwargs):
-                time.sleep(0.03)
-                return original(*args, **kwargs)
+            def delayed_scan(sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False):
+                time.sleep((0.03 * len(sources)) / max(int(workers or 1), 1))
+                return original(sources, index, crypto, hash_lut, skip_mask, workers, verbose)
 
-            with patch.object(cache_module, "_scan_archive_source", side_effect=delayed_scan):
+            with patch.object(cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan):
                 serial = GameFileCache(root, scan_workers=1)
                 serial.scan(use_index_cache=False)
 
