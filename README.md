@@ -1,54 +1,32 @@
 # FiveFury
 
-FiveFury is a Python toolkit with a bundled native backend for working with GTA V resource files.
+FiveFury is a Python library for GTA V asset workflows.
 
-It focuses on practical asset I/O:
+It provides practical support for:
 
 - `YMAP` read/write
 - `YTYP` read/write
-- `RPF7 OPEN` archives
-- nested `.rpf` handling
+- `RPF7 OPEN` archives and nested `.rpf`
 - `ZIP -> RPF` and `RPF -> ZIP`
-- lazy file indexing with `GameFileCache`
-
-The package does not include any XML layer. `GameFileCache` requires the bundled native extension and is not available without it.
-
-## Status
-
-FiveFury is usable today for controlled asset pipelines, add-ons and tooling that need to create, inspect and rewrite `YMAP`, `YTYP` and `RPF` content from Python.
-
-Current strengths:
-
-- declarative APIs for building `YMAP` and `YTYP` files
-- direct support for loose files, not only `.rpf` archives
-- typed support for common `YMAP` surfaces and extensions
-- generated files validated against a native loader during development
-
-Current limits:
-
-- partial format coverage by design
-- some less common structures still roundtrip as passthrough data
-- no XML import/export
+- fast asset indexing with `GameFileCache`
 
 ## Installation
 
-Python `3.11+` is required.
-
-Install from the project root:
-
 ```bash
-pip install .
+pip install fivefury
 ```
 
-For local development:
+For local development from a checkout:
 
 ```bash
 pip install -e .
 ```
 
+Python `3.11+` is required.
+
 ## Quick Start
 
-### Create and save a YMAP
+### Create a YMAP
 
 ```python
 from fivefury import Entity, Ymap
@@ -68,9 +46,9 @@ ymap.recalculate_flags()
 ymap.save("example_map.ymap")
 ```
 
-If you want to set an internal resource path, assign `ymap.resource_name = "stream/example_map.ymap"` before saving.
+If you want an internal resource path, set `ymap.resource_name` before saving.
 
-### Load an existing YMAP
+### Load a YMAP
 
 ```python
 from pathlib import Path
@@ -79,27 +57,9 @@ from fivefury import Ymap
 
 ymap = Ymap.from_bytes(Path("example_map.ymap").read_bytes())
 
-print(ymap.meta_name)
 print(len(ymap.entities))
 print(ymap.flags, ymap.content_flags)
 ```
-
-### Resolve hashes globally
-
-```python
-from fivefury import GameFileCache, jenk_hash, register_name, register_names_file, resolve_hash
-
-register_name("prop_tree_pine_01")
-register_names_file("common_names.txt")
-
-cache = GameFileCache("mods_root")
-cache.scan()
-cache.populate_resolver()
-
-print(resolve_hash(jenk_hash("prop_tree_pine_01")))
-```
-
-The resolver is global and optional. It does not change parsed values in place; it gives you a shared `hash <-> name` registry that tools can query.
 
 ### Create a YTYP
 
@@ -130,7 +90,7 @@ ytyp.add_archetype(archetype)
 ytyp.save("example_types.ytyp")
 ```
 
-### Pack assets into an RPF
+### Pack Assets into an RPF
 
 ```python
 from fivefury import Entity, Ymap, create_rpf
@@ -146,8 +106,6 @@ archive.add("docs/readme.txt", b"hello from fivefury")
 archive.save("mods.rpf")
 ```
 
-The archive layer accepts bytes-like objects and higher-level asset objects that expose `to_bytes()`.
-
 ### Convert between ZIP and RPF
 
 ```python
@@ -157,34 +115,29 @@ zip_to_rpf("unpacked_mod_folder", "packed_mod.rpf")
 rpf_to_zip("packed_mod.rpf", "packed_mod.zip")
 ```
 
-If a directory contains folders ending in `.rpf`, they are packed as nested RPF archives.
+Directories ending in `.rpf` are packed as nested archives.
 
-### Index loose files and archives with GameFileCache
+## GameFileCache
+
+### Scan a Game Installation
 
 ```python
 from fivefury import GameFileCache
 
-cache = GameFileCache("mods_root", scan_workers=8, max_loaded_files=16)
-cache.scan(use_index_cache=True)
+cache = GameFileCache(
+    r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V",
+    scan_workers=8,
+    max_loaded_files=16,
+)
+cache.scan_game(use_index_cache=True)
 
-print(cache.scan_ok)
 print(cache.asset_count)
-print(cache.summary())
-
-asset = cache.get_asset("example_map")
-data = cache.read_bytes("some_archive.rpf/stream/example_map.ymap")
-game_file = cache.get_file("some_archive.rpf/stream/example_map.ymap")
+print(cache.stats_by_kind())
 ```
 
-`GameFileCache` indexes both loose files and `.rpf` contents, then parses supported file types lazily on demand. The easiest way to reason about its state is:
+`GameFileCache` indexes loose files and archive contents, then loads supported formats lazily.
 
-- `cache.scan_complete`: a scan has run
-- `cache.scan_ok`: the last scan finished without recorded archive errors
-- `cache.has_scan_errors`: one or more sources failed during scan
-- `cache.has_assets`: the cache contains indexed assets
-- `cache.summary()`: compact dict with counts, cache flags and scan timings
-
-### Restrict DLC level and ignore folders
+### Control DLC and Scan Scope
 
 ```python
 from fivefury import GameFileCache
@@ -193,58 +146,108 @@ cache = GameFileCache(
     r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V",
     dlc_level="mpbattle",
     exclude_folders="mods;scratch",
+    load_audio=False,
+    load_vehicles=True,
+    load_peds=True,
 )
-
 cache.scan_game(use_index_cache=True)
-
-print(cache.active_dlc_names[-1])
-print(cache.ignored_folders)
 ```
 
-You can also configure it after construction:
+Useful scan options:
+
+- `dlc_level`: limit active DLCs
+- `exclude_folders`: ignore folders by prefix
+- `load_audio`: skip audio-related assets during scan
+- `load_vehicles`: skip vehicle-related assets during scan
+- `load_peds`: skip ped-related assets during scan
+- `use_index_cache`: reuse the persisted scan index for faster startup
+
+### Look Up Assets by Name and Type
 
 ```python
-cache = GameFileCache(r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V")
-cache.use_dlc("mpbattle")
-cache.ignore_folders("mods", "scratch")
-cache.scan_game()
+asset = cache.get_asset("prop_tree_pine_01", kind=".ydr")
+print(asset.path)
+print(asset.short_name_hash)
 ```
 
-## API
+You can iterate the cache directly:
 
-Core types:
-
-- `Ymap`, `Entity`, `MloInstance`, `CarGenerator`
-- `Ytyp`, `Archetype`, `TimeArchetype`, `MloArchetype`
-- `Room`, `Portal`, `EntitySet`
-- `GrassBatch`, `InstancedData`, `LodLights`, `DistantLodLights`
-- `create_rpf`, `load_rpf`
-
-Useful `YMAP` helpers:
-
-- `ymap.entity(...)`
-- `ymap.mlo_instance(...)`
-- `ymap.box_occluder(...)`
-- `ymap.occlude_model(...)`
-- `ymap.grass_batch(...)`
-- `ymap.lod_light(...)`
-- direct classes such as `ParticleEffectExtension`
-
-Common save/load entry points:
-
-- `Ymap.from_bytes(...)`
-- `Ytyp.from_bytes(...)`
-- `Ymap.save(...)`
-- `Ytyp.save(...)`
-- `save_ymap(...)`
-- `save_ytyp(...)`
-
-## Sample Assets
-
-The repository includes a generator for sample assets:
-
-```bash
-python examples/generate_samples.py
+```python
+for asset in cache:
+    print(asset.path, asset.kind)
 ```
 
-Generated examples are written to `examples/generated/`.
+Or iterate a specific kind:
+
+```python
+for ydr in cache.iter_kind(".ydr"):
+    print(ydr.path)
+```
+
+### Read and Extract Assets
+
+```python
+from pathlib import Path
+
+asset = cache.get_asset("prop_tree_pine_01", kind=".ydr")
+data = cache.read_bytes(asset, logical=True)
+out_path = cache.extract_asset(asset, Path("prop_tree_pine_01.ydr"))
+
+print(len(data))
+print(out_path)
+```
+
+Common access patterns:
+
+- `get_asset(...)`: resolve one asset by path, name or hash
+- `read_bytes(...)`: get bytes directly
+- `get_file(...)`: build a lazy `GameFile` wrapper
+- `extract_asset(...)`: write the asset to disk
+
+Extraction defaults to standalone file output.
+For resource assets such as `YDR`, `YDD`, `YFT`, `YTD`, `YMAP` and `YTYP`, this produces a valid standalone `RSC7` file.
+
+If you want the logical payload instead:
+
+```python
+cache.extract_asset("prop_tree_pine_01", "prop_tree_pine_01_payload.ydr", logical=True)
+```
+
+### Type Dictionaries
+
+`GameFileCache` exposes lazy type dictionaries keyed by `shortNameHash`.
+
+```python
+from fivefury import jenk_hash
+
+ydr = cache.YdrDict[jenk_hash("prop_tree_pine_01")]
+ytd = cache.YtdDict[jenk_hash("vehshare")]
+ybn = cache.YbnDict[jenk_hash("v_carshowroom")]
+```
+
+Available dictionaries include `YdrDict`, `YddDict`, `YtdDict`, `YmapDict`, `YtypDict`, `YftDict`, `YbnDict`, `YcdDict`, `YptDict`, `YndDict`, `YnvDict`, `YedDict`, `YwrDict`, `YvrDict`, `RelDict` and `Gxt2Dict`.
+
+### Archetype Lookup
+
+`GameFileCache` also builds a lazy global archetype lookup from indexed `YTYP` files.
+
+```python
+archetype = cache.get_archetype("prop_tree_pine_01")
+print(archetype.name)
+
+for archetype in cache.iter_archetypes():
+    print(archetype.name)
+```
+
+## Global Hash Resolver
+
+```python
+from fivefury import register_name, register_names_file, resolve_hash, jenk_hash
+
+register_name("prop_tree_pine_01")
+register_names_file("common_names.txt")
+
+print(resolve_hash(jenk_hash("prop_tree_pine_01")))
+```
+
+The resolver is shared and optional. It is useful for display, lookups and tooling.
