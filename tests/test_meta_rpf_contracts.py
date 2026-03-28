@@ -714,6 +714,69 @@ class MetaAndArchiveContractTests(PytestCompat):
                     break
             self.assertIsNotNone(found, "Cache did not resolve a known file path")
 
+    def test_gamefilecache_exposes_type_dicts_by_short_name_hash(self) -> None:
+        from fivefury import GameFileCache, create_rpf, jenk_hash
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("assets.rpf")
+            archive.add("stream/alpha.ydr", b"alpha")
+            archive.add("stream/bravo.ytd", b"bravo")
+            archive.add("stream/collision.ybn", b"collision")
+            archive.add("stream/pack.ydd", b"pack")
+            archive.save(root / "assets.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            ydr_dict = cache.YdrDict
+            self.assertEqual(ydr_dict[jenk_hash("alpha")].path, "assets.rpf/stream/alpha.ydr")
+            self.assertEqual(cache.YtdDict[jenk_hash("bravo")].path, "assets.rpf/stream/bravo.ytd")
+            self.assertEqual(cache.YbnDict[jenk_hash("collision")].path, "assets.rpf/stream/collision.ybn")
+            self.assertEqual(cache.get_kind_dict(".ydd")[jenk_hash("pack")].path, "assets.rpf/stream/pack.ydd")
+            self.assertTrue(cache.kind_dict(".ydr") is cache.YdrDict)
+            self.assertEqual(len(cache.YdrDict), 1)
+
+            write_bytes(root / "maps" / "delta.ydr", b"delta")
+            cache.scan(use_index_cache=False)
+
+            self.assertIn(jenk_hash("delta"), ydr_dict)
+            self.assertEqual(ydr_dict[jenk_hash("delta")].path, "maps/delta.ydr")
+            self.assertEqual(ydr_dict[jenk_hash("alpha")].path, "assets.rpf/stream/alpha.ydr")
+
+    def test_gamefilecache_supports_simple_file_by_file_iteration_helpers(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("assets.rpf")
+            archive.add("stream/alpha.ydr", b"alpha")
+            archive.add("stream/bravo.ytd", b"bravo")
+            archive.save(root / "assets.rpf")
+            write_bytes(root / "maps" / "charlie.ymap", b"charlie")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            self.assertEqual(len(cache), 3)
+            self.assertEqual(
+                [asset.path for asset in cache],
+                [
+                    "assets.rpf/stream/alpha.ydr",
+                    "assets.rpf/stream/bravo.ytd",
+                    "maps/charlie.ymap",
+                ],
+            )
+            self.assertEqual(
+                [asset.path for asset in cache.iter_kind(".ydr")],
+                ["assets.rpf/stream/alpha.ydr"],
+            )
+            self.assertEqual(
+                [asset.path for asset in cache.list_kind(".ytd")],
+                ["assets.rpf/stream/bravo.ytd"],
+            )
+            self.assertEqual(cache.list_kind_paths(".ymap"), ["maps/charlie.ymap"])
+
     def test_gamefilecache_supports_name_hash_read_and_extract_workflows(self) -> None:
         from fivefury import GameFileCache, create_rpf, jenk_hash
 

@@ -312,6 +312,10 @@ class AssetRecord:
         return int(self._cache._index.get_short_hash(self.id))
 
     @property
+    def short_name_hash(self) -> int:
+        return self.short_hash
+
+    @property
     def key(self) -> str:
         return self.path
 
@@ -404,6 +408,48 @@ class _AssetRecordMap(Mapping[str, AssetRecord]):
         return self._cache._record_from_id(asset_id)
 
 
+class _KindHashRecordMap(Mapping[int, AssetRecord]):
+    __slots__ = ("_cache", "_kind", "_generation", "_hash_to_id")
+
+    def __init__(self, cache: GameFileCache, kind: GameFileType) -> None:
+        self._cache = cache
+        self._kind = kind
+        self._generation = -1
+        self._hash_to_id: dict[int, int] = {}
+
+    def _ensure_index(self) -> None:
+        if self._generation == self._cache._view_generation:
+            return
+        hash_to_id: dict[int, int] = {}
+        for asset_id in self._cache._index.find_kind_ids(int(self._kind)):
+            hash_to_id[int(self._cache._index.get_short_hash(asset_id))] = int(asset_id)
+        self._hash_to_id = hash_to_id
+        self._generation = self._cache._view_generation
+
+    def __len__(self) -> int:
+        self._ensure_index()
+        return len(self._hash_to_id)
+
+    def __iter__(self) -> AbcIterator[int]:
+        self._ensure_index()
+        yield from self._hash_to_id
+
+    def __getitem__(self, key: int) -> AssetRecord:
+        self._ensure_index()
+        try:
+            asset_id = self._hash_to_id[int(key)]
+        except KeyError as exc:
+            raise KeyError(key) from exc
+        return self._cache._record_from_id(asset_id)
+
+    def get(self, key: int, default: AssetRecord | None = None) -> AssetRecord | None:
+        self._ensure_index()
+        asset_id = self._hash_to_id.get(int(key))
+        if asset_id is None:
+            return default
+        return self._cache._record_from_id(asset_id)
+
+
 @dataclass(slots=True)
 class ScanStats:
     elapsed_seconds: float = 0.0
@@ -449,6 +495,8 @@ class GameFileCache:
     _exclude_prefixes: tuple[str, ...] = field(default_factory=tuple, init=False, repr=False)
     _active_dlc_filter: set[str] | None = field(default=None, init=False, repr=False)
     _archive_lookup: OrderedDict[str, RpfArchive] = field(default_factory=OrderedDict, init=False, repr=False)
+    _kind_dict_views: dict[int, _KindHashRecordMap] = field(default_factory=dict, init=False, repr=False)
+    _view_generation: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.resolver is None:
@@ -460,6 +508,12 @@ class GameFileCache:
     @property
     def asset_count(self) -> int:
         return len(self._index)
+
+    def __len__(self) -> int:
+        return self.asset_count
+
+    def __iter__(self) -> Iterator[AssetRecord]:
+        return self.iter_assets()
 
     @property
     def scan_complete(self) -> bool:
@@ -493,6 +547,10 @@ class GameFileCache:
     def open_file_count(self) -> int:
         return len(self.files)
 
+    def _invalidate_views(self) -> None:
+        self._view_generation += 1
+        self._kind_dict_views.clear()
+
     def clear(self) -> None:
         self.archives.clear()
         self.files.clear()
@@ -506,6 +564,7 @@ class GameFileCache:
         self.active_dlc_names.clear()
         self._active_dlc_filter = None
         self._archive_lookup.clear()
+        self._invalidate_views()
 
     def clear_runtime_cache(self, *, loaded_files: bool = False) -> None:
         self.archives.clear()
@@ -555,6 +614,20 @@ class GameFileCache:
             "loose_count": int(stats.loose_count) if stats is not None else 0,
             "archive_workers": int(stats.archive_workers) if stats is not None else 0,
         }
+
+    def get_kind_dict(self, kind: GameFileType | str | int) -> Mapping[int, AssetRecord]:
+        kind_value = _coerce_kind(kind)
+        if kind_value is None:
+            raise ValueError(f"Unsupported game file kind: {kind!r}")
+        key = int(kind_value)
+        view = self._kind_dict_views.get(key)
+        if view is None:
+            view = _KindHashRecordMap(self, kind_value)
+            self._kind_dict_views[key] = view
+        return view
+
+    def kind_dict(self, kind: GameFileType | str | int) -> Mapping[int, AssetRecord]:
+        return self.get_kind_dict(kind)
 
     def populate_resolver(self, resolver: HashResolver | None = None) -> int:
         target = resolver or self.resolver
@@ -1162,6 +1235,21 @@ class GameFileCache:
         for asset in self.iter_assets(kind=kind):
             yield asset.path
 
+    def iter_kind(self, kind: GameFileType | str | int) -> Iterator[AssetRecord]:
+        return self.iter_assets(kind=kind)
+
+    def list_assets(self, kind: GameFileType | str | int | None = None) -> list[AssetRecord]:
+        return list(self.iter_assets(kind=kind))
+
+    def list_kind(self, kind: GameFileType | str | int) -> list[AssetRecord]:
+        return self.list_assets(kind=kind)
+
+    def list_paths(self, kind: GameFileType | str | int | None = None) -> list[str]:
+        return list(self.iter_paths(kind=kind))
+
+    def list_kind_paths(self, kind: GameFileType | str | int) -> list[str]:
+        return self.list_paths(kind=kind)
+
     def find_path(self, path: str | Path, *, kind: GameFileType | str | int | None = None) -> AssetRecord | None:
         asset_id = self._index.find_path_id(_normalize_key(path))
         if asset_id is None:
@@ -1423,6 +1511,38 @@ class GameFileCache:
     get = get_asset
     read = read_asset
     extract = extract_asset
+
+
+_KIND_DICT_TYPES: dict[str, GameFileType] = {
+    "YddDict": GameFileType.YDD,
+    "YdrDict": GameFileType.YDR,
+    "YftDict": GameFileType.YFT,
+    "YmapDict": GameFileType.YMAP,
+    "YtdDict": GameFileType.YTD,
+    "YtypDict": GameFileType.YTYP,
+    "YbnDict": GameFileType.YBN,
+    "YcdDict": GameFileType.YCD,
+    "YptDict": GameFileType.YPT,
+    "YndDict": GameFileType.YND,
+    "YnvDict": GameFileType.YNV,
+    "RelDict": GameFileType.REL,
+    "YwrDict": GameFileType.YWR,
+    "YvrDict": GameFileType.YVR,
+    "Gxt2Dict": GameFileType.GTXD,
+    "YedDict": GameFileType.YED,
+}
+
+
+def _make_kind_dict_property(kind: GameFileType, name: str) -> property:
+    def getter(self: GameFileCache) -> Mapping[int, AssetRecord]:
+        return self.get_kind_dict(kind)
+
+    getter.__name__ = name
+    return property(getter)
+
+
+for _dict_name, _dict_kind in _KIND_DICT_TYPES.items():
+    setattr(GameFileCache, _dict_name, _make_kind_dict_property(_dict_kind, _dict_name))
 
 
 __all__ = [
