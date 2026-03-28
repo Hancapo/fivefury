@@ -512,6 +512,14 @@ class GameCrypto:
     def decrypt_entry_payload(self, data: bytes, encryption: int, *, entry_name: str, entry_length: int) -> bytes:
         if not data:
             return b""
+        if encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+            return data
+        try:
+            ctx = self.native_context()
+            from .hashing import _get_lut
+            return ctx.decrypt_data(data, encryption, entry_name, entry_length, _get_lut())
+        except Exception:
+            pass
         if encryption == AES_ENCRYPTION:
             return self.decrypt_aes(data)
         if encryption == NG_ENCRYPTION:

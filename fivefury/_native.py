@@ -97,6 +97,19 @@ class NativeCryptoContext:
     def can_decrypt(self) -> bool:
         return bool(_ffi.crypto_can_decrypt(self._capsule))
 
+    def decrypt_data(
+        self,
+        data: bytes | bytearray | memoryview,
+        encryption: int,
+        entry_name: str,
+        entry_length: int,
+        hash_lut: bytes | bytearray | memoryview,
+    ) -> bytes:
+        return bytes(_ffi.crypto_decrypt_data(
+            self._capsule, bytes(data), int(encryption),
+            str(entry_name), int(entry_length), bytes(hash_lut),
+        ))
+
 
 def scan_rpf_into_index(
     index: CompactIndex,
