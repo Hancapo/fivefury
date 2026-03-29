@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import struct
-import zlib
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,208 +15,34 @@ from .crypto import (
     GameCrypto,
     get_game_crypto,
 )
-from .resource import get_resource_flags_from_size, get_resource_size_from_flags, parse_rsc7
-
-RPF_MAGIC = 0x52504637
-RSC7_MAGIC = 0x37435352
-RPF_BLOCK_SIZE = 512
-
-
-def _normalize_path(path: str | Path) -> str:
-    text = str(path).replace("\\", "/").strip()
-    while "//" in text:
-        text = text.replace("//", "/")
-    return text.strip("/")
-
-
-def _normalize_key(path: str | Path) -> str:
-    return _normalize_path(path).lower()
-
-
-def _archive_name(name: str) -> str:
-    return name if name.lower().endswith(".rpf") else f"{name}.rpf"
-
-
-def _coerce_file_bytes(data: bytes | bytearray | memoryview | object) -> bytes:
-    if isinstance(data, (bytes, bytearray, memoryview)):
-        return bytes(data)
-    if hasattr(data, "to_bytes"):
-        payload = data.to_bytes()  # type: ignore[assignment]
-    elif hasattr(data, "build"):
-        payload = data.build()  # type: ignore[assignment]
-    else:
-        raise TypeError("data must be bytes-like or expose to_bytes()/build()")
-    if not isinstance(payload, (bytes, bytearray, memoryview)):
-        raise TypeError("to_bytes()/build() must return bytes-like data")
-    return bytes(payload)
-
-
-def _ceil_div(value: int, divisor: int) -> int:
-    return (value + divisor - 1) // divisor
-
-
-def _pad(data: bytes, block_size: int) -> bytes:
-    rem = len(data) % block_size
-    if rem == 0:
-        return data
-    return data + (b"\x00" * (block_size - rem))
-
-
-def _compress_deflate(data: bytes, level: int = 9) -> bytes:
-    comp = zlib.compressobj(level=level, method=zlib.DEFLATED, wbits=-15)
-    return comp.compress(data) + comp.flush()
-
-
-def _decompress_deflate(data: bytes) -> bytes:
-    if not data:
-        return b""
-    for wbits in (-15, zlib.MAX_WBITS, zlib.MAX_WBITS | 32):
-        try:
-            return zlib.decompress(data, wbits)
-        except zlib.error:
-            pass
-    raise ValueError("Unable to decompress deflate payload")
-
-
-def _is_rsc7(data: bytes) -> bool:
-    return len(data) >= 4 and struct.unpack_from("<I", data, 0)[0] == RSC7_MAGIC
-
-
-def _resource_version_from_flags(system_flags: int, graphics_flags: int) -> int:
-    return (((system_flags >> 28) & 0xF) << 4) | ((graphics_flags >> 28) & 0xF)
-
-
-def _resource_flags_from_size(size: int, version: int = 0) -> int:
-    return get_resource_flags_from_size(size, version)
-
-
-def _size_from_resource_flags(flags: int) -> int:
-    return get_resource_size_from_flags(flags)
-
-
-@dataclass(slots=True)
-class RpfResourcePageFlags:
-    value: int = 0
-
-    @property
-    def size(self) -> int:
-        return _size_from_resource_flags(self.value)
-
-    @property
-    def base_shift(self) -> int:
-        return self.value & 0xF
-
-    @classmethod
-    def from_size(cls, size: int, version: int = 0) -> "RpfResourcePageFlags":
-        return cls(_resource_flags_from_size(size, version))
-
-
-@dataclass(slots=True)
-class RpfEntry:
-    name: str = ""
-    path: str = ""
-    parent: Optional["RpfDirectoryEntry"] = None
-    name_offset: int = 0
-    _archive: Optional["RpfArchive"] = field(default=None, repr=False, compare=False)
-
-    @property
-    def name_lower(self) -> str:
-        return self.name.lower()
-
-    @property
-    def full_path(self) -> str:
-        if self._archive is not None and self._archive.prefix:
-            return f"{self._archive.prefix}/{self.path}" if self.path else self._archive.prefix
-        return self.path
-
-    @property
-    def is_directory(self) -> bool:
-        return False
-
-    @property
-    def is_file(self) -> bool:
-        return False
-
-    def get_short_name(self) -> str:
-        dot = self.name.rfind(".")
-        return self.name[:dot] if dot > 0 else self.name
-
-
-@dataclass(slots=True)
-class RpfDirectoryEntry(RpfEntry):
-    entries_index: int = 0
-    entries_count: int = 0
-    directories: list["RpfDirectoryEntry"] = field(default_factory=list)
-    files: list["RpfFileEntry"] = field(default_factory=list)
-
-    @property
-    def is_directory(self) -> bool:
-        return True
-
-
-@dataclass(slots=True)
-class RpfFileEntry(RpfEntry):
-    file_offset: int = 0
-    file_size: int = 0
-    is_encrypted: bool = False
-
-    @property
-    def is_file(self) -> bool:
-        return True
-
-    def get_file_size(self) -> int:
-        raise NotImplementedError
-
-    def set_file_size(self, size: int) -> None:
-        raise NotImplementedError
-
-    def read_raw(self) -> bytes:
-        if self._archive is None:
-            raise ValueError("Detached RPF entry")
-        return self._archive.read_entry_raw(self)
-
-    def read(self, logical: bool = True) -> bytes:
-        if self._archive is None:
-            raise ValueError("Detached RPF entry")
-        return self._archive.read_entry_bytes(self, logical=logical)
-
-
-@dataclass(slots=True)
-class RpfBinaryFileEntry(RpfFileEntry):
-    file_uncompressed_size: int = 0
-    encryption_type: int = 0
-    child_archive: Optional["RpfArchive"] = field(default=None, repr=False, compare=False)
-    _data: bytes | None = field(default=None, repr=False, compare=False)
-
-    def get_file_size(self) -> int:
-        return self.file_size if self.file_size else self.file_uncompressed_size
-
-    def set_file_size(self, size: int) -> None:
-        self.file_size = int(size)
-
-
-@dataclass(slots=True)
-class RpfResourceFileEntry(RpfFileEntry):
-    system_flags: RpfResourcePageFlags = field(default_factory=RpfResourcePageFlags)
-    graphics_flags: RpfResourcePageFlags = field(default_factory=RpfResourcePageFlags)
-    child_archive: Optional["RpfArchive"] = field(default=None, repr=False, compare=False)
-    _data: bytes | None = field(default=None, repr=False, compare=False)
-
-    def get_file_size(self) -> int:
-        return self.file_size if self.file_size else self.system_flags.size + self.graphics_flags.size
-
-    def set_file_size(self, size: int) -> None:
-        self.file_size = int(size)
-
-    @property
-    def system_size(self) -> int:
-        return self.system_flags.size
-
-    @property
-    def graphics_size(self) -> int:
-        return self.graphics_flags.size
-
-
+from .rpf_convert import _directory_to_rpf, _zip_to_rpf, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
+from .rpf_utils import (
+    RPF_BLOCK_SIZE,
+    RPF_MAGIC,
+    RSC7_MAGIC,
+    _archive_name,
+    _build_rsc7,
+    _ceil_div,
+    _coerce_file_bytes,
+    _compress_deflate,
+    _decompress_deflate,
+    _is_rsc7,
+    _normalize_key,
+    _normalize_path,
+    _pad,
+    _resource_flags_from_size,
+    _resource_version_from_flags,
+    _size_from_resource_flags,
+    _split_rsc7,
+)
+from .rpf_entries import (
+    RpfBinaryFileEntry,
+    RpfDirectoryEntry,
+    RpfEntry,
+    RpfFileEntry,
+    RpfResourceFileEntry,
+    RpfResourcePageFlags,
+)
 @dataclass(slots=True)
 class RpfArchive:
     name: str = "archive.rpf"
@@ -869,111 +694,5 @@ class RpfArchive:
         return written
 
 
-def _split_rsc7(data: bytes) -> tuple[int, int, int, bytes]:
-    header, payload = parse_rsc7(data)
-    return header.version, header.system_flags, header.graphics_flags, payload
 
 
-def _build_rsc7(system_data: bytes, *, version: int = 0, sys_flags: int | None = None, gfx_flags: int = 0) -> bytes:
-    if sys_flags is None:
-        sys_flags = _resource_flags_from_size(len(system_data), version)
-    header = struct.pack("<4I", RSC7_MAGIC, version, sys_flags, gfx_flags)
-    return header + _compress_deflate(system_data)
-
-
-def _ensure_container_path(current: RpfArchive, parts: list[str]) -> tuple[RpfArchive, str]:
-    archive = current
-    relative_path = ""
-    for segment in parts:
-        if segment.lower().endswith(".rpf"):
-            full = f"{relative_path}/{segment}" if relative_path else segment
-            _, archive = archive.add_nested_archive(full)
-            relative_path = ""
-            continue
-        relative_path = f"{relative_path}/{segment}" if relative_path else segment
-        archive.add_directory(relative_path)
-    return archive, relative_path
-
-
-def _insert_file_path(current: RpfArchive, parts: list[str], data: bytes) -> None:
-    if not parts:
-        return
-    archive, relative_path = _ensure_container_path(current, parts[:-1])
-    leaf = parts[-1]
-    full = f"{relative_path}/{leaf}" if relative_path else leaf
-    archive.add_file(full, data)
-
-
-def _ensure_directory_path(current: RpfArchive, parts: list[str]) -> None:
-    _ensure_container_path(current, parts)
-
-
-def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> RpfArchive:
-    archive = RpfArchive.empty(name)
-
-    for info in sorted(zf.infolist(), key=lambda i: i.filename.lower()):
-        path = _normalize_path(info.filename)
-        if not path:
-            continue
-        parts = path.split("/")
-        if info.is_dir():
-            _ensure_directory_path(archive, parts)
-            continue
-        _insert_file_path(archive, parts, zf.read(info.filename))
-    return archive
-
-
-def _directory_to_rpf(source_dir: str | Path, *, name: str) -> RpfArchive:
-    root = Path(source_dir)
-    archive = RpfArchive.empty(name or root.name)
-    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().lower()):
-        rel = path.relative_to(root).as_posix()
-        parts = rel.split("/")
-        if path.is_dir():
-            _ensure_directory_path(archive, parts)
-            continue
-        _insert_file_path(archive, parts, path.read_bytes())
-    return archive
-
-
-def _coerce_archive(source: str | Path | bytes | BinaryIO | RpfArchive) -> RpfArchive:
-    if isinstance(source, RpfArchive):
-        return source
-    if isinstance(source, (str, Path)):
-        return RpfArchive.from_path(source)
-    if isinstance(source, (bytes, bytearray)):
-        return RpfArchive.from_bytes(bytes(source))
-    return RpfArchive.from_bytes(source.read())
-
-
-def load_rpf(source: str | Path | bytes | BinaryIO) -> RpfArchive:
-    return _coerce_archive(source)
-
-
-def create_rpf(name: str = "archive.rpf") -> RpfArchive:
-    return RpfArchive.empty(name)
-
-
-def rpf_to_zip(rpf_source: str | Path | bytes | BinaryIO | RpfArchive, output: str | Path | None = None, *, logical: bool = True) -> bytes:
-    archive = _coerce_archive(rpf_source)
-    return archive.to_zip(output, logical=logical)
-
-
-def zip_to_rpf(zip_source: str | Path | bytes | BinaryIO, output: str | Path | None = None, *, name: str = "archive") -> RpfArchive | bytes:
-    if isinstance(zip_source, (str, Path)):
-        path = Path(zip_source)
-        if path.is_dir():
-            archive = _directory_to_rpf(path, name=name or path.name)
-        else:
-            with zipfile.ZipFile(path, "r") as zf:
-                archive = _zip_to_rpf(zf, name=name)
-    elif isinstance(zip_source, (bytes, bytearray)):
-        with zipfile.ZipFile(io.BytesIO(zip_source), "r") as zf:
-            archive = _zip_to_rpf(zf, name=name)
-    else:
-        with zipfile.ZipFile(io.BytesIO(zip_source.read()), "r") as zf:
-            archive = _zip_to_rpf(zf, name=name)
-    if output is not None:
-        archive.save(output)
-        return Path(output).read_bytes()
-    return archive
