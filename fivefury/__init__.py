@@ -1,4 +1,4 @@
-from .cache import AssetRecord, GameFileCache, ScanStats
+from .cache import AssetRecord, GameFileCache, ScanStats, TextureRef
 from .crypto import (
     AES_ENCRYPTION,
     NG_ENCRYPTION,
@@ -46,6 +46,7 @@ from .resolver import (
 )
 from .resource import RSC7_MAGIC, ResourceHeader, build_rsc7, parse_rsc7
 from .rpf import RpfArchive, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
+from .texture import BCFormat
 from .ymap import (
     Block,
     CarGen,
@@ -74,6 +75,7 @@ from .ymap_surfaces import (
     LodLightsSoa,
     OccludeModel,
 )
+from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
 from .ytyp import (
     Archetype,
     BaseArchetypeDef,
@@ -97,6 +99,7 @@ __all__ = [
     "AudioEmitterExtension",
     "AES_ENCRYPTION",
     "AssetRecord",
+    "BCFormat",
     "BaseArchetypeDef",
     "Block",
     "BoxOccluder",
@@ -150,12 +153,16 @@ __all__ = [
     "RSC7_MAGIC",
     "SpawnPointExtension",
     "SpawnPointOverrideExtension",
+    "Texture",
+    "TextureFormat",
     "TimeArchetype",
     "TimeArchetypeDef",
     "TimeCycleModifier",
+    "TextureRef",
     "VerletClothCustomBoundsExtension",
     "WindDisturbanceExtension",
     "Ymap",
+    "Ytd",
     "Ytyp",
     "build_rsc7",
     "clear_hash_resolver",
@@ -170,6 +177,7 @@ __all__ = [
     "parse_rsc7",
     "read_meta",
     "read_ymap",
+    "read_ytd",
     "read_ytyp",
     "register_name",
     "register_names",
@@ -180,6 +188,7 @@ __all__ = [
     "resolve_name",
     "rpf_to_zip",
     "save_ymap",
+    "save_ytd",
     "save_ytyp",
     "zip_to_rpf",
 ]

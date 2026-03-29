@@ -15,6 +15,11 @@ from fivefury.meta_defs import meta_name
 from tests.compat import PytestCompat
 from tests.helpers import resolve_symbol, touch, write_bytes
 
+_DAT_VIRTUAL_BASE = 0x50000000
+_DAT_PHYSICAL_BASE = 0x60000000
+_GTAV_TEX_SIZE = 0x98
+_ENHANCED_TEX_SIZE = 0xA0
+
 
 def _static_or_function(symbol, method_names, *args, **kwargs):
     value = symbol.value
@@ -110,6 +115,55 @@ def _raw_occlude_model():
         "flags": 0,
         "_meta_name_hash": meta_name("OccludeModel"),
     }
+
+
+def _align(value: int, alignment: int) -> int:
+    return (value + alignment - 1) & ~(alignment - 1)
+
+
+def _build_test_ytd_bytes(*, enhanced: bool = False) -> bytes:
+    from fivefury.resource import build_rsc7
+    from fivefury.texture import BCFormat, BC_TO_DX9, BC_TO_RSC8, row_pitch
+
+    name = b"test_diffuse\x00"
+    pixel_data = b"\x11\x22\x33\x44\x55\x66\x77\x88"
+    count = 1
+    dict_size = 0x40
+    keys_offset = dict_size
+    ptrs_offset = _align(keys_offset + 4 * count, 16)
+    tex_size = _ENHANCED_TEX_SIZE if enhanced else _GTAV_TEX_SIZE
+    textures_offset = _align(ptrs_offset + 8 * count, 16)
+    name_offset = textures_offset + tex_size
+    virtual_size = _align(name_offset + len(name), 16)
+
+    vbuf = bytearray(virtual_size)
+    pbuf = bytearray(pixel_data)
+
+    vbuf[0x28:0x2A] = count.to_bytes(2, "little")
+    vbuf[0x30:0x38] = (_DAT_VIRTUAL_BASE + ptrs_offset).to_bytes(8, "little")
+    vbuf[keys_offset:keys_offset + 4] = (0x12345678).to_bytes(4, "little")
+    vbuf[ptrs_offset:ptrs_offset + 8] = (_DAT_VIRTUAL_BASE + textures_offset).to_bytes(8, "little")
+    vbuf[name_offset:name_offset + len(name)] = name
+
+    tex_off = textures_offset
+    vbuf[tex_off + 0x28:tex_off + 0x30] = (_DAT_VIRTUAL_BASE + name_offset).to_bytes(8, "little")
+    if enhanced:
+        vbuf[tex_off + 0x18:tex_off + 0x1A] = (4).to_bytes(2, "little")
+        vbuf[tex_off + 0x1A:tex_off + 0x1C] = (4).to_bytes(2, "little")
+        vbuf[tex_off + 0x1F] = int(BC_TO_RSC8[BCFormat.BC1])
+        vbuf[tex_off + 0x22] = 1
+        vbuf[tex_off + 0x38:tex_off + 0x40] = (_DAT_PHYSICAL_BASE).to_bytes(8, "little")
+        version = 5
+    else:
+        vbuf[tex_off + 0x50:tex_off + 0x52] = (4).to_bytes(2, "little", signed=True)
+        vbuf[tex_off + 0x52:tex_off + 0x54] = (4).to_bytes(2, "little", signed=True)
+        vbuf[tex_off + 0x56:tex_off + 0x58] = row_pitch(4, BCFormat.BC1).to_bytes(2, "little")
+        vbuf[tex_off + 0x58:tex_off + 0x5C] = int(BC_TO_DX9[BCFormat.BC1]).to_bytes(4, "little")
+        vbuf[tex_off + 0x5D] = 1
+        vbuf[tex_off + 0x70:tex_off + 0x78] = (_DAT_PHYSICAL_BASE).to_bytes(8, "little")
+        version = 13
+
+    return build_rsc7(bytes(vbuf), version=version, graphics_data=bytes(pbuf))
 
 
 class MetaAndArchiveContractTests(PytestCompat):
@@ -849,6 +903,100 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(counts[GameFileType.YMAP], 2)
             self.assertEqual(cache.stats_by_kind()["YMAP"], 2)
 
+    def test_gamefilecache_can_extract_assets_referenced_by_a_ymap(self) -> None:
+        from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "maps").mkdir(parents=True, exist_ok=True)
+            (root / "types").mkdir(parents=True, exist_ok=True)
+            ymap = Ymap(name="example_map")
+            ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", guid=1))
+            ymap.recalculate_extents()
+            ymap.recalculate_flags()
+            ymap.save(root / "maps" / "example_map.ymap")
+
+            ytyp = Ytyp(name="example_types")
+            ytyp.add_archetype(
+                Archetype(
+                    name="prop_tree_pine_01",
+                    asset_name="prop_tree_pine_01",
+                    asset_type=2,
+                    texture_dictionary="prop_tree_pine_01",
+                    physics_dictionary="prop_tree_pine_01",
+                )
+            )
+            ytyp.save(root / "types" / "example_types.ytyp")
+
+            write_bytes(root / "assets" / "prop_tree_pine_01.ydr", b"ydr")
+            write_bytes(root / "assets" / "prop_tree_pine_01.ytd", b"ytd")
+            write_bytes(root / "assets" / "prop_tree_pine_01.ybn", b"ybn")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            assets = cache.list_ymap_entity_assets("example_map", include_supporting=True)
+            self.assertEqual(
+                sorted(asset.path for asset in assets),
+                sorted(
+                    [
+                        "assets/prop_tree_pine_01.ybn",
+                        "assets/prop_tree_pine_01.ydr",
+                        "assets/prop_tree_pine_01.ytd",
+                    ]
+                ),
+            )
+
+            primary_only = cache.list_ymap_entity_assets("example_map", include_supporting=False)
+            self.assertEqual([asset.path for asset in primary_only], ["assets/prop_tree_pine_01.ydr"])
+
+            extracted = cache.extract_ymap_assets("example_map", root / "out")
+            self.assertEqual(
+                sorted(path.name for path in extracted),
+                ["prop_tree_pine_01.ybn", "prop_tree_pine_01.ydr", "prop_tree_pine_01.ytd"],
+            )
+            self.assertEqual((root / "out" / "prop_tree_pine_01.ydr").read_bytes(), b"ydr")
+
+    def test_gamefilecache_can_resolve_assets_from_an_external_loose_ymap(self) -> None:
+        from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            root = tmp / "cache_root"
+            external = tmp / "external"
+            (root / "types").mkdir(parents=True, exist_ok=True)
+            external.mkdir(parents=True, exist_ok=True)
+
+            ymap = Ymap(name="external_map")
+            ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", guid=1))
+            ymap.recalculate_extents()
+            ymap.recalculate_flags()
+            external_ymap = external / "external_map.ymap"
+            ymap.save(external_ymap)
+
+            ytyp = Ytyp(name="example_types")
+            ytyp.add_archetype(
+                Archetype(
+                    name="prop_tree_pine_01",
+                    asset_name="prop_tree_pine_01",
+                    asset_type=2,
+                    texture_dictionary="prop_tree_pine_01",
+                )
+            )
+            ytyp.save(root / "types" / "example_types.ytyp")
+
+            write_bytes(root / "assets" / "prop_tree_pine_01.ydr", b"ydr")
+            write_bytes(root / "assets" / "prop_tree_pine_01.ytd", b"ytd")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            assets = cache.list_ymap_entity_assets(external_ymap)
+            self.assertEqual(
+                sorted(asset.path for asset in assets),
+                ["assets/prop_tree_pine_01.ydr", "assets/prop_tree_pine_01.ytd"],
+            )
+
     def test_gamefilecache_supports_name_hash_read_and_extract_workflows(self) -> None:
         from fivefury import GameFileCache, create_rpf, jenk_hash
 
@@ -1256,6 +1404,127 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertNotIn("pack.rpf/stream/a.ydr", cache.files)
             self.assertIn("pack.rpf/stream/b.ydr", cache.files)
             self.assertIn("pack.rpf/stream/c.ydr", cache.files)
+
+    def test_ytd_reader_parses_legacy_and_enhanced_dictionaries(self) -> None:
+        from fivefury import read_ytd
+
+        legacy = read_ytd(_build_test_ytd_bytes(enhanced=False))
+        enhanced = read_ytd(_build_test_ytd_bytes(enhanced=True))
+
+        self.assertEqual(len(legacy.textures), 1)
+        self.assertEqual(len(enhanced.textures), 1)
+        self.assertEqual(legacy.textures[0].name, "test_diffuse")
+        self.assertEqual(enhanced.textures[0].name, "test_diffuse")
+        self.assertEqual(legacy.textures[0].width, 4)
+        self.assertEqual(enhanced.textures[0].height, 4)
+        self.assertEqual(legacy.textures[0].mip_count, 1)
+        self.assertEqual(enhanced.textures[0].mip_count, 1)
+
+    def test_ytd_reader_can_export_dds(self) -> None:
+        from fivefury import read_ytd
+
+        ytd = read_ytd(_build_test_ytd_bytes(enhanced=False))
+        texture = ytd.textures[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "test_diffuse.dds"
+            texture.save_dds(output)
+            self.assertTrue(output.exists())
+            self.assertEqual(output.read_bytes()[:4], b"DDS ")
+
+    def test_gamefilecache_parses_ytd_and_extracts_ytd_textures(self) -> None:
+        from fivefury import GameFileCache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_bytes(root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            game_file = cache.get_file("stream/test_dict.ytd")
+            self.assertIsNotNone(game_file)
+            self.assertEqual(type(game_file.parsed).__name__, "Ytd")
+            self.assertEqual(len(cache.list_ytd_textures("test_dict")), 1)
+
+            extracted = cache.extract_ytd_textures("test_dict", root / "out")
+            self.assertEqual(len(extracted), 1)
+            self.assertEqual(extracted[0].suffix.lower(), ".dds")
+            self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
+
+    def test_gamefilecache_extracts_asset_textures_via_archetype_texture_dictionary(self) -> None:
+        from fivefury import Archetype, GameFileCache, Ytyp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_bytes(root / "stream" / "prop_tree_pine_01.ydr", b"RSC7fake")
+            write_bytes(root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
+
+            ytyp = Ytyp(name="types.ytyp")
+            ytyp.add_archetype(
+                Archetype(
+                    name="prop_tree_pine_01",
+                    asset_name="prop_tree_pine_01",
+                    texture_dictionary="test_dict",
+                    asset_type=2,
+                )
+            )
+            ytyp.save(root / "stream" / "types.ytyp")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            extracted = cache.extract_asset_textures("prop_tree_pine_01.ydr", root / "textures_out")
+            self.assertEqual(len(extracted), 1)
+            self.assertEqual(extracted[0].name, "test_diffuse.dds")
+            self.assertEqual(extracted[0].parent.name, "test_dict")
+            self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
+
+    def test_gamefilecache_extracts_asset_textures_from_external_ymap_and_parent_txd_chain(self) -> None:
+        from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "game"
+            root.mkdir(parents=True, exist_ok=True)
+            write_bytes(root / "stream" / "prop_tree_pine_01.ydr", b"RSC7fake")
+            write_bytes(root / "stream" / "child_dict.ytd", _build_test_ytd_bytes(enhanced=False))
+            write_bytes(root / "stream" / "parent_dict.ytd", _build_test_ytd_bytes(enhanced=True))
+            write_bytes(
+                root / "common" / "data" / "gtxd.meta",
+                (
+                    "<CMapParentTxds><txdRelationships>"
+                    "<Item><parent>parent_dict</parent><child>child_dict</child></Item>"
+                    "</txdRelationships></CMapParentTxds>"
+                ).encode("utf-8"),
+            )
+
+            ytyp = Ytyp(name="types.ytyp")
+            ytyp.add_archetype(
+                Archetype(
+                    name="prop_tree_pine_01",
+                    asset_name="prop_tree_pine_01",
+                    texture_dictionary="child_dict",
+                    asset_type=2,
+                )
+            )
+            ytyp.save(root / "stream" / "types.ytyp")
+
+            external = Path(tmpdir) / "external"
+            external.mkdir(parents=True, exist_ok=True)
+            ymap = Ymap(name="external_map.ymap")
+            ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", position=(0.0, 0.0, 0.0), lod_dist=50.0))
+            ymap.save(external / "external_map.ymap", auto_extents=True)
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            dictionaries = cache.list_texture_dictionaries(external / "external_map.ymap")
+            self.assertEqual({asset.stem for asset in dictionaries}, {"child_dict", "parent_dict"})
+
+            extracted = cache.extract_asset_textures(external / "external_map.ymap", root / "textures_out")
+            self.assertEqual(len(extracted), 2)
+            self.assertEqual({path.parent.name for path in extracted}, {"child_dict", "parent_dict"})
+            self.assertTrue(all(path.read_bytes()[:4] == b"DDS " for path in extracted))
 
 
 if __name__ == "__main__":
