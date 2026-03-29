@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
-from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index, scan_rpf_into_index
+from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index
 from ..crypto import GameCrypto, load_game_keys
 from ..gamefile import GameFileType, guess_game_file_type
 from ..hashing import _get_lut
@@ -107,18 +107,6 @@ def _default_index_cache_dir() -> Path:
     local_app_data = os.getenv("LOCALAPPDATA")
     base = Path(local_app_data) if local_app_data else (Path.home() / ".cache")
     return base / "fivefury" / "scan-index"
-
-
-def _scan_archive_source(
-    path: str | Path,
-    source_prefix: str,
-    index: CompactIndex,
-    crypto: NativeCryptoContext | None,
-    hash_lut: bytes,
-    skip_mask: int = 0,
-    verbose: bool = False,
-) -> int:
-    return int(scan_rpf_into_index(index, str(path), source_prefix, hash_lut, crypto, int(skip_mask), bool(verbose)))
 
 
 def _scan_archive_sources_batch(

@@ -503,28 +503,16 @@ class GameCrypto:
     def decrypt_archive_table(self, data: bytes, encryption: int, *, archive_name: str, archive_size: int) -> bytes:
         if encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
             return data
-        if encryption == AES_ENCRYPTION:
-            return self.decrypt_aes(data)
-        if encryption == NG_ENCRYPTION:
-            return self.decrypt_ng(data, archive_name, archive_size)
-        raise ValueError(f"Unsupported RPF encryption: 0x{encryption:08X}")
+        from .hashing import _get_lut
+        return self.native_context().decrypt_archive_table(data, encryption, archive_name, archive_size, _get_lut())
 
     def decrypt_entry_payload(self, data: bytes, encryption: int, *, entry_name: str, entry_length: int) -> bytes:
         if not data:
             return b""
         if encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
             return data
-        try:
-            ctx = self.native_context()
-            from .hashing import _get_lut
-            return ctx.decrypt_data(data, encryption, entry_name, entry_length, _get_lut())
-        except Exception:
-            pass
-        if encryption == AES_ENCRYPTION:
-            return self.decrypt_aes(data)
-        if encryption == NG_ENCRYPTION:
-            return self.decrypt_ng(data, entry_name, entry_length)
-        return data
+        from .hashing import _get_lut
+        return self.native_context().decrypt_data(data, encryption, entry_name, entry_length, _get_lut())
 
     def clone_for_worker(self) -> "GameCrypto":
         clone = object.__new__(GameCrypto)

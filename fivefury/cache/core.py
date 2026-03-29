@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from .assets import GameFileCacheAssetMixin, TextureRef
-from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes, _scan_archive_sources_batch
+from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes
 from .views import (
     AssetRecord,
     ScanStats,
@@ -125,23 +125,6 @@ def _split_archive_asset_path(path: str | Path) -> tuple[str, str] | None:
             return archive_rel, entry_path
     return None
 
-
-def _default_index_cache_dir() -> Path:
-    local_app_data = os.getenv("LOCALAPPDATA")
-    base = Path(local_app_data) if local_app_data else (Path.home() / ".cache")
-    return base / "fivefury" / "scan-index"
-
-
-def _scan_archive_source(
-    path: str | Path,
-    source_prefix: str,
-    index: CompactIndex,
-    crypto: NativeCryptoContext | None,
-    hash_lut: bytes,
-    skip_mask: int = 0,
-    verbose: bool = False,
-) -> int:
-    return int(scan_rpf_into_index(index, str(path), source_prefix, hash_lut, crypto, int(skip_mask), bool(verbose)))
 
 
 @dataclass(slots=True)

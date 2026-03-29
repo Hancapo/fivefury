@@ -50,6 +50,7 @@ PyObject* mod_jenk_hash(PyObject*, PyObject* args);
 
 PyObject* mod_crypto_new(PyObject*, PyObject* args);
 PyObject* mod_crypto_can_decrypt(PyObject*, PyObject* args);
+PyObject* mod_crypto_decrypt_archive_table(PyObject*, PyObject* args);
 PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args);
 
 PyObject* mod_read_rpf_entry(PyObject*, PyObject* args);

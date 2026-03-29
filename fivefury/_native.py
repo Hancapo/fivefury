@@ -98,6 +98,19 @@ class NativeCryptoContext:
     def can_decrypt(self) -> bool:
         return bool(_ffi.crypto_can_decrypt(self._capsule))
 
+    def decrypt_archive_table(
+        self,
+        data: bytes | bytearray | memoryview,
+        encryption: int,
+        archive_name: str,
+        archive_length: int,
+        hash_lut: bytes | bytearray | memoryview,
+    ) -> bytes:
+        return bytes(_ffi.crypto_decrypt_archive_table(
+            self._capsule, bytes(data), int(encryption),
+            str(archive_name), int(archive_length), bytes(hash_lut),
+        ))
+
     def decrypt_data(
         self,
         data: bytes | bytearray | memoryview,

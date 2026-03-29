@@ -61,6 +61,54 @@ PyObject* mod_crypto_can_decrypt(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_crypto_decrypt_archive_table(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    PyObject* data_object = nullptr;
+    unsigned int encryption = 0;
+    const char* archive_name = nullptr;
+    Py_ssize_t archive_name_len = 0;
+    unsigned int archive_size = 0;
+    PyObject* lut_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OOIs#IO:crypto_decrypt_archive_table",
+            &capsule, &data_object, &encryption,
+            &archive_name, &archive_name_len, &archive_size, &lut_object)) {
+        return nullptr;
+    }
+    auto* crypto = require_crypto(capsule);
+    if (crypto == nullptr) {
+        return nullptr;
+    }
+    Py_buffer data_buf{};
+    if (PyObject_GetBuffer(data_object, &data_buf, PyBUF_SIMPLE) < 0) {
+        return nullptr;
+    }
+    Py_buffer lut_buf{};
+    if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
+        PyBuffer_Release(&data_buf);
+        return nullptr;
+    }
+    try {
+        std::vector<std::uint8_t> data(
+            static_cast<const std::uint8_t*>(data_buf.buf),
+            static_cast<const std::uint8_t*>(data_buf.buf) + data_buf.len
+        );
+        std::string name(archive_name, static_cast<std::size_t>(archive_name_len));
+        std::string lut(static_cast<const char*>(lut_buf.buf),
+                        std::min(static_cast<std::size_t>(lut_buf.len), std::size_t{256}));
+        PyBuffer_Release(&lut_buf);
+        PyBuffer_Release(&data_buf);
+        auto result = crypto->decrypt_archive_table(data, encryption, name, archive_size, lut);
+        return PyBytes_FromStringAndSize(
+            reinterpret_cast<const char*>(result.data()),
+            static_cast<Py_ssize_t>(result.size())
+        );
+    } catch (...) {
+        PyBuffer_Release(&lut_buf);
+        PyBuffer_Release(&data_buf);
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     PyObject* data_object = nullptr;

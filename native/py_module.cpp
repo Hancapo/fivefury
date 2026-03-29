@@ -22,6 +22,7 @@ PyMethodDef module_methods[] = {
     {"index_import_state", mod_index_import_state, METH_VARARGS, nullptr},
     {"crypto_new", mod_crypto_new, METH_VARARGS, nullptr},
     {"crypto_can_decrypt", mod_crypto_can_decrypt, METH_VARARGS, nullptr},
+    {"crypto_decrypt_archive_table", mod_crypto_decrypt_archive_table, METH_VARARGS, nullptr},
     {"crypto_decrypt_data", mod_crypto_decrypt_data, METH_VARARGS, nullptr},
     {"read_rpf_entry", mod_read_rpf_entry, METH_VARARGS, nullptr},
     {"read_rpf_entry_variants", mod_read_rpf_entry_variants, METH_VARARGS, nullptr},
