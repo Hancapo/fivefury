@@ -9,6 +9,7 @@ It provides practical support for:
 - `RPF7 OPEN` archives and nested `.rpf`
 - `ZIP -> RPF` and `RPF -> ZIP`
 - fast asset indexing with `GameFileCache`
+- texture extraction from `YTD`, `GTXD` parent chains and embedded dictionaries in `YDR`, `YDD`, `YFT` and `YPT`
 
 ## Installation
 
@@ -211,6 +212,34 @@ If you want the logical payload instead:
 
 ```python
 cache.extract_asset("prop_tree_pine_01", "prop_tree_pine_01_payload.ydr", logical=True)
+```
+
+### Extract Textures for an Asset
+
+`GameFileCache` can resolve textures from:
+
+- direct `YTD` files
+- `texture_dictionary` references from `YTYP` archetypes
+- parent relationships from `gtxd.meta`
+- embedded texture dictionaries inside `YDR`, `YDD`, `YFT` and `YPT`
+
+```python
+from pathlib import Path
+
+paths = cache.extract_asset_textures(
+    "stt_prop_stunt_bowling_pin.yft",
+    Path("bowling_pin_textures"),
+)
+
+for path in paths:
+    print(path)
+```
+
+You can inspect the texture refs first:
+
+```python
+for ref in cache.list_asset_textures("uppr_001_u.ydd"):
+    print(ref.origin, ref.container_name, ref.texture.name)
 ```
 
 ### Type Dictionaries
