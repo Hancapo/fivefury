@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.5]
+
+### Added
+- Documented `RPF -> folder` workflows, `RpfExportMode`, and direct loading of encrypted standalone `.rpf` archives in the public README.
+
+### Changed
+- Refreshed the package README so the published PyPI page reflects the current `RPF` export API and standalone archive behavior.
+
 ## [0.1.4]
 
 ### Added

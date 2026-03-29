@@ -7,7 +7,8 @@ It provides practical support for:
 - `YMAP` read/write
 - `YTYP` read/write
 - `RPF7 OPEN` archives and nested `.rpf`
-- `ZIP -> RPF` and `RPF -> ZIP`
+- `ZIP -> RPF`, `RPF -> ZIP`, and `RPF -> folder`
+- opening encrypted standalone `.rpf` files without preloading game keys
 - fast asset indexing with `GameFileCache`
 - texture extraction from `YTD`, `GTXD` parent chains and embedded dictionaries in `YDR`, `YDD`, `YFT` and `YPT`
 
@@ -107,16 +108,48 @@ archive.add("docs/readme.txt", b"hello from fivefury")
 archive.save("mods.rpf")
 ```
 
-### Convert between ZIP and RPF
+### Convert between ZIP, RPF, and folders
 
 ```python
-from fivefury import rpf_to_zip, zip_to_rpf
+from fivefury import RpfExportMode, rpf_to_folder, rpf_to_zip, zip_to_rpf
 
 zip_to_rpf("unpacked_mod_folder", "packed_mod.rpf")
-rpf_to_zip("packed_mod.rpf", "packed_mod.zip")
+rpf_to_zip("packed_mod.rpf", "packed_mod.zip", mode=RpfExportMode.STANDALONE)
+rpf_to_folder("packed_mod.rpf", "packed_mod", mode=RpfExportMode.STANDALONE)
 ```
 
 Directories ending in `.rpf` are packed as nested archives.
+
+### Open an encrypted standalone RPF
+
+```python
+from fivefury import RpfArchive
+
+archive = RpfArchive.from_path(r"C:\mods\dlc.rpf")
+print(len(archive.all_entries))
+```
+
+Encrypted standalone archives can be opened directly. FiveFury initializes the bundled GTA V crypto context automatically.
+
+### Export mode overview
+
+```python
+from fivefury import RpfArchive, RpfExportMode
+
+archive = RpfArchive.from_path("packed_mod.rpf")
+
+archive.to_folder("out_standalone", mode=RpfExportMode.STANDALONE)
+archive.to_folder("out_logical", mode=RpfExportMode.LOGICAL)
+archive.to_zip("out_stored.zip", mode=RpfExportMode.STORED)
+
+print(RpfExportMode.STANDALONE.description)
+```
+
+`RpfExportMode` controls what gets written:
+
+- `STORED`: raw entry bytes as stored in the archive
+- `STANDALONE`: valid standalone files, including `RSC7` containers for resources
+- `LOGICAL`: logical payloads with resource containers removed
 
 ## GameFileCache
 
