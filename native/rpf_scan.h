@@ -12,6 +12,11 @@ namespace fivefury_native {
 
 using ScanLogFn = void(*)(void* context, const char* message, std::size_t length);
 
+enum class RpfReadMode : std::uint8_t {
+    Stored = 0,
+    Standalone = 1,
+};
+
 class NativeCryptoContext {
 public:
     NativeCryptoContext(std::vector<std::uint8_t> aes_key, std::vector<std::uint8_t> ng_blob);
@@ -41,6 +46,14 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+std::vector<std::uint8_t> read_rpf_entry(
+    const std::string& path,
+    const std::string& entry_path,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto,
+    RpfReadMode mode = RpfReadMode::Stored
+);
 
 std::size_t scan_rpf_into_index(
     CompactIndex& index,

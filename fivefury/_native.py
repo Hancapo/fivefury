@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 try:
@@ -111,6 +112,26 @@ class NativeCryptoContext:
         ))
 
 
+def read_rpf_entry(
+    path: str | Path,
+    entry_path: str | Path,
+    hash_lut: bytes | bytearray | memoryview,
+    crypto: NativeCryptoContext | None = None,
+    *,
+    standalone: bool = False,
+) -> bytes:
+    crypto_capsule: Any = None if crypto is None else crypto._capsule
+    return bytes(
+        _ffi.read_rpf_entry(
+            str(path),
+            str(entry_path),
+            bytes(hash_lut),
+            crypto_capsule,
+            1 if standalone else 0,
+        )
+    )
+
+
 def scan_rpf_into_index(
     index: CompactIndex,
     path: str,
@@ -167,6 +188,7 @@ def scan_rpf_batch_into_index(
 __all__ = [
     "CompactIndex",
     "NativeCryptoContext",
+    "read_rpf_entry",
     "scan_rpf_batch_into_index",
     "scan_rpf_into_index",
 ]

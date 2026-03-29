@@ -1489,6 +1489,37 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertIn("pack.rpf/stream/b.ydr", cache.files)
             self.assertIn("pack.rpf/stream/c.ydr", cache.files)
 
+    def test_gamefilecache_reads_archive_assets_without_opening_archives(self) -> None:
+        from fivefury import GameFileCache, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("pack.rpf")
+            archive.add("stream/sample.bin", b"hello native cache", compress_binary=True)
+            archive.add("stream/test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
+            archive.save(root / "pack.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            self.assertEqual(cache.open_archive_count, 0)
+            self.assertEqual(
+                cache.read_bytes("pack.rpf/stream/sample.bin", logical=True),
+                b"hello native cache",
+            )
+            self.assertEqual(cache.open_archive_count, 0)
+
+            game_file = cache.get_file("pack.rpf/stream/test_dict.ytd")
+            self.assertIsNotNone(game_file)
+            self.assertEqual(type(game_file.parsed).__name__, "Ytd")
+            self.assertEqual(cache.open_archive_count, 0)
+
+            extracted = cache.extract_asset("pack.rpf/stream/test_dict.ytd", root / "out")
+            self.assertIsNotNone(extracted)
+            assert extracted is not None
+            self.assertEqual(extracted.read_bytes()[:4], b"RSC7")
+            self.assertEqual(cache.open_archive_count, 0)
+
     def test_ytd_reader_parses_legacy_and_enhanced_dictionaries(self) -> None:
         from fivefury import read_ytd
 
@@ -1722,4 +1753,5 @@ class MetaAndArchiveContractTests(PytestCompat):
 
 if __name__ == "__main__":
     unittest.main()
+
 

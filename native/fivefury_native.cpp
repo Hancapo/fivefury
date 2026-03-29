@@ -747,6 +747,59 @@ PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_read_rpf_entry(PyObject*, PyObject* args) {
+    PyObject* path_object = nullptr;
+    PyObject* entry_path_object = nullptr;
+    PyObject* lut_object = nullptr;
+    PyObject* crypto_capsule = Py_None;
+    int mode = 0;
+    if (!PyArg_ParseTuple(args, "OOO|Oi:read_rpf_entry", &path_object, &entry_path_object, &lut_object, &crypto_capsule, &mode)) {
+        return nullptr;
+    }
+    std::string path;
+    if (!unicode_to_utf8(path_object, path, "path")) {
+        return nullptr;
+    }
+    std::string entry_path;
+    if (!unicode_to_utf8(entry_path_object, entry_path, "entry_path")) {
+        return nullptr;
+    }
+    const NativeCryptoContext* crypto = nullptr;
+    if (crypto_capsule != Py_None) {
+        crypto = require_crypto(crypto_capsule);
+        if (crypto == nullptr) {
+            return nullptr;
+        }
+    }
+    Py_buffer lut_buf{};
+    if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
+        return nullptr;
+    }
+    if (lut_buf.len < 256) {
+        PyBuffer_Release(&lut_buf);
+        PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
+        return nullptr;
+    }
+    try {
+        const auto payload = read_rpf_entry(
+            path,
+            entry_path,
+            std::string(static_cast<const char*>(lut_buf.buf), 256),
+            crypto,
+            mode == 0 ? RpfReadMode::Stored : RpfReadMode::Standalone
+        );
+        PyBuffer_Release(&lut_buf);
+        return PyBytes_FromStringAndSize(
+            reinterpret_cast<const char*>(payload.data()),
+            static_cast<Py_ssize_t>(payload.size())
+        );
+    } catch (const std::exception& exc) {
+        PyBuffer_Release(&lut_buf);
+        PyErr_SetString(PyExc_RuntimeError, exc.what());
+        return nullptr;
+    }
+}
+
 PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args) {
     PyObject* index_capsule = nullptr;
     PyObject* sources_object = nullptr;
@@ -1062,6 +1115,7 @@ PyMethodDef module_methods[] = {
     {"crypto_new", mod_crypto_new, METH_VARARGS, nullptr},
     {"crypto_can_decrypt", mod_crypto_can_decrypt, METH_VARARGS, nullptr},
     {"crypto_decrypt_data", mod_crypto_decrypt_data, METH_VARARGS, nullptr},
+    {"read_rpf_entry", mod_read_rpf_entry, METH_VARARGS, nullptr},
     {"jenk_hash", mod_jenk_hash, METH_VARARGS, nullptr},
     {"scan_rpf_batch_into_index", mod_scan_rpf_batch_into_index, METH_VARARGS, nullptr},
     {"scan_rpf_into_index", mod_scan_rpf_into_index, METH_VARARGS, nullptr},
@@ -1085,3 +1139,4 @@ PyModuleDef module_def = {
 PyMODINIT_FUNC PyInit__native_abi3(void) {
     return PyModule_Create(&module_def);
 }
+

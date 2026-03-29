@@ -34,6 +34,7 @@ constexpr std::uint32_t NG_ENCRYPTION = 0x0FEFFFFF;
 constexpr std::size_t NG_KEYS_SIZE = 27472;
 constexpr std::size_t NG_TABLES_SIZE = 278528;
 constexpr std::size_t NG_BLOB_SIZE = NG_KEYS_SIZE + NG_TABLES_SIZE;
+constexpr std::uint32_t RSC7_MAGIC = 0x37435352U;
 
 constexpr std::uint8_t FLAG_RESOURCE = 2;
 constexpr std::uint8_t FLAG_ENCRYPTED = 4;
@@ -120,6 +121,10 @@ std::string path_stem(std::string_view path) {
     const auto name = path_name(path);
     const auto dot = name.find_last_of('.');
     return dot == std::string::npos ? name : name.substr(0, dot);
+}
+
+std::uint32_t resource_version_from_flags(const std::uint32_t system_flags, const std::uint32_t graphics_flags) noexcept {
+    return (((system_flags >> 28U) & 0xFU) << 4U) | ((graphics_flags >> 28U) & 0xFU);
 }
 
 std::uint32_t asset_category_mask(std::string_view normalized_path) {
@@ -630,7 +635,18 @@ std::vector<std::uint8_t> NativeCryptoContext::decrypt_data(
 
 namespace {
 
-std::vector<EntryDescriptor> parse_entries(
+struct ParsedArchive {
+    std::vector<EntryDescriptor> entries;
+    std::uint32_t encryption = OPEN_ENCRYPTION;
+};
+
+struct ResolvedEntry {
+    ArchiveContext archive;
+    std::uint32_t archive_encryption = OPEN_ENCRYPTION;
+    EntryDescriptor entry;
+};
+
+ParsedArchive parse_entries(
     FileReader& reader,
     const ArchiveContext& archive,
     const NativeCryptoContext* crypto,
@@ -704,7 +720,100 @@ std::vector<EntryDescriptor> parse_entries(
     }
     entries.front().name.clear();
     entries.front().name_lower.clear();
-    return entries;
+    return ParsedArchive{std::move(entries), encryption};
+}
+
+bool is_rsc7(const std::vector<std::uint8_t>& data) noexcept {
+    return data.size() >= 4U && read_u32_le(data.data()) == RSC7_MAGIC;
+}
+
+std::vector<std::string> split_path(std::string_view value) {
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (start < value.size()) {
+        const auto end = value.find('/', start);
+        if (end == std::string_view::npos) {
+            if (start < value.size()) {
+                parts.emplace_back(value.substr(start));
+            }
+            break;
+        }
+        if (end > start) {
+            parts.emplace_back(value.substr(start, end - start));
+        }
+        start = end + 1U;
+    }
+    return parts;
+}
+
+const EntryDescriptor* find_child_entry(
+    const std::vector<EntryDescriptor>& entries,
+    const std::uint32_t dir_index,
+    const std::string& name_lower,
+    std::uint32_t& child_index_out
+) {
+    const auto& dir = entries.at(dir_index);
+    const auto start = dir.entries_index;
+    const auto end = std::min<std::uint32_t>(start + dir.entries_count, static_cast<std::uint32_t>(entries.size()));
+    for (std::uint32_t i = start; i < end; ++i) {
+        if (entries[i].name_lower == name_lower) {
+            child_index_out = i;
+            return &entries[i];
+        }
+    }
+    return nullptr;
+}
+
+ResolvedEntry resolve_entry(
+    FileReader& reader,
+    const ArchiveContext& root_archive,
+    const std::string& entry_path,
+    const NativeCryptoContext* crypto,
+    const std::string& hash_lut
+) {
+    const auto normalized = normalize_path(entry_path);
+    if (normalized.empty()) {
+        throw std::invalid_argument("entry path must not be empty");
+    }
+    const auto segments = split_path(normalized);
+    ArchiveContext current_archive = root_archive;
+    std::size_t segment_index = 0;
+
+    while (true) {
+        const auto parsed = parse_entries(reader, current_archive, crypto, hash_lut);
+        const auto& entries = parsed.entries;
+        std::uint32_t dir_index = 0U;
+
+        while (segment_index < segments.size()) {
+            std::uint32_t child_index = 0U;
+            const auto* child = find_child_entry(entries, dir_index, segments[segment_index], child_index);
+            if (child == nullptr) {
+                throw std::runtime_error("entry not found");
+            }
+            if (child->type == EntryType::Directory) {
+                dir_index = child_index;
+                ++segment_index;
+                continue;
+            }
+            if ((segment_index + 1U) == segments.size()) {
+                return ResolvedEntry{current_archive, parsed.encryption, *child};
+            }
+            if (child->type != EntryType::Binary || !ends_with(child->name_lower, ".rpf")) {
+                throw std::runtime_error("entry path descends into a non-archive file");
+            }
+            current_archive = ArchiveContext{
+                current_archive.base_offset + (static_cast<std::uint64_t>(child->file_offset) * RPF_BLOCK_SIZE),
+                child->binary_size(),
+                child->name,
+                join_path(current_archive.source_prefix, child->name_lower),
+            };
+            ++segment_index;
+            break;
+        }
+        if (segment_index >= segments.size()) {
+            throw std::runtime_error("entry path points to a directory");
+        }
+    }
 }
 
 std::uint32_t resolve_resource_size(
@@ -724,6 +833,64 @@ std::uint32_t resolve_resource_size(
            (static_cast<std::uint32_t>(header[5]) << 16U) |
            (static_cast<std::uint32_t>(header[2]) << 24U);
 }
+std::vector<std::uint8_t> read_resolved_entry_raw(FileReader& reader, const ResolvedEntry& resolved) {
+    const auto& entry = resolved.entry;
+    const auto size = entry.type == EntryType::Resource
+        ? resolve_resource_size(reader, resolved.archive, entry)
+        : entry.binary_size();
+    if (size == 0U) {
+        return {};
+    }
+    return reader.read(
+        resolved.archive.base_offset + (static_cast<std::uint64_t>(entry.file_offset) * RPF_BLOCK_SIZE),
+        static_cast<std::size_t>(size)
+    );
+}
+
+std::vector<std::uint8_t> read_resolved_entry_standalone(
+    FileReader& reader,
+    const ResolvedEntry& resolved,
+    const NativeCryptoContext* crypto,
+    const std::string& hash_lut
+) {
+    auto raw = read_resolved_entry_raw(reader, resolved);
+    const auto& entry = resolved.entry;
+    if (entry.type == EntryType::Resource) {
+        if (is_rsc7(raw)) {
+            return raw;
+        }
+        std::vector<std::uint8_t> payload;
+        if (raw.size() > 16U) {
+            payload.assign(raw.begin() + 16, raw.end());
+        }
+        if (entry.is_encrypted) {
+            if (crypto == nullptr) {
+                throw std::runtime_error("encrypted resource requires crypto");
+            }
+            payload = crypto->decrypt_data(
+                payload,
+                resolved.archive_encryption,
+                entry.name,
+                entry.file_size,
+                hash_lut
+            );
+        }
+        std::vector<std::uint8_t> out(16U + payload.size());
+        write_u32_le(RSC7_MAGIC, out.data());
+        write_u32_le(resource_version_from_flags(entry.system_flags, entry.graphics_flags), out.data() + 4U);
+        write_u32_le(entry.system_flags, out.data() + 8U);
+        write_u32_le(entry.graphics_flags, out.data() + 12U);
+        std::copy(payload.begin(), payload.end(), out.begin() + 16U);
+        return out;
+    }
+    if (entry.is_encrypted) {
+        if (crypto == nullptr) {
+            throw std::runtime_error("encrypted entry requires crypto");
+        }
+        return crypto->decrypt_data(raw, resolved.archive_encryption, entry.name, entry.file_uncompressed_size, hash_lut);
+    }
+    return raw;
+}
 
 void collect_records(
     FileReader& reader,
@@ -735,9 +902,9 @@ void collect_records(
     ScanLogFn log_fn,
     void* log_context
 ) {
-    const auto header = reader.read(archive.base_offset, 16U);
-    const auto encryption = read_u32_le(header.data() + 12U);
-    const auto entries = parse_entries(reader, archive, crypto, std::string(hash_lut));
+    const auto parsed = parse_entries(reader, archive, crypto, std::string(hash_lut));
+    const auto encryption = parsed.encryption;
+    const auto& entries = parsed.entries;
 
     std::function<void(std::uint32_t, std::string_view)> walk_dir;
     walk_dir = [&](std::uint32_t dir_index, std::string_view prefix) {
@@ -842,4 +1009,30 @@ std::size_t scan_rpf_into_index(
     return index.add_many(std::move(records));
 }
 
+std::vector<std::uint8_t> read_rpf_entry(
+    const std::string& path,
+    const std::string& entry_path,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto,
+    const RpfReadMode mode
+) {
+    if (hash_lut.size() != 256U) {
+        throw std::invalid_argument("hash LUT must contain 256 bytes");
+    }
+    const auto fs_path = std::filesystem::path(path);
+    FileReader reader(fs_path);
+    const ArchiveContext archive{
+        0U,
+        reader.size,
+        fs_path.filename().string(),
+        {},
+    };
+    const auto resolved = resolve_entry(reader, archive, entry_path, crypto, hash_lut);
+    if (mode == RpfReadMode::Stored) {
+        return read_resolved_entry_raw(reader, resolved);
+    }
+    return read_resolved_entry_standalone(reader, resolved, crypto, hash_lut);
+}
+
 }  // namespace fivefury_native
+

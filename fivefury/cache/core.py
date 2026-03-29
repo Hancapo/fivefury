@@ -21,14 +21,15 @@ from .views import (
 )
 from ..crypto import GameCrypto
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
-from ..hashing import jenk_hash
+from ..hashing import _get_lut, jenk_hash
 from ..metahash import MetaHash
+from ..resource import parse_rsc7
 from ..resolver import HashResolver, get_hash_resolver
-from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
+from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _normalize_key
 from ..ytd import read_ytd
 
 try:
-    from .._native import CompactIndex
+    from .._native import CompactIndex, read_rpf_entry
 except ImportError as exc:
     raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
 
@@ -596,6 +597,46 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
             evicted_key, _ = self.files.popitem(last=False)
             self._log(f"evict file {evicted_key}")
 
+    def _native_crypto_context(self) -> Any | None:
+        if self.crypto is None:
+            return None
+        try:
+            return self.crypto.native_context()
+        except Exception:
+            return None
+
+    def _read_archive_asset_native(self, asset: AssetRecord, *, standalone: bool) -> bytes | None:
+        archive_rel = asset.archive_rel
+        entry_path = asset.entry_path
+        if archive_rel is None or entry_path is None or self.root is None:
+            return None
+        archive_path = Path(self.root) / archive_rel
+        if not archive_path.is_file():
+            return None
+        try:
+            return read_rpf_entry(
+                archive_path,
+                entry_path,
+                _get_lut(),
+                self._native_crypto_context(),
+                standalone=standalone,
+            )
+        except Exception:
+            return None
+
+    def _logical_archive_bytes_from_standalone(self, asset: AssetRecord, standalone: bytes) -> bytes:
+        if asset.is_resource:
+            try:
+                return parse_rsc7(standalone)[1]
+            except Exception:
+                return standalone
+        if asset.uncompressed_size != asset.stored_size:
+            try:
+                return _decompress_deflate(standalone)
+            except Exception:
+                return standalone
+        return standalone
+
     def _open_archive_for_asset(self, asset: AssetRecord) -> RpfArchive | None:
         archive_rel = asset.archive_rel
         if archive_rel is None or self.root is None:
@@ -649,6 +690,27 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
             self._log(f"file cache hit {asset.path}")
             return cached
 
+        stored_native = self._read_archive_asset_native(asset, standalone=False)
+        standalone_native = self._read_archive_asset_native(asset, standalone=True)
+        if stored_native is not None and standalone_native is not None:
+            self._log(f"read file {asset.path}")
+            logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
+            raw_source = standalone_native if asset.path.lower().endswith(".ytd") else stored_native
+            parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
+            entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
+            archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
+            game_file = GameFile(
+                path=asset.path,
+                kind=kind,
+                entry=entry,
+                archive=archive,
+                raw=stored_native,
+                parsed=parsed,
+                loaded=True,
+            )
+            self._remember_file(asset.key, game_file)
+            return game_file
+
         entry = self._get_entry_for_asset(asset)
         if entry is not None:
             if entry._archive is None:
@@ -689,6 +751,12 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
         asset = self._coerce_asset(query)
         if asset is None:
             return None
+        native = self._read_archive_asset_native(asset, standalone=logical)
+        if native is not None:
+            self._log(f"read bytes {asset.path} logical={logical}")
+            if logical:
+                return self._logical_archive_bytes_from_standalone(asset, native)
+            return native
         entry = self._get_entry_for_asset(asset)
         if isinstance(entry, RpfFileEntry):
             self._log(f"read bytes {asset.path} logical={logical}")
@@ -714,10 +782,15 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
         asset = self._coerce_asset(query) if not isinstance(query, (str, Path)) else self.get_asset(query)
         if asset is None:
             return None
-        data = self.read_bytes(asset, logical=logical)
-        entry = self._get_entry_for_asset(asset)
-        if not logical and isinstance(entry, RpfFileEntry) and entry._archive is not None:
-            data = entry._archive.read_entry_standalone(entry)
+        if logical:
+            data = self.read_bytes(asset, logical=True)
+        else:
+            data = self._read_archive_asset_native(asset, standalone=True)
+            if data is None:
+                data = self.read_bytes(asset, logical=False)
+                entry = self._get_entry_for_asset(asset)
+                if isinstance(entry, RpfFileEntry) and entry._archive is not None:
+                    data = entry._archive.read_entry_standalone(entry)
         if data is None:
             return None
         target = Path(destination)
@@ -733,6 +806,13 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
     def get_archive(self, path: str | Path | AssetRecord | int | MetaHash) -> RpfArchive | None:
         asset = self._coerce_asset(path)
         if asset is not None:
+            if asset.path.lower().endswith(".rpf"):
+                nested_bytes = self._read_archive_asset_native(asset, standalone=True)
+                if nested_bytes is not None:
+                    try:
+                        return RpfArchive.from_bytes(nested_bytes, name=asset.name, crypto=self.crypto)
+                    except Exception:
+                        pass
             archive = self._open_archive_for_asset(asset)
             if archive is not None and asset.path.lower().endswith(".rpf"):
                 split = _split_archive_asset_path(asset.path)
@@ -795,3 +875,4 @@ __all__ = [
     "ScanStats",
     "TextureRef",
 ]
+
