@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
-from .gamefile import GameFileType
-from .hashing import jenk_hash
-from .metahash import MetaHash
-from .resource_assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
-from .rpf import RpfFileEntry
-from .ytd import Texture, Ytd, read_ytd
+from ..gamefile import GameFileType
+from ..hashing import jenk_hash
+from ..metahash import MetaHash
+from ..resource_assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
+from ..rpf import RpfFileEntry
+from ..ytd import Texture, Ytd, read_ytd
 
 _EMBEDDED_TEXTURE_RESOURCE_TYPES = frozenset(RESOURCE_TEXTURE_ASSET_TYPES)
 
@@ -58,7 +58,7 @@ class GameFileCacheAssetMixin:
             return value
         if isinstance(value, (bytes, bytearray, memoryview)):
             try:
-                from .ymap import read_ymap
+                from ..ymap import read_ymap
 
                 parsed = read_ymap(bytes(value))
             except Exception:
@@ -71,7 +71,7 @@ class GameFileCacheAssetMixin:
             candidate = Path(str(value))
             if candidate.is_file():
                 try:
-                    from .ymap import read_ymap
+                    from ..ymap import read_ymap
 
                     parsed = read_ymap(candidate.read_bytes())
                 except Exception:

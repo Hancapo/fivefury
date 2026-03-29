@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from .gamefile import GameFileType
-from .hashing import jenk_hash
-from .metahash import MetaHash
-from .rpf import RpfArchive, RpfFileEntry, _normalize_key
+from ..gamefile import GameFileType
+from ..hashing import jenk_hash
+from ..metahash import MetaHash
+from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
 
 if TYPE_CHECKING:
-    from .cache import GameFileCache
+    from .core import GameFileCache
 
 _FLAG_LOOSE = 1
 _FLAG_RESOURCE = 2

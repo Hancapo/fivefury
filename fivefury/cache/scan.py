@@ -9,11 +9,11 @@ import time
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
-from ._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index, scan_rpf_into_index
-from .crypto import GameCrypto, load_game_keys
-from .gamefile import GameFileType, guess_game_file_type
-from .hashing import _get_lut
-from .rpf import RpfArchive, RpfFileEntry, _normalize_key
+from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index, scan_rpf_into_index
+from ..crypto import GameCrypto, load_game_keys
+from ..gamefile import GameFileType, guess_game_file_type
+from ..hashing import _get_lut
+from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
 
 _SCAN_INDEX_VERSION = 4
 _SCAN_GC_INTERVAL = 8
@@ -235,7 +235,7 @@ class GameFileCacheScanMixin:
         loose_count: int,
         archive_workers: int,
     ):
-        from .cache_views import ScanStats
+        from .views import ScanStats
 
         return ScanStats(
             elapsed_seconds=time.perf_counter() - started_at,
@@ -481,9 +481,7 @@ class GameFileCacheScanMixin:
         archive_rels = [rel for rel, _, _ in manifest if rel.lower().endswith(".rpf")]
         native_crypto = self.crypto.native_context() if self.crypto is not None else None
         hash_lut = _get_lut()
-        from . import cache as cache_module
-
-        scan_archive_sources_batch = getattr(cache_module, "_scan_archive_sources_batch", _scan_archive_sources_batch)
+        from . import _scan_archive_sources_batch as scan_archive_sources_batch
 
         if archive_rels:
             archive_sources = [(root_path / rel, rel) for rel in archive_rels]

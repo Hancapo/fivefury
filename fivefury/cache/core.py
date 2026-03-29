@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from .cache_assets import GameFileCacheAssetMixin, TextureRef
-from .cache_scan import GameFileCacheScanMixin, _coerce_folder_prefixes, _scan_archive_sources_batch
-from .cache_views import (
+from .assets import GameFileCacheAssetMixin, TextureRef
+from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes, _scan_archive_sources_batch
+from .views import (
     AssetRecord,
     ScanStats,
     _ArchetypeMap,
@@ -19,16 +19,16 @@ from .cache_views import (
     _KindHashRecordMap,
     _TextureParentMap,
 )
-from .crypto import GameCrypto
-from .gamefile import GameFile, GameFileType, guess_game_file_type
-from .hashing import jenk_hash
-from .metahash import MetaHash
-from .resolver import HashResolver, get_hash_resolver
-from .rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
-from .ytd import read_ytd
+from ..crypto import GameCrypto
+from ..gamefile import GameFile, GameFileType, guess_game_file_type
+from ..hashing import jenk_hash
+from ..metahash import MetaHash
+from ..resolver import HashResolver, get_hash_resolver
+from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
+from ..ytd import read_ytd
 
 try:
-    from ._native import CompactIndex
+    from .._native import CompactIndex
 except ImportError as exc:
     raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
 
