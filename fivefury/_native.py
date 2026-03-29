@@ -132,6 +132,22 @@ def read_rpf_entry(
     )
 
 
+def read_rpf_entry_variants(
+    path: str | Path,
+    entry_path: str | Path,
+    hash_lut: bytes | bytearray | memoryview,
+    crypto: NativeCryptoContext | None = None,
+) -> tuple[bytes, bytes]:
+    crypto_capsule: Any = None if crypto is None else crypto._capsule
+    stored, standalone = _ffi.read_rpf_entry_variants(
+        str(path),
+        str(entry_path),
+        bytes(hash_lut),
+        crypto_capsule,
+    )
+    return bytes(stored), bytes(standalone)
+
+
 def scan_rpf_into_index(
     index: CompactIndex,
     path: str,
@@ -189,6 +205,7 @@ __all__ = [
     "CompactIndex",
     "NativeCryptoContext",
     "read_rpf_entry",
+    "read_rpf_entry_variants",
     "scan_rpf_batch_into_index",
     "scan_rpf_into_index",
 ]

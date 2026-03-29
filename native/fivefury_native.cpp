@@ -800,6 +800,86 @@ PyObject* mod_read_rpf_entry(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_read_rpf_entry_variants(PyObject*, PyObject* args) {
+    PyObject* path_object = nullptr;
+    PyObject* entry_path_object = nullptr;
+    PyObject* lut_object = nullptr;
+    PyObject* crypto_capsule = Py_None;
+    if (!PyArg_ParseTuple(args, "OOO|O:read_rpf_entry_variants", &path_object, &entry_path_object, &lut_object, &crypto_capsule)) {
+        return nullptr;
+    }
+    std::string path;
+    if (!unicode_to_utf8(path_object, path, "path")) {
+        return nullptr;
+    }
+    std::string entry_path;
+    if (!unicode_to_utf8(entry_path_object, entry_path, "entry_path")) {
+        return nullptr;
+    }
+    const NativeCryptoContext* crypto = nullptr;
+    if (crypto_capsule != Py_None) {
+        crypto = require_crypto(crypto_capsule);
+        if (crypto == nullptr) {
+            return nullptr;
+        }
+    }
+    Py_buffer lut_buf{};
+    if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
+        return nullptr;
+    }
+    if (lut_buf.len < 256) {
+        PyBuffer_Release(&lut_buf);
+        PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
+        return nullptr;
+    }
+    try {
+        const auto payload = read_rpf_entry_variants(
+            path,
+            entry_path,
+            std::string(static_cast<const char*>(lut_buf.buf), 256),
+            crypto
+        );
+        PyBuffer_Release(&lut_buf);
+        PyObject* tuple = PyTuple_New(2);
+        if (tuple == nullptr) {
+            return nullptr;
+        }
+        PyObject* stored = PyBytes_FromStringAndSize(
+            reinterpret_cast<const char*>(payload.stored.data()),
+            static_cast<Py_ssize_t>(payload.stored.size())
+        );
+        if (stored == nullptr) {
+            Py_DECREF(tuple);
+            return nullptr;
+        }
+        PyObject* standalone = PyBytes_FromStringAndSize(
+            reinterpret_cast<const char*>(payload.standalone.data()),
+            static_cast<Py_ssize_t>(payload.standalone.size())
+        );
+        if (standalone == nullptr) {
+            Py_DECREF(stored);
+            Py_DECREF(tuple);
+            return nullptr;
+        }
+        if (PyTuple_SetItem(tuple, 0, stored) < 0) {
+            Py_DECREF(stored);
+            Py_DECREF(standalone);
+            Py_DECREF(tuple);
+            return nullptr;
+        }
+        if (PyTuple_SetItem(tuple, 1, standalone) < 0) {
+            Py_DECREF(standalone);
+            Py_DECREF(tuple);
+            return nullptr;
+        }
+        return tuple;
+    } catch (const std::exception& exc) {
+        PyBuffer_Release(&lut_buf);
+        PyErr_SetString(PyExc_RuntimeError, exc.what());
+        return nullptr;
+    }
+}
+
 PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args) {
     PyObject* index_capsule = nullptr;
     PyObject* sources_object = nullptr;
@@ -1116,6 +1196,7 @@ PyMethodDef module_methods[] = {
     {"crypto_can_decrypt", mod_crypto_can_decrypt, METH_VARARGS, nullptr},
     {"crypto_decrypt_data", mod_crypto_decrypt_data, METH_VARARGS, nullptr},
     {"read_rpf_entry", mod_read_rpf_entry, METH_VARARGS, nullptr},
+    {"read_rpf_entry_variants", mod_read_rpf_entry_variants, METH_VARARGS, nullptr},
     {"jenk_hash", mod_jenk_hash, METH_VARARGS, nullptr},
     {"scan_rpf_batch_into_index", mod_scan_rpf_batch_into_index, METH_VARARGS, nullptr},
     {"scan_rpf_into_index", mod_scan_rpf_into_index, METH_VARARGS, nullptr},

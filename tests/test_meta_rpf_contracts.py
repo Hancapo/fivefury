@@ -1491,6 +1491,8 @@ class MetaAndArchiveContractTests(PytestCompat):
 
     def test_gamefilecache_reads_archive_assets_without_opening_archives(self) -> None:
         from fivefury import GameFileCache, create_rpf
+        from fivefury._native import read_rpf_entry_variants
+        from fivefury.hashing import _get_lut
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1503,6 +1505,13 @@ class MetaAndArchiveContractTests(PytestCompat):
             cache.scan(use_index_cache=False)
 
             self.assertEqual(cache.open_archive_count, 0)
+            stored_native, standalone_native = read_rpf_entry_variants(
+                root / "pack.rpf",
+                "stream/test_dict.ytd",
+                _get_lut(),
+            )
+            self.assertTrue(stored_native)
+            self.assertTrue(standalone_native.startswith(b"RSC7"))
             self.assertEqual(
                 cache.read_bytes("pack.rpf/stream/sample.bin", logical=True),
                 b"hello native cache",

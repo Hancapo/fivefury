@@ -847,13 +847,12 @@ std::vector<std::uint8_t> read_resolved_entry_raw(FileReader& reader, const Reso
     );
 }
 
-std::vector<std::uint8_t> read_resolved_entry_standalone(
-    FileReader& reader,
+std::vector<std::uint8_t> build_resolved_entry_standalone(
+    std::vector<std::uint8_t> raw,
     const ResolvedEntry& resolved,
     const NativeCryptoContext* crypto,
     const std::string& hash_lut
 ) {
-    auto raw = read_resolved_entry_raw(reader, resolved);
     const auto& entry = resolved.entry;
     if (entry.type == EntryType::Resource) {
         if (is_rsc7(raw)) {
@@ -890,6 +889,15 @@ std::vector<std::uint8_t> read_resolved_entry_standalone(
         return crypto->decrypt_data(raw, resolved.archive_encryption, entry.name, entry.file_uncompressed_size, hash_lut);
     }
     return raw;
+}
+
+std::vector<std::uint8_t> read_resolved_entry_standalone(
+    FileReader& reader,
+    const ResolvedEntry& resolved,
+    const NativeCryptoContext* crypto,
+    const std::string& hash_lut
+) {
+    return build_resolved_entry_standalone(read_resolved_entry_raw(reader, resolved), resolved, crypto, hash_lut);
 }
 
 void collect_records(
@@ -1028,10 +1036,34 @@ std::vector<std::uint8_t> read_rpf_entry(
         {},
     };
     const auto resolved = resolve_entry(reader, archive, entry_path, crypto, hash_lut);
+    const auto raw = read_resolved_entry_raw(reader, resolved);
     if (mode == RpfReadMode::Stored) {
-        return read_resolved_entry_raw(reader, resolved);
+        return raw;
     }
-    return read_resolved_entry_standalone(reader, resolved, crypto, hash_lut);
+    return build_resolved_entry_standalone(raw, resolved, crypto, hash_lut);
+}
+
+RpfReadVariants read_rpf_entry_variants(
+    const std::string& path,
+    const std::string& entry_path,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto
+) {
+    if (hash_lut.size() != 256U) {
+        throw std::invalid_argument("hash LUT must contain 256 bytes");
+    }
+    const auto fs_path = std::filesystem::path(path);
+    FileReader reader(fs_path);
+    const ArchiveContext archive{
+        0U,
+        reader.size,
+        fs_path.filename().string(),
+        {},
+    };
+    const auto resolved = resolve_entry(reader, archive, entry_path, crypto, hash_lut);
+    auto raw = read_resolved_entry_raw(reader, resolved);
+    auto standalone = build_resolved_entry_standalone(raw, resolved, crypto, hash_lut);
+    return RpfReadVariants{std::move(raw), std::move(standalone)};
 }
 
 }  // namespace fivefury_native

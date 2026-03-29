@@ -17,6 +17,11 @@ enum class RpfReadMode : std::uint8_t {
     Standalone = 1,
 };
 
+struct RpfReadVariants {
+    std::vector<std::uint8_t> stored;
+    std::vector<std::uint8_t> standalone;
+};
+
 class NativeCryptoContext {
 public:
     NativeCryptoContext(std::vector<std::uint8_t> aes_key, std::vector<std::uint8_t> ng_blob);
@@ -53,6 +58,13 @@ std::vector<std::uint8_t> read_rpf_entry(
     const std::string& hash_lut,
     const NativeCryptoContext* crypto,
     RpfReadMode mode = RpfReadMode::Stored
+);
+
+RpfReadVariants read_rpf_entry_variants(
+    const std::string& path,
+    const std::string& entry_path,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto
 );
 
 std::size_t scan_rpf_into_index(

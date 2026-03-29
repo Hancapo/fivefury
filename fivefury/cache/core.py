@@ -29,7 +29,7 @@ from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _norm
 from ..ytd import read_ytd
 
 try:
-    from .._native import CompactIndex, read_rpf_entry
+    from .._native import CompactIndex, read_rpf_entry, read_rpf_entry_variants
 except ImportError as exc:
     raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
 
@@ -624,6 +624,24 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
         except Exception:
             return None
 
+    def _read_archive_asset_native_variants(self, asset: AssetRecord) -> tuple[bytes, bytes] | None:
+        archive_rel = asset.archive_rel
+        entry_path = asset.entry_path
+        if archive_rel is None or entry_path is None or self.root is None:
+            return None
+        archive_path = Path(self.root) / archive_rel
+        if not archive_path.is_file():
+            return None
+        try:
+            return read_rpf_entry_variants(
+                archive_path,
+                entry_path,
+                _get_lut(),
+                self._native_crypto_context(),
+            )
+        except Exception:
+            return None
+
     def _logical_archive_bytes_from_standalone(self, asset: AssetRecord, standalone: bytes) -> bytes:
         if asset.is_resource:
             try:
@@ -690,9 +708,9 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin):
             self._log(f"file cache hit {asset.path}")
             return cached
 
-        stored_native = self._read_archive_asset_native(asset, standalone=False)
-        standalone_native = self._read_archive_asset_native(asset, standalone=True)
-        if stored_native is not None and standalone_native is not None:
+        native_variants = self._read_archive_asset_native_variants(asset)
+        if native_variants is not None:
+            stored_native, standalone_native = native_variants
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             raw_source = standalone_native if asset.path.lower().endswith(".ytd") else stored_native
