@@ -6,6 +6,22 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.4]
+
+### Added
+- `RpfArchive.to_folder(...)`, `RpfArchive.from_folder(...)`, and the functional helper `rpf_to_folder(...)` for exporting archives directly to folders.
+- `RpfExportMode` as an explicit enum for `RPF` export workflows, including descriptions for `STORED`, `STANDALONE`, and `LOGICAL`.
+- Automatic default crypto initialization for encrypted standalone `RPF` loading, so `RpfArchive.from_path(...)` can open encrypted archives without preloading game keys.
+
+### Changed
+- Unified `RPF` ZIP and folder export around the same traversal logic so nested `.rpf` archives are exported consistently.
+- Made standalone export the default for folder and ZIP export, which means GTA resources are now written with valid `RSC7` headers unless `LOGICAL` is requested explicitly.
+- Cleaned the `RPF` export API so it uses `RpfExportMode` directly instead of the older boolean-style export flag.
+
+### Fixed
+- Fixed folder extraction so resource assets no longer lose their `RSC7` container by default.
+- Fixed `RPF` export behavior for nested archives by preserving them as directories during recursive export.
+
 ## [0.1.3]
 
 ### Changed

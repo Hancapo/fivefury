@@ -4,6 +4,7 @@ import io
 import struct
 import zipfile
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Optional
 
@@ -13,9 +14,19 @@ from ..crypto import (
     NONE_ENCRYPTION,
     OPEN_ENCRYPTION,
     GameCrypto,
+    ensure_game_crypto,
     get_game_crypto,
 )
-from .convert import _directory_to_rpf, _zip_to_rpf, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
+from ..resource import parse_rsc7
+from .convert import (
+    _directory_to_rpf,
+    _zip_to_rpf,
+    create_rpf,
+    load_rpf,
+    rpf_to_folder,
+    rpf_to_zip,
+    zip_to_rpf,
+)
 from .utils import (
     RPF_BLOCK_SIZE,
     RPF_MAGIC,
@@ -43,6 +54,30 @@ from .entries import (
     RpfResourceFileEntry,
     RpfResourcePageFlags,
 )
+
+class RpfExportMode(str, Enum):
+    """Export mode for files read from an RPF archive."""
+
+    STORED = "stored"
+    STANDALONE = "standalone"
+    LOGICAL = "logical"
+
+    @property
+    def description(self) -> str:
+        if self is RpfExportMode.STORED:
+            return "Returns bytes as stored in the RPF entry, without rebuilding a standalone resource container."
+        if self is RpfExportMode.STANDALONE:
+            return "Returns standalone files. GTA resources are rebuilt with a valid RSC7 header and payload."
+        return "Returns the logical payload. GTA resources are unpacked to their inner data without the RSC7 container."
+
+    def __str__(self) -> str:
+        return self.value
+
+
+def _coerce_export_mode(mode: RpfExportMode) -> RpfExportMode:
+    if not isinstance(mode, RpfExportMode):
+        raise TypeError("mode must be an instance of RpfExportMode")
+    return mode
 @dataclass(slots=True)
 class RpfArchive:
     name: str = "archive.rpf"
@@ -109,6 +144,11 @@ class RpfArchive:
         with zipfile.ZipFile(io.BytesIO(source.read()), "r") as zf:
             return _zip_to_rpf(zf, name=name)
 
+    @classmethod
+    def from_folder(cls, source_dir: str | Path, *, name: str = "archive") -> "RpfArchive":
+        path = Path(source_dir)
+        return _directory_to_rpf(path, name=name or path.name)
+
     def _source_read(self, offset: int, size: int) -> bytes:
         if self._source_bytes is not None:
             return self._source_bytes[offset : offset + size]
@@ -145,9 +185,7 @@ class RpfArchive:
         names_data = self._source_read(names_offset, names_length)
         if encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
             if self.crypto is None:
-                raise ValueError(
-                    f"RPF archive '{self.name}' uses encryption 0x{encryption:08X} and no game crypto is configured"
-                )
+                self.crypto = ensure_game_crypto()
             entries_data = self.crypto.decrypt_archive_table(
                 entries_data,
                 encryption,
@@ -661,37 +699,100 @@ class RpfArchive:
         base = entry.full_path.replace("\\", "/")
         return f"{prefix}/{base}".strip("/") if prefix else base
 
-    def _write_zip(self, zf: zipfile.ZipFile, *, prefix: str = "", logical: bool = True) -> None:
+    def _read_export_bytes(self, entry: RpfFileEntry, *, mode: RpfExportMode) -> bytes:
+        if mode is RpfExportMode.STORED:
+            return self.read_entry_raw(entry)
+        if mode is RpfExportMode.STANDALONE:
+            return self.read_entry_standalone(entry)
+        return self.read_entry_bytes(entry, logical=True)
+
+    def _iter_export_items(
+        self,
+        *,
+        recurse_nested: bool = True,
+    ) -> Iterator[tuple[str, bool, RpfFileEntry | None]]:
         for entry in self.iter_entries(include_directories=True, include_root=False):
+            rel_path = entry.full_path.replace("\\", "/")
             if isinstance(entry, RpfDirectoryEntry):
-                if not entry.files and not entry.directories:
-                    zf.writestr(self._zip_name(entry, prefix).rstrip("/") + "/", b"")
+                yield rel_path, True, None
                 continue
             assert isinstance(entry, RpfFileEntry)
-            if logical and isinstance(entry, (RpfBinaryFileEntry, RpfResourceFileEntry)) and entry.child_archive is not None:
-                entry.child_archive._write_zip(zf, prefix=prefix, logical=logical)
+            if recurse_nested and isinstance(entry, (RpfBinaryFileEntry, RpfResourceFileEntry)) and entry.child_archive is not None:
+                yield rel_path, True, None
+                yield from entry.child_archive._iter_export_items(recurse_nested=recurse_nested)
                 continue
-            zf.writestr(self._zip_name(entry, prefix), entry.read(logical=logical))
+            yield rel_path, False, entry
 
-    def to_zip(self, output: str | Path | None = None, *, logical: bool = True) -> bytes:
+    def _write_zip(
+        self,
+        zf: zipfile.ZipFile,
+        *,
+        prefix: str = "",
+        recurse_nested: bool = True,
+        mode: RpfExportMode = RpfExportMode.STANDALONE,
+    ) -> None:
+        for rel_path, is_directory, entry in self._iter_export_items(recurse_nested=recurse_nested):
+            zip_name = f"{prefix}/{rel_path}".strip("/") if prefix else rel_path
+            if is_directory:
+                zf.writestr(zip_name.rstrip("/") + "/", b"")
+                continue
+            assert entry is not None
+            zf.writestr(zip_name, entry._archive._read_export_bytes(entry, mode=mode))
+
+    def to_zip(
+        self,
+        output: str | Path | None = None,
+        *,
+        mode: RpfExportMode = RpfExportMode.STANDALONE,
+        recurse_nested: bool = True,
+    ) -> bytes:
+        """Export the archive contents to a ZIP file.
+
+        `mode` controls what gets written for each file:
+        - `RpfExportMode.STORED`: raw bytes as stored in the RPF
+        - `RpfExportMode.STANDALONE`: standalone GTA files, including RSC7 headers for resources
+        - `RpfExportMode.LOGICAL`: inner logical payload, without standalone resource containers
+        """
+        export_mode = _coerce_export_mode(mode)
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            self._write_zip(zf, logical=logical)
+            self._write_zip(zf, recurse_nested=recurse_nested, mode=export_mode)
         data = buffer.getvalue()
         if output is not None:
             Path(output).write_bytes(data)
         return data
 
-    def extract(self, output_dir: str | Path, *, logical: bool = True) -> list[Path]:
+    def to_folder(
+        self,
+        output_dir: str | Path,
+        *,
+        mode: RpfExportMode = RpfExportMode.STANDALONE,
+        recurse_nested: bool = True,
+    ) -> list[Path]:
+        """Export the archive contents to a folder using the selected `RpfExportMode`."""
+        export_mode = _coerce_export_mode(mode)
         root = Path(output_dir)
         root.mkdir(parents=True, exist_ok=True)
         written: list[Path] = []
-        for entry in self.iter_entries(include_directories=False):
-            dest = root / entry.full_path
+        for rel_path, is_directory, entry in self._iter_export_items(recurse_nested=recurse_nested):
+            dest = root / rel_path
+            if is_directory:
+                dest.mkdir(parents=True, exist_ok=True)
+                continue
+            assert entry is not None
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(entry.read(logical=logical))
+            dest.write_bytes(entry._archive._read_export_bytes(entry, mode=export_mode))
             written.append(dest)
         return written
+
+    def extract(
+        self,
+        output_dir: str | Path,
+        *,
+        mode: RpfExportMode = RpfExportMode.STANDALONE,
+        recurse_nested: bool = True,
+    ) -> list[Path]:
+        return self.to_folder(output_dir, mode=mode, recurse_nested=recurse_nested)
 
 
 

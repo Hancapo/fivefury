@@ -5,6 +5,7 @@ from .crypto import (
     OPEN_ENCRYPTION,
     GameCrypto,
     clear_game_crypto,
+    ensure_game_crypto,
     get_game_crypto,
     load_game_keys,
 )
@@ -56,7 +57,7 @@ from .assets import (
     list_embedded_texture_dictionaries,
     open_resource_texture_asset,
 )
-from .rpf import RpfArchive, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
+from .rpf import RpfArchive, RpfExportMode, create_rpf, load_rpf, rpf_to_folder, rpf_to_zip, zip_to_rpf
 from .texture import BCFormat
 from .ymap import (
     Block,
@@ -163,6 +164,7 @@ __all__ = [
     "ResourceHeader",
     "Room",
     "RpfArchive",
+    "RpfExportMode",
     "RSC7_MAGIC",
     "SpawnPointExtension",
     "SpawnPointOverrideExtension",
@@ -185,6 +187,7 @@ __all__ = [
     "clear_hash_resolver",
     "clear_game_crypto",
     "create_rpf",
+    "ensure_game_crypto",
     "get_game_crypto",
     "get_hash_resolver",
     "hash_matches",
@@ -206,6 +209,7 @@ __all__ = [
     "register_path_names",
     "resolve_hash",
     "resolve_name",
+    "rpf_to_folder",
     "rpf_to_zip",
     "save_ymap",
     "save_ytd",

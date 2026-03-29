@@ -9,6 +9,7 @@ from typing import Final
 from .backends import DotNetRandom, _AesEcbCipher, _build_windows_aes_decryptor, _decompress_any, _to_signed_i32
 from .keys import (
     _AES_KEY_SHA1,
+    _DEFAULT_AES_KEY_B64,
     _NG_BLOB_SIZE,
     _decode_magic_payload,
     _decode_ng_blob,
@@ -242,6 +243,15 @@ def clear_game_crypto() -> None:
     set_game_crypto(None)
 
 
+def ensure_game_crypto(*, aes_key: bytes | str | None = None, magic_path: str | Path | None = None) -> GameCrypto:
+    crypto = get_game_crypto()
+    if crypto is not None:
+        return crypto
+    crypto = GameCrypto.from_aes_key(aes_key or _DEFAULT_AES_KEY_B64, magic_path=magic_path)
+    set_game_crypto(crypto)
+    return crypto
+
+
 def load_game_keys(
     root_or_exe: str | Path,
     *,
@@ -273,6 +283,7 @@ __all__ = [
     "NONE_ENCRYPTION",
     "OPEN_ENCRYPTION",
     "clear_game_crypto",
+    "ensure_game_crypto",
     "get_game_crypto",
     "load_game_keys",
     "set_game_crypto",

@@ -749,6 +749,38 @@ class MetaAndArchiveContractTests(PytestCompat):
 
             self.assertTrue(roundtrip.exists(), "ZIP output was not created")
 
+    def test_ensure_game_crypto_provides_default_instance(self) -> None:
+        from fivefury import clear_game_crypto, ensure_game_crypto, get_game_crypto
+
+        clear_game_crypto()
+        crypto = ensure_game_crypto()
+        self.assertIsNotNone(crypto)
+        self.assertTrue(crypto is get_game_crypto())
+
+    def test_encrypted_rpf_can_auto_resolve_default_crypto(self) -> None:
+        from fivefury import NG_ENCRYPTION, RpfArchive, clear_game_crypto, create_rpf
+
+        class _FakeCrypto:
+            def decrypt_archive_table(self, data, encryption, *, archive_name, archive_size):
+                return data
+
+            def decrypt_entry_payload(self, data, encryption, *, entry_name, entry_length):
+                return data
+
+        archive = create_rpf("auto_crypto.rpf")
+        archive.add_file("hello.txt", b"hello")
+        encrypted = bytearray(archive.to_bytes())
+        struct.pack_into("<I", encrypted, 12, NG_ENCRYPTION)
+
+        clear_game_crypto()
+        with patch("fivefury.rpf.ensure_game_crypto", return_value=_FakeCrypto()) as mocked:
+            parsed = RpfArchive.from_bytes(bytes(encrypted), name="auto_crypto.rpf")
+
+        mocked.assert_called_once()
+        entry = parsed.find_entry("hello.txt")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.read(), b"hello")
+
     def test_zip_to_rpf_accepts_directory_source(self) -> None:
         zip_to_rpf = resolve_symbol(
             ["fivefury.rpf", "fivefury.gta5.rpf", "fivefury"],
@@ -803,6 +835,74 @@ class MetaAndArchiveContractTests(PytestCompat):
                 self.assertIn("levels/readme.txt", names)
                 self.assertIn("levels/pkg.rpf/nested.txt", names)
                 self.assertIn("levels/pkg.rpf/data.bin", names)
+
+    def test_rpf_to_folder_expands_nested_archives(self) -> None:
+        from fivefury import RpfExportMode, create_rpf, rpf_to_folder
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("root.rpf")
+            archive.add_file("content.txt", b"hello world")
+            _, nested = archive.add_nested_archive("nested.rpf")
+            nested.add_file("inner.bin", b"\x01\x02\x03")
+            _, deeper = nested.add_nested_archive("deeper.rpf")
+            deeper.add_file("note.txt", b"nested")
+
+            out_dir = root / "out"
+            written = rpf_to_folder(archive, out_dir, mode=RpfExportMode.STANDALONE)
+
+            self.assertIn(out_dir / "content.txt", written)
+            self.assertIn(out_dir / "nested.rpf" / "inner.bin", written)
+            self.assertIn(out_dir / "nested.rpf" / "deeper.rpf" / "note.txt", written)
+            self.assertTrue((out_dir / "nested.rpf").is_dir())
+            self.assertFalse((out_dir / "nested.rpf").is_file())
+            self.assertEqual((out_dir / "nested.rpf" / "deeper.rpf" / "note.txt").read_bytes(), b"nested")
+
+    def test_rpf_to_folder_supports_stored_standalone_and_logical_modes(self) -> None:
+        from fivefury import RpfExportMode, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("modes.rpf")
+            archive.add_file("bin/data.bin", b"plain binary", compress_binary=True)
+            archive.add_file("maps/example.ymap", b"logical payload")
+
+            stored_dir = root / "stored"
+            standalone_dir = root / "standalone"
+            logical_dir = root / "logical"
+
+            archive.to_folder(stored_dir, mode=RpfExportMode.STORED)
+            archive.to_folder(standalone_dir, mode=RpfExportMode.STANDALONE)
+            archive.to_folder(logical_dir, mode=RpfExportMode.LOGICAL)
+
+            self.assertEqual((logical_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
+            self.assertNotEqual((stored_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
+            self.assertEqual((standalone_dir / "bin" / "data.bin").read_bytes(), (stored_dir / "bin" / "data.bin").read_bytes())
+
+            self.assertEqual((logical_dir / "maps" / "example.ymap").read_bytes(), b"logical payload")
+            self.assertEqual((standalone_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
+            self.assertEqual((stored_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
+
+    def test_rpf_to_folder_defaults_to_standalone_export(self) -> None:
+        from fivefury import create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("default_export.rpf")
+            archive.add_file("maps/example.ymap", b"logical payload")
+
+            out_dir = root / "out"
+            archive.to_folder(out_dir)
+
+            self.assertEqual((out_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
+
+    def test_rpf_export_mode_enum_exposes_descriptions(self) -> None:
+        from fivefury import RpfExportMode
+
+        self.assertEqual(RpfExportMode.STORED.value, "stored")
+        self.assertIn("stored in the RPF", RpfExportMode.STORED.description)
+        self.assertIn("RSC7", RpfExportMode.STANDALONE.description)
+        self.assertIn("logical payload", RpfExportMode.LOGICAL.description)
 
     def test_gamefilecache_basic_indexing(self) -> None:
         cache_symbol = resolve_symbol(

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from .utils import _normalize_path
 
 if TYPE_CHECKING:  # pragma: no cover
-    from . import RpfArchive
+    from . import RpfArchive, RpfExportMode
 
 
 def _ensure_container_path(current: "RpfArchive", parts: list[str]) -> tuple["RpfArchive", str]:
@@ -95,10 +95,26 @@ def rpf_to_zip(
     rpf_source: str | Path | bytes | BinaryIO | "RpfArchive",
     output: str | Path | None = None,
     *,
-    logical: bool = True,
+    mode: "RpfExportMode | None" = None,
+    recurse_nested: bool = True,
 ) -> bytes:
+    from . import RpfExportMode
+
     archive = _coerce_archive(rpf_source)
-    return archive.to_zip(output, logical=logical)
+    return archive.to_zip(output, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
+
+
+def rpf_to_folder(
+    rpf_source: str | Path | bytes | BinaryIO | "RpfArchive",
+    output_dir: str | Path,
+    *,
+    mode: "RpfExportMode | None" = None,
+    recurse_nested: bool = True,
+) -> list[Path]:
+    from . import RpfExportMode
+
+    archive = _coerce_archive(rpf_source)
+    return archive.to_folder(output_dir, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
 
 
 def zip_to_rpf(
@@ -129,6 +145,7 @@ def zip_to_rpf(
 __all__ = [
     "create_rpf",
     "load_rpf",
+    "rpf_to_folder",
     "rpf_to_zip",
     "zip_to_rpf",
     "_coerce_archive",

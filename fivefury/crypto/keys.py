@@ -15,6 +15,7 @@ from ..hashing import jenk_hash
 _AES_KEY_SHA1: Final[bytes] = bytes(
     [0xA0, 0x79, 0x61, 0x28, 0xA7, 0x75, 0x72, 0x0A, 0xC2, 0x04, 0xD9, 0x81, 0x9F, 0x68, 0xC1, 0x72, 0xE3, 0x95, 0x2C, 0x6D]
 )
+_DEFAULT_AES_KEY_B64: Final[str] = "s4lzr4ueJjqN8XAyFEKzk4vT8h+k0E3/iC4EZg/5nf0="
 _NG_KEYS_SIZE: Final[int] = 27472
 _NG_TABLES_SIZE: Final[int] = 278528
 _NG_BLOB_SIZE: Final[int] = _NG_KEYS_SIZE + _NG_TABLES_SIZE
@@ -117,6 +118,7 @@ def _decode_ng_blob(payload: bytes) -> tuple[tuple[bytes, ...], tuple[tuple[tupl
 
 __all__ = [
     "_AES_KEY_SHA1",
+    "_DEFAULT_AES_KEY_B64",
     "_NG_BLOB_SIZE",
     "_decode_magic_payload",
     "_decode_ng_blob",
