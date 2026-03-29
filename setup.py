@@ -8,7 +8,11 @@ ext_modules = [
     Extension(
         "fivefury._native_abi3",
         [
-            "native/fivefury_native.cpp",
+            "native/py_bindings.cpp",
+            "native/py_index.cpp",
+            "native/py_crypto.cpp",
+            "native/py_rpf.cpp",
+            "native/py_module.cpp",
             "native/rpf_index.cpp",
             "native/rpf_scan.cpp",
         ],
