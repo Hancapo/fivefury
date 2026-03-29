@@ -45,6 +45,7 @@ from .resolver import (
     resolve_name,
 )
 from .resource import RSC7_MAGIC, ResourceHeader, build_rsc7, parse_rsc7
+from .resource_textures import EmbeddedTextureDictionary, iter_embedded_texture_dictionaries, list_embedded_texture_dictionaries
 from .rpf import RpfArchive, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
 from .texture import BCFormat
 from .ymap import (
@@ -110,6 +111,7 @@ __all__ = [
     "DistantLodLights",
     "DistantLodLightsSoa",
     "DoorExtension",
+    "EmbeddedTextureDictionary",
     "Entity",
     "EntityDef",
     "EntitySet",
@@ -174,8 +176,10 @@ __all__ = [
     "jenk_hash",
     "load_game_keys",
     "load_rpf",
+    "list_embedded_texture_dictionaries",
     "parse_rsc7",
     "read_meta",
+    "iter_embedded_texture_dictionaries",
     "read_ymap",
     "read_ytd",
     "read_ytyp",

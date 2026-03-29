@@ -20,6 +20,7 @@ from .hashing import _get_lut, jenk_hash
 from .metahash import MetaHash
 from .resolver import HashResolver, get_hash_resolver
 from .rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
+from .resource_textures import iter_embedded_texture_dictionaries
 from .ytd import Texture, Ytd, read_ytd
 
 try:
@@ -37,6 +38,14 @@ _FLAG_ENCRYPTED = 4
 _SKIP_AUDIO = 1 << 0
 _SKIP_VEHICLES = 1 << 1
 _SKIP_PEDS = 1 << 2
+_EMBEDDED_TEXTURE_RESOURCE_TYPES = frozenset(
+    {
+        GameFileType.YDR,
+        GameFileType.YDD,
+        GameFileType.YFT,
+        GameFileType.YPT,
+    }
+)
 
 
 def _try_load_decoder(module_name: str, attribute: str) -> Any | None:
@@ -1789,6 +1798,75 @@ class GameFileCache:
         output_dir.mkdir(parents=True, exist_ok=True)
         return ytd.extract(output_dir)
 
+    def _read_standalone_resource_bytes(self, asset: AssetRecord) -> bytes | None:
+        entry = self._get_entry_for_asset(asset)
+        if isinstance(entry, RpfFileEntry):
+            if entry._archive is None:
+                return None
+            return entry._archive.read_entry_standalone(entry)
+        if asset.loose_path is not None and asset.loose_path.is_file():
+            return asset.loose_path.read_bytes()
+        return None
+
+    def _iter_primary_texture_assets(self, query: Any) -> Iterator[AssetRecord]:
+        seen_paths: set[str] = set()
+        direct_asset = self._coerce_asset(query)
+        if direct_asset is not None and direct_asset.kind in _EMBEDDED_TEXTURE_RESOURCE_TYPES:
+            seen_paths.add(direct_asset.path)
+            yield direct_asset
+        for archetype in self._iter_archetypes_for_query(query):
+            asset = self._primary_asset_for_archetype(archetype)
+            if asset is None or asset.kind not in _EMBEDDED_TEXTURE_RESOURCE_TYPES or asset.path in seen_paths:
+                continue
+            seen_paths.add(asset.path)
+            yield asset
+
+    def _embedded_container_name(self, stem: str, label: str) -> str:
+        normalized_label = str(label or "embedded").strip().lower()
+        if normalized_label in {"embedded", "drawable"}:
+            return stem
+        return f"{stem}_{normalized_label}"
+
+    def _iter_embedded_texture_refs(self, query: Any) -> Iterator[TextureRef]:
+        candidate = Path(str(query)) if isinstance(query, (str, Path)) else None
+        if candidate is not None and candidate.is_file():
+            kind = guess_game_file_type(candidate, GameFileType.UNKNOWN)
+            if kind in _EMBEDDED_TEXTURE_RESOURCE_TYPES:
+                try:
+                    dictionaries = list(iter_embedded_texture_dictionaries(candidate, kind=kind))
+                except Exception:
+                    dictionaries = []
+                for dictionary in dictionaries:
+                    container_name = self._embedded_container_name(candidate.stem, dictionary.label)
+                    for texture in dictionary.ytd.textures:
+                        yield TextureRef(
+                            texture=texture,
+                            container_path=str(candidate),
+                            container_name=container_name,
+                            origin="embedded",
+                            parent_depth=0,
+                        )
+                return
+
+        for asset in self._iter_primary_texture_assets(query):
+            standalone = self._read_standalone_resource_bytes(asset)
+            if standalone is None:
+                continue
+            try:
+                dictionaries = list(iter_embedded_texture_dictionaries(standalone, kind=asset.kind))
+            except Exception:
+                dictionaries = []
+            for dictionary in dictionaries:
+                container_name = self._embedded_container_name(asset.stem, dictionary.label)
+                for texture in dictionary.ytd.textures:
+                    yield TextureRef(
+                        texture=texture,
+                        container_path=asset.path,
+                        container_name=container_name,
+                        origin="embedded",
+                        parent_depth=0,
+                    )
+
     def iter_asset_textures(self, query: Any, *, include_parents: bool = True) -> Iterator[TextureRef]:
         seen: set[tuple[str, str]] = set()
 
@@ -1805,6 +1883,13 @@ class GameFileCache:
                 seen.add(key)
                 yield TextureRef(texture=texture, container_name=container_name, container_path="", origin="ytd", parent_depth=0)
             return
+
+        for item in self._iter_embedded_texture_refs(query):
+            key = ((item.container_path or item.container_name).lower(), item.texture.name.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            yield item
 
         for ytd_asset in self.iter_texture_dictionaries(query, include_parents=include_parents):
             ytd = self._coerce_ytd(ytd_asset)

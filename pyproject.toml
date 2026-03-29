@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fivefury"
-version = "0.1.0"
+version = "0.1.1"
 description = "Partial Python port of CodeWalker.GameFiles for YMAP, YTYP and RPF workflows."
 readme = "README.md"
 requires-python = ">=3.11"

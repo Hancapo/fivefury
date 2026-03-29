@@ -166,6 +166,90 @@ def _build_test_ytd_bytes(*, enhanced: bool = False) -> bytes:
     return build_rsc7(bytes(vbuf), version=version, graphics_data=bytes(pbuf))
 
 
+def _relocate_embedded_texture_dictionary(virtual_data: bytes, *, dict_offset: int, enhanced: bool) -> bytes:
+    count = int.from_bytes(virtual_data[0x28:0x2A], "little")
+    tex_size = _ENHANCED_TEX_SIZE if enhanced else _GTAV_TEX_SIZE
+    ptrs_offset = int.from_bytes(virtual_data[0x30:0x38], "little") - _DAT_VIRTUAL_BASE
+    output = bytearray(dict_offset + len(virtual_data))
+    output[dict_offset : dict_offset + len(virtual_data)] = virtual_data
+    delta = dict_offset
+
+    def add_virtual_ptr(offset: int) -> None:
+        value = int.from_bytes(output[dict_offset + offset : dict_offset + offset + 8], "little")
+        if value:
+            output[dict_offset + offset : dict_offset + offset + 8] = (value + delta).to_bytes(8, "little")
+
+    add_virtual_ptr(0x08)
+    add_virtual_ptr(0x20)
+    add_virtual_ptr(0x30)
+
+    for index in range(count):
+        ptr_pos = dict_offset + ptrs_offset + (index * 8)
+        tex_ptr = int.from_bytes(output[ptr_pos : ptr_pos + 8], "little")
+        output[ptr_pos : ptr_pos + 8] = (tex_ptr + delta).to_bytes(8, "little")
+        tex_off = int.from_bytes(
+            virtual_data[ptrs_offset + (index * 8) : ptrs_offset + (index * 8) + 8],
+            "little",
+        ) - _DAT_VIRTUAL_BASE
+        add_virtual_ptr(tex_off + 0x28)
+        if enhanced:
+            add_virtual_ptr(tex_off + 0x30)
+    return bytes(output)
+
+
+def _build_embedded_texture_resource(kind: str, *, enhanced: bool = False) -> bytes:
+    from fivefury.resource import build_rsc7, split_rsc7_sections
+
+    _, virtual_src, graphics_src = split_rsc7_sections(_build_test_ytd_bytes(enhanced=enhanced))
+    kind_lower = kind.lower()
+
+    if kind_lower == "ydr":
+        shader_group_offset = 0x100
+        dict_offset = 0x200
+        system_size = dict_offset + len(virtual_src)
+        system_data = bytearray(system_size)
+        system_data[0x10:0x18] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(8, "little")
+        system_data[shader_group_offset + 0x08 : shader_group_offset + 0x10] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        version = 159 if enhanced else 165
+    elif kind_lower == "ydd":
+        drawables_offset = 0x100
+        drawable_offset = 0x120
+        shader_group_offset = 0x200
+        dict_offset = 0x280
+        system_size = dict_offset + len(virtual_src)
+        system_data = bytearray(system_size)
+        system_data[0x30:0x38] = (_DAT_VIRTUAL_BASE + drawables_offset).to_bytes(8, "little")
+        system_data[0x38:0x3A] = (1).to_bytes(2, "little")
+        system_data[drawables_offset : drawables_offset + 8] = (_DAT_VIRTUAL_BASE + drawable_offset).to_bytes(8, "little")
+        system_data[drawable_offset + 0x10 : drawable_offset + 0x18] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(8, "little")
+        system_data[shader_group_offset + 0x08 : shader_group_offset + 0x10] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        version = 159 if enhanced else 165
+    elif kind_lower == "yft":
+        drawable_offset = 0x120
+        shader_group_offset = 0x200
+        dict_offset = 0x280
+        system_size = dict_offset + len(virtual_src)
+        system_data = bytearray(system_size)
+        system_data[0x30:0x38] = (_DAT_VIRTUAL_BASE + drawable_offset).to_bytes(8, "little")
+        system_data[drawable_offset + 0x10 : drawable_offset + 0x18] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(8, "little")
+        system_data[shader_group_offset + 0x08 : shader_group_offset + 0x10] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        version = 171 if enhanced else 162
+    elif kind_lower == "ypt":
+        dict_offset = 0x100
+        system_size = dict_offset + len(virtual_src)
+        system_data = bytearray(system_size)
+        system_data[0x20:0x28] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        version = 71 if enhanced else 68
+    else:
+        raise ValueError(f"Unsupported embedded texture resource kind: {kind}")
+
+    return build_rsc7(bytes(system_data), version=version, graphics_data=bytes(graphics_src))
+
+
 class MetaAndArchiveContractTests(PytestCompat):
     def test_ymap_high_level_save_helper_if_available(self) -> None:
         ymap = _make_ymap("unit_test.ymap")
@@ -1525,6 +1609,71 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(len(extracted), 2)
             self.assertEqual({path.parent.name for path in extracted}, {"child_dict", "parent_dict"})
             self.assertTrue(all(path.read_bytes()[:4] == b"DDS " for path in extracted))
+
+    def test_gamefilecache_extracts_embedded_textures_from_supported_resource_assets(self) -> None:
+        from fivefury import GameFileCache
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_bytes(root / "stream" / "embedded.ydr", _build_embedded_texture_resource("ydr", enhanced=False))
+            write_bytes(root / "stream" / "embedded.ydd", _build_embedded_texture_resource("ydd", enhanced=False))
+            write_bytes(root / "stream" / "embedded.yft", _build_embedded_texture_resource("yft", enhanced=False))
+            write_bytes(root / "stream" / "embedded.ypt", _build_embedded_texture_resource("ypt", enhanced=False))
+            write_bytes(root / "stream" / "embedded_gen9.ypt", _build_embedded_texture_resource("ypt", enhanced=True))
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            for relative_path in (
+                "stream/embedded.ydr",
+                "stream/embedded.ydd",
+                "stream/embedded.yft",
+                "stream/embedded.ypt",
+                "stream/embedded_gen9.ypt",
+            ):
+                refs = cache.list_asset_textures(relative_path)
+                self.assertEqual(len(refs), 1, relative_path)
+                self.assertEqual(refs[0].origin, "embedded")
+                extracted = cache.extract_asset_textures(relative_path, root / "textures_out" / Path(relative_path).stem)
+                self.assertEqual(len(extracted), 1, relative_path)
+                self.assertEqual(extracted[0].name, "test_diffuse.dds")
+                self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
+
+    def test_gamefilecache_extracts_embedded_textures_from_external_ymap_primary_assets(self) -> None:
+        from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "game"
+            root.mkdir(parents=True, exist_ok=True)
+            write_bytes(root / "stream" / "embedded_tree.ydr", _build_embedded_texture_resource("ydr", enhanced=False))
+
+            ytyp = Ytyp(name="types.ytyp")
+            ytyp.add_archetype(
+                Archetype(
+                    name="embedded_tree",
+                    asset_name="embedded_tree",
+                    asset_type=2,
+                )
+            )
+            ytyp.save(root / "stream" / "types.ytyp")
+
+            external = Path(tmpdir) / "external"
+            external.mkdir(parents=True, exist_ok=True)
+            ymap = Ymap(name="external_map.ymap")
+            ymap.add_entity(Entity(archetype_name="embedded_tree", position=(0.0, 0.0, 0.0), lod_dist=50.0))
+            ymap.save(external / "external_map.ymap", auto_extents=True)
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            refs = cache.list_asset_textures(external / "external_map.ymap")
+            self.assertEqual(len(refs), 1)
+            self.assertEqual(refs[0].origin, "embedded")
+
+            extracted = cache.extract_asset_textures(external / "external_map.ymap", root / "textures_out")
+            self.assertEqual(len(extracted), 1)
+            self.assertEqual(extracted[0].name, "test_diffuse.dds")
+            self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
 
 
 if __name__ == "__main__":

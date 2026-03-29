@@ -115,6 +115,21 @@ def parse_rsc7(data: bytes) -> tuple[ResourceHeader, bytes]:
     return header, payload
 
 
+def split_rsc7_sections(data: bytes) -> tuple[ResourceHeader, bytes, bytes]:
+    header, payload = parse_rsc7(data)
+    system_data = payload[: header.system_size]
+    graphics_data = payload[header.system_size : header.system_size + header.graphics_size]
+    return header, system_data, graphics_data
+
+
+def virtual_to_offset(address: int, *, base: int = 0x50000000) -> int:
+    return int(address) - int(base)
+
+
+def physical_to_offset(address: int, *, base: int = 0x60000000) -> int:
+    return int(address) - int(base)
+
+
 def build_rsc7(
     system_data: bytes | object,
     *,
