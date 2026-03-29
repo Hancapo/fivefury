@@ -1675,6 +1675,50 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(extracted[0].name, "test_diffuse.dds")
             self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
 
+    def test_open_resource_texture_asset_returns_typed_classes(self) -> None:
+        from fivefury import YddAsset, YdrAsset, YftAsset, YptAsset, open_resource_texture_asset
+
+        for kind, asset_type in (
+            ("ydr", YdrAsset),
+            ("ydd", YddAsset),
+            ("yft", YftAsset),
+            ("ypt", YptAsset),
+        ):
+            asset = open_resource_texture_asset(_build_embedded_texture_resource(kind, enhanced=False), kind=f".{kind}")
+            self.assertIsNotNone(asset)
+            self.assertTrue(isinstance(asset, asset_type))
+            dictionaries = asset.list_embedded_texture_dictionaries()
+            self.assertEqual(len(dictionaries), 1)
+            self.assertEqual(dictionaries[0].ytd.textures[0].name, "test_diffuse")
+
+    def test_gamefilecache_opens_typed_resource_texture_assets(self) -> None:
+        from fivefury import GameFileCache, YftAsset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_bytes(root / "stream" / "embedded.yft", _build_embedded_texture_resource("yft", enhanced=False))
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            asset = cache.get_resource_asset("stream/embedded.yft")
+            self.assertIsNotNone(asset)
+            self.assertTrue(isinstance(asset, YftAsset))
+            dictionaries = asset.list_embedded_texture_dictionaries()
+            self.assertEqual(len(dictionaries), 1)
+            self.assertEqual(dictionaries[0].ytd.textures[0].name, "test_diffuse")
+
+    def test_resource_asset_modules_export_individual_format_classes(self) -> None:
+        from fivefury.resource_assets.ydd import YddAsset
+        from fivefury.resource_assets.ydr import YdrAsset
+        from fivefury.resource_assets.yft import YftAsset
+        from fivefury.resource_assets.ypt import YptAsset
+
+        self.assertEqual(YdrAsset.kind.name, "YDR")
+        self.assertEqual(YddAsset.kind.name, "YDD")
+        self.assertEqual(YftAsset.kind.name, "YFT")
+        self.assertEqual(YptAsset.kind.name, "YPT")
+
 
 if __name__ == "__main__":
     unittest.main()

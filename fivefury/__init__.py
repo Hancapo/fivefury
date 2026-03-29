@@ -45,7 +45,17 @@ from .resolver import (
     resolve_name,
 )
 from .resource import RSC7_MAGIC, ResourceHeader, build_rsc7, parse_rsc7
-from .resource_textures import EmbeddedTextureDictionary, iter_embedded_texture_dictionaries, list_embedded_texture_dictionaries
+from .resource_assets import (
+    EmbeddedTextureDictionary,
+    ResourceTextureAsset,
+    YddAsset,
+    YdrAsset,
+    YftAsset,
+    YptAsset,
+    iter_embedded_texture_dictionaries,
+    list_embedded_texture_dictionaries,
+    open_resource_texture_asset,
+)
 from .rpf import RpfArchive, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
 from .texture import BCFormat
 from .ymap import (
@@ -149,6 +159,7 @@ __all__ = [
     "ParticleEffectExtension",
     "Portal",
     "ProcObjectExtension",
+    "ResourceTextureAsset",
     "ResourceHeader",
     "Room",
     "RpfArchive",
@@ -164,7 +175,11 @@ __all__ = [
     "VerletClothCustomBoundsExtension",
     "WindDisturbanceExtension",
     "Ymap",
+    "YddAsset",
+    "YdrAsset",
     "Ytd",
+    "YftAsset",
+    "YptAsset",
     "Ytyp",
     "build_rsc7",
     "clear_hash_resolver",
@@ -173,13 +188,14 @@ __all__ = [
     "get_game_crypto",
     "get_hash_resolver",
     "hash_matches",
+    "iter_embedded_texture_dictionaries",
     "jenk_hash",
     "load_game_keys",
     "load_rpf",
     "list_embedded_texture_dictionaries",
+    "open_resource_texture_asset",
     "parse_rsc7",
     "read_meta",
-    "iter_embedded_texture_dictionaries",
     "read_ymap",
     "read_ytd",
     "read_ytyp",
