@@ -488,3 +488,5 @@ class TestGameCacheRealPerf:
             for name in names:
                 jenk_hash(name)
         benchmark.pedantic(run, rounds=5, warmup_rounds=1)
+
+

@@ -333,3 +333,5 @@ class GameFileCacheIOMixin:
         if gf is None:
             return None
         return gf.parsed if isinstance(gf.parsed, RpfArchive) else None
+
+

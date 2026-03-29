@@ -45,7 +45,7 @@ from .resolver import (
     resolve_name,
 )
 from .resource import RSC7_MAGIC, ResourceHeader, build_rsc7, parse_rsc7
-from .resource_assets import (
+from .assets import (
     EmbeddedTextureDictionary,
     ResourceTextureAsset,
     YddAsset,
@@ -212,3 +212,5 @@ __all__ = [
     "save_ytyp",
     "zip_to_rpf",
 ]
+
+

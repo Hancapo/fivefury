@@ -1,4 +1,4 @@
-from .resource_assets import (
+from .assets import (
     EmbeddedTextureDictionary,
     RESOURCE_TEXTURE_ASSET_TYPES,
     ResourceTextureAsset,

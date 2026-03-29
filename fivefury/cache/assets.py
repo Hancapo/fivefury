@@ -7,7 +7,7 @@ from typing import Any, Iterator
 from ..gamefile import GameFileType
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
-from ..resource_assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
+from ..assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
 from ..rpf import RpfFileEntry
 from ..ytd import Texture, Ytd, read_ytd
 
@@ -458,3 +458,5 @@ class GameFileCacheAssetMixin:
 
 
 __all__ = ["GameFileCacheAssetMixin", "TextureRef"]
+
+

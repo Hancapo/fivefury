@@ -36,7 +36,7 @@ def _static_or_function(symbol, method_names, *args, **kwargs):
 
 def _make_ymap(name: str = "unit_test.ymap"):
     ymap_symbol = resolve_symbol(
-        ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+        ["fivefury.ymap", "fivefury"],
         ["Ymap"],
     )
     if ymap_symbol is None:
@@ -51,7 +51,7 @@ def _make_ymap(name: str = "unit_test.ymap"):
 
 def _make_entity(archetype_name: str = "prop_tree_pine_01", **kwargs):
     entity_symbol = resolve_symbol(
-        ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+        ["fivefury.ymap", "fivefury"],
         ["Entity", "EntityDef"],
     )
     if entity_symbol is None:
@@ -282,7 +282,7 @@ class MetaAndArchiveContractTests(PytestCompat):
     def test_ymap_and_ytyp_support_high_level_construction_helpers_if_available(self) -> None:
         ymap = _make_ymap("unit_test.ymap")
         ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury.gta5.ytyp", "fivefury"],
+            ["fivefury.ytyp", "fivefury"],
             ["Ytyp"],
         )
         if ymap is None or ytyp_symbol is None:
@@ -330,7 +330,7 @@ class MetaAndArchiveContractTests(PytestCompat):
     def test_high_level_factories_default_to_empty_internal_resource_names(self) -> None:
         ymap = _make_ymap("unit_test.ymap")
         ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury.gta5.ytyp", "fivefury"],
+            ["fivefury.ytyp", "fivefury"],
             ["Ytyp"],
         )
         if ymap is None or ytyp_symbol is None:
@@ -351,11 +351,11 @@ class MetaAndArchiveContractTests(PytestCompat):
 
     def test_models_expose_resource_name_property(self) -> None:
         ymap_symbol = resolve_symbol(
-            ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+            ["fivefury.ymap", "fivefury"],
             ["Ymap"],
         )
         ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury.gta5.ytyp", "fivefury"],
+            ["fivefury.ytyp", "fivefury"],
             ["Ytyp"],
         )
         if ymap_symbol is None or ytyp_symbol is None:
@@ -419,7 +419,7 @@ class MetaAndArchiveContractTests(PytestCompat):
 
         ymap.box_occluders = [
             _try_surface_constructor(
-                ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+                ["fivefury.ymap", "fivefury"],
                 ["BoxOccluder", "YmapBoxOccluder"],
                 {
                     "iCenterX": 0,
@@ -436,7 +436,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         ]
         ymap.occlude_models = [
             _try_surface_constructor(
-                ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+                ["fivefury.ymap", "fivefury"],
                 ["OccludeModel", "YmapOccludeModel"],
                 {
                     "bmin": (0.0, 0.0, 0.0),
@@ -451,7 +451,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             )
         ]
         ymap.lod_lights = _try_surface_constructor(
-            ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+            ["fivefury.ymap", "fivefury"],
             ["LodLights", "LodLightsSoa", "YmapLODLight"],
             {
                 "direction": [(0.0, 0.0, -1.0)],
@@ -466,7 +466,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             _raw_lod_light(),
         )
         ymap.distant_lod_lights = _try_surface_constructor(
-            ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+            ["fivefury.ymap", "fivefury"],
             ["DistantLodLights", "DistantLodLightsSoa", "YmapDistantLODLight"],
             {
                 "position": [(1.0, 2.0, 3.0)],
@@ -604,11 +604,11 @@ class MetaAndArchiveContractTests(PytestCompat):
             ["RpfArchive", "create_rpf"],
         )
         ymap_symbol = resolve_symbol(
-            ["fivefury.ymap", "fivefury.gta5.ymap", "fivefury"],
+            ["fivefury.ymap", "fivefury"],
             ["Ymap"],
         )
         ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury.gta5.ytyp", "fivefury"],
+            ["fivefury.ytyp", "fivefury"],
             ["Ytyp"],
         )
         if rpf_symbol is None:
@@ -1749,10 +1749,10 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(dictionaries[0].ytd.textures[0].name, "test_diffuse")
 
     def test_resource_asset_modules_export_individual_format_classes(self) -> None:
-        from fivefury.resource_assets.ydd import YddAsset
-        from fivefury.resource_assets.ydr import YdrAsset
-        from fivefury.resource_assets.yft import YftAsset
-        from fivefury.resource_assets.ypt import YptAsset
+        from fivefury.assets.ydd import YddAsset
+        from fivefury.assets.ydr import YdrAsset
+        from fivefury.assets.yft import YftAsset
+        from fivefury.assets.ypt import YptAsset
 
         self.assertEqual(YdrAsset.kind.name, "YDR")
         self.assertEqual(YddAsset.kind.name, "YDD")
@@ -1762,5 +1762,8 @@ class MetaAndArchiveContractTests(PytestCompat):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
 
 
