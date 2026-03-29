@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from .ytd_defs import TextureFormat, _build_dds_bytes, _build_mip_info
+from .defs import TextureFormat, _build_dds_bytes, _build_mip_info
 
 
 @dataclasses.dataclass(slots=True)
@@ -90,7 +90,7 @@ class Ytd:
         return extracted
 
     def to_bytes(self, *, game: str | None = None) -> bytes:
-        from .ytd import _build_gen9_ytd, _build_legacy_ytd
+        from . import _build_gen9_ytd, _build_legacy_ytd
 
         target_game = (game or self.game or "gta5").lower()
         if target_game in {"gta5", "legacy"}:
@@ -107,9 +107,11 @@ class Ytd:
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview) -> "Ytd":
-        from .ytd import read_ytd
+        from . import read_ytd
 
         return read_ytd(data)
 
 
 __all__ = ["Texture", "Ytd"]
+
+

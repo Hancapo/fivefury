@@ -71,7 +71,7 @@ from .ymap import (
     read_ymap,
     save_ymap,
 )
-from .ymap_surfaces import (
+from .ymap.surfaces import (
     Aabb,
     BoxOccluder,
     DistantLodLights,
@@ -212,5 +212,6 @@ __all__ = [
     "save_ytyp",
     "zip_to_rpf",
 ]
+
 
 

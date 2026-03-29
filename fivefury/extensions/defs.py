@@ -4,8 +4,8 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from .meta import MetaFieldInfo, MetaStructInfo, RawStruct
-from .meta_defs import META_TYPE_NAME_ARRAYINFO, MetaDataType, meta_name
+from ..meta import MetaFieldInfo, MetaStructInfo, RawStruct
+from ..meta.defs import META_TYPE_NAME_ARRAYINFO, MetaDataType, meta_name
 
 
 def _entry(
@@ -397,3 +397,5 @@ EXTENSION_STRUCT_INFOS = [
 
 
 __all__ = ["EXTENSION_STRUCT_INFOS", "MetaBackedStruct"]
+
+

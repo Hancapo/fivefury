@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fivefury.meta import RawStruct
-from fivefury.meta_defs import meta_name
+from fivefury.meta.defs import meta_name
 from tests.compat import PytestCompat
 from tests.helpers import resolve_symbol, touch, write_bytes
 
@@ -380,9 +380,9 @@ class MetaAndArchiveContractTests(PytestCompat):
         entity_symbol = resolve_symbol(["fivefury.ymap", "fivefury"], ["Entity"])
         archetype_symbol = resolve_symbol(["fivefury.ytyp", "fivefury"], ["Archetype"])
         room_symbol = resolve_symbol(["fivefury.ytyp", "fivefury"], ["Room"])
-        grass_batch_symbol = resolve_symbol(["fivefury.ymap_surfaces", "fivefury"], ["GrassBatch"])
-        instanced_data_symbol = resolve_symbol(["fivefury.ymap_surfaces", "fivefury"], ["InstancedData"])
-        lod_lights_symbol = resolve_symbol(["fivefury.ymap_surfaces", "fivefury"], ["LodLights"])
+        grass_batch_symbol = resolve_symbol(["fivefury.ymap.surfaces", "fivefury"], ["GrassBatch"])
+        instanced_data_symbol = resolve_symbol(["fivefury.ymap.surfaces", "fivefury"], ["InstancedData"])
+        lod_lights_symbol = resolve_symbol(["fivefury.ymap.surfaces", "fivefury"], ["LodLights"])
         if None in (
             entity_symbol,
             archetype_symbol,
@@ -1762,6 +1762,8 @@ class MetaAndArchiveContractTests(PytestCompat):
 
 if __name__ == "__main__":
     unittest.main()
+
+
 
 
 

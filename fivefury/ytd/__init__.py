@@ -3,9 +3,9 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from .binary import align, read_c_string
-from .hashing import jenk_hash
-from .resource import (
+from ..binary import align, read_c_string
+from ..hashing import jenk_hash
+from ..resource import (
     RSC7_MAGIC,
     ResourceHeader,
     build_rsc7,
@@ -13,7 +13,7 @@ from .resource import (
     split_rsc7_sections,
     virtual_to_offset,
 )
-from .ytd_defs import (
+from .defs import (
     DAT_PHYSICAL_BASE,
     DAT_VIRTUAL_BASE,
     TextureFormat,
@@ -40,7 +40,7 @@ from .ytd_defs import (
     _row_pitch,
     _total_mip_data_size,
 )
-from .ytd_model import Texture, Ytd
+from .model import Texture, Ytd
 
 
 def _v2o(address: int) -> int:
@@ -407,3 +407,8 @@ __all__ = [
     "read_ytd",
     "save_ytd",
 ]
+
+
+
+
+

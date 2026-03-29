@@ -4,8 +4,8 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from .extensions_defs import EXTENSION_STRUCT_INFOS, MetaBackedStruct
-from .meta import RawStruct
+from .defs import EXTENSION_STRUCT_INFOS, MetaBackedStruct
+from ..meta import RawStruct
 
 @dataclasses.dataclass(slots=True)
 class LightAttrDef(MetaBackedStruct):
@@ -379,3 +379,5 @@ __all__ = [
     "extensions_from_meta",
     "extensions_to_meta",
 ]
+
+

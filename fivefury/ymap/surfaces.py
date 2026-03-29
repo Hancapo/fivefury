@@ -5,9 +5,9 @@ import math
 import struct
 from typing import Any
 
-from .hashing import jenk_hash
-from .meta import MetaFieldInfo, MetaStructInfo
-from .meta_defs import META_TYPE_NAME_ARRAYINFO, MetaDataType, meta_name
+from ..hashing import jenk_hash
+from ..meta import MetaFieldInfo, MetaStructInfo
+from ..meta.defs import META_TYPE_NAME_ARRAYINFO, MetaDataType, meta_name
 
 
 BATCH_VERT_MULTIPLIER = 0.00001525878
@@ -601,5 +601,8 @@ __all__ = [
     "OccludeModel",
     "YMAP_SURFACE_STRUCT_INFOS",
 ]
+
+
+
 
 

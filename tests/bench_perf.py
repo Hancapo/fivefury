@@ -25,7 +25,7 @@ from fivefury.hashing import jenk_hash
 from fivefury.metahash import MetaHash
 from fivefury.resolver import clear_hash_resolver, register_name, resolve_hash
 from fivefury.meta import MetaBuilder, MetaStructInfo, MetaFieldInfo, ParsedMeta, build_meta_system
-from fivefury.meta_defs import MetaDataType, meta_name
+from fivefury.meta.defs import MetaDataType, meta_name
 from fivefury.ymap import Ymap, Entity
 from fivefury.ytyp import Ytyp, Archetype
 from fivefury.rpf import create_rpf
@@ -488,5 +488,6 @@ class TestGameCacheRealPerf:
             for name in names:
                 jenk_hash(name)
         benchmark.pedantic(run, rounds=5, warmup_rounds=1)
+
 
 

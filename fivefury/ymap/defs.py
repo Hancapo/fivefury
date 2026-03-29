@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from .extensions import EXTENSION_STRUCT_INFOS
-from .metahash import HashLike, MetaHash
-from .meta import MetaEnumEntry, MetaEnumInfo, MetaFieldInfo, MetaStructInfo
-from .meta_defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
-from .ymap_surfaces import YMAP_SURFACE_STRUCT_INFOS
+from ..extensions import EXTENSION_STRUCT_INFOS
+from ..metahash import HashLike, MetaHash
+from ..meta import MetaEnumEntry, MetaEnumInfo, MetaFieldInfo, MetaStructInfo
+from ..meta.defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
+from .surfaces import YMAP_SURFACE_STRUCT_INFOS
 
 def _entry(
     name: str | int,
@@ -291,6 +291,11 @@ YMAP_ENUM_INFOS = [
     _enum_info("rage__eLodType"),
     _enum_info("rage__ePriorityLevel"),
 ]
+
+
+
+
+
 
 
 

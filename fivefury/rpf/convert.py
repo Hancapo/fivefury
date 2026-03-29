@@ -5,10 +5,10 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
-from .rpf_utils import _normalize_path
+from .utils import _normalize_path
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .rpf import RpfArchive
+    from . import RpfArchive
 
 
 def _ensure_container_path(current: "RpfArchive", parts: list[str]) -> tuple["RpfArchive", str]:
@@ -39,7 +39,7 @@ def _ensure_directory_path(current: "RpfArchive", parts: list[str]) -> None:
 
 
 def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> "RpfArchive":
-    from .rpf import RpfArchive
+    from . import RpfArchive
 
     archive = RpfArchive.empty(name)
     for info in sorted(zf.infolist(), key=lambda i: i.filename.lower()):
@@ -55,7 +55,7 @@ def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> "RpfArchive":
 
 
 def _directory_to_rpf(source_dir: str | Path, *, name: str) -> "RpfArchive":
-    from .rpf import RpfArchive
+    from . import RpfArchive
 
     root = Path(source_dir)
     archive = RpfArchive.empty(name or root.name)
@@ -70,7 +70,7 @@ def _directory_to_rpf(source_dir: str | Path, *, name: str) -> "RpfArchive":
 
 
 def _coerce_archive(source: str | Path | bytes | BinaryIO | "RpfArchive") -> "RpfArchive":
-    from .rpf import RpfArchive
+    from . import RpfArchive
 
     if isinstance(source, RpfArchive):
         return source
@@ -86,7 +86,7 @@ def load_rpf(source: str | Path | bytes | BinaryIO) -> "RpfArchive":
 
 
 def create_rpf(name: str = "archive.rpf") -> "RpfArchive":
-    from .rpf import RpfArchive
+    from . import RpfArchive
 
     return RpfArchive.empty(name)
 
@@ -138,3 +138,5 @@ __all__ = [
     "_insert_file_path",
     "_zip_to_rpf",
 ]
+
+

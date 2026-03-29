@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Optional
 
-from .crypto import (
+from ..crypto import (
     AES_ENCRYPTION,
     NG_ENCRYPTION,
     NONE_ENCRYPTION,
@@ -15,8 +15,8 @@ from .crypto import (
     GameCrypto,
     get_game_crypto,
 )
-from .rpf_convert import _directory_to_rpf, _zip_to_rpf, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
-from .rpf_utils import (
+from .convert import _directory_to_rpf, _zip_to_rpf, create_rpf, load_rpf, rpf_to_zip, zip_to_rpf
+from .utils import (
     RPF_BLOCK_SIZE,
     RPF_MAGIC,
     RSC7_MAGIC,
@@ -35,7 +35,7 @@ from .rpf_utils import (
     _size_from_resource_flags,
     _split_rsc7,
 )
-from .rpf_entries import (
+from .entries import (
     RpfBinaryFileEntry,
     RpfDirectoryEntry,
     RpfEntry,
@@ -692,6 +692,10 @@ class RpfArchive:
             dest.write_bytes(entry.read(logical=logical))
             written.append(dest)
         return written
+
+
+
+
 
 
 

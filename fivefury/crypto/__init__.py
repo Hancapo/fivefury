@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from .crypto_backends import DotNetRandom, _AesEcbCipher, _build_windows_aes_decryptor, _decompress_any, _to_signed_i32
-from .crypto_keys import (
+from .backends import DotNetRandom, _AesEcbCipher, _build_windows_aes_decryptor, _decompress_any, _to_signed_i32
+from .keys import (
     _AES_KEY_SHA1,
     _NG_BLOB_SIZE,
     _decode_magic_payload,
@@ -20,7 +20,7 @@ from .crypto_keys import (
     _save_cache,
     _search_sha1_window,
 )
-from .hashing import jenk_hash
+from ..hashing import jenk_hash
 
 NONE_ENCRYPTION: Final[int] = 0
 OPEN_ENCRYPTION: Final[int] = 0x4E45504F
@@ -158,7 +158,7 @@ class GameCrypto:
     def decrypt_archive_table(self, data: bytes, encryption: int, *, archive_name: str, archive_size: int) -> bytes:
         if encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
             return data
-        from .hashing import _get_lut
+        from ..hashing import _get_lut
 
         return self.native_context().decrypt_archive_table(data, encryption, archive_name, archive_size, _get_lut())
 
@@ -167,7 +167,7 @@ class GameCrypto:
             return b""
         if encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
             return data
-        from .hashing import _get_lut
+        from ..hashing import _get_lut
 
         return self.native_context().decrypt_data(data, encryption, entry_name, entry_length, _get_lut())
 
@@ -197,7 +197,7 @@ class GameCrypto:
 
     def native_context(self) -> object:
         if self._native_context is None:
-            from ._native import NativeCryptoContext
+            from .._native import NativeCryptoContext
 
             self._native_context = NativeCryptoContext(self.aes_key, self._build_ng_blob())
         return self._native_context
@@ -277,3 +277,7 @@ __all__ = [
     "load_game_keys",
     "set_game_crypto",
 ]
+
+
+
+

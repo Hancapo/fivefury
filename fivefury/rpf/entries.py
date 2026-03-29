@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-from .rpf_utils import _resource_flags_from_size, _size_from_resource_flags
+from .utils import _resource_flags_from_size, _size_from_resource_flags
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive
@@ -129,6 +129,7 @@ class RpfResourceFileEntry(RpfFileEntry):
     @property
     def graphics_size(self) -> int:
         return self.graphics_flags.size
+
 
 
 

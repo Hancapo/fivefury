@@ -5,9 +5,9 @@ import struct
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from .binary import align, pad_bytes
-from .metahash import MetaHash
-from .meta_defs import (
+from ..binary import align, pad_bytes
+from ..metahash import MetaHash
+from .defs import (
     ENUMS_BY_HASH,
     GRAPHICS_BASE,
     KNOWN_STRUCTS,
@@ -26,8 +26,8 @@ from .meta_defs import (
     MetaDataType,
     StructDef,
 )
-from .hashing import jenk_hash
-from .resource import build_rsc7, parse_rsc7
+from ..hashing import jenk_hash
+from ..resource import build_rsc7, parse_rsc7
 
 
 META_FILE_VFT = 0x405BC808
@@ -172,8 +172,8 @@ class RawStruct:
 
 
 
-from .meta_read import ParsedMeta, read_meta
-from .meta_builder import MetaBuilder, build_meta_system
+from .read import ParsedMeta, read_meta
+from .builder import MetaBuilder, build_meta_system
 
 @dataclasses.dataclass(slots=True)
 class Meta:
@@ -224,5 +224,12 @@ class Meta:
             resource_version=parsed.resource_version or 2,
         )
         return meta
+
+
+
+
+
+
+
 
 

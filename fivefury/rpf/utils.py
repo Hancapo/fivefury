@@ -4,7 +4,7 @@ import struct
 import zlib
 from pathlib import Path
 
-from .resource import get_resource_flags_from_size, get_resource_size_from_flags, parse_rsc7
+from ..resource import get_resource_flags_from_size, get_resource_size_from_flags, parse_rsc7
 
 RPF_MAGIC = 0x52504637
 RSC7_MAGIC = 0x37435352
@@ -114,3 +114,4 @@ __all__ = [
     "_size_from_resource_flags",
     "_split_rsc7",
 ]
+

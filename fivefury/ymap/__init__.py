@@ -4,9 +4,9 @@ import dataclasses
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from .extensions import EXTENSION_STRUCT_INFOS, extensions_from_meta, extensions_to_meta
-from .metahash import HashLike, MetaHash, MetaHashFieldsMixin
-from .meta import (
+from ..extensions import EXTENSION_STRUCT_INFOS, extensions_from_meta, extensions_to_meta
+from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
+from ..meta import (
     Meta,
     MetaBuilder,
     MetaEnumEntry,
@@ -16,9 +16,9 @@ from .meta import (
     RawStruct,
     read_meta,
 )
-from .meta_defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
-from .resource import build_rsc7
-from .ymap_surfaces import (
+from ..meta.defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
+from ..resource import build_rsc7
+from .surfaces import (
     BoxOccluder,
     DistantLodLightsSoa,
     GrassInstanceBatch,
@@ -32,10 +32,10 @@ from .ymap_surfaces import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .rpf import RpfArchive, RpfFileEntry
+    from ..rpf import RpfArchive, RpfFileEntry
 
 
-from .ymap_defs import (
+from .defs import (
     YMAP_ENUM_INFOS,
     YMAP_STRUCT_INFOS,
     _arrayinfo,
@@ -729,6 +729,14 @@ __all__ = [
     "read_ymap",
     "save_ymap",
 ]
+
+
+
+
+
+
+
+
 
 
 

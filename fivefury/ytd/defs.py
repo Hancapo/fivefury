@@ -244,7 +244,7 @@ _LEGACY_TEXTURE_DICTIONARY_VERSIONS = {13, 68, 162, 165}
 _GEN9_TEXTURE_DICTIONARY_VERSIONS = {5, 71, 154, 159, 171}
 
 if TYPE_CHECKING:
-    from .ytd_model import Texture
+    from .model import Texture
 
 
 def _is_block_compressed(fmt: TextureFormat) -> bool:
@@ -388,3 +388,4 @@ __all__ = [
     "_row_pitch",
     "_total_mip_data_size",
 ]
+

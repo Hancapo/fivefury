@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 from enum import IntEnum
 
-from .hashing import jenk_hash
+from ..hashing import jenk_hash
 
 
 class MetaDataType(IntEnum):
@@ -527,3 +527,4 @@ KNOWN_STRUCTS: dict[str, StructDef] = {
 
 STRUCTS_BY_HASH = {value.name_hash: value for value in KNOWN_STRUCTS.values()}
 ENUMS_BY_HASH = {value.name_hash: value for value in KNOWN_ENUMS.values()}
+

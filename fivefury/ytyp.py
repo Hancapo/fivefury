@@ -7,10 +7,10 @@ from typing import Any, TYPE_CHECKING
 from .extensions import EXTENSION_STRUCT_INFOS, extensions_from_meta, extensions_to_meta
 from .metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .meta import Meta, MetaBuilder, MetaEnumEntry, MetaEnumInfo, MetaFieldInfo, MetaStructInfo, RawStruct, read_meta
-from .meta_defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
+from .meta.defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
 from .resource import build_rsc7
 from .ymap import EntityDef, MloInstanceDef, _suggest_resource_path
-from .ymap_defs import _arrayinfo, _ensure_base_name, _entry, _enum_info
+from .ymap.defs import _arrayinfo, _ensure_base_name, _entry, _enum_info
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive, RpfFileEntry
@@ -632,5 +632,7 @@ __all__ = [
     "read_ytyp",
     "save_ytyp",
 ]
+
+
 
 

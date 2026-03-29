@@ -4,7 +4,7 @@ import dataclasses
 import struct
 from typing import Any
 
-from .meta import (
+from . import (
     FLOAT_XYZ_NAME_HASH,
     RESOURCE_FILE_BASE_SIZE,
     MetaArrayRef,
@@ -17,8 +17,8 @@ from .meta import (
     MetaStructInfo,
     RawStruct,
 )
-from .meta_defs import GRAPHICS_BASE, META_TYPE_NAME_ARRAYINFO, STRUCTS_BY_HASH, SYSTEM_BASE, MetaDataType
-from .resource import parse_rsc7
+from .defs import GRAPHICS_BASE, META_TYPE_NAME_ARRAYINFO, STRUCTS_BY_HASH, SYSTEM_BASE, MetaDataType
+from ..resource import parse_rsc7
 
 @dataclasses.dataclass(slots=True)
 class ParsedMeta:
@@ -402,5 +402,8 @@ def _unpack_inline_array(data_type: MetaDataType, raw: bytes, count: int) -> Any
     pack_fmt, size = fmt
     limit = count * size
     return tuple(value[0] for value in struct.iter_unpack(pack_fmt, raw[:limit]))
+
+
+
 
 

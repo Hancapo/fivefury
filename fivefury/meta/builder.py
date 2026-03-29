@@ -5,9 +5,9 @@ import struct
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from .binary import align, pad_bytes
-from .metahash import MetaHash
-from .meta import (
+from ..binary import align, pad_bytes
+from ..metahash import MetaHash
+from . import (
     FLOAT_XYZ_NAME_HASH,
     META_FILE_VFT,
     META_ROOT_SIZE,
@@ -20,7 +20,7 @@ from .meta import (
     MetaStructInfo,
     RawStruct,
 )
-from .meta_defs import (
+from .defs import (
     META_TYPE_NAME_ARRAYINFO,
     META_TYPE_NAME_BYTE,
     META_TYPE_NAME_FLOAT,
@@ -33,7 +33,7 @@ from .meta_defs import (
     SYSTEM_BASE,
     MetaDataType,
 )
-from .hashing import jenk_hash
+from ..hashing import jenk_hash
 
 @dataclasses.dataclass(slots=True)
 class _WritableBlock:
@@ -571,6 +571,11 @@ def _pack_inline_array(data_type: MetaDataType, value: Any, count: int) -> bytes
         return struct.pack(f"<{count}b", *(int(v) for v in items))
     raw = bytes(value or b"")[:count]
     return raw + (b"\x00" * (count - len(raw)))
+
+
+
+
+
 
 
 
