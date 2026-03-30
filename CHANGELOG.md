@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.7]
+
+### Added
+- Optional companion `YTYP` generation for `OBJ -> YDR`, with `textureDictionary` set to `<model>_txd`.
+
+### Changed
+- Lowercased generated `OBJ -> YDR` and companion `YTYP` names so output files and archetype-derived names stay consistent.
+
 ## [0.1.6]
 
 ### Fixed

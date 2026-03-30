@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from pathlib import Path
 from typing import Sequence
 
 from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, create_ydr, save_ydr
+from ..ytyp import Archetype, Ytyp
 
 
 @dataclasses.dataclass(slots=True)
@@ -124,6 +126,50 @@ def _infer_shader(material: ObjMaterial, default_shader: str) -> str:
     return default_shader
 
 
+def _compute_scene_bounds(meshes: Sequence[YdrMeshInput]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
+    positions = [position for mesh in meshes for position in mesh.positions]
+    if not positions:
+        return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0
+    xs = [position[0] for position in positions]
+    ys = [position[1] for position in positions]
+    zs = [position[2] for position in positions]
+    bb_min = (min(xs), min(ys), min(zs))
+    bb_max = (max(xs), max(ys), max(zs))
+    centre = (
+        (bb_min[0] + bb_max[0]) * 0.5,
+        (bb_min[1] + bb_max[1]) * 0.5,
+        (bb_min[2] + bb_max[2]) * 0.5,
+    )
+    radius = max(math.dist(centre, position) for position in positions)
+    return centre, bb_min, bb_max, radius
+
+
+def _lowercase_output_path(value: str | Path) -> Path:
+    path = Path(value)
+    return path.with_name(path.name.lower())
+
+
+def _save_companion_ytyp(scene: ObjScene, destination: str | Path) -> Path:
+    target = _lowercase_output_path(destination)
+    base_name = target.stem.lower()
+    ytyp_name = f"{base_name}_meta"
+    centre, bb_min, bb_max, radius = _compute_scene_bounds(scene.meshes)
+    ytyp = Ytyp(name=ytyp_name)
+    ytyp.add_archetype(
+        Archetype(
+            name=base_name,
+            asset_name=base_name,
+            texture_dictionary=f"{base_name}_txd",
+            asset_type=3,
+            bb_min=bb_min,
+            bb_max=bb_max,
+            bs_centre=centre,
+            bs_radius=radius,
+        )
+    )
+    return ytyp.save(target.with_name(f"{ytyp_name}.ytyp"))
+
+
 def read_obj_scene(
     source: str | Path,
     *,
@@ -193,7 +239,7 @@ def read_obj_scene(
     meshes = [builder.to_mesh_input() for builder in builders.values() if builder.indices]
     if not meshes:
         raise ValueError(f"OBJ file '{obj_path}' does not contain any faces")
-    return ObjScene(meshes=meshes, materials=ydr_materials, name=obj_path.stem)
+    return ObjScene(meshes=meshes, materials=ydr_materials, name=obj_path.stem.lower())
 
 
 def obj_to_ydr(
@@ -202,12 +248,16 @@ def obj_to_ydr(
     *,
     default_shader: str = "default.sps",
     shader: str | None = None,
+    generate_ytyp: bool = False,
 ) -> YdrBuild | Path:
     scene = read_obj_scene(source, default_shader=default_shader, shader=shader)
     build = scene.to_ydr()
     if destination is None:
         return build
-    return save_ydr(build, destination)
+    result = save_ydr(build, _lowercase_output_path(destination))
+    if generate_ytyp:
+        _save_companion_ytyp(scene, result)
+    return result
 
 
 __all__ = [
