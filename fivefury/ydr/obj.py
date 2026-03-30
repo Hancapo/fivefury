@@ -88,6 +88,14 @@ def _texture_name_from_map(value: str) -> str:
     return Path(value.strip().strip('"')).stem or Path(value.strip().strip('"')).name
 
 
+def _convert_obj_position(x: float, y: float, z: float) -> tuple[float, float, float]:
+    return (x, -z, y)
+
+
+def _convert_obj_normal(x: float, y: float, z: float) -> tuple[float, float, float]:
+    return (x, -z, y)
+
+
 def _resolve_obj_index(raw: str, count: int) -> int:
     value = int(raw)
     return value - 1 if value > 0 else count + value
@@ -160,7 +168,7 @@ def _save_companion_ytyp(scene: ObjScene, destination: str | Path) -> Path:
             name=base_name,
             asset_name=base_name,
             texture_dictionary=f"{base_name}_txd",
-            asset_type=3,
+            asset_type=2,
             bb_min=bb_min,
             bb_max=bb_max,
             bs_centre=centre,
@@ -197,11 +205,11 @@ def read_obj_scene(
         keyword = parts[0].lower()
         values = parts[1:]
         if keyword == "v" and len(values) >= 3:
-            vertices.append((float(values[0]), float(values[1]), float(values[2])))
+            vertices.append(_convert_obj_position(float(values[0]), float(values[1]), float(values[2])))
         elif keyword == "vt" and len(values) >= 2:
             texcoords.append((float(values[0]), 1.0 - float(values[1])))
         elif keyword == "vn" and len(values) >= 3:
-            normals.append((float(values[0]), float(values[1]), float(values[2])))
+            normals.append(_convert_obj_normal(float(values[0]), float(values[1]), float(values[2])))
         elif keyword == "mtllib" and values:
             material_libraries.append(obj_path.parent / " ".join(values))
         elif keyword == "usemtl" and values:
