@@ -60,18 +60,32 @@ from .assets import (
 from .rpf import RpfArchive, RpfExportMode, create_rpf, load_rpf, rpf_to_folder, rpf_to_zip, zip_to_rpf
 from .texture import BCFormat
 from .ydr import (
+    ObjMaterial,
+    ObjScene,
     ShaderDefinition,
     ShaderLayoutDefinition,
     ShaderLibrary,
     ShaderParameterDefinition,
     Ydr,
+    YdrBuild,
     YdrMaterial,
+    YdrMaterialDescriptor,
+    YdrMaterialInput,
+    YdrMaterialLayout,
+    YdrMaterialParameter,
     YdrMesh,
+    YdrMeshInput,
     YdrModel,
+    YdrTextureInput,
     YdrTextureRef,
+    build_ydr_bytes,
+    create_ydr,
     load_shader_library,
+    obj_to_ydr,
+    read_obj_scene,
     read_shader_library,
     read_ydr,
+    save_ydr,
 )
 from .ymap import (
     Block,
@@ -242,3 +256,4 @@ __all__ = [
     "save_ytyp",
     "zip_to_rpf",
 ]
+
