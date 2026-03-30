@@ -1,1 +1,2 @@
 include native/*.h
+recursive-include fivefury/ydr *.xml

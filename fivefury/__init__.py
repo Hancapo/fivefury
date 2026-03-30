@@ -59,6 +59,20 @@ from .assets import (
 )
 from .rpf import RpfArchive, RpfExportMode, create_rpf, load_rpf, rpf_to_folder, rpf_to_zip, zip_to_rpf
 from .texture import BCFormat
+from .ydr import (
+    ShaderDefinition,
+    ShaderLayoutDefinition,
+    ShaderLibrary,
+    ShaderParameterDefinition,
+    Ydr,
+    YdrMaterial,
+    YdrMesh,
+    YdrModel,
+    YdrTextureRef,
+    load_shader_library,
+    read_shader_library,
+    read_ydr,
+)
 from .ymap import (
     Block,
     CarGen,
@@ -166,6 +180,10 @@ __all__ = [
     "RpfArchive",
     "RpfExportMode",
     "RSC7_MAGIC",
+    "ShaderDefinition",
+    "ShaderLayoutDefinition",
+    "ShaderLibrary",
+    "ShaderParameterDefinition",
     "SpawnPointExtension",
     "SpawnPointOverrideExtension",
     "Texture",
@@ -176,9 +194,14 @@ __all__ = [
     "TextureRef",
     "VerletClothCustomBoundsExtension",
     "WindDisturbanceExtension",
+    "Ydr",
+    "YdrAsset",
+    "YdrMaterial",
+    "YdrMesh",
+    "YdrModel",
+    "YdrTextureRef",
     "Ymap",
     "YddAsset",
-    "YdrAsset",
     "Ytd",
     "YftAsset",
     "YptAsset",
@@ -193,12 +216,15 @@ __all__ = [
     "hash_matches",
     "iter_embedded_texture_dictionaries",
     "jenk_hash",
+    "list_embedded_texture_dictionaries",
     "load_game_keys",
     "load_rpf",
-    "list_embedded_texture_dictionaries",
+    "load_shader_library",
     "open_resource_texture_asset",
     "parse_rsc7",
     "read_meta",
+    "read_shader_library",
+    "read_ydr",
     "read_ymap",
     "read_ytd",
     "read_ytyp",
@@ -216,6 +242,3 @@ __all__ = [
     "save_ytyp",
     "zip_to_rpf",
 ]
-
-
-

@@ -1,0 +1,214 @@
+from __future__ import annotations
+
+import struct
+import tempfile
+from pathlib import Path
+
+from fivefury import GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
+from fivefury.resource import build_rsc7
+from fivefury.ydr import YdrMaterialDescriptor
+from tests.helpers import write_bytes
+
+_DAT_VIRTUAL_BASE = 0x50000000
+_DAT_PHYSICAL_BASE = 0x60000000
+_ROOT_OFFSET = 0x10
+_GTAV1_TYPES = 0x7755555555996996
+_GTAV1_FLAGS = (1 << 0) | (1 << 3) | (1 << 6) | (1 << 14)
+_VERTEX_STRIDE = 48
+
+
+def _align(value: int, alignment: int) -> int:
+    return (value + alignment - 1) & ~(alignment - 1)
+
+
+def _pack_vertex(
+    position: tuple[float, float, float],
+    normal: tuple[float, float, float],
+    texcoord: tuple[float, float],
+    tangent: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 1.0),
+) -> bytes:
+    return struct.pack("<3f3f2f4f", *position, *normal, *texcoord, *tangent)
+
+
+def _build_test_ydr_bytes() -> bytes:
+    texture_name = b"test_diffuse\x00"
+    vertex_bytes = b"".join(
+        [
+            _pack_vertex((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 0.0)),
+            _pack_vertex((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0)),
+            _pack_vertex((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0)),
+        ]
+    )
+    index_offset = _align(len(vertex_bytes), 16)
+    graphics_data = bytearray(index_offset + 6)
+    graphics_data[: len(vertex_bytes)] = vertex_bytes
+    graphics_data[index_offset : index_offset + 6] = struct.pack("<3H", 0, 1, 2)
+
+    shader_group_off = 0x100
+    shader_ptrs_off = 0x140
+    shader_fx_off = 0x150
+    params_block_off = 0x180
+    texture_base_off = 0x1A0
+    texture_name_off = 0x220
+    high_header_off = 0x240
+    high_ptrs_off = 0x250
+    model_off = 0x260
+    shader_mapping_off = 0x290
+    geometry_ptrs_off = 0x2A0
+    geometry_off = 0x2B0
+    vertex_buffer_off = 0x350
+    index_buffer_off = 0x3D0
+    vertex_decl_off = 0x430
+
+    system_size = _align(vertex_decl_off + 0x10, 16)
+    system_data = bytearray(system_size)
+
+    def virt(offset: int) -> int:
+        return _DAT_VIRTUAL_BASE + offset
+
+    def phys(offset: int) -> int:
+        return _DAT_PHYSICAL_BASE + offset
+
+    struct.pack_into("<Q", system_data, _ROOT_OFFSET + 0x00, virt(shader_group_off))
+    struct.pack_into("<3f", system_data, _ROOT_OFFSET + 0x10, 0.5, 0.5, 0.0)
+    struct.pack_into("<f", system_data, _ROOT_OFFSET + 0x1C, 1.0)
+    struct.pack_into("<3f", system_data, _ROOT_OFFSET + 0x20, 0.0, 0.0, 0.0)
+    struct.pack_into("<3f", system_data, _ROOT_OFFSET + 0x30, 1.0, 1.0, 0.0)
+    struct.pack_into("<Q", system_data, _ROOT_OFFSET + 0x40, virt(high_header_off))
+
+    struct.pack_into("<Q", system_data, shader_group_off + 0x10, virt(shader_ptrs_off))
+    struct.pack_into("<H", system_data, shader_group_off + 0x18, 1)
+    struct.pack_into("<H", system_data, shader_group_off + 0x1A, 1)
+
+    struct.pack_into("<Q", system_data, shader_ptrs_off + 0x00, virt(shader_fx_off))
+
+    struct.pack_into("<Q", system_data, shader_fx_off + 0x00, virt(params_block_off))
+    struct.pack_into("<I", system_data, shader_fx_off + 0x08, int(jenk_hash("default")))
+    system_data[shader_fx_off + 0x10] = 1
+    system_data[shader_fx_off + 0x11] = 0
+    struct.pack_into("<I", system_data, shader_fx_off + 0x18, int(jenk_hash("default.sps")))
+    system_data[shader_fx_off + 0x26] = 0
+    system_data[shader_fx_off + 0x27] = 1
+
+    system_data[params_block_off + 0x00] = 0
+    struct.pack_into("<Q", system_data, params_block_off + 0x08, virt(texture_base_off))
+    struct.pack_into("<I", system_data, params_block_off + 0x10, int(jenk_hash("DiffuseSampler")))
+
+    struct.pack_into("<Q", system_data, texture_base_off + 0x28, virt(texture_name_off))
+    system_data[texture_name_off : texture_name_off + len(texture_name)] = texture_name
+
+    struct.pack_into("<Q", system_data, high_header_off + 0x00, virt(high_ptrs_off))
+    struct.pack_into("<H", system_data, high_header_off + 0x08, 1)
+    struct.pack_into("<H", system_data, high_header_off + 0x0A, 1)
+    struct.pack_into("<Q", system_data, high_ptrs_off + 0x00, virt(model_off))
+
+    struct.pack_into("<Q", system_data, model_off + 0x08, virt(geometry_ptrs_off))
+    struct.pack_into("<H", system_data, model_off + 0x10, 1)
+    struct.pack_into("<H", system_data, model_off + 0x12, 1)
+    struct.pack_into("<Q", system_data, model_off + 0x20, virt(shader_mapping_off))
+    struct.pack_into("<H", system_data, model_off + 0x2C, 0)
+    struct.pack_into("<H", system_data, model_off + 0x2E, 1)
+
+    struct.pack_into("<H", system_data, shader_mapping_off + 0x00, 0)
+    struct.pack_into("<Q", system_data, geometry_ptrs_off + 0x00, virt(geometry_off))
+
+    struct.pack_into("<Q", system_data, geometry_off + 0x18, virt(vertex_buffer_off))
+    struct.pack_into("<Q", system_data, geometry_off + 0x38, virt(index_buffer_off))
+    struct.pack_into("<I", system_data, geometry_off + 0x58, 3)
+    struct.pack_into("<I", system_data, geometry_off + 0x5C, 1)
+    struct.pack_into("<H", system_data, geometry_off + 0x60, 3)
+    struct.pack_into("<H", system_data, geometry_off + 0x70, _VERTEX_STRIDE)
+    struct.pack_into("<Q", system_data, geometry_off + 0x78, phys(0))
+
+    struct.pack_into("<H", system_data, vertex_buffer_off + 0x08, _VERTEX_STRIDE)
+    struct.pack_into("<Q", system_data, vertex_buffer_off + 0x10, phys(0))
+    struct.pack_into("<I", system_data, vertex_buffer_off + 0x18, 3)
+    struct.pack_into("<Q", system_data, vertex_buffer_off + 0x30, virt(vertex_decl_off))
+
+    struct.pack_into("<I", system_data, index_buffer_off + 0x08, 3)
+    struct.pack_into("<Q", system_data, index_buffer_off + 0x10, phys(index_offset))
+
+    struct.pack_into("<I", system_data, vertex_decl_off + 0x00, _GTAV1_FLAGS)
+    struct.pack_into("<H", system_data, vertex_decl_off + 0x04, _VERTEX_STRIDE)
+    system_data[vertex_decl_off + 0x07] = 4
+    struct.pack_into("<Q", system_data, vertex_decl_off + 0x08, _GTAV1_TYPES)
+
+    return build_rsc7(
+        bytes(system_data),
+        version=165,
+        graphics_data=bytes(graphics_data),
+        system_alignment=0x200,
+        graphics_alignment=0x200,
+    )
+
+
+def test_shader_library_reads_real_xml() -> None:
+    library = load_shader_library(reload=True)
+
+    shader = library.get_shader("normal_spec")
+    assert shader is not None
+    assert shader.pick_file_name(0) == "normal_spec.sps"
+    assert shader.pick_file_name(3) == "normal_spec_cutout.sps"
+    assert shader.get_parameter("DiffuseSampler") is not None
+    assert shader.get_parameter("DiffuseSampler").uv_index == 0
+    assert shader.get_parameter("BumpSampler").type_name == "Texture"
+
+
+def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
+    ydr = read_ydr(_build_test_ydr_bytes(), path="triangle.ydr")
+
+    assert isinstance(ydr, Ydr)
+    assert ydr.version == 165
+    assert ydr.bounding_box_min == (0.0, 0.0, 0.0)
+    assert ydr.bounding_box_max == (1.0, 1.0, 0.0)
+    assert len(ydr.materials) == 1
+
+    material = ydr.materials[0]
+    assert material.shader_definition is not None
+    assert material.shader_definition.name == "default"
+    assert material.resolved_shader_file_name == "default.sps"
+    assert material.texture_names == ["test_diffuse"]
+    assert material.get_texture("DiffuseSampler") is not None
+    assert material.get_texture("DiffuseSampler").uv_index == 0
+    assert material.get_texture("DiffuseSampler").parameter_type == "Texture"
+    assert ydr.texture_names == ["test_diffuse"]
+
+    descriptor = material.material_descriptor
+    assert isinstance(descriptor, YdrMaterialDescriptor)
+    assert descriptor.shader_name == "default"
+    assert descriptor.shader_file_name == "default.sps"
+    assert descriptor.get_texture("DiffuseSampler") is not None
+    assert descriptor.get_texture("DiffuseSampler").texture_name == "test_diffuse"
+    assert descriptor.get_texture("DiffuseSampler").uv_index == 0
+    assert "Position" in descriptor.expected_semantics
+    assert "TexCoord0" in descriptor.expected_semantics
+
+    meshes = ydr.meshes
+    assert len(meshes) == 1
+    mesh = meshes[0]
+    assert mesh.indices == [0, 1, 2]
+    assert mesh.positions == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+    assert mesh.normals == [(0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)]
+    assert len(mesh.texcoords) == 1
+    assert mesh.texcoords[0] == [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+    assert mesh.material is material
+    assert mesh.material.primary_texture_name == "test_diffuse"
+
+
+def test_gamefilecache_parses_loose_ydr_as_renderable_model() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        write_bytes(root / "stream" / "triangle.ydr", _build_test_ydr_bytes())
+
+        cache = GameFileCache(root, use_index_cache=False)
+        cache.scan(use_index_cache=False)
+
+        game_file = cache.get_file("stream/triangle.ydr")
+        assert game_file is not None
+        assert game_file.kind == GameFileType.YDR
+        assert isinstance(game_file.parsed, Ydr)
+        assert game_file.parsed.meshes[0].material.primary_texture_name == "test_diffuse"
+        assert game_file.parsed.meshes[0].material.shader_definition is not None
+        assert game_file.parsed.meshes[0].material.shader_definition.name == "default"
+        assert game_file.parsed.meshes[0].material.material_descriptor.get_texture("DiffuseSampler") is not None
+        assert game_file.parsed.meshes[0].indices == [0, 1, 2]
