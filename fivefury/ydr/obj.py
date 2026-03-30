@@ -153,7 +153,7 @@ def read_obj_scene(
         if keyword == "v" and len(values) >= 3:
             vertices.append((float(values[0]), float(values[1]), float(values[2])))
         elif keyword == "vt" and len(values) >= 2:
-            texcoords.append((float(values[0]), float(values[1])))
+            texcoords.append((float(values[0]), 1.0 - float(values[1])))
         elif keyword == "vn" and len(values) >= 3:
             normals.append((float(values[0]), float(values[1]), float(values[2])))
         elif keyword == "mtllib" and values:

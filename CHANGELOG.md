@@ -6,6 +6,11 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.6]
+
+### Fixed
+- Flipped OBJ `V` texture coordinates during `OBJ -> YDR` import so generated drawables no longer come out with vertically inverted UVs.
+
 ## [0.1.5]
 
 ### Added
