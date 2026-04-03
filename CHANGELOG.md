@@ -6,6 +6,11 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.9]
+
+### Added
+- Initial `YCD` reader support with `read_ycd(...)`, clip dictionary parsing, animation metadata, and cutscene-oriented clip name mapping.
+
 ## [0.1.8]
 
 ### Added
