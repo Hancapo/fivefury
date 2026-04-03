@@ -90,6 +90,8 @@ def _object_name_field(type_name: str) -> str:
 
 def _event_label_field(args_type_name: str) -> str | None:
     if args_type_name == "rage__cutfCameraCutEventArgs":
+        return "cName"
+    if args_type_name == "rage__cutfCascadeShadowEventArgs":
         return "cameraCutHashName"
     if args_type_name in {"rage__cutfSubtitleEventArgs", "rage__cutfNameEventArgs", "rage__cutfFinalNameEventArgs"}:
         return "cName"

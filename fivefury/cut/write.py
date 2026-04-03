@@ -39,6 +39,7 @@ from .pso import (
     _PsoPointer,
     _PsoStruct,
 )
+from .schema import builtin_cut_template
 
 
 def _u16(value: int) -> bytes:
@@ -459,7 +460,7 @@ def _resolve_template(template: CutFile | bytes | str | Path | None, cut: CutFil
         resolved = cut.metadata.get("pso_template")
         if resolved is not None:
             return resolved
-        raise ValueError("CUT writing requires a template or a CutFile loaded from an existing .cut")
+        return builtin_cut_template()
     if isinstance(template, CutFile):
         resolved = template.metadata.get("pso_template")
         if resolved is None:

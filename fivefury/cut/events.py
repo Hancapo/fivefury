@@ -219,7 +219,7 @@ _SUPPORTED_EVENT_SPECS = {
         enum_name=CUT_EVENT_ID_TO_ENUM_NAME[CUT_EVENT_NAME_TO_ID["camera_cut"]],
         args_type_name="rage__cutfCameraCutEventArgs",
         default_target_role="camera",
-        default_args={"cameraCutHashName": "", "interpTime": 0.0},
+        default_args={"cName": ""},
     ),
     "set_light": CutEventSpec(
         name="set_light",
@@ -263,4 +263,3 @@ def get_cut_event_id(name_or_id: str | int) -> int:
 def get_cut_event_spec(name_or_id: str | int) -> CutEventSpec | None:
     event_id = get_cut_event_id(name_or_id)
     return _SUPPORTED_EVENT_SPECS.get(CUT_EVENT_ID_TO_NAME[event_id])
-
