@@ -11,6 +11,7 @@ from ..hashing import _get_lut
 from ..metahash import MetaHash
 from ..resource import parse_rsc7
 from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _normalize_key
+from ..ycd import read_ycd
 from ..ydr import read_ydr
 from ..ytd import read_ytd
 
@@ -58,6 +59,12 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
             return read_ytd(source), GameFileType.YTD
         except Exception:
             return source, GameFileType.YTD
+    if ext == ".ycd":
+        source = raw if raw is not None else data
+        try:
+            return read_ycd(source, path=path), GameFileType.YCD
+        except Exception:
+            return source, GameFileType.YCD
     if ext == ".cut":
         source = raw if raw is not None else data
         try:
@@ -219,7 +226,7 @@ class GameFileCacheIOMixin:
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             ext = Path(asset.path).suffix.lower()
-            raw_source = standalone_native if ext in {".ytd", ".ydr"} else stored_native
+            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ycd"} else stored_native
             parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
@@ -243,7 +250,7 @@ class GameFileCacheIOMixin:
             stored = entry.read(logical=False)
             logical = entry.read(logical=True)
             raw_source = None
-            if asset.path.lower().endswith((".ytd", ".ydr")):
+            if asset.path.lower().endswith((".ytd", ".ydr", ".ycd")):
                 raw_source = entry._archive.read_entry_standalone(entry)
             parsed, kind = _decode_payload(asset.path, logical, raw=raw_source)
             game_file = GameFile(

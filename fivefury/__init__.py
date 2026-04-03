@@ -158,6 +158,16 @@ from .ymap.surfaces import (
     LodLightsSoa,
     OccludeModel,
 )
+from .ycd import (
+    Ycd,
+    YcdAnimation,
+    YcdClip,
+    YcdClipAnimation,
+    YcdClipAnimationEntry,
+    YcdClipAnimationList,
+    YcdClipType,
+    read_ycd,
+)
 from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
 from .ytyp import (
     Archetype,
@@ -288,6 +298,13 @@ __all__ = [
     "TextureRef",
     "VerletClothCustomBoundsExtension",
     "WindDisturbanceExtension",
+    "Ycd",
+    "YcdAnimation",
+    "YcdClip",
+    "YcdClipAnimation",
+    "YcdClipAnimationEntry",
+    "YcdClipAnimationList",
+    "YcdClipType",
     "Ydr",
     "YdrAsset",
     "YdrBuild",
@@ -331,6 +348,7 @@ __all__ = [
     "read_cut_scene",
     "read_cutxml",
     "read_cutxml_scene",
+    "read_ycd",
     "read_shader_library",
     "read_ydr",
     "read_ymap",
