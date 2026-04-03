@@ -12,6 +12,9 @@ from .names import ARRAY_INFO_HASH, hash_name
 PSIN = 0x5053494E
 PMAP = 0x504D4150
 PSCH = 0x50534348
+PSIG = 0x50534947
+STRE = 0x53545245
+CHKS = 0x43484B53
 PsoDataTypeBool = 0x00
 PsoDataTypeSByte = 0x01
 PsoDataTypeUByte = 0x02
@@ -380,7 +383,26 @@ class _PsoReader:
     def read_cut(self) -> CutFile:
         root_block = self.blocks[self.root_block_id]
         root = self._read_structure(root_block.name_hash, self.root_block_id, 0)
-        return CutFile(root=root, source="cut")
+        block_order_hashes: list[int] = []
+        for block_id in sorted(self.blocks):
+            name_hash = self.blocks[block_id].name_hash
+            if name_hash not in block_order_hashes:
+                block_order_hashes.append(name_hash)
+        metadata = {
+            "pso_template": {
+                "sections": {
+                    ident: bytes(section)
+                    for ident, section in self.sections.items()
+                    if ident != PSIN and ident != PMAP
+                },
+                "structs": self.structs,
+                "root_type_hash": root_block.name_hash,
+                "psin_prefix": bytes(self.sections[PSIN][8:16]),
+                "pmap_unknown": _u16(self.sections[PMAP], 14),
+                "block_order_hashes": block_order_hashes,
+            }
+        }
+        return CutFile(root=root, source="cut", metadata=metadata)
 
 
 def read_cut(data: bytes | str | Path) -> CutFile:

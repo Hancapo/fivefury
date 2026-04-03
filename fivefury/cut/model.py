@@ -64,6 +64,7 @@ class CutSummary:
 class CutFile:
     root: CutNode
     source: str = "cut"
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def objects(self) -> list[CutNode]:
@@ -134,3 +135,13 @@ class CutFile:
             event_types=dict(Counter(node.type_name for node in self.events)),
             event_arg_types=dict(Counter(node.type_name for node in self.event_args)),
         )
+
+    def to_bytes(self, *, template: "CutFile | bytes | str | None" = None) -> bytes:
+        from .write import build_cut_bytes
+
+        return build_cut_bytes(self, template=template)
+
+    def save(self, destination: str, *, template: "CutFile | bytes | str | None" = None) -> None:
+        from pathlib import Path
+
+        Path(destination).write_bytes(self.to_bytes(template=template))

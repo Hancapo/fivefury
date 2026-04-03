@@ -5,7 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from fivefury import CutFile, CutHashedString, GameFileType, analyze_cut, read_cut, read_cutxml
+from fivefury import (
+    CutFile,
+    CutHashedString,
+    GameFileType,
+    analyze_cut,
+    build_cut_bytes,
+    read_cut,
+    read_cut_scene,
+    read_cutxml,
+    scene_to_cut,
+)
 from fivefury.gamefile import guess_game_file_type
 
 
@@ -73,3 +83,47 @@ def test_cut_summary_and_resolution() -> None:
     assert first_event.object.type_name == "rage__cutfAnimationManagerObject"
     assert first_event.event_args is not None
     assert first_event.event_args.type_name == "rage__cutfObjectIdEventArgs"
+
+
+def test_cut_roundtrip_binary_writer() -> None:
+    cut = read_cut(CUT_PATH)
+    cut.root.fields["fTotalDuration"] = 12.5
+    cut.root.fields["cFaceDir"] = r"x:/gta5/assets_ng\cuts\TEST\faces"
+
+    rebuilt = read_cut(build_cut_bytes(cut))
+
+    assert isclose(rebuilt.root.fields["fTotalDuration"], 12.5, rel_tol=0.0, abs_tol=1e-6)
+    assert rebuilt.root.fields["cFaceDir"] == r"x:/gta5/assets_ng\cuts\TEST\faces"
+    assert _counts(rebuilt) == _counts(cut)
+    assert rebuilt.root.fields["pCutsceneObjects"][0].type_name == cut.root.fields["pCutsceneObjects"][0].type_name
+
+
+def test_cut_scene_abstraction_reads_like_timeline() -> None:
+    scene = read_cut_scene(CUT_PATH)
+
+    assert scene.duration == pytest.approx(64.36666870117188)
+    assert len(scene.cameras) == 1
+    assert len(scene.actors) == 1
+    assert len(scene.peds) == 1
+    assert len(scene.entities) == 1
+    assert len(scene.lights) == 4
+    assert len(scene.audio) == 1
+    assert len(scene.subtitles) == 1
+    assert scene.camera_track is not None
+    assert scene.subtitle_track is not None
+    assert scene.load_track is not None
+    assert any(track.kind == "camera_cut" for track in scene.tracks)
+    assert any(track.kind == "subtitle" for track in scene.tracks)
+    assert scene.timeline[0].start == pytest.approx(0.0)
+
+
+def test_cut_scene_roundtrip() -> None:
+    scene = read_cut_scene(CUT_PATH)
+    scene.duration = 33.0
+    scene.cameras[0].name = "cam_test"
+    scene.timeline[0].start = 1.25
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+
+    assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(33.0)
+    assert _counts(rebuilt) == _counts(scene.raw)
