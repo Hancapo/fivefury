@@ -6,6 +6,20 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.8]
+
+### Added
+- `merge_ytyps(...)` for combining multiple `YTYP` files, including directory-based merges.
+- `ytyp_from_ydr_folder(...)` for generating a minimal `YTYP` from a folder of `YDR` files.
+
+### Changed
+- Expanded top-level exports for the `YDR` builder and `YTYP` helper workflows.
+
+### Fixed
+- Corrected `OBJ -> YDR` axis conversion so imported models no longer come out laid down.
+- Corrected companion `YTYP` generation so the archetype uses `ASSET_TYPE_DRAWABLE` instead of `ASSET_TYPE_DRAWABLEDICTIONARY`.
+- Preserved sparse `YDR` UV channel indices instead of compacting them during parsing.
+
 ## [0.1.7]
 
 ### Added

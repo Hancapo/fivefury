@@ -226,7 +226,7 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
         "positions": positions,
         "normals": normals,
         "tangents": tangents,
-        "texcoords": [channel for channel in texcoords if channel],
+        "texcoords": list(texcoords),
         "colours0": colours0,
         "colours1": colours1,
         "blend_weights": blend_weights,
