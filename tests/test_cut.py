@@ -8,9 +8,11 @@ import pytest
 from fivefury import (
     CutFile,
     CutHashedString,
+    CutScene,
     GameFileType,
     analyze_cut,
     build_cut_bytes,
+    get_cut_event_name,
     read_cut,
     read_cut_scene,
     read_cutxml,
@@ -112,6 +114,7 @@ def test_cut_scene_abstraction_reads_like_timeline() -> None:
     assert scene.camera_track is not None
     assert scene.subtitle_track is not None
     assert scene.load_track is not None
+    assert scene.camera_track.events[0].event_name == "camera_cut"
     assert any(track.kind == "camera_cut" for track in scene.tracks)
     assert any(track.kind == "subtitle" for track in scene.tracks)
     assert scene.timeline[0].start == pytest.approx(0.0)
@@ -127,3 +130,33 @@ def test_cut_scene_roundtrip() -> None:
 
     assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(33.0)
     assert _counts(rebuilt) == _counts(scene.raw)
+
+
+def test_cut_event_name_lookup() -> None:
+    assert get_cut_event_name(0) == "load_scene"
+    assert get_cut_event_name(30) == "show_subtitle"
+    assert get_cut_event_name(43) == "camera_cut"
+    assert get_cut_event_name(74) == "set_light"
+
+
+def test_cut_scene_builder_from_scratch() -> None:
+    scene = CutScene.create(duration=15.0, face_dir="x:/gta5/assets_ng/cuts/test/faces")
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("cam_orbit")
+    actor = scene.add_ped("ped_sphere")
+    subtitle = scene.add_subtitle("subtitle_track")
+
+    scene.create_event("load_scene", start=0.0, target=asset_manager)
+    scene.create_event("load_models", start=0.0, target=asset_manager, payload={"iObjectIdList": [actor.object_id]})
+    scene.create_event("camera_cut", start=0.0, target=camera, label="cam_orbit")
+    scene.create_event("show_subtitle", start=0.0, target=subtitle, label="hola amigos", duration=15.0, payload={"iLanguageID": 0})
+
+    cut = scene_to_cut(scene)
+    rebuilt = read_cut(build_cut_bytes(cut, template=CUT_PATH))
+
+    assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(15.0)
+    assert rebuilt.root.fields["cFaceDir"] == "x:/gta5/assets_ng/cuts/test/faces"
+    assert len(rebuilt.objects) == 4
+    assert len(rebuilt.load_events) == 2
+    assert len(rebuilt.events) == 2
+    assert len(rebuilt.event_args) == 4

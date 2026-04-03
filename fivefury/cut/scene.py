@@ -4,7 +4,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from ..hashing import jenk_hash
+from .events import CutEventSpec, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
 from .model import CutFile, CutHashedString, CutNode, CutResolvedEvent
+from .names import CUT_NAME_VALUES
 from .pso import read_cut
 from .xml import read_cutxml
 
@@ -43,12 +46,53 @@ _ARGS_CATEGORY_MAP = {
 _EVENT_BASE_FIELDS = {"fTime", "iEventId", "iEventArgsIndex", "pChildEvents", "StickyId", "IsChild", "iObjectId"}
 _ARGS_BASE_FIELDS = {"attributeList", "cutfAttributes"}
 
+_ROLE_DEFAULT_OBJECT_TYPE = {
+    "camera": "rage__cutfCameraObject",
+    "ped": "rage__cutfPedModelObject",
+    "prop": "rage__cutfPropModelObject",
+    "vehicle": "rage__cutfVehicleModelObject",
+    "light": "rage__cutfLightObject",
+    "audio": "rage__cutfAudioObject",
+    "subtitle": "rage__cutfSubtitleObject",
+    "fade": "rage__cutfScreenFadeObject",
+    "overlay": "rage__cutfOverlayObject",
+    "hidden_object": "rage__cutfHiddenModelObject",
+    "blocking_bounds": "rage__cutfBlockingBoundsObject",
+    "animation_manager": "rage__cutfAnimationManagerObject",
+    "asset_manager": "rage__cutfAssetManagerObject",
+}
+
 
 def _coerce_name(value: Any) -> str | None:
     if isinstance(value, CutHashedString):
         return value.text or f"0x{value.hash:08X}"
     if isinstance(value, str):
         return value or None
+    return None
+
+
+def _hashed_string(text: str | None) -> CutHashedString:
+    value = text or ""
+    return CutHashedString(hash=jenk_hash(value) if value else 0, text=value or None)
+
+
+def _node_type_hash(type_name: str, type_hash: int | None = None) -> int:
+    return int(type_hash if type_hash is not None else CUT_NAME_VALUES.get(type_name, jenk_hash(type_name)))
+
+
+def _object_name_field(type_name: str) -> str:
+    if type_name == "rage__cutfAudioObject":
+        return "cName"
+    if type_name in {"rage__cutfPedModelObject", "rage__cutfPropModelObject", "rage__cutfVehicleModelObject"}:
+        return "StreamingName"
+    return "cName"
+
+
+def _event_label_field(args_type_name: str) -> str | None:
+    if args_type_name == "rage__cutfCameraCutEventArgs":
+        return "cameraCutHashName"
+    if args_type_name in {"rage__cutfSubtitleEventArgs", "rage__cutfNameEventArgs", "rage__cutfFinalNameEventArgs"}:
+        return "cName"
     return None
 
 
@@ -173,15 +217,42 @@ class CutBinding:
     def display_name(self) -> str:
         return self.name or f"{self.role}:{self.object_id}"
 
+    @classmethod
+    def new(
+        cls,
+        *,
+        object_id: int,
+        type_name: str,
+        name: str | None = None,
+        role: str | None = None,
+        fields: dict[str, Any] | None = None,
+    ) -> "CutBinding":
+        role_name = role or _object_role(type_name)
+        field_values = dict(fields or {})
+        name_field = _object_name_field(type_name)
+        if name is not None and name_field not in field_values:
+            if type_name == "rage__cutfAudioObject":
+                field_values[name_field] = name
+            else:
+                field_values[name_field] = _hashed_string(name)
+        raw = CutNode(type_name=type_name, type_hash=_node_type_hash(type_name), fields={})
+        return cls(object_id=object_id, type_name=type_name, role=role_name, name=name, fields=field_values, raw=raw)
+
     def to_node(self) -> CutNode:
         node = _clone_value(self.raw) if self.raw is not None else CutNode(type_name=self.type_name)
         node.type_name = self.type_name
+        node.type_hash = _node_type_hash(self.type_name, node.type_hash)
         node.fields["iObjectId"] = self.object_id
         for key, value in self.fields.items():
             node.fields[key] = _clone_value(value)
-        if self.name is not None and "cName" in node.fields:
-            current = node.fields["cName"]
-            node.fields["cName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) else 0, text=self.name)
+        if self.name is not None:
+            field_name = _object_name_field(self.type_name)
+            if field_name in node.fields:
+                if self.type_name == "rage__cutfAudioObject":
+                    node.fields[field_name] = self.name
+                else:
+                    current = node.fields[field_name]
+                    node.fields[field_name] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.name), text=self.name)
         return node
 
 
@@ -190,6 +261,8 @@ class CutTimelineEvent:
     start: float
     kind: str
     track: str
+    event_name: str | None = None
+    event_enum_name: str | None = None
     label: str | None = None
     duration: float | None = None
     event_id: int | None = None
@@ -209,15 +282,110 @@ class CutTimelineEvent:
             return self.label
         if self.target_name:
             return self.target_name
+        if self.event_name:
+            return self.event_name
         return self.kind
+
+    @classmethod
+    def new(
+        cls,
+        *,
+        event: str | int,
+        start: float,
+        target_id: int | None = None,
+        target_name: str | None = None,
+        target_role: str | None = None,
+        track: str | None = None,
+        kind: str | None = None,
+        label: str | None = None,
+        duration: float | None = None,
+        payload: dict[str, Any] | None = None,
+        event_payload: dict[str, Any] | None = None,
+        is_load_event: bool | None = None,
+    ) -> "CutTimelineEvent":
+        spec = get_cut_event_spec(event)
+        event_id = get_cut_event_id(event)
+        event_name = get_cut_event_name(event_id)
+        event_enum_name = get_cut_event_enum_name(event_id)
+        event_kind = kind or (event_name or "event")
+        if track is None:
+            role_or_kind = target_role
+            if event_kind == "camera_cut":
+                track = "camera"
+            elif event_kind == "show_subtitle":
+                track = "subtitle"
+            elif is_load_event or (spec is not None and spec.is_load_event):
+                track = "load"
+            elif role_or_kind:
+                track = f"{role_or_kind}:{target_name or target_id if target_id is not None else role_or_kind}"
+            else:
+                track = event_kind
+        return cls(
+            start=float(start),
+            kind=event_kind,
+            track=track,
+            event_name=event_name,
+            event_enum_name=event_enum_name,
+            label=label,
+            duration=duration,
+            event_id=event_id,
+            target_id=target_id,
+            target_name=target_name,
+            target_role=target_role,
+            args_type=spec.args_type_name if spec is not None else None,
+            payload=dict(payload or {}),
+            event_payload=dict(event_payload or {}),
+            is_load_event=bool(spec.is_load_event if is_load_event is None and spec is not None else is_load_event),
+            raw=None,
+        )
 
     def to_resolved_event(self) -> CutResolvedEvent:
         if self.raw is None:
-            raise ValueError("scene event cannot be compiled without a backing raw CUT event yet")
+            spec = get_cut_event_spec(self.event_id if self.event_id is not None else self.event_name or self.kind)
+            event_id = self.event_id if self.event_id is not None else get_cut_event_id(self.event_name or self.kind)
+            event = CutNode(
+                type_name=(spec.event_type_name if spec is not None else "rage__cutfObjectIdEvent"),
+                type_hash=_node_type_hash(spec.event_type_name if spec is not None else "rage__cutfObjectIdEvent"),
+                fields={
+                    "fTime": float(self.start),
+                    "iEventId": event_id,
+                    "iEventArgsIndex": -1,
+                    "pChildEvents": None,
+                    "StickyId": 0,
+                    "IsChild": False,
+                },
+            )
+            if self.target_id is not None:
+                event.fields["iObjectId"] = self.target_id
+            for key, value in (spec.default_event_fields.items() if spec is not None else ()):
+                event.fields[key] = _clone_value(value)
+            for key, value in self.event_payload.items():
+                event.fields[key] = _clone_value(value)
+            args = None
+            if spec is not None and spec.args_type_name is not None:
+                args_fields = {key: _clone_value(value) for key, value in spec.default_args.items()}
+                label_field = _event_label_field(spec.args_type_name)
+                if self.label is not None and label_field is not None and label_field not in self.payload:
+                    args_fields[label_field] = _hashed_string(self.label) if label_field != "cName" or spec.args_type_name != "rage__cutfNameEventArgs" else self.label
+                if self.duration is not None:
+                    if "fSubtitleDuration" in args_fields:
+                        args_fields["fSubtitleDuration"] = float(self.duration)
+                    elif "interpTime" in args_fields:
+                        args_fields["interpTime"] = float(self.duration)
+                for key, value in self.payload.items():
+                    if key == label_field and isinstance(value, str):
+                        args_fields[key] = _hashed_string(value) if key != "cName" or spec.args_type_name != "rage__cutfNameEventArgs" else value
+                    else:
+                        args_fields[key] = _clone_value(value)
+                args = CutNode(type_name=spec.args_type_name, type_hash=_node_type_hash(spec.args_type_name), fields=args_fields)
+            return CutResolvedEvent(event=event, object=None, event_args=args, is_load_event=self.is_load_event)
+
         event = _clone_value(self.raw.event)
         event.fields["fTime"] = float(self.start)
         if self.target_id is not None:
             event.fields["iObjectId"] = self.target_id
+        if self.event_id is not None:
+            event.fields["iEventId"] = self.event_id
         for key, value in self.event_payload.items():
             event.fields[key] = _clone_value(value)
         args = _clone_value(self.raw.event_args) if self.raw.event_args is not None else None
@@ -225,10 +393,10 @@ class CutTimelineEvent:
             if self.label is not None:
                 if "cName" in args.fields:
                     current = args.fields["cName"]
-                    args.fields["cName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) else 0, text=self.label)
+                    args.fields["cName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.label), text=self.label)
                 elif "cameraCutHashName" in args.fields:
                     current = args.fields["cameraCutHashName"]
-                    args.fields["cameraCutHashName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) else 0, text=self.label)
+                    args.fields["cameraCutHashName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.label), text=self.label)
             if self.duration is not None:
                 if "fSubtitleDuration" in args.fields:
                     args.fields["fSubtitleDuration"] = float(self.duration)
@@ -361,6 +529,141 @@ class CutScene:
     def save(self, destination: str | Path, *, template: CutFile | bytes | str | Path | None = None) -> None:
         self.to_cut().save(str(destination), template=template)
 
+    @classmethod
+    def create(
+        cls,
+        *,
+        duration: float = 0.0,
+        face_dir: str | None = None,
+        offset: tuple[float, float, float] | None = None,
+        rotation: float = 0.0,
+        trigger_offset: tuple[float, float, float] | None = None,
+    ) -> "CutScene":
+        return cls(
+            duration=float(duration),
+            face_dir=face_dir,
+            offset=offset or (0.0, 0.0, 0.0),
+            rotation=float(rotation),
+            trigger_offset=trigger_offset or (0.0, 0.0, 0.0),
+            bindings=[],
+            tracks=[],
+            raw=None,
+        )
+
+    def next_object_id(self) -> int:
+        if not self.bindings:
+            return 0
+        return max(binding.object_id for binding in self.bindings) + 1
+
+    def add_binding(self, binding: CutBinding) -> CutBinding:
+        self.bindings = [item for item in self.bindings if item.object_id != binding.object_id] + [binding]
+        self.bindings.sort(key=lambda item: item.object_id)
+        return binding
+
+    def add_object(
+        self,
+        role_or_type: str,
+        *,
+        name: str | None = None,
+        object_id: int | None = None,
+        type_name: str | None = None,
+        fields: dict[str, Any] | None = None,
+    ) -> CutBinding:
+        resolved_type = type_name or _ROLE_DEFAULT_OBJECT_TYPE.get(role_or_type, role_or_type)
+        object_id = self.next_object_id() if object_id is None else int(object_id)
+        binding = CutBinding.new(object_id=object_id, type_name=resolved_type, name=name, role=_object_role(resolved_type), fields=fields)
+        return self.add_binding(binding)
+
+    def add_asset_manager(self, *, object_id: int | None = None) -> CutBinding:
+        return self.add_object("asset_manager", object_id=object_id)
+
+    def add_animation_manager(self, *, object_id: int | None = None) -> CutBinding:
+        return self.add_object("animation_manager", object_id=object_id)
+
+    def add_camera(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("camera", name=name, object_id=object_id, fields=fields)
+
+    def add_ped(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("ped", name=name, object_id=object_id, fields=fields)
+
+    def add_prop(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("prop", name=name, object_id=object_id, fields=fields)
+
+    def add_vehicle(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("vehicle", name=name, object_id=object_id, fields=fields)
+
+    def add_light(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("light", name=name, object_id=object_id, fields=fields)
+
+    def add_audio(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("audio", name=name, object_id=object_id, fields=fields)
+
+    def add_subtitle(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("subtitle", name=name, object_id=object_id, fields=fields)
+
+    def add_fade(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutBinding:
+        return self.add_object("fade", name=name, object_id=object_id, fields=fields)
+
+    def add_track(self, key: str, *, name: str | None = None, kind: str | None = None) -> CutTrack:
+        existing = self.get_track(key)
+        if existing is not None:
+            return existing
+        track = CutTrack(key=key, name=name or key.replace("_", " ").title(), kind=kind or key)
+        self.tracks.append(track)
+        self.tracks.sort(key=lambda item: item.key)
+        return track
+
+    def add_event(self, timeline_event: CutTimelineEvent) -> CutTimelineEvent:
+        track = self.get_track(timeline_event.track)
+        if track is None:
+            track = self.add_track(timeline_event.track, kind=timeline_event.kind)
+        if timeline_event.kind and track.kind != timeline_event.kind and track.kind == track.key:
+            track.kind = timeline_event.kind
+        track.events.append(timeline_event)
+        track.events.sort(key=lambda item: (item.start, item.event_id or -1, item.display_name))
+        return timeline_event
+
+    def create_event(
+        self,
+        event: str | int,
+        *,
+        start: float,
+        target: CutBinding | int | None = None,
+        track: str | None = None,
+        label: str | None = None,
+        duration: float | None = None,
+        payload: dict[str, Any] | None = None,
+        event_payload: dict[str, Any] | None = None,
+        is_load_event: bool | None = None,
+    ) -> CutTimelineEvent:
+        spec = get_cut_event_spec(event)
+        target_binding: CutBinding | None = None
+        target_id: int | None = None
+        if isinstance(target, CutBinding):
+            target_binding = target
+            target_id = target.object_id
+        elif isinstance(target, int):
+            target_id = target
+            target_binding = self.get_binding(target)
+        if target_binding is None and spec is not None and spec.default_target_role is not None:
+            target_binding = next((item for item in self.bindings if item.role == spec.default_target_role), None)
+            if target_binding is not None:
+                target_id = target_binding.object_id
+        timeline_event = CutTimelineEvent.new(
+            event=event,
+            start=start,
+            target_id=target_id,
+            target_name=target_binding.name if target_binding is not None else None,
+            target_role=target_binding.role if target_binding is not None else (spec.default_target_role if spec is not None else None),
+            track=track,
+            label=label,
+            duration=duration,
+            payload=payload,
+            event_payload=event_payload,
+            is_load_event=is_load_event,
+        )
+        return self.add_event(timeline_event)
+
 
 def _binding_from_node(node: CutNode) -> CutBinding:
     fields = {key: _clone_value(value) for key, value in node.fields.items() if key != "iObjectId"}
@@ -390,6 +693,8 @@ def _timeline_event_from_resolved(resolved: CutResolvedEvent, bindings_by_id: di
         start=float(event.fields.get("fTime", 0.0) or 0.0),
         kind=kind,
         track=track_key,
+        event_name=get_cut_event_name(event.fields.get("iEventId") if isinstance(event.fields.get("iEventId"), int) else None),
+        event_enum_name=get_cut_event_enum_name(event.fields.get("iEventId") if isinstance(event.fields.get("iEventId"), int) else None),
         label=_event_label(resolved.event_args, object_name),
         duration=_event_duration(resolved.event_args),
         event_id=event.fields.get("iEventId"),
