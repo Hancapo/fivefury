@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum, IntEnum
 from typing import Any
 
 
@@ -102,6 +103,13 @@ CUT_EVENT_ID_TO_ENUM_NAME: dict[int, str] = {index: enum_name for index, enum_na
 CUT_EVENT_ENUM_NAME_TO_ID: dict[str, int] = {enum_name: index for index, enum_name in CUT_EVENT_ID_TO_ENUM_NAME.items()}
 CUT_EVENT_ID_TO_NAME: dict[int, str] = {index: _normalize_event_name(enum_name) for index, enum_name in CUT_EVENT_ID_TO_ENUM_NAME.items()}
 CUT_EVENT_NAME_TO_ID: dict[str, int] = {name: index for index, name in CUT_EVENT_ID_TO_NAME.items()}
+CutEventType = IntEnum("CutEventType", {name.upper(): index for index, name in CUT_EVENT_ID_TO_NAME.items()})
+
+
+class CutEventBehavior(str, Enum):
+    INSTANT = "instant"
+    DURATION = "duration"
+    STATE = "state"
 
 
 @dataclass(slots=True)
@@ -115,6 +123,7 @@ class CutEventSpec:
     default_args: dict[str, Any] = field(default_factory=dict)
     default_event_fields: dict[str, Any] = field(default_factory=dict)
     is_load_event: bool = False
+    behavior: CutEventBehavior = CutEventBehavior.INSTANT
 
 
 _SUPPORTED_EVENT_SPECS = {
@@ -126,6 +135,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="asset_manager",
         default_args={"fStartTime": 0.0},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "load_models": CutEventSpec(
         name="load_models",
@@ -135,6 +145,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="asset_manager",
         default_args={"iObjectIdList": []},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "unload_models": CutEventSpec(
         name="unload_models",
@@ -144,6 +155,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="asset_manager",
         default_args={"iObjectIdList": []},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "load_anim_dict": CutEventSpec(
         name="load_anim_dict",
@@ -153,6 +165,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="animation_manager",
         default_args={"cName": ""},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "unload_anim_dict": CutEventSpec(
         name="unload_anim_dict",
@@ -162,6 +175,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="animation_manager",
         default_args={"cName": ""},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "load_audio": CutEventSpec(
         name="load_audio",
@@ -171,6 +185,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="audio",
         default_args={"cName": ""},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "unload_audio": CutEventSpec(
         name="unload_audio",
@@ -180,6 +195,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="audio",
         default_args={"cName": ""},
         is_load_event=True,
+        behavior=CutEventBehavior.STATE,
     ),
     "play_audio": CutEventSpec(
         name="play_audio",
@@ -188,6 +204,7 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfNameEventArgs",
         default_target_role="audio",
         default_args={"cName": ""},
+        behavior=CutEventBehavior.STATE,
     ),
     "stop_audio": CutEventSpec(
         name="stop_audio",
@@ -196,6 +213,7 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfNameEventArgs",
         default_target_role="audio",
         default_args={"cName": ""},
+        behavior=CutEventBehavior.STATE,
     ),
     "show_subtitle": CutEventSpec(
         name="show_subtitle",
@@ -204,6 +222,7 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfSubtitleEventArgs",
         default_target_role="subtitle",
         default_args={"cName": "", "fSubtitleDuration": 0.0, "iLanguageID": 0},
+        behavior=CutEventBehavior.DURATION,
     ),
     "hide_subtitle": CutEventSpec(
         name="hide_subtitle",
@@ -212,6 +231,7 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfSubtitleEventArgs",
         default_target_role="subtitle",
         default_args={"cName": "", "fSubtitleDuration": 0.0, "iLanguageID": 0},
+        behavior=CutEventBehavior.INSTANT,
     ),
     "camera_cut": CutEventSpec(
         name="camera_cut",
@@ -220,18 +240,21 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfCameraCutEventArgs",
         default_target_role="camera",
         default_args={"cName": ""},
+        behavior=CutEventBehavior.STATE,
     ),
     "set_light": CutEventSpec(
         name="set_light",
         event_id=CUT_EVENT_NAME_TO_ID["set_light"],
         enum_name=CUT_EVENT_ID_TO_ENUM_NAME[CUT_EVENT_NAME_TO_ID["set_light"]],
         default_target_role="light",
+        behavior=CutEventBehavior.STATE,
     ),
     "clear_light": CutEventSpec(
         name="clear_light",
         event_id=CUT_EVENT_NAME_TO_ID["clear_light"],
         enum_name=CUT_EVENT_ID_TO_ENUM_NAME[CUT_EVENT_NAME_TO_ID["clear_light"]],
         default_target_role="light",
+        behavior=CutEventBehavior.STATE,
     ),
 }
 
@@ -248,7 +271,9 @@ def get_cut_event_enum_name(event_id: int | None) -> str | None:
     return CUT_EVENT_ID_TO_ENUM_NAME.get(event_id)
 
 
-def get_cut_event_id(name_or_id: str | int) -> int:
+def get_cut_event_id(name_or_id: str | int | CutEventType) -> int:
+    if isinstance(name_or_id, CutEventType):
+        return int(name_or_id)
     if isinstance(name_or_id, int):
         return name_or_id
     normalized = name_or_id.strip().lower()
@@ -260,6 +285,6 @@ def get_cut_event_id(name_or_id: str | int) -> int:
     raise KeyError(f"unknown cut event {name_or_id!r}")
 
 
-def get_cut_event_spec(name_or_id: str | int) -> CutEventSpec | None:
+def get_cut_event_spec(name_or_id: str | int | CutEventType) -> CutEventSpec | None:
     event_id = get_cut_event_id(name_or_id)
     return _SUPPORTED_EVENT_SPECS.get(CUT_EVENT_ID_TO_NAME[event_id])
