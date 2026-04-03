@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .views import AssetRecord
+from ..cut import read_cut, read_cutxml
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..hashing import _get_lut
 from ..metahash import MetaHash
@@ -57,6 +58,17 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
             return read_ytd(source), GameFileType.YTD
         except Exception:
             return source, GameFileType.YTD
+    if ext == ".cut":
+        source = raw if raw is not None else data
+        try:
+            return read_cut(source), GameFileType.CUT
+        except Exception:
+            return source, GameFileType.CUT
+    if ext == ".cutxml":
+        try:
+            return read_cutxml(data.decode("utf-8")), GameFileType.CUT
+        except Exception:
+            return data, GameFileType.CUT
     if ext == ".rpf":
         try:
             return RpfArchive.from_bytes(data), GameFileType.RPF

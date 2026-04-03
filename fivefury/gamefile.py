@@ -43,6 +43,7 @@ class GameFileType(IntEnum):
     MRF = 29
     DISTANT_LIGHTS = 30
     YPDB = 31
+    CUT = 32
     RPF = 100
     BINARY = 101
 
@@ -63,6 +64,8 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".ywr": GameFileType.YWR,
     ".yvr": GameFileType.YVR,
     ".gxt2": GameFileType.GTXD,
+    ".cut": GameFileType.CUT,
+    ".cutxml": GameFileType.CUT,
     ".rpf": GameFileType.RPF,
 }
 
