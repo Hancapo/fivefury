@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
@@ -10,12 +11,18 @@ from .defs import LOD_ORDER
 from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
-    from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrTextureInput
+    from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
     from .materials import YdrMaterialDescriptor
     from .shaders import ShaderLibrary
 
 
 NumericParameterValue = float | tuple[float, ...] | tuple[tuple[float, ...], ...]
+
+
+class YdrLightType(enum.IntEnum):
+    POINT = 1
+    SPOT = 2
+    CAPSULE = 4
 
 
 @dataclasses.dataclass(slots=True)
@@ -82,6 +89,51 @@ class YdrMaterialParameterRef:
                 return float(self.value[0])
             return tuple(float(component) for component in self.value)
         return float(self.value)
+
+
+@dataclasses.dataclass(slots=True)
+class YdrLight:
+    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    color: tuple[int, int, int] = (255, 255, 255)
+    flashiness: int = 0
+    intensity: float = 1.0
+    flags: int = 0
+    bone_id: int = 0
+    light_type: YdrLightType = YdrLightType.POINT
+    group_id: int = 0
+    time_flags: int = 0
+    falloff: float = 0.0
+    falloff_exponent: float = 0.0
+    culling_plane_normal: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    culling_plane_offset: float = 0.0
+    shadow_blur: int = 0
+    volume_intensity: float = 0.0
+    volume_size_scale: float = 0.0
+    volume_outer_color: tuple[int, int, int] = (0, 0, 0)
+    light_hash: int = 0
+    volume_outer_intensity: float = 0.0
+    corona_size: float = 0.0
+    volume_outer_exponent: float = 0.0
+    light_fade_distance: int = 0
+    shadow_fade_distance: int = 0
+    specular_fade_distance: int = 0
+    volumetric_fade_distance: int = 0
+    shadow_near_clip: float = 0.0
+    corona_intensity: float = 0.0
+    corona_z_bias: float = 0.0
+    direction: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    tangent: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    cone_inner_angle: float = 0.0
+    cone_outer_angle: float = 0.0
+    extent: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    projected_texture_hash: int = 0
+    unknown_0h: int = 0
+    unknown_4h: int = 0
+    unknown_14h: int = 0
+    unknown_45h: int = 0
+    unknown_46h: int = 0
+    unknown_48h: int = 0
+    unknown_a4h: int = 0
 
 
 @dataclasses.dataclass(slots=True)
@@ -336,6 +388,7 @@ class YdrMesh:
 @dataclasses.dataclass(slots=True)
 class YdrModel:
     lod: str
+    index: int = 0
     meshes: list[YdrMesh] = dataclasses.field(default_factory=list)
     render_mask: int = 0
     flags: int = 0
@@ -349,6 +402,68 @@ class YdrModel:
     def bone_index(self) -> int:
         return (self.skeleton_binding >> 24) & 0xFF
 
+    @property
+    def mesh_count(self) -> int:
+        return len(self.meshes)
+
+    @property
+    def material_indices(self) -> list[int]:
+        indices: list[int] = []
+        seen: set[int] = set()
+        for mesh in self.meshes:
+            if mesh.material_index < 0 or mesh.material_index in seen:
+                continue
+            seen.add(mesh.material_index)
+            indices.append(mesh.material_index)
+        return indices
+
+    @property
+    def materials(self) -> list[YdrMaterial]:
+        materials: list[YdrMaterial] = []
+        seen: set[int] = set()
+        for mesh in self.meshes:
+            material = mesh.material
+            if material is None or material.index in seen:
+                continue
+            seen.add(material.index)
+            materials.append(material)
+        return materials
+
+    @property
+    def material_count(self) -> int:
+        return len(self.materials)
+
+    def iter_materials(self) -> Iterator[YdrMaterial]:
+        yield from self.materials
+
+    def get_material(self, value: str | int) -> YdrMaterial | None:
+        if isinstance(value, str):
+            lowered = value.lower()
+            for material in self.materials:
+                if material.name.lower() == lowered:
+                    return material
+                if (material.shader_name or "").lower() == lowered:
+                    return material
+            return None
+        index = int(value)
+        for material in self.materials:
+            if material.index == index:
+                return material
+        return None
+
+    def to_input(self, *, material_name_by_index: dict[int, str]) -> YdrModelInput:
+        from .builder import YdrModelInput
+
+        return YdrModelInput(
+            meshes=[
+                mesh.to_input(material_name=material_name_by_index.get(mesh.material_index, f"material_{mesh.material_index}"))
+                for mesh in self.meshes
+            ],
+            render_mask=int(self.render_mask),
+            flags=int(self.flags),
+            skeleton_binding=int(self.skeleton_binding),
+        )
+
 
 @dataclasses.dataclass(slots=True)
 class Ydr:
@@ -360,6 +475,7 @@ class Ydr:
     bounding_sphere_radius: float = 0.0
     bounding_box_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
     bounding_box_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    lights: list[YdrLight] = dataclasses.field(default_factory=list)
     embedded_textures: Ytd | None = None
 
     @classmethod
@@ -381,6 +497,23 @@ class Ydr:
     def iter_meshes(self, lod: str | None = None) -> Iterator[YdrMesh]:
         for model in self.iter_models(lod=lod):
             yield from model.meshes
+
+    @property
+    def models(self) -> list[YdrModel]:
+        models: list[YdrModel] = []
+        for lod in LOD_ORDER:
+            models.extend(self.lods.get(lod, []))
+        return models
+
+    @property
+    def model_count(self) -> int:
+        return len(self.models)
+
+    def get_model(self, index: int, *, lod: str | None = None) -> YdrModel | None:
+        models = list(self.iter_models(lod=lod))
+        if 0 <= int(index) < len(models):
+            return models[int(index)]
+        return None
 
     @property
     def meshes(self) -> list[YdrMesh]:
@@ -465,17 +598,15 @@ class Ydr:
             material.index: (material.name or f"material_{material.index}")
             for material in self.materials
         }
-        meshes = [
-            mesh.to_input(material_name=material_name_by_index.get(mesh.material_index, f"material_{mesh.material_index}"))
-            for mesh in self.iter_meshes(lod=selected_lod)
-        ]
+        selected_models = list(self.iter_models(lod=selected_lod))
         materials = [material.to_input() for material in self.materials]
         return YdrBuild(
-            meshes=meshes,
+            models=[model.to_input(material_name_by_index=material_name_by_index) for model in selected_models],
             materials=materials,
             name=name or self.name,
             lod=selected_lod,
             version=int(self.version),
+            lights=list(self.lights),
         )
 
     def save(self, destination: str | Path, *, lod: str | None = None, name: str | None = None) -> Path:
@@ -484,6 +615,8 @@ class Ydr:
 
 __all__ = [
     "Ydr",
+    "YdrLight",
+    "YdrLightType",
     "YdrMaterial",
     "YdrMaterialParameterRef",
     "YdrMesh",

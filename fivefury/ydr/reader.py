@@ -9,7 +9,7 @@ from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, physical_to_offset, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
-from .model import Ydr, YdrMaterial, YdrMaterialParameterRef, YdrMesh, YdrModel, YdrTextureRef
+from .model import Ydr, YdrLight, YdrLightType, YdrMaterial, YdrMaterialParameterRef, YdrMesh, YdrModel, YdrTextureRef
 from .shaders import ShaderLibrary, load_shader_library
 
 _ROOT_OFFSET = 0x10
@@ -397,6 +397,71 @@ def _parse_model_list(pointer: int, system_data: bytes) -> list[int]:
     return _read_pointer_array(data_pointer, count, system_data)
 
 
+def _parse_inline_simple_list(header_off: int, system_data: bytes) -> tuple[int, int]:
+    data_pointer = _u64(system_data, header_off + 0x00)
+    count = _u16(system_data, header_off + 0x08)
+    if not data_pointer or count <= 0:
+        return 0, 0
+    return _virtual_offset(data_pointer, system_data), int(count)
+
+
+def _parse_light(system_data: bytes, light_off: int) -> YdrLight:
+    return YdrLight(
+        unknown_0h=_u32(system_data, light_off + 0x00),
+        unknown_4h=_u32(system_data, light_off + 0x04),
+        position=_vec3(system_data, light_off + 0x08),
+        unknown_14h=_u32(system_data, light_off + 0x14),
+        color=struct.unpack_from("<3B", system_data, light_off + 0x18),
+        flashiness=system_data[light_off + 0x1B],
+        intensity=_f32(system_data, light_off + 0x1C),
+        flags=_u32(system_data, light_off + 0x20),
+        bone_id=_u16(system_data, light_off + 0x24),
+        light_type=YdrLightType(system_data[light_off + 0x26]) if system_data[light_off + 0x26] in {1, 2, 4} else YdrLightType.POINT,
+        group_id=system_data[light_off + 0x27],
+        time_flags=_u32(system_data, light_off + 0x28),
+        falloff=_f32(system_data, light_off + 0x2C),
+        falloff_exponent=_f32(system_data, light_off + 0x30),
+        culling_plane_normal=_vec3(system_data, light_off + 0x34),
+        culling_plane_offset=_f32(system_data, light_off + 0x40),
+        shadow_blur=system_data[light_off + 0x44],
+        unknown_45h=system_data[light_off + 0x45],
+        unknown_46h=_u16(system_data, light_off + 0x46),
+        unknown_48h=_u32(system_data, light_off + 0x48),
+        volume_intensity=_f32(system_data, light_off + 0x4C),
+        volume_size_scale=_f32(system_data, light_off + 0x50),
+        volume_outer_color=struct.unpack_from("<3B", system_data, light_off + 0x54),
+        light_hash=system_data[light_off + 0x57],
+        volume_outer_intensity=_f32(system_data, light_off + 0x58),
+        corona_size=_f32(system_data, light_off + 0x5C),
+        volume_outer_exponent=_f32(system_data, light_off + 0x60),
+        light_fade_distance=system_data[light_off + 0x64],
+        shadow_fade_distance=system_data[light_off + 0x65],
+        specular_fade_distance=system_data[light_off + 0x66],
+        volumetric_fade_distance=system_data[light_off + 0x67],
+        shadow_near_clip=_f32(system_data, light_off + 0x68),
+        corona_intensity=_f32(system_data, light_off + 0x6C),
+        corona_z_bias=_f32(system_data, light_off + 0x70),
+        direction=_vec3(system_data, light_off + 0x74),
+        tangent=_vec3(system_data, light_off + 0x80),
+        cone_inner_angle=_f32(system_data, light_off + 0x8C),
+        cone_outer_angle=_f32(system_data, light_off + 0x90),
+        extent=_vec3(system_data, light_off + 0x94),
+        projected_texture_hash=_u32(system_data, light_off + 0xA0),
+        unknown_a4h=_u32(system_data, light_off + 0xA4),
+    )
+
+
+def _parse_lights(system_data: bytes) -> list[YdrLight]:
+    lights_off, light_count = _parse_inline_simple_list(_ROOT_OFFSET + 0xA0, system_data)
+    if not lights_off or light_count <= 0:
+        return []
+    light_stride = 0xA8
+    end = lights_off + (light_count * light_stride)
+    if end > len(system_data):
+        raise ValueError("light list is truncated")
+    return [_parse_light(system_data, lights_off + (index * light_stride)) for index in range(light_count)]
+
+
 def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int, material: YdrMaterial | None, material_index: int, render_mask: int, flags: int) -> YdrMesh:
     geometry_off = _virtual_offset(geometry_pointer, system_data)
     vertex_buffer_pointer = _u64(system_data, geometry_off + 0x18)
@@ -470,6 +535,7 @@ def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, m
         meshes.append(_parse_mesh(system_data, graphics_data, geometry_pointer, material, material_index, render_mask, flags))
 
     return YdrModel(
+        index=0,
         lod=lod,
         meshes=meshes,
         render_mask=render_mask,
@@ -485,7 +551,10 @@ def _parse_lods(system_data: bytes, graphics_data: bytes, materials: list[YdrMat
         model_pointers = _parse_model_list(pointer, system_data)
         if not model_pointers:
             continue
-        lods[lod_name] = [_parse_model(system_data, graphics_data, model_pointer, materials, lod_name) for model_pointer in model_pointers]
+        lod_models = [_parse_model(system_data, graphics_data, model_pointer, materials, lod_name) for model_pointer in model_pointers]
+        for model_index, model in enumerate(lod_models):
+            model.index = model_index
+        lods[lod_name] = lod_models
     return lods
 
 
@@ -521,6 +590,7 @@ def read_ydr(
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
     materials, texture_dictionary_pointer = _parse_materials(system_data, active_shader_library)
     lods = _parse_lods(system_data, graphics_data, materials)
+    lights = _parse_lights(system_data)
     embedded_textures = _parse_embedded_textures(system_data, graphics_data, int(header.version), texture_dictionary_pointer)
 
     return Ydr(
@@ -532,6 +602,7 @@ def read_ydr(
         bounding_sphere_radius=_f32(system_data, _ROOT_OFFSET + 0x1C),
         bounding_box_min=_vec3(system_data, _ROOT_OFFSET + 0x20),
         bounding_box_max=_vec3(system_data, _ROOT_OFFSET + 0x30),
+        lights=lights,
         embedded_textures=embedded_textures,
     )
 

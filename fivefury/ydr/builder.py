@@ -10,6 +10,7 @@ from ..binary import align
 from ..hashing import jenk_hash
 from ..resource import build_rsc7
 from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
+from .model import YdrLight
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
 
 
@@ -73,12 +74,21 @@ class YdrMeshInput:
 
 
 @dataclasses.dataclass(slots=True)
+class YdrModelInput:
+    meshes: Sequence[YdrMeshInput]
+    render_mask: int = 0
+    flags: int = 0
+    skeleton_binding: int = 0
+
+
+@dataclasses.dataclass(slots=True)
 class YdrBuild:
-    meshes: list[YdrMeshInput]
+    models: list[YdrModelInput]
     materials: list[YdrMaterialInput]
     name: str = ""
     lod: str = "high"
     version: int = 165
+    lights: list[YdrLight] = dataclasses.field(default_factory=list)
 
     def to_bytes(self, *, shader_library: ShaderLibrary | None = None) -> bytes:
         return build_ydr_bytes(self, shader_library=shader_library)
@@ -114,6 +124,14 @@ class _PreparedMesh:
     vertex_bytes: bytes
     index_bytes: bytes
     layout: ShaderLayoutDefinition
+
+
+@dataclasses.dataclass(slots=True)
+class _PreparedModel:
+    meshes: list[_PreparedMesh]
+    render_mask: int = 0
+    flags: int = 0
+    skeleton_binding: int = 0
 
 
 @dataclasses.dataclass(slots=True)
@@ -247,6 +265,70 @@ def _normalize_materials(
     if texture is not None:
         default_textures.setdefault("DiffuseSampler", texture)
     return [YdrMaterialInput(name="default", shader=shader, textures=default_textures)]
+
+
+def _write_lights(system: _SystemWriter, lights: Sequence[YdrLight]) -> int:
+    if not lights:
+        return 0
+    lights_block_off = system.alloc(len(lights) * 0xA8, 16)
+    for index, light in enumerate(lights):
+        light_off = lights_block_off + (index * 0xA8)
+        system.pack_into("I", light_off + 0x00, int(light.unknown_0h))
+        system.pack_into("I", light_off + 0x04, int(light.unknown_4h))
+        system.pack_into("3f", light_off + 0x08, *light.position)
+        system.pack_into("I", light_off + 0x14, int(light.unknown_14h))
+        system.write(light_off + 0x18, bytes((int(light.color[0]) & 0xFF, int(light.color[1]) & 0xFF, int(light.color[2]) & 0xFF)))
+        system.write(light_off + 0x1B, bytes((int(light.flashiness) & 0xFF,)))
+        system.pack_into("f", light_off + 0x1C, float(light.intensity))
+        system.pack_into("I", light_off + 0x20, int(light.flags))
+        system.pack_into("H", light_off + 0x24, int(light.bone_id) & 0xFFFF)
+        system.write(light_off + 0x26, bytes((int(light.light_type) & 0xFF, int(light.group_id) & 0xFF)))
+        system.pack_into("I", light_off + 0x28, int(light.time_flags))
+        system.pack_into("f", light_off + 0x2C, float(light.falloff))
+        system.pack_into("f", light_off + 0x30, float(light.falloff_exponent))
+        system.pack_into("3f", light_off + 0x34, *light.culling_plane_normal)
+        system.pack_into("f", light_off + 0x40, float(light.culling_plane_offset))
+        system.write(light_off + 0x44, bytes((int(light.shadow_blur) & 0xFF, int(light.unknown_45h) & 0xFF)))
+        system.pack_into("H", light_off + 0x46, int(light.unknown_46h) & 0xFFFF)
+        system.pack_into("I", light_off + 0x48, int(light.unknown_48h))
+        system.pack_into("f", light_off + 0x4C, float(light.volume_intensity))
+        system.pack_into("f", light_off + 0x50, float(light.volume_size_scale))
+        system.write(
+            light_off + 0x54,
+            bytes(
+                (
+                    int(light.volume_outer_color[0]) & 0xFF,
+                    int(light.volume_outer_color[1]) & 0xFF,
+                    int(light.volume_outer_color[2]) & 0xFF,
+                    int(light.light_hash) & 0xFF,
+                )
+            ),
+        )
+        system.pack_into("f", light_off + 0x58, float(light.volume_outer_intensity))
+        system.pack_into("f", light_off + 0x5C, float(light.corona_size))
+        system.pack_into("f", light_off + 0x60, float(light.volume_outer_exponent))
+        system.write(
+            light_off + 0x64,
+            bytes(
+                (
+                    int(light.light_fade_distance) & 0xFF,
+                    int(light.shadow_fade_distance) & 0xFF,
+                    int(light.specular_fade_distance) & 0xFF,
+                    int(light.volumetric_fade_distance) & 0xFF,
+                )
+            ),
+        )
+        system.pack_into("f", light_off + 0x68, float(light.shadow_near_clip))
+        system.pack_into("f", light_off + 0x6C, float(light.corona_intensity))
+        system.pack_into("f", light_off + 0x70, float(light.corona_z_bias))
+        system.pack_into("3f", light_off + 0x74, *light.direction)
+        system.pack_into("3f", light_off + 0x80, *light.tangent)
+        system.pack_into("f", light_off + 0x8C, float(light.cone_inner_angle))
+        system.pack_into("f", light_off + 0x90, float(light.cone_outer_angle))
+        system.pack_into("3f", light_off + 0x94, *light.extent)
+        system.pack_into("I", light_off + 0xA0, int(light.projected_texture_hash))
+        system.pack_into("I", light_off + 0xA4, int(light.unknown_a4h))
+    return lights_block_off
 
 
 def _cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -637,6 +719,18 @@ def _prepare_meshes(
     return prepared
 
 
+def _normalize_models(source: YdrBuild) -> list[YdrModelInput]:
+    return [
+        YdrModelInput(
+            meshes=list(model.meshes),
+            render_mask=int(model.render_mask),
+            flags=int(model.flags),
+            skeleton_binding=int(model.skeleton_binding),
+        )
+        for model in source.models
+    ]
+
+
 def create_ydr(
     *,
     meshes: Sequence[YdrMeshInput],
@@ -644,12 +738,20 @@ def create_ydr(
     shader: str = "default.sps",
     textures: Mapping[str, str | YdrTextureInput] | None = None,
     texture: str | YdrTextureInput | None = None,
+    lights: Sequence[YdrLight] | None = None,
     name: str = "",
     lod: str = "high",
     version: int = 165,
 ) -> YdrBuild:
     normalized_materials = _normalize_materials(materials, shader=shader, textures=textures, texture=texture)
-    return YdrBuild(meshes=list(meshes), materials=normalized_materials, name=name, lod=lod.lower(), version=int(version))
+    return YdrBuild(
+        models=[YdrModelInput(meshes=list(meshes))],
+        materials=normalized_materials,
+        name=name,
+        lod=lod.lower(),
+        version=int(version),
+        lights=list(lights or []),
+    )
 
 
 def _drawable_name(source_name: str) -> str:
@@ -903,6 +1005,10 @@ def _drawable_models_block_units(model_size: int) -> int:
     return int(math.ceil(block_length / 16.0))
 
 
+def _drawable_models_total_units(model_sizes: Sequence[int]) -> int:
+    return sum(_drawable_models_block_units(model_size) for model_size in model_sizes)
+
+
 def _write_pages_info(system: _SystemWriter, page_counts: tuple[int, int]) -> None:
     pages_off = _PAGES_INFO_OFFSET
     system.pack_into('I', pages_off + 0x00, 0)
@@ -916,7 +1022,7 @@ def _write_pages_info(system: _SystemWriter, page_counts: tuple[int, int]) -> No
 def _build_system_payload(
     source: YdrBuild,
     prepared_materials: Sequence[_PreparedMaterial],
-    prepared_meshes: Sequence[_PreparedMesh],
+    prepared_models: Sequence[_PreparedModel],
     page_counts: tuple[int, int],
 ) -> tuple[bytes, bytes]:
     pages_info_len = _pages_info_length(page_counts)
@@ -924,22 +1030,33 @@ def _build_system_payload(
     graphics = _GraphicsWriter()
 
     shader_group_off, _shader_group_blocks_size = _write_shader_blocks(system, prepared_materials)
-    mesh_blocks = _build_mesh_blocks(system, graphics, prepared_meshes)
-    model_size = _model_block_size(len(mesh_blocks), [len(block.geometry_bytes) for block in mesh_blocks])
+    models_list_off = system.alloc(0x10 + (len(prepared_models) * 8), 16)
+    models_ptrs_off = models_list_off + 0x10
+    lights_block_off = _write_lights(system, source.lights)
+    model_offsets: list[int] = []
+    model_sizes: list[int] = []
+    for prepared_model in prepared_models:
+        mesh_blocks = _build_mesh_blocks(system, graphics, prepared_model.meshes)
+        model_size = _model_block_size(len(mesh_blocks), [len(block.geometry_bytes) for block in mesh_blocks])
+        model_off = system.alloc(model_size, 16)
+        model_bytes = _build_model_block(model_off, mesh_blocks)
+        system.write(model_off, model_bytes)
+        system.pack_into('I', model_off + 0x2C, ((int(prepared_model.flags) & 0xFF) << 8) | (int(prepared_model.render_mask) & 0xFF))
+        system.pack_into('I', model_off + 0x28, int(prepared_model.skeleton_binding))
+        model_offsets.append(model_off)
+        model_sizes.append(model_size)
 
-    models_list_off = system.alloc(0x18, 16)
-    model_off = system.alloc(model_size, 16)
-    model_bytes = _build_model_block(model_off, mesh_blocks)
-    system.write(model_off, model_bytes)
-    system.pack_into('Q', models_list_off + 0x00, _virtual(models_list_off + 0x10))
-    system.pack_into('H', models_list_off + 0x08, 1)
-    system.pack_into('H', models_list_off + 0x0A, 1)
+    system.pack_into('Q', models_list_off + 0x00, _virtual(models_ptrs_off))
+    system.pack_into('H', models_list_off + 0x08, len(prepared_models))
+    system.pack_into('H', models_list_off + 0x0A, len(prepared_models))
     system.pack_into('I', models_list_off + 0x0C, 0)
-    system.pack_into('Q', models_list_off + 0x10, _virtual(model_off))
+    for index, model_off in enumerate(model_offsets):
+        system.pack_into('Q', models_ptrs_off + (index * 8), _virtual(model_off))
 
     drawable_name_off = system.c_string(_drawable_name(source.name))
 
-    center, bounds_min, bounds_max, radius = _compute_bounds(prepared_meshes)
+    all_meshes = [mesh for prepared_model in prepared_models for mesh in prepared_model.meshes]
+    center, bounds_min, bounds_max, radius = _compute_bounds(all_meshes)
     _write_pages_info(system, page_counts)
 
     system.pack_into('I', 0x00, _DRAWABLE_FILE_VFT)
@@ -967,10 +1084,15 @@ def _build_system_payload(
     system.pack_into('I', 0x8C, 0)
     system.pack_into('Q', 0x90, 0)
     system.pack_into('H', 0x98, 0)
-    system.pack_into('H', 0x9A, _drawable_models_block_units(model_size))
+    system.pack_into('H', 0x9A, _drawable_models_total_units(model_sizes))
     system.pack_into('I', 0x9C, 0)
     system.pack_into('Q', 0xA0, _virtual(models_list_off))
     system.pack_into('Q', 0xA8, _virtual(drawable_name_off))
+    if lights_block_off:
+        system.pack_into('Q', 0xB0, _virtual(lights_block_off))
+        system.pack_into('H', 0xB8, len(source.lights))
+        system.pack_into('H', 0xBA, len(source.lights))
+        system.pack_into('I', 0xBC, 0)
     system.pack_into('Q', 0xC0, 0)
     system.pack_into('Q', 0xC8, 0)
 
@@ -996,7 +1118,7 @@ def build_ydr_bytes(
 
     if isinstance(source, Ydr):
         source = source.to_build()
-    if not source.meshes:
+    if not source.models:
         raise ValueError("YDR builder requires at least one mesh")
     if source.lod not in LOD_POINTER_OFFSETS:
         raise ValueError(f"Unsupported YDR LOD '{source.lod}'")
@@ -1005,20 +1127,29 @@ def build_ydr_bytes(
 
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
     prepared_materials, material_lookup = _prepare_materials(source.materials, active_shader_library)
-    prepared_meshes = _prepare_meshes(
-        source.meshes,
-        prepared_materials,
-        material_lookup,
-        generate_normals=generate_normals,
-        generate_tangents=generate_tangents,
-        fill_vertex_colours=fill_vertex_colours,
-    )
+    normalized_models = _normalize_models(source)
+    prepared_models = [
+        _PreparedModel(
+            meshes=_prepare_meshes(
+                model.meshes,
+                prepared_materials,
+                material_lookup,
+                generate_normals=generate_normals,
+                generate_tangents=generate_tangents,
+                fill_vertex_colours=fill_vertex_colours,
+            ),
+            render_mask=int(model.render_mask),
+            flags=int(model.flags),
+            skeleton_binding=int(model.skeleton_binding),
+        )
+        for model in normalized_models
+    ]
 
     page_counts = (0, 0)
     system_data = b''
     graphics_data = b''
     for _ in range(8):
-        system_data, graphics_data = _build_system_payload(source, prepared_materials, prepared_meshes, page_counts)
+        system_data, graphics_data = _build_system_payload(source, prepared_materials, prepared_models, page_counts)
         next_counts = _aligned_page_counts(len(system_data), len(graphics_data))
         if next_counts == page_counts:
             break
@@ -1046,6 +1177,7 @@ __all__ = [
     "YdrBuild",
     "YdrMaterialInput",
     "YdrMeshInput",
+    "YdrModelInput",
     "YdrTextureInput",
     "build_ydr_bytes",
     "create_ydr",

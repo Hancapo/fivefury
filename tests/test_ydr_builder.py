@@ -6,8 +6,11 @@ import pytest
 
 from fivefury import (
     YdrBuild,
+    YdrLight,
+    YdrLightType,
     YdrMaterialInput,
     YdrMeshInput,
+    YdrModelInput,
     create_ydr,
     obj_to_ydr,
     read_obj_scene,
@@ -22,6 +25,25 @@ def _triangle_mesh(material: str = "default") -> YdrMeshInput:
             (0.0, 0.0, 0.0),
             (1.0, 0.0, 0.0),
             (0.0, 1.0, 0.0),
+        ],
+        indices=[0, 1, 2],
+        material=material,
+        texcoords=[
+            [
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (0.0, 1.0),
+            ]
+        ],
+    )
+
+
+def _offset_triangle_mesh(offset_x: float, material: str = "default") -> YdrMeshInput:
+    return YdrMeshInput(
+        positions=[
+            (0.0 + offset_x, 0.0, 0.0),
+            (1.0 + offset_x, 0.0, 0.0),
+            (0.0 + offset_x, 1.0, 0.0),
         ],
         indices=[0, 1, 2],
         material=material,
@@ -280,3 +302,86 @@ def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:
     assert ydr.materials[0].shader_definition.name == "normal_spec"
     assert ydr.materials[0].texture_names == ["triangle_diffuse", "triangle_normal", "triangle_spec"]
     assert ydr.meshes[0].indices == [0, 1, 2]
+
+
+def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[
+            YdrModelInput(meshes=[_offset_triangle_mesh(0.0, material="main")], render_mask=1),
+            YdrModelInput(meshes=[_offset_triangle_mesh(2.0, material="main")], render_mask=2),
+        ],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="multi_model",
+    )
+
+    ydr_path = tmp_path / "multi_model.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.model_count == 2
+    assert len(ydr.get_lod("high")) == 2
+    assert ydr.get_model(0) is not None
+    assert ydr.get_model(1) is not None
+    assert ydr.get_model(0).render_mask == 1
+    assert ydr.get_model(1).render_mask == 2
+    assert ydr.get_model(0).mesh_count == 1
+    assert ydr.get_model(1).mesh_count == 1
+    assert ydr.get_model(0).material_indices == [0]
+    assert ydr.get_model(0).material_count == 1
+    assert ydr.get_model(0).materials[0].name == "material_0"
+    assert ydr.get_model(0).get_material(0) is ydr.materials[0]
+
+
+def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        lights=[
+            YdrLight(
+                position=(1.0, 2.0, 3.0),
+                color=(10, 20, 30),
+                intensity=4.5,
+                light_type=YdrLightType.SPOT,
+                falloff=15.0,
+                volume_outer_color=(40, 50, 60),
+                light_hash=77,
+                direction=(0.0, 0.0, -1.0),
+                tangent=(1.0, 0.0, 0.0),
+                cone_inner_angle=0.25,
+                cone_outer_angle=0.5,
+                projected_texture_hash=0x12345678,
+            )
+        ],
+        name="with_lights",
+    )
+
+    ydr_path = tmp_path / "with_lights.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert len(ydr.lights) == 1
+    light = ydr.lights[0]
+    assert light.position == pytest.approx((1.0, 2.0, 3.0))
+    assert light.color == (10, 20, 30)
+    assert light.intensity == pytest.approx(4.5)
+    assert light.light_type is YdrLightType.SPOT
+    assert light.falloff == pytest.approx(15.0)
+    assert light.volume_outer_color == (40, 50, 60)
+    assert light.light_hash == 77
+    assert light.direction == pytest.approx((0.0, 0.0, -1.0))
+    assert light.tangent == pytest.approx((1.0, 0.0, 0.0))
+    assert light.cone_inner_angle == pytest.approx(0.25)
+    assert light.cone_outer_angle == pytest.approx(0.5)
+    assert light.projected_texture_hash == 0x12345678
