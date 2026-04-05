@@ -6,6 +6,15 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.10]
+
+### Added
+- `YDR` light support with parsed `Drawable` light attributes exposed as `ydr.lights`, plus `YdrLight` and `YdrLightType`.
+
+### Changed
+- `YDR` writer now preserves light lists during roundtrip save workflows.
+- `YDR` builder keeps the newer models-first structure while allowing lights to be authored from `YdrBuild` and `create_ydr(...)`.
+
 ## [0.1.9]
 
 ### Added

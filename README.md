@@ -4,6 +4,8 @@ FiveFury is a Python library for GTA V asset workflows.
 
 It provides practical support for:
 
+- `YDR` read/write for static drawable workflows, including materials, drawable models, and lights
+- `YCD` read support for clip dictionaries and animation metadata
 - `YMAP` read/write
 - `YTYP` read/write
 - `RPF7 OPEN` archives and nested `.rpf`
@@ -150,6 +152,98 @@ print(RpfExportMode.STANDALONE.description)
 - `STORED`: raw entry bytes as stored in the archive
 - `STANDALONE`: valid standalone files, including `RSC7` containers for resources
 - `LOGICAL`: logical payloads with resource containers removed
+
+## YDR
+
+### Read and edit a YDR
+
+```python
+from fivefury import read_ydr
+
+ydr = read_ydr("prop_example.ydr")
+
+print(ydr.model_count)
+print(len(ydr.lights))
+print(ydr.materials[0].shader_name)
+
+ydr.update_material(
+    0,
+    shader="spec.sps",
+    textures={
+        "DiffuseSampler": "prop_example_d",
+        "SpecSampler": "prop_example_s",
+        "BumpSampler": None,
+    },
+    parameters={
+        "specularIntensityMult": 2.0,
+    },
+)
+
+ydr.save("prop_example_out.ydr")
+```
+
+FiveFury exposes:
+
+- global `ydr.materials`
+- per-model views through `ydr.models`
+- parsed `ydr.lights`
+- editable material shaders, samplers, and numeric parameters
+
+### Create a simple YDR
+
+```python
+from fivefury import YdrLight, YdrLightType, YdrMeshInput, create_ydr
+
+ydr = create_ydr(
+    meshes=[
+        YdrMeshInput(
+            positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+            indices=[0, 1, 2],
+            texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+        )
+    ],
+    texture="example_diffuse",
+    lights=[
+        YdrLight(
+            position=(0.0, 0.0, 5.0),
+            intensity=3.0,
+            light_type=YdrLightType.POINT,
+        )
+    ],
+    name="example_drawable",
+)
+
+ydr.save("example_drawable.ydr")
+```
+
+### Convert OBJ to YDR
+
+```python
+from fivefury import obj_to_ydr
+
+obj_to_ydr(
+    r"C:\mods\example.obj",
+    r"C:\mods\example.ydr",
+    generate_ytyp=True,
+)
+```
+
+This can also emit a companion `YTYP` with lowercase naming and `textureDictionary` set to `<model>_txd`.
+
+## YCD
+
+### Read a YCD clip dictionary
+
+```python
+from fivefury import read_ycd
+
+ycd = read_ycd("maude_mcs_1-0.ycd")
+
+print(len(ycd.clips))
+print(len(ycd.animations))
+print(ycd.clips[0].short_name)
+print(ycd.animations[0].duration)
+```
 
 ## GameFileCache
 
