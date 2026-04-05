@@ -73,6 +73,9 @@ class YdrMeshInput:
     tangents: Sequence[tuple[float, float, float, float]] | None = None
     colours0: Sequence[tuple[float, float, float, float]] | None = None
     colours1: Sequence[tuple[float, float, float, float]] | None = None
+    blend_weights: Sequence[tuple[float, float, float, float]] | None = None
+    blend_indices: Sequence[tuple[int, int, int, int]] | None = None
+    bone_ids: Sequence[int] | None = None
 
 
 @dataclasses.dataclass(slots=True)
@@ -120,6 +123,9 @@ class _PreparedMesh:
     tangents: list[tuple[float, float, float, float]]
     colours0: list[tuple[float, float, float, float]]
     colours1: list[tuple[float, float, float, float]]
+    blend_weights: list[tuple[float, float, float, float]]
+    blend_indices: list[tuple[int, int, int, int]]
+    bone_ids: list[int]
     declaration_flags: int
     declaration_types: int
     vertex_stride: int
@@ -365,19 +371,30 @@ def _encode_colour(value: tuple[float, float, float, float]) -> bytes:
     return bytes((_clamp_byte(value[0]), _clamp_byte(value[1]), _clamp_byte(value[2]), _clamp_byte(value[3])))
 
 
+_SEMANTIC_ALIASES: dict[str, str] = {
+    "BLENDWEIGHTS": "BLEND_WEIGHTS",
+    "BLENDINDICES": "BLEND_INDICES",
+}
+
+
 def _semantic_enum(name: str) -> VertexSemantic:
-    return VertexSemantic[name.upper()]
+    key = name.upper()
+    return VertexSemantic[_SEMANTIC_ALIASES.get(key, key)]
 
 
-def _select_layout(shader_definition: ShaderDefinition, *, used_uv_indices: set[int]) -> ShaderLayoutDefinition:
+def _select_layout(shader_definition: ShaderDefinition, *, used_uv_indices: set[int], skinned: bool = False) -> ShaderLayoutDefinition:
     for layout in shader_definition.layouts:
         semantics = {semantic.lower() for semantic in layout.semantics}
-        if "blendweights" in semantics or "blendindices" in semantics:
+        has_blend = "blendweights" in semantics or "blendindices" in semantics
+        if skinned and not has_blend:
+            continue
+        if not skinned and has_blend:
             continue
         if any(f"texcoord{uv_index}" not in semantics for uv_index in used_uv_indices):
             continue
         return layout
-    raise ValueError(f"No supported static layout found for shader '{shader_definition.name}'")
+    kind = "skinned" if skinned else "static"
+    raise ValueError(f"No supported {kind} layout found for shader '{shader_definition.name}'")
 
 
 def _encode_vertex_bytes(
@@ -388,6 +405,8 @@ def _encode_vertex_bytes(
     tangents: Sequence[tuple[float, float, float, float]],
     colours0: Sequence[tuple[float, float, float, float]],
     colours1: Sequence[tuple[float, float, float, float]],
+    blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
+    blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
 ) -> tuple[int, int, int, bytes]:
     component_by_semantic: dict[VertexSemantic, VertexComponentType] = {
         VertexSemantic.POSITION: VertexComponentType.FLOAT3,
@@ -396,6 +415,10 @@ def _encode_vertex_bytes(
         VertexSemantic.COLOUR1: VertexComponentType.COLOUR,
         VertexSemantic.TANGENT: VertexComponentType.FLOAT4,
     }
+    if blend_weights:
+        component_by_semantic[VertexSemantic.BLEND_WEIGHTS] = VertexComponentType.COLOUR
+    if blend_indices:
+        component_by_semantic[VertexSemantic.BLEND_INDICES] = VertexComponentType.UBYTE4
     for channel_index in range(min(8, len(texcoords))):
         if texcoords[channel_index]:
             component_by_semantic[VertexSemantic(int(VertexSemantic.TEXCOORD0) + channel_index)] = VertexComponentType.FLOAT2
@@ -415,14 +438,15 @@ def _encode_vertex_bytes(
     stride = 0
     for semantic, component_type in semantics:
         flags |= 1 << int(semantic)
-        types_value |= int(component_type) << (int(semantic) * 4)
+        shift = int(semantic) * 4
+        types_value = (types_value & ~(0xF << shift)) | (int(component_type) << shift)
         if component_type is VertexComponentType.FLOAT3:
             stride += 12
         elif component_type is VertexComponentType.FLOAT2:
             stride += 8
         elif component_type is VertexComponentType.FLOAT4:
             stride += 16
-        elif component_type is VertexComponentType.COLOUR:
+        elif component_type in (VertexComponentType.COLOUR, VertexComponentType.UBYTE4):
             stride += 4
         else:
             raise ValueError(f"Unsupported vertex component type: {component_type}")
@@ -432,6 +456,12 @@ def _encode_vertex_bytes(
         for semantic, _component_type in semantics:
             if semantic is VertexSemantic.POSITION:
                 chunks.extend(struct.pack("<3f", *positions[vertex_index]))
+            elif semantic is VertexSemantic.BLEND_WEIGHTS and blend_weights:
+                w = blend_weights[vertex_index]
+                chunks.extend(bytes((_clamp_byte(w[0]), _clamp_byte(w[1]), _clamp_byte(w[2]), _clamp_byte(w[3]))))
+            elif semantic is VertexSemantic.BLEND_INDICES and blend_indices:
+                bi = blend_indices[vertex_index]
+                chunks.extend(bytes((bi[0] & 0xFF, bi[1] & 0xFF, bi[2] & 0xFF, bi[3] & 0xFF)))
             elif semantic is VertexSemantic.NORMAL:
                 chunks.extend(struct.pack("<3f", *normals[vertex_index]))
             elif semantic is VertexSemantic.COLOUR0:
@@ -514,6 +544,18 @@ def _prepare_meshes(
         tangents = [tuple(map(float, tangent)) for tangent in mesh.tangents] if mesh.tangents is not None else []
         colours0 = [tuple(map(float, colour)) for colour in mesh.colours0] if mesh.colours0 is not None else []
         colours1 = [tuple(map(float, colour)) for colour in mesh.colours1] if mesh.colours1 is not None else []
+        blend_weights = [tuple(map(float, w)) for w in mesh.blend_weights] if mesh.blend_weights is not None else []
+        blend_indices = [tuple(map(int, bi)) for bi in mesh.blend_indices] if mesh.blend_indices is not None else []
+        bone_ids = [int(b) for b in mesh.bone_ids] if mesh.bone_ids is not None else []
+        skinned = bool(blend_weights)
+
+        if skinned:
+            if not blend_indices:
+                raise ValueError("Mesh has blend_weights but no blend_indices")
+            if len(blend_weights) != len(positions):
+                raise ValueError("Mesh blend_weights length must match positions length")
+            if len(blend_indices) != len(positions):
+                raise ValueError("Mesh blend_indices length must match positions length")
 
         if not normals:
             if generate_normals:
@@ -528,7 +570,7 @@ def _prepare_meshes(
             for parameter in material.shader_definition.texture_parameters
             if parameter.name.lower() in {slot.lower() for slot in material.textures}
         }
-        layout = _select_layout(material.shader_definition, used_uv_indices=used_uv_indices)
+        layout = _select_layout(material.shader_definition, used_uv_indices=used_uv_indices, skinned=skinned)
         expected_semantics = {semantic.lower() for semantic in layout.semantics}
 
         if fill_vertex_colours and not colours0 and "colour0" in expected_semantics:
@@ -584,6 +626,8 @@ def _prepare_meshes(
             tangents,
             colours0,
             colours1,
+            blend_weights=blend_weights or None,
+            blend_indices=blend_indices or None,
         )
         if max(indices, default=0) > 0xFFFF:
             raise ValueError("YDR writer currently supports at most 65535 unique vertices per mesh")
@@ -599,6 +643,9 @@ def _prepare_meshes(
                 tangents=tangents,
                 colours0=colours0,
                 colours1=colours1,
+                blend_weights=blend_weights,
+                blend_indices=blend_indices,
+                bone_ids=bone_ids,
                 declaration_flags=flags,
                 declaration_types=types_value,
                 vertex_stride=stride,
@@ -686,6 +733,15 @@ def _build_mesh_blocks(system: _SystemWriter, graphics: _GraphicsWriter, meshes:
         system.pack_into('I', index_buffer_off + 0x0C, 0)
         system.pack_into('Q', index_buffer_off + 0x10, _virtual(index_data_off) if index_data_off else 0)
 
+        bone_ids_pointer = 0
+        bone_ids_count = 0
+        if mesh.bone_ids:
+            bone_ids_count = len(mesh.bone_ids)
+            bone_ids_data = struct.pack(f"<{bone_ids_count}H", *mesh.bone_ids)
+            bone_ids_off = system.alloc(len(bone_ids_data), 16)
+            system.write(bone_ids_off, bone_ids_data)
+            bone_ids_pointer = _virtual(bone_ids_off)
+
         bounds_min, bounds_max = _mesh_bounds(mesh.positions)
         geometry_bytes = bytearray(0x98)
         struct.pack_into('<I', geometry_bytes, 0x00, _DRAWABLE_GEOMETRY_VFT)
@@ -696,9 +752,9 @@ def _build_mesh_blocks(system: _SystemWriter, graphics: _GraphicsWriter, meshes:
         struct.pack_into('<I', geometry_bytes, 0x5C, len(mesh.indices) // 3)
         struct.pack_into('<H', geometry_bytes, 0x60, len(mesh.positions))
         struct.pack_into('<H', geometry_bytes, 0x62, 3)
-        struct.pack_into('<Q', geometry_bytes, 0x68, 0)
+        struct.pack_into('<Q', geometry_bytes, 0x68, bone_ids_pointer)
         struct.pack_into('<H', geometry_bytes, 0x70, mesh.vertex_stride)
-        struct.pack_into('<H', geometry_bytes, 0x72, 0)
+        struct.pack_into('<H', geometry_bytes, 0x72, bone_ids_count)
         struct.pack_into('<I', geometry_bytes, 0x74, 0)
         struct.pack_into('<Q', geometry_bytes, 0x78, _physical(vertex_data_off))
 

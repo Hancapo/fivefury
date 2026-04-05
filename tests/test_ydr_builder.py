@@ -385,3 +385,136 @@ def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
     assert light.cone_inner_angle == pytest.approx(0.25)
     assert light.cone_outer_angle == pytest.approx(0.5)
     assert light.projected_texture_hash == 0x12345678
+
+
+def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
+    return YdrMeshInput(
+        positions=[
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ],
+        indices=[0, 1, 2],
+        material=material,
+        texcoords=[
+            [
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (0.0, 1.0),
+            ]
+        ],
+        blend_weights=[
+            (1.0, 0.0, 0.0, 0.0),
+            (0.5, 0.5, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+        ],
+        blend_indices=[
+            (0, 0, 0, 0),
+            (0, 1, 0, 0),
+            (1, 0, 0, 0),
+        ],
+        bone_ids=[0, 1],
+    )
+
+
+def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=0x0000FF00,
+        )],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skinned_tri",
+    )
+
+    ydr_path = tmp_path / "skinned_tri.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    mesh = ydr.meshes[0]
+    assert len(mesh.blend_weights) == 3
+    assert len(mesh.blend_indices) == 3
+    assert mesh.bone_ids == [0, 1]
+
+    assert mesh.blend_weights[0] == pytest.approx((1.0, 0.0, 0.0, 0.0), abs=1 / 255)
+    assert mesh.blend_weights[1] == pytest.approx((0.5, 0.5, 0.0, 0.0), abs=1 / 255)
+    assert mesh.blend_indices[0] == (0, 0, 0, 0)
+    assert mesh.blend_indices[1] == (0, 1, 0, 0)
+    assert mesh.blend_indices[2] == (1, 0, 0, 0)
+
+    model = ydr.get_model(0)
+    assert model is not None
+    assert model.has_skin is True
+    assert model.skeleton_binding == 0x0000FF00
+
+
+def test_skinned_layout_selected() -> None:
+    from fivefury.ydr.shaders import load_shader_library
+
+    lib = load_shader_library()
+    shader = lib.resolve_shader(shader_name="default")
+    assert shader is not None
+
+    from fivefury.ydr.builder import _select_layout
+
+    layout = _select_layout(shader, used_uv_indices={0}, skinned=True)
+    semantics = {s.lower() for s in layout.semantics}
+    assert "blendweights" in semantics
+    assert "blendindices" in semantics
+
+    static_layout = _select_layout(shader, used_uv_indices={0}, skinned=False)
+    static_semantics = {s.lower() for s in static_layout.semantics}
+    assert "blendweights" not in static_semantics
+
+
+def test_static_mesh_unaffected_by_skinned_support(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        name="static_tri",
+    )
+
+    ydr_path = tmp_path / "static_tri.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    mesh = ydr.meshes[0]
+    assert mesh.blend_weights == []
+    assert mesh.blend_indices == []
+    assert mesh.bone_ids == []
+
+
+def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=0x0000FF00,
+        )],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="roundtrip_skin",
+    )
+
+    ydr_path = tmp_path / "roundtrip1.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    rebuild = ydr.to_build()
+    ydr_path2 = tmp_path / "roundtrip2.ydr"
+    rebuild.save(ydr_path2)
+    ydr2 = read_ydr(ydr_path2)
+
+    assert len(ydr2.meshes[0].blend_weights) == 3
+    assert ydr2.meshes[0].bone_ids == [0, 1]
+    assert ydr2.get_model(0).has_skin is True

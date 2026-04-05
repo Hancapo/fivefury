@@ -1,6 +1,6 @@
 from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, build_ydr_bytes, create_ydr, save_ydr, ydr_to_build
 from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialParameter, build_material_descriptor
-from .model import Ydr, YdrLight, YdrLightType, YdrMaterial, YdrMaterialParameterRef, YdrMesh, YdrModel, YdrTextureRef
+from .model import ColorChannel, Ydr, YdrLight, YdrLightType, YdrMaterial, YdrMaterialParameterRef, YdrMesh, YdrModel, YdrTextureRef, paint_mesh, paint_vertices
 from .obj import ObjMaterial, ObjScene, obj_to_ydr, read_obj_scene
 from .reader import read_ydr
 from .shaders import (
@@ -39,7 +39,10 @@ __all__ = [
     "build_ydr_bytes",
     "create_ydr",
     "load_shader_library",
+    "ColorChannel",
     "obj_to_ydr",
+    "paint_mesh",
+    "paint_vertices",
     "read_obj_scene",
     "read_shader_library",
     "read_ydr",
