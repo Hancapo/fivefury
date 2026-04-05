@@ -7,11 +7,13 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from ..binary import align
-from ..hashing import jenk_hash
 from ..resource import build_rsc7
 from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
 from .model import YdrLight
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
+from .write_lights import write_lights
+from .write_materials import prepare_materials, write_shader_blocks
+from .write_materials import prepare_materials, write_shader_blocks
 
 
 _DEFAULT_DECLARATION_TYPES = (
@@ -267,70 +269,6 @@ def _normalize_materials(
     return [YdrMaterialInput(name="default", shader=shader, textures=default_textures)]
 
 
-def _write_lights(system: _SystemWriter, lights: Sequence[YdrLight]) -> int:
-    if not lights:
-        return 0
-    lights_block_off = system.alloc(len(lights) * 0xA8, 16)
-    for index, light in enumerate(lights):
-        light_off = lights_block_off + (index * 0xA8)
-        system.pack_into("I", light_off + 0x00, int(light.unknown_0h))
-        system.pack_into("I", light_off + 0x04, int(light.unknown_4h))
-        system.pack_into("3f", light_off + 0x08, *light.position)
-        system.pack_into("I", light_off + 0x14, int(light.unknown_14h))
-        system.write(light_off + 0x18, bytes((int(light.color[0]) & 0xFF, int(light.color[1]) & 0xFF, int(light.color[2]) & 0xFF)))
-        system.write(light_off + 0x1B, bytes((int(light.flashiness) & 0xFF,)))
-        system.pack_into("f", light_off + 0x1C, float(light.intensity))
-        system.pack_into("I", light_off + 0x20, int(light.flags))
-        system.pack_into("H", light_off + 0x24, int(light.bone_id) & 0xFFFF)
-        system.write(light_off + 0x26, bytes((int(light.light_type) & 0xFF, int(light.group_id) & 0xFF)))
-        system.pack_into("I", light_off + 0x28, int(light.time_flags))
-        system.pack_into("f", light_off + 0x2C, float(light.falloff))
-        system.pack_into("f", light_off + 0x30, float(light.falloff_exponent))
-        system.pack_into("3f", light_off + 0x34, *light.culling_plane_normal)
-        system.pack_into("f", light_off + 0x40, float(light.culling_plane_offset))
-        system.write(light_off + 0x44, bytes((int(light.shadow_blur) & 0xFF, int(light.unknown_45h) & 0xFF)))
-        system.pack_into("H", light_off + 0x46, int(light.unknown_46h) & 0xFFFF)
-        system.pack_into("I", light_off + 0x48, int(light.unknown_48h))
-        system.pack_into("f", light_off + 0x4C, float(light.volume_intensity))
-        system.pack_into("f", light_off + 0x50, float(light.volume_size_scale))
-        system.write(
-            light_off + 0x54,
-            bytes(
-                (
-                    int(light.volume_outer_color[0]) & 0xFF,
-                    int(light.volume_outer_color[1]) & 0xFF,
-                    int(light.volume_outer_color[2]) & 0xFF,
-                    int(light.light_hash) & 0xFF,
-                )
-            ),
-        )
-        system.pack_into("f", light_off + 0x58, float(light.volume_outer_intensity))
-        system.pack_into("f", light_off + 0x5C, float(light.corona_size))
-        system.pack_into("f", light_off + 0x60, float(light.volume_outer_exponent))
-        system.write(
-            light_off + 0x64,
-            bytes(
-                (
-                    int(light.light_fade_distance) & 0xFF,
-                    int(light.shadow_fade_distance) & 0xFF,
-                    int(light.specular_fade_distance) & 0xFF,
-                    int(light.volumetric_fade_distance) & 0xFF,
-                )
-            ),
-        )
-        system.pack_into("f", light_off + 0x68, float(light.shadow_near_clip))
-        system.pack_into("f", light_off + 0x6C, float(light.corona_intensity))
-        system.pack_into("f", light_off + 0x70, float(light.corona_z_bias))
-        system.pack_into("3f", light_off + 0x74, *light.direction)
-        system.pack_into("3f", light_off + 0x80, *light.tangent)
-        system.pack_into("f", light_off + 0x8C, float(light.cone_inner_angle))
-        system.pack_into("f", light_off + 0x90, float(light.cone_outer_angle))
-        system.pack_into("3f", light_off + 0x94, *light.extent)
-        system.pack_into("I", light_off + 0xA0, int(light.projected_texture_hash))
-        system.pack_into("I", light_off + 0xA4, int(light.unknown_a4h))
-    return lights_block_off
-
-
 def _cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
     return (
         a[1] * b[2] - a[2] * b[1],
@@ -549,53 +487,6 @@ def _pack_aabb(bounds_min: tuple[float, float, float], bounds_max: tuple[float, 
     )
 
 
-def _normalize_parameter_key(value: str) -> str:
-    return str(value).strip().lower()
-
-
-def _coerce_parameter_inline(value: float | tuple[float, ...] | int | str) -> bytes:
-    if isinstance(value, str):
-        raise ValueError("String shader parameters are not supported by the YDR builder yet")
-    if isinstance(value, (int, float)):
-        components = [float(value), 0.0, 0.0, 0.0]
-    else:
-        components = [float(component) for component in value]
-        if not components or len(components) > 4:
-            raise ValueError("Shader parameter tuples must have between 1 and 4 components")
-        while len(components) < 4:
-            components.append(0.0)
-    return struct.pack("<4f", *components)
-
-
-def _prepare_materials(materials: Sequence[YdrMaterialInput], shader_library: ShaderLibrary) -> tuple[list[_PreparedMaterial], dict[str, int]]:
-    prepared: list[_PreparedMaterial] = []
-    index_by_name: dict[str, int] = {}
-    for index, material in enumerate(materials):
-        key = material.name.lower()
-        if key in index_by_name:
-            raise ValueError(f"Duplicate YDR material name '{material.name}'")
-        shader_definition, shader_file_name = _resolve_shader(material.shader, int(material.render_bucket), shader_library)
-        normalized_textures = _normalize_material_textures(material.textures)
-        valid_texture_slots = {parameter.name.lower(): parameter for parameter in shader_definition.texture_parameters}
-        for slot_name in normalized_textures:
-            if slot_name.lower() not in valid_texture_slots:
-                raise ValueError(
-                    f"Material '{material.name}' uses texture slot '{slot_name}' which is not defined by shader '{shader_file_name}'"
-                )
-        prepared.append(
-            _PreparedMaterial(
-                index=index,
-                name=material.name,
-                shader_definition=shader_definition,
-                shader_file_name=shader_file_name,
-                render_bucket=int(material.render_bucket),
-                textures=normalized_textures,
-                parameters={str(name): value for name, value in material.parameters.items()},
-            )
-        )
-        index_by_name[key] = index
-    return prepared, index_by_name
-
 def _prepare_meshes(
     meshes: Sequence[YdrMeshInput],
     prepared_materials: Sequence[_PreparedMaterial],
@@ -759,99 +650,6 @@ def _drawable_name(source_name: str) -> str:
     if base.lower().endswith('.#dr'):
         return base
     return f"{base}.#dr"
-
-
-def _build_parameter_entries(material: _PreparedMaterial, system: _SystemWriter) -> list[_ShaderParameterEntry]:
-    texture_slots = {slot.lower(): texture for slot, texture in material.textures.items()}
-    numeric_params = {_normalize_parameter_key(name): value for name, value in material.parameters.items()}
-    entries: list[_ShaderParameterEntry] = []
-    for definition in material.shader_definition.parameters:
-        key = definition.name.lower()
-        if definition.is_texture:
-            texture_input = texture_slots.get(key)
-            if texture_input is None:
-                continue
-            texture_name_off = system.c_string(texture_input.name)
-            texture_base_off = system.alloc(0x50, 16)
-            system.pack_into('I', texture_base_off + 0x00, _TEXTURE_BASE_VFT)
-            system.pack_into('I', texture_base_off + 0x04, 1)
-            system.pack_into('Q', texture_base_off + 0x28, _virtual(texture_name_off))
-            system.pack_into('H', texture_base_off + 0x30, 1)
-            system.pack_into('H', texture_base_off + 0x32, 2)
-            entries.append(_ShaderParameterEntry(definition=definition, data_type=0, data_pointer=_virtual(texture_base_off)))
-            continue
-        if key not in numeric_params:
-            continue
-        entries.append(
-            _ShaderParameterEntry(
-                definition=definition,
-                data_type=1,
-                inline_data=_coerce_parameter_inline(numeric_params[key]),
-            )
-        )
-    return entries
-
-
-def _write_shader_parameters_block(system: _SystemWriter, material: _PreparedMaterial) -> tuple[int, int, int, int, int]:
-    entries = _build_parameter_entries(material, system)
-    if not entries:
-        return 0, 0, 0, 0, 0
-
-    inline_size = sum(len(entry.inline_data) for entry in entries)
-    parameter_count = len(entries)
-    parameter_size = (parameter_count * 16) + inline_size
-    parameter_data_size = align(32 + parameter_size + (parameter_count * 4), 16)
-    params_off = system.alloc(parameter_data_size, 16)
-
-    inline_off = params_off + (parameter_count * 16)
-    for index, entry in enumerate(entries):
-        entry_off = params_off + (index * 16)
-        system.data[entry_off] = entry.data_type & 0xFF
-        if entry.data_type == 0:
-            system.pack_into('Q', entry_off + 0x08, entry.data_pointer)
-        else:
-            system.write(inline_off, entry.inline_data)
-            system.pack_into('Q', entry_off + 0x08, _virtual(inline_off))
-            inline_off += len(entry.inline_data)
-
-    hashes_off = params_off + parameter_size
-    for index, entry in enumerate(entries):
-        system.pack_into('I', hashes_off + (index * 4), entry.definition.name_hash)
-
-    texture_count = sum(1 for entry in entries if entry.data_type == 0)
-    return _virtual(params_off), parameter_count, parameter_size, parameter_data_size, texture_count
-
-def _write_shader_blocks(system: _SystemWriter, materials: Sequence[_PreparedMaterial]) -> tuple[int, int]:
-    shader_group_off = system.alloc(0x40, 16)
-    shader_ptrs_off = system.alloc(len(materials) * 8, 8) if materials else 0
-    if materials:
-        system.pack_into('Q', shader_group_off + 0x10, _virtual(shader_ptrs_off))
-        system.pack_into('H', shader_group_off + 0x18, len(materials))
-        system.pack_into('H', shader_group_off + 0x1A, len(materials))
-    system.pack_into('I', shader_group_off + 0x00, _SHADER_GROUP_VFT)
-    system.pack_into('I', shader_group_off + 0x04, 1)
-    system.pack_into('I', shader_group_off + 0x30, 4)
-
-    for material in materials:
-        shader_off = system.alloc(0x30, 16)
-        if shader_ptrs_off:
-            system.pack_into('Q', shader_ptrs_off + (material.index * 8), _virtual(shader_off))
-        params_pointer, parameter_count, parameter_size, parameter_data_size, texture_param_count = _write_shader_parameters_block(system, material)
-        system.pack_into('Q', shader_off + 0x00, params_pointer)
-        system.pack_into('I', shader_off + 0x08, material.shader_definition.name_hash)
-        system.pack_into('I', shader_off + 0x0C, 0)
-        system.data[shader_off + 0x10] = parameter_count & 0xFF
-        system.data[shader_off + 0x11] = material.render_bucket & 0xFF
-        system.pack_into('H', shader_off + 0x12, 0x8000)
-        system.pack_into('H', shader_off + 0x14, parameter_size)
-        system.pack_into('H', shader_off + 0x16, parameter_data_size)
-        system.pack_into('I', shader_off + 0x18, int(jenk_hash(material.shader_file_name)))
-        system.pack_into('I', shader_off + 0x1C, 0)
-        system.pack_into('I', shader_off + 0x20, ((1 << material.render_bucket) | 0xFF00) & 0xFFFFFFFF)
-        system.pack_into('H', shader_off + 0x24, 0)
-        system.data[shader_off + 0x26] = 0
-        system.data[shader_off + 0x27] = texture_param_count & 0xFF
-    return shader_group_off, 4
 
 
 def _build_mesh_blocks(system: _SystemWriter, graphics: _GraphicsWriter, meshes: Sequence[_PreparedMesh]) -> list[_MeshBlock]:
@@ -1029,10 +827,17 @@ def _build_system_payload(
     system = _SystemWriter(initial_size=align(_ROOT_SIZE + pages_info_len, 16))
     graphics = _GraphicsWriter()
 
-    shader_group_off, _shader_group_blocks_size = _write_shader_blocks(system, prepared_materials)
+    shader_group_off, _shader_group_blocks_size = write_shader_blocks(
+        system,
+        prepared_materials,
+        shader_parameter_entry_cls=_ShaderParameterEntry,
+        texture_base_vft=_TEXTURE_BASE_VFT,
+        shader_group_vft=_SHADER_GROUP_VFT,
+        virtual=_virtual,
+    )
     models_list_off = system.alloc(0x10 + (len(prepared_models) * 8), 16)
     models_ptrs_off = models_list_off + 0x10
-    lights_block_off = _write_lights(system, source.lights)
+    lights_block_off = write_lights(system, source.lights)
     model_offsets: list[int] = []
     model_sizes: list[int] = []
     for prepared_model in prepared_models:
@@ -1126,7 +931,13 @@ def build_ydr_bytes(
         raise ValueError("YDR builder currently supports only the high LOD writer path")
 
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
-    prepared_materials, material_lookup = _prepare_materials(source.materials, active_shader_library)
+    prepared_materials, material_lookup = prepare_materials(
+        source.materials,
+        active_shader_library,
+        prepared_material_cls=_PreparedMaterial,
+        normalize_material_textures=_normalize_material_textures,
+        resolve_shader=_resolve_shader,
+    )
     normalized_models = _normalize_models(source)
     prepared_models = [
         _PreparedModel(

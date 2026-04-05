@@ -9,7 +9,9 @@ from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, physical_to_offset, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
-from .model import Ydr, YdrLight, YdrLightType, YdrMaterial, YdrMaterialParameterRef, YdrMesh, YdrModel, YdrTextureRef
+from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
+from .read_lights import parse_lights
+from .read_materials import parse_materials
 from .shaders import ShaderLibrary, load_shader_library
 
 _ROOT_OFFSET = 0x10
@@ -262,132 +264,6 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
     }
 
 
-def _parse_texture_base(system_data: bytes, pointer: int) -> str:
-    if not pointer:
-        return ""
-    base_off = _virtual_offset(pointer, system_data)
-    name_pointer = _u64(system_data, base_off + 0x28)
-    return _try_read_c_string(name_pointer, system_data)
-
-
-def _parse_material(system_data: bytes, shader_pointer: int, index: int, shader_library: ShaderLibrary | None) -> YdrMaterial:
-    shader_off = _virtual_offset(shader_pointer, system_data)
-    parameters_pointer = _u64(system_data, shader_off + 0x00)
-    shader_name_hash = _u32(system_data, shader_off + 0x08)
-    parameter_count = system_data[shader_off + 0x10]
-    render_bucket = system_data[shader_off + 0x11]
-    shader_file_hash = _u32(system_data, shader_off + 0x18)
-
-    shader_definition = None
-    if shader_library is not None:
-        shader_definition = shader_library.resolve_shader(
-            shader_name_hash=shader_name_hash,
-            shader_file_hash=shader_file_hash,
-            render_bucket=render_bucket,
-        )
-
-    textures: list[YdrTextureRef] = []
-    parameters: list[YdrMaterialParameterRef] = []
-    if parameters_pointer and parameter_count:
-        params_off = _virtual_offset(parameters_pointer, system_data)
-        inline_size = 0
-        params: list[tuple[int, int]] = []
-        for param_index in range(parameter_count):
-            entry_off = params_off + (param_index * 16)
-            data_type = system_data[entry_off]
-            data_pointer = _u64(system_data, entry_off + 0x08)
-            params.append((data_type, data_pointer))
-            if data_type == 1:
-                inline_size += 16
-            elif data_type > 1:
-                inline_size += 16 * int(data_type)
-        if params_off + (parameter_count * 16) + inline_size + (parameter_count * 4) <= len(system_data):
-            parameter_hashes = list(struct.unpack_from(f"<{parameter_count}I", system_data, params_off + (parameter_count * 16) + inline_size))
-        else:
-            parameter_hashes = [0] * parameter_count
-
-        for param_index, (data_type, data_pointer) in enumerate(params):
-            parameter_hash = parameter_hashes[param_index] if param_index < len(parameter_hashes) else 0
-            parameter_definition = shader_definition.get_parameter(parameter_hash) if shader_definition is not None else None
-            parameter_name = _resolve_name(parameter_hash)
-            if parameter_name is None and parameter_definition is not None:
-                parameter_name = parameter_definition.name
-            if parameter_name is None:
-                parameter_name = f"hash_{parameter_hash:08X}" if parameter_hash else f"param_{param_index}"
-
-            texture_ref = None
-            numeric_value = None
-            if data_type == 0 and data_pointer:
-                texture_name = _parse_texture_base(system_data, data_pointer)
-                if texture_name:
-                    texture_ref = YdrTextureRef(
-                        name=texture_name,
-                        parameter_hash=parameter_hash,
-                        parameter_name=parameter_name,
-                        name_hash=_hash_name(texture_name),
-                        uv_index=parameter_definition.uv_index if parameter_definition is not None else None,
-                        parameter_type=parameter_definition.type_name if parameter_definition is not None else None,
-                        hidden=parameter_definition.hidden if parameter_definition is not None else False,
-                    )
-                    textures.append(texture_ref)
-            else:
-                numeric_value = _decode_parameter_value(
-                    data_type,
-                    data_pointer,
-                    system_data,
-                    type_name=parameter_definition.type_name if parameter_definition is not None else None,
-                )
-
-            parameters.append(
-                YdrMaterialParameterRef(
-                    name=parameter_name,
-                    name_hash=parameter_hash,
-                    type_name=parameter_definition.type_name if parameter_definition is not None else None,
-                    subtype=parameter_definition.subtype if parameter_definition is not None else None,
-                    uv_index=parameter_definition.uv_index if parameter_definition is not None else None,
-                    count=parameter_definition.count if parameter_definition is not None else 1,
-                    hidden=parameter_definition.hidden if parameter_definition is not None else False,
-                    defaults=dict(parameter_definition.defaults) if parameter_definition is not None else {},
-                    data_type=int(data_type),
-                    texture=texture_ref,
-                    value=numeric_value,
-                )
-            )
-
-    shader_name = _resolve_name(shader_name_hash)
-    if shader_name is None and shader_definition is not None:
-        shader_name = shader_definition.name
-    shader_file_name = _resolve_name(shader_file_hash)
-    if shader_file_name is None and shader_definition is not None:
-        shader_file_name = shader_definition.pick_file_name(render_bucket)
-
-    return YdrMaterial(
-        index=index,
-        name=f"material_{index}",
-        shader_name_hash=shader_name_hash,
-        shader_name=shader_name,
-        shader_file_hash=shader_file_hash,
-        shader_file_name=shader_file_name,
-        render_bucket=render_bucket,
-        textures=textures,
-        parameters=parameters,
-        shader_definition=shader_definition,
-    )
-
-
-def _parse_materials(system_data: bytes, shader_library: ShaderLibrary | None) -> tuple[list[YdrMaterial], int | None]:
-    shader_group_pointer = _u64(system_data, _ROOT_OFFSET + 0x00)
-    if not shader_group_pointer:
-        return [], None
-    shader_group_off = _virtual_offset(shader_group_pointer, system_data)
-    texture_dictionary_pointer = _u64(system_data, shader_group_off + 0x08)
-    shaders_pointer = _u64(system_data, shader_group_off + 0x10)
-    shader_count = _u16(system_data, shader_group_off + 0x18)
-    shader_pointers = _read_pointer_array(shaders_pointer, shader_count, system_data)
-    materials = [_parse_material(system_data, pointer, index, shader_library) for index, pointer in enumerate(shader_pointers)]
-    return materials, (texture_dictionary_pointer or None)
-
-
 def _parse_model_list(pointer: int, system_data: bytes) -> list[int]:
     if not pointer:
         return []
@@ -395,71 +271,6 @@ def _parse_model_list(pointer: int, system_data: bytes) -> list[int]:
     data_pointer = _u64(system_data, header_off + 0x00)
     count = _u16(system_data, header_off + 0x08)
     return _read_pointer_array(data_pointer, count, system_data)
-
-
-def _parse_inline_simple_list(header_off: int, system_data: bytes) -> tuple[int, int]:
-    data_pointer = _u64(system_data, header_off + 0x00)
-    count = _u16(system_data, header_off + 0x08)
-    if not data_pointer or count <= 0:
-        return 0, 0
-    return _virtual_offset(data_pointer, system_data), int(count)
-
-
-def _parse_light(system_data: bytes, light_off: int) -> YdrLight:
-    return YdrLight(
-        unknown_0h=_u32(system_data, light_off + 0x00),
-        unknown_4h=_u32(system_data, light_off + 0x04),
-        position=_vec3(system_data, light_off + 0x08),
-        unknown_14h=_u32(system_data, light_off + 0x14),
-        color=struct.unpack_from("<3B", system_data, light_off + 0x18),
-        flashiness=system_data[light_off + 0x1B],
-        intensity=_f32(system_data, light_off + 0x1C),
-        flags=_u32(system_data, light_off + 0x20),
-        bone_id=_u16(system_data, light_off + 0x24),
-        light_type=YdrLightType(system_data[light_off + 0x26]) if system_data[light_off + 0x26] in {1, 2, 4} else YdrLightType.POINT,
-        group_id=system_data[light_off + 0x27],
-        time_flags=_u32(system_data, light_off + 0x28),
-        falloff=_f32(system_data, light_off + 0x2C),
-        falloff_exponent=_f32(system_data, light_off + 0x30),
-        culling_plane_normal=_vec3(system_data, light_off + 0x34),
-        culling_plane_offset=_f32(system_data, light_off + 0x40),
-        shadow_blur=system_data[light_off + 0x44],
-        unknown_45h=system_data[light_off + 0x45],
-        unknown_46h=_u16(system_data, light_off + 0x46),
-        unknown_48h=_u32(system_data, light_off + 0x48),
-        volume_intensity=_f32(system_data, light_off + 0x4C),
-        volume_size_scale=_f32(system_data, light_off + 0x50),
-        volume_outer_color=struct.unpack_from("<3B", system_data, light_off + 0x54),
-        light_hash=system_data[light_off + 0x57],
-        volume_outer_intensity=_f32(system_data, light_off + 0x58),
-        corona_size=_f32(system_data, light_off + 0x5C),
-        volume_outer_exponent=_f32(system_data, light_off + 0x60),
-        light_fade_distance=system_data[light_off + 0x64],
-        shadow_fade_distance=system_data[light_off + 0x65],
-        specular_fade_distance=system_data[light_off + 0x66],
-        volumetric_fade_distance=system_data[light_off + 0x67],
-        shadow_near_clip=_f32(system_data, light_off + 0x68),
-        corona_intensity=_f32(system_data, light_off + 0x6C),
-        corona_z_bias=_f32(system_data, light_off + 0x70),
-        direction=_vec3(system_data, light_off + 0x74),
-        tangent=_vec3(system_data, light_off + 0x80),
-        cone_inner_angle=_f32(system_data, light_off + 0x8C),
-        cone_outer_angle=_f32(system_data, light_off + 0x90),
-        extent=_vec3(system_data, light_off + 0x94),
-        projected_texture_hash=_u32(system_data, light_off + 0xA0),
-        unknown_a4h=_u32(system_data, light_off + 0xA4),
-    )
-
-
-def _parse_lights(system_data: bytes) -> list[YdrLight]:
-    lights_off, light_count = _parse_inline_simple_list(_ROOT_OFFSET + 0xA0, system_data)
-    if not lights_off or light_count <= 0:
-        return []
-    light_stride = 0xA8
-    end = lights_off + (light_count * light_stride)
-    if end > len(system_data):
-        raise ValueError("light list is truncated")
-    return [_parse_light(system_data, lights_off + (index * light_stride)) for index in range(light_count)]
 
 
 def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int, material: YdrMaterial | None, material_index: int, render_mask: int, flags: int) -> YdrMesh:
@@ -588,9 +399,31 @@ def read_ydr(
 
     header, system_data, graphics_data = split_rsc7_sections(data)
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
-    materials, texture_dictionary_pointer = _parse_materials(system_data, active_shader_library)
+    materials, texture_dictionary_pointer = parse_materials(
+        system_data,
+        active_shader_library,
+        root_offset=_ROOT_OFFSET,
+        virtual_offset=_virtual_offset,
+        u16=_u16,
+        u32=_u32,
+        u64=_u64,
+        read_pointer_array=_read_pointer_array,
+        resolve_name=_resolve_name,
+        hash_name=_hash_name,
+        decode_parameter_value=_decode_parameter_value,
+        try_read_c_string=_try_read_c_string,
+    )
     lods = _parse_lods(system_data, graphics_data, materials)
-    lights = _parse_lights(system_data)
+    lights = parse_lights(
+        system_data,
+        root_offset=_ROOT_OFFSET,
+        virtual_offset=_virtual_offset,
+        u16=_u16,
+        u32=_u32,
+        u64=_u64,
+        f32=_f32,
+        vec3=_vec3,
+    )
     embedded_textures = _parse_embedded_textures(system_data, graphics_data, int(header.version), texture_dictionary_pointer)
 
     return Ydr(
