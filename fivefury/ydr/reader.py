@@ -9,7 +9,7 @@ from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, physical_to_offset, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
-from .model import Ydr, YdrMaterial, YdrMesh, YdrModel, YdrTextureRef
+from .model import Ydr, YdrMaterial, YdrMaterialParameterRef, YdrMesh, YdrModel, YdrTextureRef
 from .shaders import ShaderLibrary, load_shader_library
 
 _ROOT_OFFSET = 0x10
@@ -175,6 +175,34 @@ def _decode_component(data: bytes, offset: int, component_type: int):
     return None
 
 
+def _parameter_component_count(type_name: str | None) -> int:
+    lowered = (type_name or "").strip().lower()
+    if lowered == "float":
+        return 1
+    if lowered == "float2":
+        return 2
+    if lowered == "float3":
+        return 3
+    return 4
+
+
+def _decode_parameter_value(data_type: int, data_pointer: int, system_data: bytes, *, type_name: str | None) -> object | None:
+    if data_type <= 0 or not data_pointer:
+        return None
+    raw = _read_buffer(data_pointer, max(1, int(data_type)) * 16, system_data, b"")
+    component_count = _parameter_component_count(type_name)
+    values: list[tuple[float, ...]] = []
+    for chunk_index in range(max(1, int(data_type))):
+        offset = chunk_index * 16
+        decoded = struct.unpack_from("<4f", raw, offset)[:component_count]
+        values.append(tuple(float(component) for component in decoded))
+    if len(values) == 1:
+        if component_count == 1:
+            return float(values[0][0])
+        return values[0]
+    return tuple(values)
+
+
 def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags: int, types_value: int) -> dict[str, object]:
     if stride <= 0:
         raise ValueError("vertex stride must be positive")
@@ -226,7 +254,7 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
         "positions": positions,
         "normals": normals,
         "tangents": tangents,
-        "texcoords": list(texcoords),
+        "texcoords": [channel for channel in texcoords if channel],
         "colours0": colours0,
         "colours1": colours1,
         "blend_weights": blend_weights,
@@ -259,6 +287,7 @@ def _parse_material(system_data: bytes, shader_pointer: int, index: int, shader_
         )
 
     textures: list[YdrTextureRef] = []
+    parameters: list[YdrMaterialParameterRef] = []
     if parameters_pointer and parameter_count:
         params_off = _virtual_offset(parameters_pointer, system_data)
         inline_size = 0
@@ -278,25 +307,50 @@ def _parse_material(system_data: bytes, shader_pointer: int, index: int, shader_
             parameter_hashes = [0] * parameter_count
 
         for param_index, (data_type, data_pointer) in enumerate(params):
-            if data_type != 0 or not data_pointer:
-                continue
-            texture_name = _parse_texture_base(system_data, data_pointer)
-            if not texture_name:
-                continue
             parameter_hash = parameter_hashes[param_index] if param_index < len(parameter_hashes) else 0
             parameter_definition = shader_definition.get_parameter(parameter_hash) if shader_definition is not None else None
             parameter_name = _resolve_name(parameter_hash)
             if parameter_name is None and parameter_definition is not None:
                 parameter_name = parameter_definition.name
-            textures.append(
-                YdrTextureRef(
-                    name=texture_name,
-                    parameter_hash=parameter_hash,
-                    parameter_name=parameter_name,
-                    name_hash=_hash_name(texture_name),
+            if parameter_name is None:
+                parameter_name = f"hash_{parameter_hash:08X}" if parameter_hash else f"param_{param_index}"
+
+            texture_ref = None
+            numeric_value = None
+            if data_type == 0 and data_pointer:
+                texture_name = _parse_texture_base(system_data, data_pointer)
+                if texture_name:
+                    texture_ref = YdrTextureRef(
+                        name=texture_name,
+                        parameter_hash=parameter_hash,
+                        parameter_name=parameter_name,
+                        name_hash=_hash_name(texture_name),
+                        uv_index=parameter_definition.uv_index if parameter_definition is not None else None,
+                        parameter_type=parameter_definition.type_name if parameter_definition is not None else None,
+                        hidden=parameter_definition.hidden if parameter_definition is not None else False,
+                    )
+                    textures.append(texture_ref)
+            else:
+                numeric_value = _decode_parameter_value(
+                    data_type,
+                    data_pointer,
+                    system_data,
+                    type_name=parameter_definition.type_name if parameter_definition is not None else None,
+                )
+
+            parameters.append(
+                YdrMaterialParameterRef(
+                    name=parameter_name,
+                    name_hash=parameter_hash,
+                    type_name=parameter_definition.type_name if parameter_definition is not None else None,
+                    subtype=parameter_definition.subtype if parameter_definition is not None else None,
                     uv_index=parameter_definition.uv_index if parameter_definition is not None else None,
-                    parameter_type=parameter_definition.type_name if parameter_definition is not None else None,
+                    count=parameter_definition.count if parameter_definition is not None else 1,
                     hidden=parameter_definition.hidden if parameter_definition is not None else False,
+                    defaults=dict(parameter_definition.defaults) if parameter_definition is not None else {},
+                    data_type=int(data_type),
+                    texture=texture_ref,
+                    value=numeric_value,
                 )
             )
 
@@ -309,12 +363,14 @@ def _parse_material(system_data: bytes, shader_pointer: int, index: int, shader_
 
     return YdrMaterial(
         index=index,
+        name=f"material_{index}",
         shader_name_hash=shader_name_hash,
         shader_name=shader_name,
         shader_file_hash=shader_file_hash,
         shader_file_name=shader_file_name,
         render_bucket=render_bucket,
         textures=textures,
+        parameters=parameters,
         shader_definition=shader_definition,
     )
 

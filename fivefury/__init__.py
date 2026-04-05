@@ -116,6 +116,7 @@ from .ydr import (
     YdrMaterialInput,
     YdrMaterialLayout,
     YdrMaterialParameter,
+    YdrMaterialParameterRef,
     YdrMesh,
     YdrMeshInput,
     YdrModel,
@@ -129,6 +130,7 @@ from .ydr import (
     read_shader_library,
     read_ydr,
     save_ydr,
+    ydr_to_build,
 )
 from .ymap import (
     Block,
@@ -313,6 +315,7 @@ __all__ = [
     "YdrMaterialInput",
     "YdrMaterialLayout",
     "YdrMaterialParameter",
+    "YdrMaterialParameterRef",
     "YdrMesh",
     "YdrMeshInput",
     "YdrModel",
@@ -371,5 +374,6 @@ __all__ = [
     "scene_to_cut",
     "ytyp_from_ydr_folder",
     "zip_to_rpf",
+    "ydr_to_build",
 ]
 

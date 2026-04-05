@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from fivefury import (
     YdrBuild,
     YdrMaterialInput,
@@ -100,6 +102,136 @@ def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
     assert descriptor.get_texture("DiffuseSampler").texture_name == "wall_a"
     assert descriptor.get_texture("BumpSampler").texture_name == "wall_a_n"
     assert descriptor.get_texture("SpecSampler").texture_name == "wall_a_s"
+
+
+def test_read_ydr_preserves_numeric_material_parameters(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh(material="main")],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="normal_spec.sps",
+                textures={
+                    "DiffuseSampler": "wall_a",
+                    "BumpSampler": "wall_a_n",
+                    "SpecSampler": "wall_a_s",
+                },
+                parameters={
+                    "bumpiness": 1.5,
+                    "specMapIntMask": (1.0, 0.25, 0.0),
+                },
+            )
+        ],
+        name="triangle_ns_params",
+    )
+    ydr_path = tmp_path / "triangle_ns_params.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    material = ydr.materials[0]
+    assert material.get_numeric_parameter("bumpiness") == pytest.approx(1.5)
+    assert material.get_numeric_parameter("specMapIntMask") == pytest.approx((1.0, 0.25, 0.0))
+    assert material.material_descriptor.get_parameter("bumpiness").value == pytest.approx(1.5)
+
+
+def test_edit_parsed_ydr_material_and_save_roundtrip(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh(material="main")],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="normal_spec.sps",
+                textures={
+                    "DiffuseSampler": "wall_a",
+                    "BumpSampler": "wall_a_n",
+                    "SpecSampler": "wall_a_s",
+                },
+                parameters={
+                    "bumpiness": 1.0,
+                    "specularIntensityMult": 1.0,
+                },
+            )
+        ],
+        name="editable_triangle",
+    )
+    source_path = tmp_path / "editable_triangle.ydr"
+    build.save(source_path)
+
+    ydr = read_ydr(source_path)
+    material = ydr.materials[0]
+    material.update(
+        shader="spec.sps",
+        textures={
+            "DiffuseSampler": "wall_b",
+            "SpecSampler": "wall_b_s",
+            "BumpSampler": None,
+        },
+        parameters={
+            "specularIntensityMult": 2.5,
+        },
+    )
+
+    edited_path = tmp_path / "editable_triangle_out.ydr"
+    ydr.save(edited_path)
+    edited = read_ydr(edited_path)
+
+    edited_material = edited.materials[0]
+    assert edited_material.shader_definition is not None
+    assert edited_material.shader_definition.name == "spec"
+    assert edited_material.get_texture("DiffuseSampler").name == "wall_b"
+    assert edited_material.get_texture("SpecSampler").name == "wall_b_s"
+    assert edited_material.get_texture("BumpSampler") is None
+    assert edited_material.get_numeric_parameter("specularIntensityMult") == pytest.approx(2.5)
+
+
+def test_edit_parsed_ydr_material_declaratively(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh(material="main")],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="normal_spec.sps",
+                textures={
+                    "DiffuseSampler": "wall_a",
+                    "BumpSampler": "wall_a_n",
+                    "SpecSampler": "wall_a_s",
+                },
+                parameters={
+                    "bumpiness": 1.0,
+                    "specularIntensityMult": 1.0,
+                },
+            )
+        ],
+        name="editable_triangle_decl",
+    )
+    source_path = tmp_path / "editable_triangle_decl.ydr"
+    build.save(source_path)
+
+    ydr = read_ydr(source_path)
+    ydr.update_material(
+        0,
+        shader="spec.sps",
+        textures={
+            "DiffuseSampler": "wall_c",
+            "SpecSampler": "wall_c_s",
+            "BumpSampler": None,
+        },
+        parameters={
+            "specularIntensityMult": 3.0,
+        },
+    )
+
+    edited_path = tmp_path / "editable_triangle_decl_out.ydr"
+    ydr.save(edited_path)
+    edited = read_ydr(edited_path)
+
+    edited_material = edited.materials[0]
+    assert edited_material.shader_definition is not None
+    assert edited_material.shader_definition.name == "spec"
+    assert edited_material.get_texture("DiffuseSampler").name == "wall_c"
+    assert edited_material.get_texture("SpecSampler").name == "wall_c_s"
+    assert edited_material.get_texture("BumpSampler") is None
+    assert edited_material.get_numeric_parameter("specularIntensityMult") == pytest.approx(3.0)
 
 
 def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:

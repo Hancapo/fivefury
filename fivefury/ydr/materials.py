@@ -27,6 +27,7 @@ class YdrMaterialParameter:
     hidden: bool = False
     defaults: dict[str, str] = dataclasses.field(default_factory=dict)
     texture: YdrTextureRef | None = None
+    value: float | tuple[float, ...] | tuple[tuple[float, ...], ...] | None = None
 
     @property
     def is_texture(self) -> bool:
@@ -47,6 +48,10 @@ class YdrMaterialParameter:
         if self.texture is None:
             return 0
         return int(self.texture.name_hash)
+
+    @property
+    def has_value(self) -> bool:
+        return self.value is not None
 
 
 @dataclasses.dataclass(slots=True)
@@ -105,45 +110,37 @@ class YdrMaterialDescriptor:
 
 
 def build_material_descriptor(material: YdrMaterial) -> YdrMaterialDescriptor:
-    from .model import YdrTextureRef
-
-    parameters: list[YdrMaterialParameter] = []
-    used_textures: set[int] = set()
-
     shader_definition = material.shader_definition
-    if shader_definition is not None:
-        for definition in shader_definition.parameters:
-            texture = material.get_texture(definition.name_hash) or material.get_texture(definition.name)
-            if texture is not None:
-                used_textures.add(id(texture))
+    parameters: list[YdrMaterialParameter] = []
+    for source in material.parameters:
+        parameters.append(
+            YdrMaterialParameter(
+                name=source.name,
+                name_hash=int(source.name_hash),
+                type_name=source.type_name,
+                subtype=source.subtype,
+                uv_index=source.uv_index,
+                count=int(source.count),
+                hidden=bool(source.hidden),
+                defaults=dict(source.defaults),
+                texture=source.texture,
+                value=source.value,
+            )
+        )
+
+    if not parameters:
+        for texture in material.textures:
+            fallback_name = texture.parameter_name or (f"hash_{texture.parameter_hash:08X}" if texture.parameter_hash else texture.name)
             parameters.append(
                 YdrMaterialParameter(
-                    name=definition.name,
-                    name_hash=definition.name_hash,
-                    type_name=definition.type_name,
-                    subtype=definition.subtype,
-                    uv_index=definition.uv_index,
-                    count=definition.count,
-                    hidden=definition.hidden,
-                    defaults=dict(definition.defaults),
+                    name=fallback_name,
+                    name_hash=int(texture.parameter_hash),
+                    type_name=texture.parameter_type or "Texture",
+                    uv_index=texture.uv_index,
+                    hidden=texture.hidden,
                     texture=texture,
                 )
             )
-
-    for texture in material.textures:
-        if id(texture) in used_textures:
-            continue
-        fallback_name = texture.parameter_name or (f"hash_{texture.parameter_hash:08X}" if texture.parameter_hash else texture.name)
-        parameters.append(
-            YdrMaterialParameter(
-                name=fallback_name,
-                name_hash=int(texture.parameter_hash),
-                type_name=texture.parameter_type or "Texture",
-                uv_index=texture.uv_index,
-                hidden=texture.hidden,
-                texture=texture,
-            )
-        )
 
     layouts: tuple[YdrMaterialLayout, ...] = ()
     if shader_definition is not None:

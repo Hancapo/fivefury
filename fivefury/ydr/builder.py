@@ -980,14 +980,22 @@ def _aligned_page_counts(system_size: int, graphics_size: int) -> tuple[int, int
     return (align(system_size, 0x200) // 0x200, align(graphics_size, 0x200) // 0x200)
 
 
+def ydr_to_build(source: "Ydr", *, lod: str | None = None, name: str | None = None) -> YdrBuild:
+    return source.to_build(lod=lod, name=name)
+
+
 def build_ydr_bytes(
-    source: YdrBuild,
+    source: "YdrBuild | Ydr",
     *,
     shader_library: ShaderLibrary | None = None,
     generate_normals: bool = True,
     generate_tangents: bool = True,
     fill_vertex_colours: bool = True,
 ) -> bytes:
+    from .model import Ydr
+
+    if isinstance(source, Ydr):
+        source = source.to_build()
     if not source.meshes:
         raise ValueError("YDR builder requires at least one mesh")
     if source.lod not in LOD_POINTER_OFFSETS:
@@ -1027,7 +1035,7 @@ def build_ydr_bytes(
     )
 
 
-def save_ydr(source: YdrBuild, destination: str | Path, *, shader_library: ShaderLibrary | None = None) -> Path:
+def save_ydr(source: "YdrBuild | Ydr", destination: str | Path, *, shader_library: ShaderLibrary | None = None) -> Path:
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(build_ydr_bytes(source, shader_library=shader_library))
@@ -1042,4 +1050,5 @@ __all__ = [
     "build_ydr_bytes",
     "create_ydr",
     "save_ydr",
+    "ydr_to_build",
 ]
