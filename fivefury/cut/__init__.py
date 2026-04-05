@@ -1,10 +1,20 @@
 from .analysis import analyze_cut
 from .events import CutEventBehavior, CutEventSpec, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
 from .model import CutFile, CutHashedString, CutNode
-from .payloads import CutCameraCutPayload, CutEventPayload, CutLoadScenePayload, CutNamePayload, CutObjectIdListPayload, CutSubtitlePayload
+from .payloads import (
+    CutAnimationDictPayload,
+    CutAnimationTargetPayload,
+    CutCameraCutPayload,
+    CutEventPayload,
+    CutLoadScenePayload,
+    CutNamePayload,
+    CutObjectIdListPayload,
+    CutSubtitlePayload,
+)
 from .pso import read_cut
 from .scene import (
     CutAssetManager,
+    CutAnimationManager,
     CutAudio,
     CutBinding,
     CutBlockingBounds,
@@ -32,6 +42,9 @@ __all__ = [
     "analyze_cut",
     "build_cut_bytes",
     "CutAssetManager",
+    "CutAnimationManager",
+    "CutAnimationDictPayload",
+    "CutAnimationTargetPayload",
     "CutAudio",
     "CutBinding",
     "CutBlockingBounds",

@@ -8,7 +8,16 @@ from ..hashing import jenk_hash
 from .events import CutEventBehavior, CutEventSpec, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
 from .model import CutFile, CutHashedString, CutNode, CutResolvedEvent
 from .names import CUT_NAME_VALUES
-from .payloads import CutCameraCutPayload, CutEventPayload, CutLoadScenePayload, CutNamePayload, CutObjectIdListPayload, CutSubtitlePayload
+from .payloads import (
+    CutAnimationDictPayload,
+    CutAnimationTargetPayload,
+    CutCameraCutPayload,
+    CutEventPayload,
+    CutLoadScenePayload,
+    CutNamePayload,
+    CutObjectIdListPayload,
+    CutSubtitlePayload,
+)
 from .pso import read_cut
 from .xml import read_cutxml
 
@@ -857,6 +866,58 @@ class CutScene:
         target: CutBinding | int | None = None,
     ) -> CutTimelineEvent:
         return self.create_event(CutEventType.UNLOAD_MODELS, start=start, target=target, payload=CutObjectIdListPayload(object_ids))
+
+    def load_anim_dict(
+        self,
+        start: float,
+        name: str | CutAnimationDictPayload,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        payload = name if isinstance(name, CutAnimationDictPayload) else CutAnimationDictPayload(str(name))
+        return self.create_event(CutEventType.LOAD_ANIM_DICT, start=start, target=target, track="animation_state", payload=payload)
+
+    def unload_anim_dict(
+        self,
+        start: float,
+        name: str | CutAnimationDictPayload,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        payload = name if isinstance(name, CutAnimationDictPayload) else CutAnimationDictPayload(str(name))
+        return self.create_event(CutEventType.UNLOAD_ANIM_DICT, start=start, target=target, track="animation_state", payload=payload)
+
+    def set_anim(
+        self,
+        start: float,
+        animated: CutBinding | int,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        object_id = animated.object_id if isinstance(animated, CutBinding) else int(animated)
+        return self.create_event(
+            CutEventType.SET_ANIM,
+            start=start,
+            target=target,
+            track="animation_binding",
+            payload=CutAnimationTargetPayload(object_id),
+        )
+
+    def clear_anim(
+        self,
+        start: float,
+        animated: CutBinding | int,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        object_id = animated.object_id if isinstance(animated, CutBinding) else int(animated)
+        return self.create_event(
+            CutEventType.CLEAR_ANIM,
+            start=start,
+            target=target,
+            track="animation_binding",
+            payload=CutAnimationTargetPayload(object_id),
+        )
 
     def camera_cut(
         self,

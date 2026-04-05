@@ -57,6 +57,19 @@ class CutNamePayload(CutEventPayload):
 
 
 @dataclass(slots=True)
+class CutAnimationDictPayload(CutNamePayload):
+    pass
+
+
+@dataclass(slots=True)
+class CutAnimationTargetPayload(CutEventPayload):
+    object_id: int
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"iObjectId": int(self.object_id)}
+
+
+@dataclass(slots=True)
 class CutSubtitlePayload(CutEventPayload):
     text: str
     duration: float
