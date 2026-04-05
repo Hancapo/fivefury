@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.11]
+
+### Added
+- High-level `CUT` animation manager authoring helpers for loading animation dictionaries and binding or clearing animation state on scene objects.
+
+### Changed
+- `CUT` no-template authoring now includes typed animation payloads and timeline helpers around the animation manager path.
+
 ## [0.1.10]
 
 ### Added

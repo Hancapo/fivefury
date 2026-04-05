@@ -177,14 +177,18 @@ class _PsoReader:
         return result
 
     def _block_slice(self, pointer: _PsoPointer, size: int) -> bytes:
-        block = self.blocks[pointer.block_id]
+        block = self._get_block(pointer.block_id)
+        if block is None:
+            return b"\x00" * size
         start = block.offset + pointer.offset
         return self.psin[start : start + size]
 
     def _read_c_string_pointer(self, pointer: _PsoPointer, length: int | None = None) -> str:
         if pointer.is_null:
             return ""
-        block = self.blocks[pointer.block_id]
+        block = self._get_block(pointer.block_id)
+        if block is None:
+            return ""
         start = block.offset + pointer.offset
         if length is None:
             return read_c_string(self.psin, start)
@@ -245,7 +249,9 @@ class _PsoReader:
     def _read_pointer_target(self, pointer: _PsoPointer) -> Any:
         if pointer.is_null:
             return None
-        block = self.blocks[pointer.block_id]
+        block = self._get_block(pointer.block_id)
+        if block is None:
+            return None
         type_hash = block.name_hash
         if type_hash == 1:
             return self._read_c_string_pointer(pointer)
@@ -279,14 +285,19 @@ class _PsoReader:
             end -= 1
         return values[:end]
 
+    def _get_block(self, block_id: int) -> _PsoBlock | None:
+        return self.blocks.get(block_id)
+
     def _read_array_values(self, entry: _PsoEntry, array_info: _PsoEntry, block_id: int, absolute_offset: int) -> list[Any]:
         if array_info is None:
             return []
-        if entry.subtype in {0, 4}:
+        if entry.subtype in {0, 3, 5, 6, 7, 8}:
             header = _decode_array_header(self.psin, absolute_offset)
             if header.pointer.is_null or header.count == 0:
                 return []
-            target_block = self.blocks[header.pointer.block_id]
+            target_block = self._get_block(header.pointer.block_id)
+            if target_block is None:
+                return []
             base = target_block.offset + header.pointer.offset
             count = header.count
             inline = False
@@ -298,12 +309,17 @@ class _PsoReader:
         if array_info.type_id == PsoDataTypeStructure:
             if array_info.reference_key != 0:
                 type_hash = array_info.reference_key
-                struct_info = self.structs[type_hash]
+                struct_info = self.structs.get(type_hash)
+                if struct_info is None:
+                    return []
+                parent_block = self._get_block(block_id)
+                if parent_block is None:
+                    return []
                 values = [
                     self._read_structure(
                         type_hash,
                         block_id if inline else header.pointer.block_id,
-                        (base - self.blocks[block_id].offset if inline else header.pointer.offset) + struct_info.length * index,
+                        (base - parent_block.offset if inline else header.pointer.offset) + struct_info.length * index,
                     )
                     for index in range(count)
                 ]
@@ -352,8 +368,12 @@ class _PsoReader:
         return []
 
     def _read_structure(self, type_hash: int, block_id: int, relative_offset: int) -> CutNode:
-        struct_info = self.structs[type_hash]
-        block = self.blocks[block_id]
+        struct_info = self.structs.get(type_hash)
+        if struct_info is None:
+            return CutNode(type_name=hash_name(type_hash), type_hash=type_hash, fields={})
+        block = self._get_block(block_id)
+        if block is None:
+            return CutNode(type_name=hash_name(type_hash), type_hash=type_hash, fields={})
         base = block.offset + relative_offset
         fields: dict[str, Any] = {}
         array_info: _PsoEntry | None = None

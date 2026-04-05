@@ -16,6 +16,10 @@ dist/
 
 references/
 examples/
+tests/
+.claude/
+fivefury-*/
+AGENT_HANDOFF.md
 
 *.ymap
 *.ytyp

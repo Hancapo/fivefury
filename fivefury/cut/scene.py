@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
+
+if TYPE_CHECKING:
+    from ..ycd.model import Ycd, YcdAnimation, YcdClip
 
 from ..hashing import jenk_hash
+from ..metahash import MetaHash
 from .events import CutEventBehavior, CutEventSpec, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
 from .model import CutFile, CutHashedString, CutNode, CutResolvedEvent
 from .names import CUT_NAME_VALUES
@@ -581,6 +585,7 @@ class CutScene:
     trigger_offset: tuple[float, float, float] | None = None
     bindings: list[CutBinding] = field(default_factory=list)
     tracks: list[CutTrack] = field(default_factory=list)
+    clip_dicts: list[Ycd] = field(default_factory=list)
     raw: CutFile | None = None
 
     @property
@@ -638,6 +643,34 @@ class CutScene:
     @property
     def animation_managers(self) -> list[CutBinding]:
         return [item for item in self.bindings if item.role == "animation_manager"]
+
+    def attach_clip_dict(self, ycd: object) -> None:
+        from ..ycd.model import Ycd
+        if not isinstance(ycd, Ycd):
+            raise TypeError(f"expected Ycd, got {type(ycd).__name__}")
+        self.clip_dicts.append(ycd)
+
+    def get_clip(self, value: int | str) -> YcdClip | None:
+        key = MetaHash(value).uint
+        for ycd in self.clip_dicts:
+            clip = ycd.clip_map.get(key)
+            if clip is not None:
+                return clip
+        return None
+
+    def get_animation(self, value: int | str) -> YcdAnimation | None:
+        key = MetaHash(value).uint
+        for ycd in self.clip_dicts:
+            anim = ycd.animation_map.get(key)
+            if anim is not None:
+                return anim
+        return None
+
+    def available_clips(self, *, cut_index: int = 0) -> dict[int, YcdClip]:
+        merged: dict[int, object] = {}
+        for ycd in self.clip_dicts:
+            merged.update(ycd.build_cutscene_map(cut_index))
+        return merged
 
     @property
     def asset_managers(self) -> list[CutBinding]:
@@ -918,6 +951,44 @@ class CutScene:
             track="animation_binding",
             payload=CutAnimationTargetPayload(object_id),
         )
+
+    def play_animation(
+        self,
+        start: float,
+        animated: CutBinding | int,
+        dict_name: str,
+        *,
+        end: float | None = None,
+        target: CutBinding | int | None = None,
+    ) -> list[CutTimelineEvent]:
+        events: list[CutTimelineEvent] = []
+        events.append(self.load_anim_dict(start, dict_name, target=target))
+        events.append(self.set_anim(start, animated, target=target))
+        if end is not None:
+            events.append(self.clear_anim(end, animated, target=target))
+            events.append(self.unload_anim_dict(end, dict_name, target=target))
+        return events
+
+    def validate_animations(self, *, cut_index: int = 0) -> list[str]:
+        if not self.clip_dicts:
+            return []
+        warnings: list[str] = []
+        known_stems = {ycd.stem.lower() for ycd in self.clip_dicts if ycd.stem}
+        clip_map = self.available_clips(cut_index=cut_index)
+        for event in self.timeline:
+            if event.event_name == "load_anim_dict" and event.label:
+                name = event.label.lower()
+                if not any(name in stem or stem in name for stem in known_stems):
+                    warnings.append(f"load_anim_dict references unknown dict '{event.label}'")
+            if event.event_name == "set_anim" and event.payload:
+                oid = event.payload.get("iObjectId")
+                if oid is not None:
+                    bound = self.get_binding(int(oid))
+                    if bound is not None and bound.name:
+                        key = MetaHash(bound.name).uint
+                        if key not in clip_map:
+                            warnings.append(f"set_anim target '{bound.name}' (id={oid}) has no matching clip in attached YCDs")
+        return warnings
 
     def camera_cut(
         self,
