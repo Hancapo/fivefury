@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import struct
 from pathlib import Path
 from typing import ClassVar, Iterator
 
@@ -55,7 +54,7 @@ def _read_pointer_array(data: bytes, pointer: int, count: int) -> list[int]:
     end = array_off + (count * 8)
     if end > len(data):
         raise ValueError("pointer array is truncated")
-    return [struct.unpack_from("<Q", data, array_off + (index * 8))[0] for index in range(count)]
+    return [_u64(data, array_off + (index * 8)) for index in range(count)]
 
 
 def _drawable_texture_dictionary_pointer(data: bytes, drawable_pointer: int) -> int | None:

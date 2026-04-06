@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 
 from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32
@@ -37,7 +36,7 @@ def _read_pointer_array(pointer: int, count: int, data: bytes) -> list[int]:
     if not pointer or count <= 0:
         return []
     offset = _virtual_offset(pointer, data)
-    return [struct.unpack_from("<Q", data, offset + (index * 8))[0] for index in range(count)]
+    return [_u64(data, offset + (index * 8)) for index in range(count)]
 
 
 def _read_list_header(pointer: int, data: bytes) -> tuple[int, int, int]:

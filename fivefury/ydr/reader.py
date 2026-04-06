@@ -53,7 +53,7 @@ def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[in
     end = array_off + (count * 8)
     if end > len(system_data):
         raise ValueError("pointer array is truncated")
-    return [struct.unpack_from("<Q", system_data, array_off + (index * 8))[0] for index in range(count)]
+    return [_u64(system_data, array_off + (index * 8)) for index in range(count)]
 
 
 def _read_ushort_array(pointer: int, count: int, system_data: bytes, graphics_data: bytes) -> list[int]:
