@@ -179,4 +179,9 @@ YTYP_STRUCT_INFOS = [
 
 YTYP_ENUM_INFOS = [
     _enum_info("rage__fwArchetypeDef__eAssetType"),
+    _enum_info("rage__eLodType"),
+    _enum_info("rage__ePriorityLevel"),
+    _enum_info("CExtensionDefLadderMaterialType"),
+    _enum_info("CExtensionDefLightShaftDensityType"),
+    _enum_info("CExtensionDefLightShaftVolumeType"),
 ]
