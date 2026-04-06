@@ -250,7 +250,7 @@ def obj_to_ydr(
     shader: str | None = None,
     default_colour: tuple[float, float, float, float] | None = None,
     generate_ytyp: bool = False,
-) -> Path:
+) -> YdrBuild:
     scene = read_obj_scene(source, default_shader=default_shader, shader=shader, default_colour=default_colour)
     build = scene.to_ydr()
     if destination is None:
@@ -258,7 +258,7 @@ def obj_to_ydr(
     result = save_ydr(build, _lowercase_output_path(destination))
     if generate_ytyp:
         _save_companion_ytyp(scene, result)
-    return result
+    return build
 
 
 __all__ = [

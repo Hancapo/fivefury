@@ -294,8 +294,9 @@ def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:
     assert scene.materials[0].textures["SpecSampler"] == "triangle_spec"
 
     ydr_path = tmp_path / "triangle_obj.ydr"
-    result = obj_to_ydr(obj_path, ydr_path)
-    assert result == ydr_path
+    build = obj_to_ydr(obj_path, ydr_path)
+    assert isinstance(build, YdrBuild)
+    assert ydr_path.exists()
     ydr = read_ydr(ydr_path)
 
     assert ydr.materials[0].shader_definition is not None
