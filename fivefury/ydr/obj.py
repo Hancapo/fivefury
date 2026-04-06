@@ -229,7 +229,7 @@ def read_obj_scene(
     for mtl_path in material_libraries:
         parsed_materials.update(_parse_mtl(mtl_path))
 
-    material_names = list(dict.fromkeys([*builders.keys(), *parsed_materials.keys()])) or ["default"]
+    material_names = list(dict.fromkeys(builders.keys())) or ["default"]
     ydr_materials: list[YdrMaterialInput] = []
     for material_name in material_names:
         parsed = parsed_materials.get(material_name, ObjMaterial(name=material_name))
