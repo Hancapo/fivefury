@@ -134,8 +134,14 @@ def _parse_mtl(path: Path) -> dict[str, ObjMaterial]:
 
 
 def _infer_shader(material: ObjMaterial, default_shader: str) -> str:
-    if material.normal_texture or material.specular_texture:
+    has_normal = material.normal_texture is not None
+    has_spec = material.specular_texture is not None
+    if has_normal and has_spec:
         return "normal_spec.sps"
+    if has_normal:
+        return "normal.sps"
+    if has_spec:
+        return "spec.sps"
     return default_shader
 
 
