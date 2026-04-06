@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import read_c_string
+from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32
 from ..metahash import MetaHash
 from ..resource import split_rsc7_sections, virtual_to_offset
 from ..resolver import register_name
@@ -18,22 +18,6 @@ from .model import (
 )
 
 DAT_VIRTUAL_BASE = 0x50000000
-
-
-def _u16(data: bytes, offset: int) -> int:
-    return struct.unpack_from("<H", data, offset)[0]
-
-
-def _u32(data: bytes, offset: int) -> int:
-    return struct.unpack_from("<I", data, offset)[0]
-
-
-def _u64(data: bytes, offset: int) -> int:
-    return struct.unpack_from("<Q", data, offset)[0]
-
-
-def _f32(data: bytes, offset: int) -> float:
-    return struct.unpack_from("<f", data, offset)[0]
 
 
 def _virtual_offset(pointer: int, data: bytes) -> int:

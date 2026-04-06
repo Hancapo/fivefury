@@ -26,6 +26,78 @@ def read_c_string(data: bytes, offset: int = 0) -> str:
     return data[offset:end].decode("ascii", errors="ignore")
 
 
+def u16(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<H", data, offset)[0]
+
+
+def u32(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<I", data, offset)[0]
+
+
+def i32(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<i", data, offset)[0]
+
+
+def u64(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<Q", data, offset)[0]
+
+
+def f32(data: bytes, offset: int) -> float:
+    return struct.unpack_from("<f", data, offset)[0]
+
+
+def vec3(data: bytes, offset: int) -> tuple[float, float, float]:
+    return struct.unpack_from("<3f", data, offset)
+
+
+def vec4(data: bytes, offset: int) -> tuple[float, float, float, float]:
+    return struct.unpack_from("<4f", data, offset)
+
+
+def u16_be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">H", data, offset)[0]
+
+
+def u32_be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">I", data, offset)[0]
+
+
+def i32_be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">i", data, offset)[0]
+
+
+def u64_be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">Q", data, offset)[0]
+
+
+def i64_be(data: bytes, offset: int) -> int:
+    return struct.unpack_from(">q", data, offset)[0]
+
+
+def f32_be(data: bytes, offset: int) -> float:
+    return struct.unpack_from(">f", data, offset)[0]
+
+
+def pack_u16_be(value: int) -> bytes:
+    return struct.pack(">H", value)
+
+
+def pack_u32_be(value: int) -> bytes:
+    return struct.pack(">I", value & 0xFFFFFFFF)
+
+
+def pack_i32_be(value: int) -> bytes:
+    return struct.pack(">i", value)
+
+
+def pack_i64_be(value: int) -> bytes:
+    return struct.pack(">q", value)
+
+
+def pack_f32_be(value: float) -> bytes:
+    return struct.pack(">f", value)
+
+
 def pack_u24(value: int) -> bytes:
     return bytes((value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF))
 

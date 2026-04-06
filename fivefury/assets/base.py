@@ -5,6 +5,7 @@ import struct
 from pathlib import Path
 from typing import ClassVar, Iterator
 
+from ..binary import u16 as _u16, u32 as _u32, u64 as _u64
 from ..gamefile import GameFileType, guess_game_file_type
 from ..resource import split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
@@ -17,25 +18,6 @@ class EmbeddedTextureDictionary:
     ytd: Ytd
     label: str = "embedded"
     pointer: int = 0
-
-
-def _u16(data: bytes, offset: int) -> int:
-    if offset < 0 or offset + 2 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<H", data, offset)[0]
-
-
-def _u32(data: bytes, offset: int) -> int:
-    if offset < 0 or offset + 4 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<I", data, offset)[0]
-
-
-def _u64(data: bytes, offset: int) -> int:
-    if offset < 0 or offset + 8 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<Q", data, offset)[0]
-
 
 def _coerce_kind(
     value: GameFileType | str | None,

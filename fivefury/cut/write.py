@@ -4,6 +4,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..binary import (
+    pack_f32_be as _f32,
+    pack_i32_be as _i32,
+    pack_i64_be as _i64,
+    pack_u16_be as _u16,
+    pack_u32_be as _u32,
+)
 from ..hashing import jenk_hash
 from .model import CutFile, CutHashedString, CutNode
 from .names import CUT_HASH_NAMES, CUT_NAME_VALUES
@@ -40,28 +47,6 @@ from .pso import (
     _PsoStruct,
 )
 from .schema import builtin_cut_template
-
-
-def _u16(value: int) -> bytes:
-    return int(value).to_bytes(2, "big", signed=False)
-
-
-def _u32(value: int) -> bytes:
-    return int(value & 0xFFFFFFFF).to_bytes(4, "big", signed=False)
-
-
-def _i32(value: int) -> bytes:
-    return int(value).to_bytes(4, "big", signed=True)
-
-
-def _i64(value: int) -> bytes:
-    return int(value).to_bytes(8, "big", signed=True)
-
-
-def _f32(value: float) -> bytes:
-    import struct
-
-    return struct.pack(">f", float(value))
 
 
 def _resolve_hash(value: int | str | CutHashedString | None) -> int:

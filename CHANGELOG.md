@@ -6,6 +6,22 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.13]
+
+### Changed
+- Consolidated duplicated offset-based binary read and write helpers into `fivefury.binary` and switched `YDR`, `YCD`, embedded asset, and `CUT` PSO modules to reuse those shared primitives.
+
+### Fixed
+- Reduced drift risk between little-endian resource readers and big-endian `CUT` PSO helpers by centralizing the primitive byte operations.
+
+## [0.1.12]
+
+### Added
+- Initial high-level `CUT` and `YCD` animation integration helpers for authoring animation-manager events without working directly against raw PSO nodes.
+
+### Fixed
+- Improved PSO inline array handling used by the `CUT` pipeline.
+
 ## [0.1.11]
 
 ### Added

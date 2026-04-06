@@ -4,7 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..binary import read_c_string
+from ..binary import (
+    read_c_string,
+    f32_be as _f32,
+    i32_be as _i32,
+    i64_be as _i64,
+    u16_be as _u16,
+    u32_be as _u32,
+    u64_be as _u64,
+)
 from ..metahash import MetaHash
 from .model import CutFile, CutHashedString, CutNode
 from .names import ARRAY_INFO_HASH, hash_name
@@ -36,32 +44,6 @@ PsoDataTypeFloat3a = 0x14
 PsoDataTypeFloat4a = 0x15
 PsoDataTypeHFloat = 0x1E
 PsoDataTypeLong = 0x20
-
-
-def _u16(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset : offset + 2], "big", signed=False)
-
-
-def _u32(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset : offset + 4], "big", signed=False)
-
-
-def _i32(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset : offset + 4], "big", signed=True)
-
-
-def _u64(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset : offset + 8], "big", signed=False)
-
-
-def _i64(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset : offset + 8], "big", signed=True)
-
-
-def _f32(data: bytes, offset: int) -> float:
-    import struct
-
-    return struct.unpack(">f", data[offset : offset + 4])[0]
 
 
 @dataclass(slots=True)

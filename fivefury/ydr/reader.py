@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import read_c_string
+from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32, vec3 as _vec3
 from ..hashing import jenk_hash
 from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, physical_to_offset, split_rsc7_sections, virtual_to_offset
@@ -15,36 +15,6 @@ from .read_materials import parse_materials
 from .shaders import ShaderLibrary, load_shader_library
 
 _ROOT_OFFSET = 0x10
-
-
-def _u16(data: bytes, offset: int) -> int:
-    if offset < 0 or offset + 2 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<H", data, offset)[0]
-
-
-def _u32(data: bytes, offset: int) -> int:
-    if offset < 0 or offset + 4 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<I", data, offset)[0]
-
-
-def _u64(data: bytes, offset: int) -> int:
-    if offset < 0 or offset + 8 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<Q", data, offset)[0]
-
-
-def _f32(data: bytes, offset: int) -> float:
-    if offset < 0 or offset + 4 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<f", data, offset)[0]
-
-
-def _vec3(data: bytes, offset: int) -> tuple[float, float, float]:
-    if offset < 0 or offset + 12 > len(data):
-        raise ValueError("offset is out of range")
-    return struct.unpack_from("<3f", data, offset)
 
 
 def _virtual_offset(pointer: int, data: bytes) -> int:
