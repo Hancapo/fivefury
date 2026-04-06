@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 from pathlib import Path
 from typing import Sequence
 
-from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, create_ydr, save_ydr
+from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, compute_bounds, create_ydr, save_ydr
 from ..ytyp import Archetype, Ytyp
 
 
@@ -72,15 +71,21 @@ class _ObjMeshBuilder:
                 self.normals.append(normal)
         return index
 
-    def to_mesh_input(self) -> YdrMeshInput:
+    def to_mesh_input(
+        self,
+        *,
+        default_colour: tuple[float, float, float, float] | None = None,
+    ) -> YdrMeshInput:
         texcoords = [self.texcoords0] if self.texcoords0 else None
         normals = self.normals if self.normals else None
+        colours0 = [default_colour] * len(self.positions) if default_colour is not None else None
         return YdrMeshInput(
             positions=self.positions,
             indices=self.indices,
             material=self.material_name,
             normals=normals,
             texcoords=texcoords,
+            colours0=colours0,
         )
 
 
@@ -135,21 +140,7 @@ def _infer_shader(material: ObjMaterial, default_shader: str) -> str:
 
 
 def _compute_scene_bounds(meshes: Sequence[YdrMeshInput]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
-    positions = [position for mesh in meshes for position in mesh.positions]
-    if not positions:
-        return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0
-    xs = [position[0] for position in positions]
-    ys = [position[1] for position in positions]
-    zs = [position[2] for position in positions]
-    bb_min = (min(xs), min(ys), min(zs))
-    bb_max = (max(xs), max(ys), max(zs))
-    centre = (
-        (bb_min[0] + bb_max[0]) * 0.5,
-        (bb_min[1] + bb_max[1]) * 0.5,
-        (bb_min[2] + bb_max[2]) * 0.5,
-    )
-    radius = max(math.dist(centre, position) for position in positions)
-    return centre, bb_min, bb_max, radius
+    return compute_bounds([p for mesh in meshes for p in mesh.positions])
 
 
 def _lowercase_output_path(value: str | Path) -> Path:
@@ -183,6 +174,7 @@ def read_obj_scene(
     *,
     default_shader: str = "default.sps",
     shader: str | None = None,
+    default_colour: tuple[float, float, float, float] | None = None,
 ) -> ObjScene:
     obj_path = Path(source)
     vertices: list[tuple[float, float, float]] = []
@@ -244,7 +236,7 @@ def read_obj_scene(
         selected_shader = shader if shader is not None else _infer_shader(parsed, default_shader)
         ydr_materials.append(parsed.to_ydr_material(shader=selected_shader))
 
-    meshes = [builder.to_mesh_input() for builder in builders.values() if builder.indices]
+    meshes = [builder.to_mesh_input(default_colour=default_colour) for builder in builders.values() if builder.indices]
     if not meshes:
         raise ValueError(f"OBJ file '{obj_path}' does not contain any faces")
     return ObjScene(meshes=meshes, materials=ydr_materials, name=obj_path.stem.lower())
@@ -256,9 +248,10 @@ def obj_to_ydr(
     *,
     default_shader: str = "default.sps",
     shader: str | None = None,
+    default_colour: tuple[float, float, float, float] | None = None,
     generate_ytyp: bool = False,
 ) -> YdrBuild | Path:
-    scene = read_obj_scene(source, default_shader=default_shader, shader=shader)
+    scene = read_obj_scene(source, default_shader=default_shader, shader=shader, default_colour=default_colour)
     build = scene.to_ydr()
     if destination is None:
         return build

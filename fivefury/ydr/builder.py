@@ -13,7 +13,6 @@ from .model import YdrLight
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
 from .write_lights import write_lights
 from .write_materials import prepare_materials, write_shader_blocks
-from .write_materials import prepare_materials, write_shader_blocks
 
 
 _DEFAULT_DECLARATION_TYPES = (
@@ -476,31 +475,33 @@ def _encode_vertex_bytes(
     return flags, types_value, stride, bytes(chunks)
 
 
-def _compute_bounds(meshes: Sequence[_PreparedMesh]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
-    all_positions = [position for mesh in meshes for position in mesh.positions]
-    if not all_positions:
+def compute_bounds(
+    positions: Sequence[tuple[float, float, float]],
+) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
+    """Return ``(centre, bb_min, bb_max, radius)`` for a list of positions."""
+    if not positions:
         return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0
-    xs = [position[0] for position in all_positions]
-    ys = [position[1] for position in all_positions]
-    zs = [position[2] for position in all_positions]
-    bounds_min = (min(xs), min(ys), min(zs))
-    bounds_max = (max(xs), max(ys), max(zs))
-    center = (
-        (bounds_min[0] + bounds_max[0]) * 0.5,
-        (bounds_min[1] + bounds_max[1]) * 0.5,
-        (bounds_min[2] + bounds_max[2]) * 0.5,
+    xs = [p[0] for p in positions]
+    ys = [p[1] for p in positions]
+    zs = [p[2] for p in positions]
+    bb_min = (min(xs), min(ys), min(zs))
+    bb_max = (max(xs), max(ys), max(zs))
+    centre = (
+        (bb_min[0] + bb_max[0]) * 0.5,
+        (bb_min[1] + bb_max[1]) * 0.5,
+        (bb_min[2] + bb_max[2]) * 0.5,
     )
-    radius = max(math.dist(center, position) for position in all_positions)
-    return center, bounds_min, bounds_max, radius
+    radius = max(math.dist(centre, p) for p in positions)
+    return centre, bb_min, bb_max, radius
+
+
+def _compute_bounds(meshes: Sequence[_PreparedMesh]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
+    return compute_bounds([p for mesh in meshes for p in mesh.positions])
 
 
 def _mesh_bounds(positions: Sequence[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    if not positions:
-        return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
-    xs = [position[0] for position in positions]
-    ys = [position[1] for position in positions]
-    zs = [position[2] for position in positions]
-    return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
+    _, bb_min, bb_max, _ = compute_bounds(positions)
+    return bb_min, bb_max
 
 
 def _pack_aabb(bounds_min: tuple[float, float, float], bounds_max: tuple[float, float, float]) -> bytes:
