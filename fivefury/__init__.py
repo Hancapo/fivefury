@@ -145,6 +145,7 @@ from .ymap import (
     Block,
     CarGen,
     CarGenerator,
+    ContainerLodDef,
     Entity,
     EntityDef,
     MloInstance,

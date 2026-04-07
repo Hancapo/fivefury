@@ -248,6 +248,16 @@ YMAP_STRUCT_INFOS = [
         ],
     ),
     MetaStructInfo(
+        name_hash=meta_name("rage__fwContainerLodDef"),
+        key=372253349,
+        unknown=256,
+        structure_size=8,
+        entries=[
+            _entry("name", 0, MetaDataType.HASH),
+            _entry("parentIndex", 4, MetaDataType.UNSIGNED_INT),
+        ],
+    ),
+    MetaStructInfo(
         name_hash=meta_name("CMapData"),
         key=3448101671,
         unknown=1024,
