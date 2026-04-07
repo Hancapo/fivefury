@@ -6,6 +6,16 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.17]
+
+### Added
+- Real `YDR` skeleton support with `YdrSkeleton`, `YdrBone`, `YdrBoneFlags`, bone lookup helpers, and skinned drawable roundtrip support.
+- Small declarative skeleton helpers including `YdrSkeleton.create()`, `add_bone(...)`, `Ydr.ensure_skeleton()`, `Ydr.add_bone(...)`, and `calculate_bone_tag(...)`.
+
+### Changed
+- `YDR` LOD names now use the `YdrLod` enum instead of plain strings in the main API surface.
+- `YDR` readers and builders now preserve skeleton data instead of only passing through blend weights, blend indices, and skeleton binding flags.
+
 ## [0.1.13]
 
 ### Changed
