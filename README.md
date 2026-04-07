@@ -33,21 +33,29 @@ Python `3.11+` is required.
 ### Create a YMAP
 
 ```python
-from fivefury import Entity, Ymap
+from fivefury import Ymap
 
 ymap = Ymap(name="example_map")
-ymap.add_entity(
-    Entity(
-        archetype_name="prop_tree_pine_01",
-        guid=1,
-        position=(0.0, 0.0, 0.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
-        lod_dist=150.0,
-    )
-)
-ymap.recalculate_extents()
-ymap.recalculate_flags()
-ymap.save("example_map.ymap")
+
+# Entities
+ymap.entity("prop_tree_pine_01", position=(100, 200, 0), lod_dist=150.0)
+ymap.entity("prop_bench_01a", position=(105, 200, 0), lod_dist=80.0)
+
+# Car generators
+ymap.car_gen("sultan", (110, 205, 0), heading=90)
+ymap.car_gen("adder", (115, 205, 0), heading=90, body_colors=(5, 10), livery=2)
+
+# Time cycle modifiers (center + size)
+ymap.time_cycle_modifier("interior_dark", (100, 200, 5), (50, 50, 20), hours=(20, 6))
+
+# Box occluders (position + size + angle in degrees)
+ymap.box_occluder(position=(100, 200, 0), size=(10, 10, 10), angle=45)
+
+# Occlude models
+ymap.occlude_box((-5, -5, 0), (5, 5, 10))
+ymap.occlude_quad([(0, 0, 0), (10, 0, 0), (10, 0, 10), (0, 0, 10)])
+
+ymap.save("example_map.ymap", auto_extents=True)
 ```
 
 If you want an internal resource path, set `ymap.resource_name` before saving.
@@ -62,7 +70,11 @@ from fivefury import Ymap
 ymap = Ymap.from_bytes(Path("example_map.ymap").read_bytes())
 
 print(len(ymap.entities))
+print(len(ymap.car_generators))
 print(ymap.flags, ymap.content_flags)
+
+for cg in ymap.car_generators:
+    print(cg.car_model, cg.heading, cg.body_colors)
 ```
 
 ### Create a YTYP
@@ -97,12 +109,10 @@ ytyp.save("example_types.ytyp")
 ### Pack Assets into an RPF
 
 ```python
-from fivefury import Entity, Ymap, create_rpf
+from fivefury import Ymap, create_rpf
 
 ymap = Ymap(name="packed_map")
-ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", position=(0.0, 0.0, 0.0), lod_dist=120.0))
-ymap.recalculate_extents()
-ymap.recalculate_flags()
+ymap.entity("prop_tree_pine_01", position=(0.0, 0.0, 0.0), lod_dist=120.0)
 
 archive = create_rpf("mods.rpf")
 archive.add("stream/packed_map.ymap", ymap)
