@@ -4,6 +4,7 @@ from .entities import EntityDef, MloInstanceDef
 from .model import Ymap, _suggest_resource_path, read_ymap, save_ymap
 from .surfaces import (
     Aabb,
+    AngleMode,
     BoxOccluder,
     DistantLodLightsSoa,
     GrassInstance,
@@ -21,6 +22,7 @@ Block = BlockDesc
 
 __all__ = [
     "Aabb",
+    "AngleMode",
     "Block",
     "BlockDesc",
     "BoxOccluder",

@@ -142,6 +142,7 @@ from .ydr import (
     ydr_to_build,
 )
 from .ymap import (
+    AngleMode,
     Block,
     CarGen,
     CarGenerator,

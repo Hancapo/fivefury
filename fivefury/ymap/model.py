@@ -11,6 +11,7 @@ from ..resource import build_rsc7
 from .blocks import BlockDesc, CarGen, ContainerLodDef, TimeCycleModifier
 from .entities import EntityDef, MloInstanceDef
 from .surfaces import (
+    AngleMode,
     BoxOccluder,
     DistantLodLightsSoa,
     GrassInstanceBatch,
@@ -160,8 +161,17 @@ class Ymap(MetaHashFieldsMixin):
         self.box_occluders.append(occluder)
         return occluder
 
-    def box_occluder(self, **kwargs: Any) -> Any:
-        return self.add_box_occluder(BoxOccluder(**kwargs))
+    def box_occluder(self, **kwargs: Any) -> BoxOccluder:
+        if "position" in kwargs and "size" in kwargs:
+            position = kwargs.pop("position")
+            size = kwargs.pop("size")
+            angle = kwargs.pop("angle", 0.0)
+            angle_mode = kwargs.pop("angle_mode", AngleMode.DEGREES)
+            occ = BoxOccluder.from_box(position, size, angle, angle_mode)
+        else:
+            occ = BoxOccluder(**kwargs)
+        self.add_box_occluder(occ)
+        return occ
 
     def add_occlude_model(self, model: OccludeModel | dict[str, Any]) -> Any:
         self.occlude_models.append(model)
@@ -169,6 +179,41 @@ class Ymap(MetaHashFieldsMixin):
 
     def occlude_model(self, **kwargs: Any) -> Any:
         return self.add_occlude_model(_coerce_occlude_model(**kwargs))
+
+    def occlude_box(
+        self,
+        min_pos: tuple[float, float, float],
+        max_pos: tuple[float, float, float],
+        *,
+        flags: int = 0,
+    ) -> list[OccludeModel]:
+        models = OccludeModel.from_box(min_pos, max_pos, flags=flags)
+        for model in models:
+            self.add_occlude_model(model)
+        return models
+
+    def occlude_quad(
+        self,
+        corners: list[tuple[float, float, float]],
+        *,
+        flags: int = 0,
+    ) -> list[OccludeModel]:
+        models = OccludeModel.from_quad(corners, flags=flags)
+        for model in models:
+            self.add_occlude_model(model)
+        return models
+
+    def occlude_faces(
+        self,
+        vertices: list[tuple[float, float, float]],
+        faces: list[tuple[int, ...]],
+        *,
+        flags: int = 0,
+    ) -> list[OccludeModel]:
+        models = OccludeModel.from_faces(vertices, faces, flags=flags)
+        for model in models:
+            self.add_occlude_model(model)
+        return models
 
     def add_container_lod(self, lod: ContainerLodDef) -> ContainerLodDef:
         self.container_lods.append(lod)
