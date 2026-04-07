@@ -292,10 +292,10 @@ class Ymap(MetaHashFieldsMixin):
     def add_car_gen(self, car_gen: CarGen) -> None:
         self.car_generators.append(car_gen)
 
-    def car_gen(self, **kwargs: Any) -> CarGen:
-        car_gen = CarGen(**kwargs)
-        self.add_car_gen(car_gen)
-        return car_gen
+    def car_gen(self, car_model: HashLike, position: tuple[float, float, float], heading: float = 0.0, **kwargs: Any) -> CarGen:
+        cg = CarGen.create(car_model, position, heading, **kwargs)
+        self.add_car_gen(cg)
+        return cg
 
     def add_time_cycle_modifier(self, modifier: TimeCycleModifier) -> None:
         self.time_cycle_modifiers.append(modifier)

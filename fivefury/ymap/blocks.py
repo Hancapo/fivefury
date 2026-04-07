@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import Any
 
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
@@ -127,6 +128,74 @@ class CarGen(MetaHashFieldsMixin):
             body_color_remap4=int(value.get("bodyColorRemap4", -1)),
             pop_group=value.get("popGroup", 0),
             livery=int(value.get("livery", -1)),
+        )
+
+    @property
+    def heading(self) -> float:
+        """Return the heading angle in degrees (0-360)."""
+        return math.degrees(math.atan2(self.orient_x, self.orient_y)) % 360.0
+
+    @heading.setter
+    def heading(self, degrees: float) -> None:
+        """Set the heading from an angle in degrees."""
+        radians = math.radians(degrees)
+        self.orient_x = math.sin(radians)
+        self.orient_y = math.cos(radians)
+
+    @property
+    def body_colors(self) -> tuple[int, int, int, int]:
+        """Return all four body color remap values (-1 = random)."""
+        return (self.body_color_remap1, self.body_color_remap2, self.body_color_remap3, self.body_color_remap4)
+
+    @body_colors.setter
+    def body_colors(self, colors: tuple[int, ...]) -> None:
+        """Set body color remaps. Pad with -1 if fewer than 4 values given."""
+        padded = (tuple(colors) + (-1, -1, -1, -1))[:4]
+        self.body_color_remap1 = int(padded[0])
+        self.body_color_remap2 = int(padded[1])
+        self.body_color_remap3 = int(padded[2])
+        self.body_color_remap4 = int(padded[3])
+
+    @classmethod
+    def create(
+        cls,
+        car_model: HashLike,
+        position: tuple[float, float, float],
+        heading: float = 0.0,
+        *,
+        perpendicular_length: float = 2.6,
+        flags: int = 0,
+        body_colors: tuple[int, ...] = (-1, -1, -1, -1),
+        pop_group: HashLike = 0,
+        livery: int = -1,
+    ) -> "CarGen":
+        """Create a CarGen from human-readable parameters.
+
+        Args:
+            car_model: Vehicle model name or hash (e.g. "sultan", "adder").
+            position: World-space (x, y, z) coordinates.
+            heading: Direction the car faces in degrees (0 = north, 90 = east).
+            perpendicular_length: Width of the parking space (default 2.6).
+            flags: CCarGen flags.
+            body_colors: Up to 4 body color remap indices (-1 = random).
+            pop_group: Population group name or hash.
+            livery: Livery index (-1 = default/random).
+        """
+        radians = math.radians(heading)
+        padded = (tuple(body_colors) + (-1, -1, -1, -1))[:4]
+        return cls(
+            position=position,
+            orient_x=math.sin(radians),
+            orient_y=math.cos(radians),
+            perpendicular_length=float(perpendicular_length),
+            car_model=car_model,
+            flags=flags,
+            body_color_remap1=int(padded[0]),
+            body_color_remap2=int(padded[1]),
+            body_color_remap3=int(padded[2]),
+            body_color_remap4=int(padded[3]),
+            pop_group=pop_group,
+            livery=livery,
         )
 
 
