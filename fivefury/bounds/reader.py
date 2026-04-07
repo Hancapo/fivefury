@@ -7,6 +7,9 @@ from ..resource import virtual_to_offset
 from .model import (
     Bound,
     BoundAabb,
+    BoundBvh,
+    BoundBvhNode,
+    BoundBvhTree,
     BoundBox,
     BoundBVH,
     BoundCapsule,
@@ -20,6 +23,11 @@ from .model import (
     BoundMaterial,
     BoundMaterialColor,
     BoundPolygon,
+    BoundPolygonBox,
+    BoundPolygonCapsule,
+    BoundPolygonCylinder,
+    BoundPolygonSphere,
+    BoundPolygonTriangle,
     BoundPolygonType,
     BoundSphere,
     BoundTransform,
@@ -46,6 +54,18 @@ def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[in
     return [u64(system_data, start + (index * 8)) for index in range(count)]
 
 
+def _dequantize_bvh_point(
+    quantized: tuple[int, int, int],
+    center: tuple[float, float, float],
+    quantum: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    return (
+        center[0] + (quantized[0] * quantum[0]),
+        center[1] + (quantized[1] * quantum[1]),
+        center[2] + (quantized[2] * quantum[2]),
+    )
+
+
 def _read_vertices(pointer: int, count: int, quantum: tuple[float, float, float], system_data: bytes) -> list[tuple[float, float, float]]:
     if not pointer or count <= 0:
         return []
@@ -60,6 +80,86 @@ def _read_vertices(pointer: int, count: int, quantum: tuple[float, float, float]
     return vertices
 
 
+def _decode_polygon(index: int, raw: bytes) -> BoundPolygon:
+    raw_bytes = bytearray(raw)
+    polygon_type_value = raw_bytes[0] & 0x07
+    raw_bytes[0] &= 0xF8
+    raw = bytes(raw_bytes)
+    try:
+        polygon_type = BoundPolygonType(polygon_type_value)
+    except ValueError:
+        polygon_type = BoundPolygonType.TRIANGLE
+    common = {
+        "polygon_type": polygon_type,
+        "raw": raw,
+        "index": index,
+    }
+    if polygon_type is BoundPolygonType.TRIANGLE:
+        tri_area, tri_index1, tri_index2, tri_index3, edge_index1, edge_index2, edge_index3 = struct.unpack_from("<f6H", raw, 0)
+        return BoundPolygonTriangle(
+            **common,
+            tri_area=tri_area,
+            tri_index1=tri_index1,
+            tri_index2=tri_index2,
+            tri_index3=tri_index3,
+            edge_index1=edge_index1,
+            edge_index2=edge_index2,
+            edge_index3=edge_index3,
+        )
+    if polygon_type is BoundPolygonType.SPHERE:
+        sphere_type, sphere_index = struct.unpack_from("<HH", raw, 0)
+        sphere_radius = struct.unpack_from("<f", raw, 4)[0]
+        unused0, unused1 = struct.unpack_from("<II", raw, 8)
+        return BoundPolygonSphere(
+            **common,
+            sphere_type=sphere_type,
+            sphere_index=sphere_index,
+            sphere_radius=sphere_radius,
+            unused0=unused0,
+            unused1=unused1,
+        )
+    if polygon_type is BoundPolygonType.CAPSULE:
+        capsule_type, capsule_index1 = struct.unpack_from("<HH", raw, 0)
+        capsule_radius = struct.unpack_from("<f", raw, 4)[0]
+        capsule_index2, unused0 = struct.unpack_from("<HH", raw, 8)
+        unused1 = struct.unpack_from("<I", raw, 12)[0]
+        return BoundPolygonCapsule(
+            **common,
+            capsule_type=capsule_type,
+            capsule_index1=capsule_index1,
+            capsule_radius=capsule_radius,
+            capsule_index2=capsule_index2,
+            unused0=unused0,
+            unused1=unused1,
+        )
+    if polygon_type is BoundPolygonType.BOX:
+        box_type, box_index1, box_index2, box_index3, box_index4, unused0 = struct.unpack_from("<I4hI", raw, 0)
+        return BoundPolygonBox(
+            **common,
+            box_type=box_type,
+            box_index1=box_index1,
+            box_index2=box_index2,
+            box_index3=box_index3,
+            box_index4=box_index4,
+            unused0=unused0,
+        )
+    if polygon_type is BoundPolygonType.CYLINDER:
+        cylinder_type, cylinder_index1 = struct.unpack_from("<HH", raw, 0)
+        cylinder_radius = struct.unpack_from("<f", raw, 4)[0]
+        cylinder_index2, unused0 = struct.unpack_from("<HH", raw, 8)
+        unused1 = struct.unpack_from("<I", raw, 12)[0]
+        return BoundPolygonCylinder(
+            **common,
+            cylinder_type=cylinder_type,
+            cylinder_index1=cylinder_index1,
+            cylinder_radius=cylinder_radius,
+            cylinder_index2=cylinder_index2,
+            unused0=unused0,
+            unused1=unused1,
+        )
+    return BoundPolygon(**common)
+
+
 def _read_polygon_types(pointer: int, count: int, system_data: bytes) -> list[BoundPolygon]:
     if not pointer or count <= 0:
         return []
@@ -70,13 +170,75 @@ def _read_polygon_types(pointer: int, count: int, system_data: bytes) -> list[Bo
     polygons: list[BoundPolygon] = []
     for index in range(count):
         raw = system_data[start + (index * 16) : start + ((index + 1) * 16)]
-        polygon_type_value = raw[0] & 0x07
-        try:
-            polygon_type = BoundPolygonType(polygon_type_value)
-        except ValueError:
-            polygon_type = BoundPolygonType.TRIANGLE
-        polygons.append(BoundPolygon(polygon_type=polygon_type, raw=bytes(raw)))
+        polygons.append(_decode_polygon(index, raw))
     return polygons
+
+
+def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
+    if not pointer:
+        return None
+    offset = _virtual_offset(pointer, system_data)
+    nodes_pointer = u64(system_data, offset + 0x00)
+    nodes_count = u32(system_data, offset + 0x08)
+    minimum = vec3(system_data, offset + 0x20)
+    maximum = vec3(system_data, offset + 0x30)
+    center = vec3(system_data, offset + 0x40)
+    quantum_inverse = vec3(system_data, offset + 0x50)
+    quantum = vec3(system_data, offset + 0x60)
+    trees_pointer = u64(system_data, offset + 0x70)
+    trees_count = u16(system_data, offset + 0x78)
+
+    nodes: list[BoundBvhNode] = []
+    if nodes_pointer and nodes_count > 0:
+        start = _virtual_offset(nodes_pointer, system_data)
+        end = start + (nodes_count * 16)
+        if end > len(system_data):
+            raise ValueError("BVH node array is truncated")
+        for index in range(nodes_count):
+            qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, item_id, item_count = struct.unpack_from(
+                "<6hHH",
+                system_data,
+                start + (index * 16),
+            )
+            nodes.append(
+                BoundBvhNode(
+                    minimum=_dequantize_bvh_point((qmin_x, qmin_y, qmin_z), center, quantum),
+                    maximum=_dequantize_bvh_point((qmax_x, qmax_y, qmax_z), center, quantum),
+                    item_id=item_id,
+                    item_count=item_count,
+                )
+            )
+
+    trees: list[BoundBvhTree] = []
+    if trees_pointer and trees_count > 0:
+        start = _virtual_offset(trees_pointer, system_data)
+        end = start + (trees_count * 16)
+        if end > len(system_data):
+            raise ValueError("BVH tree array is truncated")
+        for index in range(trees_count):
+            qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, node_index, node_index2 = struct.unpack_from(
+                "<6hHH",
+                system_data,
+                start + (index * 16),
+            )
+            trees.append(
+                BoundBvhTree(
+                    minimum=_dequantize_bvh_point((qmin_x, qmin_y, qmin_z), center, quantum),
+                    maximum=_dequantize_bvh_point((qmax_x, qmax_y, qmax_z), center, quantum),
+                    node_index=node_index,
+                    node_index2=node_index2,
+                )
+            )
+
+    return BoundBvh(
+        minimum=minimum,
+        maximum=maximum,
+        center=center,
+        quantum_inverse=quantum_inverse,
+        quantum=quantum,
+        nodes=nodes,
+        trees=trees,
+    )
 
 
 def _read_materials(pointer: int, count: int, system_data: bytes) -> list[BoundMaterial]:
@@ -196,8 +358,12 @@ def _read_geometry(offset: int, system_data: bytes, *, with_bvh: bool) -> BoundG
         material_colours=_read_material_colours(u64(system_data, offset + 0xF8), material_colours_count, system_data),
         vertex_colours=_read_material_colours(u64(system_data, offset + 0xB8), vertices_count, system_data),
     )
+    for index, polygon in enumerate(geometry.polygons):
+        if index < len(geometry.polygon_material_indices):
+            polygon.material_index = geometry.polygon_material_indices[index]
     if with_bvh:
         geometry.bvh_pointer = u64(system_data, offset + 0x130)
+        geometry.bvh = _read_bvh(geometry.bvh_pointer, system_data)
     return geometry
 
 

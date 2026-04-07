@@ -5,7 +5,19 @@ import struct
 import tempfile
 from pathlib import Path
 
-from fivefury import BoundSphere, GameFileCache, GameFileType, Ybn, build_rsc7, read_ybn
+from fivefury import (
+    DEFAULT_BOUND_MATERIAL_LIBRARY,
+    BoundBVH,
+    BoundPolygonTriangle,
+    BoundSphere,
+    GameFileCache,
+    GameFileType,
+    Ybn,
+    build_rsc7,
+    get_bound_material_color,
+    parse_bound_material_names,
+    read_ybn,
+)
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
 
@@ -52,6 +64,22 @@ def test_read_ybn_reads_sphere_bound() -> None:
     assert ybn.bound.material_index == 7
 
 
+def test_default_bound_material_library_has_expected_names() -> None:
+    assert DEFAULT_BOUND_MATERIAL_LIBRARY.count >= 200
+    assert DEFAULT_BOUND_MATERIAL_LIBRARY.get_name(0) == "DEFAULT"
+    assert DEFAULT_BOUND_MATERIAL_LIBRARY.get_name(7) == "RUMBLE_STRIP"
+    assert DEFAULT_BOUND_MATERIAL_LIBRARY.get_color(7) == get_bound_material_color(7)
+
+
+def test_parse_bound_material_names_uses_simple_name_per_line_format() -> None:
+    library = parse_bound_material_names("# comment\nDEFAULT | #112233\nCONCRETE\nROCK | 10 20 30\n")
+
+    assert library.count == 3
+    assert library.get_name(2) == "ROCK"
+    assert library.get_color(0) == (17, 34, 51)
+    assert library.get_color(2) == (10, 20, 30)
+
+
 def test_gamefilecache_parses_loose_ybn() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
@@ -77,3 +105,22 @@ def test_read_real_reference_ybn() -> None:
 
     assert ybn.bound.bound_type.name == "COMPOSITE"
     assert getattr(ybn.bound, "children", None)
+
+
+def test_read_real_reference_ybn_decodes_geometry_polygons_and_bvh() -> None:
+    path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\apa_ch2_04_12.ybn")
+
+    ybn = read_ybn(path)
+    geometry = ybn.bound.geometries[0]
+
+    assert isinstance(geometry, BoundBVH)
+    assert geometry.polygon_count > 0
+    assert len(geometry.polygon_material_indices) == geometry.polygon_count
+    assert sum(geometry.polygon_type_counts.values()) == geometry.polygon_count
+    assert isinstance(geometry.polygons[0], BoundPolygonTriangle)
+    assert geometry.polygons[0].index == 0
+    assert geometry.polygons[0].material_index >= 0
+    assert geometry.bvh is not None
+    assert geometry.bvh.node_count > 0
+    assert geometry.bvh.tree_count > 0
+    assert geometry.bvh.leaf_nodes

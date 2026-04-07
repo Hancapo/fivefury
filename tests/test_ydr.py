@@ -4,8 +4,7 @@ import struct
 import tempfile
 from pathlib import Path
 
-from fivefury import GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
-from fivefury import BoundSphere
+from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
 from fivefury.resource import build_rsc7, split_rsc7_sections
 from fivefury.ydr import YdrMaterialDescriptor
 from tests.helpers import write_bytes
@@ -257,3 +256,20 @@ def test_read_real_reference_ydr_embedded_bound() -> None:
 
     assert ydr.bound is not None
     assert ydr.bound.bound_type.name in {"GEOMETRY", "GEOMETRY_BVH", "COMPOSITE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "DISC"}
+
+
+def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
+    ydr = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
+
+    assert isinstance(ydr.bound, BoundComposite)
+    geometry = ydr.bound.geometries[0]
+
+    assert geometry.polygon_count > 0
+    assert len(geometry.polygon_material_indices) == geometry.polygon_count
+    assert sum(geometry.polygon_type_counts.values()) == geometry.polygon_count
+    assert isinstance(geometry.polygons[0], BoundPolygonTriangle)
+    assert geometry.polygons[0].index == 0
+    assert geometry.polygons[0].material_index >= 0
+    assert geometry.get_material(geometry.polygons[0].material_index) is not None
+    assert geometry.get_material(geometry.polygons[0].material_index).name
+    assert len(geometry.get_material(geometry.polygons[0].material_index).color) == 3
