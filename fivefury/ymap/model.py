@@ -300,8 +300,14 @@ class Ymap(MetaHashFieldsMixin):
     def add_time_cycle_modifier(self, modifier: TimeCycleModifier) -> None:
         self.time_cycle_modifiers.append(modifier)
 
-    def time_cycle_modifier(self, **kwargs: Any) -> TimeCycleModifier:
-        modifier = TimeCycleModifier(**kwargs)
+    def time_cycle_modifier(
+        self,
+        name: HashLike,
+        position: tuple[float, float, float],
+        size: tuple[float, float, float],
+        **kwargs: Any,
+    ) -> TimeCycleModifier:
+        modifier = TimeCycleModifier.create(name, position, size, **kwargs)
         self.add_time_cycle_modifier(modifier)
         return modifier
 
