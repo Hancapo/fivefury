@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Iterator, Sequence, Union
 from ..bounds import Bound
 from ..hashing import jenk_hash
 from ..ytd import Ytd
+from ._helpers import find_material, find_parameter
 from .defs import LOD_ORDER
 from .shaders import ShaderDefinition
 
@@ -182,17 +183,7 @@ class YdrMaterial:
         return build_material_descriptor(self)
 
     def get_parameter(self, value: str | int) -> YdrMaterialParameterRef | None:
-        if isinstance(value, str):
-            lowered = value.lower()
-            for parameter in self.parameters:
-                if parameter.name.lower() == lowered:
-                    return parameter
-            return None
-        hash_value = int(value)
-        for parameter in self.parameters:
-            if parameter.name_hash == hash_value:
-                return parameter
-        return None
+        return find_parameter(self.parameters, value)
 
     def get_texture(self, value: str | int) -> YdrTextureRef | None:
         parameter = self.get_parameter(value)
@@ -441,19 +432,7 @@ class YdrModel:
         yield from self.materials
 
     def get_material(self, value: str | int) -> YdrMaterial | None:
-        if isinstance(value, str):
-            lowered = value.lower()
-            for material in self.materials:
-                if material.name.lower() == lowered:
-                    return material
-                if (material.shader_name or "").lower() == lowered:
-                    return material
-            return None
-        index = int(value)
-        for material in self.materials:
-            if material.index == index:
-                return material
-        return None
+        return find_material(self.materials, value)
 
     def to_input(self, *, material_name_by_index: dict[int, str]) -> YdrModelInput:
         from .builder import YdrModelInput
@@ -551,19 +530,7 @@ class Ydr:
         return "drawable"
 
     def get_material(self, value: str | int) -> YdrMaterial | None:
-        if isinstance(value, str):
-            lowered = value.lower()
-            for material in self.materials:
-                if material.name.lower() == lowered:
-                    return material
-                if (material.shader_name or "").lower() == lowered:
-                    return material
-            return None
-        index = int(value)
-        for material in self.materials:
-            if material.index == index:
-                return material
-        return None
+        return find_material(self.materials, value)
 
     def require_material(self, value: str | int) -> YdrMaterial:
         material = self.get_material(value)

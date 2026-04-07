@@ -4,6 +4,7 @@ import importlib
 from pathlib import Path
 from typing import Any, Optional
 
+from .paths import split_archive_asset_path as _split_archive_asset_path
 from .views import AssetRecord
 from ..cut import read_cut, read_cutxml
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
@@ -89,18 +90,6 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
         except Exception:
             return data, GameFileType.RPF
     return data, guess_game_file_type(path, GameFileType.UNKNOWN)
-
-
-def _split_archive_asset_path(path: str | Path) -> tuple[str, str] | None:
-    normalized = str(path).replace("\\", "/").strip("/")
-    parts = [part for part in normalized.split("/") if part]
-    for index, part in enumerate(parts):
-        if part.lower().endswith(".rpf"):
-            archive_rel = "/".join(parts[: index + 1])
-            entry_path = "/".join(parts[index + 1 :])
-            return archive_rel, entry_path
-    return None
-
 
 class GameFileCacheIOMixin:
     def iter_files(self):

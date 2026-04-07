@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 
 from ..binary import align
+from ..resource import ResourceWriter
 from .model import (
     Bound,
     BoundAabb,
@@ -40,31 +41,6 @@ _GEOMETRY_BVH_BLOCK_SIZE = 0x150
 _BVH_BLOCK_SIZE = 0x80
 
 
-class _SystemWriter:
-    def __init__(self, initial_size: int):
-        self.data = bytearray(initial_size)
-        self.cursor = align(initial_size, 16)
-
-    def ensure(self, size: int) -> None:
-        if size > len(self.data):
-            self.data.extend(b"\x00" * (size - len(self.data)))
-
-    def alloc(self, size: int, alignment: int = 16) -> int:
-        offset = align(self.cursor, alignment)
-        end = offset + size
-        self.ensure(end)
-        self.cursor = end
-        return offset
-
-    def pack_into(self, fmt: str, offset: int, *values: object) -> None:
-        size = struct.calcsize("<" + fmt)
-        self.ensure(offset + size)
-        struct.pack_into("<" + fmt, self.data, offset, *values)
-
-    def finish(self) -> bytes:
-        return bytes(self.data[: self.cursor])
-
-
 def _virtual(offset: int) -> int:
     return _DAT_VIRTUAL_BASE + int(offset)
 
@@ -81,16 +57,16 @@ def _bound_size(bound: Bound) -> int:
     raise NotImplementedError(f"bound writer does not support {bound.__class__.__name__} yet")
 
 
-def _write_vec3(writer: _SystemWriter, offset: int, value: tuple[float, float, float]) -> None:
+def _write_vec3(writer: ResourceWriter, offset: int, value: tuple[float, float, float]) -> None:
     writer.pack_into("3f", offset, *value)
 
 
-def _write_aabb(writer: _SystemWriter, offset: int, bounds: BoundAabb) -> None:
+def _write_aabb(writer: ResourceWriter, offset: int, bounds: BoundAabb) -> None:
     writer.pack_into("4f", offset + 0x00, *bounds.minimum, 0.0)
     writer.pack_into("4f", offset + 0x10, *bounds.maximum, 0.0)
 
 
-def _write_transform(writer: _SystemWriter, offset: int, transform: BoundTransform | None) -> None:
+def _write_transform(writer: ResourceWriter, offset: int, transform: BoundTransform | None) -> None:
     value = transform or BoundTransform(
         column1=(1.0, 0.0, 0.0),
         column2=(0.0, 1.0, 0.0),
@@ -103,12 +79,12 @@ def _write_transform(writer: _SystemWriter, offset: int, transform: BoundTransfo
     writer.pack_into("3fI", offset + 0x30, *value.column4, value.flags4)
 
 
-def _write_composite_flags(writer: _SystemWriter, offset: int, flags: BoundCompositeFlags | None) -> None:
+def _write_composite_flags(writer: ResourceWriter, offset: int, flags: BoundCompositeFlags | None) -> None:
     value = flags or BoundCompositeFlags()
     writer.pack_into("II", offset, value.flags1, value.flags2)
 
 
-def _write_bound_common(writer: _SystemWriter, offset: int, bound: Bound) -> None:
+def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> None:
     writer.pack_into("I", offset + 0x04, 1)
     writer.pack_into("B", offset + 0x10, int(bound.bound_type))
     writer.pack_into("B", offset + 0x11, 0)
@@ -136,7 +112,7 @@ def _write_bound_common(writer: _SystemWriter, offset: int, bound: Bound) -> Non
     writer.pack_into("f", offset + 0x7C, bound.volume)
 
 
-def _write_bound(writer: _SystemWriter, bound: Bound, *, offset: int | None = None) -> int:
+def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = None) -> int:
     bound_offset = 0 if offset is None else offset
     if offset is None:
         bound_offset = writer.alloc(_bound_size(bound), 16)
@@ -156,7 +132,7 @@ def _child_bounds(child: BoundChild) -> BoundAabb:
     return child.bounds if child.bounds is not None else child.bound.bounds
 
 
-def _write_composite(writer: _SystemWriter, offset: int, bound: BoundComposite) -> None:
+def _write_composite(writer: ResourceWriter, offset: int, bound: BoundComposite) -> None:
     child_offsets = [_write_bound(writer, child.bound) for child in bound.children]
     child_count = len(bound.children)
 
@@ -380,7 +356,7 @@ def _build_minimal_bvh(bound: BoundGeometry) -> BoundBvh:
     )
 
 
-def _write_bvh(writer: _SystemWriter, bound: BoundGeometry) -> int:
+def _write_bvh(writer: ResourceWriter, bound: BoundGeometry) -> int:
     bvh = bound.bvh if isinstance(bound, BoundBVH) and bound.bvh is not None else None
     if bvh is None or not bvh.nodes or not bvh.trees:
         bvh = _build_minimal_bvh(bound)
@@ -426,7 +402,7 @@ def _write_bvh(writer: _SystemWriter, bound: BoundGeometry) -> int:
     return bvh_offset
 
 
-def _write_geometry(writer: _SystemWriter, offset: int, bound: BoundGeometry, *, with_bvh: bool) -> None:
+def _write_geometry(writer: ResourceWriter, offset: int, bound: BoundGeometry, *, with_bvh: bool) -> None:
     center_geom = _choose_center_geom(bound)
     quantum = bound.quantum if bound.quantum != (1.0, 1.0, 1.0) or not bound.vertices else _choose_quantum(bound.vertices, center_geom)
 
@@ -524,7 +500,7 @@ def _write_geometry(writer: _SystemWriter, offset: int, bound: BoundGeometry, *,
 
 
 def build_bound_system_data(bound: Bound) -> bytes:
-    writer = _SystemWriter(_bound_size(bound))
+    writer = ResourceWriter(_bound_size(bound))
     _write_bound(writer, bound, offset=0)
     return writer.finish()
 

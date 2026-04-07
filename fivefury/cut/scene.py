@@ -390,6 +390,35 @@ _BINDING_CLASS_BY_TYPE = {
     CutBlockingBounds.TYPE_NAME: CutBlockingBounds,
 }
 
+_ROLE_PROPERTY_NAMES = {
+    "camera": "cameras",
+    "ped": "peds",
+    "prop": "props",
+    "vehicle": "vehicles",
+    "light": "lights",
+    "audio": "audio",
+    "subtitle": "subtitles",
+    "fade": "fades",
+    "overlay": "overlays",
+    "particle_fx": "particle_effects",
+    "blocking_bounds": "blocking_bounds",
+    "animation_manager": "animation_managers",
+    "asset_manager": "asset_managers",
+}
+
+_BINDING_ADDERS = {
+    "asset_manager": CutAssetManager,
+    "animation_manager": CutAnimationManager,
+    "camera": CutCamera,
+    "ped": CutPed,
+    "prop": CutProp,
+    "vehicle": CutVehicle,
+    "light": CutLight,
+    "audio": CutAudio,
+    "subtitle": CutSubtitle,
+    "fade": CutFade,
+}
+
 
 @dataclass(slots=True)
 class CutTimelineEvent:
@@ -589,10 +618,6 @@ class CutScene:
     raw: CutFile | None = None
 
     @property
-    def cameras(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "camera"]
-
-    @property
     def actors(self) -> list[CutBinding]:
         return self.peds
 
@@ -600,49 +625,8 @@ class CutScene:
     def entities(self) -> list[CutBinding]:
         return [item for item in self.bindings if _is_scene_entity(item.role)]
 
-    @property
-    def peds(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "ped"]
-
-    @property
-    def props(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "prop"]
-
-    @property
-    def vehicles(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "vehicle"]
-
-    @property
-    def lights(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "light"]
-
-    @property
-    def audio(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "audio"]
-
-    @property
-    def subtitles(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "subtitle"]
-
-    @property
-    def fades(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "fade"]
-
-    @property
-    def overlays(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "overlay"]
-
-    @property
-    def particle_effects(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "particle_fx"]
-
-    @property
-    def blocking_bounds(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "blocking_bounds"]
-
-    @property
-    def animation_managers(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "animation_manager"]
+    def bindings_for_role(self, role: str) -> list[CutBinding]:
+        return [item for item in self.bindings if item.role == role]
 
     def attach_clip_dict(self, ycd: object) -> None:
         from ..ycd.model import Ycd
@@ -671,10 +655,6 @@ class CutScene:
         for ycd in self.clip_dicts:
             merged.update(ycd.build_cutscene_map(cut_index))
         return merged
-
-    @property
-    def asset_managers(self) -> list[CutBinding]:
-        return [item for item in self.bindings if item.role == "asset_manager"]
 
     @property
     def tracks_by_key(self) -> dict[str, CutTrack]:
@@ -766,6 +746,19 @@ class CutScene:
     def add_binding(self, binding: CutBinding) -> CutBinding:
         return self.add(binding)
 
+    def add_typed_binding(
+        self,
+        binding_cls: type[CutBinding],
+        name: str | None = None,
+        *,
+        object_id: int | None = None,
+        fields: dict[str, Any] | None = None,
+    ) -> CutBinding:
+        resolved_object_id = self.next_object_id() if object_id is None else int(object_id)
+        if issubclass(binding_cls, _TypedCutBinding):
+            return self.add(binding_cls(name=name, object_id=resolved_object_id, fields=fields))
+        return self.add(binding_cls(object_id=resolved_object_id, type_name="", role="", name=name, fields=fields))
+
     def add_object(
         self,
         role_or_type: str,
@@ -782,36 +775,6 @@ class CutScene:
             return self.add(binding_class(name=name, object_id=object_id, fields=fields))
         binding = CutBinding.new(object_id=object_id, type_name=resolved_type, name=name, role=_object_role(resolved_type), fields=fields)
         return self.add(binding)
-
-    def add_asset_manager(self, *, object_id: int | None = None) -> CutAssetManager:
-        return self.add(CutAssetManager(object_id=self.next_object_id() if object_id is None else int(object_id)))
-
-    def add_animation_manager(self, *, object_id: int | None = None) -> CutAnimationManager:
-        return self.add(CutAnimationManager(object_id=self.next_object_id() if object_id is None else int(object_id)))
-
-    def add_camera(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutCamera:
-        return self.add(CutCamera(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_ped(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutPed:
-        return self.add(CutPed(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_prop(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutProp:
-        return self.add(CutProp(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_vehicle(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutVehicle:
-        return self.add(CutVehicle(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_light(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutLight:
-        return self.add(CutLight(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_audio(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutAudio:
-        return self.add(CutAudio(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_subtitle(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutSubtitle:
-        return self.add(CutSubtitle(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
-
-    def add_fade(self, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None) -> CutFade:
-        return self.add(CutFade(name=name, object_id=self.next_object_id() if object_id is None else int(object_id), fields=fields))
 
     def add_track(self, key: str, *, name: str | None = None, kind: str | None = None) -> CutTrack:
         existing = self.get_track(key)
@@ -1029,6 +992,24 @@ class CutScene:
         name: str,
     ) -> CutTimelineEvent:
         return self.create_event(CutEventType.STOP_AUDIO, start=start, target=audio, payload=CutNamePayload(name))
+
+
+def _make_role_property(role: str):
+    return property(lambda self: self.bindings_for_role(role))
+
+
+def _make_binding_adder(binding_cls: type[CutBinding]):
+    def _adder(self: CutScene, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None):
+        return self.add_typed_binding(binding_cls, name, object_id=object_id, fields=fields)
+
+    return _adder
+
+
+for _role, _property_name in _ROLE_PROPERTY_NAMES.items():
+    setattr(CutScene, _property_name, _make_role_property(_role))
+
+for _role, _binding_cls in _BINDING_ADDERS.items():
+    setattr(CutScene, f"add_{_role}", _make_binding_adder(_binding_cls))
 
 
 def _binding_from_node(node: CutNode) -> CutBinding:

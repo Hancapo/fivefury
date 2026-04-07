@@ -6,7 +6,7 @@ from typing import ClassVar, Iterator
 
 from ..binary import u16 as _u16, u32 as _u32, u64 as _u64
 from ..gamefile import GameFileType, guess_game_file_type
-from ..resource import split_rsc7_sections, virtual_to_offset
+from ..resource import checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections
 from ..ytd import Ytd, read_embedded_texture_dictionary
 
 _DAT_VIRTUAL_BASE = 0x50000000
@@ -40,21 +40,11 @@ def _load_source_bytes(source: bytes | bytearray | memoryview | str | Path) -> b
 
 
 def _virtual_offset(pointer_or_offset: int, data: bytes) -> int:
-    value = int(pointer_or_offset)
-    offset = virtual_to_offset(value, base=_DAT_VIRTUAL_BASE) if value >= _DAT_VIRTUAL_BASE else value
-    if offset < 0 or offset >= len(data):
-        raise ValueError("virtual pointer is out of range")
-    return offset
+    return checked_virtual_offset(pointer_or_offset, data, base=_DAT_VIRTUAL_BASE, allow_plain_offset=True)
 
 
 def _read_pointer_array(data: bytes, pointer: int, count: int) -> list[int]:
-    if not pointer or count <= 0:
-        return []
-    array_off = _virtual_offset(pointer, data)
-    end = array_off + (count * 8)
-    if end > len(data):
-        raise ValueError("pointer array is truncated")
-    return [_u64(data, array_off + (index * 8)) for index in range(count)]
+    return read_virtual_pointer_array(data, pointer, count, base=_DAT_VIRTUAL_BASE, allow_plain_offset=True)
 
 
 def _drawable_texture_dictionary_pointer(data: bytes, drawable_pointer: int) -> int | None:
@@ -134,5 +124,4 @@ __all__ = [
     "_u64",
     "_virtual_offset",
 ]
-
 

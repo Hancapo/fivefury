@@ -5,25 +5,8 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from ..meta import MetaFieldInfo, MetaStructInfo, RawStruct
-from ..meta.defs import META_TYPE_NAME_ARRAYINFO, MetaDataType, meta_name
-
-
-def _entry(
-    name: str | int,
-    offset: int,
-    data_type: MetaDataType,
-    unknown_9h: int = 0,
-    ref_index: int = 0,
-    ref_key: str | int = 0,
-) -> MetaFieldInfo:
-    name_hash = name if isinstance(name, int) else meta_name(name)
-    ref_hash = meta_name(ref_key) if isinstance(ref_key, str) else ref_key
-    return MetaFieldInfo(name_hash, offset, data_type, unknown_9h, ref_index, ref_hash)
-
-
-def _arrayinfo(data_type: MetaDataType, *, ref_key: str | int = 0, unknown_9h: int = 0) -> MetaFieldInfo:
-    ref_hash = meta_name(ref_key) if isinstance(ref_key, str) else ref_key
-    return MetaFieldInfo(META_TYPE_NAME_ARRAYINFO, 0, data_type, unknown_9h, 0, ref_hash)
+from ..meta.defs import MetaDataType, meta_name
+from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
 
 
 def _snake_to_camel(value: str) -> str:

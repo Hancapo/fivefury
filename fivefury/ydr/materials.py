@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses
 from typing import TYPE_CHECKING
 
+from ._helpers import find_parameter
+
 if TYPE_CHECKING:
     from .model import YdrMaterial, YdrTextureRef
 
@@ -90,17 +92,7 @@ class YdrMaterialDescriptor:
         return tuple(ordered)
 
     def get_parameter(self, value: str | int) -> YdrMaterialParameter | None:
-        if isinstance(value, str):
-            lowered = value.lower()
-            for parameter in self.parameters:
-                if parameter.name.lower() == lowered:
-                    return parameter
-            return None
-        hash_value = int(value)
-        for parameter in self.parameters:
-            if parameter.name_hash == hash_value:
-                return parameter
-        return None
+        return find_parameter(self.parameters, value)
 
     def get_texture(self, value: str | int) -> YdrMaterialParameter | None:
         parameter = self.get_parameter(value)

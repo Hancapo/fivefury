@@ -10,6 +10,7 @@ from ..gamefile import GameFileType
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
+from .paths import path_name as _path_name, path_stem as _path_stem, split_archive_asset_path as _split_archive_asset_path
 
 if TYPE_CHECKING:
     from .core import GameFileCache
@@ -17,29 +18,6 @@ if TYPE_CHECKING:
 _FLAG_LOOSE = 1
 _FLAG_RESOURCE = 2
 _FLAG_ENCRYPTED = 4
-
-
-def _path_name(path: str) -> str:
-    slash = path.rfind("/")
-    return path[slash + 1 :] if slash >= 0 else path
-
-
-def _path_stem(path: str) -> str:
-    name = _path_name(path)
-    dot = name.rfind(".")
-    return name[:dot] if dot > 0 else name
-
-
-def _split_archive_asset_path(path: str | Path) -> tuple[str, str] | None:
-    normalized = str(path).replace("\\", "/").strip("/")
-    parts = [part for part in normalized.split("/") if part]
-    for index, part in enumerate(parts):
-        if part.lower().endswith(".rpf"):
-            archive_rel = "/".join(parts[: index + 1])
-            entry_path = "/".join(parts[index + 1 :])
-            return archive_rel, entry_path
-    return None
-
 
 def _coerce_kind(value: GameFileType | str | int | None) -> GameFileType | None:
     if value is None:

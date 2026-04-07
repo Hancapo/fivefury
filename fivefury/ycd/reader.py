@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32
 from ..metahash import MetaHash
-from ..resource import split_rsc7_sections, virtual_to_offset
+from ..resource import checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections
 from ..resolver import register_name
 from .model import (
     Ycd,
@@ -20,10 +20,7 @@ DAT_VIRTUAL_BASE = 0x50000000
 
 
 def _virtual_offset(pointer: int, data: bytes) -> int:
-    offset = virtual_to_offset(pointer, base=DAT_VIRTUAL_BASE)
-    if offset < 0 or offset >= len(data):
-        raise ValueError("virtual pointer is out of range")
-    return offset
+    return checked_virtual_offset(pointer, data, base=DAT_VIRTUAL_BASE)
 
 
 def _read_c_string_at(pointer: int, data: bytes) -> str:
@@ -33,10 +30,7 @@ def _read_c_string_at(pointer: int, data: bytes) -> str:
 
 
 def _read_pointer_array(pointer: int, count: int, data: bytes) -> list[int]:
-    if not pointer or count <= 0:
-        return []
-    offset = _virtual_offset(pointer, data)
-    return [_u64(data, offset + (index * 8)) for index in range(count)]
+    return read_virtual_pointer_array(data, pointer, count, base=DAT_VIRTUAL_BASE)
 
 
 def _read_list_header(pointer: int, data: bytes) -> tuple[int, int, int]:

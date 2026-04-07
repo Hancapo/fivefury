@@ -18,6 +18,7 @@ from . import (
     RawStruct,
 )
 from .defs import GRAPHICS_BASE, META_TYPE_NAME_ARRAYINFO, STRUCTS_BY_HASH, SYSTEM_BASE, MetaDataType
+from .utils import array_info_for_field
 from ..resource import parse_rsc7
 
 @dataclasses.dataclass(slots=True)
@@ -166,7 +167,7 @@ class ParsedMeta:
             return raw[offset:end].decode("ascii", errors="ignore")
         if data_type is MetaDataType.ARRAY_OF_BYTES:
             count = field.reference_key & 0xFFFF
-            array_info = self._array_info_for_field(struct_info, field_index)
+            array_info = array_info_for_field(struct_info, field_index)
             if array_info is None:
                 return bytes(raw[offset : offset + count])
             return _unpack_inline_array(array_info.data_type, raw[offset:], count)
@@ -232,24 +233,12 @@ class ParsedMeta:
             return self.decode_struct(name_hash, raw[: struct_def.size])
         return raw
 
-    def _array_info_for_field(self, struct_info: MetaStructInfo, field_index: int) -> MetaFieldInfo | None:
-        if not (0 <= field_index < len(struct_info.entries)):
-            return None
-        if field_index > 0 and struct_info.entries[field_index - 1].name_hash == META_TYPE_NAME_ARRAYINFO:
-            return struct_info.entries[field_index - 1]
-        ref_index = struct_info.entries[field_index].reference_type_index
-        if 0 <= ref_index < len(struct_info.entries):
-            candidate = struct_info.entries[ref_index]
-            if candidate.name_hash == META_TYPE_NAME_ARRAYINFO:
-                return candidate
-        return None
-
     def _resolve_array(self, struct_info: MetaStructInfo, field_index: int, array_ref: MetaArrayRef) -> Any:
         if array_ref.pointer.is_null or array_ref.count == 0:
             return []
         if field_index >= len(struct_info.entries):
             return []
-        array_info = self._array_info_for_field(struct_info, field_index)
+        array_info = array_info_for_field(struct_info, field_index)
         if array_info is None:
             return []
         block = self.block_by_id(array_ref.pointer.block_id)

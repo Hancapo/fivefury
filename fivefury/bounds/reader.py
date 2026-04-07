@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 
 from ..binary import f32, u16, u32, u64, vec3, vec4
-from ..resource import virtual_to_offset
+from ..resource import checked_virtual_offset, read_virtual_pointer_array
 from .model import (
     Bound,
     BoundAabb,
@@ -38,20 +38,11 @@ _RESOURCE_FILE_BASE_SIZE = 0x10
 
 
 def _virtual_offset(pointer: int, data: bytes) -> int:
-    offset = virtual_to_offset(pointer, base=0x50000000)
-    if offset < 0 or offset >= len(data):
-        raise ValueError("virtual pointer is out of range")
-    return offset
+    return checked_virtual_offset(pointer, data, base=0x50000000)
 
 
 def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[int]:
-    if not pointer or count <= 0:
-        return []
-    start = _virtual_offset(pointer, system_data)
-    end = start + (count * 8)
-    if end > len(system_data):
-        raise ValueError("pointer array is truncated")
-    return [u64(system_data, start + (index * 8)) for index in range(count)]
+    return read_virtual_pointer_array(system_data, pointer, count, base=0x50000000)
 
 
 def _dequantize_bvh_point(

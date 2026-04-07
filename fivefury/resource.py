@@ -130,6 +130,72 @@ def physical_to_offset(address: int, *, base: int = 0x60000000) -> int:
     return int(address) - int(base)
 
 
+def checked_virtual_offset(
+    address: int,
+    data: bytes,
+    *,
+    base: int = 0x50000000,
+    allow_plain_offset: bool = False,
+) -> int:
+    value = int(address)
+    offset = virtual_to_offset(value, base=base) if not allow_plain_offset or value >= base else value
+    if offset < 0 or offset >= len(data):
+        raise ValueError("virtual pointer is out of range")
+    return offset
+
+
+def read_virtual_pointer_array(
+    data: bytes,
+    pointer: int,
+    count: int,
+    *,
+    base: int = 0x50000000,
+    allow_plain_offset: bool = False,
+) -> list[int]:
+    if not pointer or count <= 0:
+        return []
+    start = checked_virtual_offset(pointer, data, base=base, allow_plain_offset=allow_plain_offset)
+    end = start + (count * 8)
+    if end > len(data):
+        raise ValueError("pointer array is truncated")
+    return [struct.unpack_from("<Q", data, start + (index * 8))[0] for index in range(count)]
+
+
+class ResourceWriter:
+    def __init__(self, initial_size: int = 0x80):
+        self.data = bytearray(initial_size)
+        self.cursor = align(initial_size, 16)
+
+    def ensure(self, size: int) -> None:
+        if size > len(self.data):
+            self.data.extend(b"\x00" * (size - len(self.data)))
+
+    def alloc(self, size: int, alignment: int = 16) -> int:
+        offset = align(self.cursor, alignment)
+        end = offset + size
+        self.ensure(end)
+        self.cursor = end
+        return offset
+
+    def write(self, offset: int, value: bytes) -> None:
+        self.ensure(offset + len(value))
+        self.data[offset : offset + len(value)] = value
+
+    def pack_into(self, fmt: str, offset: int, *values: object) -> None:
+        size = struct.calcsize("<" + fmt)
+        self.ensure(offset + size)
+        struct.pack_into("<" + fmt, self.data, offset, *values)
+
+    def c_string(self, value: str, *, encoding: str = "ascii", alignment: int = 8) -> int:
+        encoded = value.encode(encoding, errors="ignore") + b"\x00"
+        offset = self.alloc(len(encoded), alignment)
+        self.write(offset, encoded)
+        return offset
+
+    def finish(self) -> bytes:
+        return bytes(self.data[: self.cursor])
+
+
 def build_rsc7(
     system_data: bytes | object,
     *,

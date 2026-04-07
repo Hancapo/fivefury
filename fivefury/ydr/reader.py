@@ -7,7 +7,7 @@ from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 a
 from ..bounds import read_bound_from_pointer
 from ..hashing import jenk_hash
 from ..resolver import resolve_hash
-from ..resource import RSC7_MAGIC, physical_to_offset, split_rsc7_sections, virtual_to_offset
+from ..resource import RSC7_MAGIC, checked_virtual_offset, physical_to_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
@@ -19,10 +19,7 @@ _ROOT_OFFSET = 0x10
 
 
 def _virtual_offset(pointer: int, data: bytes) -> int:
-    offset = virtual_to_offset(pointer, base=DAT_VIRTUAL_BASE)
-    if offset < 0 or offset >= len(data):
-        raise ValueError("virtual pointer is out of range")
-    return offset
+    return checked_virtual_offset(pointer, data, base=DAT_VIRTUAL_BASE)
 
 
 def _resolve_buffer(pointer: int, system_data: bytes, graphics_data: bytes) -> tuple[bytes, int]:
@@ -48,13 +45,7 @@ def _read_buffer(pointer: int, size: int, system_data: bytes, graphics_data: byt
 
 
 def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[int]:
-    if not pointer or count <= 0:
-        return []
-    array_off = _virtual_offset(pointer, system_data)
-    end = array_off + (count * 8)
-    if end > len(system_data):
-        raise ValueError("pointer array is truncated")
-    return [_u64(system_data, array_off + (index * 8)) for index in range(count)]
+    return read_virtual_pointer_array(system_data, pointer, count, base=DAT_VIRTUAL_BASE)
 
 
 def _read_ushort_array(pointer: int, count: int, system_data: bytes, graphics_data: bytes) -> list[int]:

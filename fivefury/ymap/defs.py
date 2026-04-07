@@ -3,25 +3,9 @@ from __future__ import annotations
 from ..extensions import EXTENSION_STRUCT_INFOS
 from ..metahash import HashLike, MetaHash
 from ..meta import MetaEnumEntry, MetaEnumInfo, MetaFieldInfo, MetaStructInfo
-from ..meta.defs import META_TYPE_NAME_ARRAYINFO, KNOWN_ENUMS, MetaDataType, meta_name
+from ..meta.defs import KNOWN_ENUMS, MetaDataType, meta_name
+from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
 from .surfaces import YMAP_SURFACE_STRUCT_INFOS
-
-def _entry(
-    name: str | int,
-    offset: int,
-    data_type: MetaDataType,
-    unknown_9h: int = 0,
-    ref_index: int = 0,
-    ref_key: str | int = 0,
-) -> MetaFieldInfo:
-    name_hash = name if isinstance(name, int) else meta_name(name)
-    ref_hash = meta_name(ref_key) if isinstance(ref_key, str) else ref_key
-    return MetaFieldInfo(name_hash, offset, data_type, unknown_9h, ref_index, ref_hash)
-
-
-def _arrayinfo(data_type: MetaDataType, *, ref_key: str | int = 0, unknown_9h: int = 0) -> MetaFieldInfo:
-    ref_hash = meta_name(ref_key) if isinstance(ref_key, str) else ref_key
-    return MetaFieldInfo(META_TYPE_NAME_ARRAYINFO, 0, data_type, unknown_9h, 0, ref_hash)
 
 
 def _enum_info(name: str) -> MetaEnumInfo:
@@ -301,8 +285,6 @@ YMAP_ENUM_INFOS = [
     _enum_info("rage__eLodType"),
     _enum_info("rage__ePriorityLevel"),
 ]
-
-
 
 
 

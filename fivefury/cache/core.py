@@ -8,6 +8,7 @@ from typing import Any, Iterator
 
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
+from .paths import path_name as _path_name, path_stem as _path_stem
 from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes
 from .views import (
     AssetRecord,
@@ -54,18 +55,6 @@ def _coerce_kind(value: GameFileType | str | int | None) -> GameFileType | None:
     except KeyError:
         guessed = guess_game_file_type(f"x.{text}", GameFileType.UNKNOWN)
         return guessed if guessed is not GameFileType.UNKNOWN else None
-
-
-def _path_name(path: str) -> str:
-    slash = path.rfind("/")
-    return path[slash + 1 :] if slash >= 0 else path
-
-
-def _path_stem(path: str) -> str:
-    name = _path_name(path)
-    dot = name.rfind(".")
-    return name[:dot] if dot > 0 else name
-
 
 def _maybe_hash_name(value: str) -> tuple[int, int]:
     lower_name = _path_name(value).lower()

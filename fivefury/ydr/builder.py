@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from ..binary import align
-from ..resource import build_rsc7
+from ..resource import ResourceWriter, build_rsc7
 from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
 from .model import YdrLight
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
@@ -155,41 +155,6 @@ class _ShaderParameterEntry:
     data_type: int
     data_pointer: int = 0
     inline_data: bytes = b""
-
-
-class _SystemWriter:
-    def __init__(self, initial_size: int = 0x80):
-        self.data = bytearray(initial_size)
-        self.cursor = align(initial_size, 16)
-
-    def ensure(self, size: int) -> None:
-        if size > len(self.data):
-            self.data.extend(b"\x00" * (size - len(self.data)))
-
-    def alloc(self, size: int, alignment: int = 16) -> int:
-        offset = align(self.cursor, alignment)
-        end = offset + size
-        self.ensure(end)
-        self.cursor = end
-        return offset
-
-    def write(self, offset: int, value: bytes) -> None:
-        self.ensure(offset + len(value))
-        self.data[offset : offset + len(value)] = value
-
-    def pack_into(self, fmt: str, offset: int, *values: object) -> None:
-        size = struct.calcsize("<" + fmt)
-        self.ensure(offset + size)
-        struct.pack_into("<" + fmt, self.data, offset, *values)
-
-    def c_string(self, value: str) -> int:
-        encoded = value.encode("ascii", errors="ignore") + b"\x00"
-        offset = self.alloc(len(encoded), 8)
-        self.write(offset, encoded)
-        return offset
-
-    def finish(self) -> bytes:
-        return bytes(self.data[: self.cursor])
 
 
 class _GraphicsWriter:
@@ -700,7 +665,7 @@ def _drawable_name(source_name: str) -> str:
     return f"{base}.#dr"
 
 
-def _build_mesh_blocks(system: _SystemWriter, graphics: _GraphicsWriter, meshes: Sequence[_PreparedMesh]) -> list[_MeshBlock]:
+def _build_mesh_blocks(system: ResourceWriter, graphics: _GraphicsWriter, meshes: Sequence[_PreparedMesh]) -> list[_MeshBlock]:
     blocks: list[_MeshBlock] = []
     for mesh in meshes:
         decl_off = system.alloc(0x10, 16)
@@ -864,7 +829,7 @@ def _drawable_models_total_units(model_sizes: Sequence[int]) -> int:
     return sum(_drawable_models_block_units(model_size) for model_size in model_sizes)
 
 
-def _write_pages_info(system: _SystemWriter, page_counts: tuple[int, int]) -> None:
+def _write_pages_info(system: ResourceWriter, page_counts: tuple[int, int]) -> None:
     pages_off = _PAGES_INFO_OFFSET
     system.pack_into('I', pages_off + 0x00, 0)
     system.pack_into('I', pages_off + 0x04, 0)
@@ -881,7 +846,7 @@ def _build_system_payload(
     page_counts: tuple[int, int],
 ) -> tuple[bytes, bytes]:
     pages_info_len = _pages_info_length(page_counts)
-    system = _SystemWriter(initial_size=align(_ROOT_SIZE + pages_info_len, 16))
+    system = ResourceWriter(initial_size=align(_ROOT_SIZE + pages_info_len, 16))
     graphics = _GraphicsWriter()
 
     shader_group_off, _shader_group_blocks_size = write_shader_blocks(

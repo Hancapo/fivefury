@@ -33,6 +33,7 @@ from .defs import (
     SYSTEM_BASE,
     MetaDataType,
 )
+from .utils import array_info_for_field
 from ..hashing import jenk_hash
 
 @dataclasses.dataclass(slots=True)
@@ -152,18 +153,6 @@ class MetaBuilder:
             elif entry.data_type is MetaDataType.STRUCTURE and entry.reference_key:
                 self._mark_struct_used(entry.reference_key)
 
-    def _array_info_for_field(self, struct_info: MetaStructInfo, field_index: int) -> MetaFieldInfo | None:
-        if not (0 <= field_index < len(struct_info.entries)):
-            return None
-        if field_index > 0 and struct_info.entries[field_index - 1].name_hash == META_TYPE_NAME_ARRAYINFO:
-            return struct_info.entries[field_index - 1]
-        ref_index = struct_info.entries[field_index].reference_type_index
-        if 0 <= ref_index < len(struct_info.entries):
-            candidate = struct_info.entries[ref_index]
-            if candidate.name_hash == META_TYPE_NAME_ARRAYINFO:
-                return candidate
-        return None
-
     def _encode_struct_payload(self, name_hash: int, value: Mapping[str, Any] | RawStruct) -> bytes:
         self._mark_struct_used(name_hash)
         if name_hash == FLOAT_XYZ_NAME_HASH:
@@ -228,7 +217,7 @@ class MetaBuilder:
             return text + (b"\x00" * (length - len(text)))
         if data_type is MetaDataType.ARRAY_OF_BYTES:
             count = field.reference_key & 0xFFFF
-            array_info = self._array_info_for_field(struct_info, field_index)
+            array_info = array_info_for_field(struct_info, field_index)
             if array_info is None:
                 raw = bytes(value or b"")[:count]
                 return raw + (b"\x00" * (count - len(raw)))
@@ -273,7 +262,7 @@ class MetaBuilder:
         items = list(value or [])
         if field_index <= 0:
             return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
-        array_info = self._array_info_for_field(struct_info, field_index)
+        array_info = array_info_for_field(struct_info, field_index)
         if array_info is None:
             return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
         element_type = array_info.data_type
