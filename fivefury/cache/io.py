@@ -12,6 +12,7 @@ from ..metahash import MetaHash
 from ..resource import parse_rsc7
 from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _normalize_key
 from ..ycd import read_ycd
+from ..ybn import read_ybn
 from ..ydr import read_ydr
 from ..ytd import read_ytd
 
@@ -65,6 +66,12 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
             return read_ycd(source, path=path), GameFileType.YCD
         except Exception:
             return source, GameFileType.YCD
+    if ext == ".ybn":
+        source = raw if raw is not None else data
+        try:
+            return read_ybn(source, path=path), GameFileType.YBN
+        except Exception:
+            return source, GameFileType.YBN
     if ext == ".cut":
         source = raw if raw is not None else data
         try:

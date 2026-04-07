@@ -5,6 +5,7 @@ import enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Sequence, Union
 
+from ..bounds import Bound
 from ..hashing import jenk_hash
 from ..ytd import Ytd
 from .defs import LOD_ORDER
@@ -480,6 +481,7 @@ class Ydr:
     bounding_box_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
     embedded_textures: Ytd | None = None
+    bound: Bound | None = None
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> "Ydr":

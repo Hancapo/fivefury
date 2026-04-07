@@ -4,6 +4,7 @@ import struct
 from pathlib import Path
 
 from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32, vec3 as _vec3
+from ..bounds import read_bound_from_pointer
 from ..hashing import jenk_hash
 from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, physical_to_offset, split_rsc7_sections, virtual_to_offset
@@ -394,6 +395,11 @@ def read_ydr(
         f32=_f32,
         vec3=_vec3,
     )
+    bound_pointer = _u64(system_data, _ROOT_OFFSET + 0xB8)
+    try:
+        bound = read_bound_from_pointer(bound_pointer, system_data) if bound_pointer else None
+    except Exception:
+        bound = None
     embedded_textures = _parse_embedded_textures(system_data, graphics_data, int(header.version), texture_dictionary_pointer)
 
     return Ydr(
@@ -407,6 +413,7 @@ def read_ydr(
         bounding_box_max=_vec3(system_data, _ROOT_OFFSET + 0x30),
         lights=lights,
         embedded_textures=embedded_textures,
+        bound=bound,
     )
 
 

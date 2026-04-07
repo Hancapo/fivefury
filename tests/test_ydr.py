@@ -5,13 +5,15 @@ import tempfile
 from pathlib import Path
 
 from fivefury import GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
-from fivefury.resource import build_rsc7
+from fivefury import BoundSphere
+from fivefury.resource import build_rsc7, split_rsc7_sections
 from fivefury.ydr import YdrMaterialDescriptor
 from tests.helpers import write_bytes
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _DAT_PHYSICAL_BASE = 0x60000000
 _ROOT_OFFSET = 0x10
+_RESOURCE_FILE_BASE_SIZE = 0x10
 _GTAV1_TYPES = 0x7755555555996996
 _GTAV1_FLAGS = (1 << 0) | (1 << 3) | (1 << 6) | (1 << 14)
 _VERTEX_STRIDE = 48
@@ -142,6 +144,34 @@ def _build_test_ydr_bytes() -> bytes:
     )
 
 
+def _build_test_ydr_with_bound_bytes() -> bytes:
+    source = _build_test_ydr_bytes()
+    header, system_data, graphics_data = split_rsc7_sections(source)
+    system = bytearray(system_data)
+    bound_off = _align(len(system), 16)
+    if bound_off > len(system):
+        system.extend(b"\x00" * (bound_off - len(system)))
+    bound_block = bytearray(_RESOURCE_FILE_BASE_SIZE + 0x70)
+    struct.pack_into("<I", bound_block, 0x04, 1)
+    struct.pack_into("<B", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x00, 0)
+    struct.pack_into("<f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x04, 0.75)
+    struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x20, 1.25, 1.25, 0.75)
+    struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x30, -0.25, -0.25, -0.75)
+    struct.pack_into("<I", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x3C, 1)
+    struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x40, 0.5, 0.5, 0.0)
+    struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x50, 0.5, 0.5, 0.0)
+    struct.pack_into("<f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x6C, 1.0)
+    system.extend(bound_block)
+    struct.pack_into("<Q", system, _ROOT_OFFSET + 0xB8, _DAT_VIRTUAL_BASE + bound_off)
+    return build_rsc7(
+        bytes(system),
+        version=header.version,
+        graphics_data=graphics_data,
+        system_alignment=0x200,
+        graphics_alignment=0x200,
+    )
+
+
 def test_shader_library_reads_real_xml() -> None:
     library = load_shader_library(reload=True)
 
@@ -212,3 +242,18 @@ def test_gamefilecache_parses_loose_ydr_as_renderable_model() -> None:
         assert game_file.parsed.meshes[0].material.shader_definition.name == "default"
         assert game_file.parsed.meshes[0].material.material_descriptor.get_texture("DiffuseSampler") is not None
         assert game_file.parsed.meshes[0].indices == [0, 1, 2]
+
+
+def test_read_ydr_reads_embedded_bound() -> None:
+    ydr = read_ydr(_build_test_ydr_with_bound_bytes(), path="triangle_bound.ydr")
+
+    assert isinstance(ydr.bound, BoundSphere)
+    assert ydr.bound.sphere_center == (0.5, 0.5, 0.0)
+    assert ydr.bound.sphere_radius == 0.75
+
+
+def test_read_real_reference_ydr_embedded_bound() -> None:
+    ydr = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
+
+    assert ydr.bound is not None
+    assert ydr.bound.bound_type.name in {"GEOMETRY", "GEOMETRY_BVH", "COMPOSITE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "DISC"}
