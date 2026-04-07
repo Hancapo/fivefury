@@ -66,7 +66,13 @@ def _dequantize_bvh_point(
     )
 
 
-def _read_vertices(pointer: int, count: int, quantum: tuple[float, float, float], system_data: bytes) -> list[tuple[float, float, float]]:
+def _read_vertices(
+    pointer: int,
+    count: int,
+    quantum: tuple[float, float, float],
+    center_geom: tuple[float, float, float],
+    system_data: bytes,
+) -> list[tuple[float, float, float]]:
     if not pointer or count <= 0:
         return []
     start = _virtual_offset(pointer, system_data)
@@ -76,7 +82,13 @@ def _read_vertices(pointer: int, count: int, quantum: tuple[float, float, float]
     vertices: list[tuple[float, float, float]] = []
     for index in range(count):
         x, y, z = struct.unpack_from("<3h", system_data, start + (index * 6))
-        vertices.append((x * quantum[0], y * quantum[1], z * quantum[2]))
+        vertices.append(
+            (
+                center_geom[0] + (x * quantum[0]),
+                center_geom[1] + (y * quantum[1]),
+                center_geom[2] + (z * quantum[2]),
+            )
+        )
     return vertices
 
 
@@ -340,6 +352,7 @@ def _read_bound_common(offset: int, system_data: bytes) -> dict[str, object]:
 def _read_geometry(offset: int, system_data: bytes, *, with_bvh: bool) -> BoundGeometry:
     values = _read_bound_common(offset, system_data)
     quantum = vec3(system_data, offset + 0x90)
+    center_geom = vec3(system_data, offset + 0xA0)
     vertices_count = u32(system_data, offset + 0xD0)
     polygons_count = u32(system_data, offset + 0xD4)
     materials_count = system_data[offset + 0x120]
@@ -349,9 +362,9 @@ def _read_geometry(offset: int, system_data: bytes, *, with_bvh: bool) -> BoundG
     geometry = geometry_cls(
         **values,
         quantum=quantum,
-        center_geom=vec3(system_data, offset + 0xA0),
-        vertices=_read_vertices(u64(system_data, offset + 0xB0), vertices_count, quantum, system_data),
-        vertices_shrunk=_read_vertices(u64(system_data, offset + 0x78), vertices_count, quantum, system_data),
+        center_geom=center_geom,
+        vertices=_read_vertices(u64(system_data, offset + 0xB0), vertices_count, quantum, center_geom, system_data),
+        vertices_shrunk=_read_vertices(u64(system_data, offset + 0x78), vertices_count, quantum, center_geom, system_data),
         polygons=_read_polygon_types(u64(system_data, offset + 0x88), polygons_count, system_data),
         polygon_material_indices=_read_bytes(u64(system_data, offset + 0x118), polygons_count, system_data),
         materials=_read_materials(u64(system_data, offset + 0xF0), max(4, materials_count) if materials_count else 0, system_data)[:materials_count or 0],

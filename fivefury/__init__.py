@@ -29,6 +29,7 @@ from .bounds import (
     BoundTransform,
     BoundType,
     DEFAULT_BOUND_MATERIAL_LIBRARY,
+    build_bound_system_data,
     get_bound_material_color,
     get_bound_material_name,
     parse_bound_material_names,
@@ -219,7 +220,7 @@ from .ycd import (
     YcdClipType,
     read_ycd,
 )
-from .ybn import Ybn, read_ybn
+from .ybn import Ybn, build_ybn_bytes, read_ybn, save_ybn
 from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
 from .ytyp import (
     Archetype,
@@ -283,6 +284,7 @@ __all__ = [
     "BoundTransform",
     "BoundType",
     "DEFAULT_BOUND_MATERIAL_LIBRARY",
+    "build_bound_system_data",
     "get_bound_material_color",
     "get_bound_material_name",
     "parse_bound_material_names",
@@ -295,6 +297,7 @@ __all__ = [
     "CarGen",
     "CarGenerator",
     "build_cut_bytes",
+    "build_ybn_bytes",
     "CutAssetManager",
     "CutAnimationManager",
     "CutAnimationDictPayload",
@@ -480,6 +483,7 @@ __all__ = [
     "save_ytyp",
     "time_flags",
     "save_cut",
+    "save_ybn",
     "scene_to_cut",
     "ytyp_from_ydr_folder",
     "zip_to_rpf",

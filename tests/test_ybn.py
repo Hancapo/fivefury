@@ -7,16 +7,29 @@ from pathlib import Path
 
 from fivefury import (
     DEFAULT_BOUND_MATERIAL_LIBRARY,
+    BoundAabb,
+    BoundBvh,
+    BoundBvhNode,
+    BoundBvhTree,
     BoundBVH,
+    BoundBox,
+    BoundChild,
+    BoundComposite,
+    BoundGeometry,
+    BoundMaterial,
+    BoundMaterialColor,
     BoundPolygonTriangle,
     BoundSphere,
+    BoundTransform,
     GameFileCache,
     GameFileType,
     Ybn,
+    build_ybn_bytes,
     build_rsc7,
     get_bound_material_color,
     parse_bound_material_names,
     read_ybn,
+    save_ybn,
 )
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
@@ -52,6 +65,154 @@ def _build_test_ybn_bytes() -> bytes:
     return build_rsc7(_build_sphere_bound_block(), version=43, system_alignment=0x200)
 
 
+def _make_sphere(
+    *,
+    center: tuple[float, float, float] = (1.0, 2.0, 3.0),
+    radius: float = 2.5,
+    material_index: int = 7,
+) -> BoundSphere:
+    cx, cy, cz = center
+    minimum = (cx - radius, cy - radius, cz - radius)
+    maximum = (cx + radius, cy + radius, cz + radius)
+    volume = (4.0 / 3.0) * math.pi * (radius**3)
+    return BoundSphere(
+        bound_type=0,
+        sphere_radius=radius,
+        box_max=maximum,
+        margin=0.0,
+        box_min=minimum,
+        box_center=center,
+        sphere_center=center,
+        material_index=material_index,
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=volume,
+    )
+
+
+def _make_box(
+    *,
+    minimum: tuple[float, float, float] = (-1.0, -2.0, -3.0),
+    maximum: tuple[float, float, float] = (1.0, 2.0, 3.0),
+    material_index: int = 5,
+) -> BoundBox:
+    center = tuple((a + b) * 0.5 for a, b in zip(minimum, maximum, strict=True))
+    dx = maximum[0] - minimum[0]
+    dy = maximum[1] - minimum[1]
+    dz = maximum[2] - minimum[2]
+    radius = math.sqrt(max(dx * dx, dy * dy, dz * dz)) * 0.5
+    return BoundBox(
+        bound_type=3,
+        sphere_radius=radius,
+        box_max=maximum,
+        margin=0.0,
+        box_min=minimum,
+        box_center=center,
+        sphere_center=center,
+        material_index=material_index,
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=dx * dy * dz,
+    )
+
+
+def _make_geometry() -> BoundGeometry:
+    vertices = [
+        (-1.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+    ]
+    polygon = BoundPolygonTriangle(
+        polygon_type=0,
+        raw=b"",
+        tri_area=1.0,
+        tri_index1=0,
+        tri_index2=1,
+        tri_index3=2,
+        edge_index1=0xFFFF,
+        edge_index2=0xFFFF,
+        edge_index3=0xFFFF,
+        material_index=0,
+    )
+    return BoundGeometry(
+        bound_type=4,
+        sphere_radius=1.5,
+        box_max=(1.0, 1.0, 0.0),
+        margin=0.0,
+        box_min=(-1.0, 0.0, 0.0),
+        box_center=(0.0, 0.5, 0.0),
+        sphere_center=(0.0, 0.5, 0.0),
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=1.0,
+        center_geom=(0.0, 0.5, 0.0),
+        vertices=vertices,
+        polygons=[polygon],
+        polygon_material_indices=[0],
+        materials=[
+            BoundMaterial(
+                type=56,
+                procedural_id=1,
+                room_id=2,
+                ped_density=3,
+                flags=4,
+                material_color_index=5,
+            )
+        ],
+        material_colours=[BoundMaterialColor(10, 20, 30, 40)],
+        vertex_colours=[
+            BoundMaterialColor(255, 0, 0, 255),
+            BoundMaterialColor(0, 255, 0, 255),
+            BoundMaterialColor(0, 0, 255, 255),
+        ],
+    )
+
+
+def _make_bvh_geometry() -> BoundBVH:
+    geometry = _make_geometry()
+    bounds = BoundAabb(geometry.box_min, geometry.box_max)
+    center = tuple((bounds.minimum[axis] + bounds.maximum[axis]) * 0.5 for axis in range(3))
+    quantum = tuple(max(abs(bounds.minimum[axis] - center[axis]), abs(bounds.maximum[axis] - center[axis])) / 32767.0 or (1.0 / 32767.0) for axis in range(3))
+    quantum_inverse = tuple(1.0 / value for value in quantum)
+    return BoundBVH(
+        bound_type=8,
+        sphere_radius=geometry.sphere_radius,
+        box_max=geometry.box_max,
+        margin=geometry.margin,
+        box_min=geometry.box_min,
+        box_center=geometry.box_center,
+        sphere_center=geometry.sphere_center,
+        material_index=geometry.material_index,
+        procedural_id=geometry.procedural_id,
+        room_id=geometry.room_id,
+        ped_density=geometry.ped_density,
+        unk_flags=geometry.unk_flags,
+        poly_flags=geometry.poly_flags,
+        material_color_index=geometry.material_color_index,
+        unknown_3ch=geometry.unknown_3ch,
+        unknown_60h=geometry.unknown_60h,
+        volume=geometry.volume,
+        quantum=geometry.quantum,
+        center_geom=geometry.center_geom,
+        vertices=geometry.vertices,
+        vertices_shrunk=geometry.vertices_shrunk,
+        polygons=geometry.polygons,
+        polygon_material_indices=geometry.polygon_material_indices,
+        materials=geometry.materials,
+        material_colours=geometry.material_colours,
+        vertex_colours=geometry.vertex_colours,
+        bvh=BoundBvh(
+            minimum=bounds.minimum,
+            maximum=bounds.maximum,
+            center=center,
+            quantum_inverse=quantum_inverse,
+            quantum=quantum,
+            nodes=[BoundBvhNode(minimum=bounds.minimum, maximum=bounds.maximum, item_id=0, item_count=1)],
+            trees=[BoundBvhTree(minimum=bounds.minimum, maximum=bounds.maximum, node_index=0, node_index2=1)],
+        ),
+    )
+
+
 def test_read_ybn_reads_sphere_bound() -> None:
     ybn = read_ybn(_build_test_ybn_bytes(), path="sphere.ybn")
 
@@ -62,6 +223,17 @@ def test_read_ybn_reads_sphere_bound() -> None:
     assert ybn.bound.sphere_center == (1.0, 2.0, 3.0)
     assert ybn.bound.sphere_radius == 2.5
     assert ybn.bound.material_index == 7
+
+
+def test_build_ybn_bytes_roundtrips_sphere_bound() -> None:
+    source = _make_sphere()
+
+    ybn = read_ybn(build_ybn_bytes(source), path="roundtrip_sphere.ybn")
+
+    assert isinstance(ybn.bound, BoundSphere)
+    assert ybn.bound.sphere_center == source.sphere_center
+    assert ybn.bound.sphere_radius == source.sphere_radius
+    assert ybn.bound.material_index == source.material_index
 
 
 def test_default_bound_material_library_has_expected_names() -> None:
@@ -96,6 +268,138 @@ def test_gamefilecache_parses_loose_ybn() -> None:
         assert isinstance(game_file.parsed, Ybn)
         assert isinstance(game_file.parsed.bound, BoundSphere)
         assert game_file.parsed.bound.sphere_radius == 2.5
+
+
+def test_ybn_from_bound_and_save_roundtrip_composite() -> None:
+    sphere = _make_sphere(center=(0.0, 0.0, 0.0), radius=1.0, material_index=7)
+    box = _make_box(minimum=(-0.5, -0.5, -0.5), maximum=(0.5, 0.5, 0.5), material_index=5)
+    root = BoundComposite(
+        bound_type=10,
+        sphere_radius=2.0,
+        box_max=(2.0, 2.0, 2.0),
+        margin=0.0,
+        box_min=(-2.0, -2.0, -2.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=1.0,
+        children=[
+            BoundChild(
+                bound=sphere,
+                transform=BoundTransform(
+                    column1=(1.0, 0.0, 0.0),
+                    column2=(0.0, 1.0, 0.0),
+                    column3=(0.0, 0.0, 1.0),
+                    column4=(1.0, 2.0, 3.0),
+                ),
+                bounds=BoundAabb(sphere.box_min, sphere.box_max),
+            ),
+            BoundChild(
+                bound=box,
+                transform=BoundTransform(
+                    column1=(1.0, 0.0, 0.0),
+                    column2=(0.0, 1.0, 0.0),
+                    column3=(0.0, 0.0, 1.0),
+                    column4=(-1.0, 0.0, 0.5),
+                ),
+                bounds=BoundAabb(box.box_min, box.box_max),
+            ),
+        ],
+    )
+
+    ybn = Ybn.from_bound(root)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir) / "composite.ybn"
+        save_ybn(ybn, path)
+        parsed = read_ybn(path)
+
+    assert isinstance(parsed.bound, BoundComposite)
+    assert parsed.bound.child_count == 2
+    assert isinstance(parsed.bound.children[0].bound, BoundSphere)
+    assert isinstance(parsed.bound.children[1].bound, BoundBox)
+    assert parsed.bound.children[0].transform is not None
+    assert parsed.bound.children[0].transform.translation == (1.0, 2.0, 3.0)
+    assert parsed.bound.children[1].transform is not None
+    assert parsed.bound.children[1].transform.translation == (-1.0, 0.0, 0.5)
+
+
+def test_build_ybn_bytes_roundtrips_geometry_bound() -> None:
+    source = _make_geometry()
+
+    ybn = read_ybn(build_ybn_bytes(source), path="roundtrip_geometry.ybn")
+
+    assert isinstance(ybn.bound, BoundGeometry)
+    assert ybn.bound.vertex_count == 3
+    assert ybn.bound.polygon_count == 1
+    for actual, expected in zip(ybn.bound.vertices[0], source.vertices[0], strict=True):
+        assert math.isclose(actual, expected, abs_tol=1e-5)
+    assert isinstance(ybn.bound.polygons[0], BoundPolygonTriangle)
+    assert ybn.bound.polygons[0].vertex_indices == (0, 1, 2)
+    assert ybn.bound.polygon_material_indices == [0]
+    assert len(ybn.bound.materials) == 1
+    assert ybn.bound.materials[0].type == 56
+    assert ybn.bound.materials[0].name == "METAL_SOLID_MEDIUM"
+    assert ybn.bound.material_colours[0].rgba == (10, 20, 30, 40)
+    assert ybn.bound.vertex_colours[2].rgba == (0, 0, 255, 255)
+
+
+def test_ybn_from_bound_and_save_roundtrip_composite_with_geometry_child() -> None:
+    geometry = _make_geometry()
+    root = BoundComposite(
+        bound_type=10,
+        sphere_radius=2.0,
+        box_max=(2.0, 2.0, 2.0),
+        margin=0.0,
+        box_min=(-2.0, -2.0, -2.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=1.0,
+        children=[
+            BoundChild(
+                bound=geometry,
+                transform=BoundTransform(
+                    column1=(1.0, 0.0, 0.0),
+                    column2=(0.0, 1.0, 0.0),
+                    column3=(0.0, 0.0, 1.0),
+                    column4=(2.0, 0.0, 0.0),
+                ),
+                bounds=BoundAabb(geometry.box_min, geometry.box_max),
+            )
+        ],
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir) / "composite_geometry.ybn"
+        save_ybn(root, path)
+        parsed = read_ybn(path)
+
+    assert isinstance(parsed.bound, BoundComposite)
+    assert parsed.bound.child_count == 1
+    child = parsed.bound.children[0]
+    assert child.transform is not None
+    assert child.transform.translation == (2.0, 0.0, 0.0)
+    assert isinstance(child.bound, BoundGeometry)
+    assert child.bound.vertex_count == 3
+    assert child.bound.polygon_count == 1
+
+
+def test_build_ybn_bytes_roundtrips_bvh_geometry_bound() -> None:
+    source = _make_bvh_geometry()
+
+    ybn = read_ybn(build_ybn_bytes(source), path="roundtrip_bvh_geometry.ybn")
+
+    assert isinstance(ybn.bound, BoundBVH)
+    assert ybn.bound.vertex_count == 3
+    assert ybn.bound.polygon_count == 1
+    assert ybn.bound.bvh is not None
+    assert ybn.bound.bvh.node_count == 1
+    assert ybn.bound.bvh.tree_count == 1
+    assert ybn.bound.bvh.nodes[0].item_id == 0
+    assert ybn.bound.bvh.nodes[0].item_count == 1
 
 
 def test_read_real_reference_ybn() -> None:
