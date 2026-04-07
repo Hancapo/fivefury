@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    Ydr,
     YdrBone,
     YdrBoneFlags,
     YdrBuild,
@@ -15,6 +16,7 @@ from fivefury import (
     YdrMeshInput,
     YdrModelInput,
     YdrSkeleton,
+    calculate_bone_tag,
     create_ydr,
     obj_to_ydr,
     read_obj_scene,
@@ -423,27 +425,41 @@ def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
 
 
 def _simple_skeleton() -> YdrSkeleton:
-    return YdrSkeleton(
-        bones=[
-            YdrBone(
-                name="root",
-                tag=0,
-                index=0,
-                parent_index=-1,
-                next_sibling_index=-1,
-                flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
-            ),
-            YdrBone(
-                name="child",
-                tag=1,
-                index=1,
-                parent_index=0,
-                next_sibling_index=-1,
-                flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
-                translation=(0.0, 0.25, 0.0),
-            ),
-        ]
+    skeleton = YdrSkeleton.create()
+    root = skeleton.add_bone(
+        "root",
+        tag=0,
+        flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
     )
+    skeleton.add_bone(
+        "child",
+        parent=root,
+        tag=1,
+        flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
+        translation=(0.0, 0.25, 0.0),
+    )
+    return skeleton
+
+
+def test_declarative_skeleton_helpers() -> None:
+    skeleton = YdrSkeleton.create()
+    root = skeleton.add_bone("root")
+    child = skeleton.add_bone("child", parent="root", translation=(0.0, 1.0, 0.0))
+
+    assert root.index == 0
+    assert child.index == 1
+    assert child.parent_index == 0
+    assert skeleton.parent_indices == [-1, 0]
+    assert root.next_sibling_index == -1
+    assert child.tag == calculate_bone_tag("child")
+    assert skeleton.require_bone("child") is child
+    assert skeleton.require_bone(child.tag) is child
+
+    ydr = Ydr(version=165)
+    bone = ydr.add_bone("weapon_root")
+    assert ydr.has_skeleton is True
+    assert bone.name == "weapon_root"
+    assert ydr.get_bone_by_name("weapon_root") is bone
 
 
 def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:

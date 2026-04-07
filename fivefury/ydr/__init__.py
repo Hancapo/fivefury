@@ -14,6 +14,7 @@ from .model import (
     YdrModel,
     YdrSkeleton,
     YdrTextureRef,
+    calculate_bone_tag,
     paint_mesh,
     paint_vertices,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "YdrSkeleton",
     "YdrTextureInput",
     "YdrTextureRef",
+    "calculate_bone_tag",
     "build_material_descriptor",
     "build_ydr_bytes",
     "create_ydr",

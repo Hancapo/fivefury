@@ -53,6 +53,20 @@ class YdrBoneFlags(enum.IntFlag):
     UNKNOWN_3 = 0x8000
 
 
+def calculate_bone_tag(name: str) -> int:
+    hash_value = 0
+    for char in str(name):
+        code = ord(char)
+        if 97 <= code <= 122:
+            code -= 32
+        hash_value = ((hash_value << 4) + code) & 0xFFFFFFFF
+        high = hash_value & 0xF0000000
+        if high:
+            hash_value ^= high >> 24
+        hash_value &= ~high
+    return int((hash_value % 0xFE8F) + 0x170)
+
+
 @dataclasses.dataclass(slots=True)
 class YdrBone:
     name: str = ""
@@ -88,6 +102,10 @@ class YdrSkeleton:
     unknown_64h: int = 0
     unknown_68h: int = 0
 
+    @classmethod
+    def create(cls) -> "YdrSkeleton":
+        return cls()
+
     @property
     def bone_count(self) -> int:
         return len(self.bones)
@@ -109,6 +127,56 @@ class YdrSkeleton:
             if bone.name.lower() == lowered:
                 return bone
         return None
+
+    def require_bone(self, value: str | int) -> YdrBone:
+        bone = self.get_bone_by_name(value) if isinstance(value, str) else self.get_bone_by_index(value)
+        if bone is None and isinstance(value, int):
+            bone = self.get_bone_by_tag(value)
+        if bone is None:
+            raise KeyError(f"Unknown YDR bone '{value}'")
+        return bone
+
+    def add_bone(
+        self,
+        name: str,
+        *,
+        parent: YdrBone | str | int | None = None,
+        tag: int | None = None,
+        flags: YdrBoneFlags = YdrBoneFlags.NONE,
+        rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
+        translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    ) -> YdrBone:
+        index = len(self.bones)
+        parent_index = -1
+        if parent is not None:
+            if isinstance(parent, YdrBone):
+                parent_bone = parent
+            elif isinstance(parent, str):
+                parent_bone = self.require_bone(parent)
+            else:
+                parent_bone = self.require_bone(int(parent))
+            parent_index = int(parent_bone.index)
+            siblings = [bone for bone in self.bones if int(bone.parent_index) == parent_index]
+            if siblings:
+                siblings[-1].next_sibling_index = index
+        bone = YdrBone(
+            name=str(name),
+            tag=int(calculate_bone_tag(name) if tag is None else tag),
+            index=index,
+            parent_index=parent_index,
+            next_sibling_index=-1,
+            flags=flags,
+            rotation=tuple(float(v) for v in rotation),
+            translation=tuple(float(v) for v in translation),
+            scale=tuple(float(v) for v in scale),
+        )
+        self.bones.append(bone)
+        self.parent_indices = [int(item.parent_index) for item in self.bones]
+        self.child_indices = []
+        self.transformations = []
+        self.transformations_inverted = []
+        return bone
 
     def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
         resolved: list[YdrBone] = []
@@ -642,6 +710,11 @@ class Ydr:
     def has_skeleton(self) -> bool:
         return self.skeleton is not None and self.skeleton.bone_count > 0
 
+    def ensure_skeleton(self) -> YdrSkeleton:
+        if self.skeleton is None:
+            self.skeleton = YdrSkeleton.create()
+        return self.skeleton
+
     def get_bone_by_index(self, index: int) -> YdrBone | None:
         if self.skeleton is None:
             return None
@@ -656,6 +729,27 @@ class Ydr:
         if self.skeleton is None:
             return None
         return self.skeleton.get_bone_by_name(name)
+
+    def add_bone(
+        self,
+        name: str,
+        *,
+        parent: YdrBone | str | int | None = None,
+        tag: int | None = None,
+        flags: YdrBoneFlags = YdrBoneFlags.NONE,
+        rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
+        translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    ) -> YdrBone:
+        return self.ensure_skeleton().add_bone(
+            name,
+            parent=parent,
+            tag=tag,
+            flags=flags,
+            rotation=rotation,
+            translation=translation,
+            scale=scale,
+        )
 
     def require_material(self, value: str | int) -> YdrMaterial:
         material = self.get_material(value)
