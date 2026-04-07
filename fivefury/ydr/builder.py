@@ -9,10 +9,11 @@ from typing import Mapping, Sequence
 from ..binary import align
 from ..resource import ResourceWriter, build_rsc7
 from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod, coerce_lod
-from .model import YdrLight
+from .model import YdrLight, YdrSkeleton
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
 from .write_lights import write_lights
 from .write_materials import prepare_materials, write_shader_blocks
+from .write_skeleton import write_skeleton
 
 
 _DEFAULT_DECLARATION_TYPES = (
@@ -92,6 +93,7 @@ class YdrBuild:
     name: str = ""
     lod: YdrLod = YdrLod.HIGH
     version: int = 165
+    skeleton: YdrSkeleton | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -645,6 +647,7 @@ def create_ydr(
     shader: str = "default.sps",
     textures: Mapping[str, str | YdrTextureInput] | None = None,
     texture: str | YdrTextureInput | None = None,
+    skeleton: YdrSkeleton | None = None,
     lights: Sequence[YdrLight] | None = None,
     name: str = "",
     lod: YdrLod | str = YdrLod.HIGH,
@@ -657,6 +660,7 @@ def create_ydr(
         name=name,
         lod=coerce_lod(lod),
         version=int(version),
+        skeleton=skeleton,
         lights=list(lights or []),
     )
 
@@ -862,6 +866,7 @@ def _build_system_payload(
     )
     models_list_off = system.alloc(0x10 + (len(prepared_models) * 8), 16)
     models_ptrs_off = models_list_off + 0x10
+    skeleton_off = write_skeleton(system, source.skeleton, virtual=_virtual)
     lights_block_off = write_lights(system, source.lights)
     model_offsets: list[int] = []
     model_sizes: list[int] = []
@@ -893,7 +898,7 @@ def _build_system_payload(
     system.pack_into('I', 0x04, 1)
     system.pack_into('Q', 0x08, _virtual(_PAGES_INFO_OFFSET))
     system.pack_into('Q', 0x10, _virtual(shader_group_off))
-    system.pack_into('Q', 0x18, 0)
+    system.pack_into('Q', 0x18, _virtual(skeleton_off) if skeleton_off else 0)
     system.pack_into('3f', 0x20, *center)
     system.pack_into('f', 0x2C, radius)
     system.pack_into('3f', 0x30, *bounds_min)

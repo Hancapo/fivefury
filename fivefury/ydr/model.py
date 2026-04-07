@@ -19,12 +19,106 @@ if TYPE_CHECKING:
 
 
 NumericParameterValue = float | tuple[float, ...] | tuple[tuple[float, ...], ...]
+Matrix4 = tuple[
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+]
 
 
 class YdrLightType(enum.IntEnum):
     POINT = 1
     SPOT = 2
     CAPSULE = 4
+
+
+class YdrBoneFlags(enum.IntFlag):
+    NONE = 0
+    ROT_X = 0x1
+    ROT_Y = 0x2
+    ROT_Z = 0x4
+    LIMIT_ROTATION = 0x8
+    TRANS_X = 0x10
+    TRANS_Y = 0x20
+    TRANS_Z = 0x40
+    LIMIT_TRANSLATION = 0x80
+    SCALE_X = 0x100
+    SCALE_Y = 0x200
+    SCALE_Z = 0x400
+    LIMIT_SCALE = 0x800
+    UNKNOWN_0 = 0x1000
+    UNKNOWN_1 = 0x2000
+    UNKNOWN_2 = 0x4000
+    UNKNOWN_3 = 0x8000
+
+
+@dataclasses.dataclass(slots=True)
+class YdrBone:
+    name: str = ""
+    tag: int = 0
+    index: int = 0
+    parent_index: int = -1
+    next_sibling_index: int = -1
+    flags: YdrBoneFlags = YdrBoneFlags.NONE
+    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    translation: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    transform_unk: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    inverse_bind_transform: Matrix4 | None = None
+    unknown_1ch: int = 0
+    unknown_2ch: float = 1.0
+    unknown_34h: int = 0
+    unknown_48h: int = 0
+
+
+@dataclasses.dataclass(slots=True)
+class YdrSkeleton:
+    bones: list[YdrBone] = dataclasses.field(default_factory=list)
+    parent_indices: list[int] = dataclasses.field(default_factory=list)
+    child_indices: list[int] = dataclasses.field(default_factory=list)
+    transformations: list[Matrix4] = dataclasses.field(default_factory=list)
+    transformations_inverted: list[Matrix4] = dataclasses.field(default_factory=list)
+    unknown_1ch: int = 0
+    unknown_50h: int = 0
+    unknown_54h: int = 0
+    unknown_58h: int = 0
+    unknown_5ch: int = 1
+    unknown_62h: int = 0
+    unknown_64h: int = 0
+    unknown_68h: int = 0
+
+    @property
+    def bone_count(self) -> int:
+        return len(self.bones)
+
+    def get_bone_by_index(self, index: int) -> YdrBone | None:
+        if 0 <= int(index) < len(self.bones):
+            return self.bones[int(index)]
+        return None
+
+    def get_bone_by_tag(self, tag: int) -> YdrBone | None:
+        for bone in self.bones:
+            if int(bone.tag) == int(tag):
+                return bone
+        return None
+
+    def get_bone_by_name(self, name: str) -> YdrBone | None:
+        lowered = str(name).lower()
+        for bone in self.bones:
+            if bone.name.lower() == lowered:
+                return bone
+        return None
+
+    def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
+        resolved: list[YdrBone] = []
+        for bone_id in bone_ids:
+            bone = self.get_bone_by_tag(int(bone_id))
+            if bone is None:
+                bone = self.get_bone_by_index(int(bone_id))
+            if bone is not None:
+                resolved.append(bone)
+        return resolved
 
 
 @dataclasses.dataclass(slots=True)
@@ -362,6 +456,11 @@ class YdrMesh:
     def texture_names(self) -> list[str]:
         return self.material.texture_names if self.material is not None else []
 
+    def resolve_bones(self, skeleton: YdrSkeleton | None) -> list[YdrBone]:
+        if skeleton is None:
+            return []
+        return skeleton.resolve_bone_ids(self.bone_ids)
+
     def to_input(self, *, material_name: str | None = None) -> YdrMeshInput:
         from .builder import YdrMeshInput
 
@@ -461,6 +560,7 @@ class Ydr:
     bounding_sphere_radius: float = 0.0
     bounding_box_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
     bounding_box_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    skeleton: YdrSkeleton | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
     embedded_textures: Ytd | None = None
     bound: Bound | None = None
@@ -538,6 +638,25 @@ class Ydr:
     def get_material(self, value: str | int) -> YdrMaterial | None:
         return find_material(self.materials, value)
 
+    @property
+    def has_skeleton(self) -> bool:
+        return self.skeleton is not None and self.skeleton.bone_count > 0
+
+    def get_bone_by_index(self, index: int) -> YdrBone | None:
+        if self.skeleton is None:
+            return None
+        return self.skeleton.get_bone_by_index(index)
+
+    def get_bone_by_tag(self, tag: int) -> YdrBone | None:
+        if self.skeleton is None:
+            return None
+        return self.skeleton.get_bone_by_tag(tag)
+
+    def get_bone_by_name(self, name: str) -> YdrBone | None:
+        if self.skeleton is None:
+            return None
+        return self.skeleton.get_bone_by_name(name)
+
     def require_material(self, value: str | int) -> YdrMaterial:
         material = self.get_material(value)
         if material is None:
@@ -584,6 +703,7 @@ class Ydr:
             name=name or self.name,
             lod=selected_lod,
             version=int(self.version),
+            skeleton=self.skeleton,
             lights=list(self.lights),
         )
 

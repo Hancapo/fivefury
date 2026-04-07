@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    YdrBone,
+    YdrBoneFlags,
     YdrBuild,
     YdrLight,
     YdrLightType,
@@ -12,6 +14,7 @@ from fivefury import (
     YdrMaterialInput,
     YdrMeshInput,
     YdrModelInput,
+    YdrSkeleton,
     create_ydr,
     obj_to_ydr,
     read_obj_scene,
@@ -419,6 +422,30 @@ def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
     )
 
 
+def _simple_skeleton() -> YdrSkeleton:
+    return YdrSkeleton(
+        bones=[
+            YdrBone(
+                name="root",
+                tag=0,
+                index=0,
+                parent_index=-1,
+                next_sibling_index=-1,
+                flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
+            ),
+            YdrBone(
+                name="child",
+                tag=1,
+                index=1,
+                parent_index=0,
+                next_sibling_index=-1,
+                flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
+                translation=(0.0, 0.25, 0.0),
+            ),
+        ]
+    )
+
+
 def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     build = YdrBuild(
         models=[YdrModelInput(
@@ -433,6 +460,7 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
             )
         ],
         name="skinned_tri",
+        skeleton=_simple_skeleton(),
     )
 
     ydr_path = tmp_path / "skinned_tri.ydr"
@@ -454,6 +482,12 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     assert model is not None
     assert model.has_skin is True
     assert model.skeleton_binding == 0x0000FF00
+    assert ydr.has_skeleton is True
+    assert ydr.skeleton is not None
+    assert ydr.skeleton.bone_count == 2
+    assert ydr.get_bone_by_name("root") is not None
+    assert ydr.get_bone_by_tag(1) is not None
+    assert [bone.name for bone in mesh.resolve_bones(ydr.skeleton)] == ["root", "child"]
 
 
 def test_skinned_layout_selected() -> None:
@@ -506,6 +540,7 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
             )
         ],
         name="roundtrip_skin",
+        skeleton=_simple_skeleton(),
     )
 
     ydr_path = tmp_path / "roundtrip1.ydr"
@@ -520,3 +555,33 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     assert len(ydr2.meshes[0].blend_weights) == 3
     assert ydr2.meshes[0].bone_ids == [0, 1]
     assert ydr2.get_model(0).has_skin is True
+    assert ydr2.skeleton is not None
+    assert [bone.name for bone in ydr2.skeleton.bones] == ["root", "child"]
+
+
+def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=0x0000FF00,
+        )],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skeleton_meta",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "skeleton_meta.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.skeleton is not None
+    assert ydr.skeleton.parent_indices == [-1, 0]
+    assert ydr.skeleton.bones[0].flags == (YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z)
+    assert ydr.skeleton.bones[1].parent_index == 0
+    assert ydr.skeleton.bones[1].translation == pytest.approx((0.0, 0.25, 0.0))

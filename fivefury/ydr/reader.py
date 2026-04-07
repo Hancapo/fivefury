@@ -13,6 +13,7 @@ from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDE
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
 from .read_lights import parse_lights
 from .read_materials import parse_materials
+from .read_skeleton import parse_skeleton
 from .shaders import ShaderLibrary, load_shader_library
 
 _ROOT_OFFSET = 0x10
@@ -376,6 +377,15 @@ def read_ydr(
         try_read_c_string=_try_read_c_string,
     )
     lods = _parse_lods(system_data, graphics_data, materials)
+    skeleton = parse_skeleton(
+        system_data,
+        _u64(system_data, _ROOT_OFFSET + 0x08),
+        virtual_offset=_virtual_offset,
+        u16=_u16,
+        u32=_u32,
+        u64=_u64,
+        f32=_f32,
+    )
     lights = parse_lights(
         system_data,
         root_offset=_ROOT_OFFSET,
@@ -402,6 +412,7 @@ def read_ydr(
         bounding_sphere_radius=_f32(system_data, _ROOT_OFFSET + 0x1C),
         bounding_box_min=_vec3(system_data, _ROOT_OFFSET + 0x20),
         bounding_box_max=_vec3(system_data, _ROOT_OFFSET + 0x30),
+        skeleton=skeleton,
         lights=lights,
         embedded_textures=embedded_textures,
         bound=bound,
