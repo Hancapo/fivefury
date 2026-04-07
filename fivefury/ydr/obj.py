@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, compute_bounds, create_ydr, save_ydr
+from .defs import YdrLod
 from ..ytyp import Archetype, Ytyp
 
 
@@ -32,7 +33,7 @@ class ObjScene:
     materials: list[YdrMaterialInput]
     name: str = ""
 
-    def to_ydr(self, *, lod: str = "high", version: int = 165) -> YdrBuild:
+    def to_ydr(self, *, lod: YdrLod | str = YdrLod.HIGH, version: int = 165) -> YdrBuild:
         return create_ydr(meshes=self.meshes, materials=self.materials, name=self.name, lod=lod, version=version)
 
 

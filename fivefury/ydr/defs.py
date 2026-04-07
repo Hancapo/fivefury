@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 
 DAT_VIRTUAL_BASE = 0x50000000
 DAT_PHYSICAL_BASE = 0x60000000
@@ -44,12 +44,25 @@ class VertexSemantic(IntEnum):
     BINORMAL = 15
 
 
-LOD_ORDER = ("high", "med", "low", "vlow")
+class YdrLod(StrEnum):
+    HIGH = "high"
+    MEDIUM = "med"
+    LOW = "low"
+    VERY_LOW = "vlow"
+
+
+def coerce_lod(value: "YdrLod | str") -> YdrLod:
+    if isinstance(value, YdrLod):
+        return value
+    return YdrLod(str(value).strip().lower())
+
+
+LOD_ORDER = (YdrLod.HIGH, YdrLod.MEDIUM, YdrLod.LOW, YdrLod.VERY_LOW)
 LOD_POINTER_OFFSETS = {
-    "high": 0x40,
-    "med": 0x48,
-    "low": 0x50,
-    "vlow": 0x58,
+    YdrLod.HIGH: 0x40,
+    YdrLod.MEDIUM: 0x48,
+    YdrLod.LOW: 0x50,
+    YdrLod.VERY_LOW: 0x58,
 }
 
 COMPONENT_SIZES: dict[int, int] = {
@@ -73,6 +86,8 @@ __all__ = [
     "DAT_VIRTUAL_BASE",
     "LOD_ORDER",
     "LOD_POINTER_OFFSETS",
+    "YdrLod",
+    "coerce_lod",
     "VertexComponentType",
     "VertexSemantic",
 ]

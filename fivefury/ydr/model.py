@@ -9,7 +9,7 @@ from ..bounds import Bound
 from ..hashing import jenk_hash
 from ..ytd import Ytd
 from ._helpers import find_material, find_parameter
-from .defs import LOD_ORDER
+from .defs import LOD_ORDER, YdrLod, coerce_lod
 from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
@@ -382,12 +382,15 @@ class YdrMesh:
 
 @dataclasses.dataclass(slots=True)
 class YdrModel:
-    lod: str
+    lod: YdrLod
     index: int = 0
     meshes: list[YdrMesh] = dataclasses.field(default_factory=list)
     render_mask: int = 0
     flags: int = 0
     skeleton_binding: int = 0
+
+    def __post_init__(self) -> None:
+        self.lod = coerce_lod(self.lod)
 
     @property
     def has_skin(self) -> bool:
@@ -453,7 +456,7 @@ class Ydr:
     version: int
     path: str = ""
     materials: list[YdrMaterial] = dataclasses.field(default_factory=list)
-    lods: dict[str, list[YdrModel]] = dataclasses.field(default_factory=dict)
+    lods: dict[YdrLod, list[YdrModel]] = dataclasses.field(default_factory=dict)
     bounding_center: tuple[float, float, float] = (0.0, 0.0, 0.0)
     bounding_sphere_radius: float = 0.0
     bounding_box_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -462,23 +465,26 @@ class Ydr:
     embedded_textures: Ytd | None = None
     bound: Bound | None = None
 
+    def __post_init__(self) -> None:
+        self.lods = {coerce_lod(lod): list(models) for lod, models in self.lods.items()}
+
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> "Ydr":
         from . import read_ydr
 
         return read_ydr(data, path=path)
 
-    def get_lod(self, name: str) -> list[YdrModel]:
-        return self.lods.get(str(name).lower(), [])
+    def get_lod(self, name: YdrLod | str) -> list[YdrModel]:
+        return self.lods.get(coerce_lod(name), [])
 
-    def iter_models(self, lod: str | None = None) -> Iterator[YdrModel]:
+    def iter_models(self, lod: YdrLod | str | None = None) -> Iterator[YdrModel]:
         if lod is not None:
             yield from self.get_lod(lod)
             return
         for name in LOD_ORDER:
             yield from self.lods.get(name, [])
 
-    def iter_meshes(self, lod: str | None = None) -> Iterator[YdrMesh]:
+    def iter_meshes(self, lod: YdrLod | str | None = None) -> Iterator[YdrMesh]:
         for model in self.iter_models(lod=lod):
             yield from model.meshes
 
@@ -493,7 +499,7 @@ class Ydr:
     def model_count(self) -> int:
         return len(self.models)
 
-    def get_model(self, index: int, *, lod: str | None = None) -> YdrModel | None:
+    def get_model(self, index: int, *, lod: YdrLod | str | None = None) -> YdrModel | None:
         models = list(self.iter_models(lod=lod))
         if 0 <= int(index) < len(models):
             return models[int(index)]
@@ -559,13 +565,13 @@ class Ydr:
             shader_library=shader_library,
         )
 
-    def to_build(self, *, lod: str | None = None, name: str | None = None) -> YdrBuild:
+    def to_build(self, *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
         from .builder import YdrBuild
 
         if lod is None:
-            selected_lod = next((lod_name for lod_name in LOD_ORDER if any(self.lods.get(lod_name, []))), "high")
+            selected_lod = next((lod_name for lod_name in LOD_ORDER if any(self.lods.get(lod_name, []))), YdrLod.HIGH)
         else:
-            selected_lod = lod.lower()
+            selected_lod = coerce_lod(lod)
         material_name_by_index = {
             material.index: (material.name or f"material_{material.index}")
             for material in self.materials
@@ -581,7 +587,7 @@ class Ydr:
             lights=list(self.lights),
         )
 
-    def save(self, destination: str | Path, *, lod: str | None = None, name: str | None = None) -> Path:
+    def save(self, destination: str | Path, *, lod: YdrLod | str | None = None, name: str | None = None) -> Path:
         return self.to_build(lod=lod, name=name).save(destination)
 
 

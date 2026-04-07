@@ -8,7 +8,7 @@ from typing import Mapping, Sequence
 
 from ..binary import align
 from ..resource import ResourceWriter, build_rsc7
-from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
+from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod, coerce_lod
 from .model import YdrLight
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
 from .write_lights import write_lights
@@ -90,9 +90,12 @@ class YdrBuild:
     models: list[YdrModelInput]
     materials: list[YdrMaterialInput]
     name: str = ""
-    lod: str = "high"
+    lod: YdrLod = YdrLod.HIGH
     version: int = 165
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.lod = coerce_lod(self.lod)
 
     def to_bytes(self, *, shader_library: ShaderLibrary | None = None) -> bytes:
         return build_ydr_bytes(self, shader_library=shader_library)
@@ -644,7 +647,7 @@ def create_ydr(
     texture: str | YdrTextureInput | None = None,
     lights: Sequence[YdrLight] | None = None,
     name: str = "",
-    lod: str = "high",
+    lod: YdrLod | str = YdrLod.HIGH,
     version: int = 165,
 ) -> YdrBuild:
     normalized_materials = _normalize_materials(materials, shader=shader, textures=textures, texture=texture)
@@ -652,7 +655,7 @@ def create_ydr(
         models=[YdrModelInput(meshes=list(meshes))],
         materials=normalized_materials,
         name=name,
-        lod=lod.lower(),
+        lod=coerce_lod(lod),
         version=int(version),
         lights=list(lights or []),
     )
@@ -929,7 +932,7 @@ def _aligned_page_counts(system_size: int, graphics_size: int) -> tuple[int, int
     return (align(system_size, 0x200) // 0x200, align(graphics_size, 0x200) // 0x200)
 
 
-def ydr_to_build(source: "Ydr", *, lod: str | None = None, name: str | None = None) -> YdrBuild:
+def ydr_to_build(source: "Ydr", *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
     return source.to_build(lod=lod, name=name)
 
 
@@ -947,9 +950,10 @@ def build_ydr_bytes(
         source = source.to_build()
     if not source.models:
         raise ValueError("YDR builder requires at least one mesh")
-    if source.lod not in LOD_POINTER_OFFSETS:
-        raise ValueError(f"Unsupported YDR LOD '{source.lod}'")
-    if source.lod != 'high':
+    source_lod = coerce_lod(source.lod)
+    if source_lod not in LOD_POINTER_OFFSETS:
+        raise ValueError(f"Unsupported YDR LOD '{source_lod}'")
+    if source_lod is not YdrLod.HIGH:
         raise ValueError("YDR builder currently supports only the high LOD writer path")
 
     active_shader_library = shader_library if shader_library is not None else load_shader_library()

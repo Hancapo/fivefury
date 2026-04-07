@@ -8,6 +8,7 @@ from fivefury import (
     YdrBuild,
     YdrLight,
     YdrLightType,
+    YdrLod,
     YdrMaterialInput,
     YdrMeshInput,
     YdrModelInput,
@@ -326,7 +327,7 @@ def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     ydr = read_ydr(ydr_path)
 
     assert ydr.model_count == 2
-    assert len(ydr.get_lod("high")) == 2
+    assert len(ydr.get_lod(YdrLod.HIGH)) == 2
     assert ydr.get_model(0) is not None
     assert ydr.get_model(1) is not None
     assert ydr.get_model(0).render_mask == 1

@@ -9,7 +9,7 @@ from ..hashing import jenk_hash
 from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, checked_virtual_offset, physical_to_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
-from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic
+from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
 from .read_lights import parse_lights
 from .read_materials import parse_materials
@@ -288,7 +288,7 @@ def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int,
     )
 
 
-def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, materials: list[YdrMaterial], lod: str) -> YdrModel:
+def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, materials: list[YdrMaterial], lod: YdrLod) -> YdrModel:
     model_off = _virtual_offset(model_pointer, system_data)
     geometries_pointer = _u64(system_data, model_off + 0x08)
     geometry_count = _u16(system_data, model_off + 0x10)
@@ -317,8 +317,8 @@ def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, m
     )
 
 
-def _parse_lods(system_data: bytes, graphics_data: bytes, materials: list[YdrMaterial]) -> dict[str, list[YdrModel]]:
-    lods: dict[str, list[YdrModel]] = {}
+def _parse_lods(system_data: bytes, graphics_data: bytes, materials: list[YdrMaterial]) -> dict[YdrLod, list[YdrModel]]:
+    lods: dict[YdrLod, list[YdrModel]] = {}
     for lod_name in LOD_ORDER:
         pointer = _u64(system_data, _ROOT_OFFSET + LOD_POINTER_OFFSETS[lod_name])
         model_pointers = _parse_model_list(pointer, system_data)
