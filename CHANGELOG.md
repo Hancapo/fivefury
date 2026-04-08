@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.18]
+
+### Fixed
+- Relaxed RSC7 page sizing for large resources so oversized but valid legacy `YTD` graphics sections no longer fail during save.
+- Applied adaptive resource flag sizing at the shared `RSC7` layer instead of forcing callers to downscale textures, strip mipmaps, or split assets.
+
 ## [0.1.17]
 
 ### Added
