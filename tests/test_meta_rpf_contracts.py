@@ -1644,6 +1644,52 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertEqual(legacy.textures[0].mip_count, 1)
         self.assertEqual(enhanced.textures[0].mip_count, 1)
 
+    def test_build_rsc7_adapts_page_size_for_large_graphics_sections(self) -> None:
+        from fivefury.resource import get_resource_flags_from_size_adaptive, get_resource_size_from_flags
+
+        size = 3_488_920
+        flags = get_resource_flags_from_size_adaptive(size, 13)
+
+        self.assertEqual(get_resource_size_from_flags(flags), _align(size, 1024))
+        self.assertGreater(flags & 0xF, 0)
+
+    def test_legacy_ytd_save_supports_large_graphics_payloads(self) -> None:
+        from fivefury import read_ytd
+        from fivefury.resource import parse_rsc7
+        from fivefury.texture import BCFormat, Texture, total_mip_data_size
+        from fivefury.ytd.model import Ytd
+
+        width = 3072
+        height = 2048
+        mip_count = 1
+        data = bytes(total_mip_data_size(width, height, BCFormat.BC1, mip_count))
+        ytd = Ytd(
+            textures=[
+                Texture.from_raw(
+                    data,
+                    width,
+                    height,
+                    BCFormat.BC1,
+                    mip_count,
+                    name="large_diffuse",
+                )
+            ],
+            game="gta5",
+        )
+
+        built = ytd.to_bytes()
+        header, payload = parse_rsc7(built)
+        reread = read_ytd(built)
+
+        self.assertEqual(len(reread.textures), 1)
+        self.assertEqual(reread.textures[0].name, "large_diffuse")
+        self.assertEqual(reread.textures[0].width, width)
+        self.assertEqual(reread.textures[0].height, height)
+        self.assertEqual(reread.textures[0].mip_count, mip_count)
+        self.assertGreater(header.graphics_flags & 0xF, 0)
+        self.assertLessEqual(len(payload), header.system_size + header.graphics_size)
+        self.assertGreaterEqual(header.graphics_size, len(data))
+
     def test_ytd_reader_can_export_dds(self) -> None:
         from fivefury import read_ytd
 

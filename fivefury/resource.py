@@ -74,6 +74,23 @@ def get_resource_flags_from_size(size: int, version: int) -> int:
     return get_resource_flags_from_blocks(block_count, 0x200, version)
 
 
+def get_resource_flags_from_size_adaptive(size: int, version: int) -> int:
+    if size <= 0:
+        return (version & 0xF) << 28
+    block_size = 0x200
+    while True:
+        rounded = align(size, block_size)
+        block_count = rounded // block_size
+        try:
+            return get_resource_flags_from_blocks(block_count, block_size, version)
+        except ValueError as exc:
+            if "too large to encode" not in str(exc):
+                raise
+            block_size <<= 1
+            if block_size > (0x200 << 0xF):
+                raise ValueError("resource size is too large to encode into RSC7 flags") from exc
+
+
 def compress_resource_stream(data: bytes) -> bytes:
     return zlib.compress(data, level=9, wbits=-15)
 
@@ -216,8 +233,8 @@ def build_rsc7(
         system_data = system_data + (b"\x00" * (align(len(system_data), system_alignment) - len(system_data)))
     if graphics_alignment:
         graphics_data = graphics_data + (b"\x00" * (align(len(graphics_data), graphics_alignment) - len(graphics_data)))
-    system_flags = get_resource_flags_from_size(len(system_data), (version >> 4) & 0xF)
-    graphics_flags = get_resource_flags_from_size(len(graphics_data), version & 0xF)
+    system_flags = get_resource_flags_from_size_adaptive(len(system_data), (version >> 4) & 0xF)
+    graphics_flags = get_resource_flags_from_size_adaptive(len(graphics_data), version & 0xF)
     payload = system_data + graphics_data
     header = ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
     return header.pack() + compress_resource_stream(payload)
