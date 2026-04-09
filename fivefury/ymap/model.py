@@ -144,6 +144,10 @@ class Ymap(MetaHashFieldsMixin):
     def add_entity(self, entity: EntityDef | MloInstanceDef) -> None:
         self.entities.append(entity)
 
+    def add_physics_dictionary(self, name: MetaHash | HashLike) -> MetaHash | HashLike:
+        self.physics_dictionaries.append(name)
+        return name
+
     def entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
         entity = EntityDef(archetype_name=archetype_name, **kwargs)
         self.add_entity(entity)
@@ -389,6 +393,20 @@ class Ymap(MetaHashFieldsMixin):
         self.content_flags = int(content_flags)
         return self
 
+    def build(self, *, auto_extents: bool = False, auto_flags: bool = True) -> "Ymap":
+        if auto_extents:
+            self.recalculate_extents()
+        if auto_flags:
+            self.recalculate_flags()
+        self.name = _ensure_base_name(self.name, ".ymap")
+        return self
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if not self.entities and not self.box_occluders and not self.occlude_models and not self.car_generators:
+            issues.append("YMAP has no entities or surfaces")
+        return issues
+
     def to_meta_root(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -414,6 +432,7 @@ class Ymap(MetaHashFieldsMixin):
         }
 
     def to_bytes(self, *, version: int = 2) -> bytes:
+        self.build()
         builder = MetaBuilder(struct_infos=YMAP_STRUCT_INFOS, enum_infos=YMAP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapData"), root_value=self.to_meta_root())
         return build_rsc7(system, version=version, system_alignment=0x2000)

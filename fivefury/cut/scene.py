@@ -634,6 +634,9 @@ class CutScene:
             raise TypeError(f"expected Ycd, got {type(ycd).__name__}")
         self.clip_dicts.append(ycd)
 
+    def add_clip_dict(self, ycd: object) -> None:
+        self.attach_clip_dict(ycd)
+
     def get_clip(self, value: int | str) -> YcdClip | None:
         key = MetaHash(value).uint
         for ycd in self.clip_dicts:
@@ -702,6 +705,7 @@ class CutScene:
         return {item.object_id: item for item in self.bindings}
 
     def to_cut(self) -> CutFile:
+        self.build()
         return scene_to_cut(self)
 
     def to_bytes(self, *, template: CutFile | bytes | str | Path | None = None) -> bytes:
@@ -735,6 +739,30 @@ class CutScene:
         if not self.bindings:
             return 0
         return max(binding.object_id for binding in self.bindings) + 1
+
+    def build(self) -> "CutScene":
+        next_id = 0
+        normalized: list[CutBinding] = []
+        for binding in sorted(self.bindings, key=lambda item: (item.object_id if item.object_id >= 0 else 10**9, item.display_name)):
+            if binding.object_id < 0:
+                binding.object_id = next_id
+            next_id = max(next_id, binding.object_id + 1)
+            normalized = [item for item in normalized if item.object_id != binding.object_id] + [binding]
+        self.bindings = sorted(normalized, key=lambda item: item.object_id)
+        self.tracks = sorted(self.tracks, key=lambda item: item.key)
+        for track in self.tracks:
+            track.events.sort(key=lambda item: (item.start, item.event_id or -1, item.display_name))
+        return self
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        ids = [binding.object_id for binding in self.bindings]
+        if len(ids) != len(set(ids)):
+            issues.append("CutScene has duplicate binding object ids")
+        if self.duration is not None and self.duration < 0:
+            issues.append("CutScene duration is negative")
+        issues.extend(self.validate_animations())
+        return issues
 
     def add(self, binding: CutBinding) -> CutBinding:
         if binding.object_id < 0:

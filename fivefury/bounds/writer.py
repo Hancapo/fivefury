@@ -505,6 +505,11 @@ def build_bound_system_data(bound: Bound) -> bytes:
     return writer.finish()
 
 
+def write_bound_resource(writer: ResourceWriter, bound: Bound) -> int:
+    return _write_bound(writer, bound)
+
+
 __all__ = [
     "build_bound_system_data",
+    "write_bound_resource",
 ]

@@ -28,6 +28,23 @@ pip install -e .
 
 Python `3.11+` is required.
 
+## API Style
+
+The preferred high-level authoring style is now:
+
+- `add_*` for collections
+- `set_*` for single assignments or bindings
+- `build()` to normalize derived state before serialization
+- `validate()` to collect consistency issues
+
+Some newer high-level helpers were renamed to match that convention. If you were using recent pre-release `YDR` helpers, notable renames are:
+
+- `create_bone(...)` -> `add_bone(...)`
+- `embed_texture(...)` -> `add_embedded_texture(...)`
+- `unembed_texture(...)` -> `remove_embedded_texture(...)`
+- `use_bound(...)` -> `set_bound(...)`
+- `skin_model(...)` -> `set_model_skin(...)`
+
 ## Quick Start
 
 ### Create a YMAP
@@ -168,7 +185,7 @@ print(RpfExportMode.STANDALONE.description)
 ### Read and edit a YDR
 
 ```python
-from fivefury import read_ydr
+from fivefury import BoundSphere, BoundType, TextureFormat, read_ydr
 
 ydr = read_ydr("prop_example.ydr")
 
@@ -189,6 +206,29 @@ ydr.update_material(
     },
 )
 
+ydr.add_embedded_texture(
+    name="prop_example_d",
+    data=bytes([255, 255, 255, 255] * 16),
+    width=4,
+    height=4,
+    format=TextureFormat.A8R8G8B8,
+)
+
+ydr.set_bound(
+    BoundSphere(
+        bound_type=BoundType.SPHERE,
+        box_min=(-0.5, -0.5, -0.5),
+        box_max=(0.5, 0.5, 0.5),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        sphere_radius=0.75,
+        margin=0.05,
+    )
+)
+
+issues = ydr.validate()
+print(issues)
+
 ydr.save("prop_example_out.ydr")
 ```
 
@@ -198,6 +238,40 @@ FiveFury exposes:
 - per-model views through `ydr.models`
 - parsed `ydr.lights`
 - editable material shaders, samplers, and numeric parameters
+- embedded texture helpers through `add_embedded_texture(...)` and `remove_embedded_texture(...)`
+- embedded collision helpers through `set_bound(...)` and `clear_bound()`
+- `build()` / `validate()` helpers for authoring flows
+
+### Skin a YDR model declaratively
+
+```python
+from fivefury import read_ydr
+
+ydr = read_ydr("weapon_example.ydr")
+
+root = ydr.add_bone("root", tag=0)
+child = ydr.add_bone("child", parent=root, tag=1)
+ydr.ensure_skeleton().build()
+
+ydr.set_model_skin(0, bone_index=0, palette_size=0xFF)
+mesh = ydr.meshes[0]
+mesh.set_skin(
+    bone_ids=[root, child],
+    weights=[
+        (1.0, 0.0, 0.0, 0.0),
+        (0.5, 0.5, 0.0, 0.0),
+        (0.0, 1.0, 0.0, 0.0),
+    ],
+    indices=[
+        (0, 0, 0, 0),
+        (0, 1, 0, 0),
+        (1, 0, 0, 0),
+    ],
+)
+
+print(ydr.validate())
+ydr.save("weapon_example_out.ydr")
+```
 
 ### Create a simple YDR
 

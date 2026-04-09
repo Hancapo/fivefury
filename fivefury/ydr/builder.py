@@ -6,8 +6,10 @@ import struct
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from ..bounds import Bound, write_bound_resource
 from ..binary import align
-from ..resource import ResourceWriter, build_rsc7
+from ..resource import ResourceWriter, build_rsc7, split_rsc7_sections
+from ..ytd import Ytd
 from .defs import (
     DAT_PHYSICAL_BASE,
     DAT_VIRTUAL_BASE,
@@ -55,6 +57,7 @@ _INDEX_BUFFER_VFT = 0x406131D8
 _UNKNOWN_FLOAT_SENTINEL = 0x7F800001
 _ROOT_SIZE = 0xD0
 _PAGES_INFO_OFFSET = 0xD0
+_ENHANCED_YDR_VERSIONS = frozenset({154, 159, 171})
 
 
 @dataclasses.dataclass(slots=True)
@@ -108,6 +111,8 @@ class YdrBuild:
     version: int = 165
     skeleton: YdrSkeleton | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
+    embedded_textures: Ytd | None = None
+    bound: Bound | None = None
 
     def __post_init__(self) -> None:
         self.lod = coerce_lod(self.lod)
@@ -662,6 +667,8 @@ def create_ydr(
     texture: str | YdrTextureInput | None = None,
     skeleton: YdrSkeleton | None = None,
     lights: Sequence[YdrLight] | None = None,
+    embedded_textures: Ytd | None = None,
+    bound: Bound | None = None,
     name: str = "",
     lod: YdrLod | str = YdrLod.HIGH,
     render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP,
@@ -676,6 +683,8 @@ def create_ydr(
         version=int(version),
         skeleton=skeleton,
         lights=list(lights or []),
+        embedded_textures=embedded_textures,
+        bound=bound,
     )
 
 
@@ -684,6 +693,82 @@ def _drawable_name(source_name: str) -> str:
     if base.lower().endswith('.#dr'):
         return base
     return f"{base}.#dr"
+
+
+def _embedded_texture_game(source: YdrBuild) -> str:
+    if source.embedded_textures is None:
+        return "gta5"
+    game = (source.embedded_textures.game or "").strip().lower()
+    if game:
+        if game == "gta5" and int(source.version) in _ENHANCED_YDR_VERSIONS:
+            return "gta5_enhanced"
+        return game
+    return "gta5_enhanced" if int(source.version) in _ENHANCED_YDR_VERSIONS else "gta5"
+
+
+def _relocate_embedded_texture_dictionary(
+    virtual_data: bytes,
+    *,
+    dict_offset: int,
+    graphics_offset: int,
+    enhanced: bool,
+) -> bytes:
+    count = int.from_bytes(virtual_data[0x28:0x2A], "little")
+    ptrs_offset = int.from_bytes(virtual_data[0x30:0x38], "little") - DAT_VIRTUAL_BASE
+    output = bytearray(dict_offset + len(virtual_data))
+    output[dict_offset : dict_offset + len(virtual_data)] = virtual_data
+    virtual_delta = dict_offset
+    physical_delta = graphics_offset
+
+    def add_virtual_ptr(relative_offset: int) -> None:
+        value = int.from_bytes(output[dict_offset + relative_offset : dict_offset + relative_offset + 8], "little")
+        if value:
+            output[dict_offset + relative_offset : dict_offset + relative_offset + 8] = (value + virtual_delta).to_bytes(8, "little")
+
+    def add_physical_ptr(relative_offset: int) -> None:
+        value = int.from_bytes(output[dict_offset + relative_offset : dict_offset + relative_offset + 8], "little")
+        if value:
+            output[dict_offset + relative_offset : dict_offset + relative_offset + 8] = (value + physical_delta).to_bytes(8, "little")
+
+    add_virtual_ptr(0x08)
+    add_virtual_ptr(0x20)
+    add_virtual_ptr(0x30)
+
+    for index in range(count):
+        ptr_pos = dict_offset + ptrs_offset + (index * 8)
+        tex_ptr = int.from_bytes(output[ptr_pos : ptr_pos + 8], "little")
+        if not tex_ptr:
+            continue
+        output[ptr_pos : ptr_pos + 8] = (tex_ptr + virtual_delta).to_bytes(8, "little")
+        tex_off = int.from_bytes(
+            virtual_data[ptrs_offset + (index * 8) : ptrs_offset + (index * 8) + 8],
+            "little",
+        ) - DAT_VIRTUAL_BASE
+        add_virtual_ptr(tex_off + 0x28)
+        if enhanced:
+            add_virtual_ptr(tex_off + 0x30)
+            add_physical_ptr(tex_off + 0x38)
+        else:
+            add_physical_ptr(tex_off + 0x70)
+    return bytes(output[dict_offset:])
+
+
+def _write_embedded_texture_dictionary(system: ResourceWriter, graphics: _GraphicsWriter, source: YdrBuild) -> int:
+    if source.embedded_textures is None or not source.embedded_textures.textures:
+        return 0
+    ytd_bytes = source.embedded_textures.to_bytes(game=_embedded_texture_game(source))
+    header, virtual_data, graphics_data = split_rsc7_sections(ytd_bytes)
+    dict_offset = system.alloc(len(virtual_data), 16)
+    graphics_offset = graphics.alloc(graphics_data, 16) if graphics_data else 0
+    enhanced = int(header.version) == 5
+    relocated = _relocate_embedded_texture_dictionary(
+        virtual_data,
+        dict_offset=dict_offset,
+        graphics_offset=graphics_offset,
+        enhanced=enhanced,
+    )
+    system.write(dict_offset, relocated)
+    return dict_offset
 
 
 def _build_mesh_blocks(system: ResourceWriter, graphics: _GraphicsWriter, meshes: Sequence[_PreparedMesh]) -> list[_MeshBlock]:
@@ -882,6 +967,8 @@ def _build_system_payload(
     models_ptrs_off = models_list_off + 0x10
     skeleton_off = write_skeleton(system, source.skeleton, virtual=_virtual)
     lights_block_off = write_lights(system, source.lights)
+    bound_off = write_bound_resource(system, source.bound) if source.bound is not None else 0
+    texture_dictionary_off = _write_embedded_texture_dictionary(system, graphics, source)
     model_offsets: list[int] = []
     model_sizes: list[int] = []
     for prepared_model in prepared_models:
@@ -912,6 +999,7 @@ def _build_system_payload(
     system.pack_into('I', 0x04, 1)
     system.pack_into('Q', 0x08, _virtual(_PAGES_INFO_OFFSET))
     system.pack_into('Q', 0x10, _virtual(shader_group_off))
+    system.pack_into('Q', shader_group_off + 0x08, _virtual(texture_dictionary_off) if texture_dictionary_off else 0)
     system.pack_into('Q', 0x18, _virtual(skeleton_off) if skeleton_off else 0)
     system.pack_into('3f', 0x20, *center)
     system.pack_into('f', 0x2C, radius)
@@ -943,7 +1031,7 @@ def _build_system_payload(
         system.pack_into('H', 0xBA, len(source.lights))
         system.pack_into('I', 0xBC, 0)
     system.pack_into('Q', 0xC0, 0)
-    system.pack_into('Q', 0xC8, 0)
+    system.pack_into('Q', 0xC8, _virtual(bound_off) if bound_off else 0)
 
     return system.finish(), graphics.finish()
 

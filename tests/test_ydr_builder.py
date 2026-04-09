@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    BoundSphere,
+    BoundType,
+    Texture,
+    TextureFormat,
     Ydr,
     YdrBone,
     YdrBoneFlags,
@@ -17,6 +21,7 @@ from fivefury import (
     YdrMeshInput,
     YdrModelInput,
     YdrSkeleton,
+    Ytd,
     calculate_bone_tag,
     create_ydr,
     obj_to_ydr,
@@ -421,6 +426,85 @@ def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
     assert light.projected_texture_hash == 0x12345678
 
 
+def test_build_and_read_ydr_embedded_textures(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "embedded_diffuse"},
+            )
+        ],
+        embedded_textures=_tiny_embedded_ytd(),
+        name="with_embedded_textures",
+    )
+
+    ydr_path = tmp_path / "with_embedded_textures.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.embedded_textures is not None
+    assert ydr.embedded_textures.names() == ["embedded_diffuse"]
+    assert ydr.embedded_textures.get("embedded_diffuse").width == 4
+    assert ydr.materials[0].get_texture("DiffuseSampler").name == "embedded_diffuse"
+
+
+def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "embedded_diffuse"},
+            )
+        ],
+        embedded_textures=Ytd(textures=list(_tiny_embedded_ytd().textures), game="gta5_enhanced"),
+        version=159,
+        name="with_embedded_textures_enhanced",
+    )
+
+    ydr_path = tmp_path / "with_embedded_textures_enhanced.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.embedded_textures is not None
+    assert ydr.embedded_textures.game == "gta5_enhanced"
+    assert ydr.embedded_textures.names() == ["embedded_diffuse"]
+
+
+def test_build_and_read_ydr_embedded_bound(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        bound=BoundSphere(
+            bound_type=BoundType.SPHERE,
+            box_min=(-1.0, -1.0, -1.0),
+            box_max=(1.0, 1.0, 1.0),
+            box_center=(0.0, 0.0, 0.0),
+            sphere_center=(0.0, 0.0, 0.0),
+            sphere_radius=1.25,
+            margin=0.25,
+        ),
+        name="with_bound",
+    )
+
+    ydr_path = tmp_path / "with_bound.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert isinstance(ydr.bound, BoundSphere)
+    assert ydr.bound.sphere_radius == pytest.approx(1.25)
+    assert ydr.bound.margin == pytest.approx(0.25)
+
+
 def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
     return YdrMeshInput(
         positions=[
@@ -465,13 +549,30 @@ def _simple_skeleton() -> YdrSkeleton:
         flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
         translation=(0.0, 0.25, 0.0),
     )
-    return skeleton
+    return skeleton.build()
+
+
+def _tiny_embedded_ytd() -> Ytd:
+    return Ytd(
+        textures=[
+            Texture.from_raw(
+                bytes([255, 0, 0, 255] * 16),
+                width=4,
+                height=4,
+                format=TextureFormat.A8R8G8B8,
+                mip_count=1,
+                name="embedded_diffuse",
+            )
+        ],
+        game="gta5",
+    )
 
 
 def test_declarative_skeleton_helpers() -> None:
     skeleton = YdrSkeleton.create()
     root = skeleton.add_bone("root")
     child = skeleton.add_bone("child", parent="root", translation=(0.0, 1.0, 0.0))
+    skeleton.build()
 
     assert root.index == 0
     assert child.index == 1
@@ -600,6 +701,132 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     assert ydr2.get_model(0).has_skin is True
     assert ydr2.skeleton is not None
     assert [bone.name for bone in ydr2.skeleton.bones] == ["root", "child"]
+
+
+def test_to_build_preserves_embedded_assets(tmp_path: Path) -> None:
+    build = YdrBuild(
+        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "embedded_diffuse"},
+            )
+        ],
+        embedded_textures=_tiny_embedded_ytd(),
+        bound=BoundSphere(
+            bound_type=BoundType.SPHERE,
+            box_min=(-0.5, -0.5, -0.5),
+            box_max=(0.5, 0.5, 0.5),
+            box_center=(0.0, 0.0, 0.0),
+            sphere_center=(0.0, 0.0, 0.0),
+            sphere_radius=0.75,
+            margin=0.1,
+        ),
+        name="embedded_assets_roundtrip",
+    )
+
+    path1 = tmp_path / "embedded_assets_roundtrip_1.ydr"
+    build.save(path1)
+    ydr = read_ydr(path1)
+
+    rebuilt = ydr.to_build()
+    path2 = tmp_path / "embedded_assets_roundtrip_2.ydr"
+    rebuilt.save(path2)
+    ydr2 = read_ydr(path2)
+
+    assert ydr2.embedded_textures is not None
+    assert ydr2.embedded_textures.names() == ["embedded_diffuse"]
+    assert isinstance(ydr2.bound, BoundSphere)
+    assert ydr2.bound.sphere_radius == pytest.approx(0.75)
+
+
+def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        name="helper_case",
+    )
+    path = tmp_path / "helper_case.ydr"
+    build.save(path)
+    ydr = read_ydr(path)
+
+    added = ydr.add_embedded_texture(
+        name="helper_embedded",
+        data=bytes([0, 255, 0, 255] * 16),
+        width=4,
+        height=4,
+        format=TextureFormat.A8R8G8B8,
+    )
+    assert added.name == "helper_embedded"
+    assert ydr.get_embedded_texture("helper_embedded") is not None
+
+    ydr.add_embedded_texture(
+        Texture.from_raw(
+            bytes([0, 0, 255, 255] * 16),
+            width=4,
+            height=4,
+            format=TextureFormat.A8R8G8B8,
+            mip_count=1,
+            name="helper_embedded",
+        ),
+        replace=True,
+    )
+    assert ydr.get_embedded_texture("helper_embedded").data[:4] == bytes([0, 0, 255, 255])
+    assert ydr.remove_embedded_texture("helper_embedded") is True
+    assert ydr.get_embedded_texture("helper_embedded") is None
+
+    ydr.set_bound(
+        BoundSphere(
+            bound_type=BoundType.SPHERE,
+            box_min=(-1.0, -1.0, -1.0),
+            box_max=(1.0, 1.0, 1.0),
+            box_center=(0.0, 0.0, 0.0),
+            sphere_center=(0.0, 0.0, 0.0),
+            sphere_radius=1.0,
+            margin=0.0,
+        )
+    )
+    assert isinstance(ydr.bound, BoundSphere)
+    ydr.clear_bound()
+    assert ydr.bound is None
+
+
+def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        name="skin_helpers",
+    )
+    path = tmp_path / "skin_helpers.ydr"
+    build.save(path)
+    ydr = read_ydr(path)
+
+    root = ydr.add_bone("root", tag=0)
+    child = ydr.add_bone("child", parent=root, tag=1)
+    ydr.ensure_skeleton().build()
+    model = ydr.set_model_skin(0)
+    mesh = ydr.meshes[0]
+    mesh.set_skin(
+        bone_ids=[root, child],
+        weights=[
+            (1.0, 0.0, 0.0, 0.0),
+            (0.5, 0.5, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+        ],
+        indices=[
+            (0, 0, 0, 0),
+            (0, 1, 0, 0),
+            (1, 0, 0, 0),
+        ],
+    )
+    assert mesh.is_skinned is True
+    assert mesh.bone_ids == [root.tag, child.tag]
+    assert ydr.validate() == []
+
+    mesh.set_skin(indices=[(0, 0, 0, 0)])
+    issues = ydr.validate()
+    assert any(issue.code == "indices_size_mismatch" for issue in issues)
 
 
 def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:

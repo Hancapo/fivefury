@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Iterator, Sequence, Union
 
 from ..bounds import Bound
 from ..hashing import jenk_hash
-from ..ytd import Ytd
+from ..ytd import Texture, TextureFormat, Ytd
 from ._helpers import find_material, find_parameter
 from .defs import LOD_ORDER, YdrLod, coerce_lod
 from .shaders import ShaderDefinition
@@ -25,6 +25,14 @@ Matrix4 = tuple[
     tuple[float, float, float, float],
     tuple[float, float, float, float],
 ]
+
+
+@dataclasses.dataclass(slots=True)
+class YdrValidationIssue:
+    level: str
+    code: str
+    message: str
+    context: str = ""
 
 
 class YdrLightType(enum.IntEnum):
@@ -110,6 +118,22 @@ class YdrSkeleton:
     def bone_count(self) -> int:
         return len(self.bones)
 
+    def build(self) -> "YdrSkeleton":
+        for index, bone in enumerate(self.bones):
+            bone.index = index
+            bone.next_sibling_index = -1
+        parent_to_children: dict[int, list[YdrBone]] = {}
+        for bone in self.bones:
+            parent_to_children.setdefault(int(bone.parent_index), []).append(bone)
+        for children in parent_to_children.values():
+            for current, nxt in zip(children, children[1:]):
+                current.next_sibling_index = int(nxt.index)
+        self.parent_indices = [int(item.parent_index) for item in self.bones]
+        self.child_indices = []
+        self.transformations = []
+        self.transformations_inverted = []
+        return self
+
     def get_bone_by_index(self, index: int) -> YdrBone | None:
         if 0 <= int(index) < len(self.bones):
             return self.bones[int(index)]
@@ -172,10 +196,7 @@ class YdrSkeleton:
             scale=tuple(float(v) for v in scale),
         )
         self.bones.append(bone)
-        self.parent_indices = [int(item.parent_index) for item in self.bones]
-        self.child_indices = []
-        self.transformations = []
-        self.transformations_inverted = []
+        self.build()
         return bone
 
     def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
@@ -533,6 +554,50 @@ class YdrMesh:
             return []
         return skeleton.resolve_bone_ids(self.bone_ids)
 
+    @property
+    def vertex_count(self) -> int:
+        return len(self.positions)
+
+    @property
+    def is_skinned(self) -> bool:
+        return bool(self.blend_weights or self.blend_indices or self.bone_ids)
+
+    def set_bone_ids(self, bone_ids: Sequence[int | YdrBone | str], *, skeleton: YdrSkeleton | None = None) -> "YdrMesh":
+        resolved: list[int] = []
+        for item in bone_ids:
+            if isinstance(item, YdrBone):
+                resolved.append(int(item.tag))
+            elif isinstance(item, str):
+                if skeleton is None:
+                    raise ValueError("skeleton= is required when binding bones by name")
+                resolved.append(int(skeleton.require_bone(item).tag))
+            else:
+                resolved.append(int(item))
+        self.bone_ids = resolved
+        return self
+
+    def set_skin(
+        self,
+        *,
+        bone_ids: Sequence[int | YdrBone | str] | None = None,
+        weights: Sequence[tuple[float, float, float, float]] | None = None,
+        indices: Sequence[tuple[int, int, int, int]] | None = None,
+        skeleton: YdrSkeleton | None = None,
+    ) -> "YdrMesh":
+        if bone_ids is not None:
+            self.set_bone_ids(bone_ids, skeleton=skeleton)
+        if weights is not None:
+            self.blend_weights = [tuple(float(component) for component in weight) for weight in weights]
+        if indices is not None:
+            self.blend_indices = [tuple(int(component) for component in index) for index in indices]
+        return self
+
+    def clear_skin(self) -> "YdrMesh":
+        self.blend_weights = []
+        self.blend_indices = []
+        self.bone_ids = []
+        return self
+
     def to_input(self, *, material_name: str | None = None) -> YdrMeshInput:
         from .builder import YdrMeshInput
 
@@ -608,6 +673,14 @@ class YdrModel:
     def get_material(self, value: str | int) -> YdrMaterial | None:
         return find_material(self.materials, value)
 
+    def set_skin_binding(self, *, bone_index: int = 0, palette_size: int = 0xFF) -> "YdrModel":
+        self.skeleton_binding = ((int(bone_index) & 0xFF) << 24) | ((int(palette_size) & 0xFF) << 8)
+        return self
+
+    def clear_skin_binding(self) -> "YdrModel":
+        self.skeleton_binding = 0
+        return self
+
     def to_input(self, *, material_name_by_index: dict[int, str]) -> YdrModelInput:
         from .builder import YdrModelInput
 
@@ -639,6 +712,18 @@ class Ydr:
 
     def __post_init__(self) -> None:
         self.lods = {coerce_lod(lod): list(models) for lod, models in self.lods.items()}
+
+    def build(self) -> "Ydr":
+        if self.skeleton is not None:
+            self.skeleton.build()
+        for material_index, material in enumerate(self.materials):
+            material.index = material_index
+        for model_index, model in enumerate(self.models):
+            model.index = model_index
+            for mesh in model.meshes:
+                if mesh.material is None and 0 <= mesh.material_index < len(self.materials):
+                    mesh.material = self.materials[mesh.material_index]
+        return self
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> "Ydr":
@@ -782,9 +867,151 @@ class Ydr:
             shader_library=shader_library,
         )
 
+    def ensure_embedded_textures(self, *, game: str | None = None) -> Ytd:
+        if self.embedded_textures is None:
+            self.embedded_textures = Ytd(game=game or "gta5")
+        elif game:
+            self.embedded_textures.game = str(game)
+        return self.embedded_textures
+
+    def get_embedded_texture(self, name: str) -> Texture | None:
+        if self.embedded_textures is None:
+            return None
+        try:
+            return self.embedded_textures.get(name)
+        except KeyError:
+            return None
+
+    def add_embedded_texture(
+        self,
+        texture: Texture | None = None,
+        *,
+        name: str | None = None,
+        data: bytes | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        format: TextureFormat | None = None,
+        mip_count: int = 1,
+        replace: bool = True,
+        game: str | None = None,
+    ) -> Texture:
+        if texture is None:
+            if None in (name, data, width, height, format):
+                raise ValueError("name=, data=, width=, height= and format= are required when adding raw embedded texture data")
+            texture = Texture.from_raw(
+                bytes(data),
+                width=int(width),
+                height=int(height),
+                format=TextureFormat(format),
+                mip_count=mip_count,
+                name=str(name),
+            )
+        library = self.ensure_embedded_textures(game=game)
+        existing = self.get_embedded_texture(texture.name)
+        if existing is not None:
+            if not replace:
+                raise ValueError(f"Embedded texture '{texture.name}' already exists")
+            library.textures = [item for item in library.textures if item.name.lower() != texture.name.lower()]
+        library.textures.append(texture)
+        return texture
+
+    def remove_embedded_texture(self, name: str) -> bool:
+        if self.embedded_textures is None:
+            return False
+        previous = len(self.embedded_textures.textures)
+        self.embedded_textures.textures = [item for item in self.embedded_textures.textures if item.name.lower() != str(name).lower()]
+        if not self.embedded_textures.textures:
+            self.embedded_textures = None
+        return len(self.embedded_textures.textures) != previous if self.embedded_textures is not None else previous > 0
+
+    def set_bound(self, bound: Bound) -> Bound:
+        self.bound = bound
+        return bound
+
+    def clear_bound(self) -> "Ydr":
+        self.bound = None
+        return self
+
+    def set_model_skin(self, model: int, *, bone_index: int = 0, palette_size: int = 0xFF) -> YdrModel:
+        target = self.get_model(model)
+        if target is None:
+            raise KeyError(f"Unknown YDR model index {model}")
+        return target.set_skin_binding(bone_index=bone_index, palette_size=palette_size)
+
+    def clear_embedded_textures(self) -> "Ydr":
+        self.embedded_textures = None
+        return self
+
+    def validate(self) -> list[YdrValidationIssue]:
+        issues: list[YdrValidationIssue] = []
+        if not self.models:
+            issues.append(YdrValidationIssue("error", "missing_models", "YDR has no drawable models"))
+        if not self.materials:
+            issues.append(YdrValidationIssue("error", "missing_materials", "YDR has no materials"))
+
+        embedded_names = {
+            texture.name.lower()
+            for texture in (self.embedded_textures.textures if self.embedded_textures is not None else [])
+        }
+        for material in self.materials:
+            if material.shader_definition is None:
+                issues.append(
+                    YdrValidationIssue("error", "missing_shader_definition", f"Material '{material.name or material.index}' has no resolved shader", context=f"material:{material.index}")
+                )
+            if not material.resolved_shader_file_name:
+                issues.append(
+                    YdrValidationIssue("error", "missing_shader_file", f"Material '{material.name or material.index}' has no shader file name", context=f"material:{material.index}")
+                )
+            for parameter in material.parameters:
+                if parameter.is_texture and parameter.texture is None:
+                    issues.append(
+                        YdrValidationIssue("warning", "unbound_texture_slot", f"Material '{material.name or material.index}' leaves texture slot '{parameter.name}' empty", context=f"material:{material.index}")
+                    )
+                if parameter.is_texture and parameter.texture is not None and embedded_names and parameter.texture.name.lower() not in embedded_names:
+                    issues.append(
+                        YdrValidationIssue("info", "external_texture_reference", f"Texture '{parameter.texture.name}' is not present in embedded textures", context=f"material:{material.index}:{parameter.name}")
+                    )
+
+        for model in self.models:
+            if model.has_skin and not self.has_skeleton:
+                issues.append(
+                    YdrValidationIssue("error", "missing_skeleton", f"Model {model.index} is skinned but the drawable has no skeleton", context=f"model:{model.index}")
+                )
+            for mesh_index, mesh in enumerate(model.meshes):
+                context = f"model:{model.index}:mesh:{mesh_index}"
+                if mesh.material_index < 0 or mesh.material_index >= len(self.materials):
+                    issues.append(
+                        YdrValidationIssue("error", "invalid_material_index", f"Mesh references invalid material index {mesh.material_index}", context=context)
+                    )
+                for texture in mesh.material.textures if mesh.material is not None else []:
+                    if texture.uv_index is not None and texture.uv_index >= len(mesh.texcoords):
+                        issues.append(
+                            YdrValidationIssue("error", "missing_uv_channel", f"Mesh is missing UV{texture.uv_index} required by texture slot '{texture.parameter_name or texture.name}'", context=context)
+                        )
+                if mesh.blend_weights and len(mesh.blend_weights) != mesh.vertex_count:
+                    issues.append(
+                        YdrValidationIssue("error", "weights_size_mismatch", "Blend weights count does not match vertex count", context=context)
+                    )
+                if mesh.blend_indices and len(mesh.blend_indices) != mesh.vertex_count:
+                    issues.append(
+                        YdrValidationIssue("error", "indices_size_mismatch", "Blend indices count does not match vertex count", context=context)
+                    )
+                if mesh.is_skinned and not mesh.bone_ids:
+                    issues.append(
+                        YdrValidationIssue("error", "missing_bone_palette", "Skinned mesh has no bone id palette", context=context)
+                    )
+                if mesh.bone_ids and self.skeleton is not None:
+                    for bone_id in mesh.bone_ids:
+                        if self.skeleton.get_bone_by_tag(int(bone_id)) is None and self.skeleton.get_bone_by_index(int(bone_id)) is None:
+                            issues.append(
+                                YdrValidationIssue("error", "unknown_bone_id", f"Mesh references unknown bone id {bone_id}", context=context)
+                            )
+        return issues
+
     def to_build(self, *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
         from .builder import YdrBuild
 
+        self.build()
         if lod is None:
             selected_lod = next((lod_name for lod_name in LOD_ORDER if any(self.lods.get(lod_name, []))), YdrLod.HIGH)
         else:
@@ -803,6 +1030,8 @@ class Ydr:
             version=int(self.version),
             skeleton=self.skeleton,
             lights=list(self.lights),
+            embedded_textures=self.embedded_textures,
+            bound=self.bound,
         )
 
     def save(self, destination: str | Path, *, lod: YdrLod | str | None = None, name: str | None = None) -> Path:
@@ -966,6 +1195,7 @@ __all__ = [
     "YdrMesh",
     "YdrModel",
     "YdrTextureRef",
+    "YdrValidationIssue",
     "paint_mesh",
     "paint_vertices",
 ]

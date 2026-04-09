@@ -299,6 +299,15 @@ class Bound:
     def leaf_bounds(self) -> list[Bound]:
         return [bound for bound in self.walk() if not isinstance(bound, BoundComposite)]
 
+    def build(self) -> "Bound":
+        return self
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if self.sphere_radius < 0:
+            issues.append(f"{self.type_name} has negative sphere_radius")
+        return issues
+
 
 @dataclasses.dataclass(slots=True)
 class BoundSphere(Bound):
@@ -380,6 +389,36 @@ class BoundGeometry(Bound):
     def has_vertex_colours(self) -> bool:
         return bool(self.vertex_colours)
 
+    def add_vertex(self, vertex: tuple[float, float, float]) -> tuple[float, float, float]:
+        value = (float(vertex[0]), float(vertex[1]), float(vertex[2]))
+        self.vertices.append(value)
+        return value
+
+    def add_polygon(self, polygon: BoundPolygon) -> BoundPolygon:
+        if polygon.index < 0:
+            polygon.index = len(self.polygons)
+        self.polygons.append(polygon)
+        if polygon.material_index >= 0:
+            self.polygon_material_indices.append(int(polygon.material_index))
+        return polygon
+
+    def add_material(self, material: BoundMaterial) -> BoundMaterial:
+        self.materials.append(material)
+        return material
+
+    def build(self) -> "BoundGeometry":
+        for index, polygon in enumerate(self.polygons):
+            polygon.index = index
+        if len(self.polygon_material_indices) != len(self.polygons):
+            self.polygon_material_indices = [max(0, int(polygon.material_index)) for polygon in self.polygons]
+        return self
+
+    def validate(self) -> list[str]:
+        issues = super().validate()
+        if len(self.polygon_material_indices) != len(self.polygons):
+            issues.append("polygon_material_indices length does not match polygon count")
+        return issues
+
 
 @dataclasses.dataclass(slots=True)
 class BoundBVH(BoundGeometry):
@@ -411,6 +450,32 @@ class BoundComposite(Bound):
 
     def iter_children(self) -> Iterator[BoundChild]:
         yield from self.children
+
+    def add_child(
+        self,
+        bound: Bound,
+        *,
+        transform: BoundTransform | None = None,
+        bounds: BoundAabb | None = None,
+        flags1: BoundCompositeFlags | None = None,
+        flags2: BoundCompositeFlags | None = None,
+    ) -> BoundChild:
+        child = BoundChild(bound=bound, transform=transform, bounds=bounds, flags1=flags1, flags2=flags2)
+        self.children.append(child)
+        return child
+
+    def build(self) -> "BoundComposite":
+        for child in self.children:
+            child.bound.build()
+        return self
+
+    def validate(self) -> list[str]:
+        issues = super().validate()
+        if not self.children:
+            issues.append("Composite bound has no children")
+        for child in self.children:
+            issues.extend(child.bound.validate())
+        return issues
 
 
 __all__ = [

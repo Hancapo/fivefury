@@ -273,3 +273,20 @@ def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
     assert geometry.get_material(geometry.polygons[0].material_index) is not None
     assert geometry.get_material(geometry.polygons[0].material_index).name
     assert len(geometry.get_material(geometry.polygons[0].material_index).color) == 3
+
+
+def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr")
+    source = read_ydr(source_path)
+
+    out_path = tmp_path / "prop_fire_hosereel_roundtrip.ydr"
+    source.save(out_path)
+    rebuilt = read_ydr(out_path)
+
+    assert rebuilt.embedded_textures is not None
+    assert source.embedded_textures is not None
+    assert rebuilt.embedded_textures.names() == source.embedded_textures.names()
+    assert isinstance(rebuilt.bound, BoundComposite)
+    assert isinstance(source.bound, BoundComposite)
+    assert rebuilt.bound.child_count == source.bound.child_count
+    assert rebuilt.bound.geometries[0].polygon_count == source.bound.geometries[0].polygon_count

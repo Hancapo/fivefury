@@ -23,6 +23,19 @@ class Ybn:
     def to_bytes(self) -> bytes:
         return build_ybn_bytes(self.bound, version=self.version)
 
+    def set_bound(self, bound: Bound) -> Bound:
+        self.bound = bound
+        return bound
+
+    def build(self) -> "Ybn":
+        return self
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if self.bound is None:
+            issues.append("YBN has no root bound")
+        return issues
+
     def save(self, destination: str | Path) -> Path:
         target = Path(destination)
         target.write_bytes(self.to_bytes())

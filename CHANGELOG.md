@@ -6,6 +6,21 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+### Breaking Changes
+- Normalized the high-level authoring API around `add_*` for collections, `set_*` for single assignments, plus `build()` and `validate()` as the preferred normalization and checking steps.
+- Renamed the newer high-level `YDR` helpers to match that convention. Notable renames include:
+  - `create_bone(...)` -> `add_bone(...)`
+  - `embed_texture(...)` -> `add_embedded_texture(...)`
+  - `unembed_texture(...)` -> `remove_embedded_texture(...)`
+  - `use_bound(...)` -> `set_bound(...)`
+  - `skin_model(...)` -> `set_model_skin(...)`
+  - `YdrModel.enable_skin(...)` -> `YdrModel.set_skin_binding(...)`
+  - `YdrModel.disable_skin(...)` -> `YdrModel.clear_skin_binding(...)`
+
+### Changed
+- Added or standardized `build()` and `validate()` entry points across the higher-level `YDR`, `YTD`, `YBN`, `bounds`, `YTYP`, `YMAP`, and `CUT` authoring surfaces.
+- Updated the test suite and high-level examples to follow the normalized API style instead of the older mixed naming scheme.
+
 ## [0.1.18]
 
 ### Fixed

@@ -78,6 +78,50 @@ class Ytd:
                 return texture
         raise KeyError(name)
 
+    def get_texture(self, name: str) -> Texture | None:
+        try:
+            return self.get(name)
+        except KeyError:
+            return None
+
+    def add_texture(self, texture: Texture, *, replace: bool = True) -> Texture:
+        existing = self.get_texture(texture.name)
+        if existing is not None:
+            if not replace:
+                raise ValueError(f"Texture '{texture.name}' already exists")
+            self.textures = [item for item in self.textures if item.name.lower() != texture.name.lower()]
+        self.textures.append(texture)
+        return texture
+
+    def remove_texture(self, name: str) -> bool:
+        previous = len(self.textures)
+        self.textures = [item for item in self.textures if item.name.lower() != str(name).lower()]
+        return len(self.textures) != previous
+
+    def build(self) -> "Ytd":
+        deduped: list[Texture] = []
+        seen: set[str] = set()
+        for texture in self.textures:
+            key = texture.name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(texture)
+        self.textures = deduped
+        return self
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        seen: set[str] = set()
+        for texture in self.textures:
+            lowered = texture.name.lower()
+            if lowered in seen:
+                issues.append(f"Duplicate texture name '{texture.name}'")
+            seen.add(lowered)
+            if texture.width <= 0 or texture.height <= 0:
+                issues.append(f"Texture '{texture.name}' has invalid dimensions")
+        return issues
+
     def names(self) -> list[str]:
         return [texture.name for texture in self.textures]
 

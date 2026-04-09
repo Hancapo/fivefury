@@ -48,6 +48,14 @@ class Ytyp(MetaHashFieldsMixin):
     def add_archetype(self, archetype: BaseArchetypeDef | TimeArchetypeDef | MloArchetypeDef) -> None:
         self.archetypes.append(archetype)
 
+    def add_dependency(self, dependency: MetaHash | HashLike) -> MetaHash | HashLike:
+        self.dependencies.append(dependency)
+        return dependency
+
+    def add_extension(self, extension: Any) -> Any:
+        self.extensions.append(extension)
+        return extension
+
     def archetype(self, name: HashLike, **kwargs: Any) -> BaseArchetypeDef:
         archetype = BaseArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
         self.add_archetype(archetype)
@@ -69,6 +77,25 @@ class Ytyp(MetaHashFieldsMixin):
     def suggested_path(self) -> str:
         return _suggest_resource_path(self.name, self.meta_name, ".ytyp", "unnamed.ytyp")
 
+    def build(self) -> "Ytyp":
+        self.name = _ensure_base_name(self.name, ".ytyp")
+        deduped: list[Any] = []
+        seen: set[int] = set()
+        for dependency in self.dependencies:
+            key = MetaHash(dependency).uint
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(dependency)
+        self.dependencies = deduped
+        return self
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if not self.archetypes:
+            issues.append("YTYP has no archetypes")
+        return issues
+
     def to_meta_root(self) -> dict[str, Any]:
         return {
             "extensions": extensions_to_meta(self.extensions),
@@ -80,6 +107,7 @@ class Ytyp(MetaHashFieldsMixin):
         }
 
     def to_bytes(self, *, version: int = 2) -> bytes:
+        self.build()
         builder = MetaBuilder(struct_infos=_ALL_STRUCT_INFOS, enum_infos=YTYP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapTypes"), root_value=self.to_meta_root())
         return build_rsc7(system, version=version, system_alignment=0x2000)

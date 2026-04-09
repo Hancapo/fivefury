@@ -37,7 +37,7 @@ from .model import (
     BoundType,
 )
 from .reader import read_bound_at, read_bound_from_pointer
-from .writer import build_bound_system_data
+from .writer import build_bound_system_data, write_bound_resource
 
 __all__ = [
     "Bound",
@@ -77,4 +77,5 @@ __all__ = [
     "read_bound_material_names",
     "read_bound_from_pointer",
     "build_bound_system_data",
+    "write_bound_resource",
 ]
