@@ -240,7 +240,9 @@ from .ycd import (
     YcdSequenceRootChannelRef,
     YcdTransformSample,
     YcdUvAnimationSample,
+    build_ycd_bytes,
     read_ycd,
+    save_ycd,
 )
 from .ybn import Ybn, build_ybn_bytes, read_ybn, save_ybn
 from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
@@ -522,9 +524,11 @@ __all__ = [
     "save_ytyp",
     "time_flags",
     "save_cut",
+    "save_ycd",
     "save_ybn",
     "scene_to_cut",
     "ytyp_from_ydr_folder",
     "zip_to_rpf",
     "ydr_to_build",
+    "build_ycd_bytes",
 ]

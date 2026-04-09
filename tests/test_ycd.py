@@ -15,6 +15,7 @@ from fivefury import (
     YcdSequence,
     YcdTransformSample,
     YcdUvAnimationSample,
+    build_ycd_bytes,
     read_ycd,
 )
 
@@ -228,3 +229,44 @@ def test_read_all_reference_ycd_samples() -> None:
         for animation in ycd.animations:
             for sequence in animation.sequences:
                 assert len(sequence.anim_sequences) <= animation.bone_id_count
+
+
+def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
+    assert rebuilt.header.version == original.header.version
+    assert len(rebuilt.clips) == len(original.clips)
+    assert len(rebuilt.animations) == len(original.animations)
+    assert rebuilt.clip_entry_count == original.clip_entry_count
+    assert rebuilt.animation_entry_count == original.animation_entry_count
+    assert rebuilt.clip_bucket_capacity >= rebuilt.clip_entry_count
+    assert rebuilt.animation_bucket_capacity >= rebuilt.animation_entry_count
+
+    for original_clip, rebuilt_clip in zip(original.clips, rebuilt.clips, strict=True):
+        assert rebuilt_clip.hash.uint == original_clip.hash.uint
+        assert rebuilt_clip.short_name == original_clip.short_name
+        assert rebuilt_clip.clip_type == original_clip.clip_type
+        assert len(rebuilt_clip.tags) == len(original_clip.tags)
+        assert len(rebuilt_clip.properties) == len(original_clip.properties)
+        if isinstance(original_clip, YcdClipAnimation):
+            assert isinstance(rebuilt_clip, YcdClipAnimation)
+            assert original_clip.animation is not None
+            assert rebuilt_clip.animation is not None
+            assert rebuilt_clip.animation.hash.uint == original_clip.animation.hash.uint
+            assert rebuilt_clip.animation.frames == original_clip.animation.frames
+            assert rebuilt_clip.animation.sequence_count == original_clip.animation.sequence_count
+            assert rebuilt_clip.animation.bone_id_count == original_clip.animation.bone_id_count
+
+
+def test_ycd_roundtrip_smoke() -> None:
+    original = read_ycd(YCD_PATH)
+    rebuilt = read_ycd(build_ycd_bytes(original))
+    _assert_ycd_roundtrip_equivalent(original, rebuilt)
+
+
+@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+def test_ycd_roundtrip_all_reference_samples() -> None:
+    sample_paths = sorted(REFERENCE_YCD_DIR.glob("*.ycd"))
+    assert sample_paths
+    for path in sample_paths:
+        original = read_ycd(path)
+        rebuilt = read_ycd(build_ycd_bytes(original))
+        _assert_ycd_roundtrip_equivalent(original, rebuilt)

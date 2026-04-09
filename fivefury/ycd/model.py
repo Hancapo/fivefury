@@ -665,6 +665,49 @@ class Ycd:
             result[MetaHash(short_name).uint] = clip
         return result
 
+    def build(self) -> Ycd:
+        self.animation_map = {}
+        for animation in self.animations:
+            if animation.hash.uint == 0 and animation.name:
+                animation.hash = MetaHash(animation.name)
+            self.animation_map[animation.hash.uint] = animation
+
+        for clip in self.clips:
+            if clip.hash.uint == 0:
+                clip.hash = _resolve_ycd_clip_hash(clip)
+            if isinstance(clip, YcdClipAnimation):
+                if clip.animation is None and clip.animation_hash.uint:
+                    clip.animation = self.animation_map.get(clip.animation_hash.uint)
+                if clip.animation is not None:
+                    if clip.animation.hash.uint == 0 and clip.animation.name:
+                        clip.animation.hash = MetaHash(clip.animation.name)
+                    clip.animation_hash = clip.animation.hash
+            elif isinstance(clip, YcdClipAnimationList):
+                for entry in clip.animations:
+                    if entry.animation is None and entry.animation_hash.uint:
+                        entry.animation = self.animation_map.get(entry.animation_hash.uint)
+                    if entry.animation is not None:
+                        if entry.animation.hash.uint == 0 and entry.animation.name:
+                            entry.animation.hash = MetaHash(entry.animation.name)
+                        entry.animation_hash = entry.animation.hash
+
+        self.clip_map = {clip.hash.uint: clip for clip in self.clips}
+        self.clip_entry_count = len(self.clips)
+        self.animation_entry_count = len(self.animations)
+        self.clip_bucket_capacity = max(int(self.clip_bucket_capacity), _get_ycd_bucket_capacity(self.clip_entry_count))
+        self.animation_bucket_capacity = max(int(self.animation_bucket_capacity), _get_ycd_bucket_capacity(self.animation_entry_count))
+        return self
+
+    def to_bytes(self) -> bytes:
+        from .write import build_ycd_bytes
+
+        return build_ycd_bytes(self)
+
+    def save(self, path: str | Path) -> Path:
+        from .write import save_ycd
+
+        return save_ycd(self, path)
+
 
 __all__ = [
     "Ycd",
@@ -690,6 +733,57 @@ __all__ = [
     "YcdTransformSample",
     "YcdUvAnimationSample",
 ]
+
+
+def _resolve_ycd_clip_hash(clip: YcdClip) -> MetaHash:
+    if clip.hash.uint:
+        return clip.hash
+    short_name = clip.short_name or ""
+    marker = "_uv_"
+    base, separator, suffix = short_name.rpartition(marker)
+    if separator and suffix.isdigit():
+        return MetaHash((MetaHash(base).uint + int(suffix) + 1) & 0xFFFFFFFF)
+    if short_name:
+        return MetaHash(short_name)
+    if clip.name:
+        return MetaHash(clip.name)
+    return MetaHash(0)
+
+
+def _get_ycd_bucket_capacity(count: int) -> int:
+    if count < 11:
+        return 11
+    if count < 29:
+        return 29
+    if count < 59:
+        return 59
+    if count < 107:
+        return 107
+    if count < 191:
+        return 191
+    if count < 331:
+        return 331
+    if count < 563:
+        return 563
+    if count < 953:
+        return 953
+    if count < 1609:
+        return 1609
+    if count < 2729:
+        return 2729
+    if count < 4621:
+        return 4621
+    if count < 7841:
+        return 7841
+    if count < 13297:
+        return 13297
+    if count < 22571:
+        return 22571
+    if count < 38351:
+        return 38351
+    if count < 65167:
+        return 65167
+    return 65521
 
 
 def _lerp_vector4(
