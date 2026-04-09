@@ -6,6 +6,8 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.19]
+
 ### Breaking Changes
 - Normalized the high-level authoring API around `add_*` for collections, `set_*` for single assignments, plus `build()` and `validate()` as the preferred normalization and checking steps.
 - Renamed the newer high-level `YDR` helpers to match that convention. Notable renames include:
@@ -20,6 +22,11 @@ This project follows a simple release-oriented changelog format with consistent 
 ### Changed
 - Added or standardized `build()` and `validate()` entry points across the higher-level `YDR`, `YTD`, `YBN`, `bounds`, `YTYP`, `YMAP`, and `CUT` authoring surfaces.
 - Updated the test suite and high-level examples to follow the normalized API style instead of the older mixed naming scheme.
+- Expanded `YCD` parsing and evaluation with formal `dev_ng` track names, plus support for UV, object, camera, root motion, and facial animation tracks.
+
+### Added
+- `YCD` write support with `build_ycd_bytes(...)`, `save_ycd(...)`, `Ycd.to_bytes()`, and `Ycd.save(...)`.
+- Real `YCD` roundtrip coverage against the sample clip dictionaries in `references/ycd`.
 
 ## [0.1.18]
 
