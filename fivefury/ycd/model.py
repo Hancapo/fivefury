@@ -12,9 +12,9 @@ from .sequences import (
     YcdAnimationTrack,
     YcdChannelType,
     YcdSequenceRootChannelRef,
-    get_ycd_track_name,
-    is_ycd_bone_track,
     is_ycd_camera_track,
+    is_ycd_facial_track,
+    get_ycd_track_name,
     is_ycd_object_track,
     is_ycd_position_track,
     is_ycd_rotation_track,
@@ -80,8 +80,8 @@ class YcdAnimationBoneId:
         return is_ycd_root_motion_track(self.track)
 
     @property
-    def is_bone_track(self) -> bool:
-        return is_ycd_bone_track(self.track)
+    def is_facial_track(self) -> bool:
+        return is_ycd_facial_track(self.track)
 
     @property
     def is_position_track(self) -> bool:
@@ -148,14 +148,32 @@ class YcdTransformSample:
 
 @dataclass(slots=True)
 class YcdUvAnimationSample:
-    uv0: tuple[float, float, float, float] | None = None
-    uv1: tuple[float, float, float, float] | None = None
+    slide_u: tuple[float, float, float, float] | None = None
+    slide_v: tuple[float, float, float, float] | None = None
+
+
+@dataclass(slots=True)
+class YcdFacialAnimationSample:
+    control: float | None = None
+    translation: tuple[float, float, float] | None = None
+    rotation: tuple[float, float, float, float] | None = None
 
 
 @dataclass(slots=True)
 class YcdCameraAnimationSample:
     position: tuple[float, float, float] | None = None
     rotation: tuple[float, float, float, float] | None = None
+    field_of_view: float | None = None
+    depth_of_field: tuple[float, float, float] | None = None
+    depth_of_field_strength: float | None = None
+    motion_blur: float | None = None
+    coc: float | None = None
+    focus: float | None = None
+    night_coc: float | None = None
+    near_out_of_focus_plane: float | None = None
+    near_in_focus_plane: float | None = None
+    far_out_of_focus_plane: float | None = None
+    far_in_focus_plane: float | None = None
     tracks: dict[int, tuple[float, float, float, float]] = field(default_factory=dict)
 
 
@@ -221,8 +239,8 @@ class YcdAnimation:
         return [sequence for sequence in self.find_sequences() if getattr(sequence, "is_root_motion", False)]
 
     @property
-    def bone_sequences(self) -> list[YcdAnimSequence]:
-        return [sequence for sequence in self.find_sequences() if getattr(sequence, "is_bone_animation", False)]
+    def facial_sequences(self) -> list[YcdAnimSequence]:
+        return [sequence for sequence in self.find_sequences() if getattr(sequence, "is_facial_animation", False)]
 
     @property
     def has_uv_animation(self) -> bool:
@@ -241,8 +259,8 @@ class YcdAnimation:
         return bool(self.root_motion_sequences)
 
     @property
-    def has_bone_animation(self) -> bool:
-        return bool(self.bone_sequences)
+    def has_facial_animation(self) -> bool:
+        return bool(self.facial_sequences)
 
     def get_sequence_block(self, frame: int) -> YcdSequence | None:
         if not self.sequences:
@@ -326,8 +344,8 @@ class YcdAnimation:
             for key, value in self.evaluate_tracks(frame).items()
             if is_ycd_root_motion_track(key[1])
         }
-        position = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.ROOT_POSITION)), None)
-        rotation = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.ROOT_ROTATION)), None)
+        position = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.MOVER_TRANSLATION)), None)
+        rotation = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.MOVER_ROTATION)), None)
         return YcdTransformSample(position=position, rotation=rotation)
 
     def evaluate_camera_animation(self, frame: int | float) -> YcdCameraAnimationSample:
@@ -336,36 +354,47 @@ class YcdAnimation:
             for key, value in self.evaluate_tracks(frame).items()
             if is_ycd_camera_track(key[1])
         }
-        position = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.CAMERA_POSITION)), None)
+        position = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.CAMERA_TRANSLATION)), None)
         rotation = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.CAMERA_ROTATION)), None)
         return YcdCameraAnimationSample(
             position=position,
             rotation=rotation,
+            field_of_view=_track_scalar(tracks, YcdAnimationTrack.CAMERA_FIELD_OF_VIEW),
+            depth_of_field=_track_vector3(tracks, YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD),
+            depth_of_field_strength=_track_scalar(tracks, YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_STRENGTH),
+            motion_blur=_track_scalar(tracks, YcdAnimationTrack.CAMERA_MOTION_BLUR),
+            coc=_track_scalar(tracks, YcdAnimationTrack.CAMERA_COC),
+            focus=_track_scalar(tracks, YcdAnimationTrack.CAMERA_FOCUS),
+            night_coc=_track_scalar(tracks, YcdAnimationTrack.CAMERA_NIGHT_COC),
+            near_out_of_focus_plane=_track_scalar(tracks, YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_OUT_OF_FOCUS_PLANE),
+            near_in_focus_plane=_track_scalar(tracks, YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_IN_FOCUS_PLANE),
+            far_out_of_focus_plane=_track_scalar(tracks, YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_OUT_OF_FOCUS_PLANE),
+            far_in_focus_plane=_track_scalar(tracks, YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_IN_FOCUS_PLANE),
             tracks={int(track): value for (_, track), value in tracks.items()},
         )
 
-    def evaluate_bone_animation(self, frame: int | float) -> dict[int, YcdTransformSample]:
-        result: dict[int, YcdTransformSample] = {}
+    def evaluate_facial_animation(self, frame: int | float) -> dict[int, YcdFacialAnimationSample]:
+        result: dict[int, YcdFacialAnimationSample] = {}
         tracks = {
             key: value
             for key, value in self.evaluate_tracks(frame).items()
-            if is_ycd_bone_track(key[1])
+            if is_ycd_facial_track(key[1])
         }
         for (bone_id, track), value in tracks.items():
-            sample = result.setdefault(int(bone_id), YcdTransformSample())
-            if int(track) == int(YcdAnimationTrack.BONE_SCALE):
-                sample.scale = float(value[0])
-            elif int(track) == int(YcdAnimationTrack.BONE_POSITION):
-                sample.position = value[:3]
-            elif int(track) == int(YcdAnimationTrack.BONE_ROTATION):
+            sample = result.setdefault(int(bone_id), YcdFacialAnimationSample())
+            if int(track) == int(YcdAnimationTrack.FACIAL_CONTROL):
+                sample.control = float(value[0])
+            elif int(track) == int(YcdAnimationTrack.FACIAL_TRANSLATION):
+                sample.translation = value[:3]
+            elif int(track) == int(YcdAnimationTrack.FACIAL_ROTATION):
                 sample.rotation = value
         return result
 
     def evaluate_uv_transform(self, frame: int | float) -> YcdUvAnimationSample:
         tracks = self.evaluate_uv_animation(frame)
-        uv0 = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.UV0)), None)
-        uv1 = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.UV1)), None)
-        return YcdUvAnimationSample(uv0=uv0, uv1=uv1)
+        slide_u = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_U)), None)
+        slide_v = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_V)), None)
+        return YcdUvAnimationSample(slide_u=slide_u, slide_v=slide_v)
 
 
 YcdClipPropertyValue = float | int | bool | str | tuple[float, ...] | MetaHash
@@ -520,8 +549,8 @@ class YcdClipAnimation(YcdClip):
         return bool(self.animation and self.animation.has_root_motion)
 
     @property
-    def has_bone_animation(self) -> bool:
-        return bool(self.animation and self.animation.has_bone_animation)
+    def has_facial_animation(self) -> bool:
+        return bool(self.animation and self.animation.has_facial_animation)
 
     def get_animation_frame(self, phase: float) -> float:
         if self.animation is None or self.animation.frames <= 1:
@@ -555,8 +584,8 @@ class YcdClipAnimation(YcdClip):
         if self.animation is None:
             return YcdTransformSample()
         tracks = self.animation.evaluate_object_animation(self.get_animation_frame_at_time(seconds))
-        position = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.POSITION)), None)
-        rotation = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.ROTATION)), None)
+        position = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.BONE_TRANSLATION)), None)
+        rotation = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.BONE_ROTATION)), None)
         return YcdTransformSample(position=position, rotation=rotation)
 
     def evaluate_root_motion_at_time(self, seconds: float) -> YcdTransformSample:
@@ -569,10 +598,10 @@ class YcdClipAnimation(YcdClip):
             return YcdCameraAnimationSample()
         return self.animation.evaluate_camera_animation(self.get_animation_frame_at_time(seconds))
 
-    def evaluate_bone_animation_at_time(self, seconds: float) -> dict[int, YcdTransformSample]:
+    def evaluate_facial_animation_at_time(self, seconds: float) -> dict[int, YcdFacialAnimationSample]:
         if self.animation is None:
             return {}
-        return self.animation.evaluate_bone_animation(self.get_animation_frame_at_time(seconds))
+        return self.animation.evaluate_facial_animation(self.get_animation_frame_at_time(seconds))
 
 
 @dataclass(slots=True)
@@ -654,6 +683,7 @@ __all__ = [
     "YcdClipPropertyAttributeType",
     "YcdClipTag",
     "YcdClipType",
+    "YcdFacialAnimationSample",
     "YcdFramePosition",
     "YcdSequence",
     "YcdSequenceRootChannelRef",
@@ -687,3 +717,23 @@ def _nlerp_vector4(
         return (x, y, z, w)
     inv = 1.0 / length
     return (x * inv, y * inv, z * inv, w * inv)
+
+
+def _track_scalar(
+    tracks: dict[tuple[int, int], tuple[float, float, float, float]],
+    track: int | YcdAnimationTrack,
+) -> float | None:
+    for (_, current_track), value in tracks.items():
+        if int(current_track) == int(track):
+            return float(value[0])
+    return None
+
+
+def _track_vector3(
+    tracks: dict[tuple[int, int], tuple[float, float, float, float]],
+    track: int | YcdAnimationTrack,
+) -> tuple[float, float, float] | None:
+    for (_, current_track), value in tracks.items():
+        if int(current_track) == int(track):
+            return value[:3]
+    return None

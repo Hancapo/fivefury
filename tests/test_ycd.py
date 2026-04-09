@@ -10,6 +10,7 @@ from fivefury import (
     YcdCameraAnimationSample,
     YcdChannelType,
     YcdClipAnimation,
+    YcdFacialAnimationSample,
     YcdClipPropertyAttributeType,
     YcdSequence,
     YcdTransformSample,
@@ -109,16 +110,16 @@ def test_ycd_uv_animation_support() -> None:
     assert animation.has_uv_animation
     assert animation.uv_sequences
     assert {sequence.track for sequence in animation.uv_sequences} == {
-        int(YcdAnimationTrack.UV0),
-        int(YcdAnimationTrack.UV1),
+        int(YcdAnimationTrack.SHADER_SLIDE_U),
+        int(YcdAnimationTrack.SHADER_SLIDE_V),
     }
 
     uv_values = animation.evaluate_uv_animation(0)
     assert uv_values
     assert len(uv_values) == 2
     assert set(track for _, track in uv_values) == {
-        int(YcdAnimationTrack.UV0),
-        int(YcdAnimationTrack.UV1),
+        int(YcdAnimationTrack.SHADER_SLIDE_U),
+        int(YcdAnimationTrack.SHADER_SLIDE_V),
     }
     assert animation.sequences[0].anim_sequences
     assert animation.sequences[0].anim_sequences[0].channels
@@ -141,17 +142,17 @@ def test_ycd_object_animation_support() -> None:
     animation = clip.animation
     assert animation.has_object_animation
     assert {sequence.track for sequence in animation.object_sequences} == {
-        int(YcdAnimationTrack.POSITION),
-        int(YcdAnimationTrack.ROTATION),
+        int(YcdAnimationTrack.BONE_TRANSLATION),
+        int(YcdAnimationTrack.BONE_ROTATION),
     }
 
     object_values = animation.evaluate_object_animation(0)
     assert object_values
     assert set(track for _, track in object_values) == {
-        int(YcdAnimationTrack.POSITION),
-        int(YcdAnimationTrack.ROTATION),
+        int(YcdAnimationTrack.BONE_TRANSLATION),
+        int(YcdAnimationTrack.BONE_ROTATION),
     }
-    rotation_sequence = animation.find_sequences(track=YcdAnimationTrack.ROTATION)[0]
+    rotation_sequence = animation.find_sequences(track=YcdAnimationTrack.BONE_ROTATION)[0]
     assert rotation_sequence.is_rotation_track
     assert len(rotation_sequence.evaluate_quaternion(0)) == 4
 
@@ -163,7 +164,7 @@ def test_ycd_root_motion_camera_and_bone_support() -> None:
     assert actor is not None
     assert actor.animation is not None
     assert actor.has_root_motion
-    assert actor.has_bone_animation
+    assert actor.has_facial_animation
 
     root_motion = actor.evaluate_root_motion_at_time(actor.duration * 0.5)
     assert isinstance(root_motion, YcdTransformSample)
@@ -172,11 +173,12 @@ def test_ycd_root_motion_camera_and_bone_support() -> None:
     assert len(root_motion.position) == 3
     assert len(root_motion.rotation) == 4
 
-    bone_samples = actor.evaluate_bone_animation_at_time(actor.duration * 0.5)
-    assert bone_samples
-    assert any(sample.scale is not None for sample in bone_samples.values())
-    assert any(sample.position is not None for sample in bone_samples.values())
-    assert any(sample.rotation is not None for sample in bone_samples.values())
+    facial_samples = actor.evaluate_facial_animation_at_time(actor.duration * 0.5)
+    assert facial_samples
+    assert all(isinstance(sample, YcdFacialAnimationSample) for sample in facial_samples.values())
+    assert any(sample.control is not None for sample in facial_samples.values())
+    assert any(sample.translation is not None for sample in facial_samples.values())
+    assert any(sample.rotation is not None for sample in facial_samples.values())
 
     camera = ycd.get_clip("exportcamera-0")
     assert camera is not None
@@ -188,7 +190,8 @@ def test_ycd_root_motion_camera_and_bone_support() -> None:
     assert camera_sample.position is not None
     assert camera_sample.rotation is not None
     assert len(camera_sample.tracks) >= 5
-    assert int(YcdAnimationTrack.CAMERA_TRACK_27) in camera_sample.tracks
+    assert int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW) in camera_sample.tracks
+    assert camera_sample.field_of_view is not None
 
 
 @pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
@@ -198,8 +201,8 @@ def test_ycd_time_based_uv_and_object_evaluation() -> None:
     assert uv_clip is not None
     uv_sample = uv_clip.evaluate_uv_animation_at_time(uv_clip.duration * 0.5)
     assert isinstance(uv_sample, YcdUvAnimationSample)
-    assert uv_sample.uv0 is not None
-    assert uv_sample.uv1 is not None
+    assert uv_sample.slide_u is not None
+    assert uv_sample.slide_v is not None
 
     obj_ycd = read_ycd(REFERENCE_YCD_DIR / "cs2_08.ycd")
     obj_clip = obj_ycd.get_clip("cs2_08_animboxmain")

@@ -234,6 +234,7 @@ from .ycd import (
     YcdClipPropertyAttributeType,
     YcdClipTag,
     YcdClipType,
+    YcdFacialAnimationSample,
     YcdFramePosition,
     YcdSequence,
     YcdSequenceRootChannelRef,
