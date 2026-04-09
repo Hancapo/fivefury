@@ -21,6 +21,7 @@ from .model import (
     YcdClipType,
     YcdSequence,
 )
+from .sequences import parse_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
 
@@ -95,6 +96,17 @@ class _YcdReader:
             unknown_08h=_u32(self.data, offset + 0x08),
             unknown_14h=_u16(self.data, offset + 0x14),
         )
+        anim_sequences, root_position_refs, root_rotation_refs = parse_sequence_data(
+            sequence.raw_data,
+            num_frames=sequence.num_frames,
+            chunk_size=sequence.chunk_size,
+            frame_offset=sequence.frame_offset,
+            frame_length=sequence.frame_length,
+            root_motion_ref_counts=sequence.root_motion_ref_counts,
+        )
+        sequence.anim_sequences = anim_sequences
+        sequence.root_position_refs = root_position_refs
+        sequence.root_rotation_refs = root_rotation_refs
         self.sequence_cache[pointer] = sequence
         return sequence
 
@@ -138,6 +150,10 @@ class _YcdReader:
             sequences=sequences,
             bone_ids=bone_ids,
         )
+        for sequence in animation.sequences:
+            for index, anim_sequence in enumerate(sequence.anim_sequences):
+                if index < len(animation.bone_ids):
+                    anim_sequence.bone_id = animation.bone_ids[index]
         self.animation_cache[pointer] = animation
         return animation
 
