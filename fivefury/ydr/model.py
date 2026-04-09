@@ -398,7 +398,11 @@ class YdrMaterial:
                     defaults=dict(definition.defaults),
                     data_type=0 if definition.is_texture else 1,
                     texture=previous.texture if previous is not None and previous.is_texture else None,
-                    value=previous.value if previous is not None and previous.is_numeric else None,
+                    value=(
+                        previous.value
+                        if previous is not None and previous.is_numeric and previous.value is not None
+                        else definition.default_value
+                    ),
                 )
             )
 

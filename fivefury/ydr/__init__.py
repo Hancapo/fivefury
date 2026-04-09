@@ -1,5 +1,5 @@
 from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, build_ydr_bytes, create_ydr, save_ydr, ydr_to_build
-from .defs import YdrLod
+from .defs import YdrLod, YdrRenderMask
 from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialParameter, build_material_descriptor
 from .model import (
     ColorChannel,
@@ -43,6 +43,7 @@ __all__ = [
     "YdrLight",
     "YdrLightType",
     "YdrLod",
+    "YdrRenderMask",
     "YdrMaterial",
     "YdrMaterialDescriptor",
     "YdrMaterialInput",

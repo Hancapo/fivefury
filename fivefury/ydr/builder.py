@@ -8,7 +8,17 @@ from typing import Mapping, Sequence
 
 from ..binary import align
 from ..resource import ResourceWriter, build_rsc7
-from .defs import DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod, coerce_lod
+from .defs import (
+    DAT_PHYSICAL_BASE,
+    DAT_VIRTUAL_BASE,
+    LOD_POINTER_OFFSETS,
+    VertexComponentType,
+    VertexSemantic,
+    YdrLod,
+    YdrRenderMask,
+    coerce_lod,
+    coerce_render_mask,
+)
 from .model import YdrLight, YdrSkeleton
 from .shaders import ShaderDefinition, ShaderLibrary, ShaderLayoutDefinition, ShaderParameterDefinition, load_shader_library
 from .write_lights import write_lights
@@ -81,9 +91,12 @@ class YdrMeshInput:
 @dataclasses.dataclass(slots=True)
 class YdrModelInput:
     meshes: Sequence[YdrMeshInput]
-    render_mask: int = 0
+    render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP
     flags: int = 0
     skeleton_binding: int = 0
+
+    def __post_init__(self) -> None:
+        self.render_mask = coerce_render_mask(self.render_mask)
 
 
 @dataclasses.dataclass(slots=True)
@@ -141,7 +154,7 @@ class _PreparedMesh:
 @dataclasses.dataclass(slots=True)
 class _PreparedModel:
     meshes: list[_PreparedMesh]
-    render_mask: int = 0
+    render_mask: int = int(YdrRenderMask.STATIC_PROP)
     flags: int = 0
     skeleton_binding: int = 0
 
@@ -651,11 +664,12 @@ def create_ydr(
     lights: Sequence[YdrLight] | None = None,
     name: str = "",
     lod: YdrLod | str = YdrLod.HIGH,
+    render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP,
     version: int = 165,
 ) -> YdrBuild:
     normalized_materials = _normalize_materials(materials, shader=shader, textures=textures, texture=texture)
     return YdrBuild(
-        models=[YdrModelInput(meshes=list(meshes))],
+        models=[YdrModelInput(meshes=list(meshes), render_mask=render_mask)],
         materials=normalized_materials,
         name=name,
         lod=coerce_lod(lod),

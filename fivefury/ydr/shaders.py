@@ -16,6 +16,7 @@ class ShaderParameterDefinition:
     count: int = 1
     hidden: bool = False
     defaults: dict[str, str] = dataclasses.field(default_factory=dict)
+    default_value: float | tuple[float, ...] | None = None
 
     @property
     def name_hash(self) -> int:
@@ -161,6 +162,32 @@ def _coerce_bool(value: str | None) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes"}
 
 
+def _coerce_default_component(value: str) -> float:
+    lowered = str(value).strip().lower()
+    if lowered in {"true", "yes"}:
+        return 1.0
+    if lowered in {"false", "no"}:
+        return 0.0
+    return float(value)
+
+
+def _parse_parameter_default_value(type_name: str, defaults: dict[str, str]) -> float | tuple[float, ...] | None:
+    lowered = str(type_name).strip().lower()
+    if lowered == "texture":
+        return None
+    components: list[float] = []
+    for key in ("x", "y", "z", "w"):
+        if key in defaults:
+            components.append(_coerce_default_component(defaults[key]))
+    if not components and "value" in defaults:
+        components.append(_coerce_default_component(defaults["value"]))
+    if not components:
+        return None
+    if len(components) == 1:
+        return components[0]
+    return tuple(components)
+
+
 def _parse_parameter(item: ET.Element) -> ShaderParameterDefinition:
     defaults = {
         key: value
@@ -177,6 +204,7 @@ def _parse_parameter(item: ET.Element) -> ShaderParameterDefinition:
         count=max(1, int(count_value)) if count_value not in (None, "") else 1,
         hidden=_coerce_bool(item.get("hidden")),
         defaults=defaults,
+        default_value=_parse_parameter_default_value(item.get("type", ""), defaults),
     )
 
 

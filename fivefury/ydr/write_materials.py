@@ -25,6 +25,20 @@ def coerce_parameter_inline(value: float | tuple[float, ...] | int | str) -> byt
     return struct.pack("<4f", *components)
 
 
+def merge_shader_parameter_defaults(
+    parameters: dict[str, float | tuple[float, ...] | int | str],
+    shader_definition,
+) -> dict[str, float | tuple[float, ...] | int | str]:
+    merged: dict[str, float | tuple[float, ...] | int | str] = {}
+    for definition in shader_definition.parameters:
+        if definition.is_texture or definition.default_value is None:
+            continue
+        merged[definition.name] = definition.default_value
+    for name, value in parameters.items():
+        merged[str(name)] = value
+    return merged
+
+
 def prepare_materials(
     materials,
     shader_library,
@@ -55,7 +69,10 @@ def prepare_materials(
                 shader_file_name=shader_file_name,
                 render_bucket=int(material.render_bucket),
                 textures=normalized_textures,
-                parameters={str(name): value for name, value in material.parameters.items()},
+                parameters=merge_shader_parameter_defaults(
+                    {str(name): value for name, value in material.parameters.items()},
+                    shader_definition,
+                ),
             )
         )
         index_by_name[key] = index

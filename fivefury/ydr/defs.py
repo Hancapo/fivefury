@@ -51,10 +51,23 @@ class YdrLod(StrEnum):
     VERY_LOW = "vlow"
 
 
+class YdrRenderMask(IntEnum):
+    STATIC_PROP = 227
+    INTERIOR_PROP = 235
+    SHELL = 239
+    FULL = 255
+
+
 def coerce_lod(value: "YdrLod | str") -> YdrLod:
     if isinstance(value, YdrLod):
         return value
     return YdrLod(str(value).strip().lower())
+
+
+def coerce_render_mask(value: "YdrRenderMask | int") -> int:
+    if isinstance(value, YdrRenderMask):
+        return int(value)
+    return max(0, min(255, int(value)))
 
 
 LOD_ORDER = (YdrLod.HIGH, YdrLod.MEDIUM, YdrLod.LOW, YdrLod.VERY_LOW)
@@ -87,7 +100,9 @@ __all__ = [
     "LOD_ORDER",
     "LOD_POINTER_OFFSETS",
     "YdrLod",
+    "YdrRenderMask",
     "coerce_lod",
+    "coerce_render_mask",
     "VertexComponentType",
     "VertexSemantic",
 ]

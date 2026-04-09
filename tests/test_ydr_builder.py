@@ -12,6 +12,7 @@ from fivefury import (
     YdrLight,
     YdrLightType,
     YdrLod,
+    YdrRenderMask,
     YdrMaterialInput,
     YdrMeshInput,
     YdrModelInput,
@@ -79,8 +80,15 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert ydr.materials[0].shader_definition.name == "default"
     assert ydr.materials[0].resolved_shader_file_name == "default.sps"
     assert ydr.materials[0].texture_names == ["test_diffuse"]
+    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((1.0, 0.0, 0.0, 1.0))
+    assert ydr.materials[0].get_numeric_parameter("HardAlphaBlend") == pytest.approx(1.0)
+    assert ydr.materials[0].get_numeric_parameter("useTessellation") == pytest.approx(0.0)
+    assert ydr.materials[0].get_numeric_parameter("wetnessMultiplier") == pytest.approx(1.0)
+    assert ydr.materials[0].get_numeric_parameter("globalAnimUV0") == pytest.approx((1.0, 0.0, 0.0))
+    assert ydr.materials[0].get_numeric_parameter("globalAnimUV1") == pytest.approx((0.0, 1.0, 0.0))
     assert ydr.meshes[0].normals
     assert not ydr.meshes[0].tangents
+    assert ydr.get_model(0).render_mask == int(YdrRenderMask.STATIC_PROP)
 
     _header, system_data, _graphics_data = split_rsc7_sections(ydr_path.read_bytes())
     assert int.from_bytes(system_data[0x00:0x04], "little") == 0x40570C38
@@ -130,6 +138,25 @@ def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
     assert descriptor.get_texture("DiffuseSampler").texture_name == "wall_a"
     assert descriptor.get_texture("BumpSampler").texture_name == "wall_a_n"
     assert descriptor.get_texture("SpecSampler").texture_name == "wall_a_s"
+    assert descriptor.get_parameter("specMapIntMask").value == pytest.approx((1.0, 0.0, 0.0))
+    assert descriptor.get_parameter("specularIntensityMult").value == pytest.approx(1.0)
+    assert descriptor.get_parameter("specularFalloffMult").value == pytest.approx(100.0)
+    assert descriptor.get_parameter("specularFresnel").value == pytest.approx(0.75)
+
+
+def test_create_ydr_accepts_named_render_mask_presets(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        render_mask=YdrRenderMask.SHELL,
+        name="triangle_shell",
+    )
+
+    ydr_path = tmp_path / "triangle_shell.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.get_model(0).render_mask == int(YdrRenderMask.SHELL)
 
 
 def test_read_ydr_preserves_numeric_material_parameters(tmp_path: Path) -> None:
