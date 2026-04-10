@@ -112,6 +112,8 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     index_buffer_off = int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little") - 0x50000000
 
     assert int.from_bytes(system_data[model_off + 0x00 : model_off + 0x04], "little") == 0x40610A78
+    assert int.from_bytes(system_data[model_off + 0x2C : model_off + 0x30], "little") == 0x000100E3
+    assert int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 1
     assert int.from_bytes(system_data[geometry_off + 0x00 : geometry_off + 0x04], "little") == 0x40618868
     assert int.from_bytes(system_data[vertex_buffer_off + 0x00 : vertex_buffer_off + 0x04], "little") == 0x4061D3E8
     assert int.from_bytes(system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little") == 0x406131D8

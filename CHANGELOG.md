@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.20]
+
+### Fixed
+- Corrected `YDR` `DrawableModel` writing so the render-mask word no longer overwrites `GeometriesCount3`.
+- Restored the repeated geometry count in written model headers, which aligns generated `YDR` files with the structure expected by the game runtime.
+
 ## [0.1.19]
 
 ### Breaking Changes
