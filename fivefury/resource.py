@@ -24,6 +24,21 @@ def get_resource_size_from_flags(flags: int) -> int:
     return base_size * (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8)
 
 
+def get_resource_page_descriptor_count(flags: int) -> int:
+    counts = (
+        (flags >> 4) & 0x1,
+        (flags >> 5) & 0x3,
+        (flags >> 7) & 0xF,
+        (flags >> 11) & 0x3F,
+        (flags >> 17) & 0x7F,
+        (flags >> 24) & 0x1,
+        (flags >> 25) & 0x1,
+        (flags >> 26) & 0x1,
+        (flags >> 27) & 0x1,
+    )
+    return sum(1 for count in counts if count)
+
+
 def _decompose_page_count(block_count: int) -> list[int]:
     if block_count < 0:
         raise ValueError("block_count must be non-negative")
@@ -220,6 +235,8 @@ def build_rsc7(
     graphics_data: bytes = b"",
     system_alignment: int | None = None,
     graphics_alignment: int | None = None,
+    system_flags: int | None = None,
+    graphics_flags: int | None = None,
 ) -> bytes:
     if not isinstance(system_data, (bytes, bytearray, memoryview)):
         if hasattr(system_data, "to_bytes"):
@@ -233,8 +250,10 @@ def build_rsc7(
         system_data = system_data + (b"\x00" * (align(len(system_data), system_alignment) - len(system_data)))
     if graphics_alignment:
         graphics_data = graphics_data + (b"\x00" * (align(len(graphics_data), graphics_alignment) - len(graphics_data)))
-    system_flags = get_resource_flags_from_size_adaptive(len(system_data), (version >> 4) & 0xF)
-    graphics_flags = get_resource_flags_from_size_adaptive(len(graphics_data), version & 0xF)
+    if system_flags is None:
+        system_flags = get_resource_flags_from_size_adaptive(len(system_data), (version >> 4) & 0xF)
+    if graphics_flags is None:
+        graphics_flags = get_resource_flags_from_size_adaptive(len(graphics_data), version & 0xF)
     payload = system_data + graphics_data
     header = ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
     return header.pack() + compress_resource_stream(payload)

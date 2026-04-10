@@ -110,7 +110,8 @@ class Ytyp(MetaHashFieldsMixin):
         self.build()
         builder = MetaBuilder(struct_infos=_ALL_STRUCT_INFOS, enum_infos=YTYP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapTypes"), root_value=self.to_meta_root())
-        return build_rsc7(system, version=version, system_alignment=0x2000)
+        system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)
+        return build_rsc7(system, version=version, system_alignment=0x2000, system_flags=system_flags)
 
     def save(self, path: str | Path | None = None, *, version: int = 2) -> Path:
         destination = Path(path) if path is not None else Path(self.suggested_path())

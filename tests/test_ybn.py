@@ -213,6 +213,76 @@ def _make_bvh_geometry() -> BoundBVH:
     )
 
 
+def _make_large_bvh_geometry(*, polygon_count: int = 12, with_trivial_bvh: bool = False) -> BoundBVH:
+    vertices: list[tuple[float, float, float]] = []
+    polygons: list[BoundPolygonTriangle] = []
+    polygon_material_indices: list[int] = []
+    for index in range(polygon_count):
+        x = float(index % 4)
+        y = float(index // 4)
+        base = len(vertices)
+        vertices.extend(
+            [
+                (x, y, 0.0),
+                (x + 0.9, y, 0.0),
+                (x, y + 0.9, 0.0),
+            ]
+        )
+        polygons.append(
+            BoundPolygonTriangle(
+                polygon_type=0,
+                raw=b"",
+                index=index,
+                tri_area=0.405,
+                tri_index1=base,
+                tri_index2=base + 1,
+                tri_index3=base + 2,
+                edge_index1=0xFFFF,
+                edge_index2=0xFFFF,
+                edge_index3=0xFFFF,
+                material_index=0,
+            )
+        )
+        polygon_material_indices.append(0)
+
+    box_min = (0.0, 0.0, 0.0)
+    box_max = (
+        max(vertex[0] for vertex in vertices),
+        max(vertex[1] for vertex in vertices),
+        0.0,
+    )
+    box_center = ((box_min[0] + box_max[0]) * 0.5, (box_min[1] + box_max[1]) * 0.5, 0.0)
+    trivial_bvh = None
+    if with_trivial_bvh:
+        trivial_bvh = BoundBvh(
+            minimum=box_min,
+            maximum=box_max,
+            center=box_center,
+            quantum_inverse=(32767.0, 32767.0, 32767.0),
+            quantum=(1.0 / 32767.0, 1.0 / 32767.0, 1.0 / 32767.0),
+            nodes=[BoundBvhNode(minimum=box_min, maximum=box_max, item_id=0, item_count=polygon_count)],
+            trees=[BoundBvhTree(minimum=box_min, maximum=box_max, node_index=0, node_index2=1)],
+        )
+    return BoundBVH(
+        bound_type=8,
+        sphere_radius=max(box_max[0], box_max[1]),
+        box_max=box_max,
+        margin=0.04,
+        box_min=box_min,
+        box_center=box_center,
+        sphere_center=box_center,
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=float(polygon_count),
+        center_geom=box_center,
+        vertices=vertices,
+        polygons=polygons,
+        polygon_material_indices=polygon_material_indices,
+        materials=[BoundMaterial(type=56)],
+        bvh=trivial_bvh,
+    )
+
+
 def test_read_ybn_reads_sphere_bound() -> None:
     ybn = read_ybn(_build_test_ybn_bytes(), path="sphere.ybn")
 
@@ -343,6 +413,11 @@ def test_build_ybn_bytes_roundtrips_geometry_bound() -> None:
     assert ybn.bound.materials[0].name == "METAL_SOLID_MEDIUM"
     assert ybn.bound.material_colours[0].rgba == (10, 20, 30, 40)
     assert ybn.bound.vertex_colours[2].rgba == (0, 0, 255, 255)
+    assert len(ybn.bound.vertices_shrunk) == ybn.bound.vertex_count
+    assert ybn.bound.octants is not None
+    assert ybn.bound.octants.has_items
+    assert len(ybn.bound.octants.items) == 8
+    assert ybn.bound.octants.total_items > 0
 
 
 def test_ybn_from_bound_and_save_roundtrip_composite_with_geometry_child() -> None:
@@ -402,6 +477,39 @@ def test_build_ybn_bytes_roundtrips_bvh_geometry_bound() -> None:
     assert ybn.bound.bvh.nodes[0].item_count == 1
 
 
+def test_build_ybn_bytes_generates_nontrivial_bvh_for_large_geometry() -> None:
+    source = _make_large_bvh_geometry()
+
+    raw = build_ybn_bytes(source)
+    ybn = read_ybn(raw, path="generated_large_bvh.ybn")
+
+    assert isinstance(ybn.bound, BoundBVH)
+    assert ybn.bound.bvh is not None
+    assert ybn.bound.bvh.node_count > 1
+    assert ybn.bound.bvh.tree_count >= 1
+    assert ybn.bound.bvh.leaf_nodes
+    assert all(node.item_count <= 4 for node in ybn.bound.bvh.leaf_nodes)
+
+    from fivefury.binary import u32
+    from fivefury.resource import split_rsc7_sections
+
+    _, system_data, _ = split_rsc7_sections(raw)
+    assert u32(system_data, 0x84) == u32(system_data, 0xD0)
+
+
+def test_build_ybn_bytes_rebuilds_trivial_large_bvh() -> None:
+    source = _make_large_bvh_geometry(with_trivial_bvh=True)
+
+    ybn = read_ybn(build_ybn_bytes(source), path="rebuilt_large_bvh.ybn")
+
+    assert isinstance(ybn.bound, BoundBVH)
+    assert ybn.bound.bvh is not None
+    assert ybn.bound.bvh.node_count > 1
+    assert ybn.bound.bvh.tree_count >= 1
+    assert ybn.bound.bvh.leaf_nodes
+    assert all(node.item_count <= 4 for node in ybn.bound.bvh.leaf_nodes)
+
+
 def test_read_real_reference_ybn() -> None:
     path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\apa_ch2_04_12.ybn")
 
@@ -428,3 +536,12 @@ def test_read_real_reference_ybn_decodes_geometry_polygons_and_bvh() -> None:
     assert geometry.bvh.node_count > 0
     assert geometry.bvh.tree_count > 0
     assert geometry.bvh.leaf_nodes
+
+
+def test_build_ybn_bytes_does_not_emit_octants_for_bvh_geometry() -> None:
+    source = _make_large_bvh_geometry()
+
+    ybn = read_ybn(build_ybn_bytes(source), path="large_bvh_no_octants.ybn")
+
+    assert isinstance(ybn.bound, BoundBVH)
+    assert ybn.bound.octants is None

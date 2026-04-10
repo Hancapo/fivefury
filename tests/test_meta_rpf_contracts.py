@@ -121,6 +121,30 @@ def _align(value: int, alignment: int) -> int:
     return (value + alignment - 1) & ~(alignment - 1)
 
 
+def _parse_meta_layout(data: bytes) -> dict[str, object]:
+    from fivefury.resource import split_rsc7_sections
+
+    header, system_data, _ = split_rsc7_sections(data)
+    root = struct.unpack_from("<ihbbiiqqqqqhhhh8I", system_data, 16)
+    pages_info = struct.unpack_from("<IIBBHI", system_data, 0x70)
+    data_block_pointer = int(root[8])
+    data_block_count = int(root[13])
+    data_block_offset = data_block_pointer - _DAT_VIRTUAL_BASE if data_block_pointer else 0
+    data_blocks: list[tuple[int, int, int]] = []
+    for index in range(data_block_count):
+        name_hash, length, pointer = struct.unpack_from("<IIq", system_data, data_block_offset + (index * 16))
+        data_blocks.append((name_hash, length, pointer))
+    return {
+        "header": header,
+        "pages_info": pages_info,
+        "struct_ptr": int(root[6]),
+        "enum_ptr": int(root[7]),
+        "data_block_ptr": data_block_pointer,
+        "data_block_count": data_block_count,
+        "data_blocks": data_blocks,
+    }
+
+
 def _build_test_ytd_bytes(*, enhanced: bool = False) -> bytes:
     from fivefury.resource import build_rsc7
     from fivefury.texture import BCFormat, BC_TO_DX9, BC_TO_RSC8, row_pitch
@@ -251,6 +275,55 @@ def _build_embedded_texture_resource(kind: str, *, enhanced: bool = False) -> by
 
 
 class MetaAndArchiveContractTests(PytestCompat):
+    def test_meta_builder_reuses_blocks_until_the_existing_group_reaches_the_limit(self) -> None:
+        from fivefury.meta.builder import MetaBuilder
+
+        builder = MetaBuilder()
+        first = builder._add_block(0x12345678, bytes(0x3FF0), group=True)
+        second = builder._add_block(0x12345678, bytes(0x30), group=True)
+
+        self.assertEqual(first.block_id, second.block_id)
+        self.assertEqual(len(builder.blocks), 1)
+        self.assertEqual(len(builder.blocks[0].data), 0x4020)
+
+    def test_good_ymap_roundtrip_preserves_meta_layout_contract(self) -> None:
+        from fivefury import read_ymap
+
+        source = Path(r"C:\Users\vicho\OneDrive\Desktop\aprende\raw\aliencity4.ymap")
+        if not source.exists():
+            self.skipTest("Representative working YMAP fixture is not available")
+
+        original = _parse_meta_layout(source.read_bytes())
+        rebuilt = _parse_meta_layout(read_ymap(source.read_bytes()).to_bytes())
+
+        self.assertEqual(rebuilt["header"].system_flags, original["header"].system_flags)
+        self.assertEqual(rebuilt["header"].system_size, original["header"].system_size)
+        self.assertEqual(rebuilt["pages_info"], original["pages_info"])
+        self.assertEqual(rebuilt["struct_ptr"], original["struct_ptr"])
+        self.assertEqual(rebuilt["enum_ptr"], original["enum_ptr"])
+        self.assertEqual(rebuilt["data_block_ptr"], original["data_block_ptr"])
+        self.assertEqual(rebuilt["data_block_count"], original["data_block_count"])
+        self.assertEqual(rebuilt["data_blocks"], original["data_blocks"])
+
+    def test_good_ytyp_roundtrip_preserves_meta_layout_contract(self) -> None:
+        from fivefury import read_ytyp
+
+        source = Path(r"C:\Users\vicho\OneDrive\Desktop\aprende\raw\alien.ytyp")
+        if not source.exists():
+            self.skipTest("Representative working YTYP fixture is not available")
+
+        original = _parse_meta_layout(source.read_bytes())
+        rebuilt = _parse_meta_layout(read_ytyp(source.read_bytes()).to_bytes())
+
+        self.assertEqual(rebuilt["header"].system_flags, original["header"].system_flags)
+        self.assertEqual(rebuilt["header"].system_size, original["header"].system_size)
+        self.assertEqual(rebuilt["pages_info"], original["pages_info"])
+        self.assertEqual(rebuilt["struct_ptr"], original["struct_ptr"])
+        self.assertEqual(rebuilt["enum_ptr"], original["enum_ptr"])
+        self.assertEqual(rebuilt["data_block_ptr"], original["data_block_ptr"])
+        self.assertEqual(rebuilt["data_block_count"], original["data_block_count"])
+        self.assertEqual(rebuilt["data_blocks"], original["data_blocks"])
+
     def test_ymap_high_level_save_helper_if_available(self) -> None:
         ymap = _make_ymap("unit_test.ymap")
         if ymap is None:

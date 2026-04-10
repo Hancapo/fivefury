@@ -273,6 +273,10 @@ def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
     assert geometry.get_material(geometry.polygons[0].material_index) is not None
     assert geometry.get_material(geometry.polygons[0].material_index).name
     assert len(geometry.get_material(geometry.polygons[0].material_index).color) == 3
+    assert len(geometry.vertices_shrunk) == geometry.vertex_count
+    assert geometry.octants is not None
+    assert geometry.octants.counts == (4, 4, 4, 4, 4, 4, 4, 4)
+    assert geometry.octants.total_items == 32
 
 
 def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) -> None:
@@ -290,3 +294,6 @@ def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) 
     assert isinstance(source.bound, BoundComposite)
     assert rebuilt.bound.child_count == source.bound.child_count
     assert rebuilt.bound.geometries[0].polygon_count == source.bound.geometries[0].polygon_count
+    assert rebuilt.bound.geometries[0].octants is not None
+    assert source.bound.geometries[0].octants is not None
+    assert rebuilt.bound.geometries[0].octants.items == source.bound.geometries[0].octants.items

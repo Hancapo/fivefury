@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ..binary import align, pad_bytes
+from ..resource import get_resource_flags_from_blocks, get_resource_page_descriptor_count
 from ..metahash import MetaHash
 from . import (
     FLOAT_XYZ_NAME_HASH,
@@ -44,6 +45,9 @@ class _WritableBlock:
 
 class MetaBuilder:
     MAX_BLOCK_LENGTH = 0x4000
+    RESERVED_SYSTEM_PAGE_SLOTS = 128
+    RESERVED_PAGES_INFO_SIZE = 16 + (8 * RESERVED_SYSTEM_PAGE_SLOTS)
+    META_LAYOUT_OFFSET = 0x480
 
     def __init__(
         self,
@@ -63,6 +67,9 @@ class MetaBuilder:
         self.used_enum_hashes: set[int] = set()
         self.blocks: list[_WritableBlock] = []
         self._block_group: dict[int, list[int]] = {}
+        self.page_size: int = 0x2000
+        self.page_count: int = 1
+        self.page_flags: int = 0
 
     def register_struct(self, info: MetaStructInfo) -> None:
         if info.name_hash not in self.struct_infos:
@@ -87,6 +94,30 @@ class MetaBuilder:
             root_block_id = 0
         return self._compose_system_stream(root_block_id)
 
+    def _choose_page_size(self) -> int:
+        max_block_size = max((len(block.data) for block in self.blocks), default=0)
+        page_size = 0x2000
+        while page_size < max_block_size:
+            page_size <<= 1
+        return page_size
+
+    def _layout_data_blocks(self, start_offset: int) -> tuple[int, list[int], int]:
+        page_size = self._choose_page_size()
+        offsets: list[int] = []
+        offset = align(start_offset, 16)
+        for block in self.blocks:
+            block_length = len(block.data)
+            offset = align(offset, 16)
+            if block_length:
+                start_page = offset // page_size
+                end_page = (offset + block_length - 1) // page_size
+                if end_page != start_page:
+                    offset = align(offset, page_size)
+            offsets.append(offset)
+            offset += block_length
+        total_size = align(offset, page_size)
+        return page_size, offsets, total_size
+
     def _reserve_block(self, name_hash: int) -> int:
         self.blocks.append(_WritableBlock(name_hash=name_hash))
         block_id = len(self.blocks)
@@ -108,7 +139,7 @@ class MetaBuilder:
         if group:
             for index in self._block_group.get(name_hash, ()):
                 block = self.blocks[index]
-                if len(block.data) + len(item) > self.MAX_BLOCK_LENGTH:
+                if len(block.data) >= self.MAX_BLOCK_LENGTH:
                     continue
                 pointer = MetaPointer(block_id=index + 1, offset=len(block.data))
                 self.blocks[index].data = block.data + item
@@ -293,7 +324,11 @@ class MetaBuilder:
     def _compose_system_stream(self, root_block_id: int) -> bytes:
         struct_infos = [self.struct_infos[name_hash] for name_hash in self.struct_info_order if name_hash in self.used_struct_hashes]
         enum_infos = [self.enum_infos[name_hash] for name_hash in self.enum_info_order if name_hash in self.used_enum_hashes]
-        offset = RESOURCE_FILE_BASE_SIZE + META_ROOT_SIZE
+        offset = self.META_LAYOUT_OFFSET
+
+        struct_infos_offset = offset if struct_infos else 0
+        offset += len(struct_infos) * 32
+        offset = align(offset, 16)
 
         struct_entry_offsets: dict[int, int] = {}
         struct_entry_payloads: list[tuple[MetaStructInfo, bytes, int]] = []
@@ -314,6 +349,10 @@ class MetaBuilder:
             struct_entry_payloads.append((info, payload, offset))
             offset += len(payload)
 
+        enum_infos_offset = offset if enum_infos else 0
+        offset += len(enum_infos) * 24
+        offset = align(offset, 16)
+
         enum_entry_offsets: dict[int, int] = {}
         enum_entry_payloads: list[tuple[MetaEnumInfo, bytes, int]] = []
         for info in enum_infos:
@@ -322,12 +361,7 @@ class MetaBuilder:
             enum_entry_payloads.append((info, payload, offset))
             offset += len(payload)
 
-        struct_infos_offset = offset if struct_infos else 0
-        offset += len(struct_infos) * 32
-
-        enum_infos_offset = offset if enum_infos else 0
-        offset += len(enum_infos) * 24
-
+        offset = align(offset, 16)
         data_blocks_offset = offset if self.blocks else 0
         offset += len(self.blocks) * 16
 
@@ -336,16 +370,17 @@ class MetaBuilder:
         offset += len(name_bytes)
 
         offset = align(offset, 16)
-        block_offsets: list[int] = []
-        for block in self.blocks:
-            block_offsets.append(offset)
-            offset += len(block.data)
+        page_size, block_offsets, total_size = self._layout_data_blocks(offset)
+        page_count = max(1, total_size // page_size)
+        self.page_size = page_size
+        self.page_count = page_count
+        page_flags = get_resource_flags_from_blocks(page_count, page_size, 0)
+        self.page_flags = page_flags
+        pages_info_count = get_resource_page_descriptor_count(page_flags)
+        pages_info_offset = META_ROOT_SIZE
+        pages_info_size = 16 + (8 * pages_info_count)
 
-        pages_info_offset = offset
-        pages_info = struct.pack("<IIBBHI", 0, 0, 1, 0, 0, 0) + (b"\x00" * 8)
-        offset += len(pages_info)
-
-        system = bytearray(offset)
+        system = bytearray(total_size)
 
         struct.pack_into("<IIQ", system, 0, META_FILE_VFT, 1, SYSTEM_BASE + pages_info_offset)
         struct.pack_into(
@@ -376,6 +411,7 @@ class MetaBuilder:
             0,
             0,
         )
+        system[pages_info_offset : pages_info_offset + pages_info_size] = struct.pack("<IIBBHI", 0, 0, pages_info_count, 0, 0, 0) + (b"\x00" * (8 * pages_info_count))
 
         for info, payload, entry_offset in struct_entry_payloads:
             system[entry_offset : entry_offset + len(payload)] = payload
@@ -426,7 +462,6 @@ class MetaBuilder:
 
         if name_bytes:
             system[name_offset : name_offset + len(name_bytes)] = name_bytes
-        system[pages_info_offset : pages_info_offset + len(pages_info)] = pages_info
         return bytes(system)
 
 

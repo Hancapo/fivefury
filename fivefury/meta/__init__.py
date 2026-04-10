@@ -210,7 +210,18 @@ class Meta:
         )
 
     def to_rsc7(self) -> bytes:
-        return build_rsc7(self.to_bytes(), version=self.resource_version, system_alignment=0x2000)
+        builder = MetaBuilder(struct_infos=self.struct_infos, enum_infos=self.enum_infos, name=self.Name)
+        system = builder.build(
+            root_name_hash=self.root_name_hash,
+            root_value=self.root_value,
+        )
+        system_flags = builder.page_flags | (((self.resource_version >> 4) & 0xF) << 28)
+        return build_rsc7(
+            system,
+            version=self.resource_version,
+            system_alignment=0x2000,
+            system_flags=system_flags,
+        )
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Meta":

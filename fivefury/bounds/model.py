@@ -91,6 +91,93 @@ class BoundMaterialColor:
         return (self.r, self.g, self.b, self.a)
 
 
+_OCTANT_SIGNS: tuple[tuple[int, int, int], ...] = (
+    (1, 1, 1),
+    (-1, 1, 1),
+    (1, -1, 1),
+    (-1, -1, 1),
+    (1, 1, -1),
+    (-1, 1, -1),
+    (1, -1, -1),
+    (-1, -1, -1),
+)
+
+
+def _normalize_octant_items(items: list[list[int]] | tuple[tuple[int, ...], ...] | None) -> list[list[int]]:
+    source = list(items or [])
+    normalized = [list(map(int, source[index])) if index < len(source) else [] for index in range(8)]
+    return normalized
+
+
+def _octant_shadowed(
+    vertex1: tuple[float, float, float],
+    vertex2: tuple[float, float, float],
+    signs: tuple[int, int, int],
+) -> bool:
+    direction = (
+        (vertex2[0] - vertex1[0]) * signs[0],
+        (vertex2[1] - vertex1[1]) * signs[1],
+        (vertex2[2] - vertex1[2]) * signs[2],
+    )
+    return direction[0] >= 0.0 and direction[1] >= 0.0 and direction[2] >= 0.0
+
+
+@dataclasses.dataclass(slots=True)
+class BoundGeometryOctants:
+    items: list[list[int]] = dataclasses.field(default_factory=lambda: [[] for _ in range(8)])
+
+    def __post_init__(self) -> None:
+        self.items = _normalize_octant_items(self.items)
+
+    @classmethod
+    def from_vertices(
+        cls,
+        vertices: list[tuple[float, float, float]],
+    ) -> "BoundGeometryOctants":
+        octant_items: list[list[int]] = [[] for _ in range(8)]
+        for octant_index, signs in enumerate(_OCTANT_SIGNS):
+            indices: list[int] = []
+            for vertex_index, vertex in enumerate(vertices):
+                should_add = True
+                next_indices: list[int] = []
+                for other_index in indices:
+                    other_vertex = vertices[other_index]
+                    if _octant_shadowed(vertex, other_vertex, signs):
+                        should_add = False
+                        next_indices = indices
+                        break
+                    if not _octant_shadowed(other_vertex, vertex, signs):
+                        next_indices.append(other_index)
+                if should_add:
+                    next_indices.append(vertex_index)
+                indices = next_indices
+            octant_items[octant_index] = indices
+        return cls(items=octant_items)
+
+    @property
+    def counts(self) -> tuple[int, int, int, int, int, int, int, int]:
+        return tuple(len(items) for items in self.items)  # type: ignore[return-value]
+
+    @property
+    def total_items(self) -> int:
+        return sum(len(items) for items in self.items)
+
+    @property
+    def has_items(self) -> bool:
+        return any(self.items)
+
+    def validate(self, vertex_count: int) -> list[str]:
+        issues: list[str] = []
+        if len(self.items) != 8:
+            issues.append("octants must contain exactly 8 item lists")
+            return issues
+        for octant_index, indices in enumerate(self.items):
+            for vertex_index in indices:
+                if vertex_index < 0 or vertex_index >= vertex_count:
+                    issues.append(f"octant {octant_index} references invalid vertex index {vertex_index}")
+        return issues
+
+
 @dataclasses.dataclass(slots=True)
 class BoundBvhNode:
     minimum: tuple[float, float, float]
@@ -362,6 +449,7 @@ class BoundGeometry(Bound):
     materials: list[BoundMaterial] = dataclasses.field(default_factory=list)
     material_colours: list[BoundMaterialColor] = dataclasses.field(default_factory=list)
     vertex_colours: list[BoundMaterialColor] = dataclasses.field(default_factory=list)
+    octants: BoundGeometryOctants | None = None
 
     @property
     def vertex_count(self) -> int:
@@ -389,6 +477,10 @@ class BoundGeometry(Bound):
     def has_vertex_colours(self) -> bool:
         return bool(self.vertex_colours)
 
+    @property
+    def has_octants(self) -> bool:
+        return self.octants is not None and self.octants.has_items
+
     def add_vertex(self, vertex: tuple[float, float, float]) -> tuple[float, float, float]:
         value = (float(vertex[0]), float(vertex[1]), float(vertex[2]))
         self.vertices.append(value)
@@ -411,12 +503,21 @@ class BoundGeometry(Bound):
             polygon.index = index
         if len(self.polygon_material_indices) != len(self.polygons):
             self.polygon_material_indices = [max(0, int(polygon.material_index)) for polygon in self.polygons]
+        if self.bound_type is BoundType.GEOMETRY:
+            if not self.vertices_shrunk and self.vertices:
+                self.vertices_shrunk = list(self.vertices)
+            if self.octants is None and self.vertices_shrunk:
+                self.octants = BoundGeometryOctants.from_vertices(self.vertices_shrunk)
+        else:
+            self.octants = None
         return self
 
     def validate(self) -> list[str]:
         issues = super().validate()
         if len(self.polygon_material_indices) != len(self.polygons):
             issues.append("polygon_material_indices length does not match polygon count")
+        if self.octants is not None:
+            issues.extend(self.octants.validate(self.vertex_count))
         return issues
 
 
@@ -494,6 +595,7 @@ __all__ = [
     'BoundCylinder',
     'BoundDisc',
     'BoundGeometry',
+    'BoundGeometryOctants',
     'BoundMaterial',
     'BoundMaterialColor',
     'BoundPolygon',

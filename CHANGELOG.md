@@ -6,6 +6,16 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.21]
+
+### Added
+- Added generated octants for `BoundGeometry` plus roundtrip support for reading and writing geometry octant data in `YBN` and embedded `YDR` bounds.
+
+### Fixed
+- Reworked META/RSC7 writing for `YMAP` and `YTYP` so generated files now preserve the page-based system layout, table ordering, and resource flags used by working game files.
+- Corrected `MetaBuilder` block grouping to match CodeWalker-style `DataBlock` packing, which fixes `YTYP` block counts and page placement for larger archetype sets.
+- Aligned `Meta.to_rsc7()`, `Ymap.to_bytes()`, and `Ytyp.to_bytes()` with explicit META page flags instead of falling back to adaptive compact flags.
+
 ## [0.1.20]
 
 ### Fixed

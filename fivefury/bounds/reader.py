@@ -20,6 +20,7 @@ from .model import (
     BoundCylinder,
     BoundDisc,
     BoundGeometry,
+    BoundGeometryOctants,
     BoundMaterial,
     BoundMaterialColor,
     BoundPolygon,
@@ -294,6 +295,27 @@ def _read_bytes(pointer: int, count: int, system_data: bytes) -> list[int]:
     return list(system_data[start:end])
 
 
+def _read_octants(octants_pointer: int, octant_items_pointer: int, system_data: bytes) -> BoundGeometryOctants | None:
+    if not octants_pointer or not octant_items_pointer:
+        return None
+    counts_offset = _virtual_offset(octants_pointer, system_data)
+    items_offset = _virtual_offset(octant_items_pointer, system_data)
+    counts = [u32(system_data, counts_offset + (index * 4)) for index in range(8)]
+    item_pointers = [u64(system_data, items_offset + (index * 8)) for index in range(8)]
+    items: list[list[int]] = []
+    for count, item_pointer in zip(counts, item_pointers, strict=True):
+        if count <= 0 or not item_pointer:
+            items.append([])
+            continue
+        item_offset = _virtual_offset(item_pointer, system_data)
+        end = item_offset + (count * 4)
+        if end > len(system_data):
+            raise ValueError("octant item array is truncated")
+        items.append([u32(system_data, item_offset + (index * 4)) for index in range(count)])
+    octants = BoundGeometryOctants(items=items)
+    return octants if octants.has_items else None
+
+
 def _read_matrix4f(offset: int, system_data: bytes) -> BoundTransform:
     c1 = vec3(system_data, offset + 0x00)
     f1 = u32(system_data, offset + 0x0C)
@@ -361,6 +383,7 @@ def _read_geometry(offset: int, system_data: bytes, *, with_bvh: bool) -> BoundG
         materials=_read_materials(u64(system_data, offset + 0xF0), max(4, materials_count) if materials_count else 0, system_data)[:materials_count or 0],
         material_colours=_read_material_colours(u64(system_data, offset + 0xF8), material_colours_count, system_data),
         vertex_colours=_read_material_colours(u64(system_data, offset + 0xB8), vertices_count, system_data),
+        octants=None if with_bvh else _read_octants(u64(system_data, offset + 0xC0), u64(system_data, offset + 0xC8), system_data),
     )
     for index, polygon in enumerate(geometry.polygons):
         if index < len(geometry.polygon_material_indices):
