@@ -6,6 +6,13 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.23]
+
+### Fixed
+- Reworked legacy `YDR` mesh-buffer serialization so vertex data now lives in `system` pages instead of being emitted into `graphics` pages.
+- Updated written legacy `YDR` roots to use `FileUnknown = 'HCLA'`, matching working resource headers instead of the older generic value.
+- Added regressions for system-only legacy `YDR` output and real-file roundtrips against working samples.
+
 ## [0.1.22]
 
 ### Fixed

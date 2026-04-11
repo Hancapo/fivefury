@@ -781,7 +781,8 @@ def _build_mesh_blocks(system: ResourceWriter, graphics: _GraphicsWriter, meshes
         system.data[decl_off + 0x07] = max(1, len(mesh.layout.semantics))
         system.pack_into('Q', decl_off + 0x08, mesh.declaration_types)
 
-        vertex_data_off = graphics.alloc(mesh.vertex_bytes, alignment=16)
+        vertex_data_off = system.alloc(len(mesh.vertex_bytes), 16)
+        system.write(vertex_data_off, mesh.vertex_bytes)
         index_data_off = system.alloc(len(mesh.index_bytes), 16) if mesh.index_bytes else 0
         if index_data_off:
             system.write(index_data_off, mesh.index_bytes)
@@ -792,10 +793,10 @@ def _build_mesh_blocks(system: ResourceWriter, graphics: _GraphicsWriter, meshes
         system.pack_into('H', vertex_buffer_off + 0x08, mesh.vertex_stride)
         system.pack_into('H', vertex_buffer_off + 0x0A, 0)
         system.pack_into('I', vertex_buffer_off + 0x0C, 0)
-        system.pack_into('Q', vertex_buffer_off + 0x10, _physical(vertex_data_off))
+        system.pack_into('Q', vertex_buffer_off + 0x10, _virtual(vertex_data_off))
         system.pack_into('I', vertex_buffer_off + 0x18, len(mesh.positions))
         system.pack_into('I', vertex_buffer_off + 0x1C, 0)
-        system.pack_into('Q', vertex_buffer_off + 0x20, _physical(vertex_data_off))
+        system.pack_into('Q', vertex_buffer_off + 0x20, _virtual(vertex_data_off))
         system.pack_into('Q', vertex_buffer_off + 0x30, _virtual(decl_off))
 
         index_buffer_off = system.alloc(0x60, 16)
@@ -828,7 +829,7 @@ def _build_mesh_blocks(system: ResourceWriter, graphics: _GraphicsWriter, meshes
         struct.pack_into('<H', geometry_bytes, 0x70, mesh.vertex_stride)
         struct.pack_into('<H', geometry_bytes, 0x72, bone_ids_count)
         struct.pack_into('<I', geometry_bytes, 0x74, 0)
-        struct.pack_into('<Q', geometry_bytes, 0x78, _physical(vertex_data_off))
+        struct.pack_into('<Q', geometry_bytes, 0x78, _virtual(vertex_data_off))
 
         blocks.append(
             _MeshBlock(
@@ -997,7 +998,7 @@ def _build_system_payload(
     _write_pages_info(system, page_counts)
 
     system.pack_into('I', 0x00, _DRAWABLE_FILE_VFT)
-    system.pack_into('I', 0x04, 1)
+    system.pack_into('I', 0x04, 0x48434C41)
     system.pack_into('Q', 0x08, _virtual(_PAGES_INFO_OFFSET))
     system.pack_into('Q', 0x10, _virtual(shader_group_off))
     system.pack_into('Q', shader_group_off + 0x08, _virtual(texture_dictionary_off) if texture_dictionary_off else 0)

@@ -95,14 +95,15 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert not ydr.meshes[0].tangents
     assert ydr.get_model(0).render_mask == int(YdrRenderMask.STATIC_PROP)
 
-    _header, system_data, _graphics_data = split_rsc7_sections(ydr_path.read_bytes())
+    _header, system_data, graphics_data = split_rsc7_sections(ydr_path.read_bytes())
     assert int.from_bytes(system_data[0x00:0x04], "little") == 0x40570C38
-    assert int.from_bytes(system_data[0x04:0x08], "little") == 1
+    assert int.from_bytes(system_data[0x04:0x08], "little") == 0x48434C41
     assert int.from_bytes(system_data[0x08:0x10], "little") != 0
     assert int.from_bytes(system_data[0x10:0x18], "little") != 0
     assert int.from_bytes(system_data[0x50:0x58], "little") != 0
     assert int.from_bytes(system_data[0xA0:0xA8], "little") != 0
     assert int.from_bytes(system_data[0xA8:0xB0], "little") != 0
+    assert graphics_data == b""
 
     model_list_off = int.from_bytes(system_data[0xA0:0xA8], "little") - 0x50000000
     model_off = int.from_bytes(system_data[model_list_off + 0x10 : model_list_off + 0x18], "little") - 0x50000000
@@ -118,6 +119,24 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert int.from_bytes(system_data[vertex_buffer_off + 0x00 : vertex_buffer_off + 0x04], "little") == 0x4061D3E8
     assert int.from_bytes(system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little") == 0x406131D8
     assert system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18] == system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28]
+    assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
+    assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
+
+
+def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path: Path) -> None:
+    source_path = Path(
+        r"C:\txData\FiveMBasicServerCFXDefault_F95623.base\resources\anderius\stream\funplace2\bigbugboard.ydr"
+    )
+    if not source_path.exists():
+        pytest.skip("real YDR sample not available")
+
+    ydr = read_ydr(source_path)
+    output_path = tmp_path / source_path.name
+    ydr.save(output_path)
+
+    _header, system_data, graphics_data = split_rsc7_sections(output_path.read_bytes())
+    assert graphics_data == b""
+    assert int.from_bytes(system_data[0x04:0x08], "little") == 0x48434C41
 
 
 def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
