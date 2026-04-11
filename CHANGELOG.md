@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.22]
+
+### Fixed
+- Reworked `YBN` bounds serialization to write a real `ResourceFileBase` root, including `FileVFT`, `FileUnknown`, and `ResourcePagesInfo`, instead of emitting zeroed root metadata.
+- Preserved additional bound header fields during `YBN` read/write roundtrips, including previously ignored common `Bounds` unknowns and the root pages-info block.
+- Aligned generated `YBN` root page counts with the encoded `RSC7` system flags so large collision resources no longer export with an empty or inconsistent pages-info header.
+- Updated `BoundBVH` writing to emit `NaN` W components in the BVH bounding vectors, matching the layout used by working resources and CodeWalker.
+
 ## [0.1.21]
 
 ### Added

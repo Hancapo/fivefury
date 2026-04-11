@@ -31,6 +31,7 @@ from fivefury import (
     read_ybn,
     save_ybn,
 )
+from fivefury.resource import get_resource_total_page_count, split_rsc7_sections
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
 
@@ -298,12 +299,18 @@ def test_read_ybn_reads_sphere_bound() -> None:
 def test_build_ybn_bytes_roundtrips_sphere_bound() -> None:
     source = _make_sphere()
 
-    ybn = read_ybn(build_ybn_bytes(source), path="roundtrip_sphere.ybn")
+    data = build_ybn_bytes(source)
+    ybn = read_ybn(data, path="roundtrip_sphere.ybn")
+    header, system_data, _ = split_rsc7_sections(data)
 
     assert isinstance(ybn.bound, BoundSphere)
     assert ybn.bound.sphere_center == source.sphere_center
     assert ybn.bound.sphere_radius == source.sphere_radius
     assert ybn.bound.material_index == source.material_index
+    assert ybn.bound.file_vft != 0
+    assert ybn.bound.file_pages_info is not None
+    assert ybn.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
+    assert int.from_bytes(system_data[8:16], "little") != 0
 
 
 def test_default_bound_material_library_has_expected_names() -> None:
@@ -320,6 +327,27 @@ def test_parse_bound_material_names_uses_simple_name_per_line_format() -> None:
     assert library.get_name(2) == "ROCK"
     assert library.get_color(0) == (17, 34, 51)
     assert library.get_color(2) == (10, 20, 30)
+
+
+def test_roundtrip_real_west02_ybn_if_available() -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\west02_0.ybn")
+    if not source_path.exists():
+        return
+
+    source = read_ybn(source_path)
+    data = source.to_bytes()
+    roundtrip = read_ybn(data)
+    header, system_data, _ = split_rsc7_sections(data)
+
+    assert roundtrip.bound.file_vft != 0
+    assert roundtrip.bound.file_pages_info is not None
+    assert roundtrip.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
+    assert int.from_bytes(system_data[0:4], "little") != 0
+    assert int.from_bytes(system_data[8:16], "little") != 0
+    assert len(roundtrip.bound.geometries) == len(source.bound.geometries)
+    assert len(roundtrip.bound.geometries[0].polygons) == len(source.bound.geometries[0].polygons)
+    assert len(roundtrip.bound.geometries[0].bvh.nodes) == len(source.bound.geometries[0].bvh.nodes)
+    assert len(roundtrip.bound.geometries[0].bvh.trees) == len(source.bound.geometries[0].bvh.trees)
 
 
 def test_gamefilecache_parses_loose_ybn() -> None:

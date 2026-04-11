@@ -39,6 +39,21 @@ def get_resource_page_descriptor_count(flags: int) -> int:
     return sum(1 for count in counts if count)
 
 
+def get_resource_total_page_count(flags: int) -> int:
+    counts = (
+        (flags >> 17) & 0x7F,
+        (flags >> 11) & 0x3F,
+        (flags >> 7) & 0xF,
+        (flags >> 5) & 0x3,
+        (flags >> 4) & 0x1,
+        (flags >> 24) & 0x1,
+        (flags >> 25) & 0x1,
+        (flags >> 26) & 0x1,
+        (flags >> 27) & 0x1,
+    )
+    return sum(counts)
+
+
 def _decompose_page_count(block_count: int) -> list[int]:
     if block_count < 0:
         raise ValueError("block_count must be non-negative")

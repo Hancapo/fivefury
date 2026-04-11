@@ -91,6 +91,20 @@ class BoundMaterialColor:
         return (self.r, self.g, self.b, self.a)
 
 
+@dataclasses.dataclass(slots=True)
+class BoundResourcePagesInfo:
+    unknown_0h: int = 0
+    unknown_4h: int = 0
+    system_pages_count: int = 0
+    graphics_pages_count: int = 0
+    unknown_ah: int = 0
+    unknown_ch: int = 0
+
+    @property
+    def total_page_count(self) -> int:
+        return int(self.system_pages_count) + int(self.graphics_pages_count)
+
+
 _OCTANT_SIGNS: tuple[tuple[int, int, int], ...] = (
     (1, 1, 1),
     (-1, 1, 1),
@@ -336,6 +350,13 @@ class Bound:
     box_min: tuple[float, float, float]
     box_center: tuple[float, float, float]
     sphere_center: tuple[float, float, float]
+    file_vft: int = 0
+    file_unknown: int = 1
+    file_pages_info: BoundResourcePagesInfo | None = None
+    unknown_11h: int = 0
+    unknown_12h: int = 0
+    unknown_18h: int = 0
+    unknown_1ch: int = 0
     material_index: int = 0
     procedural_id: int = 0
     room_id: int = 0
@@ -344,6 +365,7 @@ class Bound:
     poly_flags: int = 0
     material_color_index: int = 0
     unknown_3ch: int = 1
+    unknown_5eh: int = 0
     unknown_60h: tuple[float, float, float] = (0.0, 0.0, 0.0)
     volume: float = 0.0
 
@@ -605,6 +627,7 @@ __all__ = [
     'BoundPolygonSphere',
     'BoundPolygonTriangle',
     'BoundPolygonType',
+    'BoundResourcePagesInfo',
     'BoundSphere',
     'BoundTransform',
     'BoundType',

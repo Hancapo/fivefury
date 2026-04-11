@@ -26,6 +26,7 @@ from .bounds import (
     BoundPolygonSphere,
     BoundPolygonTriangle,
     BoundPolygonType,
+    BoundResourcePagesInfo,
     BoundSphere,
     BoundTransform,
     BoundType,

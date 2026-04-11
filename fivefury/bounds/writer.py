@@ -30,6 +30,7 @@ from .model import (
     BoundPolygonCylinder,
     BoundPolygonSphere,
     BoundPolygonTriangle,
+    BoundResourcePagesInfo,
     BoundSphere,
     BoundTransform,
 )
@@ -43,6 +44,16 @@ _GEOMETRY_BVH_BLOCK_SIZE = 0x150
 _BVH_BLOCK_SIZE = 0x80
 _GEOMETRY_BVH_ITEM_THRESHOLD = 4
 _MAX_BVH_TREE_NODE_COUNT = 127
+_DEFAULT_BOUND_FILE_VFT = {
+    BoundSphere: 1080221960,
+    BoundCapsule: 1080213112,
+    BoundBox: 1080221016,
+    BoundDisc: 1080229960,
+    BoundCylinder: 1080202872,
+    BoundBVH: 1080228536,
+    BoundGeometry: 1080226408,
+    BoundComposite: 1080212136,
+}
 
 
 def _virtual(offset: int) -> int:
@@ -88,14 +99,33 @@ def _write_composite_flags(writer: ResourceWriter, offset: int, flags: BoundComp
     writer.pack_into("II", offset, value.flags1, value.flags2)
 
 
+def _default_file_vft(bound: Bound) -> int:
+    for cls, value in _DEFAULT_BOUND_FILE_VFT.items():
+        if isinstance(bound, cls):
+            return value
+    return 0
+
+
+def _write_resource_file_base(
+    writer: ResourceWriter,
+    offset: int,
+    bound: Bound,
+    *,
+    pages_info_offset: int = 0,
+) -> None:
+    writer.pack_into("I", offset + 0x00, int(bound.file_vft or _default_file_vft(bound)))
+    writer.pack_into("I", offset + 0x04, int(bound.file_unknown))
+    writer.pack_into("Q", offset + 0x08, _virtual(pages_info_offset) if pages_info_offset else 0)
+
+
 def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> None:
-    writer.pack_into("I", offset + 0x04, 1)
+    _write_resource_file_base(writer, offset, bound)
     writer.pack_into("B", offset + 0x10, int(bound.bound_type))
-    writer.pack_into("B", offset + 0x11, 0)
-    writer.pack_into("H", offset + 0x12, 0)
+    writer.pack_into("B", offset + 0x11, bound.unknown_11h & 0xFF)
+    writer.pack_into("H", offset + 0x12, bound.unknown_12h & 0xFFFF)
     writer.pack_into("f", offset + 0x14, bound.sphere_radius)
-    writer.pack_into("I", offset + 0x18, 0)
-    writer.pack_into("I", offset + 0x1C, 0)
+    writer.pack_into("I", offset + 0x18, bound.unknown_18h)
+    writer.pack_into("I", offset + 0x1C, bound.unknown_1ch)
     _write_vec3(writer, offset + 0x30, bound.box_max)
     writer.pack_into("f", offset + 0x3C, bound.margin)
     _write_vec3(writer, offset + 0x40, bound.box_min)
@@ -111,7 +141,7 @@ def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> No
         bound.unk_flags & 0xFF,
     )
     _write_vec3(writer, offset + 0x60, bound.sphere_center)
-    writer.pack_into("BBH", offset + 0x6C, bound.poly_flags & 0xFF, bound.material_color_index & 0xFF, 0)
+    writer.pack_into("BBH", offset + 0x6C, bound.poly_flags & 0xFF, bound.material_color_index & 0xFF, bound.unknown_5eh & 0xFFFF)
     _write_vec3(writer, offset + 0x70, bound.unknown_60h)
     writer.pack_into("f", offset + 0x7C, bound.volume)
 
@@ -130,6 +160,19 @@ def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = N
     elif not isinstance(bound, (BoundSphere, BoundBox, BoundCapsule, BoundDisc, BoundCylinder, BoundCloth)):
         raise NotImplementedError(f"bound writer does not support {bound.__class__.__name__} yet")
     return bound_offset
+
+
+def _write_resource_pages_info(writer: ResourceWriter, pages_info: BoundResourcePagesInfo) -> int:
+    total_page_count = pages_info.total_page_count
+    block_size = 0x10 + (total_page_count * 8)
+    offset = writer.alloc(block_size, 16)
+    writer.pack_into("I", offset + 0x00, pages_info.unknown_0h)
+    writer.pack_into("I", offset + 0x04, pages_info.unknown_4h)
+    writer.pack_into("B", offset + 0x08, pages_info.system_pages_count & 0xFF)
+    writer.pack_into("B", offset + 0x09, pages_info.graphics_pages_count & 0xFF)
+    writer.pack_into("H", offset + 0x0A, pages_info.unknown_ah & 0xFFFF)
+    writer.pack_into("I", offset + 0x0C, pages_info.unknown_ch)
+    return offset
 
 
 def _child_bounds(child: BoundChild) -> BoundAabb:
@@ -675,15 +718,15 @@ def _write_bvh(writer: ResourceWriter, bound: BoundGeometry) -> int:
     writer.pack_into("I", bvh_offset + 0x18, 0)
     writer.pack_into("I", bvh_offset + 0x1C, 0)
     writer.pack_into("3f", bvh_offset + 0x20, *bvh.minimum)
-    writer.pack_into("f", bvh_offset + 0x2C, 0.0)
+    writer.pack_into("f", bvh_offset + 0x2C, float("nan"))
     writer.pack_into("3f", bvh_offset + 0x30, *bvh.maximum)
-    writer.pack_into("f", bvh_offset + 0x3C, 0.0)
+    writer.pack_into("f", bvh_offset + 0x3C, float("nan"))
     writer.pack_into("3f", bvh_offset + 0x40, *bvh.center)
-    writer.pack_into("f", bvh_offset + 0x4C, 0.0)
+    writer.pack_into("f", bvh_offset + 0x4C, float("nan"))
     writer.pack_into("3f", bvh_offset + 0x50, *bvh.quantum_inverse)
-    writer.pack_into("f", bvh_offset + 0x5C, 0.0)
+    writer.pack_into("f", bvh_offset + 0x5C, float("nan"))
     writer.pack_into("3f", bvh_offset + 0x60, *bvh.quantum)
-    writer.pack_into("f", bvh_offset + 0x6C, 0.0)
+    writer.pack_into("f", bvh_offset + 0x6C, float("nan"))
     writer.pack_into("Q", bvh_offset + 0x70, _virtual(trees_offset) if trees_offset else 0)
     writer.pack_into("H", bvh_offset + 0x78, len(bvh.trees))
     writer.pack_into("H", bvh_offset + 0x7A, len(bvh.trees))
@@ -801,9 +844,12 @@ def _write_geometry(writer: ResourceWriter, offset: int, bound: BoundGeometry, *
         writer.pack_into("I", offset + 0x14C, 0)
 
 
-def build_bound_system_data(bound: Bound) -> bytes:
+def build_bound_system_data(bound: Bound, *, root_pages_info: BoundResourcePagesInfo | None = None) -> bytes:
     writer = ResourceWriter(_bound_size(bound))
     _write_bound(writer, bound, offset=0)
+    if root_pages_info is not None:
+        pages_info_offset = _write_resource_pages_info(writer, root_pages_info)
+        _write_resource_file_base(writer, 0, bound, pages_info_offset=pages_info_offset)
     return writer.finish()
 
 
