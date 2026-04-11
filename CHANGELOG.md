@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.25]
+
+### Fixed
+- Fixed a `YBN` writer stall when exporting generated bounds from geometry-heavy inputs.
+- Kept the improved page-count preservation path for valid source `YBN` files, while restoring a fast direct flags path for generated collision resources that do not carry explicit root page metadata.
+
 ## [0.1.24]
 
 ### Fixed
