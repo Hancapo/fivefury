@@ -253,48 +253,37 @@ def get_resource_flags_from_size_with_page_count(size: int, version: int, page_c
     for base_shift in range(16):
         base_size = 0x200 << base_shift
         target_units = (size + base_size - 1) // base_size
-
-        max_remaining_units = [[0] * (page_count + 1) for _ in range(len(weights) + 1)]
-        for index in range(len(weights) - 1, -1, -1):
-            weight = weights[index]
-            capacity = capacities[index]
-            for remaining_pages in range(page_count + 1):
-                best = 0
-                max_take = min(capacity, remaining_pages)
-                for take in range(max_take + 1):
-                    candidate_units = (take * weight) + max_remaining_units[index + 1][remaining_pages - take]
-                    if candidate_units > best:
-                        best = candidate_units
-                max_remaining_units[index][remaining_pages] = best
-
-        best_units_for_shift: int | None = None
-        best_counts_for_shift: list[int] | None = None
-
-        def search(index: int, remaining_pages: int, used_units: int, counts: list[int]) -> None:
-            nonlocal best_units_for_shift, best_counts_for_shift
-            if best_units_for_shift is not None and used_units >= best_units_for_shift:
-                return
-            if used_units + max_remaining_units[index][remaining_pages] < target_units:
-                return
-            if index >= len(weights):
-                if remaining_pages == 0 and used_units >= target_units:
-                    best_units_for_shift = used_units
-                    best_counts_for_shift = list(counts)
-                return
-
-            weight = weights[index]
-            capacity = min(capacities[index], remaining_pages)
-            for take in range(capacity, -1, -1):
-                counts[index] = take
-                search(index + 1, remaining_pages - take, used_units + (take * weight), counts)
-            counts[index] = 0
-
-        search(0, page_count, 0, [0] * 9)
-
-        if best_counts_for_shift is None:
+        if target_units > sum(capacity * weight for capacity, weight in zip(capacities, weights, strict=True)):
             continue
 
-        flags = get_resource_flags_from_page_counts(best_counts_for_shift, version, base_shift=base_shift)
+        # Exact-page bounded knapsack over a tiny state space:
+        # max pages = 128, max unit sum = 511.
+        states: dict[int, dict[int, list[int]]] = {0: {0: [0] * 9}}
+        for index, (capacity, weight) in enumerate(zip(capacities, weights, strict=True)):
+            next_states: dict[int, dict[int, list[int]]] = {}
+            for used_pages, unit_map in states.items():
+                page_bucket = next_states.setdefault(used_pages, {})
+                for used_units, counts in unit_map.items():
+                    page_bucket.setdefault(used_units, list(counts))
+                for used_units, counts in unit_map.items():
+                    max_take = min(capacity, page_count - used_pages)
+                    for take in range(1, max_take + 1):
+                        new_pages = used_pages + take
+                        new_units = used_units + (take * weight)
+                        counts_copy = list(counts)
+                        counts_copy[index] = take
+                        bucket = next_states.setdefault(new_pages, {})
+                        bucket.setdefault(new_units, counts_copy)
+            states = next_states
+
+        candidates = states.get(page_count)
+        if not candidates:
+            continue
+        valid_unit_counts = [units for units in candidates.keys() if units >= target_units]
+        if not valid_unit_counts:
+            continue
+        best_units_for_shift = min(valid_unit_counts)
+        flags = get_resource_flags_from_page_counts(candidates[best_units_for_shift], version, base_shift=base_shift)
         encoded_size = get_resource_size_from_flags(flags)
         if encoded_size < size:
             continue

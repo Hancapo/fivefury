@@ -7,9 +7,8 @@ from ..bounds import Bound, BoundResourcePagesInfo, build_bound_system_layout, r
 from ..resource import (
     RSC7_MAGIC,
     build_rsc7,
-    get_resource_flags_from_block_sizes,
+    get_resource_flags_from_size_adaptive,
     get_resource_flags_from_size_with_page_count,
-    get_resource_total_page_count,
     split_rsc7_sections,
 )
 
@@ -63,7 +62,7 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int = _DEFAULT_YBN_VERSION)
             system_pages_count=page_count,
             graphics_pages_count=0,
         )
-        system_data, block_sizes = build_bound_system_layout(bound, root_pages_info=root_pages_info)
+        system_data, _ = build_bound_system_layout(bound, root_pages_info=root_pages_info)
         if preferred_page_count > 0:
             system_flags = get_resource_flags_from_size_with_page_count(
                 len(system_data),
@@ -72,8 +71,8 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int = _DEFAULT_YBN_VERSION)
             )
             next_page_count = preferred_page_count
         else:
-            system_flags = get_resource_flags_from_block_sizes(block_sizes, (version >> 4) & 0xF)
-            next_page_count = get_resource_total_page_count(system_flags)
+            system_flags = get_resource_flags_from_size_adaptive(len(system_data), (version >> 4) & 0xF)
+            next_page_count = page_count
         if next_page_count == page_count:
             break
         page_count = next_page_count
