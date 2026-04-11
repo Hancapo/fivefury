@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.24]
+
+### Fixed
+- Reworked `YBN` resource paging so generated standalone collision resources no longer derive `RSC7` flags only from raw byte length.
+- Added page-flag calculation from real bound block sizes and preserved explicit root `ResourcePagesInfo.system_pages_count` when roundtripping valid `YBN` files.
+- Updated `YBN` writing to pad `system` payloads to the exact size encoded by the written `RSC7` flags, preventing mismatches between the root pages-info metadata and the actual packed resource layout.
+- Added regressions to keep real `YBN` roundtrips aligned with the page-count metadata found in working collision resources.
+
 ## [0.1.23]
 
 ### Fixed

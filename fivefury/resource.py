@@ -121,6 +121,192 @@ def get_resource_flags_from_size_adaptive(size: int, version: int) -> int:
                 raise ValueError("resource size is too large to encode into RSC7 flags") from exc
 
 
+def _rsc7_block_pad(position: int) -> int:
+    return (16 - (position % 16)) % 16
+
+
+def get_resource_flags_from_block_sizes(block_sizes: list[int], version: int, *, max_page_count: int = 128) -> int:
+    if not block_sizes:
+        return (version & 0xF) << 28
+
+    largest_block_size = 0
+    start_page_size = 0x2000
+    total_block_size = 0
+    for block_size in block_sizes:
+        size = max(0, int(block_size))
+        total_block_size += size
+        total_block_size += _rsc7_block_pad(total_block_size)
+        if size > largest_block_size:
+            largest_block_size = size
+    while start_page_size < largest_block_size:
+        start_page_size *= 2
+
+    page_size_mult = 1
+    while True:
+        current_position = 0
+        current_page_size = start_page_size
+        current_page_start = 0
+        current_page_space = start_page_size
+        current_remainder = total_block_size
+        page_count = 1
+        page_counts = [0] * 9
+        page_count_index = 0
+        target_page_size = max(65536 * page_size_mult, start_page_size >> 5)
+        min_page_size = max(512 * page_size_mult, min(target_page_size, start_page_size) >> 4)
+
+        base_shift = 0
+        base_size = 512
+        while base_size < min_page_size:
+            base_shift += 1
+            base_size *= 2
+            if base_shift >= 0xF:
+                break
+
+        base_size_max = base_size << 8
+        base_size_max_test = start_page_size
+        while base_size_max_test < base_size_max:
+            page_count_index += 1
+            base_size_max_test *= 2
+        page_counts[page_count_index] = 1
+
+        root_block_size = int(block_sizes[0])
+        remaining = sorted((int(size) for size in block_sizes[1:]), reverse=True)
+
+        while True:
+            block_size = 0
+            if current_position == 0:
+                block_size = root_block_size
+            else:
+                for candidate in remaining:
+                    if candidate <= current_page_space:
+                        block_size = candidate
+                        remaining.remove(candidate)
+                        break
+
+            if block_size:
+                origin = current_position
+                current_position += block_size
+                current_position += _rsc7_block_pad(current_position)
+                used_space = current_position - origin
+                current_page_space -= used_space
+                current_remainder -= used_space
+            elif remaining:
+                current_page_start += current_page_size
+                current_position = current_page_start
+                block_size = remaining[0]
+                while block_size <= (current_page_size >> 1):
+                    if current_page_size <= min_page_size:
+                        break
+                    if page_count_index >= 8:
+                        break
+                    if (current_page_size <= target_page_size) and (current_remainder >= (current_page_size - min_page_size)):
+                        break
+                    current_page_size >>= 1
+                    page_count_index += 1
+                current_page_space = current_page_size
+                page_counts[page_count_index] += 1
+                page_count += 1
+            else:
+                break
+
+        flags = get_resource_flags_from_page_counts(page_counts, version)
+        if (
+            page_count == get_resource_total_page_count(flags)
+            and get_resource_size_from_flags(flags) >= current_position
+            and page_count <= max_page_count
+        ):
+            return flags
+
+        start_page_size *= 2
+        page_size_mult *= 2
+
+
+def get_resource_flags_from_page_counts(page_counts: list[int], version: int, *, base_shift: int = 0) -> int:
+    if len(page_counts) != 9:
+        raise ValueError("page_counts must contain exactly 9 entries")
+    flags = 0
+    flags |= (version & 0xF) << 28
+    flags |= (int(page_counts[8]) & 0x1) << 27
+    flags |= (int(page_counts[7]) & 0x1) << 26
+    flags |= (int(page_counts[6]) & 0x1) << 25
+    flags |= (int(page_counts[5]) & 0x1) << 24
+    flags |= (int(page_counts[4]) & 0x7F) << 17
+    flags |= (int(page_counts[3]) & 0x3F) << 11
+    flags |= (int(page_counts[2]) & 0xF) << 7
+    flags |= (int(page_counts[1]) & 0x3) << 5
+    flags |= (int(page_counts[0]) & 0x1) << 4
+    flags |= int(base_shift) & 0xF
+    return flags
+
+
+def get_resource_flags_from_size_with_page_count(size: int, version: int, page_count: int) -> int:
+    if size <= 0:
+        return (version & 0xF) << 28
+    if page_count <= 0:
+        raise ValueError("page_count must be positive")
+
+    capacities = (1, 3, 15, 63, 127, 1, 1, 1, 1)
+    weights = (256, 128, 64, 32, 16, 8, 4, 2, 1)
+    best_flags: int | None = None
+    best_size: int | None = None
+
+    for base_shift in range(16):
+        base_size = 0x200 << base_shift
+        target_units = (size + base_size - 1) // base_size
+
+        max_remaining_units = [[0] * (page_count + 1) for _ in range(len(weights) + 1)]
+        for index in range(len(weights) - 1, -1, -1):
+            weight = weights[index]
+            capacity = capacities[index]
+            for remaining_pages in range(page_count + 1):
+                best = 0
+                max_take = min(capacity, remaining_pages)
+                for take in range(max_take + 1):
+                    candidate_units = (take * weight) + max_remaining_units[index + 1][remaining_pages - take]
+                    if candidate_units > best:
+                        best = candidate_units
+                max_remaining_units[index][remaining_pages] = best
+
+        best_units_for_shift: int | None = None
+        best_counts_for_shift: list[int] | None = None
+
+        def search(index: int, remaining_pages: int, used_units: int, counts: list[int]) -> None:
+            nonlocal best_units_for_shift, best_counts_for_shift
+            if best_units_for_shift is not None and used_units >= best_units_for_shift:
+                return
+            if used_units + max_remaining_units[index][remaining_pages] < target_units:
+                return
+            if index >= len(weights):
+                if remaining_pages == 0 and used_units >= target_units:
+                    best_units_for_shift = used_units
+                    best_counts_for_shift = list(counts)
+                return
+
+            weight = weights[index]
+            capacity = min(capacities[index], remaining_pages)
+            for take in range(capacity, -1, -1):
+                counts[index] = take
+                search(index + 1, remaining_pages - take, used_units + (take * weight), counts)
+            counts[index] = 0
+
+        search(0, page_count, 0, [0] * 9)
+
+        if best_counts_for_shift is None:
+            continue
+
+        flags = get_resource_flags_from_page_counts(best_counts_for_shift, version, base_shift=base_shift)
+        encoded_size = get_resource_size_from_flags(flags)
+        if encoded_size < size:
+            continue
+        if best_size is None or encoded_size < best_size:
+            best_size = encoded_size
+            best_flags = flags
+
+    if best_flags is None:
+        raise ValueError("could not encode resource size with the requested page count")
+    return best_flags
+
+
 def compress_resource_stream(data: bytes) -> bytes:
     return zlib.compress(data, level=9, wbits=-15)
 
@@ -212,6 +398,7 @@ class ResourceWriter:
     def __init__(self, initial_size: int = 0x80):
         self.data = bytearray(initial_size)
         self.cursor = align(initial_size, 16)
+        self.block_sizes: list[int] = [initial_size]
 
     def ensure(self, size: int) -> None:
         if size > len(self.data):
@@ -222,6 +409,7 @@ class ResourceWriter:
         end = offset + size
         self.ensure(end)
         self.cursor = end
+        self.block_sizes.append(size)
         return offset
 
     def write(self, offset: int, value: bytes) -> None:
@@ -269,6 +457,16 @@ def build_rsc7(
         system_flags = get_resource_flags_from_size_adaptive(len(system_data), (version >> 4) & 0xF)
     if graphics_flags is None:
         graphics_flags = get_resource_flags_from_size_adaptive(len(graphics_data), version & 0xF)
+    system_target_size = get_resource_size_from_flags(system_flags)
+    graphics_target_size = get_resource_size_from_flags(graphics_flags)
+    if len(system_data) > system_target_size:
+        raise ValueError("system_data is larger than the size encoded in system_flags")
+    if len(graphics_data) > graphics_target_size:
+        raise ValueError("graphics_data is larger than the size encoded in graphics_flags")
+    if len(system_data) < system_target_size:
+        system_data = system_data + (b"\x00" * (system_target_size - len(system_data)))
+    if len(graphics_data) < graphics_target_size:
+        graphics_data = graphics_data + (b"\x00" * (graphics_target_size - len(graphics_data)))
     payload = system_data + graphics_data
     header = ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
     return header.pack() + compress_resource_stream(payload)

@@ -845,12 +845,16 @@ def _write_geometry(writer: ResourceWriter, offset: int, bound: BoundGeometry, *
 
 
 def build_bound_system_data(bound: Bound, *, root_pages_info: BoundResourcePagesInfo | None = None) -> bytes:
+    return build_bound_system_layout(bound, root_pages_info=root_pages_info)[0]
+
+
+def build_bound_system_layout(bound: Bound, *, root_pages_info: BoundResourcePagesInfo | None = None) -> tuple[bytes, list[int]]:
     writer = ResourceWriter(_bound_size(bound))
     _write_bound(writer, bound, offset=0)
     if root_pages_info is not None:
         pages_info_offset = _write_resource_pages_info(writer, root_pages_info)
         _write_resource_file_base(writer, 0, bound, pages_info_offset=pages_info_offset)
-    return writer.finish()
+    return (writer.finish(), list(writer.block_sizes))
 
 
 def write_bound_resource(writer: ResourceWriter, bound: Bound) -> int:
@@ -859,5 +863,6 @@ def write_bound_resource(writer: ResourceWriter, bound: Bound) -> int:
 
 __all__ = [
     "build_bound_system_data",
+    "build_bound_system_layout",
     "write_bound_resource",
 ]

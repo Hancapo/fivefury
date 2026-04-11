@@ -3,9 +3,15 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from ..binary import align
-from ..bounds import Bound, BoundResourcePagesInfo, build_bound_system_data, read_bound_at
-from ..resource import RSC7_MAGIC, build_rsc7, get_resource_flags_from_size_adaptive, get_resource_total_page_count, split_rsc7_sections
+from ..bounds import Bound, BoundResourcePagesInfo, build_bound_system_layout, read_bound_at
+from ..resource import (
+    RSC7_MAGIC,
+    build_rsc7,
+    get_resource_flags_from_block_sizes,
+    get_resource_flags_from_size_with_page_count,
+    get_resource_total_page_count,
+    split_rsc7_sections,
+)
 
 _ROOT_OFFSET = 0x00
 _DEFAULT_YBN_VERSION = 43
@@ -47,7 +53,8 @@ class Ybn:
 def build_ybn_bytes(source: Ybn | Bound, *, version: int = _DEFAULT_YBN_VERSION) -> bytes:
     bound = source.bound if isinstance(source, Ybn) else source
     pages_info = bound.file_pages_info or BoundResourcePagesInfo()
-    page_count = int(pages_info.system_pages_count)
+    preferred_page_count = int(pages_info.system_pages_count)
+    page_count = preferred_page_count or 1
     system_flags = None
     system_data = b""
     for _ in range(8):
@@ -56,10 +63,17 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int = _DEFAULT_YBN_VERSION)
             system_pages_count=page_count,
             graphics_pages_count=0,
         )
-        system_data = build_bound_system_data(bound, root_pages_info=root_pages_info)
-        system_size = align(len(system_data), 0x200)
-        system_flags = get_resource_flags_from_size_adaptive(system_size, (version >> 4) & 0xF)
-        next_page_count = get_resource_total_page_count(system_flags)
+        system_data, block_sizes = build_bound_system_layout(bound, root_pages_info=root_pages_info)
+        if preferred_page_count > 0:
+            system_flags = get_resource_flags_from_size_with_page_count(
+                len(system_data),
+                (version >> 4) & 0xF,
+                preferred_page_count,
+            )
+            next_page_count = preferred_page_count
+        else:
+            system_flags = get_resource_flags_from_block_sizes(block_sizes, (version >> 4) & 0xF)
+            next_page_count = get_resource_total_page_count(system_flags)
         if next_page_count == page_count:
             break
         page_count = next_page_count

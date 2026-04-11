@@ -545,6 +545,22 @@ def test_read_real_reference_ybn() -> None:
 
     assert ybn.bound.bound_type.name == "COMPOSITE"
     assert getattr(ybn.bound, "children", None)
+    assert ybn.bound.file_pages_info is not None
+    assert ybn.bound.file_pages_info.system_pages_count == 8
+
+
+def test_roundtrip_real_reference_ybn_preserves_page_count_metadata() -> None:
+    path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\apa_ch2_04_12.ybn")
+
+    source = read_ybn(path)
+    raw = source.to_bytes()
+    header, _, _ = split_rsc7_sections(raw)
+    roundtrip = read_ybn(raw)
+
+    assert source.bound.file_pages_info is not None
+    assert roundtrip.bound.file_pages_info is not None
+    assert roundtrip.bound.file_pages_info.system_pages_count == source.bound.file_pages_info.system_pages_count
+    assert get_resource_total_page_count(header.system_flags) == source.bound.file_pages_info.system_pages_count
 
 
 def test_read_real_reference_ybn_decodes_geometry_polygons_and_bvh() -> None:
