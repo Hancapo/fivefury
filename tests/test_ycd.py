@@ -18,6 +18,7 @@ from fivefury import (
     build_ycd_bytes,
     read_ycd,
 )
+from fivefury.resource import get_resource_total_page_count, split_rsc7_sections
 
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -258,7 +259,13 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
 
 def test_ycd_roundtrip_smoke() -> None:
     original = read_ycd(YCD_PATH)
-    rebuilt = read_ycd(build_ycd_bytes(original))
+    raw = build_ycd_bytes(original)
+    rebuilt = read_ycd(raw)
+    header, system_data, _ = split_rsc7_sections(raw)
+    pages_info_offset = int.from_bytes(system_data[0x08:0x10], "little") - 0x50000000
+
+    assert system_data[pages_info_offset + 0x08] == get_resource_total_page_count(header.system_flags)
+    assert system_data[pages_info_offset + 0x09] == get_resource_total_page_count(header.graphics_flags)
     _assert_ycd_roundtrip_equivalent(original, rebuilt)
 
 

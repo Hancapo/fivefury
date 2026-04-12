@@ -31,7 +31,7 @@ from fivefury import (
     read_ybn,
     save_ybn,
 )
-from fivefury.resource import get_resource_total_page_count, split_rsc7_sections
+from fivefury.resource import get_resource_flags_from_block_sizes, get_resource_total_page_count, split_rsc7_sections
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
 
@@ -348,6 +348,44 @@ def test_roundtrip_real_west02_ybn_if_available() -> None:
     assert len(roundtrip.bound.geometries[0].polygons) == len(source.bound.geometries[0].polygons)
     assert len(roundtrip.bound.geometries[0].bvh.nodes) == len(source.bound.geometries[0].bvh.nodes)
     assert len(roundtrip.bound.geometries[0].bvh.trees) == len(source.bound.geometries[0].bvh.trees)
+
+
+def test_resource_page_flags_match_codewalker_assign_positions2_for_real_ybn_if_available() -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\ybn_debug\bad\aliencity2.ybn")
+    if not source_path.exists():
+        return
+
+    from fivefury.bounds import BoundResourcePagesInfo, build_bound_system_layout
+
+    source = read_ybn(source_path)
+    _, block_sizes = build_bound_system_layout(
+        source.bound,
+        root_pages_info=BoundResourcePagesInfo(system_pages_count=16, graphics_pages_count=0),
+    )
+
+    flags = get_resource_flags_from_block_sizes(block_sizes, (source.version >> 4) & 0xF, is_system=True)
+
+    assert flags == 0x20101A82
+    assert get_resource_total_page_count(flags) == 16
+
+
+def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_if_available() -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\ybn_debug\bad\aliencity2.ybn")
+    if not source_path.exists():
+        return
+
+    source = read_ybn(source_path)
+    data = source.to_bytes()
+    header, _, _ = split_rsc7_sections(data)
+    roundtrip = read_ybn(data)
+
+    assert source.bound.file_pages_info is not None
+    assert source.bound.file_pages_info.system_pages_count == 1
+    assert source.validate() == ["YBN ResourcePagesInfo system page count does not match the RSC7 header"]
+    assert roundtrip.bound.file_pages_info is not None
+    assert roundtrip.bound.file_pages_info.system_pages_count == 16
+    assert get_resource_total_page_count(header.system_flags) == 16
+    assert roundtrip.validate() == []
 
 
 def test_gamefilecache_parses_loose_ybn() -> None:

@@ -10,12 +10,14 @@ from .prepare import PreparedMesh, compute_bounds
 @dataclasses.dataclass(slots=True)
 class GraphicsWriter:
     data: bytearray = dataclasses.field(default_factory=bytearray)
+    block_sizes: list[int] = dataclasses.field(default_factory=list)
 
     def alloc(self, value: bytes, alignment: int = 16) -> int:
         offset = align(len(self.data), alignment)
         if offset > len(self.data):
             self.data.extend(b'\x00' * (offset - len(self.data)))
         self.data.extend(value)
+        self.block_sizes.append(len(value))
         return offset
 
     def finish(self) -> bytes:

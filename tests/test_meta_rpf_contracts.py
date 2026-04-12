@@ -286,6 +286,20 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertEqual(len(builder.blocks), 1)
         self.assertEqual(len(builder.blocks[0].data), 0x4020)
 
+    def test_meta_builder_pages_info_uses_total_page_count(self) -> None:
+        from fivefury.meta.builder import MetaBuilder
+        from fivefury.resource import get_resource_total_page_count
+
+        builder = MetaBuilder()
+        for _ in range(3):
+            builder._add_block(0x12345678, bytes(0x3000), group=False)
+
+        system = builder._compose_system_stream(0)
+        pages_info = struct.unpack_from("<IIBBHI", system, 0x70)
+
+        self.assertGreater(builder.page_count, 1)
+        self.assertEqual(pages_info[2], get_resource_total_page_count(builder.page_flags))
+
     def test_good_ymap_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ymap
 

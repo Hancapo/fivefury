@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
-from fivefury.resource import build_rsc7, split_rsc7_sections
+from fivefury.resource import build_rsc7, get_resource_total_page_count, split_rsc7_sections
+from fivefury.ydr import build_ydr_bytes
 from fivefury.ydr import YdrMaterialDescriptor
 from tests.helpers import write_bytes
 
@@ -256,6 +257,21 @@ def test_read_real_reference_ydr_embedded_bound() -> None:
 
     assert ydr.bound is not None
     assert ydr.bound.bound_type.name in {"GEOMETRY", "GEOMETRY_BVH", "COMPOSITE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "DISC"}
+
+
+def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_available() -> None:
+    path = Path(r"C:\Users\vicho\OneDrive\Desktop\ydr_debug\bad\city61market.ydr")
+    if not path.exists():
+        return
+
+    source = read_ydr(path)
+    raw = build_ydr_bytes(source)
+    header, system_data, _ = split_rsc7_sections(raw)
+    pages_info_offset = int.from_bytes(system_data[0x08:0x10], "little") - _DAT_VIRTUAL_BASE
+
+    assert get_resource_total_page_count(header.system_flags) == 8
+    assert system_data[pages_info_offset + 0x08] == 8
+    assert system_data[pages_info_offset + 0x09] == 0
 
 
 def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..bounds import write_bound_resource
 from ..binary import align
-from ..resource import ResourceWriter, build_rsc7, split_rsc7_sections
+from ..resource import ResourceWriter, build_rsc7, get_resource_flags_from_block_layout, get_resource_total_page_count, split_rsc7_sections
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
 from .defs import DAT_VIRTUAL_BASE, LOD_ORDER, YdrLod
 from .prepare import (
@@ -116,7 +116,12 @@ def _write_embedded_texture_dictionary(system: ResourceWriter, graphics: Graphic
     return dict_offset
 
 
-def _build_system_payload(source: YdrBuild, prepared_materials: list[PreparedMaterial], prepared_lods, page_counts: tuple[int, int]) -> tuple[bytes, bytes]:
+def _build_system_payload(
+    source: YdrBuild,
+    prepared_materials: list[PreparedMaterial],
+    prepared_lods,
+    page_counts: tuple[int, int],
+) -> tuple[bytes, bytes, list[int], list[int]]:
     system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
 
@@ -201,11 +206,7 @@ def _build_system_payload(source: YdrBuild, prepared_materials: list[PreparedMat
         unknown_9c=source.unknown_9c,
         virtual=_virtual,
     )
-    return system.finish(), graphics.finish()
-
-
-def _aligned_page_counts(system_size: int, graphics_size: int) -> tuple[int, int]:
-    return (align(system_size, 0x200) // 0x200, align(graphics_size, 0x200) // 0x200)
+    return system.finish(), graphics.finish(), list(system.block_sizes), list(graphics.block_sizes)
 
 
 def ydr_to_build(source: 'Ydr', *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
@@ -240,14 +241,30 @@ def build_ydr_bytes(
     page_counts = (0, 0)
     system_data = b''
     graphics_data = b''
-    for _ in range(8):
-        system_data, graphics_data = _build_system_payload(source, prepared_materials, prepared_lods, page_counts)
-        next_counts = _aligned_page_counts(len(system_data), len(graphics_data))
+    system_flags = None
+    graphics_flags = None
+    for _ in range(16):
+        system_data, graphics_data, system_block_sizes, graphics_block_sizes = _build_system_payload(
+            source,
+            prepared_materials,
+            prepared_lods,
+            page_counts,
+        )
+        system_flags, graphics_flags = get_resource_flags_from_block_layout(
+            system_block_sizes,
+            graphics_block_sizes,
+            version=source.version,
+        )
+        system_page_count = get_resource_total_page_count(system_flags)
+        next_counts = (system_page_count, get_resource_total_page_count(graphics_flags))
         if next_counts == page_counts:
             break
         page_counts = next_counts
     else:
         raise RuntimeError('YDR builder page-info sizing did not converge')
+
+    assert system_flags is not None
+    assert graphics_flags is not None
 
     return build_rsc7(
         system_data,
@@ -255,6 +272,8 @@ def build_ydr_bytes(
         graphics_data=graphics_data,
         system_alignment=0x200,
         graphics_alignment=0x200,
+        system_flags=system_flags,
+        graphics_flags=graphics_flags,
     )
 
 

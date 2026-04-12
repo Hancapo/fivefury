@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ..binary import align, pad_bytes
-from ..resource import get_resource_flags_from_blocks, get_resource_page_descriptor_count
+from ..resource import get_resource_flags_from_blocks, get_resource_total_page_count
 from ..metahash import MetaHash
 from . import (
     FLOAT_XYZ_NAME_HASH,
@@ -376,7 +376,7 @@ class MetaBuilder:
         self.page_count = page_count
         page_flags = get_resource_flags_from_blocks(page_count, page_size, 0)
         self.page_flags = page_flags
-        pages_info_count = get_resource_page_descriptor_count(page_flags)
+        pages_info_count = get_resource_total_page_count(page_flags)
         pages_info_offset = META_ROOT_SIZE
         pages_info_size = 16 + (8 * pages_info_count)
 

@@ -125,100 +125,131 @@ def _rsc7_block_pad(position: int) -> int:
     return (16 - (position % 16)) % 16
 
 
-def get_resource_flags_from_block_sizes(block_sizes: list[int], version: int, *, max_page_count: int = 128) -> int:
+def get_resource_flags_from_block_sizes(
+    block_sizes: list[int],
+    version: int,
+    *,
+    max_page_count: int = 128,
+    is_system: bool = True,
+) -> int:
+    """Pack RSC blocks into page flags using CodeWalker's AssignPositions2 strategy."""
     if not block_sizes:
         return (version & 0xF) << 28
 
-    largest_block_size = 0
-    start_page_size = 0x2000
-    total_block_size = 0
-    for block_size in block_sizes:
-        size = max(0, int(block_size))
-        total_block_size += size
-        total_block_size += _rsc7_block_pad(total_block_size)
-        if size > largest_block_size:
-            largest_block_size = size
-    while start_page_size < largest_block_size:
-        start_page_size *= 2
+    sizes = [max(0, int(block_size)) for block_size in block_sizes]
+    max_page_size_mult = 16
+    max_block_size = max(sizes)
+    min_block_size = min(sizes)
+    base_shift = 0
+    base_size = 0x2000
+    while ((base_size < min_block_size) or ((base_size * max_page_size_mult) < max_block_size)) and base_shift < 0xF:
+        base_shift += 1
+        base_size = 0x2000 << base_shift
+    if (base_size * max_page_size_mult) < max_block_size:
+        raise ValueError("unable to fit the largest resource block into RSC7 page flags")
 
-    page_size_mult = 1
+    root_block = sizes[0] if is_system and sizes else None
+    sorted_blocks = list(sizes[1:] if root_block is not None else sizes)
+    sorted_blocks.sort(reverse=True)
+    if root_block is not None:
+        sorted_blocks.insert(0, root_block)
+
     while True:
-        current_position = 0
-        current_page_size = start_page_size
-        current_page_start = 0
-        current_page_space = start_page_size
-        current_remainder = total_block_size
-        page_count = 1
-        page_counts = [0] * 9
-        page_count_index = 0
-        target_page_size = max(65536 * page_size_mult, start_page_size >> 5)
-        min_page_size = max(512 * page_size_mult, min(target_page_size, start_page_size) >> 4)
+        page_counts = [0] * 5
+        page_sizes: list[list[int] | None] = [None] * 5
 
-        base_shift = 0
-        base_size = 512
-        while base_size < min_page_size:
-            base_shift += 1
-            base_size *= 2
-            if base_shift >= 0xF:
-                break
+        largest_page_size_index = 0
+        largest_page_size = base_size
+        while largest_page_size < max_block_size:
+            largest_page_size_index += 1
+            largest_page_size *= 2
 
-        base_size_max = base_size << 8
-        base_size_max_test = start_page_size
-        while base_size_max_test < base_size_max:
-            page_count_index += 1
-            base_size_max_test *= 2
-        page_counts[page_count_index] = 1
+        for block_index, block_size in enumerate(sorted_blocks):
+            if block_index == 0:
+                page_sizes[largest_page_size_index] = [block_size]
+                continue
 
-        root_block_size = int(block_sizes[0])
-        remaining = sorted((int(size) for size in block_sizes[1:]), reverse=True)
+            page_size_index = 0
+            page_size = base_size
+            while (block_size > page_size) and (page_size_index < largest_page_size_index):
+                page_size_index += 1
+                page_size *= 2
 
-        while True:
-            block_size = 0
-            if current_position == 0:
-                block_size = root_block_size
-            else:
-                for candidate in remaining:
-                    if candidate <= current_page_space:
-                        block_size = candidate
-                        remaining.remove(candidate)
-                        break
+            found = False
+            test_page_size_index = page_size_index
+            test_page_size = page_size
+            while not found and test_page_size_index <= largest_page_size_index:
+                pages = page_sizes[test_page_size_index]
+                if pages is not None:
+                    for page_index, used_size in enumerate(pages):
+                        candidate_offset = used_size + _rsc7_block_pad(used_size)
+                        candidate_size = candidate_offset + block_size
+                        if candidate_size <= test_page_size:
+                            pages[page_index] = candidate_size
+                            found = True
+                            break
+                test_page_size_index += 1
+                test_page_size *= 2
+            if found:
+                continue
 
-            if block_size:
-                origin = current_position
-                current_position += block_size
-                current_position += _rsc7_block_pad(current_position)
-                used_space = current_position - origin
-                current_page_space -= used_space
-                current_remainder -= used_space
-            elif remaining:
-                current_page_start += current_page_size
-                current_position = current_page_start
-                block_size = remaining[0]
-                while block_size <= (current_page_size >> 1):
-                    if current_page_size <= min_page_size:
-                        break
-                    if page_count_index >= 8:
-                        break
-                    if (current_page_size <= target_page_size) and (current_remainder >= (current_page_size - min_page_size)):
-                        break
-                    current_page_size >>= 1
-                    page_count_index += 1
-                current_page_space = current_page_size
-                page_counts[page_count_index] += 1
-                page_count += 1
-            else:
-                break
+            pages = page_sizes[page_size_index]
+            if pages is None:
+                pages = []
+                page_sizes[page_size_index] = pages
+            pages.append(block_size)
 
-        flags = get_resource_flags_from_page_counts(page_counts, version)
-        if (
-            page_count == get_resource_total_page_count(flags)
-            and get_resource_size_from_flags(flags) >= current_position
-            and page_count <= max_page_count
-        ):
-            return flags
+        test_ok = True
+        total_page_count = 0
+        for index, pages in enumerate(page_sizes):
+            page_count = len(pages) if pages is not None else 0
+            page_counts[index] = page_count
+            total_page_count += page_count
+        if total_page_count > max_page_count:
+            test_ok = False
+        if page_counts[0] > 0x7F:
+            test_ok = False
+        if page_counts[1] > 0x3F:
+            test_ok = False
+        if page_counts[2] > 0xF:
+            test_ok = False
+        if page_counts[3] > 0x3:
+            test_ok = False
+        if page_counts[4] > 0x1:
+            test_ok = False
+        if test_ok:
+            return get_resource_flags_from_page_counts(
+                [page_counts[4], page_counts[3], page_counts[2], page_counts[1], page_counts[0], 0, 0, 0, 0],
+                version,
+                base_shift=base_shift,
+            )
+        if base_shift >= 0xF:
+            raise ValueError("unable to pack resource blocks into RSC7 page flags")
+        base_shift += 1
+        base_size = 0x2000 << base_shift
 
-        start_page_size *= 2
-        page_size_mult *= 2
+
+def get_resource_flags_from_block_layout(
+    system_block_sizes: list[int],
+    graphics_block_sizes: list[int] | None = None,
+    *,
+    version: int,
+    max_page_count: int = 128,
+) -> tuple[int, int]:
+    system_flags = get_resource_flags_from_block_sizes(
+        system_block_sizes,
+        (int(version) >> 4) & 0xF,
+        max_page_count=max_page_count,
+        is_system=True,
+    )
+    system_page_count = get_resource_total_page_count(system_flags)
+    graphics_flags = get_resource_flags_from_block_sizes(
+        list(graphics_block_sizes or []),
+        int(version) & 0xF,
+        max_page_count=max(0, int(max_page_count) - system_page_count),
+        is_system=False,
+    )
+    return (system_flags, graphics_flags)
 
 
 def get_resource_flags_from_page_counts(page_counts: list[int], version: int, *, base_shift: int = 0) -> int:

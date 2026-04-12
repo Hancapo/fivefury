@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ..metahash import MetaHash
-from ..resource import ResourceWriter, build_rsc7
+from ..resource import ResourceWriter, build_rsc7, get_resource_flags_from_block_layout, get_resource_total_page_count
 from .model import (
     Ycd,
     YcdAnimation,
@@ -567,13 +567,13 @@ class _YcdWriter:
             bucket_head_offsets.append(next_offset)
         return self.write_pointer_array(bucket_head_offsets)
 
-    def write_pages_info(self) -> int:
-        offset = self.writer.alloc(0x18, 16)
-        self.writer.pack_into("IIBBHI", offset, 0, 0, 1, 0, 0, 0)
-        self.writer.write(offset + 0x10, b"\x00" * 8)
+    def write_pages_info(self, page_counts: tuple[int, int]) -> int:
+        total_page_count = int(page_counts[0]) + int(page_counts[1])
+        offset = self.writer.alloc(0x10 + (total_page_count * 8), 16)
+        self.writer.pack_into("IIBBHI", offset, 0, 0, int(page_counts[0]) & 0xFF, int(page_counts[1]) & 0xFF, 0, 0)
         return offset
 
-    def build_system_data(self) -> bytes:
+    def build_system_data(self, page_counts: tuple[int, int] = (0, 0)) -> tuple[bytes, list[int]]:
         clips = list(self.ycd.clips)
         animations = list(self.ycd.animations)
         clip_bucket_capacity = self.ycd.clip_bucket_capacity or _get_num_hash_buckets(len(clips))
@@ -581,7 +581,7 @@ class _YcdWriter:
 
         animation_map_offset = self.write_animation_map(animations, animation_bucket_capacity)
         clip_map_offset = self.write_clip_map_buckets(clips, clip_bucket_capacity)
-        pages_info_offset = self.write_pages_info()
+        pages_info_offset = self.write_pages_info(page_counts)
 
         self.writer.pack_into("IIQ", 0x00, _RESOURCE_FILE_VFT, 1, self.vptr(pages_info_offset))
         self.writer.pack_into(
@@ -599,12 +599,27 @@ class _YcdWriter:
             0,
             0,
         )
-        return self.writer.finish()
+        return self.writer.finish(), list(self.writer.block_sizes)
 
 
 def build_ycd_bytes(ycd: Ycd) -> bytes:
-    system_data = _YcdWriter(ycd.build()).build_system_data()
-    return build_rsc7(system_data, version=ycd.header.version)
+    source = ycd.build()
+    page_counts = (0, 0)
+    system_data = b""
+    system_flags = None
+    graphics_flags = None
+    for _ in range(16):
+        system_data, system_block_sizes = _YcdWriter(source).build_system_data(page_counts)
+        system_flags, graphics_flags = get_resource_flags_from_block_layout(system_block_sizes, version=ycd.header.version)
+        next_counts = (get_resource_total_page_count(system_flags), get_resource_total_page_count(graphics_flags))
+        if next_counts == page_counts:
+            break
+        page_counts = next_counts
+    else:
+        raise RuntimeError("YCD writer page-info sizing did not converge")
+    assert system_flags is not None
+    assert graphics_flags is not None
+    return build_rsc7(system_data, version=ycd.header.version, system_flags=system_flags, graphics_flags=graphics_flags)
 
 
 def save_ycd(ycd: Ycd, path: str | Path) -> Path:
