@@ -6,6 +6,15 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.28]
+
+### Changed
+- Tightened `YBN` bounds normalization and validation so composite child bounds, triangle adjacency data, and public composite flags are modeled more explicitly at the high-level API.
+
+### Fixed
+- Rebuilt composite `YBN` BVHs from child bounds during export and normalized inverted bound boxes on read, reducing drift against real `CodeWalker`-style collision resources.
+- Hardened `YDR` resource writing around drawable-model/material block layout so generated resources stay aligned with the expected `RSC7` page structure.
+
 ## [0.1.27]
 
 ### Changed
