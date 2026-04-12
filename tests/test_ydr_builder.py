@@ -96,9 +96,9 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert ydr.get_model(0).render_mask == int(YdrRenderMask.STATIC_PROP)
 
     _header, system_data, graphics_data = split_rsc7_sections(ydr_path.read_bytes())
-    assert int.from_bytes(system_data[0x00:0x04], "little") == 0x40570C38
-    assert int.from_bytes(system_data[0x04:0x08], "little") == 0x48434C41
-    assert int.from_bytes(system_data[0x08:0x10], "little") != 0
+    assert int.from_bytes(system_data[0x00:0x04], "little") == 0x40573178
+    assert int.from_bytes(system_data[0x04:0x08], "little") == 1
+    assert int.from_bytes(system_data[0x08:0x10], "little") >= 0x50000000
     assert int.from_bytes(system_data[0x10:0x18], "little") != 0
     assert int.from_bytes(system_data[0x50:0x58], "little") != 0
     assert int.from_bytes(system_data[0xA0:0xA8], "little") != 0
@@ -112,12 +112,12 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     vertex_buffer_off = int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little") - 0x50000000
     index_buffer_off = int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little") - 0x50000000
 
-    assert int.from_bytes(system_data[model_off + 0x00 : model_off + 0x04], "little") == 0x40610A78
+    assert int.from_bytes(system_data[model_off + 0x00 : model_off + 0x04], "little") == 0x40610A98
     assert int.from_bytes(system_data[model_off + 0x2C : model_off + 0x30], "little") == 0x000100E3
     assert int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 1
-    assert int.from_bytes(system_data[geometry_off + 0x00 : geometry_off + 0x04], "little") == 0x40618868
-    assert int.from_bytes(system_data[vertex_buffer_off + 0x00 : vertex_buffer_off + 0x04], "little") == 0x4061D3E8
-    assert int.from_bytes(system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little") == 0x406131D8
+    assert int.from_bytes(system_data[geometry_off + 0x00 : geometry_off + 0x04], "little") == 0x40618798
+    assert int.from_bytes(system_data[vertex_buffer_off + 0x00 : vertex_buffer_off + 0x04], "little") == 0x4061D3F8
+    assert int.from_bytes(system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little") == 0x4061D158
     assert system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18] == system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28]
     assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
     assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
@@ -136,7 +136,7 @@ def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path
 
     _header, system_data, graphics_data = split_rsc7_sections(output_path.read_bytes())
     assert graphics_data == b""
-    assert int.from_bytes(system_data[0x04:0x08], "little") == 0x48434C41
+    assert int.from_bytes(system_data[0x04:0x08], "little") == 1
 
 
 def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
@@ -366,10 +366,10 @@ def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:
 
 def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[
+        lods={YdrLod.HIGH: [
             YdrModelInput(meshes=[_offset_triangle_mesh(0.0, material="main")], render_mask=1),
             YdrModelInput(meshes=[_offset_triangle_mesh(2.0, material="main")], render_mask=2),
-        ],
+        ]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -398,9 +398,58 @@ def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     assert ydr.get_model(0).get_material(0) is ydr.materials[0]
 
 
+def test_build_and_read_multi_lod_ydr(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={
+            YdrLod.HIGH: [YdrModelInput(meshes=[_offset_triangle_mesh(0.0, material="main")], render_mask=0xFF)],
+            YdrLod.MEDIUM: [YdrModelInput(meshes=[_offset_triangle_mesh(3.0, material="main")], render_mask=0xAA)],
+        },
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="multi_lod",
+        lod_distances={
+            YdrLod.HIGH: 150.0,
+            YdrLod.MEDIUM: 300.0,
+        },
+        render_mask_flags={
+            YdrLod.HIGH: 0x0000FF05,
+            YdrLod.MEDIUM: 0x0000AA01,
+        },
+    )
+
+    ydr_path = tmp_path / "multi_lod.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+    _header, system_data, _graphics_data = split_rsc7_sections(ydr_path.read_bytes())
+
+    assert len(ydr.get_lod(YdrLod.HIGH)) == 1
+    assert len(ydr.get_lod(YdrLod.MEDIUM)) == 1
+    assert ydr.lod_distances[YdrLod.HIGH] == pytest.approx(150.0)
+    assert ydr.lod_distances[YdrLod.MEDIUM] == pytest.approx(300.0)
+    assert ydr.render_mask_flags[YdrLod.HIGH] == 0x0000FF05
+    assert ydr.render_mask_flags[YdrLod.MEDIUM] == 0x0000AA01
+
+    high_ptr = int.from_bytes(system_data[0x50:0x58], "little")
+    med_ptr = int.from_bytes(system_data[0x58:0x60], "little")
+    low_ptr = int.from_bytes(system_data[0x60:0x68], "little")
+    models_ptr = int.from_bytes(system_data[0xA0:0xA8], "little")
+
+    assert high_ptr >= 0x50000000
+    assert med_ptr >= 0x50000000
+    assert low_ptr == 0
+    assert models_ptr == high_ptr
+    assert int.from_bytes(system_data[0x80:0x84], "little") == 0x0000FF05
+    assert int.from_bytes(system_data[0x84:0x88], "little") == 0x0000AA01
+
+
 def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -449,7 +498,7 @@ def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
 
 def test_build_and_read_ydr_embedded_textures(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -473,7 +522,7 @@ def test_build_and_read_ydr_embedded_textures(tmp_path: Path) -> None:
 
 def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -497,7 +546,7 @@ def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
 
 def test_build_and_read_ydr_embedded_bound(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -613,10 +662,10 @@ def test_declarative_skeleton_helpers() -> None:
 
 def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(
+        lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
             skeleton_binding=0x0000FF00,
-        )],
+        )]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -693,10 +742,10 @@ def test_static_mesh_unaffected_by_skinned_support(tmp_path: Path) -> None:
 
 def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(
+        lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
             skeleton_binding=0x0000FF00,
-        )],
+        )]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -726,7 +775,7 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
 
 def test_to_build_preserves_embedded_assets(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(meshes=[_triangle_mesh(material="main")])],
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -852,10 +901,10 @@ def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
 
 def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
     build = YdrBuild(
-        models=[YdrModelInput(
+        lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
             skeleton_binding=0x0000FF00,
-        )],
+        )]},
         materials=[
             YdrMaterialInput(
                 name="main",

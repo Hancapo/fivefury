@@ -6,7 +6,7 @@ import struct
 from ..resource import ResourceWriter
 from .model import Matrix4, YdrBone, YdrSkeleton
 
-_SKELETON_VFT = 0x40614B80
+_SKELETON_VFT = 0x40613CA0
 
 
 def _identity_matrix() -> Matrix4:

@@ -4,7 +4,9 @@ import dataclasses
 from pathlib import Path
 from typing import Sequence
 
-from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, compute_bounds, create_ydr, save_ydr
+from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, create_ydr
+from .write_geometry import compute_bounds
+from .builder import save_ydr
 from .defs import YdrLod
 from ..ytyp import Archetype, Ytyp
 

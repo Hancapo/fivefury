@@ -416,6 +416,20 @@ def read_ydr(
         lights=lights,
         embedded_textures=embedded_textures,
         bound=bound,
+        lod_distances={
+            YdrLod.HIGH: _f32(system_data, _ROOT_OFFSET + 0x60),
+            YdrLod.MEDIUM: _f32(system_data, _ROOT_OFFSET + 0x64),
+            YdrLod.LOW: _f32(system_data, _ROOT_OFFSET + 0x68),
+            YdrLod.VERY_LOW: _f32(system_data, _ROOT_OFFSET + 0x6C),
+        },
+        render_mask_flags={
+            YdrLod.HIGH: _u32(system_data, _ROOT_OFFSET + 0x70),
+            YdrLod.MEDIUM: _u32(system_data, _ROOT_OFFSET + 0x74),
+            YdrLod.LOW: _u32(system_data, _ROOT_OFFSET + 0x78),
+            YdrLod.VERY_LOW: _u32(system_data, _ROOT_OFFSET + 0x7C),
+        },
+        unknown_98=_u16(system_data, _ROOT_OFFSET + 0x88),
+        unknown_9c=_u32(system_data, _ROOT_OFFSET + 0x8C),
     )
 
 

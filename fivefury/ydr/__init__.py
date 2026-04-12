@@ -1,4 +1,5 @@
-from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, build_ydr_bytes, create_ydr, save_ydr, ydr_to_build
+from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
+from .builder import build_ydr_bytes, save_ydr, ydr_to_build
 from .defs import YdrLod, YdrRenderMask
 from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialParameter, build_material_descriptor
 from .model import (

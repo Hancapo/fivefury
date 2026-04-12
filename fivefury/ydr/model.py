@@ -13,7 +13,7 @@ from .defs import LOD_ORDER, YdrLod, coerce_lod
 from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
-    from .builder import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
+    from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
     from .materials import YdrMaterialDescriptor
     from .shaders import ShaderLibrary
 
@@ -501,7 +501,7 @@ class YdrMaterial:
         return self
 
     def to_input(self) -> YdrMaterialInput:
-        from .builder import YdrMaterialInput
+        from .build_types import YdrMaterialInput
 
         material_name = self.name or f"material_{self.index}"
         textures = {
@@ -599,7 +599,7 @@ class YdrMesh:
         return self
 
     def to_input(self, *, material_name: str | None = None) -> YdrMeshInput:
-        from .builder import YdrMeshInput
+        from .build_types import YdrMeshInput
 
         return YdrMeshInput(
             positions=list(self.positions),
@@ -682,7 +682,7 @@ class YdrModel:
         return self
 
     def to_input(self, *, material_name_by_index: dict[int, str]) -> YdrModelInput:
-        from .builder import YdrModelInput
+        from .build_types import YdrModelInput
 
         return YdrModelInput(
             meshes=[
@@ -709,9 +709,15 @@ class Ydr:
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
     embedded_textures: Ytd | None = None
     bound: Bound | None = None
+    lod_distances: dict[YdrLod, float] = dataclasses.field(default_factory=dict)
+    render_mask_flags: dict[YdrLod, int] = dataclasses.field(default_factory=dict)
+    unknown_98: int = 0
+    unknown_9c: int = 0
 
     def __post_init__(self) -> None:
         self.lods = {coerce_lod(lod): list(models) for lod, models in self.lods.items()}
+        self.lod_distances = {coerce_lod(lod): float(distance) for lod, distance in self.lod_distances.items()}
+        self.render_mask_flags = {coerce_lod(lod): int(flags) for lod, flags in self.render_mask_flags.items()}
 
     def build(self) -> "Ydr":
         if self.skeleton is not None:
@@ -1009,29 +1015,38 @@ class Ydr:
         return issues
 
     def to_build(self, *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
-        from .builder import YdrBuild
+        from .build_types import YdrBuild
 
         self.build()
-        if lod is None:
-            selected_lod = next((lod_name for lod_name in LOD_ORDER if any(self.lods.get(lod_name, []))), YdrLod.HIGH)
-        else:
-            selected_lod = coerce_lod(lod)
         material_name_by_index = {
             material.index: (material.name or f"material_{material.index}")
             for material in self.materials
         }
-        selected_models = list(self.iter_models(lod=selected_lod))
+        if lod is None:
+            selected_lods = {
+                lod_name: [model.to_input(material_name_by_index=material_name_by_index) for model in self.lods.get(lod_name, [])]
+                for lod_name in LOD_ORDER
+                if self.lods.get(lod_name)
+            }
+        else:
+            selected_lod = coerce_lod(lod)
+            selected_lods = {
+                selected_lod: [model.to_input(material_name_by_index=material_name_by_index) for model in self.lods.get(selected_lod, [])]
+            }
         materials = [material.to_input() for material in self.materials]
         return YdrBuild(
-            models=[model.to_input(material_name_by_index=material_name_by_index) for model in selected_models],
+            lods=selected_lods,
             materials=materials,
             name=name or self.name,
-            lod=selected_lod,
             version=int(self.version),
             skeleton=self.skeleton,
             lights=list(self.lights),
             embedded_textures=self.embedded_textures,
             bound=self.bound,
+            lod_distances=dict(self.lod_distances),
+            render_mask_flags=dict(self.render_mask_flags),
+            unknown_98=int(self.unknown_98),
+            unknown_9c=int(self.unknown_9c),
         )
 
     def save(self, destination: str | Path, *, lod: YdrLod | str | None = None, name: str | None = None) -> Path:
