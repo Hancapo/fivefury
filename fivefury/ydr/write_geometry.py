@@ -24,6 +24,10 @@ def geometry_block_size(bone_ids_count: int) -> int:
     return size
 
 
+def bone_ids_tail_offset(bone_ids_count: int) -> int:
+    return 0x98 + (8 if int(bone_ids_count) > 4 else 0)
+
+
 def _pack_bone_ids(mesh_pack: MeshBufferPack, *, geometry_start: int) -> tuple[int, bytes]:
     bone_ids = list(mesh_pack.mesh.bone_ids)
     if not bone_ids:
@@ -32,7 +36,7 @@ def _pack_bone_ids(mesh_pack: MeshBufferPack, *, geometry_start: int) -> tuple[i
     if len(bone_ids) > 4:
         payload.extend(b'\x00' * 8)
     payload.extend(struct.pack(f'<{len(bone_ids)}H', *bone_ids))
-    pointer = geometry_start + 0x98 + (8 if len(bone_ids) > 4 else 0)
+    pointer = geometry_start + bone_ids_tail_offset(len(bone_ids))
     return pointer, bytes(payload)
 
 
@@ -47,8 +51,16 @@ def build_geometry_block(
     data = bytearray(geometry_block_size(len(mesh_pack.mesh.bone_ids)))
     struct.pack_into('<I', data, 0x00, int(drawable_geometry_vft))
     struct.pack_into('<I', data, 0x04, 1)
+    struct.pack_into('<Q', data, 0x08, 0)
+    struct.pack_into('<Q', data, 0x10, 0)
     struct.pack_into('<Q', data, 0x18, virtual(mesh_pack.vertex_buffer_off))
+    struct.pack_into('<Q', data, 0x20, 0)
+    struct.pack_into('<Q', data, 0x28, 0)
+    struct.pack_into('<Q', data, 0x30, 0)
     struct.pack_into('<Q', data, 0x38, virtual(mesh_pack.index_buffer_off))
+    struct.pack_into('<Q', data, 0x40, 0)
+    struct.pack_into('<Q', data, 0x48, 0)
+    struct.pack_into('<Q', data, 0x50, 0)
     struct.pack_into('<I', data, 0x58, len(mesh_pack.mesh.indices))
     struct.pack_into('<I', data, 0x5C, len(mesh_pack.mesh.indices) // 3)
     struct.pack_into('<H', data, 0x60, len(mesh_pack.mesh.positions))
@@ -59,6 +71,9 @@ def build_geometry_block(
     struct.pack_into('<H', data, 0x72, len(mesh_pack.mesh.bone_ids))
     struct.pack_into('<I', data, 0x74, 0)
     struct.pack_into('<Q', data, 0x78, virtual(mesh_pack.vertex_data_off))
+    struct.pack_into('<Q', data, 0x80, 0)
+    struct.pack_into('<Q', data, 0x88, 0)
+    struct.pack_into('<Q', data, 0x90, 0)
     if bone_payload:
         data[0x98 : 0x98 + len(bone_payload)] = bone_payload
     return GeometryBlock(
@@ -71,6 +86,7 @@ def build_geometry_block(
 
 __all__ = [
     'GeometryBlock',
+    'bone_ids_tail_offset',
     'build_geometry_block',
     'compute_bounds',
     'geometry_block_size',

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from enum import IntEnum, StrEnum
 
 DAT_VIRTUAL_BASE = 0x50000000
@@ -58,6 +59,77 @@ class YdrRenderMask(IntEnum):
     FULL = 255
 
 
+@dataclasses.dataclass(slots=True)
+class YdrSkeletonBinding:
+    unknown_1: int = 0
+    has_skin: int = 0
+    unknown_2: int = 0
+    bone_index: int = 0
+
+    @classmethod
+    def from_int(cls, value: int) -> "YdrSkeletonBinding":
+        raw = int(value) & 0xFFFFFFFF
+        return cls(
+            unknown_1=raw & 0xFF,
+            has_skin=(raw >> 8) & 0xFF,
+            unknown_2=(raw >> 16) & 0xFF,
+            bone_index=(raw >> 24) & 0xFF,
+        )
+
+    @classmethod
+    def skinned(
+        cls,
+        *,
+        bone_index: int = 0,
+        unknown_1: int = 0x11,
+        unknown_2: int = 0,
+    ) -> "YdrSkeletonBinding":
+        return cls(
+            unknown_1=int(unknown_1) & 0xFF,
+            has_skin=1,
+            unknown_2=int(unknown_2) & 0xFF,
+            bone_index=int(bone_index) & 0xFF,
+        )
+
+    @property
+    def is_skinned(self) -> bool:
+        return bool(self.has_skin)
+
+    def to_int(self) -> int:
+        return (
+            (int(self.unknown_1) & 0xFF)
+            | ((int(self.has_skin) & 0xFF) << 8)
+            | ((int(self.unknown_2) & 0xFF) << 16)
+            | ((int(self.bone_index) & 0xFF) << 24)
+        )
+
+    def __int__(self) -> int:
+        return self.to_int()
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, int):
+            return int(self) == (int(other) & 0xFFFFFFFF)
+        if isinstance(other, YdrSkeletonBinding):
+            return (
+                int(self.unknown_1) == int(other.unknown_1)
+                and int(self.has_skin) == int(other.has_skin)
+                and int(self.unknown_2) == int(other.unknown_2)
+                and int(self.bone_index) == int(other.bone_index)
+            )
+        return NotImplemented
+
+
+def coerce_skeleton_binding(value: "YdrSkeletonBinding | int") -> YdrSkeletonBinding:
+    if isinstance(value, YdrSkeletonBinding):
+        return YdrSkeletonBinding(
+            unknown_1=int(value.unknown_1) & 0xFF,
+            has_skin=int(value.has_skin) & 0xFF,
+            unknown_2=int(value.unknown_2) & 0xFF,
+            bone_index=int(value.bone_index) & 0xFF,
+        )
+    return YdrSkeletonBinding.from_int(int(value))
+
+
 def coerce_lod(value: "YdrLod | str") -> YdrLod:
     if isinstance(value, YdrLod):
         return value
@@ -101,8 +173,10 @@ __all__ = [
     "LOD_POINTER_OFFSETS",
     "YdrLod",
     "YdrRenderMask",
+    "YdrSkeletonBinding",
     "coerce_lod",
     "coerce_render_mask",
+    "coerce_skeleton_binding",
     "VertexComponentType",
     "VertexSemantic",
 ]

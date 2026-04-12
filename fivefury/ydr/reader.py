@@ -9,7 +9,7 @@ from ..hashing import jenk_hash
 from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, checked_virtual_offset, physical_to_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
-from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod
+from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod, YdrSkeletonBinding
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
 from .read_lights import parse_lights
 from .read_materials import parse_materials
@@ -294,7 +294,7 @@ def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, m
     geometries_pointer = _u64(system_data, model_off + 0x08)
     geometry_count = _u16(system_data, model_off + 0x10)
     shader_mapping_pointer = _u64(system_data, model_off + 0x20)
-    skeleton_binding = _u32(system_data, model_off + 0x28)
+    skeleton_binding = YdrSkeletonBinding.from_int(_u32(system_data, model_off + 0x28))
     render_mask_flags = _u16(system_data, model_off + 0x2C)
 
     geometry_pointers = _read_pointer_array(geometries_pointer, geometry_count, system_data)

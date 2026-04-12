@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Mapping, Sequence
 
 from ..bounds import Bound
 from ..ytd import Ytd
-from .defs import YdrLod, YdrRenderMask, coerce_lod, coerce_render_mask
+from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_lod, coerce_render_mask, coerce_skeleton_binding
 
 if TYPE_CHECKING:
     from .model import YdrLight, YdrSkeleton
@@ -48,10 +48,11 @@ class YdrModelInput:
     meshes: Sequence[YdrMeshInput]
     render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP
     flags: int = 0
-    skeleton_binding: int = 0
+    skeleton_binding: int | YdrSkeletonBinding = dataclasses.field(default_factory=YdrSkeletonBinding)
 
     def __post_init__(self) -> None:
         self.render_mask = coerce_render_mask(self.render_mask)
+        self.skeleton_binding = coerce_skeleton_binding(self.skeleton_binding)
 
 
 @dataclasses.dataclass(slots=True)

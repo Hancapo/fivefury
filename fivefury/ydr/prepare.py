@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
-from .defs import LOD_ORDER, VertexComponentType, VertexSemantic, YdrLod, YdrRenderMask
+from .defs import LOD_ORDER, VertexComponentType, VertexSemantic, YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_skeleton_binding
 from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition
 
 _DEFAULT_DECLARATION_TYPES = (
@@ -72,7 +72,7 @@ class PreparedModel:
     meshes: list[PreparedMesh]
     render_mask: int = int(YdrRenderMask.STATIC_PROP)
     flags: int = 0
-    skeleton_binding: int = 0
+    skeleton_binding: YdrSkeletonBinding = dataclasses.field(default_factory=YdrSkeletonBinding)
 
 
 @dataclasses.dataclass(slots=True)
@@ -510,7 +510,7 @@ def normalize_lods(source: YdrBuild) -> dict[YdrLod, list[YdrModelInput]]:
                 meshes=list(model.meshes),
                 render_mask=int(model.render_mask),
                 flags=int(model.flags),
-                skeleton_binding=int(model.skeleton_binding),
+                skeleton_binding=coerce_skeleton_binding(model.skeleton_binding),
             )
             for model in models
         ]
@@ -565,7 +565,7 @@ def prepare_build(
                 ),
                 render_mask=int(model.render_mask),
                 flags=int(model.flags),
-                skeleton_binding=int(model.skeleton_binding),
+                skeleton_binding=coerce_skeleton_binding(model.skeleton_binding),
             )
             for model in normalized_models
         ]

@@ -17,6 +17,7 @@ from fivefury import (
     YdrLightType,
     YdrLod,
     YdrRenderMask,
+    YdrSkeletonBinding,
     YdrMaterialInput,
     YdrMeshInput,
     YdrModelInput,
@@ -67,6 +68,19 @@ def _offset_triangle_mesh(offset_x: float, material: str = "default") -> YdrMesh
             ]
         ],
     )
+
+
+def _virtual_to_offset(pointer: int) -> int:
+    return int(pointer) - 0x50000000
+
+
+def _first_model_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
+    _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
+    model_list_off = _virtual_to_offset(int.from_bytes(system_data[0xA0:0xA8], "little"))
+    model_off = _virtual_to_offset(int.from_bytes(system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"))
+    geometry_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little"))
+    geometry_off = _virtual_to_offset(int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 0x08], "little"))
+    return system_data, model_off, geometry_off
 
 
 def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
@@ -664,7 +678,7 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=0x0000FF00,
+            skeleton_binding=YdrSkeletonBinding.skinned(),
         )]},
         materials=[
             YdrMaterialInput(
@@ -695,7 +709,7 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     model = ydr.get_model(0)
     assert model is not None
     assert model.has_skin is True
-    assert model.skeleton_binding == 0x0000FF00
+    assert model.skeleton_binding == YdrSkeletonBinding.skinned()
     assert ydr.has_skeleton is True
     assert ydr.skeleton is not None
     assert ydr.skeleton.bone_count == 2
@@ -744,7 +758,7 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=0x0000FF00,
+            skeleton_binding=YdrSkeletonBinding.skinned(),
         )]},
         materials=[
             YdrMaterialInput(
@@ -771,6 +785,153 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     assert ydr2.get_model(0).has_skin is True
     assert ydr2.skeleton is not None
     assert [bone.name for bone in ydr2.skeleton.bones] == ["root", "child"]
+
+
+def test_skinned_model_writes_formal_skeleton_binding_bytes(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=YdrSkeletonBinding.skinned(unknown_1=0x11),
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skinned_bytes",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "skinned_bytes.ydr"
+    build.save(ydr_path)
+    system_data, model_off, _geometry_off = _first_model_offsets(ydr_path.read_bytes())
+
+    assert int.from_bytes(system_data[model_off + 0x28 : model_off + 0x2C], "little") == 0x00000111
+    assert system_data[model_off + 0x28 : model_off + 0x2C] == bytes((0x11, 0x01, 0x00, 0x00))
+
+
+def test_drawable_model_writes_outer_bounds_data_for_multi_geometry(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[
+                _offset_triangle_mesh(0.0, material="main"),
+                _offset_triangle_mesh(10.0, material="main"),
+            ],
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="multi_geom_bounds",
+    )
+
+    ydr_path = tmp_path / "multi_geom_bounds.ydr"
+    build.save(ydr_path)
+    system_data, model_off, _geometry_off = _first_model_offsets(ydr_path.read_bytes())
+    bounds_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x18 : model_off + 0x20], "little"))
+
+    assert int.from_bytes(system_data[model_off + 0x10 : model_off + 0x12], "little") == 2
+    assert int.from_bytes(system_data[model_off + 0x12 : model_off + 0x14], "little") == 2
+    assert int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 2
+    assert int.from_bytes(system_data[model_off + 0x04 : model_off + 0x08], "little") == 1
+
+    import struct
+
+    outer_bounds = struct.unpack_from("<8f", system_data, bounds_off)
+    first_bounds = struct.unpack_from("<8f", system_data, bounds_off + 32)
+    second_bounds = struct.unpack_from("<8f", system_data, bounds_off + 64)
+    assert outer_bounds[:3] == pytest.approx((0.0, 0.0, 0.0))
+    assert outer_bounds[4:7] == pytest.approx((11.0, 1.0, 0.0))
+    assert first_bounds[:3] == pytest.approx((0.0, 0.0, 0.0))
+    assert first_bounds[4:7] == pytest.approx((1.0, 1.0, 0.0))
+    assert second_bounds[:3] == pytest.approx((10.0, 0.0, 0.0))
+    assert second_bounds[4:7] == pytest.approx((11.0, 1.0, 0.0))
+
+
+def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
+    many_bones_mesh = _skinned_triangle_mesh(material="main")
+    many_bones_mesh.bone_ids = [0, 1, 2, 3, 4]
+    many_bones_mesh.blend_indices = [
+        (0, 1, 2, 3),
+        (0, 1, 2, 4),
+        (1, 2, 3, 4),
+    ]
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[
+                _triangle_mesh(material="main"),
+                _skinned_triangle_mesh(material="main"),
+                many_bones_mesh,
+            ],
+            skeleton_binding=YdrSkeletonBinding.skinned(),
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="bone_ids_tail",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "bone_ids_tail.ydr"
+    build.save(ydr_path)
+    _header, system_data, _graphics_data = split_rsc7_sections(ydr_path.read_bytes())
+    model_list_off = _virtual_to_offset(int.from_bytes(system_data[0xA0:0xA8], "little"))
+    model_off = _virtual_to_offset(int.from_bytes(system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"))
+    geometry_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little"))
+    geometry_offsets = [
+        _virtual_to_offset(int.from_bytes(system_data[geometry_ptrs_off + (index * 8) : geometry_ptrs_off + (index * 8) + 8], "little"))
+        for index in range(3)
+    ]
+
+    assert int.from_bytes(system_data[geometry_offsets[0] + 0x68 : geometry_offsets[0] + 0x70], "little") == 0
+    assert int.from_bytes(system_data[geometry_offsets[0] + 0x72 : geometry_offsets[0] + 0x74], "little") == 0
+
+    two_bone_ptr = int.from_bytes(system_data[geometry_offsets[1] + 0x68 : geometry_offsets[1] + 0x70], "little")
+    assert _virtual_to_offset(two_bone_ptr) == geometry_offsets[1] + 0x98
+    assert int.from_bytes(system_data[geometry_offsets[1] + 0x72 : geometry_offsets[1] + 0x74], "little") == 2
+    assert system_data[geometry_offsets[1] + 0x98 : geometry_offsets[1] + 0x9C] == b"\x00\x00\x01\x00"
+
+    five_bone_ptr = int.from_bytes(system_data[geometry_offsets[2] + 0x68 : geometry_offsets[2] + 0x70], "little")
+    assert _virtual_to_offset(five_bone_ptr) == geometry_offsets[2] + 0xA0
+    assert int.from_bytes(system_data[geometry_offsets[2] + 0x72 : geometry_offsets[2] + 0x74], "little") == 5
+    assert system_data[geometry_offsets[2] + 0x98 : geometry_offsets[2] + 0xA0] == b"\x00" * 8
+    assert system_data[geometry_offsets[2] + 0xA0 : geometry_offsets[2] + 0xAA] == b"\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00"
+
+
+def test_geometry_fixed_fields_match_expected_defaults(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        name="geom_defaults",
+    )
+    ydr_path = tmp_path / "geom_defaults.ydr"
+    build.save(ydr_path)
+    system_data, _model_off, geometry_off = _first_model_offsets(ydr_path.read_bytes())
+
+    assert int.from_bytes(system_data[geometry_off + 0x04 : geometry_off + 0x08], "little") == 1
+    assert int.from_bytes(system_data[geometry_off + 0x08 : geometry_off + 0x10], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x10 : geometry_off + 0x18], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x20 : geometry_off + 0x28], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x28 : geometry_off + 0x30], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x30 : geometry_off + 0x38], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x40 : geometry_off + 0x48], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x48 : geometry_off + 0x50], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x50 : geometry_off + 0x58], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x62 : geometry_off + 0x64], "little") == 3
+    assert int.from_bytes(system_data[geometry_off + 0x64 : geometry_off + 0x68], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x74 : geometry_off + 0x78], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x80 : geometry_off + 0x88], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x88 : geometry_off + 0x90], "little") == 0
+    assert int.from_bytes(system_data[geometry_off + 0x90 : geometry_off + 0x98], "little") == 0
 
 
 def test_to_build_preserves_embedded_assets(tmp_path: Path) -> None:
@@ -903,7 +1064,7 @@ def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=0x0000FF00,
+            skeleton_binding=YdrSkeletonBinding.skinned(),
         )]},
         materials=[
             YdrMaterialInput(

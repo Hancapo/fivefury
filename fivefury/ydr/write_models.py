@@ -5,6 +5,7 @@ import struct
 
 from ..binary import align
 from ..resource import ResourceWriter
+from .defs import YdrSkeletonBinding, coerce_skeleton_binding
 from .prepare import PreparedModel
 from .write_buffers import GraphicsWriter, build_mesh_buffer_packs
 from .write_geometry import GeometryBlock, build_geometry_block
@@ -16,7 +17,7 @@ class PreparedModelBlock:
     model_size: int
     render_mask: int
     flags: int
-    skeleton_binding: int
+    skeleton_binding: YdrSkeletonBinding
 
 
 def _pack_aabb(bounds_min: tuple[float, float, float], bounds_max: tuple[float, float, float]) -> bytes:
@@ -31,6 +32,14 @@ def _pack_aabb(bounds_min: tuple[float, float, float], bounds_max: tuple[float, 
         bounds_max[2],
         bounds_max[0],
     )
+
+
+def pack_render_mask_flags(render_mask: int, flags: int) -> int:
+    return ((int(flags) & 0xFF) << 8) | (int(render_mask) & 0xFF)
+
+
+def pack_skeleton_binding(binding: YdrSkeletonBinding | int) -> int:
+    return int(coerce_skeleton_binding(binding))
 
 
 def model_block_size(geometry_lengths: list[int]) -> int:
@@ -101,7 +110,7 @@ def prepare_model_block(
         model_size=model_block_size([len(block.geometry_bytes) for block in geometry_blocks]),
         render_mask=int(prepared_model.render_mask),
         flags=int(prepared_model.flags),
-        skeleton_binding=int(prepared_model.skeleton_binding),
+        skeleton_binding=coerce_skeleton_binding(prepared_model.skeleton_binding),
     )
 
 
@@ -169,8 +178,8 @@ def build_model_block(
     struct.pack_into('<I', data, 0x14, 0)
     struct.pack_into('<Q', data, 0x18, virtual(model_off + bounds_off))
     struct.pack_into('<Q', data, 0x20, virtual(model_off + shader_mapping_off))
-    struct.pack_into('<I', data, 0x28, int(prepared_block.skeleton_binding))
-    struct.pack_into('<H', data, 0x2C, ((int(prepared_block.flags) & 0xFF) << 8) | (int(prepared_block.render_mask) & 0xFF))
+    struct.pack_into('<I', data, 0x28, pack_skeleton_binding(prepared_block.skeleton_binding))
+    struct.pack_into('<H', data, 0x2C, pack_render_mask_flags(prepared_block.render_mask, prepared_block.flags))
     struct.pack_into('<H', data, 0x2E, geometry_count)
 
     for index, block in enumerate(geometry_blocks):
@@ -203,6 +212,8 @@ __all__ = [
     'PreparedModelBlock',
     'build_model_block',
     'model_block_size',
+    'pack_render_mask_flags',
+    'pack_skeleton_binding',
     'prepare_model_block',
     'write_model_block',
 ]

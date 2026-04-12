@@ -9,7 +9,7 @@ from ..bounds import Bound
 from ..hashing import jenk_hash
 from ..ytd import Texture, TextureFormat, Ytd
 from ._helpers import find_material, find_parameter
-from .defs import LOD_ORDER, YdrLod, coerce_lod
+from .defs import LOD_ORDER, YdrLod, YdrSkeletonBinding, coerce_lod, coerce_skeleton_binding
 from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
@@ -623,18 +623,23 @@ class YdrModel:
     meshes: list[YdrMesh] = dataclasses.field(default_factory=list)
     render_mask: int = 0
     flags: int = 0
-    skeleton_binding: int = 0
+    skeleton_binding: YdrSkeletonBinding = dataclasses.field(default_factory=YdrSkeletonBinding)
 
     def __post_init__(self) -> None:
         self.lod = coerce_lod(self.lod)
+        self.skeleton_binding = coerce_skeleton_binding(self.skeleton_binding)
 
     @property
     def has_skin(self) -> bool:
-        return bool((self.skeleton_binding >> 8) & 0xFF)
+        return self.skeleton_binding.is_skinned
 
     @property
     def bone_index(self) -> int:
-        return (self.skeleton_binding >> 24) & 0xFF
+        return int(self.skeleton_binding.bone_index)
+
+    @property
+    def skeleton_binding_value(self) -> int:
+        return int(self.skeleton_binding)
 
     @property
     def mesh_count(self) -> int:
@@ -673,12 +678,24 @@ class YdrModel:
     def get_material(self, value: str | int) -> YdrMaterial | None:
         return find_material(self.materials, value)
 
-    def set_skin_binding(self, *, bone_index: int = 0, palette_size: int = 0xFF) -> "YdrModel":
-        self.skeleton_binding = ((int(bone_index) & 0xFF) << 24) | ((int(palette_size) & 0xFF) << 8)
+    def set_skin_binding(
+        self,
+        *,
+        bone_index: int = 0,
+        has_skin: int = 1,
+        unknown_1: int = 0x11,
+        unknown_2: int = 0,
+    ) -> "YdrModel":
+        self.skeleton_binding = YdrSkeletonBinding(
+            unknown_1=int(unknown_1) & 0xFF,
+            has_skin=int(has_skin) & 0xFF,
+            unknown_2=int(unknown_2) & 0xFF,
+            bone_index=int(bone_index) & 0xFF,
+        )
         return self
 
     def clear_skin_binding(self) -> "YdrModel":
-        self.skeleton_binding = 0
+        self.skeleton_binding = YdrSkeletonBinding()
         return self
 
     def to_input(self, *, material_name_by_index: dict[int, str]) -> YdrModelInput:
@@ -691,7 +708,7 @@ class YdrModel:
             ],
             render_mask=int(self.render_mask),
             flags=int(self.flags),
-            skeleton_binding=int(self.skeleton_binding),
+            skeleton_binding=coerce_skeleton_binding(self.skeleton_binding),
         )
 
 
@@ -938,11 +955,24 @@ class Ydr:
         self.bound = None
         return self
 
-    def set_model_skin(self, model: int, *, bone_index: int = 0, palette_size: int = 0xFF) -> YdrModel:
+    def set_model_skin(
+        self,
+        model: int,
+        *,
+        bone_index: int = 0,
+        has_skin: int = 1,
+        unknown_1: int = 0x11,
+        unknown_2: int = 0,
+    ) -> YdrModel:
         target = self.get_model(model)
         if target is None:
             raise KeyError(f"Unknown YDR model index {model}")
-        return target.set_skin_binding(bone_index=bone_index, palette_size=palette_size)
+        return target.set_skin_binding(
+            bone_index=bone_index,
+            has_skin=has_skin,
+            unknown_1=unknown_1,
+            unknown_2=unknown_2,
+        )
 
     def clear_embedded_textures(self) -> "Ydr":
         self.embedded_textures = None
@@ -983,6 +1013,24 @@ class Ydr:
                 issues.append(
                     YdrValidationIssue("error", "missing_skeleton", f"Model {model.index} is skinned but the drawable has no skeleton", context=f"model:{model.index}")
                 )
+            if int(model.skeleton_binding.has_skin) not in (0, 1):
+                issues.append(
+                    YdrValidationIssue(
+                        "error",
+                        "invalid_has_skin_flag",
+                        f"Model {model.index} uses unsupported HasSkin value {model.skeleton_binding.has_skin}",
+                        context=f"model:{model.index}",
+                    )
+                )
+            if int(model.skeleton_binding.unknown_2) != 0:
+                issues.append(
+                    YdrValidationIssue(
+                        "warning",
+                        "unexpected_skeleton_binding_unknown_2",
+                        f"Model {model.index} uses non-zero SkeletonBindUnk2 value {model.skeleton_binding.unknown_2}",
+                        context=f"model:{model.index}",
+                    )
+                )
             for mesh_index, mesh in enumerate(model.meshes):
                 context = f"model:{model.index}:mesh:{mesh_index}"
                 if mesh.material_index < 0 or mesh.material_index >= len(self.materials):
@@ -1005,6 +1053,10 @@ class Ydr:
                 if mesh.is_skinned and not mesh.bone_ids:
                     issues.append(
                         YdrValidationIssue("error", "missing_bone_palette", "Skinned mesh has no bone id palette", context=context)
+                    )
+                if mesh.is_skinned and not model.has_skin:
+                    issues.append(
+                        YdrValidationIssue("error", "missing_model_skin_flag", "Skinned mesh belongs to a model with HasSkin disabled", context=context)
                     )
                 if mesh.bone_ids and self.skeleton is not None:
                     for bone_id in mesh.bone_ids:
