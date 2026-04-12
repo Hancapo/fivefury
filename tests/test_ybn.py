@@ -15,6 +15,8 @@ from fivefury import (
     BoundBox,
     BoundChild,
     BoundComposite,
+    BoundCompositeFlag,
+    BoundCompositeFlags,
     BoundGeometry,
     BoundMaterial,
     BoundMaterialColor,
@@ -358,11 +360,12 @@ def test_resource_page_flags_match_codewalker_assign_positions2_for_real_ybn_if_
     from fivefury.bounds import BoundResourcePagesInfo, build_bound_system_layout
 
     source = read_ybn(source_path)
-    _, block_sizes = build_bound_system_layout(
+    _, block_spans = build_bound_system_layout(
         source.bound,
         root_pages_info=BoundResourcePagesInfo(system_pages_count=16, graphics_pages_count=0),
     )
 
+    block_sizes = [span.size for span in block_spans]
     flags = get_resource_flags_from_block_sizes(block_sizes, (source.version >> 4) & 0xF, is_system=True)
 
     assert flags == 0x20101A82
@@ -374,7 +377,7 @@ def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_
     if not source_path.exists():
         return
 
-    source = read_ybn(source_path)
+    source = read_ybn(source_path.read_bytes(), path=source_path)
     data = source.to_bytes()
     header, _, _ = split_rsc7_sections(data)
     roundtrip = read_ybn(data)
@@ -386,6 +389,16 @@ def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_
     assert roundtrip.bound.file_pages_info.system_pages_count == 16
     assert get_resource_total_page_count(header.system_flags) == 16
     assert roundtrip.validate() == []
+
+
+def test_read_ybn_normalizes_real_bounds_from_codewalker_layout_if_available() -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\ybn_debug\good\aliencity2_codewalker_by_xml_reimport.ybn")
+    if not source_path.exists():
+        return
+
+    ybn = read_ybn(source_path)
+
+    assert ybn.validate() == []
 
 
 def test_gamefilecache_parses_loose_ybn() -> None:
@@ -528,6 +541,46 @@ def test_ybn_from_bound_and_save_roundtrip_composite_with_geometry_child() -> No
     assert child.bound.polygon_count == 1
 
 
+def test_build_ybn_bytes_roundtrips_composite_bvh_when_child_count_is_six() -> None:
+    root = BoundComposite(
+        bound_type=10,
+        sphere_radius=1.0,
+        box_max=(1.0, 1.0, 1.0),
+        margin=0.0,
+        box_min=(-1.0, -1.0, -1.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=1.0,
+    )
+    for index in range(6):
+        sphere = _make_sphere(center=(0.0, 0.0, 0.0), radius=0.25, material_index=7)
+        root.add_child(
+            sphere,
+            transform=BoundTransform(
+                column1=(1.0, 0.0, 0.0),
+                column2=(0.0, 1.0, 0.0),
+                column3=(0.0, 0.0, 1.0),
+                column4=(float(index) * 2.0, 0.0, 0.0),
+                flags2=1,
+                flags3=1,
+            ),
+            bounds=BoundAabb(sphere.box_min, sphere.box_max),
+        )
+
+    data = build_ybn_bytes(root)
+    parsed = read_ybn(data, path="composite_bvh.ybn")
+    _, system_data, _ = split_rsc7_sections(data)
+
+    assert isinstance(parsed.bound, BoundComposite)
+    assert parsed.bound.child_count == 6
+    assert parsed.bound.bvh is not None
+    assert parsed.bound.bvh.node_count > 0
+    assert parsed.bound.bvh.tree_count > 0
+    assert int.from_bytes(system_data[0xA8:0xB0], "little") != 0
+
+
 def test_build_ybn_bytes_roundtrips_bvh_geometry_bound() -> None:
     source = _make_bvh_geometry()
 
@@ -597,8 +650,8 @@ def test_roundtrip_real_reference_ybn_preserves_page_count_metadata() -> None:
 
     assert source.bound.file_pages_info is not None
     assert roundtrip.bound.file_pages_info is not None
-    assert roundtrip.bound.file_pages_info.system_pages_count == source.bound.file_pages_info.system_pages_count
-    assert get_resource_total_page_count(header.system_flags) == source.bound.file_pages_info.system_pages_count
+    assert roundtrip.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
+    assert roundtrip.system_pages_count == get_resource_total_page_count(header.system_flags)
 
 
 def test_read_real_reference_ybn_decodes_geometry_polygons_and_bvh() -> None:
@@ -627,3 +680,90 @@ def test_build_ybn_bytes_does_not_emit_octants_for_bvh_geometry() -> None:
 
     assert isinstance(ybn.bound, BoundBVH)
     assert ybn.bound.octants is None
+
+
+def test_build_ybn_bytes_rejects_invalid_geometry_indices() -> None:
+    source = _make_geometry()
+    source.polygons[0].tri_index3 = 99
+
+    try:
+        build_ybn_bytes(source)
+    except ValueError as exc:
+        assert "invalid vertex index" in str(exc)
+    else:
+        raise AssertionError("expected build_ybn_bytes to reject invalid geometry indices")
+
+
+def test_build_ybn_bytes_rejects_invalid_geometry_material_indices() -> None:
+    source = _make_geometry()
+    source.polygons[0].material_index = 9
+    source.polygon_material_indices = [9]
+
+    try:
+        build_ybn_bytes(source)
+    except ValueError as exc:
+        assert "invalid material index" in str(exc)
+    else:
+        raise AssertionError("expected build_ybn_bytes to reject invalid geometry material indices")
+
+
+def test_build_ybn_bytes_normalizes_inverted_bound_boxes() -> None:
+    source = _make_box(minimum=(-1.0, -2.0, -3.0), maximum=(4.0, 5.0, 6.0))
+    source.box_min, source.box_max = source.box_max, source.box_min
+
+    parsed = read_ybn(build_ybn_bytes(source), path="normalized_box.ybn")
+
+    assert parsed.bound.box_min == (-1.0, -2.0, -3.0)
+    assert parsed.bound.box_max == (4.0, 5.0, 6.0)
+
+
+def test_build_ybn_bytes_falls_back_from_invalid_child_bounds() -> None:
+    child = _make_box(minimum=(-1.0, -1.0, -1.0), maximum=(1.0, 1.0, 1.0))
+    root = BoundComposite(
+        bound_type=10,
+        sphere_radius=1.0,
+        box_max=(1.0, 1.0, 1.0),
+        margin=0.0,
+        box_min=(-1.0, -1.0, -1.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        unknown_3ch=1,
+        unknown_60h=(0.0, 0.0, 0.0),
+        volume=1.0,
+        children=[
+            BoundChild(
+                bound=child,
+                bounds=BoundAabb((5.0, 5.0, 5.0), (0.0, 0.0, 0.0)),
+            )
+        ],
+    )
+
+    parsed = read_ybn(build_ybn_bytes(root), path="invalid_child_bounds_fallback.ybn")
+
+    assert isinstance(parsed.bound, BoundComposite)
+    assert parsed.bound.children[0].bounds is not None
+    assert parsed.bound.children[0].bounds.minimum == child.box_min
+    assert parsed.bound.children[0].bounds.maximum == child.box_max
+
+
+def test_bound_composite_flags_expose_enum_aliases() -> None:
+    flags = BoundCompositeFlags()
+    flags.type_flags = BoundCompositeFlag.MAP_DYNAMIC | BoundCompositeFlag.MAP_COVER
+    flags.include_flags = BoundCompositeFlag.OBJECT | BoundCompositeFlag.GLASS
+
+    assert flags.flags1 == (BoundCompositeFlag.MAP_DYNAMIC | BoundCompositeFlag.MAP_COVER)
+    assert flags.flags2 == (BoundCompositeFlag.OBJECT | BoundCompositeFlag.GLASS)
+    assert flags.type_flags == flags.flags1
+    assert flags.include_flags == flags.flags2
+
+
+def test_build_ybn_bytes_rejects_invalid_triangle_edge_indices() -> None:
+    source = _make_geometry()
+    source.polygons[0].edge_index1 = BoundPolygonTriangle.pack_edge_index(5)
+
+    try:
+        build_ybn_bytes(source)
+    except ValueError as exc:
+        assert "invalid polygon index" in str(exc)
+    else:
+        raise AssertionError("expected build_ybn_bytes to reject invalid triangle edge indices")

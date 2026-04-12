@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import math
 from collections import Counter
 from typing import Iterator
 
@@ -32,6 +33,25 @@ class BoundAabb:
     maximum: tuple[float, float, float]
 
 
+def _normalize_aabb(bounds: BoundAabb) -> BoundAabb:
+    return BoundAabb(
+        minimum=tuple(min(bounds.minimum[axis], bounds.maximum[axis]) for axis in range(3)),
+        maximum=tuple(max(bounds.minimum[axis], bounds.maximum[axis]) for axis in range(3)),
+    )
+
+
+def _aabb_is_valid(bounds: BoundAabb) -> bool:
+    return all(bounds.minimum[axis] <= bounds.maximum[axis] for axis in range(3))
+
+
+def _merge_bounds(bounds: list[BoundAabb], fallback: BoundAabb) -> BoundAabb:
+    if not bounds:
+        return fallback
+    minimum = tuple(min(item.minimum[axis] for item in bounds) for axis in range(3))
+    maximum = tuple(max(item.maximum[axis] for item in bounds) for axis in range(3))
+    return BoundAabb(minimum, maximum)
+
+
 @dataclasses.dataclass(slots=True)
 class BoundTransform:
     column1: tuple[float, float, float]
@@ -48,10 +68,96 @@ class BoundTransform:
         return self.column4
 
 
+class BoundCompositeFlag(enum.IntFlag):
+    NONE = 0
+    UNKNOWN = 1 << 0
+    MAP_WEAPON = 1 << 1
+    MAP_DYNAMIC = 1 << 2
+    MAP_ANIMAL = 1 << 3
+    MAP_COVER = 1 << 4
+    MAP_VEHICLE = 1 << 5
+    VEHICLE_NOT_BVH = 1 << 6
+    VEHICLE_BVH = 1 << 7
+    VEHICLE_BOX = 1 << 8
+    PED = 1 << 9
+    RAGDOLL = 1 << 10
+    ANIMAL = 1 << 11
+    ANIMAL_RAGDOLL = 1 << 12
+    OBJECT = 1 << 13
+    OBJECT_ENV_CLOTH = 1 << 14
+    PLANT = 1 << 15
+    PROJECTILE = 1 << 16
+    EXPLOSION = 1 << 17
+    PICKUP = 1 << 18
+    FOLIAGE = 1 << 19
+    FORKLIFT_FORKS = 1 << 20
+    TEST_WEAPON = 1 << 21
+    TEST_CAMERA = 1 << 22
+    TEST_AI = 1 << 23
+    TEST_SCRIPT = 1 << 24
+    TEST_VEHICLE_WHEEL = 1 << 25
+    GLASS = 1 << 26
+    MAP_RIVER = 1 << 27
+    SMOKE = 1 << 28
+    UNSMASHED = 1 << 29
+    MAP_STAIRS = 1 << 30
+    MAP_DEEP_SURFACE = 1 << 31
+
+
+def _transform_point(point: tuple[float, float, float], transform: BoundTransform | None) -> tuple[float, float, float]:
+    if transform is None:
+        return point
+    return (
+        (transform.column1[0] * point[0]) + (transform.column2[0] * point[1]) + (transform.column3[0] * point[2]) + transform.column4[0],
+        (transform.column1[1] * point[0]) + (transform.column2[1] * point[1]) + (transform.column3[1] * point[2]) + transform.column4[1],
+        (transform.column1[2] * point[0]) + (transform.column2[2] * point[1]) + (transform.column3[2] * point[2]) + transform.column4[2],
+    )
+
+
+def _transform_bounds(bounds: BoundAabb, transform: BoundTransform | None) -> BoundAabb:
+    if transform is None:
+        return bounds
+    minimum = bounds.minimum
+    maximum = bounds.maximum
+    corners = [
+        _transform_point((x, y, z), transform)
+        for x in (minimum[0], maximum[0])
+        for y in (minimum[1], maximum[1])
+        for z in (minimum[2], maximum[2])
+    ]
+    transformed_minimum = tuple(min(point[axis] for point in corners) for axis in range(3))
+    transformed_maximum = tuple(max(point[axis] for point in corners) for axis in range(3))
+    return BoundAabb(transformed_minimum, transformed_maximum)
+
+
+def _sphere_radius_from_bounds(bounds: BoundAabb, center: tuple[float, float, float]) -> float:
+    return math.sqrt(
+        max(abs(bounds.minimum[0] - center[0]), abs(bounds.maximum[0] - center[0])) ** 2
+        + max(abs(bounds.minimum[1] - center[1]), abs(bounds.maximum[1] - center[1])) ** 2
+        + max(abs(bounds.minimum[2] - center[2]), abs(bounds.maximum[2] - center[2])) ** 2
+    )
+
+
 @dataclasses.dataclass(slots=True)
 class BoundCompositeFlags:
-    flags1: int = 0
-    flags2: int = 0
+    flags1: BoundCompositeFlag = BoundCompositeFlag.NONE
+    flags2: BoundCompositeFlag = BoundCompositeFlag.NONE
+
+    @property
+    def type_flags(self) -> BoundCompositeFlag:
+        return self.flags1
+
+    @type_flags.setter
+    def type_flags(self, value: BoundCompositeFlag | int) -> None:
+        self.flags1 = BoundCompositeFlag(int(value))
+
+    @property
+    def include_flags(self) -> BoundCompositeFlag:
+        return self.flags2
+
+    @include_flags.setter
+    def include_flags(self, value: BoundCompositeFlag | int) -> None:
+        self.flags2 = BoundCompositeFlag(int(value))
 
 
 @dataclasses.dataclass(slots=True)
@@ -285,6 +391,26 @@ class BoundPolygonTriangle(BoundPolygon):
     def vertex_indices(self) -> tuple[int, int, int]:
         return (self.vert_index1, self.vert_index2, self.vert_index3)
 
+    @staticmethod
+    def pack_edge_index(polygon_index: int) -> int:
+        if polygon_index < 0 or polygon_index > 0xFFFF:
+            return 0xFFFF
+        return int(polygon_index)
+
+    @staticmethod
+    def unpack_edge_index(edge_index: int) -> int:
+        if edge_index == 0xFFFF:
+            return -1
+        return int(edge_index)
+
+    @property
+    def adjacent_polygon_indices(self) -> tuple[int, int, int]:
+        return (
+            self.unpack_edge_index(self.edge_index1),
+            self.unpack_edge_index(self.edge_index2),
+            self.unpack_edge_index(self.edge_index3),
+        )
+
 
 @dataclasses.dataclass(slots=True)
 class BoundPolygonSphere(BoundPolygon):
@@ -409,12 +535,18 @@ class Bound:
         return [bound for bound in self.walk() if not isinstance(bound, BoundComposite)]
 
     def build(self) -> "Bound":
+        normalized = _normalize_aabb(self.bounds)
+        self.box_min = normalized.minimum
+        self.box_max = normalized.maximum
+        self.box_center = tuple((normalized.minimum[axis] + normalized.maximum[axis]) * 0.5 for axis in range(3))
         return self
 
     def validate(self) -> list[str]:
         issues: list[str] = []
         if self.sphere_radius < 0:
             issues.append(f"{self.type_name} has negative sphere_radius")
+        if not _aabb_is_valid(self.bounds):
+            issues.append(f"{self.type_name} has inverted box bounds")
         return issues
 
 
@@ -521,8 +653,19 @@ class BoundGeometry(Bound):
         return material
 
     def build(self) -> "BoundGeometry":
+        super().build()
         for index, polygon in enumerate(self.polygons):
             polygon.index = index
+            if isinstance(polygon, BoundPolygonTriangle):
+                polygon.edge_index1 = BoundPolygonTriangle.pack_edge_index(
+                    BoundPolygonTriangle.unpack_edge_index(polygon.edge_index1)
+                )
+                polygon.edge_index2 = BoundPolygonTriangle.pack_edge_index(
+                    BoundPolygonTriangle.unpack_edge_index(polygon.edge_index2)
+                )
+                polygon.edge_index3 = BoundPolygonTriangle.pack_edge_index(
+                    BoundPolygonTriangle.unpack_edge_index(polygon.edge_index3)
+                )
         if len(self.polygon_material_indices) != len(self.polygons):
             self.polygon_material_indices = [max(0, int(polygon.material_index)) for polygon in self.polygons]
         if self.bound_type is BoundType.GEOMETRY:
@@ -538,6 +681,31 @@ class BoundGeometry(Bound):
         issues = super().validate()
         if len(self.polygon_material_indices) != len(self.polygons):
             issues.append("polygon_material_indices length does not match polygon count")
+        for polygon_index, polygon in enumerate(self.polygons):
+            for vertex_index in polygon.vertex_indices:
+                if vertex_index < 0 or vertex_index >= self.vertex_count:
+                    issues.append(
+                        f"polygon {polygon_index} references invalid vertex index {vertex_index}"
+                    )
+            if isinstance(polygon, BoundPolygonTriangle):
+                for edge_slot, edge_polygon_index in enumerate(polygon.adjacent_polygon_indices, start=1):
+                    if edge_polygon_index >= self.polygon_count:
+                        issues.append(
+                            f"polygon {polygon_index} edge {edge_slot} references invalid polygon index {edge_polygon_index}"
+                        )
+            material_index = (
+                int(polygon.material_index)
+                if polygon.material_index >= 0
+                else int(self.polygon_material_indices[polygon_index])
+                if polygon_index < len(self.polygon_material_indices)
+                else -1
+            )
+            if material_index < 0:
+                issues.append(f"polygon {polygon_index} has no valid material index")
+            elif self.materials and material_index >= len(self.materials):
+                issues.append(
+                    f"polygon {polygon_index} references invalid material index {material_index}"
+                )
         if self.octants is not None:
             issues.extend(self.octants.validate(self.vertex_count))
         return issues
@@ -566,10 +734,15 @@ class BoundChild:
 class BoundComposite(Bound):
     children: list[BoundChild] = dataclasses.field(default_factory=list)
     bvh_pointer: int = 0
+    bvh: BoundBvh | None = None
 
     @property
     def child_count(self) -> int:
         return len(self.children)
+
+    @property
+    def has_bvh(self) -> bool:
+        return self.bvh is not None
 
     def iter_children(self) -> Iterator[BoundChild]:
         yield from self.children
@@ -588,15 +761,36 @@ class BoundComposite(Bound):
         return child
 
     def build(self) -> "BoundComposite":
+        super().build()
         for child in self.children:
             child.bound.build()
+            if child.bounds is None or not _aabb_is_valid(child.bounds):
+                child.bounds = child.bound.bounds
+        if self.children:
+            transformed_bounds = [
+                _transform_bounds(child.bounds if child.bounds is not None else child.bound.bounds, child.transform)
+                for child in self.children
+            ]
+            overall = _merge_bounds(transformed_bounds, self.bounds)
+            center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
+            self.box_min = overall.minimum
+            self.box_max = overall.maximum
+            self.box_center = center
+            self.sphere_center = center
+            self.sphere_radius = _sphere_radius_from_bounds(overall, center)
+            if len(self.children) <= 5:
+                self.bvh = None
+        else:
+            self.bvh = None
         return self
 
     def validate(self) -> list[str]:
         issues = super().validate()
         if not self.children:
             issues.append("Composite bound has no children")
-        for child in self.children:
+        for index, child in enumerate(self.children):
+            if child.bounds is not None and not _aabb_is_valid(child.bounds):
+                issues.append(f"child {index} has inverted local bounds")
             issues.extend(child.bound.validate())
         return issues
 
@@ -613,6 +807,7 @@ __all__ = [
     'BoundChild',
     'BoundCloth',
     'BoundComposite',
+    'BoundCompositeFlag',
     'BoundCompositeFlags',
     'BoundCylinder',
     'BoundDisc',

@@ -463,7 +463,12 @@ def _read_composite(offset: int, system_data: bytes) -> BoundComposite:
                 flags2=flags2[index] if index < len(flags2) else None,
             )
         )
-    return BoundComposite(**values, children=children, bvh_pointer=bvh_pointer)
+    return BoundComposite(
+        **values,
+        children=children,
+        bvh_pointer=bvh_pointer,
+        bvh=_read_bvh(bvh_pointer, system_data),
+    )
 
 
 def read_bound_at(offset: int, system_data: bytes) -> Bound:

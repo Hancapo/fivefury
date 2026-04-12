@@ -43,7 +43,7 @@ class PreparedMaterial:
     shader_file_name: str
     render_bucket: int
     textures: dict[str, YdrTextureInput]
-    parameters: dict[str, float | tuple[float, ...] | int | str]
+    parameters: dict[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str]
 
 
 @dataclasses.dataclass(slots=True)

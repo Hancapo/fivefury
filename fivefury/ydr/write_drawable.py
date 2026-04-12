@@ -52,25 +52,49 @@ def write_drawable_models_block(
     virtual: Callable[[int], int],
 ) -> DrawableModelsLayout:
     layout = DrawableModelsLayout()
+    lod_blocks = {
+        lod_name: list(model_blocks_by_lod.get(lod_name, ()))
+        for lod_name in LOD_ORDER
+        if model_blocks_by_lod.get(lod_name)
+    }
+    if not lod_blocks:
+        return layout
+
+    cursor = 0
+    lod_header_offsets: dict[YdrLod, int] = {}
+    model_offsets: dict[tuple[YdrLod, int], int] = {}
     for lod_name in LOD_ORDER:
-        prepared_blocks = list(model_blocks_by_lod.get(lod_name, ()))
+        prepared_blocks = lod_blocks.get(lod_name)
         if not prepared_blocks:
             continue
-        header_off = system.alloc(0x10 + (len(prepared_blocks) * 8), 16)
-        if layout.block_start == 0:
-            layout.block_start = header_off
+        cursor = ((cursor + 15) // 16) * 16
+        lod_header_offsets[lod_name] = cursor
+        cursor += 0x10 + (len(prepared_blocks) * 8)
+        for model_index, prepared_block in enumerate(prepared_blocks):
+            cursor = ((cursor + 15) // 16) * 16
+            model_offsets[(lod_name, model_index)] = cursor
+            cursor += int(prepared_block.model_size)
+
+    block_start = system.alloc(cursor, 16)
+    layout.block_start = block_start
+    layout.block_end = block_start + cursor
+
+    for lod_name in LOD_ORDER:
+        prepared_blocks = lod_blocks.get(lod_name)
+        if not prepared_blocks:
+            continue
+        header_off = block_start + lod_header_offsets[lod_name]
         ptrs_off = header_off + 0x10
         system.pack_into("Q", header_off + 0x00, virtual(ptrs_off))
         system.pack_into("H", header_off + 0x08, len(prepared_blocks))
         system.pack_into("H", header_off + 0x0A, len(prepared_blocks))
         system.pack_into("I", header_off + 0x0C, 0)
         for model_index, prepared_block in enumerate(prepared_blocks):
-            model_off = system.alloc(int(prepared_block.model_size), 16)
+            model_off = block_start + model_offsets[(lod_name, model_index)]
             write_model(model_off, lod_name, model_index)
             system.pack_into("Q", ptrs_off + (model_index * 8), virtual(model_off))
         layout.lod_headers[lod_name] = header_off
         layout.counts_by_lod[lod_name] = len(prepared_blocks)
-    layout.block_end = system.cursor if layout.block_start else 0
     return layout
 
 

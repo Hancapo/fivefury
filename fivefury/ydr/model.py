@@ -418,11 +418,11 @@ class YdrMaterialParameterRef:
             return None
         return self.texture.name
 
-    def to_builder_value(self) -> float | tuple[float, ...] | None:
+    def to_builder_value(self) -> NumericParameterValue | None:
         if self.is_texture or self.value is None:
             return None
         if isinstance(self.value, tuple) and self.value and isinstance(self.value[0], tuple):
-            return None
+            return tuple(tuple(float(component) for component in row) for row in self.value)
         if isinstance(self.value, tuple):
             if len(self.value) == 1:
                 return float(self.value[0])
@@ -663,7 +663,7 @@ class YdrMaterial:
             for parameter in self.parameters
             if parameter.is_texture and parameter.texture is not None
         }
-        numeric_parameters: dict[str, float | tuple[float, ...] | int | str] = {}
+        numeric_parameters: dict[str, NumericParameterValue] = {}
         for parameter in self.parameters:
             value = parameter.to_builder_value()
             if value is None:

@@ -11,9 +11,7 @@ def normalize_parameter_key(value: str) -> str:
     return str(value).strip().lower()
 
 
-def coerce_parameter_inline(value: float | tuple[float, ...] | int | str) -> bytes:
-    if isinstance(value, str):
-        raise ValueError("String shader parameters are not supported by the YDR builder yet")
+def _coerce_parameter_vector(value: float | tuple[float, ...] | int) -> tuple[float, float, float, float]:
     if isinstance(value, (int, float)):
         components = [float(value), 0.0, 0.0, 0.0]
     else:
@@ -22,14 +20,32 @@ def coerce_parameter_inline(value: float | tuple[float, ...] | int | str) -> byt
             raise ValueError("Shader parameter tuples must have between 1 and 4 components")
         while len(components) < 4:
             components.append(0.0)
-    return struct.pack("<4f", *components)
+    return (components[0], components[1], components[2], components[3])
+
+
+def coerce_parameter_inline(
+    value: float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str,
+    *,
+    expected_count: int = 1,
+) -> tuple[int, bytes]:
+    if isinstance(value, str):
+        raise ValueError("String shader parameters are not supported by the YDR builder yet")
+    if isinstance(value, tuple) and value and isinstance(value[0], tuple):
+        vectors = [_coerce_parameter_vector(item) for item in value]
+    else:
+        vectors = [_coerce_parameter_vector(value)]
+    if expected_count > 1 and len(vectors) != expected_count:
+        raise ValueError(f"Shader parameter expects {expected_count} float4 values, got {len(vectors)}")
+    if expected_count <= 1 and len(vectors) > 1:
+        raise ValueError("Shader parameter does not accept an array value")
+    return len(vectors), b"".join(struct.pack("<4f", *vector) for vector in vectors)
 
 
 def merge_shader_parameter_defaults(
-    parameters: dict[str, float | tuple[float, ...] | int | str],
+    parameters: dict[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str],
     shader_definition,
-) -> dict[str, float | tuple[float, ...] | int | str]:
-    merged: dict[str, float | tuple[float, ...] | int | str] = {}
+) -> dict[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str]:
+    merged: dict[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str] = {}
     for definition in shader_definition.parameters:
         if definition.is_texture or definition.default_value is None:
             continue
@@ -107,13 +123,8 @@ def build_parameter_entries(
             continue
         if key not in numeric_params:
             continue
-        entries.append(
-            shader_parameter_entry_cls(
-                definition=definition,
-                data_type=1,
-                inline_data=coerce_parameter_inline(numeric_params[key]),
-            )
-        )
+        data_type, inline_data = coerce_parameter_inline(numeric_params[key], expected_count=int(definition.count))
+        entries.append(shader_parameter_entry_cls(definition=definition, data_type=data_type, inline_data=inline_data))
     return entries
 
 
@@ -138,8 +149,10 @@ def write_shader_parameters_block(
     inline_size = sum(len(entry.inline_data) for entry in entries)
     parameter_count = len(entries)
     parameter_size = (parameter_count * 16) + inline_size
-    parameter_data_size = align(32 + parameter_size + (parameter_count * 4), 16)
-    params_off = system.alloc(parameter_data_size, 16)
+    parameter_block_base_size = 32 + parameter_size + (parameter_count * 4)
+    parameter_data_size = align(parameter_block_base_size, 16)
+    parameter_block_size = parameter_block_base_size + (parameter_data_size * 4)
+    params_off = system.alloc(parameter_block_size, 16)
 
     inline_off = params_off + (parameter_count * 16)
     for index, entry in enumerate(entries):

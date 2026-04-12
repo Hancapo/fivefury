@@ -47,6 +47,23 @@ def _align(value: int, alignment: int) -> int:
     return (value + alignment - 1) & ~(alignment - 1)
 
 
+def _read_first_mesh_buffer_pointers(raw: bytes) -> tuple[int, int, int, int]:
+    _header, system_data, _graphics_data = split_rsc7_sections(raw)
+    high_header_off = int.from_bytes(system_data[_ROOT_OFFSET + 0x40 : _ROOT_OFFSET + 0x48], "little") - _DAT_VIRTUAL_BASE
+    high_ptrs_off = int.from_bytes(system_data[high_header_off : high_header_off + 8], "little") - _DAT_VIRTUAL_BASE
+    model_off = int.from_bytes(system_data[high_ptrs_off : high_ptrs_off + 8], "little") - _DAT_VIRTUAL_BASE
+    geometry_ptrs_off = int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little") - _DAT_VIRTUAL_BASE
+    geometry_off = int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 8], "little") - _DAT_VIRTUAL_BASE
+    vertex_buffer_off = int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little") - _DAT_VIRTUAL_BASE
+    index_buffer_off = int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little") - _DAT_VIRTUAL_BASE
+    return (
+        int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little"),
+        int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little"),
+        int.from_bytes(system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28], "little"),
+        int.from_bytes(system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little"),
+    )
+
+
 def _pack_vertex(
     position: tuple[float, float, float],
     normal: tuple[float, float, float],
@@ -292,10 +309,23 @@ def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_av
     raw = build_ydr_bytes(source)
     header, system_data, _ = split_rsc7_sections(raw)
     pages_info_offset = int.from_bytes(system_data[0x08:0x10], "little") - _DAT_VIRTUAL_BASE
+    system_page_count = get_resource_total_page_count(header.system_flags)
+    graphics_page_count = get_resource_total_page_count(header.graphics_flags)
 
-    assert get_resource_total_page_count(header.system_flags) == 8
-    assert system_data[pages_info_offset + 0x08] == 8
-    assert system_data[pages_info_offset + 0x09] == 0
+    assert system_data[pages_info_offset + 0x08] == system_page_count
+    assert system_data[pages_info_offset + 0x09] == graphics_page_count
+
+
+def test_build_ydr_bytes_writes_legacy_mesh_buffers_to_system_pages() -> None:
+    source = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
+    raw = build_ydr_bytes(source)
+    _header, _system_data, _graphics_data = split_rsc7_sections(raw)
+    geometry_vertex_data_ptr, vertex_data_ptr1, vertex_data_ptr2, index_data_ptr = _read_first_mesh_buffer_pointers(raw)
+
+    assert _DAT_VIRTUAL_BASE <= geometry_vertex_data_ptr < _DAT_PHYSICAL_BASE
+    assert _DAT_VIRTUAL_BASE <= vertex_data_ptr1 < _DAT_PHYSICAL_BASE
+    assert _DAT_VIRTUAL_BASE <= vertex_data_ptr2 < _DAT_PHYSICAL_BASE
+    assert _DAT_VIRTUAL_BASE <= index_data_ptr < _DAT_PHYSICAL_BASE
 
 
 def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -> None:

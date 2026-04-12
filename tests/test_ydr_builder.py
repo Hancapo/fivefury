@@ -32,6 +32,8 @@ from fivefury import (
 )
 from fivefury.resource import split_rsc7_sections
 
+_TEXTURE_BASE_VFT = 0x40617568
+
 
 def _triangle_mesh(material: str = "default") -> YdrMeshInput:
     return YdrMeshInput(
@@ -82,6 +84,15 @@ def _first_model_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
     geometry_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little"))
     geometry_off = _virtual_to_offset(int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 0x08], "little"))
     return system_data, model_off, geometry_off
+
+
+def _first_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
+    _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
+    shader_group_off = _virtual_to_offset(int.from_bytes(system_data[0x10:0x18], "little"))
+    shader_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[shader_group_off + 0x10 : shader_group_off + 0x18], "little"))
+    shader_off = _virtual_to_offset(int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little"))
+    params_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x00 : shader_off + 0x08], "little"))
+    return system_data, shader_off, params_off
 
 
 def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
@@ -135,7 +146,26 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert int.from_bytes(system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little") == 0x4061D158
     assert system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18] == system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28]
     assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
+    assert int.from_bytes(system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little") >= 0x50000000
     assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
+
+
+def test_create_ydr_writes_legacy_texture_base_contract(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        name="texture_base_contract",
+    )
+
+    ydr_path = tmp_path / "texture_base_contract.ydr"
+    build.save(ydr_path)
+    system_data, _shader_off, params_off = _first_shader_offsets(ydr_path.read_bytes())
+    texture_base_off = _virtual_to_offset(int.from_bytes(system_data[params_off + 0x08 : params_off + 0x10], "little"))
+
+    assert int.from_bytes(system_data[texture_base_off + 0x00 : texture_base_off + 0x04], "little") == _TEXTURE_BASE_VFT
+    assert int.from_bytes(system_data[texture_base_off + 0x04 : texture_base_off + 0x08], "little") == 1
+    assert int.from_bytes(system_data[texture_base_off + 0x30 : texture_base_off + 0x32], "little") == 1
+    assert int.from_bytes(system_data[texture_base_off + 0x32 : texture_base_off + 0x34], "little") == 2
 
 
 def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
@@ -200,6 +230,13 @@ def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path
     assert graphics_data == b""
     assert int.from_bytes(system_data[0x04:0x08], "little") == 1
 
+    _system_data, _model_off, geometry_off = _first_model_offsets(output_path.read_bytes())
+    vertex_buffer_off = _virtual_to_offset(int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little"))
+    index_buffer_off = _virtual_to_offset(int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little"))
+    assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
+    assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
+    assert int.from_bytes(system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little") >= 0x50000000
+
 
 def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
     build = create_ydr(
@@ -230,6 +267,48 @@ def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
     assert descriptor.get_parameter("specularIntensityMult").value == pytest.approx(1.0)
     assert descriptor.get_parameter("specularFalloffMult").value == pytest.approx(100.0)
     assert descriptor.get_parameter("specularFresnel").value == pytest.approx(0.75)
+
+
+def test_create_ydr_roundtrips_array_shader_parameters(tmp_path: Path) -> None:
+    expected = (
+        (1.0, 2.0, 3.0, 4.0),
+        (5.0, 6.0, 7.0, 8.0),
+        (9.0, 10.0, 11.0, 12.0),
+        (13.0, 14.0, 15.0, 16.0),
+        (17.0, 18.0, 19.0, 20.0),
+    )
+    build = create_ydr(
+        meshes=[_triangle_mesh(material="main")],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="cable.sps",
+                textures={"textureSamp": "test_diffuse"},
+                parameters={"gCableParams": expected},
+            )
+        ],
+        name="cable_array",
+    )
+
+    path1 = tmp_path / "cable_array_1.ydr"
+    build.save(path1)
+    ydr1 = read_ydr(path1)
+    value1 = ydr1.materials[0].get_numeric_parameter("gCableParams")
+
+    assert value1 is not None
+    assert len(value1) == len(expected)
+    for actual, wanted in zip(value1, expected, strict=True):
+        assert actual == pytest.approx(wanted)
+
+    path2 = tmp_path / "cable_array_2.ydr"
+    ydr1.save(path2)
+    ydr2 = read_ydr(path2)
+    value2 = ydr2.materials[0].get_numeric_parameter("gCableParams")
+
+    assert value2 is not None
+    assert len(value2) == len(expected)
+    for actual, wanted in zip(value2, expected, strict=True):
+        assert actual == pytest.approx(wanted)
 
 
 def test_create_ydr_accepts_named_render_mask_presets(tmp_path: Path) -> None:

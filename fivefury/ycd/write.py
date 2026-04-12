@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ..metahash import MetaHash
-from ..resource import ResourceWriter, build_rsc7, get_resource_flags_from_block_layout, get_resource_total_page_count
+from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections
 from .model import (
     Ycd,
     YcdAnimation,
@@ -159,7 +159,7 @@ class _YcdWriter:
         if cached is not None:
             return cached
         raw_data = bytes(sequence.raw_data)
-        offset = self.writer.alloc(0x20 + len(raw_data), 16)
+        offset = self.writer.alloc(0x20 + len(raw_data), 16, relocate_pointers=False)
         self.writer.pack_into(
             "IIIIIHHHHHBB",
             offset,
@@ -191,7 +191,7 @@ class _YcdWriter:
 
         bone_ids_offset = 0
         if animation.bone_ids:
-            bone_ids_offset = self.writer.alloc(len(animation.bone_ids) * 4, 16)
+            bone_ids_offset = self.writer.alloc(len(animation.bone_ids) * 4, 16, relocate_pointers=False)
             for index, bone_id in enumerate(animation.bone_ids):
                 entry_offset = bone_ids_offset + (index * 4)
                 self.writer.pack_into(
@@ -247,7 +247,11 @@ class _YcdWriter:
         return offset
 
     def write_clip_property_attribute(self, attribute: YcdClipPropertyAttribute) -> int:
-        offset = self.writer.alloc(0x30, 16)
+        offset = self.writer.alloc(
+            0x30,
+            16,
+            relocate_pointers=attribute.attribute_type is YcdClipPropertyAttributeType.STRING,
+        )
         self.writer.pack_into(
             "IIBBHIIIII",
             offset,
@@ -569,11 +573,11 @@ class _YcdWriter:
 
     def write_pages_info(self, page_counts: tuple[int, int]) -> int:
         total_page_count = int(page_counts[0]) + int(page_counts[1])
-        offset = self.writer.alloc(0x10 + (total_page_count * 8), 16)
+        offset = self.writer.alloc(0x10 + (total_page_count * 8), 16, relocate_pointers=False)
         self.writer.pack_into("IIBBHI", offset, 0, 0, int(page_counts[0]) & 0xFF, int(page_counts[1]) & 0xFF, 0, 0)
         return offset
 
-    def build_system_data(self, page_counts: tuple[int, int] = (0, 0)) -> tuple[bytes, list[int]]:
+    def build_system_data(self, page_counts: tuple[int, int] = (0, 0)) -> tuple[bytes, list[ResourceBlockSpan]]:
         clips = list(self.ycd.clips)
         animations = list(self.ycd.animations)
         clip_bucket_capacity = self.ycd.clip_bucket_capacity or _get_num_hash_buckets(len(clips))
@@ -599,7 +603,7 @@ class _YcdWriter:
             0,
             0,
         )
-        return self.writer.finish(), list(self.writer.block_sizes)
+        return self.writer.finish(), self.writer.block_spans
 
 
 def build_ycd_bytes(ycd: Ycd) -> bytes:
@@ -609,8 +613,12 @@ def build_ycd_bytes(ycd: Ycd) -> bytes:
     system_flags = None
     graphics_flags = None
     for _ in range(16):
-        system_data, system_block_sizes = _YcdWriter(source).build_system_data(page_counts)
-        system_flags, graphics_flags = get_resource_flags_from_block_layout(system_block_sizes, version=ycd.header.version)
+        raw_system_data, system_blocks = _YcdWriter(source).build_system_data(page_counts)
+        system_data, _, system_flags, graphics_flags = layout_resource_sections(
+            raw_system_data,
+            system_blocks,
+            version=ycd.header.version,
+        )
         next_counts = (get_resource_total_page_count(system_flags), get_resource_total_page_count(graphics_flags))
         if next_counts == page_counts:
             break

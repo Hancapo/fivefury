@@ -7,8 +7,8 @@ from ..bounds import Bound, BoundResourcePagesInfo, build_bound_system_layout, r
 from ..resource import (
     RSC7_MAGIC,
     build_rsc7,
-    get_resource_flags_from_block_layout,
     get_resource_total_page_count,
+    layout_resource_sections,
     split_rsc7_sections,
 )
 
@@ -36,12 +36,15 @@ class Ybn:
         return bound
 
     def build(self) -> "Ybn":
+        self.bound = self.bound.build()
         return self
 
     def validate(self) -> list[str]:
         issues: list[str] = []
         if self.bound is None:
             issues.append("YBN has no root bound")
+        if self.bound is not None:
+            issues.extend(self.bound.validate())
         pages_info = self.bound.file_pages_info if self.bound is not None else None
         if pages_info is not None:
             system_count_present = self.system_pages_count or pages_info.system_pages_count
@@ -61,12 +64,18 @@ class Ybn:
 
 def build_ybn_bytes(source: Ybn | Bound, *, version: int | None = None) -> bytes:
     bound = source.bound if isinstance(source, Ybn) else source
+    bound = bound.build()
     if version is None:
         version = source.version if isinstance(source, Ybn) else _DEFAULT_YBN_VERSION
     version = int(version)
+    issues = bound.validate()
+    if issues:
+        issue_lines = "\n".join(f"- {issue}" for issue in issues)
+        raise ValueError(f"cannot build invalid YBN bound:\n{issue_lines}")
     pages_info = bound.file_pages_info or BoundResourcePagesInfo()
     page_count = 1
     system_flags = None
+    graphics_flags = None
     system_data = b""
     for _ in range(16):
         root_pages_info = dataclasses.replace(
@@ -74,14 +83,19 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int | None = None) -> bytes
             system_pages_count=page_count,
             graphics_pages_count=0,
         )
-        system_data, block_sizes = build_bound_system_layout(bound, root_pages_info=root_pages_info)
-        system_flags, _ = get_resource_flags_from_block_layout(block_sizes, version=version)
+        raw_system_data, block_spans = build_bound_system_layout(bound, root_pages_info=root_pages_info)
+        system_data, _, system_flags, graphics_flags = layout_resource_sections(
+            raw_system_data,
+            block_spans,
+            version=version,
+        )
         next_page_count = get_resource_total_page_count(system_flags)
         if next_page_count == page_count:
             break
         page_count = next_page_count
     assert system_flags is not None
-    return build_rsc7(system_data, version=version, system_alignment=0x200, system_flags=system_flags)
+    assert graphics_flags is not None
+    return build_rsc7(system_data, version=version, system_flags=system_flags, graphics_flags=graphics_flags)
 
 
 def save_ybn(source: Ybn | Bound, destination: str | Path, *, version: int | None = None) -> Path:
@@ -99,13 +113,15 @@ def read_ybn(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     header, system_data, _ = split_rsc7_sections(data)
     system_pages_count = get_resource_total_page_count(header.system_flags)
     graphics_pages_count = get_resource_total_page_count(header.graphics_flags)
-    return Ybn(
+    ybn = Ybn(
         version=int(header.version),
         bound=read_bound_at(_ROOT_OFFSET, system_data),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
         system_pages_count=system_pages_count,
         graphics_pages_count=graphics_pages_count,
     )
+    ybn.build()
+    return ybn
 
 
 __all__ = [

@@ -24,7 +24,7 @@ class YdrMaterialInput:
     name: str = "default"
     shader: str = "default.sps"
     textures: Mapping[str, str | YdrTextureInput] = dataclasses.field(default_factory=dict)
-    parameters: Mapping[str, float | tuple[float, ...] | int | str] = dataclasses.field(default_factory=dict)
+    parameters: Mapping[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str] = dataclasses.field(default_factory=dict)
     render_bucket: int = 0
 
 
