@@ -6,6 +6,17 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.27]
+
+### Changed
+- Unified `RSC7` page-layout flag calculation across `YBN`, `YDR`, and `YCD` writers using a CodeWalker-style block packing strategy.
+- Aligned META resource pages-info counts with the page counts encoded by the written resource flags.
+
+### Fixed
+- Fixed generated `YDR` files that wrote mismatched `ResourcePagesInfo` page counts versus the `RSC7` header, which could produce invalid virtual-page/fixup metadata.
+- Fixed generated and roundtripped `YBN` files with stale root pages-info metadata from bad source files.
+- Fixed `YCD` pages-info metadata so it is sized and written from the actual encoded resource page layout instead of a fixed single-page placeholder.
+
 ## [0.1.26]
 
 ### Added
