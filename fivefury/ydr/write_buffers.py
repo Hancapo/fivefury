@@ -11,17 +11,30 @@ from .prepare import PreparedMesh, compute_bounds
 class GraphicsWriter:
     data: bytearray = dataclasses.field(default_factory=bytearray)
     block_sizes: list[int] = dataclasses.field(default_factory=list)
+    block_offsets: list[int] = dataclasses.field(default_factory=list)
+    block_relocate_pointers: list[bool] = dataclasses.field(default_factory=list)
 
-    def alloc(self, value: bytes, alignment: int = 16) -> int:
+    def alloc(self, value: bytes, alignment: int = 16, *, relocate_pointers: bool = True) -> int:
         offset = align(len(self.data), alignment)
         if offset > len(self.data):
             self.data.extend(b'\x00' * (offset - len(self.data)))
         self.data.extend(value)
         self.block_sizes.append(len(value))
+        self.block_offsets.append(offset)
+        self.block_relocate_pointers.append(bool(relocate_pointers))
         return offset
 
     def finish(self) -> bytes:
         return bytes(self.data)
+
+    @property
+    def block_spans(self):
+        from ..resource import ResourceBlockSpan
+
+        return [
+            ResourceBlockSpan(offset=offset, size=size, relocate_pointers=relocate_pointers)
+            for offset, size, relocate_pointers in zip(self.block_offsets, self.block_sizes, self.block_relocate_pointers, strict=True)
+        ]
 
 
 @dataclasses.dataclass(slots=True)
@@ -52,9 +65,9 @@ def build_mesh_buffer_pack(
     system.data[declaration_off + 0x07] = max(1, int(mesh.declaration_flags).bit_count())
     system.pack_into('Q', declaration_off + 0x08, int(mesh.declaration_types))
 
-    vertex_data_off = system.alloc(len(mesh.vertex_bytes), 16)
+    vertex_data_off = system.alloc(len(mesh.vertex_bytes), 16, relocate_pointers=False)
     system.write(vertex_data_off, mesh.vertex_bytes)
-    index_data_off = system.alloc(len(mesh.index_bytes), 16) if mesh.index_bytes else 0
+    index_data_off = system.alloc(len(mesh.index_bytes), 16, relocate_pointers=False) if mesh.index_bytes else 0
     if index_data_off:
         system.write(index_data_off, mesh.index_bytes)
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ..bounds import write_bound_resource
 from ..binary import align
-from ..resource import ResourceWriter, build_rsc7, get_resource_flags_from_block_layout, get_resource_total_page_count, split_rsc7_sections
+from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
 from .defs import DAT_VIRTUAL_BASE, LOD_ORDER, YdrLod
 from .prepare import (
@@ -105,7 +105,7 @@ def _write_embedded_texture_dictionary(system: ResourceWriter, graphics: Graphic
     ytd_bytes = source.embedded_textures.to_bytes(game=_embedded_texture_game(source))
     header, virtual_data, graphics_data = split_rsc7_sections(ytd_bytes)
     dict_offset = system.alloc(len(virtual_data), 16)
-    graphics_offset = graphics.alloc(graphics_data, 16) if graphics_data else 0
+    graphics_offset = graphics.alloc(graphics_data, 16, relocate_pointers=False) if graphics_data else 0
     relocated = _relocate_embedded_texture_dictionary(
         virtual_data,
         dict_offset=dict_offset,
@@ -121,7 +121,7 @@ def _build_system_payload(
     prepared_materials: list[PreparedMaterial],
     prepared_lods,
     page_counts: tuple[int, int],
-) -> tuple[bytes, bytes, list[int], list[int]]:
+) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
 
@@ -206,7 +206,7 @@ def _build_system_payload(
         unknown_9c=source.unknown_9c,
         virtual=_virtual,
     )
-    return system.finish(), graphics.finish(), list(system.block_sizes), list(graphics.block_sizes)
+    return system.finish(), graphics.finish(), system.block_spans, graphics.block_spans
 
 
 def ydr_to_build(source: 'Ydr', *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
@@ -244,16 +244,18 @@ def build_ydr_bytes(
     system_flags = None
     graphics_flags = None
     for _ in range(16):
-        system_data, graphics_data, system_block_sizes, graphics_block_sizes = _build_system_payload(
+        system_data, graphics_data, system_blocks, graphics_blocks = _build_system_payload(
             source,
             prepared_materials,
             prepared_lods,
             page_counts,
         )
-        system_flags, graphics_flags = get_resource_flags_from_block_layout(
-            system_block_sizes,
-            graphics_block_sizes,
-            version=source.version,
+        system_data, graphics_data, system_flags, graphics_flags = layout_resource_sections(
+            system_data,
+            system_blocks,
+            graphics_data,
+            graphics_blocks,
+            version=int(source.version),
         )
         system_page_count = get_resource_total_page_count(system_flags)
         next_counts = (system_page_count, get_resource_total_page_count(graphics_flags))

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
-from fivefury.resource import build_rsc7, get_resource_total_page_count, split_rsc7_sections
+from fivefury.resource import ResourceBlockSpan, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from fivefury.ydr import build_ydr_bytes
 from fivefury.ydr import YdrMaterialDescriptor
 from tests.helpers import write_bytes
@@ -17,6 +17,30 @@ _RESOURCE_FILE_BASE_SIZE = 0x10
 _GTAV1_TYPES = 0x7755555555996996
 _GTAV1_FLAGS = (1 << 0) | (1 << 3) | (1 << 6) | (1 << 14)
 _VERTEX_STRIDE = 48
+
+
+def test_resource_section_layout_reorders_blocks_and_remaps_resource_pointers() -> None:
+    data = bytearray(0x3040)
+    struct.pack_into("<Q", data, 0x08, _DAT_VIRTUAL_BASE + 0x20)
+    struct.pack_into("<Q", data, 0x20, _DAT_VIRTUAL_BASE + 0x40)
+    struct.pack_into("<Q", data, 0x40, _DAT_VIRTUAL_BASE + 0x20)
+
+    system_data, graphics_data, system_flags, graphics_flags = layout_resource_sections(
+        bytes(data),
+        [
+            ResourceBlockSpan(0x00, 0x20, True),
+            ResourceBlockSpan(0x20, 0x20, True),
+            ResourceBlockSpan(0x40, 0x3000, False),
+        ],
+        version=165,
+    )
+
+    assert graphics_data == b""
+    assert get_resource_total_page_count(system_flags) == 1
+    assert get_resource_total_page_count(graphics_flags) == 0
+    assert struct.unpack_from("<Q", system_data, 0x08)[0] == _DAT_VIRTUAL_BASE + 0x3020
+    assert struct.unpack_from("<Q", system_data, 0x3020)[0] == _DAT_VIRTUAL_BASE + 0x20
+    assert struct.unpack_from("<Q", system_data, 0x20)[0] == _DAT_VIRTUAL_BASE + 0x20
 
 
 def _align(value: int, alignment: int) -> int:
