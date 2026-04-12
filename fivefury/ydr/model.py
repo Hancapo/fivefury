@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Sequence, Union
 
@@ -208,6 +209,159 @@ class YdrSkeleton:
             if bone is not None:
                 resolved.append(bone)
         return resolved
+
+
+@dataclasses.dataclass(slots=True)
+class YdrJointControlPoint:
+    max_swing: float = 0.0
+    min_twist: float = 0.0
+    max_twist: float = 0.0
+
+
+@dataclasses.dataclass(slots=True)
+class YdrJointRotationLimit:
+    bone_id: int = 0
+    unknown_ah: int = 0
+    unknown_0h: int = 0
+    unknown_4h: int = 0
+    unknown_14h: int = 0
+    unknown_18h: int = 0
+    unknown_1ch: int = 0
+    unknown_20h: int = 0
+    unknown_24h: int = 0
+    unknown_28h: int = 0
+    unknown_30h: int = 0
+    unknown_34h: int = 0
+    unknown_38h: int = 0
+    unknown_3ch: int = 0
+    unknown_44h: int = 0
+    unknown_48h: int = 0
+    unknown_4ch: int = 0
+    unknown_bch: int = 0x100
+    num_control_points: int = 1
+    joint_dofs: int = 3
+    unknown_2ch: float = 1.0
+    unknown_40h: float = 1.0
+    soft_limit_scale: float = 1.0
+    min: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    twist_limit_min: float = -math.pi
+    twist_limit_max: float = math.pi
+    unknown_74h: float = math.pi
+    unknown_78h: float = -math.pi
+    unknown_7ch: float = math.pi
+    unknown_80h: float = math.pi
+    unknown_84h: float = -math.pi
+    unknown_88h: float = math.pi
+    unknown_8ch: float = math.pi
+    unknown_90h: float = -math.pi
+    unknown_94h: float = math.pi
+    unknown_98h: float = math.pi
+    unknown_9ch: float = -math.pi
+    unknown_a0h: float = math.pi
+    unknown_a4h: float = math.pi
+    unknown_a8h: float = -math.pi
+    unknown_ach: float = math.pi
+    unknown_b0h: float = math.pi
+    unknown_b4h: float = -math.pi
+    unknown_b8h: float = math.pi
+
+    def build(self) -> "YdrJointRotationLimit":
+        self.min = tuple(float(v) for v in self.min)
+        self.max = tuple(float(v) for v in self.max)
+        self.num_control_points = int(self.num_control_points)
+        self.joint_dofs = int(self.joint_dofs)
+        return self
+
+
+@dataclasses.dataclass(slots=True)
+class YdrJointTranslationLimit:
+    bone_id: int = 0
+    min: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    unknown_0h: int = 0
+    unknown_4h: int = 0
+    unknown_ch: int = 0
+    unknown_10h: int = 0
+    unknown_14h: int = 0
+    unknown_18h: int = 0
+    unknown_1ch: int = 0
+    unknown_2ch: int = 0
+    unknown_3ch: int = 0
+
+    def build(self) -> "YdrJointTranslationLimit":
+        self.min = tuple(float(v) for v in self.min)
+        self.max = tuple(float(v) for v in self.max)
+        return self
+
+
+@dataclasses.dataclass(slots=True)
+class YdrJoints:
+    rotation_limits: list[YdrJointRotationLimit] = dataclasses.field(default_factory=list)
+    translation_limits: list[YdrJointTranslationLimit] = dataclasses.field(default_factory=list)
+    vft: int = 0x40617800
+    unknown_4h: int = 1
+    unknown_8h: int = 0
+    unknown_20h: int = 0
+    unknown_28h: int = 0
+    unknown_34h: int = 0
+    unknown_36h: int = 1
+    unknown_38h: int = 0
+
+    @property
+    def has_limits(self) -> bool:
+        return bool(self.rotation_limits or self.translation_limits)
+
+    def build(self) -> "YdrJoints":
+        self.vft = int(self.vft)
+        self.unknown_4h = int(self.unknown_4h)
+        self.unknown_8h = int(self.unknown_8h)
+        self.unknown_20h = int(self.unknown_20h)
+        self.unknown_28h = int(self.unknown_28h)
+        self.unknown_34h = int(self.unknown_34h)
+        self.unknown_36h = int(self.unknown_36h)
+        self.unknown_38h = int(self.unknown_38h)
+        for limit in self.rotation_limits:
+            limit.build()
+        for limit in self.translation_limits:
+            limit.build()
+        return self
+
+    def add_rotation_limit(
+        self,
+        *,
+        bone_id: int,
+        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        unknown_ah: int = 0,
+        num_control_points: int = 1,
+        joint_dofs: int = 3,
+    ) -> YdrJointRotationLimit:
+        limit = YdrJointRotationLimit(
+            bone_id=int(bone_id),
+            min=tuple(float(v) for v in min),
+            max=tuple(float(v) for v in max),
+            unknown_ah=int(unknown_ah) & 0xFFFF,
+            num_control_points=int(num_control_points),
+            joint_dofs=int(joint_dofs),
+        )
+        self.rotation_limits.append(limit)
+        return limit
+
+    def add_translation_limit(
+        self,
+        *,
+        bone_id: int,
+        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    ) -> YdrJointTranslationLimit:
+        limit = YdrJointTranslationLimit(
+            bone_id=int(bone_id),
+            min=tuple(float(v) for v in min),
+            max=tuple(float(v) for v in max),
+        )
+        self.translation_limits.append(limit)
+        return limit
 
 
 @dataclasses.dataclass(slots=True)
@@ -542,6 +696,7 @@ class YdrMesh:
     vertex_stride: int = 0
     declaration_flags: int = 0
     declaration_types: int = 0
+    vertex_buffer_flags: int = 0
     render_mask: int = 0
     flags: int = 0
 
@@ -613,6 +768,9 @@ class YdrMesh:
             blend_weights=list(self.blend_weights) or None,
             blend_indices=list(self.blend_indices) or None,
             bone_ids=list(self.bone_ids) or None,
+            vertex_buffer_flags=int(self.vertex_buffer_flags),
+            declaration_flags=int(self.declaration_flags),
+            declaration_types=int(self.declaration_types),
         )
 
 
@@ -723,6 +881,7 @@ class Ydr:
     bounding_box_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
     bounding_box_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
     skeleton: YdrSkeleton | None = None
+    joints: YdrJoints | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
     embedded_textures: Ytd | None = None
     bound: Bound | None = None
@@ -739,6 +898,8 @@ class Ydr:
     def build(self) -> "Ydr":
         if self.skeleton is not None:
             self.skeleton.build()
+        if self.joints is not None:
+            self.joints.build()
         for material_index, material in enumerate(self.materials):
             material.index = material_index
         for model_index, model in enumerate(self.models):
@@ -822,10 +983,19 @@ class Ydr:
     def has_skeleton(self) -> bool:
         return self.skeleton is not None and self.skeleton.bone_count > 0
 
+    @property
+    def has_joints(self) -> bool:
+        return self.joints is not None and self.joints.has_limits
+
     def ensure_skeleton(self) -> YdrSkeleton:
         if self.skeleton is None:
             self.skeleton = YdrSkeleton.create()
         return self.skeleton
+
+    def ensure_joints(self) -> YdrJoints:
+        if self.joints is None:
+            self.joints = YdrJoints()
+        return self.joints
 
     def get_bone_by_index(self, index: int) -> YdrBone | None:
         if self.skeleton is None:
@@ -861,6 +1031,46 @@ class Ydr:
             rotation=rotation,
             translation=translation,
             scale=scale,
+        )
+
+    def set_joints(self, joints: YdrJoints) -> YdrJoints:
+        self.joints = joints
+        return joints
+
+    def clear_joints(self) -> "Ydr":
+        self.joints = None
+        return self
+
+    def add_rotation_limit(
+        self,
+        *,
+        bone_id: int,
+        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        unknown_ah: int = 0,
+        num_control_points: int = 1,
+        joint_dofs: int = 3,
+    ) -> YdrJointRotationLimit:
+        return self.ensure_joints().add_rotation_limit(
+            bone_id=bone_id,
+            min=min,
+            max=max,
+            unknown_ah=unknown_ah,
+            num_control_points=num_control_points,
+            joint_dofs=joint_dofs,
+        )
+
+    def add_translation_limit(
+        self,
+        *,
+        bone_id: int,
+        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    ) -> YdrJointTranslationLimit:
+        return self.ensure_joints().add_translation_limit(
+            bone_id=bone_id,
+            min=min,
+            max=max,
         )
 
     def require_material(self, value: str | int) -> YdrMaterial:
@@ -1064,6 +1274,21 @@ class Ydr:
                             issues.append(
                                 YdrValidationIssue("error", "unknown_bone_id", f"Mesh references unknown bone id {bone_id}", context=context)
                             )
+        if self.joints is not None and self.joints.has_limits:
+            if not self.has_skeleton:
+                issues.append(
+                    YdrValidationIssue("error", "missing_skeleton_for_joints", "YDR has joint limits but no skeleton", context="joints")
+                )
+            for index, limit in enumerate(self.joints.rotation_limits):
+                if self.skeleton is not None and self.skeleton.get_bone_by_tag(int(limit.bone_id)) is None and self.skeleton.get_bone_by_index(int(limit.bone_id)) is None:
+                    issues.append(
+                        YdrValidationIssue("error", "unknown_joint_rotation_bone", f"Rotation limit references unknown bone id {limit.bone_id}", context=f"joints:rotation:{index}")
+                    )
+            for index, limit in enumerate(self.joints.translation_limits):
+                if self.skeleton is not None and self.skeleton.get_bone_by_tag(int(limit.bone_id)) is None and self.skeleton.get_bone_by_index(int(limit.bone_id)) is None:
+                    issues.append(
+                        YdrValidationIssue("error", "unknown_joint_translation_bone", f"Translation limit references unknown bone id {limit.bone_id}", context=f"joints:translation:{index}")
+                    )
         return issues
 
     def to_build(self, *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
@@ -1092,6 +1317,7 @@ class Ydr:
             name=name or self.name,
             version=int(self.version),
             skeleton=self.skeleton,
+            joints=self.joints,
             lights=list(self.lights),
             embedded_textures=self.embedded_textures,
             bound=self.bound,
@@ -1255,14 +1481,22 @@ __all__ = [
     "Color4",
     "ColorChannel",
     "Ydr",
+    "YdrBone",
+    "YdrBoneFlags",
+    "YdrJointControlPoint",
+    "YdrJointRotationLimit",
+    "YdrJointTranslationLimit",
+    "YdrJoints",
     "YdrLight",
     "YdrLightType",
     "YdrMaterial",
     "YdrMaterialParameterRef",
     "YdrMesh",
     "YdrModel",
+    "YdrSkeleton",
     "YdrTextureRef",
     "YdrValidationIssue",
+    "calculate_bone_tag",
     "paint_mesh",
     "paint_vertices",
 ]

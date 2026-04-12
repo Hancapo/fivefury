@@ -13,6 +13,7 @@ from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDE
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
 from .read_lights import parse_lights
 from .read_materials import parse_materials
+from .read_joints import parse_joints
 from .read_skeleton import parse_skeleton
 from .shaders import ShaderLibrary, load_shader_library
 
@@ -178,6 +179,7 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
     normals: list[tuple[float, float, float]] = []
     tangents: list[tuple[float, float, float, float]] = []
     texcoords: list[list[tuple[float, float]]] = [[] for _ in range(8)]
+    max_texcoord_index = -1
     colours0: list[tuple[float, float, float, float]] = []
     colours1: list[tuple[float, float, float, float]] = []
     blend_weights: list[tuple[float, float, float, float]] = []
@@ -190,10 +192,13 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
                 continue
             component_type = _component_type(types_value, semantic_index)
             component_offset = _component_offset(flags, types_value, semantic_index)
+            semantic = VertexSemantic(semantic_index)
+            if semantic is VertexSemantic.BLEND_INDICES and COMPONENT_SIZES.get(component_type) == 4:
+                blend_indices.append(tuple(int(component) for component in _decode_ubyte4(vertex_bytes, base + component_offset)))
+                continue
             value = _decode_component(vertex_bytes, base + component_offset, component_type)
             if value is None:
                 continue
-            semantic = VertexSemantic(semantic_index)
             if semantic is VertexSemantic.POSITION:
                 positions.append(tuple(float(component) for component in value[:3]))
             elif semantic is VertexSemantic.NORMAL:
@@ -213,13 +218,14 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
                     blend_weights.append(tuple(float(component) for component in value[:4]))
             elif VertexSemantic.TEXCOORD0 <= semantic <= VertexSemantic.TEXCOORD7:
                 texcoord_index = semantic_index - int(VertexSemantic.TEXCOORD0)
+                max_texcoord_index = max(max_texcoord_index, texcoord_index)
                 texcoords[texcoord_index].append((float(value[0]), float(value[1])))
 
     return {
         "positions": positions,
         "normals": normals,
         "tangents": tangents,
-        "texcoords": [channel for channel in texcoords if channel],
+        "texcoords": texcoords[: max_texcoord_index + 1] if max_texcoord_index >= 0 else [],
         "colours0": colours0,
         "colours1": colours1,
         "blend_weights": blend_weights,
@@ -248,6 +254,7 @@ def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int,
 
     vertex_buffer_off = _virtual_offset(vertex_buffer_pointer, system_data)
     vb_stride = _u16(system_data, vertex_buffer_off + 0x08)
+    vb_flags = _u16(system_data, vertex_buffer_off + 0x0A)
     vertex_data_pointer = _u64(system_data, vertex_buffer_off + 0x10) or _u64(system_data, vertex_buffer_off + 0x20)
     vertex_count = _u32(system_data, vertex_buffer_off + 0x18)
     info_pointer = _u64(system_data, vertex_buffer_off + 0x30)
@@ -284,6 +291,7 @@ def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int,
         vertex_stride=stride,
         declaration_flags=declaration_flags,
         declaration_types=declaration_types,
+        vertex_buffer_flags=vb_flags,
         render_mask=render_mask,
         flags=flags,
     )
@@ -386,6 +394,16 @@ def read_ydr(
         u64=_u64,
         f32=_f32,
     )
+    joints = parse_joints(
+        system_data,
+        _u64(system_data, _ROOT_OFFSET + 0x80),
+        virtual_offset=_virtual_offset,
+        u16=_u16,
+        u32=_u32,
+        u64=_u64,
+        f32=_f32,
+        vec3=_vec3,
+    )
     lights = parse_lights(
         system_data,
         root_offset=_ROOT_OFFSET,
@@ -413,6 +431,7 @@ def read_ydr(
         bounding_box_min=_vec3(system_data, _ROOT_OFFSET + 0x20),
         bounding_box_max=_vec3(system_data, _ROOT_OFFSET + 0x30),
         skeleton=skeleton,
+        joints=joints,
         lights=lights,
         embedded_textures=embedded_textures,
         bound=bound,

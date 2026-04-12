@@ -6,6 +6,18 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.26]
+
+### Added
+- Added `YDR` joint-limit read/write support with `YdrJoints`, rotation limits, translation limits, and high-level helpers for attaching joints to drawables.
+- Added real-reference `YDR` roundtrip coverage for the expanded `references/ydrs` sample set.
+
+### Fixed
+- Preserved legacy `YDR` vertex declarations and vertex-buffer flags during roundtrip instead of rebuilding every mesh through a simplified declaration.
+- Fixed sparse UV-channel handling so declarations using higher UV slots without all intermediate channels no longer collapse or corrupt texture coordinate streams.
+- Updated the `YDR` vertex encoder to serialize components according to their declaration type, including half-float and packed byte formats, instead of writing every vector-like value as 32-bit floats.
+- Fixed skinned `YDR` parsing and roundtrip for packed blend-index streams that use the legacy `COLOUR` component type.
+
 ## [0.1.25]
 
 ### Fixed

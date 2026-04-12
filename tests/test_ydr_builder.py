@@ -13,6 +13,7 @@ from fivefury import (
     YdrBone,
     YdrBoneFlags,
     YdrBuild,
+    YdrJoints,
     YdrLight,
     YdrLightType,
     YdrLod,
@@ -135,6 +136,53 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18] == system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28]
     assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
     assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
+
+
+def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
+    skeleton = YdrSkeleton.create()
+    root_bone = skeleton.add_bone("root")
+    joints = YdrJoints()
+    joints.add_rotation_limit(
+        bone_id=root_bone.tag,
+        min=(-1.0, -0.5, -0.25),
+        max=(1.0, 0.5, 0.25),
+        unknown_ah=7,
+        num_control_points=2,
+        joint_dofs=3,
+    )
+    joints.add_translation_limit(
+        bone_id=root_bone.tag,
+        min=(-0.1, -0.2, -0.3),
+        max=(0.1, 0.2, 0.3),
+    )
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        texture="test_diffuse",
+        skeleton=skeleton,
+        joints=joints,
+        name="triangle_joints",
+    )
+
+    ydr_path = tmp_path / "triangle_joints.ydr"
+    build.save(ydr_path)
+
+    _header, system_data, _graphics_data = split_rsc7_sections(ydr_path.read_bytes())
+    assert int.from_bytes(system_data[0x90:0x98], "little") != 0
+
+    ydr = read_ydr(ydr_path)
+    assert ydr.has_joints
+    assert ydr.joints is not None
+    assert len(ydr.joints.rotation_limits) == 1
+    assert len(ydr.joints.translation_limits) == 1
+    assert ydr.joints.rotation_limits[0].bone_id == root_bone.tag
+    assert ydr.joints.rotation_limits[0].unknown_ah == 7
+    assert ydr.joints.rotation_limits[0].num_control_points == 2
+    assert ydr.joints.rotation_limits[0].joint_dofs == 3
+    assert ydr.joints.rotation_limits[0].min == pytest.approx((-1.0, -0.5, -0.25))
+    assert ydr.joints.rotation_limits[0].max == pytest.approx((1.0, 0.5, 0.25))
+    assert ydr.joints.translation_limits[0].bone_id == root_bone.tag
+    assert ydr.joints.translation_limits[0].min == pytest.approx((-0.1, -0.2, -0.3))
+    assert ydr.joints.translation_limits[0].max == pytest.approx((0.1, 0.2, 0.3))
 
 
 def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path: Path) -> None:
@@ -1086,3 +1134,69 @@ def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
     assert ydr.skeleton.bones[0].flags == (YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z)
     assert ydr.skeleton.bones[1].parent_index == 0
     assert ydr.skeleton.bones[1].translation == pytest.approx((0.0, 0.25, 0.0))
+
+
+def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
+    skeleton = _simple_skeleton()
+    joints = YdrJoints()
+    joints.add_rotation_limit(
+        bone_id=0,
+        min=(-0.1, -0.2, -0.3),
+        max=(0.1, 0.2, 0.3),
+        unknown_ah=7,
+        num_control_points=2,
+        joint_dofs=3,
+    )
+    joints.add_translation_limit(
+        bone_id=1,
+        min=(-1.0, -2.0, -3.0),
+        max=(1.0, 2.0, 3.0),
+    )
+
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[_triangle_mesh(material="main")],
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="joints_roundtrip",
+        skeleton=skeleton,
+        joints=joints,
+    )
+
+    ydr_path = tmp_path / "joints_roundtrip.ydr"
+    build.save(ydr_path)
+    system_data, _model_off, _geometry_off = _first_model_offsets(ydr_path.read_bytes())
+    joints_ptr = int.from_bytes(system_data[0x90:0x98], "little")
+    assert joints_ptr >= 0x50000000
+
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.joints is not None
+    assert len(ydr.joints.rotation_limits) == 1
+    assert len(ydr.joints.translation_limits) == 1
+    assert ydr.joints.rotation_limits[0].bone_id == 0
+    assert ydr.joints.rotation_limits[0].unknown_ah == 7
+    assert ydr.joints.rotation_limits[0].num_control_points == 2
+    assert ydr.joints.rotation_limits[0].joint_dofs == 3
+    assert ydr.joints.rotation_limits[0].min == pytest.approx((-0.1, -0.2, -0.3))
+    assert ydr.joints.rotation_limits[0].max == pytest.approx((0.1, 0.2, 0.3))
+    assert ydr.joints.translation_limits[0].bone_id == 1
+    assert ydr.joints.translation_limits[0].min == pytest.approx((-1.0, -2.0, -3.0))
+    assert ydr.joints.translation_limits[0].max == pytest.approx((1.0, 2.0, 3.0))
+
+
+def test_joints_validation_detects_unknown_bones() -> None:
+    ydr = Ydr(version=165)
+    ydr.joints = YdrJoints()
+    ydr.joints.add_rotation_limit(bone_id=77)
+    ydr.joints.add_translation_limit(bone_id=88)
+
+    issues = ydr.validate()
+
+    assert any(issue.code == "missing_skeleton_for_joints" for issue in issues)

@@ -258,6 +258,17 @@ def test_read_real_reference_ydr_embedded_bound() -> None:
     assert ydr.bound.bound_type.name in {"GEOMETRY", "GEOMETRY_BVH", "COMPOSITE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "DISC"}
 
 
+def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -> None:
+    source = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr")
+    _header, system_data, _graphics_data = split_rsc7_sections(source.read_bytes())
+
+    assert int.from_bytes(system_data[0x90:0x98], "little") == 0
+    assert int.from_bytes(system_data[0xA0:0xA8], "little") != 0
+
+    ydr = read_ydr(source)
+    assert ydr.joints is None
+
+
 def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
     ydr = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
 
@@ -297,3 +308,52 @@ def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) 
     assert rebuilt.bound.geometries[0].octants is not None
     assert source.bound.geometries[0].octants is not None
     assert rebuilt.bound.geometries[0].octants.items == source.bound.geometries[0].octants.items
+
+
+def test_real_reference_ydr_directory_roundtrips_preserving_declarations(tmp_path: Path) -> None:
+    reference_dir = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\ydrs")
+    paths = sorted(reference_dir.glob("*.ydr"))
+    if not paths:
+        pytest.skip("real YDR reference directory not available")
+
+    sparse_uv_files: set[str] = set()
+
+    for source_path in paths:
+        source = read_ydr(source_path)
+        out_path = tmp_path / source_path.name
+        source.save(out_path)
+        rebuilt = read_ydr(out_path)
+
+        assert len(rebuilt.meshes) == len(source.meshes), source_path.name
+        for source_mesh, rebuilt_mesh in zip(source.meshes, rebuilt.meshes, strict=True):
+            assert rebuilt_mesh.declaration_flags == source_mesh.declaration_flags, source_path.name
+            assert rebuilt_mesh.declaration_types == source_mesh.declaration_types, source_path.name
+            assert rebuilt_mesh.vertex_buffer_flags == source_mesh.vertex_buffer_flags, source_path.name
+            assert rebuilt_mesh.vertex_stride == source_mesh.vertex_stride, source_path.name
+            assert rebuilt_mesh.bone_ids == source_mesh.bone_ids, source_path.name
+            assert rebuilt_mesh.blend_indices == source_mesh.blend_indices, source_path.name
+            assert len(rebuilt_mesh.texcoords) == len(source_mesh.texcoords), source_path.name
+            if any(not channel for channel in source_mesh.texcoords[:-1]):
+                sparse_uv_files.add(source_path.name)
+
+    assert {"ch2_09_l2_a.ydr", "ch2_09_l4.ydr"} <= sparse_uv_files
+
+
+def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\ydrs\lux_prop_lighter_luxe.ydr")
+    if not source_path.exists():
+        pytest.skip("real skinned YDR reference not available")
+
+    source = read_ydr(source_path)
+    mesh = source.meshes[0]
+
+    assert source.has_skeleton
+    assert mesh.bone_ids == [0, 1, 2]
+    assert any(any(component != 0 for component in item) for item in mesh.blend_indices)
+
+    out_path = tmp_path / source_path.name
+    source.save(out_path)
+    rebuilt = read_ydr(out_path)
+
+    assert rebuilt.meshes[0].bone_ids == mesh.bone_ids
+    assert rebuilt.meshes[0].blend_indices == mesh.blend_indices

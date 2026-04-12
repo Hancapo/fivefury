@@ -22,6 +22,7 @@ from .write_buffers import GraphicsWriter
 from .write_drawable import pages_info_length, write_drawable_models_block, write_drawable_root, write_pages_info
 from .write_lights import write_lights
 from .write_materials import prepare_materials, write_shader_blocks
+from .write_joints import write_joints
 from .write_models import prepare_model_block, write_model_block
 from .write_skeleton import write_skeleton
 
@@ -128,6 +129,7 @@ def _build_system_payload(source: YdrBuild, prepared_materials: list[PreparedMat
         virtual=_virtual,
     )
     skeleton_off = write_skeleton(system, source.skeleton, virtual=_virtual)
+    joints_off = write_joints(system, source.joints, virtual=_virtual)
     lights_block_off = write_lights(system, source.lights)
     bound_off = write_bound_resource(system, source.bound) if source.bound is not None else 0
     texture_dictionary_off = _write_embedded_texture_dictionary(system, graphics, source)
@@ -180,7 +182,7 @@ def _build_system_payload(source: YdrBuild, prepared_materials: list[PreparedMat
         shader_group_off=shader_group_off,
         texture_dictionary_off=texture_dictionary_off,
         skeleton_off=skeleton_off,
-        joints_off=0,
+        joints_off=joints_off,
         drawable_models_layout=drawable_models_layout,
         drawable_name_off=system.c_string(drawable_name(source.name)),
         lights_block_off=lights_block_off,

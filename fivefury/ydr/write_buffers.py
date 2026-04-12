@@ -47,7 +47,7 @@ def build_mesh_buffer_pack(
     system.pack_into('I', declaration_off + 0x00, int(mesh.declaration_flags))
     system.pack_into('H', declaration_off + 0x04, int(mesh.vertex_stride))
     system.data[declaration_off + 0x06] = 0
-    system.data[declaration_off + 0x07] = max(1, len(mesh.layout.semantics))
+    system.data[declaration_off + 0x07] = max(1, int(mesh.declaration_flags).bit_count())
     system.pack_into('Q', declaration_off + 0x08, int(mesh.declaration_types))
 
     vertex_data_off = system.alloc(len(mesh.vertex_bytes), 16)
@@ -60,7 +60,7 @@ def build_mesh_buffer_pack(
     system.pack_into('I', vertex_buffer_off + 0x00, int(vertex_buffer_vft))
     system.pack_into('I', vertex_buffer_off + 0x04, 1)
     system.pack_into('H', vertex_buffer_off + 0x08, int(mesh.vertex_stride))
-    system.pack_into('H', vertex_buffer_off + 0x0A, 0)
+    system.pack_into('H', vertex_buffer_off + 0x0A, int(mesh.vertex_buffer_flags) & 0xFFFF)
     system.pack_into('I', vertex_buffer_off + 0x0C, 0)
     system.pack_into('Q', vertex_buffer_off + 0x10, virtual(vertex_data_off))
     system.pack_into('I', vertex_buffer_off + 0x18, len(mesh.positions))

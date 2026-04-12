@@ -9,7 +9,7 @@ from ..ytd import Ytd
 from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_lod, coerce_render_mask, coerce_skeleton_binding
 
 if TYPE_CHECKING:
-    from .model import YdrLight, YdrSkeleton
+    from .model import YdrJoints, YdrLight, YdrSkeleton
 
 
 @dataclasses.dataclass(slots=True)
@@ -41,6 +41,9 @@ class YdrMeshInput:
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None
     bone_ids: Sequence[int] | None = None
+    vertex_buffer_flags: int = 0
+    declaration_flags: int | None = None
+    declaration_types: int | None = None
 
 
 @dataclasses.dataclass(slots=True)
@@ -62,6 +65,7 @@ class YdrBuild:
     name: str = ""
     version: int = 165
     skeleton: YdrSkeleton | None = None
+    joints: YdrJoints | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
     embedded_textures: Ytd | None = None
     bound: Bound | None = None
@@ -108,6 +112,7 @@ def create_ydr(
     textures: Mapping[str, str | YdrTextureInput] | None = None,
     texture: str | YdrTextureInput | None = None,
     skeleton: YdrSkeleton | None = None,
+    joints: YdrJoints | None = None,
     lights: Sequence[YdrLight] | None = None,
     embedded_textures: Ytd | None = None,
     bound: Bound | None = None,
@@ -126,6 +131,7 @@ def create_ydr(
         name=name,
         version=int(version),
         skeleton=skeleton,
+        joints=joints,
         lights=list(lights or []),
         embedded_textures=embedded_textures,
         bound=bound,
