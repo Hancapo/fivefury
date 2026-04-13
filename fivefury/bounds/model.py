@@ -6,6 +6,8 @@ import math
 from collections import Counter
 from typing import Iterator
 
+from .. import _native as _native_backend
+
 
 class BoundType(enum.IntEnum):
     SPHERE = 0
@@ -254,6 +256,8 @@ class BoundGeometryOctants:
         cls,
         vertices: list[tuple[float, float, float]],
     ) -> "BoundGeometryOctants":
+        if _native_backend._bounds_build_octants is not None:
+            return cls(items=_native_backend._bounds_build_octants(vertices))
         octant_items: list[list[int]] = [[] for _ in range(8)]
         for octant_index, signs in enumerate(_OCTANT_SIGNS):
             indices: list[int] = []

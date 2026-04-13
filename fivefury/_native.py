@@ -168,6 +168,8 @@ _HAS_BOUNDS_BACKEND = all(
         "bounds_from_vertices",
         "bounds_sphere_radius_from_vertices",
         "bounds_chunk_triangles",
+        "bounds_build_octants",
+        "bounds_build_bvh",
     )
 )
 
@@ -212,11 +214,61 @@ if _HAS_BOUNDS_BACKEND:
                 int(max_triangles_per_child),
             )
         ]
+
+
+    def _bounds_build_octants(
+        vertices: list[tuple[float, float, float]],
+    ) -> list[list[int]]:
+        return [list(map(int, item)) for item in _ffi.bounds_build_octants(vertices)]
+
+
+    def _bounds_build_bvh(
+        items: list[tuple[tuple[float, float, float], tuple[float, float, float], int]],
+        fallback_minimum: tuple[float, float, float],
+        fallback_maximum: tuple[float, float, float],
+        *,
+        item_threshold: int,
+        max_tree_node_count: int,
+    ) -> tuple[
+        list[int],
+        tuple[float, float, float],
+        tuple[float, float, float],
+        tuple[float, float, float],
+        tuple[float, float, float],
+        tuple[float, float, float],
+        list[tuple[tuple[float, float, float], tuple[float, float, float], int, int]],
+        list[tuple[tuple[float, float, float], tuple[float, float, float], int, int]],
+    ]:
+        order, overall_minimum, overall_maximum, center, quantum_inverse, quantum, nodes, trees = _ffi.bounds_build_bvh(
+            items,
+            fallback_minimum,
+            fallback_maximum,
+            int(item_threshold),
+            int(max_tree_node_count),
+        )
+        return (
+            list(map(int, order)),
+            tuple(overall_minimum),
+            tuple(overall_maximum),
+            tuple(center),
+            tuple(quantum_inverse),
+            tuple(quantum),
+            [
+                (tuple(minimum), tuple(maximum), int(item_id), int(item_count))
+                for minimum, maximum, item_id, item_count in nodes
+            ],
+            [
+                (tuple(minimum), tuple(maximum), int(node_index), int(node_index2))
+                for minimum, maximum, node_index, node_index2 in trees
+            ],
+        )
 else:
     _bounds_triangle_area = None
     _bounds_from_vertices = None
     _bounds_sphere_radius_from_vertices = None
     _bounds_chunk_triangles = None
+    _bounds_build_octants = None
+    _bounds_build_bvh = None
 
 
 def scan_rpf_into_index(

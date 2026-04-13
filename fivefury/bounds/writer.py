@@ -4,6 +4,7 @@ import dataclasses
 import math
 import struct
 
+from .. import _native as _native_backend
 from ..binary import align
 from ..resource import ResourceBlockSpan, ResourceWriter
 from .model import (
@@ -647,7 +648,68 @@ def _copy_polygon_for_reorder(
     return new_polygon
 
 
+def _build_bvh_native(
+    items: list[_BvhBuildItem],
+    *,
+    fallback: BoundAabb,
+    item_threshold: int,
+) -> tuple[BoundBvh, list[_BvhBuildItem]] | None:
+    if _native_backend._bounds_build_bvh is None:
+        return None
+    raw_items = [(item.minimum, item.maximum, int(item.index)) for item in items]
+    (
+        order,
+        overall_minimum,
+        overall_maximum,
+        center,
+        quantum_inverse,
+        quantum,
+        raw_nodes,
+        raw_trees,
+    ) = _native_backend._bounds_build_bvh(
+        raw_items,
+        fallback.minimum,
+        fallback.maximum,
+        item_threshold=item_threshold,
+        max_tree_node_count=_MAX_BVH_TREE_NODE_COUNT,
+    )
+    item_lookup = {int(item.index): item for item in items}
+    ordered_items = [item_lookup[int(index)] for index in order if int(index) in item_lookup]
+    return (
+        BoundBvh(
+            minimum=overall_minimum,
+            maximum=overall_maximum,
+            center=center,
+            quantum_inverse=quantum_inverse,
+            quantum=quantum,
+            nodes=[
+                BoundBvhNode(
+                    minimum=minimum,
+                    maximum=maximum,
+                    item_id=item_id,
+                    item_count=item_count,
+                )
+                for minimum, maximum, item_id, item_count in raw_nodes
+            ],
+            trees=[
+                BoundBvhTree(
+                    minimum=minimum,
+                    maximum=maximum,
+                    node_index=node_index,
+                    node_index2=node_index2,
+                )
+                for minimum, maximum, node_index, node_index2 in raw_trees
+            ],
+        ),
+        ordered_items,
+    )
+
+
 def _build_bvh_from_items(items: list[_BvhBuildItem], *, fallback: BoundAabb, item_threshold: int) -> BoundBvh:
+    native = _build_bvh_native(items, fallback=fallback, item_threshold=item_threshold)
+    if native is not None:
+        bvh, _ordered_items = native
+        return bvh
     if not items:
         center = tuple((fallback.minimum[axis] + fallback.maximum[axis]) * 0.5 for axis in range(3))
         quantum = _choose_bvh_quantum(fallback, center)
@@ -724,6 +786,18 @@ def _build_geometry_bvh(bound: BoundGeometry, item_threshold: int = _GEOMETRY_BV
 
     if not items:
         return (_build_bvh_from_items([], fallback=BoundAabb(bound.box_min, bound.box_max), item_threshold=item_threshold), [], [])
+
+    native = _build_bvh_native(items, fallback=BoundAabb(bound.box_min, bound.box_max), item_threshold=item_threshold)
+    if native is not None:
+        bvh, ordered_items = native
+        item_lookup = {item.index: new_index for new_index, item in enumerate(ordered_items)}
+        reordered_polygons: list[BoundPolygon] = []
+        reordered_material_indices: list[int] = []
+        source_material_indices = _polygon_material_indices_for_write(bound)
+        for new_index, item in enumerate(ordered_items):
+            reordered_polygons.append(_copy_polygon_for_reorder(item.polygon, new_index=new_index, edge_lookup=item_lookup))
+            reordered_material_indices.append(source_material_indices[item.index] if item.index < len(source_material_indices) else 0)
+        return bvh, reordered_polygons, reordered_material_indices
 
     root = _BvhBuildNode(items=list(items))
     root.build(item_threshold)
