@@ -5,6 +5,7 @@ FiveFury is a Python library for GTA V asset workflows.
 It provides practical support for:
 
 - `YDR` read/write for static drawable workflows, including materials, drawable models, and lights
+- `YDD` read/write support for drawable dictionaries with multiple embedded drawables
 - `YCD` read support for clip dictionaries and animation metadata
 - `YMAP` read/write
 - `YTYP` read/write
@@ -313,6 +314,21 @@ obj_to_ydr(
 ```
 
 This can also emit a companion `YTYP` with lowercase naming and `textureDictionary` set to `<model>_txd`.
+
+### Read and write a YDD
+
+```python
+from fivefury import Ydd, read_ydd
+
+ydd = read_ydd("uppr_001_u.ydd")
+
+for entry in ydd.iter_drawables():
+    drawable = entry.drawable
+    print(entry.name, drawable.model_count, len(drawable.materials))
+
+out = Ydd.from_drawables({ydd.drawables[0].name: ydd.drawables[0].drawable}, version=165)
+out.save("single_drawable.ydd")
+```
 
 ## YCD
 

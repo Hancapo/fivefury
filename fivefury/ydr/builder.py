@@ -27,6 +27,7 @@ from .write_models import prepare_model_block, write_model_block
 from .write_skeleton import write_skeleton
 
 _DRAWABLE_FILE_VFT = 0x40573178
+_EMBEDDED_DRAWABLE_FILE_VFT = 0x40570C38
 _SHADER_GROUP_VFT = 0x406137F0
 _TEXTURE_BASE_VFT = 0x40617568
 _DRAWABLE_MODEL_VFT = 0x40610A98
@@ -116,15 +117,18 @@ def _write_embedded_texture_dictionary(system: ResourceWriter, graphics: Graphic
     return dict_offset
 
 
-def _build_system_payload(
+def _write_drawable_payload(
+    system: ResourceWriter,
+    graphics: GraphicsWriter,
     source: YdrBuild,
     prepared_materials: list[PreparedMaterial],
     prepared_lods,
     page_counts: tuple[int, int],
-) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
-    system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
-    graphics = GraphicsWriter()
-
+    *,
+    root_off: int,
+    drawable_file_vft: int = _DRAWABLE_FILE_VFT,
+    write_pages: bool = True,
+) -> None:
     shader_group_off, _shader_group_blocks_size = write_shader_blocks(
         system,
         prepared_materials,
@@ -173,15 +177,18 @@ def _build_system_payload(
         virtual=_virtual,
     )
 
-    pages_info_off = system.alloc(pages_info_length(page_counts), 16)
-    write_pages_info(system, pages_info_off, page_counts)
+    pages_info_off = 0
+    if write_pages:
+        pages_info_off = system.alloc(pages_info_length(page_counts), 16)
+        write_pages_info(system, pages_info_off, page_counts)
 
     center, bounds_min, bounds_max, radius = compute_model_collection_bounds(
         [model for lod_models in prepared_lods.values() for model in lod_models]
     )
     write_drawable_root(
         system,
-        drawable_file_vft=_DRAWABLE_FILE_VFT,
+        root_offset=root_off,
+        drawable_file_vft=drawable_file_vft,
         unknown_float_sentinel=_UNKNOWN_FLOAT_SENTINEL,
         pages_info_off=pages_info_off,
         shader_group_off=shader_group_off,
@@ -205,6 +212,26 @@ def _build_system_payload(
         unknown_98=source.unknown_98,
         unknown_9c=source.unknown_9c,
         virtual=_virtual,
+    )
+
+
+def _build_system_payload(
+    source: YdrBuild,
+    prepared_materials: list[PreparedMaterial],
+    prepared_lods,
+    page_counts: tuple[int, int],
+) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
+    system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
+    graphics = GraphicsWriter()
+    _write_drawable_payload(
+        system,
+        graphics,
+        source,
+        prepared_materials,
+        prepared_lods,
+        page_counts,
+        root_off=0,
+        write_pages=True,
     )
     return system.finish(), graphics.finish(), system.block_spans, graphics.block_spans
 

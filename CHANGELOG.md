@@ -9,6 +9,7 @@ This project follows a simple release-oriented changelog format with consistent 
 ## [0.1.30]
 
 ### Added
+- Added real `YDD` read/write support for drawable dictionaries, including hash/drawable pairing and parsing each embedded drawable through the shared `YDR` reader.
 - Added generic bounds geometry helpers for building `GeometryBVH`/`BoundComposite` collision bounds from triangle lists, exposed through `fivefury.bounds` and top-level `fivefury` imports.
 - Added YDR convenience helpers to build and attach embedded collision bounds from render geometry.
 

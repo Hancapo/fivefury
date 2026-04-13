@@ -101,6 +101,7 @@ def write_drawable_models_block(
 def write_drawable_root(
     system: ResourceWriter,
     *,
+    root_offset: int = 0,
     drawable_file_vft: int,
     unknown_float_sentinel: int,
     pages_info_off: int,
@@ -123,45 +124,46 @@ def write_drawable_root(
     unknown_9c: int,
     virtual: Callable[[int], int],
 ) -> None:
-    system.pack_into("I", 0x00, int(drawable_file_vft))
-    system.pack_into("I", 0x04, 1)
-    system.pack_into("Q", 0x08, virtual(pages_info_off))
+    root = int(root_offset)
+    system.pack_into("I", root + 0x00, int(drawable_file_vft))
+    system.pack_into("I", root + 0x04, 1)
+    system.pack_into("Q", root + 0x08, virtual(pages_info_off) if pages_info_off else 0)
 
-    system.pack_into("Q", 0x10, virtual(shader_group_off))
+    system.pack_into("Q", root + 0x10, virtual(shader_group_off))
     if texture_dictionary_off:
         system.pack_into("Q", shader_group_off + 0x08, virtual(texture_dictionary_off))
-    system.pack_into("Q", 0x18, virtual(skeleton_off) if skeleton_off else 0)
-    system.pack_into("3f", 0x20, *center)
-    system.pack_into("f", 0x2C, radius)
-    system.pack_into("3f", 0x30, *bounds_min)
-    system.pack_into("I", 0x3C, int(unknown_float_sentinel))
-    system.pack_into("3f", 0x40, *bounds_max)
-    system.pack_into("I", 0x4C, int(unknown_float_sentinel))
-    system.pack_into("Q", 0x50, virtual(drawable_models_layout.get_pointer(YdrLod.HIGH)) if drawable_models_layout.get_pointer(YdrLod.HIGH) else 0)
-    system.pack_into("Q", 0x58, virtual(drawable_models_layout.get_pointer(YdrLod.MEDIUM)) if drawable_models_layout.get_pointer(YdrLod.MEDIUM) else 0)
-    system.pack_into("Q", 0x60, virtual(drawable_models_layout.get_pointer(YdrLod.LOW)) if drawable_models_layout.get_pointer(YdrLod.LOW) else 0)
-    system.pack_into("Q", 0x68, virtual(drawable_models_layout.get_pointer(YdrLod.VERY_LOW)) if drawable_models_layout.get_pointer(YdrLod.VERY_LOW) else 0)
-    system.pack_into("f", 0x70, float(lod_distances.get(YdrLod.HIGH, 0.0)))
-    system.pack_into("f", 0x74, float(lod_distances.get(YdrLod.MEDIUM, 0.0)))
-    system.pack_into("f", 0x78, float(lod_distances.get(YdrLod.LOW, 0.0)))
-    system.pack_into("f", 0x7C, float(lod_distances.get(YdrLod.VERY_LOW, 0.0)))
-    system.pack_into("I", 0x80, int(render_mask_flags.get(YdrLod.HIGH, 0)))
-    system.pack_into("I", 0x84, int(render_mask_flags.get(YdrLod.MEDIUM, 0)))
-    system.pack_into("I", 0x88, int(render_mask_flags.get(YdrLod.LOW, 0)))
-    system.pack_into("I", 0x8C, int(render_mask_flags.get(YdrLod.VERY_LOW, 0)))
-    system.pack_into("Q", 0x90, virtual(joints_off) if joints_off else 0)
-    system.pack_into("H", 0x98, int(unknown_98))
-    system.pack_into("H", 0x9A, drawable_models_layout.total_units)
-    system.pack_into("I", 0x9C, int(unknown_9c))
-    system.pack_into("Q", 0xA0, virtual(drawable_models_layout.block_start) if drawable_models_layout.block_start else 0)
-    system.pack_into("Q", 0xA8, virtual(drawable_name_off))
+    system.pack_into("Q", root + 0x18, virtual(skeleton_off) if skeleton_off else 0)
+    system.pack_into("3f", root + 0x20, *center)
+    system.pack_into("f", root + 0x2C, radius)
+    system.pack_into("3f", root + 0x30, *bounds_min)
+    system.pack_into("I", root + 0x3C, int(unknown_float_sentinel))
+    system.pack_into("3f", root + 0x40, *bounds_max)
+    system.pack_into("I", root + 0x4C, int(unknown_float_sentinel))
+    system.pack_into("Q", root + 0x50, virtual(drawable_models_layout.get_pointer(YdrLod.HIGH)) if drawable_models_layout.get_pointer(YdrLod.HIGH) else 0)
+    system.pack_into("Q", root + 0x58, virtual(drawable_models_layout.get_pointer(YdrLod.MEDIUM)) if drawable_models_layout.get_pointer(YdrLod.MEDIUM) else 0)
+    system.pack_into("Q", root + 0x60, virtual(drawable_models_layout.get_pointer(YdrLod.LOW)) if drawable_models_layout.get_pointer(YdrLod.LOW) else 0)
+    system.pack_into("Q", root + 0x68, virtual(drawable_models_layout.get_pointer(YdrLod.VERY_LOW)) if drawable_models_layout.get_pointer(YdrLod.VERY_LOW) else 0)
+    system.pack_into("f", root + 0x70, float(lod_distances.get(YdrLod.HIGH, 0.0)))
+    system.pack_into("f", root + 0x74, float(lod_distances.get(YdrLod.MEDIUM, 0.0)))
+    system.pack_into("f", root + 0x78, float(lod_distances.get(YdrLod.LOW, 0.0)))
+    system.pack_into("f", root + 0x7C, float(lod_distances.get(YdrLod.VERY_LOW, 0.0)))
+    system.pack_into("I", root + 0x80, int(render_mask_flags.get(YdrLod.HIGH, 0)))
+    system.pack_into("I", root + 0x84, int(render_mask_flags.get(YdrLod.MEDIUM, 0)))
+    system.pack_into("I", root + 0x88, int(render_mask_flags.get(YdrLod.LOW, 0)))
+    system.pack_into("I", root + 0x8C, int(render_mask_flags.get(YdrLod.VERY_LOW, 0)))
+    system.pack_into("Q", root + 0x90, virtual(joints_off) if joints_off else 0)
+    system.pack_into("H", root + 0x98, int(unknown_98))
+    system.pack_into("H", root + 0x9A, drawable_models_layout.total_units)
+    system.pack_into("I", root + 0x9C, int(unknown_9c))
+    system.pack_into("Q", root + 0xA0, virtual(drawable_models_layout.block_start) if drawable_models_layout.block_start else 0)
+    system.pack_into("Q", root + 0xA8, virtual(drawable_name_off))
     if lights_block_off:
-        system.pack_into("Q", 0xB0, virtual(lights_block_off))
-        system.pack_into("H", 0xB8, int(lights_count))
-        system.pack_into("H", 0xBA, int(lights_count))
-        system.pack_into("I", 0xBC, 0)
-    system.pack_into("Q", 0xC0, 0)
-    system.pack_into("Q", 0xC8, virtual(bound_off) if bound_off else 0)
+        system.pack_into("Q", root + 0xB0, virtual(lights_block_off))
+        system.pack_into("H", root + 0xB8, int(lights_count))
+        system.pack_into("H", root + 0xBA, int(lights_count))
+        system.pack_into("I", root + 0xBC, 0)
+    system.pack_into("Q", root + 0xC0, 0)
+    system.pack_into("Q", root + 0xC8, virtual(bound_off) if bound_off else 0)
 
 
 __all__ = [
