@@ -1,5 +1,6 @@
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
 from .builder import build_ydr_bytes, save_ydr, ydr_to_build
+from .collision import YdrCollisionStats, build_bound_from_render_geometry, set_bound_from_render_geometry
 from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding
 from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialParameter, build_material_descriptor
 from .model import (
@@ -46,6 +47,7 @@ __all__ = [
     "YdrBone",
     "YdrBoneFlags",
     "YdrBuild",
+    "YdrCollisionStats",
     "YdrJointControlPoint",
     "YdrJointRotationLimit",
     "YdrJointTranslationLimit",
@@ -70,6 +72,7 @@ __all__ = [
     "YdrTextureRef",
     "YdrValidationIssue",
     "calculate_bone_tag",
+    "build_bound_from_render_geometry",
     "build_material_descriptor",
     "build_ydr_bytes",
     "create_ydr",
@@ -82,5 +85,6 @@ __all__ = [
     "read_shader_library",
     "read_ydr",
     "save_ydr",
+    "set_bound_from_render_geometry",
     "ydr_to_build",
 ]

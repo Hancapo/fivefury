@@ -4,7 +4,7 @@ import struct
 import tempfile
 from pathlib import Path
 
-from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, Ydr, load_shader_library, jenk_hash, read_ydr
+from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, Ydr, YdrCollisionStats, build_bound_from_render_geometry, load_shader_library, jenk_hash, read_ydr
 from fivefury.resource import ResourceBlockSpan, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from fivefury.ydr import build_ydr_bytes
 from fivefury.ydr import YdrMaterialDescriptor
@@ -291,6 +291,26 @@ def test_read_ydr_reads_embedded_bound() -> None:
     assert isinstance(ydr.bound, BoundSphere)
     assert ydr.bound.sphere_center == (0.5, 0.5, 0.0)
     assert ydr.bound.sphere_radius == 0.75
+
+
+def test_ydr_can_build_collision_bound_from_render_geometry() -> None:
+    ydr = read_ydr(_build_test_ydr_bytes(), path="triangle.ydr")
+
+    bound = build_bound_from_render_geometry(ydr)
+    stats = ydr.ensure_bound_from_render_geometry()
+
+    assert isinstance(bound, BoundComposite)
+    assert bound.child_count == 1
+    assert bound.geometries[0].vertex_count == 3
+    assert bound.geometries[0].polygon_count == 1
+    assert isinstance(stats, YdrCollisionStats)
+    assert stats.meshes == 1
+    assert stats.source_vertices == 3
+    assert stats.source_triangles == 1
+    assert stats.collision_vertices == 3
+    assert stats.collision_triangles == 1
+    assert stats.children == 1
+    assert isinstance(ydr.bound, BoundComposite)
 
 
 def test_read_real_reference_ydr_embedded_bound() -> None:

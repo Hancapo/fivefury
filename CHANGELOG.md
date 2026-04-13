@@ -6,6 +6,15 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.30]
+
+### Added
+- Added generic bounds geometry helpers for building `GeometryBVH`/`BoundComposite` collision bounds from triangle lists, exposed through `fivefury.bounds` and top-level `fivefury` imports.
+- Added YDR convenience helpers to build and attach embedded collision bounds from render geometry.
+
+### Fixed
+- Fixed RPF resource writing for large `RSC7` entries by using the CodeWalker-compatible `0xFFFFFF` sentinel and storing the true size in the resource header.
+
 ## [0.1.29]
 
 ### Fixed

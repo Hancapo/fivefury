@@ -78,6 +78,22 @@ def _coerce_export_mode(mode: RpfExportMode) -> RpfExportMode:
     if not isinstance(mode, RpfExportMode):
         raise TypeError("mode must be an instance of RpfExportMode")
     return mode
+
+
+def _encode_large_resource_header_size(data: bytes, size: int) -> bytes:
+    """Store large RSC7 resource sizes using CodeWalker's 0xFFFFFF sentinel scheme."""
+    if size < 0xFFFFFF:
+        return data
+    if len(data) < 16:
+        raise ValueError("Large RPF resource payloads need a 16-byte resource header")
+    patched = bytearray(data)
+    patched[7] = (size >> 0) & 0xFF
+    patched[14] = (size >> 8) & 0xFF
+    patched[5] = (size >> 16) & 0xFF
+    patched[2] = (size >> 24) & 0xFF
+    return bytes(patched)
+
+
 @dataclass(slots=True)
 class RpfArchive:
     name: str = "archive.rpf"
@@ -632,14 +648,16 @@ class RpfArchive:
             entry.system_flags = RpfResourcePageFlags(sys_flags)
             entry.graphics_flags = RpfResourcePageFlags(gfx_flags)
             entry.file_size = len(data)
-            payload = data
+            payload = _encode_large_resource_header_size(data, entry.file_size)
         else:
             sys_flags = _resource_flags_from_size(len(data), 0)
             payload = _build_rsc7(data, version=0, sys_flags=sys_flags, gfx_flags=0)
             entry.system_flags = RpfResourcePageFlags(sys_flags)
             entry.graphics_flags = RpfResourcePageFlags()
             entry.file_size = len(payload)
-        size_bytes = int(entry.file_size).to_bytes(3, "little", signed=False)
+            payload = _encode_large_resource_header_size(payload, entry.file_size)
+        stored_file_size = 0xFFFFFF if entry.file_size >= 0xFFFFFF else entry.file_size
+        size_bytes = int(stored_file_size).to_bytes(3, "little", signed=False)
         offset_bytes = bytearray(int(entry.file_offset).to_bytes(3, "little", signed=False))
         offset_bytes[2] |= 0x80
         raw_entry = (

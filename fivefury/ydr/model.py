@@ -14,7 +14,9 @@ from .defs import LOD_ORDER, YdrLod, YdrSkeletonBinding, coerce_lod, coerce_skel
 from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
+    from ..bounds import BoundComposite, BoundCompositeFlags, BoundMaterial
     from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
+    from .collision import YdrCollisionStats
     from .materials import YdrMaterialDescriptor
     from .shaders import ShaderLibrary
 
@@ -1160,6 +1162,38 @@ class Ydr:
     def set_bound(self, bound: Bound) -> Bound:
         self.bound = bound
         return bound
+
+    def build_bound_from_render_geometry(
+        self,
+        *,
+        lod: YdrLod | str | None = None,
+        material: "BoundMaterial | None" = None,
+        composite_flags: "BoundCompositeFlags | None" = None,
+    ) -> "BoundComposite":
+        from .collision import build_bound_from_render_geometry
+
+        return build_bound_from_render_geometry(
+            self,
+            lod=lod,
+            material=material,
+            composite_flags=composite_flags,
+        )
+
+    def ensure_bound_from_render_geometry(
+        self,
+        *,
+        lod: YdrLod | str | None = None,
+        material: "BoundMaterial | None" = None,
+        composite_flags: "BoundCompositeFlags | None" = None,
+    ) -> "YdrCollisionStats":
+        from .collision import set_bound_from_render_geometry
+
+        return set_bound_from_render_geometry(
+            self,
+            lod=lod,
+            material=material,
+            composite_flags=composite_flags,
+        )
 
     def clear_bound(self) -> "Ydr":
         self.bound = None

@@ -1777,6 +1777,35 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertLessEqual(len(payload), header.system_size + header.graphics_size)
         self.assertGreaterEqual(header.graphics_size, len(data))
 
+    def test_rpf_writer_supports_large_resource_entries(self) -> None:
+        import fivefury.rpf as rpf_module
+        from fivefury.rpf import RpfArchive
+        from fivefury.rpf.entries import RpfResourceFileEntry
+        from fivefury.rpf.utils import RSC7_MAGIC
+
+        stored_size = 0x1000000
+        resource = struct.pack("<IIII", RSC7_MAGIC, 0, 0, 0) + bytes(stored_size - 16)
+        archive = RpfArchive.empty("large_resources.rpf")
+
+        with patch.object(rpf_module, "_split_rsc7", return_value=(0, 0, 0, b"")):
+            archive.add_file("stream/large.ytd", resource)
+            packed = archive.to_bytes()
+
+        reread = RpfArchive.from_bytes(packed, name="large_resources.rpf")
+        entry = reread.find_entry("stream/large.ytd")
+
+        self.assertIsInstance(entry, RpfResourceFileEntry)
+        assert isinstance(entry, RpfResourceFileEntry)
+        self.assertEqual(entry.file_size, stored_size)
+
+        raw = reread.read_entry_raw(entry)
+        self.assertEqual(len(raw), stored_size)
+        self.assertEqual(
+            (raw[7] << 0) | (raw[14] << 8) | (raw[5] << 16) | (raw[2] << 24),
+            stored_size,
+        )
+        self.assertEqual(reread.read_entry_standalone(entry)[:4], b"RSC7")
+
     def test_ytd_reader_can_export_dds(self) -> None:
         from fivefury import read_ytd
 
