@@ -476,6 +476,95 @@ class YdrLight:
     unknown_48h: int = 0
     unknown_a4h: int = 0
 
+    @classmethod
+    def point(
+        cls,
+        *,
+        position: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        color: tuple[int, int, int] = (255, 255, 255),
+        intensity: float = 1.0,
+        falloff: float = 0.0,
+        flags: int = 0,
+        bone_id: int = 0,
+        group_id: int = 0,
+        time_flags: int = 0,
+        **overrides: object,
+    ) -> "YdrLight":
+        return cls(
+            position=tuple(float(v) for v in position),
+            color=tuple(int(v) for v in color),
+            intensity=float(intensity),
+            falloff=float(falloff),
+            flags=int(flags),
+            bone_id=int(bone_id),
+            light_type=YdrLightType.POINT,
+            group_id=int(group_id),
+            time_flags=int(time_flags),
+            **overrides,
+        )
+
+    @classmethod
+    def spot(
+        cls,
+        *,
+        position: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        direction: tuple[float, float, float] = (0.0, 0.0, -1.0),
+        color: tuple[int, int, int] = (255, 255, 255),
+        intensity: float = 1.0,
+        falloff: float = 0.0,
+        cone_inner_angle: float = 0.0,
+        cone_outer_angle: float = 0.0,
+        flags: int = 0,
+        bone_id: int = 0,
+        group_id: int = 0,
+        time_flags: int = 0,
+        **overrides: object,
+    ) -> "YdrLight":
+        return cls(
+            position=tuple(float(v) for v in position),
+            direction=tuple(float(v) for v in direction),
+            color=tuple(int(v) for v in color),
+            intensity=float(intensity),
+            falloff=float(falloff),
+            cone_inner_angle=float(cone_inner_angle),
+            cone_outer_angle=float(cone_outer_angle),
+            flags=int(flags),
+            bone_id=int(bone_id),
+            light_type=YdrLightType.SPOT,
+            group_id=int(group_id),
+            time_flags=int(time_flags),
+            **overrides,
+        )
+
+    @classmethod
+    def capsule(
+        cls,
+        *,
+        position: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        extent: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        color: tuple[int, int, int] = (255, 255, 255),
+        intensity: float = 1.0,
+        falloff: float = 0.0,
+        flags: int = 0,
+        bone_id: int = 0,
+        group_id: int = 0,
+        time_flags: int = 0,
+        **overrides: object,
+    ) -> "YdrLight":
+        return cls(
+            position=tuple(float(v) for v in position),
+            extent=tuple(float(v) for v in extent),
+            color=tuple(int(v) for v in color),
+            intensity=float(intensity),
+            falloff=float(falloff),
+            flags=int(flags),
+            bone_id=int(bone_id),
+            light_type=YdrLightType.CAPSULE,
+            group_id=int(group_id),
+            time_flags=int(time_flags),
+            **overrides,
+        )
+
 
 @dataclasses.dataclass(slots=True)
 class YdrMaterial:
@@ -1041,6 +1130,17 @@ class Ydr:
 
     def clear_joints(self) -> "Ydr":
         self.joints = None
+        return self
+
+    def add_light(
+        self,
+        light: YdrLight,
+    ) -> YdrLight:
+        self.lights.append(light)
+        return light
+
+    def clear_lights(self) -> "Ydr":
+        self.lights.clear()
         return self
 
     def add_rotation_limit(

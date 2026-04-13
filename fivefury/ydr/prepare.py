@@ -6,7 +6,7 @@ import struct
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
+from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, _copy_model_input
 from .defs import COMPONENT_SIZES, LOD_ORDER, VertexComponentType, VertexSemantic, YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_skeleton_binding
 from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition
 
@@ -121,11 +121,10 @@ def normalize_materials(
     materials: Sequence[YdrMaterialInput] | None,
     *,
     shader: str,
-    textures: Mapping[str, str | YdrTextureInput] | None,
-    texture: str | YdrTextureInput | None,
+    material_textures: Mapping[str, str | YdrTextureInput] | None,
 ) -> list[YdrMaterialInput]:
-    if materials is not None and (textures is not None or texture is not None):
-        raise ValueError('Pass either materials= or textures=/texture=, not both')
+    if materials is not None and material_textures is not None:
+        raise ValueError('Pass either materials= or material_textures=, not both')
     if materials is not None:
         return [
             YdrMaterialInput(
@@ -139,10 +138,8 @@ def normalize_materials(
         ]
 
     default_textures: dict[str, str | YdrTextureInput] = {}
-    if textures is not None:
-        default_textures.update(dict(textures))
-    if texture is not None:
-        default_textures.setdefault('DiffuseSampler', texture)
+    if material_textures is not None:
+        default_textures.update(dict(material_textures))
     return [YdrMaterialInput(name='default', shader=shader, textures=default_textures)]
 
 
@@ -637,15 +634,7 @@ def normalize_lods(source: YdrBuild) -> dict[YdrLod, list[YdrModelInput]]:
         models = source.lods.get(lod_name)
         if not models:
             continue
-        normalized[lod_name] = [
-            YdrModelInput(
-                meshes=list(model.meshes),
-                render_mask=int(model.render_mask),
-                flags=int(model.flags),
-                skeleton_binding=coerce_skeleton_binding(model.skeleton_binding),
-            )
-            for model in models
-        ]
+        normalized[lod_name] = [_copy_model_input(model) for model in models]
     return normalized
 
 

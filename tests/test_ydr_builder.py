@@ -98,7 +98,7 @@ def _first_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
 def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         name="triangle",
     )
 
@@ -153,7 +153,7 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
 def test_create_ydr_writes_legacy_texture_base_contract(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         name="texture_base_contract",
     )
 
@@ -187,7 +187,7 @@ def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
     )
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         skeleton=skeleton,
         joints=joints,
         name="triangle_joints",
@@ -314,7 +314,7 @@ def test_create_ydr_roundtrips_array_shader_parameters(tmp_path: Path) -> None:
 def test_create_ydr_accepts_named_render_mask_presets(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         render_mask=YdrRenderMask.SHELL,
         name="triangle_shell",
     )
@@ -324,6 +324,37 @@ def test_create_ydr_accepts_named_render_mask_presets(tmp_path: Path) -> None:
     ydr = read_ydr(ydr_path)
 
     assert ydr.get_model(0).render_mask == int(YdrRenderMask.SHELL)
+
+
+def test_ydr_build_from_meshes_can_add_models_declaratively() -> None:
+    build = YdrBuild.from_meshes(
+        meshes=[_triangle_mesh(material="main")],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="declarative_build",
+        lod_distance=500.0,
+        flags=7,
+    )
+
+    added = build.add_model(
+        [_offset_triangle_mesh(2.0, material="main")],
+        lod=YdrLod.MEDIUM,
+        render_mask=YdrRenderMask.SHELL,
+        lod_distance=250.0,
+    )
+
+    assert build.model_count == 2
+    assert build.get_lod(YdrLod.HIGH)[0].meshes[0].material == "main"
+    assert build.get_lod(YdrLod.HIGH)[0].flags == 7
+    assert build.get_lod(YdrLod.MEDIUM) == [added]
+    assert added.render_mask == YdrRenderMask.SHELL
+    assert build.lod_distances[YdrLod.HIGH] == pytest.approx(500.0)
+    assert build.lod_distances[YdrLod.MEDIUM] == pytest.approx(250.0)
 
 
 def test_read_ydr_preserves_numeric_material_parameters(tmp_path: Path) -> None:
@@ -637,6 +668,50 @@ def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
     assert light.projected_texture_hash == 0x12345678
 
 
+def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        material_textures={"DiffuseSampler": "test_diffuse"},
+        name="light_helpers",
+    )
+    point = build.add_light(YdrLight.point(
+        position=(1.0, 2.0, 3.0),
+        color=(10, 20, 30),
+        intensity=4.0,
+        falloff=25.0,
+    ))
+    spot = build.add_light(YdrLight.spot(
+        position=(4.0, 5.0, 6.0),
+        direction=(0.0, 0.0, -1.0),
+        cone_inner_angle=0.2,
+        cone_outer_angle=0.6,
+    ))
+    capsule = build.add_light(YdrLight.capsule(position=(7.0, 8.0, 9.0), extent=(0.0, 0.0, 3.0)))
+
+    assert point.light_type is YdrLightType.POINT
+    assert spot.light_type is YdrLightType.SPOT
+    assert capsule.light_type is YdrLightType.CAPSULE
+
+    path = tmp_path / "light_helpers.ydr"
+    build.save(path)
+    ydr = read_ydr(path)
+
+    assert [light.light_type for light in ydr.lights] == [YdrLightType.POINT, YdrLightType.SPOT, YdrLightType.CAPSULE]
+    assert ydr.lights[0].position == pytest.approx((1.0, 2.0, 3.0))
+    assert ydr.lights[0].color == (10, 20, 30)
+    assert ydr.lights[0].intensity == pytest.approx(4.0)
+    assert ydr.lights[0].falloff == pytest.approx(25.0)
+    assert ydr.lights[1].direction == pytest.approx((0.0, 0.0, -1.0))
+    assert ydr.lights[1].cone_outer_angle == pytest.approx(0.6)
+    assert ydr.lights[2].extent == pytest.approx((0.0, 0.0, 3.0))
+
+    parsed_spot = ydr.add_light(YdrLight.spot(position=(10.0, 0.0, 0.0), cone_outer_angle=1.0))
+    assert parsed_spot.light_type is YdrLightType.SPOT
+    assert len(ydr.lights) == 4
+    ydr.clear_lights()
+    assert ydr.lights == []
+
+
 def test_build_and_read_ydr_embedded_textures(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
@@ -867,7 +942,7 @@ def test_skinned_layout_selected() -> None:
 def test_static_mesh_unaffected_by_skinned_support(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         name="static_tri",
     )
 
@@ -1037,7 +1112,7 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
 def test_geometry_fixed_fields_match_expected_defaults(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         name="geom_defaults",
     )
     ydr_path = tmp_path / "geom_defaults.ydr"
@@ -1102,7 +1177,7 @@ def test_to_build_preserves_embedded_assets(tmp_path: Path) -> None:
 def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         name="helper_case",
     )
     path = tmp_path / "helper_case.ydr"
@@ -1153,7 +1228,7 @@ def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
 def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
-        texture="test_diffuse",
+        material_textures={"DiffuseSampler": "test_diffuse"},
         name="skin_helpers",
     )
     path = tmp_path / "skin_helpers.ydr"

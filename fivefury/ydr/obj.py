@@ -4,7 +4,7 @@ import dataclasses
 from pathlib import Path
 from typing import Sequence
 
-from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, create_ydr
+from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput
 from .write_geometry import compute_bounds
 from .builder import save_ydr
 from .defs import YdrLod
@@ -36,7 +36,7 @@ class ObjScene:
     name: str = ""
 
     def to_ydr(self, *, lod: YdrLod | str = YdrLod.HIGH, version: int = 165) -> YdrBuild:
-        return create_ydr(meshes=self.meshes, materials=self.materials, name=self.name, lod=lod, version=version)
+        return YdrBuild.from_meshes(meshes=self.meshes, materials=self.materials, name=self.name, lod=lod, version=version)
 
 
 @dataclasses.dataclass(slots=True)

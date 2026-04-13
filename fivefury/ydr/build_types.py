@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from .model import YdrJoints, YdrLight, YdrSkeleton
 
 
+MaterialParameterValue = float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str
+
+
 @dataclasses.dataclass(slots=True)
 class YdrTextureInput:
     name: str
@@ -19,12 +22,15 @@ class YdrTextureInput:
     source: str | Path | bytes | None = None
 
 
+TextureInputValue = str | Path | YdrTextureInput
+
+
 @dataclasses.dataclass(slots=True)
 class YdrMaterialInput:
     name: str = "default"
     shader: str = "default.sps"
-    textures: Mapping[str, str | YdrTextureInput] = dataclasses.field(default_factory=dict)
-    parameters: Mapping[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str] = dataclasses.field(default_factory=dict)
+    textures: Mapping[str, TextureInputValue] = dataclasses.field(default_factory=dict)
+    parameters: Mapping[str, MaterialParameterValue] = dataclasses.field(default_factory=dict)
     render_bucket: int = 0
 
 
@@ -58,6 +64,30 @@ class YdrModelInput:
         self.skeleton_binding = coerce_skeleton_binding(self.skeleton_binding)
 
 
+def _build_model_input(
+    meshes: Sequence[YdrMeshInput],
+    *,
+    render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP,
+    flags: int = 0,
+    skeleton_binding: int | YdrSkeletonBinding | None = None,
+) -> YdrModelInput:
+    return YdrModelInput(
+        meshes=list(meshes),
+        render_mask=render_mask,
+        flags=int(flags),
+        skeleton_binding=YdrSkeletonBinding() if skeleton_binding is None else coerce_skeleton_binding(skeleton_binding),
+    )
+
+
+def _copy_model_input(model: YdrModelInput) -> YdrModelInput:
+    return _build_model_input(
+        model.meshes,
+        render_mask=model.render_mask,
+        flags=model.flags,
+        skeleton_binding=model.skeleton_binding,
+    )
+
+
 @dataclasses.dataclass(slots=True)
 class YdrBuild:
     materials: list[YdrMaterialInput]
@@ -78,6 +108,83 @@ class YdrBuild:
         self.lods = {coerce_lod(lod): list(models) for lod, models in self.lods.items()}
         self.lod_distances = {coerce_lod(lod): float(distance) for lod, distance in self.lod_distances.items()}
         self.render_mask_flags = {coerce_lod(lod): int(mask) for lod, mask in self.render_mask_flags.items()}
+
+    @classmethod
+    def from_meshes(
+        cls,
+        *,
+        meshes: Sequence[YdrMeshInput],
+        materials: Sequence[YdrMaterialInput] | None = None,
+        shader: str = "default.sps",
+        material_textures: Mapping[str, TextureInputValue] | None = None,
+        skeleton: YdrSkeleton | None = None,
+        joints: YdrJoints | None = None,
+        lights: Sequence[YdrLight] | None = None,
+        embedded_textures: Ytd | None = None,
+        bound: Bound | None = None,
+        name: str = "",
+        lod: YdrLod | str = YdrLod.HIGH,
+        lod_distance: float = 9998.0,
+        render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP,
+        flags: int = 0,
+        skeleton_binding: int | YdrSkeletonBinding | None = None,
+        version: int = 165,
+    ) -> "YdrBuild":
+        from .prepare import normalize_materials
+
+        normalized_lod = coerce_lod(lod)
+        build = cls(
+            materials=normalize_materials(materials, shader=shader, material_textures=material_textures),
+            name=name,
+            version=int(version),
+            skeleton=skeleton,
+            joints=joints,
+            lights=list(lights or []),
+            embedded_textures=embedded_textures,
+            bound=bound,
+        )
+        build.add_model(
+            meshes,
+            lod=normalized_lod,
+            render_mask=render_mask,
+            flags=flags,
+            skeleton_binding=skeleton_binding,
+            lod_distance=lod_distance,
+        )
+        return build
+
+    def add_model(
+        self,
+        meshes: Sequence[YdrMeshInput],
+        *,
+        lod: YdrLod | str = YdrLod.HIGH,
+        render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP,
+        flags: int = 0,
+        skeleton_binding: int | YdrSkeletonBinding | None = None,
+        lod_distance: float | None = None,
+    ) -> YdrModelInput:
+        normalized_lod = coerce_lod(lod)
+        model = _build_model_input(
+            meshes,
+            render_mask=render_mask,
+            flags=flags,
+            skeleton_binding=skeleton_binding,
+        )
+        self.lods.setdefault(normalized_lod, []).append(model)
+        if lod_distance is not None:
+            self.lod_distances[normalized_lod] = float(lod_distance)
+        return model
+
+    def add_light(
+        self,
+        light: YdrLight,
+    ) -> YdrLight:
+        self.lights.append(light)
+        return light
+
+    def clear_lights(self) -> "YdrBuild":
+        self.lights.clear()
+        return self
 
     def get_lod(self, lod: YdrLod | str) -> list[YdrModelInput]:
         return self.lods.get(coerce_lod(lod), [])
@@ -109,8 +216,7 @@ def create_ydr(
     meshes: Sequence[YdrMeshInput],
     materials: Sequence[YdrMaterialInput] | None = None,
     shader: str = "default.sps",
-    textures: Mapping[str, str | YdrTextureInput] | None = None,
-    texture: str | YdrTextureInput | None = None,
+    material_textures: Mapping[str, TextureInputValue] | None = None,
     skeleton: YdrSkeleton | None = None,
     joints: YdrJoints | None = None,
     lights: Sequence[YdrLight] | None = None,
@@ -118,24 +224,29 @@ def create_ydr(
     bound: Bound | None = None,
     name: str = "",
     lod: YdrLod | str = YdrLod.HIGH,
+    lod_distance: float = 9998.0,
     render_mask: int | YdrRenderMask = YdrRenderMask.STATIC_PROP,
+    flags: int = 0,
+    skeleton_binding: int | YdrSkeletonBinding | None = None,
     version: int = 165,
 ) -> YdrBuild:
-    from .prepare import normalize_materials
-
-    normalized_materials = normalize_materials(materials, shader=shader, textures=textures, texture=texture)
-    normalized_lod = coerce_lod(lod)
-    return YdrBuild(
-        materials=normalized_materials,
-        lods={normalized_lod: [YdrModelInput(meshes=list(meshes), render_mask=render_mask)]},
-        name=name,
-        version=int(version),
+    return YdrBuild.from_meshes(
+        meshes=meshes,
+        materials=materials,
+        shader=shader,
+        material_textures=material_textures,
         skeleton=skeleton,
         joints=joints,
-        lights=list(lights or []),
+        lights=lights,
         embedded_textures=embedded_textures,
         bound=bound,
-        lod_distances={normalized_lod: 9998.0},
+        name=name,
+        lod=lod,
+        lod_distance=lod_distance,
+        render_mask=render_mask,
+        flags=flags,
+        skeleton_binding=skeleton_binding,
+        version=version,
     )
 
 

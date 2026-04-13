@@ -276,7 +276,7 @@ ydr.save("weapon_example_out.ydr")
 ### Create a simple YDR
 
 ```python
-from fivefury import YdrLight, YdrLightType, YdrMeshInput, create_ydr
+from fivefury import YdrLight, YdrMeshInput, create_ydr
 
 ydr = create_ydr(
     meshes=[
@@ -286,16 +286,16 @@ ydr = create_ydr(
             texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
         )
     ],
-    texture="example_diffuse",
-    lights=[
-        YdrLight(
-            position=(0.0, 0.0, 5.0),
-            intensity=3.0,
-            light_type=YdrLightType.POINT,
-        )
-    ],
+    material_textures={"DiffuseSampler": "example_diffuse"},
+    lights=[YdrLight.point(position=(0.0, 0.0, 5.0), intensity=3.0)],
     name="example_drawable",
 )
+
+ydr.add_light(YdrLight.spot(
+    position=(0.0, 2.0, 5.0),
+    direction=(0.0, 0.0, -1.0),
+    cone_outer_angle=0.6,
+))
 
 ydr.save("example_drawable.ydr")
 ```
