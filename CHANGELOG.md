@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.29]
+
+### Fixed
+- Corrected the shared `phBound` header layout used by `YBN` bounds read/write so bounding-box vectors, centroid data, and packed material words now align with `dev_ng`/CodeWalker-style resources instead of being written one `Vec4` block too late.
+- Fixed regenerated `YBN` collision resources that could load but fail broadphase/physical interaction because child bounds were serialized with the wrong common header offsets.
+
 ## [0.1.28]
 
 ### Changed
