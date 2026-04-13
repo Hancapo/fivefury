@@ -23,15 +23,20 @@ from fivefury import (
     BoundPolygonTriangle,
     BoundSphere,
     BoundTransform,
+    BoundTriangleChunk,
     GameFileCache,
     GameFileType,
     Ybn,
+    bounds_from_vertices,
     build_ybn_bytes,
     build_rsc7,
+    chunk_bound_triangles,
     get_bound_material_color,
     parse_bound_material_names,
     read_ybn,
     save_ybn,
+    sphere_radius_from_vertices,
+    triangle_area,
 )
 from fivefury.resource import get_resource_flags_from_block_sizes, get_resource_total_page_count, split_rsc7_sections
 
@@ -767,3 +772,51 @@ def test_build_ybn_bytes_rejects_invalid_triangle_edge_indices() -> None:
         assert "invalid polygon index" in str(exc)
     else:
         raise AssertionError("expected build_ybn_bytes to reject invalid triangle edge indices")
+
+
+def test_bounds_geometry_helpers_compute_expected_values() -> None:
+    vertices = [
+        (-4.0, 2.0, 1.5),
+        (3.0, -5.0, 7.5),
+        (0.5, 1.0, -2.0),
+    ]
+    minimum, maximum = bounds_from_vertices(vertices)
+    center = ((minimum[0] + maximum[0]) * 0.5, (minimum[1] + maximum[1]) * 0.5, (minimum[2] + maximum[2]) * 0.5)
+
+    assert minimum == (-4.0, -5.0, -2.0)
+    assert maximum == (3.0, 2.0, 7.5)
+    assert math.isclose(triangle_area((0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 3.0, 0.0)), 3.0)
+    assert math.isclose(sphere_radius_from_vertices(center, vertices), 6.860211367006122)
+
+
+def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits() -> None:
+    triangles = [
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ((1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
+        ((2.0, 0.0, 0.0), (3.0, 0.0, 0.0), (2.0, 1.0, 0.0)),
+    ]
+
+    chunks = chunk_bound_triangles(
+        triangles,
+        max_vertices_per_child=6,
+        max_triangles_per_child=2,
+    )
+
+    assert len(chunks) == 2
+    assert chunks[0] == BoundTriangleChunk(
+        vertices=[
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (1.0, 1.0, 0.0),
+        ],
+        triangles=[(0, 1, 2), (1, 3, 2)],
+    )
+    assert chunks[1] == BoundTriangleChunk(
+        vertices=[
+            (2.0, 0.0, 0.0),
+            (3.0, 0.0, 0.0),
+            (2.0, 1.0, 0.0),
+        ],
+        triangles=[(0, 1, 2)],
+    )

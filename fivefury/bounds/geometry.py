@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from math import sqrt
 
+from .. import _native as _native_backend
 from .model import (
     BoundAabb,
     BoundBVH,
@@ -33,7 +34,7 @@ class BoundTriangleChunk:
     triangles: list[tuple[int, int, int]]
 
 
-def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
+def _triangle_area_python(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
     edge1 = (vertex1[0] - vertex0[0], vertex1[1] - vertex0[1], vertex1[2] - vertex0[2])
     edge2 = (vertex2[0] - vertex0[0], vertex2[1] - vertex0[1], vertex2[2] - vertex0[2])
     cross = (
@@ -44,7 +45,13 @@ def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float
     return 0.5 * sqrt((cross[0] * cross[0]) + (cross[1] * cross[1]) + (cross[2] * cross[2]))
 
 
-def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
+def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
+    if _native_backend._bounds_triangle_area is not None:
+        return _native_backend._bounds_triangle_area(vertex0, vertex1, vertex2)
+    return _triangle_area_python(vertex0, vertex1, vertex2)
+
+
+def _bounds_from_vertices_python(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
     if not vertices:
         raise ValueError("At least one vertex is required")
     return (
@@ -53,11 +60,17 @@ def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
     )
 
 
+def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
+    if _native_backend._bounds_from_vertices is not None:
+        return _native_backend._bounds_from_vertices(vertices)
+    return _bounds_from_vertices_python(vertices)
+
+
 def center_from_bounds(minimum: Vector3, maximum: Vector3) -> Vector3:
     return ((minimum[0] + maximum[0]) * 0.5, (minimum[1] + maximum[1]) * 0.5, (minimum[2] + maximum[2]) * 0.5)
 
 
-def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> float:
+def _sphere_radius_from_vertices_python(center: Vector3, vertices: list[Vector3]) -> float:
     return max(
         (
             sqrt(
@@ -69,6 +82,12 @@ def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> flo
         ),
         default=0.0,
     )
+
+
+def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> float:
+    if _native_backend._bounds_sphere_radius_from_vertices is not None:
+        return _native_backend._bounds_sphere_radius_from_vertices(center, vertices)
+    return _sphere_radius_from_vertices_python(center, vertices)
 
 
 def identity_bound_transform() -> BoundTransform:

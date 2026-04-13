@@ -57,6 +57,10 @@ PyObject* mod_read_rpf_entry(PyObject*, PyObject* args);
 PyObject* mod_read_rpf_entry_variants(PyObject*, PyObject* args);
 PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args);
 PyObject* mod_scan_rpf_into_index(PyObject*, PyObject* args);
+PyObject* mod_bounds_triangle_area(PyObject*, PyObject* args);
+PyObject* mod_bounds_from_vertices(PyObject*, PyObject* args);
+PyObject* mod_bounds_sphere_radius_from_vertices(PyObject*, PyObject* args);
+PyObject* mod_bounds_chunk_triangles(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;

@@ -29,6 +29,10 @@ PyMethodDef module_methods[] = {
     {"jenk_hash", mod_jenk_hash, METH_VARARGS, nullptr},
     {"scan_rpf_batch_into_index", mod_scan_rpf_batch_into_index, METH_VARARGS, nullptr},
     {"scan_rpf_into_index", mod_scan_rpf_into_index, METH_VARARGS, nullptr},
+    {"bounds_triangle_area", mod_bounds_triangle_area, METH_VARARGS, nullptr},
+    {"bounds_from_vertices", mod_bounds_from_vertices, METH_VARARGS, nullptr},
+    {"bounds_sphere_radius_from_vertices", mod_bounds_sphere_radius_from_vertices, METH_VARARGS, nullptr},
+    {"bounds_chunk_triangles", mod_bounds_chunk_triangles, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 

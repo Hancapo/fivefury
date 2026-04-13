@@ -161,6 +161,64 @@ def read_rpf_entry_variants(
     return bytes(stored), bytes(standalone)
 
 
+_HAS_BOUNDS_BACKEND = all(
+    hasattr(_ffi, name)
+    for name in (
+        "bounds_triangle_area",
+        "bounds_from_vertices",
+        "bounds_sphere_radius_from_vertices",
+        "bounds_chunk_triangles",
+    )
+)
+
+
+if _HAS_BOUNDS_BACKEND:
+    def _bounds_triangle_area(
+        vertex0: tuple[float, float, float],
+        vertex1: tuple[float, float, float],
+        vertex2: tuple[float, float, float],
+    ) -> float:
+        return float(_ffi.bounds_triangle_area(vertex0, vertex1, vertex2))
+
+
+    def _bounds_from_vertices(
+        vertices: list[tuple[float, float, float]],
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+        minimum, maximum = _ffi.bounds_from_vertices(vertices)
+        return tuple(minimum), tuple(maximum)
+
+
+    def _bounds_sphere_radius_from_vertices(
+        center: tuple[float, float, float],
+        vertices: list[tuple[float, float, float]],
+    ) -> float:
+        return float(_ffi.bounds_sphere_radius_from_vertices(center, vertices))
+
+
+    def _bounds_chunk_triangles(
+        triangles: list[tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]],
+        *,
+        max_vertices_per_child: int,
+        max_triangles_per_child: int,
+    ) -> list[tuple[list[tuple[float, float, float]], list[tuple[int, int, int]]]]:
+        return [
+            (
+                [tuple(vertex) for vertex in vertices],
+                [tuple(indices) for indices in chunk_triangles],
+            )
+            for vertices, chunk_triangles in _ffi.bounds_chunk_triangles(
+                triangles,
+                int(max_vertices_per_child),
+                int(max_triangles_per_child),
+            )
+        ]
+else:
+    _bounds_triangle_area = None
+    _bounds_from_vertices = None
+    _bounds_sphere_radius_from_vertices = None
+    _bounds_chunk_triangles = None
+
+
 def scan_rpf_into_index(
     index: CompactIndex,
     path: str,
