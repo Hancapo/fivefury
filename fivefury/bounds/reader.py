@@ -43,6 +43,19 @@ def _virtual_offset(pointer: int, data: bytes) -> int:
     return checked_virtual_offset(pointer, data, base=0x50000000)
 
 
+def _unpack_bound_material_words(data1: int, data2: int) -> dict[str, int]:
+    return {
+        "material_index": data1 & 0xFF,
+        "procedural_id": (data1 >> 8) & 0xFF,
+        "room_id": (data1 >> 16) & 0x1F,
+        "ped_density": (data1 >> 21) & 0x07,
+        "unk_flags": (data1 >> 24) & 0xFF,
+        "poly_flags": data2 & 0xFF,
+        "material_color_index": (data2 >> 8) & 0xFF,
+        "unknown_5eh": (data2 >> 16) & 0xFFFF,
+    }
+
+
 def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[int]:
     return read_virtual_pointer_array(system_data, pointer, count, base=0x50000000)
 
@@ -356,7 +369,10 @@ def _read_resource_pages_info(pointer: int, system_data: bytes) -> BoundResource
 def _read_bound_common(offset: int, system_data: bytes) -> dict[str, object]:
     data_offset = offset + _RESOURCE_FILE_BASE_SIZE
     pages_info_pointer = u64(system_data, offset + 0x08)
-    room_and_density = system_data[data_offset + 0x4E]
+    material_values = _unpack_bound_material_words(
+        u32(system_data, data_offset + 0x3C),
+        u32(system_data, data_offset + 0x4C),
+    )
     return {
         "file_vft": u32(system_data, offset + 0x00),
         "file_unknown": u32(system_data, offset + 0x04),
@@ -367,22 +383,15 @@ def _read_bound_common(offset: int, system_data: bytes) -> dict[str, object]:
         "sphere_radius": f32(system_data, data_offset + 0x04),
         "unknown_18h": u32(system_data, data_offset + 0x08),
         "unknown_1ch": u32(system_data, data_offset + 0x0C),
-        "box_max": vec3(system_data, data_offset + 0x20),
-        "margin": f32(system_data, data_offset + 0x2C),
-        "box_min": vec3(system_data, data_offset + 0x30),
-        "unknown_3ch": u32(system_data, data_offset + 0x3C),
-        "box_center": vec3(system_data, data_offset + 0x40),
-        "material_index": system_data[data_offset + 0x4C],
-        "procedural_id": system_data[data_offset + 0x4D],
-        "room_id": room_and_density & 0x1F,
-        "ped_density": (room_and_density >> 5) & 0x07,
-        "unk_flags": system_data[data_offset + 0x4F],
-        "sphere_center": vec3(system_data, data_offset + 0x50),
-        "poly_flags": system_data[data_offset + 0x5C],
-        "material_color_index": system_data[data_offset + 0x5D],
-        "unknown_5eh": u16(system_data, data_offset + 0x5E),
-        "unknown_60h": vec3(system_data, data_offset + 0x60),
-        "volume": f32(system_data, data_offset + 0x6C),
+        "box_max": vec3(system_data, data_offset + 0x10),
+        "margin": f32(system_data, data_offset + 0x1C),
+        "box_min": vec3(system_data, data_offset + 0x20),
+        "unknown_3ch": u32(system_data, data_offset + 0x2C),
+        "box_center": vec3(system_data, data_offset + 0x30),
+        "sphere_center": vec3(system_data, data_offset + 0x40),
+        "unknown_60h": vec3(system_data, data_offset + 0x50),
+        "volume": f32(system_data, data_offset + 0x5C),
+        **material_values,
     }
 
 

@@ -57,7 +57,7 @@ def _build_sphere_bound_block(
     struct.pack_into("<3f", data, offset + 0x30, *minimum)
     struct.pack_into("<I", data, offset + 0x3C, 1)
     struct.pack_into("<3f", data, offset + 0x40, cx, cy, cz)
-    data[offset + 0x4C] = material_index & 0xFF
+    data[offset + 0x3C] = material_index & 0xFF
     struct.pack_into("<3f", data, offset + 0x50, *center)
     struct.pack_into("<3f", data, offset + 0x60, 0.0, 0.0, 0.0)
     struct.pack_into("<f", data, offset + 0x6C, (4.0 / 3.0) * math.pi * (radius**3))

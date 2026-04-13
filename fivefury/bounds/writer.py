@@ -38,7 +38,7 @@ from .model import (
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _RESOURCE_FILE_BASE_SIZE = 0x10
-_BOUND_BLOCK_SIZE = 0x80
+_BOUND_BLOCK_SIZE = 0x70
 _COMPOSITE_BLOCK_SIZE = 0xB0
 _GEOMETRY_BLOCK_SIZE = 0x130
 _GEOMETRY_BVH_BLOCK_SIZE = 0x150
@@ -105,6 +105,22 @@ def _write_composite_flags(writer: ResourceWriter, offset: int, flags: BoundComp
     writer.pack_into("II", offset, value.flags1, value.flags2)
 
 
+def _pack_bound_material_words(bound: Bound) -> tuple[int, int]:
+    data1 = (
+        (bound.material_index & 0xFF)
+        | ((bound.procedural_id & 0xFF) << 8)
+        | ((bound.room_id & 0x1F) << 16)
+        | ((bound.ped_density & 0x07) << 21)
+        | ((bound.unk_flags & 0xFF) << 24)
+    )
+    data2 = (
+        (bound.poly_flags & 0xFF)
+        | ((bound.material_color_index & 0xFF) << 8)
+        | ((bound.unknown_5eh & 0xFFFF) << 16)
+    )
+    return (data1, data2)
+
+
 def _default_file_vft(bound: Bound) -> int:
     for cls, value in _DEFAULT_BOUND_FILE_VFT.items():
         if isinstance(bound, cls):
@@ -125,6 +141,7 @@ def _write_resource_file_base(
 
 
 def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> None:
+    material_word1, material_word2 = _pack_bound_material_words(bound)
     _write_resource_file_base(writer, offset, bound)
     writer.pack_into("B", offset + 0x10, int(bound.bound_type))
     writer.pack_into("B", offset + 0x11, bound.unknown_11h & 0xFF)
@@ -132,24 +149,16 @@ def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> No
     writer.pack_into("f", offset + 0x14, bound.sphere_radius)
     writer.pack_into("I", offset + 0x18, bound.unknown_18h)
     writer.pack_into("I", offset + 0x1C, bound.unknown_1ch)
-    _write_vec3(writer, offset + 0x30, bound.box_max)
-    writer.pack_into("f", offset + 0x3C, bound.margin)
-    _write_vec3(writer, offset + 0x40, bound.box_min)
-    writer.pack_into("I", offset + 0x4C, bound.unknown_3ch)
-    _write_vec3(writer, offset + 0x50, bound.box_center)
-    room_and_density = (bound.room_id & 0x1F) | ((bound.ped_density & 0x07) << 5)
-    writer.pack_into(
-        "4B",
-        offset + 0x5C,
-        bound.material_index & 0xFF,
-        bound.procedural_id & 0xFF,
-        room_and_density & 0xFF,
-        bound.unk_flags & 0xFF,
-    )
-    _write_vec3(writer, offset + 0x60, bound.sphere_center)
-    writer.pack_into("BBH", offset + 0x6C, bound.poly_flags & 0xFF, bound.material_color_index & 0xFF, bound.unknown_5eh & 0xFFFF)
-    _write_vec3(writer, offset + 0x70, bound.unknown_60h)
-    writer.pack_into("f", offset + 0x7C, bound.volume)
+    _write_vec3(writer, offset + 0x20, bound.box_max)
+    writer.pack_into("f", offset + 0x2C, bound.margin)
+    _write_vec3(writer, offset + 0x30, bound.box_min)
+    writer.pack_into("I", offset + 0x3C, bound.unknown_3ch)
+    _write_vec3(writer, offset + 0x40, bound.box_center)
+    writer.pack_into("I", offset + 0x4C, material_word1)
+    _write_vec3(writer, offset + 0x50, bound.sphere_center)
+    writer.pack_into("I", offset + 0x5C, material_word2)
+    _write_vec3(writer, offset + 0x60, bound.unknown_60h)
+    writer.pack_into("f", offset + 0x6C, bound.volume)
 
 
 def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = None) -> int:
