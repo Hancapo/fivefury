@@ -68,6 +68,10 @@ class YdrMaterialDescriptor:
     layouts: tuple[YdrMaterialLayout, ...] = ()
 
     @property
+    def slot_index(self) -> int:
+        return int(self.material_index)
+
+    @property
     def texture_slots(self) -> tuple[YdrMaterialParameter, ...]:
         return tuple(parameter for parameter in self.parameters if parameter.is_texture)
 

@@ -23,6 +23,59 @@ from .sequences import (
 )
 
 
+YCD_UV_CLIP_MARKER = "_uv_"
+
+
+def _normalize_ycd_clip_name(value: str) -> str:
+    normalized = str(value or "").replace("\\", "/")
+    if "/" in normalized:
+        normalized = normalized.rsplit("/", 1)[-1]
+    if "." in normalized:
+        normalized = normalized.split(".", 1)[0]
+    return normalized.lower()
+
+
+def build_ycd_uv_clip_name(object_name: str, slot_index: int) -> str:
+    base_name = _normalize_ycd_clip_name(object_name)
+    if not base_name:
+        raise ValueError("YCD UV clip object_name cannot be empty")
+    slot = int(slot_index)
+    if slot < 0:
+        raise ValueError("YCD UV clip slot_index cannot be negative")
+    return f"{base_name}{YCD_UV_CLIP_MARKER}{slot}"
+
+
+def build_ycd_uv_clip_hash(object_name: str, slot_index: int) -> MetaHash:
+    slot = int(slot_index)
+    if slot < 0:
+        raise ValueError("YCD UV clip slot_index cannot be negative")
+    return MetaHash((MetaHash(_normalize_ycd_clip_name(object_name)).uint + slot + 1) & 0xFFFFFFFF)
+
+
+@dataclass(slots=True)
+class YcdUvClipBinding:
+    object_name: str
+    slot_index: int
+
+    @property
+    def clip_name(self) -> str:
+        return build_ycd_uv_clip_name(self.object_name, self.slot_index)
+
+    @property
+    def clip_hash(self) -> MetaHash:
+        return build_ycd_uv_clip_hash(self.object_name, self.slot_index)
+
+
+def parse_ycd_uv_clip_binding(value: str | None) -> YcdUvClipBinding | None:
+    normalized = _normalize_ycd_clip_name(str(value or ""))
+    if not normalized:
+        return None
+    base, separator, suffix = normalized.rpartition(YCD_UV_CLIP_MARKER)
+    if not separator or not suffix.isdigit():
+        return None
+    return YcdUvClipBinding(object_name=base, slot_index=int(suffix))
+
+
 def _ycd_hash_candidates(value: int | str | MetaHash) -> tuple[int, ...]:
     if isinstance(value, MetaHash):
         return (value.uint,)
@@ -31,10 +84,9 @@ def _ycd_hash_candidates(value: int | str | MetaHash) -> tuple[int, ...]:
 
     text = str(value)
     candidates = [MetaHash(text).uint]
-    marker = "_uv_"
-    base, separator, suffix = text.rpartition(marker)
-    if separator and suffix.isdigit():
-        candidates.append((MetaHash(base).uint + int(suffix) + 1) & 0xFFFFFFFF)
+    binding = parse_ycd_uv_clip_binding(text)
+    if binding is not None:
+        candidates.append(binding.clip_hash.uint)
     return tuple(dict.fromkeys(candidates))
 
 
@@ -147,9 +199,20 @@ class YcdTransformSample:
 
 
 @dataclass(slots=True)
-class YcdUvAnimationSample:
-    slide_u: tuple[float, float, float, float] | None = None
-    slide_v: tuple[float, float, float, float] | None = None
+class YcdUvTransformSample:
+    uv0: tuple[float, float, float] | None = None
+    uv1: tuple[float, float, float] | None = None
+
+    @property
+    def slide_u(self) -> tuple[float, float, float] | None:
+        return self.uv0
+
+    @property
+    def slide_v(self) -> tuple[float, float, float] | None:
+        return self.uv1
+
+
+YcdUvAnimationSample = YcdUvTransformSample
 
 
 @dataclass(slots=True)
@@ -390,11 +453,11 @@ class YcdAnimation:
                 sample.rotation = value
         return result
 
-    def evaluate_uv_transform(self, frame: int | float) -> YcdUvAnimationSample:
+    def evaluate_uv_transform(self, frame: int | float) -> YcdUvTransformSample:
         tracks = self.evaluate_uv_animation(frame)
-        slide_u = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_U)), None)
-        slide_v = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_V)), None)
-        return YcdUvAnimationSample(slide_u=slide_u, slide_v=slide_v)
+        uv0 = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_U)), None)
+        uv1 = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_V)), None)
+        return YcdUvTransformSample(uv0=uv0, uv1=uv1)
 
 
 YcdClipPropertyValue = float | int | bool | str | tuple[float, ...] | MetaHash
@@ -517,6 +580,24 @@ class YcdClip:
     def resolved_name(self) -> str | int:
         return self.name or self.hash.resolved
 
+    @property
+    def uv_binding(self) -> YcdUvClipBinding | None:
+        return parse_ycd_uv_clip_binding(self.short_name or self.name)
+
+    @property
+    def is_uv_clip(self) -> bool:
+        return self.uv_binding is not None
+
+    @property
+    def uv_object_name(self) -> str | None:
+        binding = self.uv_binding
+        return binding.object_name if binding is not None else None
+
+    @property
+    def uv_slot_index(self) -> int | None:
+        binding = self.uv_binding
+        return binding.slot_index if binding is not None else None
+
     def get_property(self, value: int | str | MetaHash) -> YcdClipProperty | None:
         for key in _ycd_hash_candidates(value):
             for prop in self.properties:
@@ -590,9 +671,9 @@ class YcdClipAnimation(YcdClip):
             return {}
         return self.animation.evaluate_tracks(self.get_animation_frame_at_time(seconds), track=track, interpolate=interpolate)
 
-    def evaluate_uv_animation_at_time(self, seconds: float) -> YcdUvAnimationSample:
+    def evaluate_uv_animation_at_time(self, seconds: float) -> YcdUvTransformSample:
         if self.animation is None:
-            return YcdUvAnimationSample()
+            return YcdUvTransformSample()
         return self.animation.evaluate_uv_transform(self.get_animation_frame_at_time(seconds))
 
     def evaluate_object_animation_at_time(self, seconds: float) -> YcdTransformSample:
@@ -681,6 +762,47 @@ class Ycd:
             result[MetaHash(short_name).uint] = clip
         return result
 
+    def validate(self) -> Ycd:
+        for clip in self.clips:
+            if not isinstance(clip, YcdClipAnimation):
+                continue
+            binding = clip.uv_binding
+            has_uv_animation = bool(clip.animation and clip.animation.has_uv_animation)
+            if binding is None and not has_uv_animation:
+                continue
+            if binding is None:
+                raise ValueError(f"YCD UV clip '{clip.short_name or clip.name}' is missing a '<object>_uv_<slot_index>' name")
+            expected_short_name = binding.clip_name
+            if clip.short_name and clip.short_name != expected_short_name:
+                raise ValueError(
+                    f"YCD UV clip short_name '{clip.short_name}' does not match expected '{expected_short_name}' for slot_index={binding.slot_index}"
+                )
+            expected_hash = binding.clip_hash.uint
+            if clip.hash.uint and clip.hash.uint != expected_hash:
+                raise ValueError(
+                    f"YCD UV clip '{expected_short_name}' has hash 0x{clip.hash.uint:08X}, expected 0x{expected_hash:08X}"
+                )
+            if clip.animation is None:
+                raise ValueError(f"YCD UV clip '{expected_short_name}' is missing its animation payload")
+            if not clip.animation.uv_sequences:
+                raise ValueError(f"YCD UV clip '{expected_short_name}' does not contain shader UV tracks")
+            for sequence in clip.animation.uv_sequences:
+                bone = sequence.bone_id
+                if bone is None:
+                    raise ValueError(f"YCD UV clip '{expected_short_name}' contains a UV sequence without bone metadata")
+                if int(bone.bone_id) != 0:
+                    raise ValueError(
+                        f"YCD UV clip '{expected_short_name}' uses bone_id={bone.bone_id}, but dev_ng runtime expects UV tracks on bone_id 0"
+                    )
+                if int(bone.track) not in (
+                    int(YcdAnimationTrack.SHADER_SLIDE_U),
+                    int(YcdAnimationTrack.SHADER_SLIDE_V),
+                ):
+                    raise ValueError(
+                        f"YCD UV clip '{expected_short_name}' contains unexpected UV track id {bone.track}"
+                    )
+        return self
+
     def build(self) -> Ycd:
         self.animation_map = {}
         for animation in self.animations:
@@ -689,6 +811,8 @@ class Ycd:
             self.animation_map[animation.hash.uint] = animation
 
         for clip in self.clips:
+            if not clip.short_name and clip.name:
+                clip.short_name = _normalize_ycd_clip_name(clip.name)
             if clip.hash.uint == 0:
                 clip.hash = _resolve_ycd_clip_hash(clip)
             if isinstance(clip, YcdClipAnimation):
@@ -712,6 +836,7 @@ class Ycd:
         self.animation_entry_count = len(self.animations)
         self.clip_bucket_capacity = max(int(self.clip_bucket_capacity), _get_ycd_bucket_capacity(self.clip_entry_count))
         self.animation_bucket_capacity = max(int(self.animation_bucket_capacity), _get_ycd_bucket_capacity(self.animation_entry_count))
+        self.validate()
         return self
 
     def to_bytes(self) -> bytes:
@@ -747,18 +872,23 @@ __all__ = [
     "YcdSequence",
     "YcdSequenceRootChannelRef",
     "YcdTransformSample",
+    "YcdUvClipBinding",
     "YcdUvAnimationSample",
+    "YcdUvTransformSample",
+    "build_ycd_uv_clip_hash",
+    "build_ycd_uv_clip_name",
+    "create_ycd_uv_clip",
+    "parse_ycd_uv_clip_binding",
 ]
 
 
 def _resolve_ycd_clip_hash(clip: YcdClip) -> MetaHash:
     if clip.hash.uint:
         return clip.hash
+    binding = clip.uv_binding
+    if binding is not None:
+        return binding.clip_hash
     short_name = clip.short_name or ""
-    marker = "_uv_"
-    base, separator, suffix = short_name.rpartition(marker)
-    if separator and suffix.isdigit():
-        return MetaHash((MetaHash(base).uint + int(suffix) + 1) & 0xFFFFFFFF)
     if short_name:
         return MetaHash(short_name)
     if clip.name:
@@ -800,6 +930,33 @@ def _get_ycd_bucket_capacity(count: int) -> int:
     if count < 65167:
         return 65167
     return 65521
+
+
+def create_ycd_uv_clip(
+    *,
+    object_name: str,
+    slot_index: int,
+    animation: YcdAnimation | None = None,
+    start_time: float = 0.0,
+    end_time: float = 0.0,
+    rate: float = 1.0,
+    name: str | None = None,
+    flags: int = 0,
+) -> YcdClipAnimation:
+    binding = YcdUvClipBinding(object_name=object_name, slot_index=int(slot_index))
+    clip_name = name or binding.clip_name
+    return YcdClipAnimation(
+        hash=binding.clip_hash,
+        name=clip_name,
+        short_name=binding.clip_name,
+        clip_type=YcdClipType.ANIMATION,
+        flags=int(flags),
+        animation_hash=animation.hash if animation is not None else MetaHash(0),
+        start_time=float(start_time),
+        end_time=float(end_time),
+        rate=float(rate),
+        animation=animation,
+    )
 
 
 def _lerp_vector4(

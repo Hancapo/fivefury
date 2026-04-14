@@ -16,7 +16,12 @@ from fivefury import (
     YcdSequence,
     YcdTransformSample,
     YcdUvAnimationSample,
+    YcdUvClipBinding,
+    YcdUvTransformSample,
     build_ycd_bytes,
+    build_ycd_uv_clip_hash,
+    build_ycd_uv_clip_name,
+    parse_ycd_uv_clip_binding,
     read_ycd,
 )
 from fivefury.resource import get_resource_total_page_count, split_rsc7_sections
@@ -108,6 +113,11 @@ def test_ycd_uv_animation_support() -> None:
     assert clip.animation is not None
     assert clip.has_uv_animation
     assert not clip.has_object_animation
+    assert clip.uv_binding == YcdUvClipBinding(object_name="sm_21_uvanim", slot_index=1)
+    assert clip.uv_object_name == "sm_21_uvanim"
+    assert clip.uv_slot_index == 1
+    assert clip.hash.uint == build_ycd_uv_clip_hash("sm_21_uvanim", 1).uint
+    assert clip.short_name == build_ycd_uv_clip_name("sm_21_uvanim", 1)
 
     animation = clip.animation
     assert animation.has_uv_animation
@@ -124,6 +134,7 @@ def test_ycd_uv_animation_support() -> None:
         int(YcdAnimationTrack.SHADER_SLIDE_U),
         int(YcdAnimationTrack.SHADER_SLIDE_V),
     }
+    assert all(sequence.bone_id is not None and sequence.bone_id.bone_id == 0 for sequence in animation.uv_sequences)
     assert animation.sequences[0].anim_sequences
     assert animation.sequences[0].anim_sequences[0].channels
     assert animation.sequences[0].anim_sequences[0].channels[0].channel_type in {
@@ -203,9 +214,14 @@ def test_ycd_time_based_uv_and_object_evaluation() -> None:
     uv_clip = uv_ycd.get_clip("sm_21_uvanim_uv_1")
     assert uv_clip is not None
     uv_sample = uv_clip.evaluate_uv_animation_at_time(uv_clip.duration * 0.5)
+    assert isinstance(uv_sample, YcdUvTransformSample)
     assert isinstance(uv_sample, YcdUvAnimationSample)
-    assert uv_sample.slide_u is not None
-    assert uv_sample.slide_v is not None
+    assert uv_sample.uv0 is not None
+    assert uv_sample.uv1 is not None
+    assert len(uv_sample.uv0) == 3
+    assert len(uv_sample.uv1) == 3
+    assert uv_sample.slide_u == uv_sample.uv0
+    assert uv_sample.slide_v == uv_sample.uv1
 
     obj_ycd = read_ycd(REFERENCE_YCD_DIR / "cs2_08.ycd")
     obj_clip = obj_ycd.get_clip("cs2_08_animboxmain")
@@ -214,6 +230,16 @@ def test_ycd_time_based_uv_and_object_evaluation() -> None:
     assert isinstance(object_sample, YcdTransformSample)
     assert object_sample.position is not None
     assert object_sample.rotation is not None
+
+
+def test_ycd_uv_binding_helpers() -> None:
+    binding = parse_ycd_uv_clip_binding("sm_21_uvanim_uv_1")
+    assert binding == YcdUvClipBinding(object_name="sm_21_uvanim", slot_index=1)
+    assert binding is not None
+    assert binding.clip_name == "sm_21_uvanim_uv_1"
+    assert binding.clip_hash.uint == build_ycd_uv_clip_hash("sm_21_uvanim", 1).uint
+    assert build_ycd_uv_clip_name("sm_21_uvanim", 1) == "sm_21_uvanim_uv_1"
+    assert parse_ycd_uv_clip_binding("plain_clip_name") is None
 
 
 @pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
@@ -415,6 +441,29 @@ def test_ycd_roundtrip_persists_channel_edits() -> None:
             assert rebuilt_value == pytest.approx(target)
         else:
             assert rebuilt_value == pytest.approx(target)
+
+
+@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+def test_ycd_writer_rejects_uv_clip_hash_mismatch() -> None:
+    ycd = read_ycd(REFERENCE_YCD_DIR / "sm_21.ycd")
+    clip = ycd.get_clip("sm_21_uvanim_uv_1")
+    assert clip is not None
+    clip.hash = MetaHash("sm_21_uvanim_uv_1")
+    with pytest.raises(ValueError, match="expected"):
+        build_ycd_bytes(ycd)
+
+
+@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+def test_ycd_writer_rejects_uv_clip_nonzero_bone_id() -> None:
+    ycd = read_ycd(REFERENCE_YCD_DIR / "sm_21.ycd")
+    clip = ycd.get_clip("sm_21_uvanim_uv_1")
+    assert clip is not None
+    assert clip.animation is not None
+    sequence = clip.animation.uv_sequences[0]
+    assert sequence.bone_id is not None
+    sequence.bone_id.bone_id = 1
+    with pytest.raises(ValueError, match="bone_id 0"):
+        build_ycd_bytes(ycd)
 
 
 @pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")

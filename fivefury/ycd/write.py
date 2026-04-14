@@ -18,6 +18,7 @@ from .model import (
     YcdClipTag,
     YcdClipType,
     YcdSequence,
+    _resolve_ycd_clip_hash,
 )
 from .sequences import build_sequence_data
 
@@ -89,14 +90,10 @@ def _resolve_hash(value: MetaHash | int | str | None, *, fallback_text: str | No
 
 
 def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
-    if clip.hash:
-        return clip.hash
-    short_name = clip.short_name or _clip_short_name(clip.name)
-    marker = "_uv_"
-    base, separator, suffix = short_name.rpartition(marker)
-    if separator and suffix.isdigit():
-        return MetaHash((MetaHash(base).uint + int(suffix) + 1) & 0xFFFFFFFF)
-    return MetaHash(short_name)
+    resolved = _resolve_ycd_clip_hash(clip)
+    if resolved.uint:
+        return resolved
+    return MetaHash(clip.short_name or _clip_short_name(clip.name))
 
 
 class _YcdWriter:

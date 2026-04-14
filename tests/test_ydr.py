@@ -4,7 +4,7 @@ import struct
 import tempfile
 from pathlib import Path
 
-from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, Ydr, YdrCollisionStats, build_bound_from_render_geometry, load_shader_library, jenk_hash, read_ydr
+from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, YcdUvClipBinding, Ydr, YdrCollisionStats, build_bound_from_render_geometry, load_shader_library, jenk_hash, read_ydr
 from fivefury.resource import ResourceBlockSpan, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from fivefury.ydr import build_ydr_bytes
 from fivefury.ydr import YdrMaterialDescriptor
@@ -251,6 +251,7 @@ def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
     assert descriptor.get_texture("DiffuseSampler") is not None
     assert descriptor.get_texture("DiffuseSampler").texture_name == "test_diffuse"
     assert descriptor.get_texture("DiffuseSampler").uv_index == 0
+    assert descriptor.slot_index == 0
     assert "Position" in descriptor.expected_semantics
     assert "TexCoord0" in descriptor.expected_semantics
 
@@ -258,6 +259,20 @@ def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
     assert len(meshes) == 1
     mesh = meshes[0]
     assert mesh.indices == [0, 1, 2]
+
+    assert material.slot_index == 0
+    assert material.ycd_uv_binding(object_name="triangle") == YcdUvClipBinding(object_name="triangle", slot_index=0)
+    assert material.ycd_uv_clip_name(object_name="triangle") == "triangle_uv_0"
+    assert material.ycd_uv_clip_hash(object_name="triangle") == YcdUvClipBinding(object_name="triangle", slot_index=0).clip_hash.uint
+
+    model = ydr.models[0]
+    assert model.slot_indices == [0]
+    assert model.ycd_uv_binding(0, object_name="triangle") == YcdUvClipBinding(object_name="triangle", slot_index=0)
+    assert model.ycd_uv_bindings(object_name="triangle") == [YcdUvClipBinding(object_name="triangle", slot_index=0)]
+
+    assert ydr.slot_indices == [0]
+    assert ydr.ycd_uv_binding(0) == YcdUvClipBinding(object_name="triangle", slot_index=0)
+    assert ydr.ycd_uv_bindings() == [YcdUvClipBinding(object_name="triangle", slot_index=0)]
     assert mesh.positions == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
     assert mesh.normals == [(0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)]
     assert len(mesh.texcoords) == 1

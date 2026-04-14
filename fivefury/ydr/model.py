@@ -605,10 +605,25 @@ class YdrMaterial:
         return slots
 
     @property
+    def slot_index(self) -> int:
+        return int(self.index)
+
+    @property
     def material_descriptor(self) -> YdrMaterialDescriptor:
         from .materials import build_material_descriptor
 
         return build_material_descriptor(self)
+
+    def ycd_uv_binding(self, *, object_name: str) -> "YcdUvClipBinding":
+        from ..ycd import YcdUvClipBinding
+
+        return YcdUvClipBinding(object_name=str(object_name), slot_index=self.slot_index)
+
+    def ycd_uv_clip_name(self, *, object_name: str) -> str:
+        return self.ycd_uv_binding(object_name=object_name).clip_name
+
+    def ycd_uv_clip_hash(self, *, object_name: str) -> int:
+        return int(self.ycd_uv_binding(object_name=object_name).clip_hash.uint)
 
     def get_parameter(self, value: str | int) -> YdrMaterialParameterRef | None:
         return find_parameter(self.parameters, value)
@@ -921,11 +936,24 @@ class YdrModel:
     def material_count(self) -> int:
         return len(self.materials)
 
+    @property
+    def slot_indices(self) -> list[int]:
+        return self.material_indices
+
     def iter_materials(self) -> Iterator[YdrMaterial]:
         yield from self.materials
 
     def get_material(self, value: str | int) -> YdrMaterial | None:
         return find_material(self.materials, value)
+
+    def ycd_uv_binding(self, material: str | int, *, object_name: str) -> "YcdUvClipBinding":
+        resolved = self.get_material(material)
+        if resolved is None:
+            raise KeyError(f"Unknown YDR model material '{material}'")
+        return resolved.ycd_uv_binding(object_name=object_name)
+
+    def ycd_uv_bindings(self, *, object_name: str) -> list["YcdUvClipBinding"]:
+        return [material.ycd_uv_binding(object_name=object_name) for material in self.materials]
 
     def set_skin_binding(
         self,
@@ -1069,6 +1097,20 @@ class Ydr:
 
     def get_material(self, value: str | int) -> YdrMaterial | None:
         return find_material(self.materials, value)
+
+    @property
+    def slot_indices(self) -> list[int]:
+        return [int(material.index) for material in self.materials]
+
+    def ycd_uv_binding(self, material: str | int, *, object_name: str | None = None) -> "YcdUvClipBinding":
+        resolved = self.get_material(material)
+        if resolved is None:
+            raise KeyError(f"Unknown YDR material '{material}'")
+        return resolved.ycd_uv_binding(object_name=object_name or self.name)
+
+    def ycd_uv_bindings(self, *, object_name: str | None = None) -> list["YcdUvClipBinding"]:
+        binding_object_name = object_name or self.name
+        return [material.ycd_uv_binding(object_name=binding_object_name) for material in self.materials]
 
     @property
     def has_skeleton(self) -> bool:

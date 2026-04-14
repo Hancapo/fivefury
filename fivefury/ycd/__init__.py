@@ -20,7 +20,13 @@ from .model import (
     YcdSequence,
     YcdSequenceRootChannelRef,
     YcdTransformSample,
+    YcdUvClipBinding,
     YcdUvAnimationSample,
+    YcdUvTransformSample,
+    build_ycd_uv_clip_hash,
+    build_ycd_uv_clip_name,
+    create_ycd_uv_clip,
+    parse_ycd_uv_clip_binding,
 )
 from .reader import read_ycd
 from .write import build_ycd_bytes, save_ycd
@@ -47,7 +53,13 @@ __all__ = [
     "YcdSequence",
     "YcdSequenceRootChannelRef",
     "YcdTransformSample",
+    "YcdUvClipBinding",
     "YcdUvAnimationSample",
+    "YcdUvTransformSample",
+    "build_ycd_uv_clip_hash",
+    "build_ycd_uv_clip_name",
+    "create_ycd_uv_clip",
+    "parse_ycd_uv_clip_binding",
     "build_ycd_bytes",
     "read_ycd",
     "save_ycd",
