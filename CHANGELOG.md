@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.35]
+
+### Changed
+- Refined `YCD` UV animation semantics around real runtime slot bindings: UV clip names and hashes now derive from `<object>_uv_<slot_index>` and `MetaHash(object) + slot_index + 1`, with explicit validation during export.
+- Added `YDR` helpers to expose material slot indices and derive matching `YCD` UV clip bindings, names, and hashes directly from drawable materials and models.
+
 ## [0.1.34]
 
 ### Changed
