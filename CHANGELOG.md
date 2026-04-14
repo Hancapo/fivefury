@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.32]
+
+### Added
+- Added a native `bounds` backend for hot geometry helpers, octant generation, and BVH construction used by `YBN`/embedded collision workflows.
+
+### Changed
+- Split the native `bounds` backend into smaller C++ modules so the Python binding layer stays easier to maintain.
+
 ## [0.1.31]
 
 ### Added
