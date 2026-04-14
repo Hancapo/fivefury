@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 
 from ..binary import f32, u16, u32, u64, vec3, vec4
-from ..resource import checked_virtual_offset, read_virtual_pointer_array
+from ..resource import checked_virtual_offset, read_resource_pages_info, read_virtual_pointer_array
 from .model import (
     Bound,
     BoundAabb,
@@ -352,20 +352,6 @@ def _read_composite_flags(offset: int, system_data: bytes) -> BoundCompositeFlag
     return BoundCompositeFlags(flags1=u32(system_data, offset + 0x00), flags2=u32(system_data, offset + 0x04))
 
 
-def _read_resource_pages_info(pointer: int, system_data: bytes) -> BoundResourcePagesInfo | None:
-    if not pointer:
-        return None
-    offset = _virtual_offset(pointer, system_data)
-    return BoundResourcePagesInfo(
-        unknown_0h=u32(system_data, offset + 0x00),
-        unknown_4h=u32(system_data, offset + 0x04),
-        system_pages_count=system_data[offset + 0x08],
-        graphics_pages_count=system_data[offset + 0x09],
-        unknown_ah=u16(system_data, offset + 0x0A),
-        unknown_ch=u32(system_data, offset + 0x0C),
-    )
-
-
 def _read_bound_common(offset: int, system_data: bytes) -> dict[str, object]:
     data_offset = offset + _RESOURCE_FILE_BASE_SIZE
     pages_info_pointer = u64(system_data, offset + 0x08)
@@ -376,7 +362,7 @@ def _read_bound_common(offset: int, system_data: bytes) -> dict[str, object]:
     return {
         "file_vft": u32(system_data, offset + 0x00),
         "file_unknown": u32(system_data, offset + 0x04),
-        "file_pages_info": _read_resource_pages_info(pages_info_pointer, system_data),
+        "file_pages_info": read_resource_pages_info(pages_info_pointer, system_data),
         "bound_type": BoundType(system_data[data_offset + 0x00]),
         "unknown_11h": system_data[data_offset + 0x01],
         "unknown_12h": u16(system_data, data_offset + 0x02),

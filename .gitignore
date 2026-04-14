@@ -17,6 +17,9 @@ dist/
 references/
 examples/
 tests/
+!tests/
+tests/*
+!tests/test_ynd.py
 .claude/
 fivefury-*/
 AGENT_HANDOFF.md

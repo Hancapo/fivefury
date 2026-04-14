@@ -9,6 +9,20 @@ from .binary import align
 RSC7_MAGIC = 0x37435352
 
 
+@dataclasses.dataclass(slots=True)
+class ResourcePagesInfo:
+    unknown_0h: int = 0
+    unknown_4h: int = 0
+    system_pages_count: int = 0
+    graphics_pages_count: int = 0
+    unknown_ah: int = 0
+    unknown_ch: int = 0
+
+    @property
+    def total_page_count(self) -> int:
+        return int(self.system_pages_count) + int(self.graphics_pages_count)
+
+
 def get_resource_size_from_flags(flags: int) -> int:
     s0 = ((flags >> 27) & 0x1) << 0
     s1 = ((flags >> 26) & 0x1) << 1
@@ -627,6 +641,25 @@ def checked_virtual_offset(
     return offset
 
 
+def read_resource_pages_info(pointer: int, system_data: bytes) -> ResourcePagesInfo | None:
+    if not pointer:
+        return None
+    offset = checked_virtual_offset(pointer, system_data)
+    unknown_0h, unknown_4h, system_pages_count, graphics_pages_count, unknown_ah, unknown_ch = struct.unpack_from(
+        "<IIBBHI",
+        system_data,
+        offset,
+    )
+    return ResourcePagesInfo(
+        unknown_0h=unknown_0h,
+        unknown_4h=unknown_4h,
+        system_pages_count=system_pages_count,
+        graphics_pages_count=graphics_pages_count,
+        unknown_ah=unknown_ah,
+        unknown_ch=unknown_ch,
+    )
+
+
 def read_virtual_pointer_array(
     data: bytes,
     pointer: int,
@@ -690,6 +723,21 @@ class ResourceWriter:
 
     def finish(self) -> bytes:
         return bytes(self.data[: self.cursor])
+
+
+def write_resource_pages_info(writer: ResourceWriter, pages_info: ResourcePagesInfo) -> int:
+    offset = writer.alloc(0x10 + (8 * pages_info.total_page_count), 16, relocate_pointers=False)
+    writer.pack_into(
+        "IIBBHI",
+        offset,
+        int(pages_info.unknown_0h),
+        int(pages_info.unknown_4h),
+        int(pages_info.system_pages_count) & 0xFF,
+        int(pages_info.graphics_pages_count) & 0xFF,
+        int(pages_info.unknown_ah) & 0xFFFF,
+        int(pages_info.unknown_ch),
+    )
+    return offset
 
 
 def build_rsc7(

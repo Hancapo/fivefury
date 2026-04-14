@@ -30,6 +30,10 @@ def u16(data: bytes, offset: int) -> int:
     return struct.unpack_from("<H", data, offset)[0]
 
 
+def i16(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<h", data, offset)[0]
+
+
 def u32(data: bytes, offset: int) -> int:
     return struct.unpack_from("<I", data, offset)[0]
 

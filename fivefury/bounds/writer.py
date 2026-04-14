@@ -6,7 +6,7 @@ import struct
 
 from .. import _native as _native_backend
 from ..binary import align
-from ..resource import ResourceBlockSpan, ResourceWriter
+from ..resource import ResourceBlockSpan, ResourceWriter, write_resource_pages_info
 from .model import (
     Bound,
     BoundAabb,
@@ -180,19 +180,6 @@ def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = N
     elif not isinstance(bound, (BoundSphere, BoundBox, BoundCapsule, BoundDisc, BoundCylinder, BoundCloth)):
         raise NotImplementedError(f"bound writer does not support {bound.__class__.__name__} yet")
     return bound_offset
-
-
-def _write_resource_pages_info(writer: ResourceWriter, pages_info: BoundResourcePagesInfo) -> int:
-    total_page_count = pages_info.total_page_count
-    block_size = 0x10 + (total_page_count * 8)
-    offset = writer.alloc(block_size, 16, relocate_pointers=False)
-    writer.pack_into("I", offset + 0x00, pages_info.unknown_0h)
-    writer.pack_into("I", offset + 0x04, pages_info.unknown_4h)
-    writer.pack_into("B", offset + 0x08, pages_info.system_pages_count & 0xFF)
-    writer.pack_into("B", offset + 0x09, pages_info.graphics_pages_count & 0xFF)
-    writer.pack_into("H", offset + 0x0A, pages_info.unknown_ah & 0xFFFF)
-    writer.pack_into("I", offset + 0x0C, pages_info.unknown_ch)
-    return offset
 
 
 def _child_bounds(child: BoundChild) -> BoundAabb:
@@ -1088,7 +1075,7 @@ def build_bound_system_layout(bound: Bound, *, root_pages_info: BoundResourcePag
     writer = ResourceWriter(_bound_size(bound))
     _write_bound(writer, bound, offset=0)
     if root_pages_info is not None:
-        pages_info_offset = _write_resource_pages_info(writer, root_pages_info)
+        pages_info_offset = write_resource_pages_info(writer, root_pages_info)
         _write_resource_file_base(writer, 0, bound, pages_info_offset=pages_info_offset)
     return (writer.finish(), writer.block_spans)
 

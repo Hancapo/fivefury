@@ -7,6 +7,7 @@ from collections import Counter
 from typing import Iterator
 
 from .. import _native as _native_backend
+from ..resource import ResourcePagesInfo
 
 
 class BoundType(enum.IntEnum):
@@ -199,18 +200,7 @@ class BoundMaterialColor:
         return (self.r, self.g, self.b, self.a)
 
 
-@dataclasses.dataclass(slots=True)
-class BoundResourcePagesInfo:
-    unknown_0h: int = 0
-    unknown_4h: int = 0
-    system_pages_count: int = 0
-    graphics_pages_count: int = 0
-    unknown_ah: int = 0
-    unknown_ch: int = 0
-
-    @property
-    def total_page_count(self) -> int:
-        return int(self.system_pages_count) + int(self.graphics_pages_count)
+BoundResourcePagesInfo = ResourcePagesInfo
 
 
 _OCTANT_SIGNS: tuple[tuple[int, int, int], ...] = (
