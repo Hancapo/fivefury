@@ -106,8 +106,8 @@ class YcdSequence:
     root_motion_ref_counts: int
     raw_data: bytes
     vft: int = 0
-    unknown_08h: int = 0
-    unknown_14h: int = 0
+    unused_08h: int = 0
+    unused_14h: int = 0
     anim_sequences: list[YcdAnimSequence] = field(default_factory=list)
     root_position_refs: list[YcdSequenceRootChannelRef] = field(default_factory=list)
     root_rotation_refs: list[YcdSequenceRootChannelRef] = field(default_factory=list)
@@ -455,6 +455,10 @@ class YcdClipTag(YcdClipProperty):
     end_phase: float = 0.0
     tags: list[YcdClipTag] = field(default_factory=list)
     has_block_tag: bool = False
+    tag_list_reserved_0ch: int = 0
+    tag_list_reserved_14h: int = 0
+    tag_list_reserved_18h: int = 0
+    tag_list_reserved_1ch: int = 0
 
     def get_tag(self, value: int | str | MetaHash) -> YcdClipTag | None:
         key = MetaHash(value).uint
@@ -471,7 +475,7 @@ class YcdClipAnimationEntry:
     rate: float
     animation_hash: MetaHash
     animation: YcdAnimation | None = None
-    unknown_0ch: int = 0
+    alignment_padding_0ch: int = 0
 
     @property
     def duration(self) -> float:
@@ -486,7 +490,7 @@ class YcdClip:
     clip_type: YcdClipType
     property_count: int = 0
     tag_count: int = 0
-    unknown_30h: int = 0
+    flags: int = 0
     vft: int = 0
     tags: list[YcdClipTag] = field(default_factory=list)
     properties: list[YcdClipProperty] = field(default_factory=list)
@@ -495,8 +499,19 @@ class YcdClip:
     unknown_0ch: int = 0
     unknown_14h: int = 0
     unknown_24h: int = 0
+    reserved_34h: int = 0
     unknown_48h: int = 0
     unknown_4ch: int = 0
+    has_block_tag: bool = False
+    tag_list_reserved_0ch: int = 0
+    tag_list_reserved_14h: int = 0
+    tag_list_reserved_18h: int = 0
+    tag_list_reserved_1ch: int = 0
+    property_map_reserved_0ch: int = 0x01000000
+
+    @property
+    def is_looped(self) -> bool:
+        return bool(int(self.flags) & 0x1)
 
     @property
     def resolved_name(self) -> str | int:
@@ -524,9 +539,9 @@ class YcdClipAnimation(YcdClip):
     end_time: float = 0.0
     rate: float = 1.0
     animation: YcdAnimation | None = None
-    unknown_64h: int = 0
-    unknown_68h: int = 0
-    unknown_6ch: int = 0
+    reserved_64h: int = 0
+    reserved_68h: int = 0
+    reserved_6ch: int = 0
 
     @property
     def duration(self) -> float:
@@ -606,12 +621,13 @@ class YcdClipAnimation(YcdClip):
 
 @dataclass(slots=True)
 class YcdClipAnimationList(YcdClip):
-    duration: float = 0.0
+    total_duration: float = 0.0
     animations: list[YcdClipAnimationEntry] = field(default_factory=list)
     unknown_5ch: int = 0
-    unknown_64h: int = 0
-    unknown_68h: int = 0
-    unknown_6ch: int = 0
+    parallel: bool = False
+    parallel_padding: bytes = b"\x00\x00\x00"
+    reserved_68h: int = 0
+    reserved_6ch: int = 0
 
 
 @dataclass(slots=True)

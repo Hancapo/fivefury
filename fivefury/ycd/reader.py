@@ -93,8 +93,8 @@ class _YcdReader:
             root_motion_ref_counts=int(self.data[offset + 0x1F]),
             raw_data=bytes(raw_data),
             vft=_u32(self.data, offset + 0x00),
-            unknown_08h=_u32(self.data, offset + 0x08),
-            unknown_14h=_u16(self.data, offset + 0x14),
+            unused_08h=_u32(self.data, offset + 0x08),
+            unused_14h=_u16(self.data, offset + 0x14),
         )
         anim_sequences, root_position_refs, root_rotation_refs = parse_sequence_data(
             sequence.raw_data,
@@ -274,12 +274,13 @@ class _YcdReader:
         prop.name_hash = prop_hash
         return (prop_hash, prop), next_pointer
 
-    def parse_clip_property_map(self, pointer: int) -> list[YcdClipProperty]:
+    def parse_clip_property_map(self, pointer: int) -> tuple[list[YcdClipProperty], int]:
         if not pointer:
-            return []
+            return [], 0
         offset = self.virtual_offset(pointer)
         bucket_pointer = _u64(self.data, offset + 0x00)
         bucket_capacity = _u16(self.data, offset + 0x08)
+        reserved_0ch = _u32(self.data, offset + 0x0C)
         properties: list[YcdClipProperty] = []
         seen: set[int] = set()
         for chain_pointer in self.read_pointer_array(bucket_pointer, bucket_capacity):
@@ -288,7 +289,7 @@ class _YcdReader:
                     continue
                 seen.add(prop_hash.uint)
                 properties.append(prop)
-        return properties
+        return properties, reserved_0ch
 
     def parse_clip_tag(self, pointer: int) -> YcdClipTag:
         pointer = int(pointer)
@@ -305,7 +306,7 @@ class _YcdReader:
         attribute_pointers = self.read_pointer_array(attributes_pointer, attribute_count) if attributes_pointer and attribute_count else []
         attributes = [self.parse_clip_property_attribute(item_pointer) for item_pointer in attribute_pointers]
         nested_pointer = _u64(self.data, offset + 0x48)
-        nested_tags, has_block_tag = self.parse_clip_tag_list(nested_pointer)
+        nested_tags, has_block_tag, tag_list_header = self.parse_clip_tag_list(nested_pointer)
         tag = YcdClipTag(
             name_hash=MetaHash(_u32(self.data, offset + 0x18)),
             attributes=attributes,
@@ -325,20 +326,31 @@ class _YcdReader:
             end_phase=_f32(self.data, offset + 0x44),
             tags=nested_tags,
             has_block_tag=has_block_tag,
+            **tag_list_header,
         )
         self.active_tag_pointers.discard(pointer)
         self.tag_cache[pointer] = tag
         return tag
 
-    def parse_clip_tag_list(self, pointer: int) -> tuple[list[YcdClipTag], bool]:
+    def parse_clip_tag_list(self, pointer: int) -> tuple[list[YcdClipTag], bool, dict[str, int]]:
         if not pointer:
-            return [], False
+            return [], False, {
+                "tag_list_reserved_0ch": 0,
+                "tag_list_reserved_14h": 0,
+                "tag_list_reserved_18h": 0,
+                "tag_list_reserved_1ch": 0,
+            }
         offset = self.virtual_offset(pointer)
         tags_pointer = _u64(self.data, offset + 0x00)
         tag_count = _u16(self.data, offset + 0x08)
         has_block_tag = bool(_u32(self.data, offset + 0x10))
         tag_pointers = self.read_pointer_array(tags_pointer, tag_count) if tags_pointer and tag_count else []
-        return [self.parse_clip_tag(item_pointer) for item_pointer in tag_pointers], has_block_tag
+        return [self.parse_clip_tag(item_pointer) for item_pointer in tag_pointers], has_block_tag, {
+            "tag_list_reserved_0ch": _u32(self.data, offset + 0x0C),
+            "tag_list_reserved_14h": _u32(self.data, offset + 0x14),
+            "tag_list_reserved_18h": _u32(self.data, offset + 0x18),
+            "tag_list_reserved_1ch": _u32(self.data, offset + 0x1C),
+        }
 
     def parse_clip_base(self, pointer: int) -> tuple[dict[str, object], int]:
         offset = self.virtual_offset(pointer)
@@ -349,8 +361,8 @@ class _YcdReader:
         if name:
             register_name(name)
             register_name(_clip_short_name(name))
-        tags, _ = self.parse_clip_tag_list(tags_pointer)
-        properties = self.parse_clip_property_map(properties_pointer)
+        tags, has_block_tag, tag_list_header = self.parse_clip_tag_list(tags_pointer)
+        properties, property_map_reserved_0ch = self.parse_clip_property_map(properties_pointer)
         return (
             {
                 "hash": MetaHash(0),
@@ -359,7 +371,7 @@ class _YcdReader:
                 "clip_type": YcdClipType(_u32(self.data, offset + 0x10)),
                 "property_count": len(properties),
                 "tag_count": len(tags),
-                "unknown_30h": _u32(self.data, offset + 0x30),
+                "flags": _u32(self.data, offset + 0x30),
                 "vft": _u32(self.data, offset + 0x00),
                 "tags": tags,
                 "properties": properties,
@@ -368,8 +380,12 @@ class _YcdReader:
                 "unknown_0ch": _u32(self.data, offset + 0x0C),
                 "unknown_14h": _u32(self.data, offset + 0x14),
                 "unknown_24h": _u32(self.data, offset + 0x24),
+                "reserved_34h": _u32(self.data, offset + 0x34),
                 "unknown_48h": _u32(self.data, offset + 0x48),
                 "unknown_4ch": _u32(self.data, offset + 0x4C),
+                "has_block_tag": has_block_tag,
+                "property_map_reserved_0ch": property_map_reserved_0ch,
+                **tag_list_header,
             },
             offset,
         )
@@ -398,9 +414,9 @@ class _YcdReader:
                 end_time=_f32(self.data, offset + 0x5C),
                 rate=_f32(self.data, offset + 0x60),
                 animation=animation,
-                unknown_64h=_u32(self.data, offset + 0x64),
-                unknown_68h=_u32(self.data, offset + 0x68),
-                unknown_6ch=_u32(self.data, offset + 0x6C),
+                reserved_64h=_u32(self.data, offset + 0x64),
+                reserved_68h=_u32(self.data, offset + 0x68),
+                reserved_6ch=_u32(self.data, offset + 0x6C),
             )
         elif clip_type is YcdClipType.ANIMATION_LIST:
             animations_pointer = _u64(self.data, offset + 0x50)
@@ -423,19 +439,20 @@ class _YcdReader:
                             start_time=_f32(self.data, entry_offset + 0x00),
                             end_time=_f32(self.data, entry_offset + 0x04),
                             rate=_f32(self.data, entry_offset + 0x08),
-                            unknown_0ch=_u32(self.data, entry_offset + 0x0C),
+                            alignment_padding_0ch=_u32(self.data, entry_offset + 0x0C),
                             animation_hash=animation_hash,
                             animation=animation,
                         )
                     )
             clip = YcdClipAnimationList(
                 **base,
-                duration=_f32(self.data, offset + 0x60),
+                total_duration=_f32(self.data, offset + 0x60),
                 animations=entries,
                 unknown_5ch=_u32(self.data, offset + 0x5C),
-                unknown_64h=_u32(self.data, offset + 0x64),
-                unknown_68h=_u32(self.data, offset + 0x68),
-                unknown_6ch=_u32(self.data, offset + 0x6C),
+                parallel=bool(self.data[offset + 0x64]),
+                parallel_padding=bytes(self.data[offset + 0x65 : offset + 0x68]),
+                reserved_68h=_u32(self.data, offset + 0x68),
+                reserved_6ch=_u32(self.data, offset + 0x6C),
             )
         else:
             clip = YcdClip(**base)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
@@ -233,6 +234,57 @@ def test_read_all_reference_ycd_samples() -> None:
 
 
 def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
+    def _assert_attribute_equivalent(original_attribute, rebuilt_attribute) -> None:
+        assert rebuilt_attribute.name_hash.uint == original_attribute.name_hash.uint
+        assert rebuilt_attribute.attribute_type == original_attribute.attribute_type
+        if isinstance(original_attribute.value, tuple):
+            assert rebuilt_attribute.value == pytest.approx(original_attribute.value)
+        elif isinstance(original_attribute.value, float):
+            assert rebuilt_attribute.value == pytest.approx(original_attribute.value)
+        else:
+            assert rebuilt_attribute.value == original_attribute.value
+        assert rebuilt_attribute.unknown_04h == original_attribute.unknown_04h
+        assert rebuilt_attribute.unknown_09h == original_attribute.unknown_09h
+        assert rebuilt_attribute.unknown_0ah == original_attribute.unknown_0ah
+        assert rebuilt_attribute.unknown_0ch == original_attribute.unknown_0ch
+        assert rebuilt_attribute.unknown_10h == original_attribute.unknown_10h
+        assert rebuilt_attribute.unknown_14h == original_attribute.unknown_14h
+        assert rebuilt_attribute.unknown_1ch == original_attribute.unknown_1ch
+        if isinstance(original_attribute.extra, float):
+            assert rebuilt_attribute.extra == pytest.approx(original_attribute.extra)
+        else:
+            assert rebuilt_attribute.extra == original_attribute.extra
+
+    def _assert_property_equivalent(original_property, rebuilt_property) -> None:
+        assert rebuilt_property.name_hash.uint == original_property.name_hash.uint
+        assert rebuilt_property.unknown_04h == original_property.unknown_04h
+        assert rebuilt_property.unknown_08h == original_property.unknown_08h
+        assert rebuilt_property.unknown_0ch == original_property.unknown_0ch
+        assert rebuilt_property.unknown_10h == original_property.unknown_10h
+        assert rebuilt_property.unknown_14h == original_property.unknown_14h
+        assert rebuilt_property.unknown_1ch == original_property.unknown_1ch
+        assert rebuilt_property.unknown_2ch == original_property.unknown_2ch
+        assert rebuilt_property.unknown_30h == original_property.unknown_30h
+        assert rebuilt_property.unknown_34h == original_property.unknown_34h
+        assert rebuilt_property.unknown_hash.uint == original_property.unknown_hash.uint
+        assert rebuilt_property.unknown_3ch == original_property.unknown_3ch
+        assert len(rebuilt_property.attributes) == len(original_property.attributes)
+        for original_attribute, rebuilt_attribute in zip(original_property.attributes, rebuilt_property.attributes, strict=True):
+            _assert_attribute_equivalent(original_attribute, rebuilt_attribute)
+
+    def _assert_tag_equivalent(original_tag, rebuilt_tag) -> None:
+        _assert_property_equivalent(original_tag, rebuilt_tag)
+        assert rebuilt_tag.start_phase == pytest.approx(original_tag.start_phase)
+        assert rebuilt_tag.end_phase == pytest.approx(original_tag.end_phase)
+        assert rebuilt_tag.has_block_tag == original_tag.has_block_tag
+        assert rebuilt_tag.tag_list_reserved_0ch == original_tag.tag_list_reserved_0ch
+        assert rebuilt_tag.tag_list_reserved_14h == original_tag.tag_list_reserved_14h
+        assert rebuilt_tag.tag_list_reserved_18h == original_tag.tag_list_reserved_18h
+        assert rebuilt_tag.tag_list_reserved_1ch == original_tag.tag_list_reserved_1ch
+        assert len(rebuilt_tag.tags) == len(original_tag.tags)
+        for original_nested_tag, rebuilt_nested_tag in zip(original_tag.tags, rebuilt_tag.tags, strict=True):
+            _assert_tag_equivalent(original_nested_tag, rebuilt_nested_tag)
+
     assert rebuilt.header.version == original.header.version
     assert len(rebuilt.clips) == len(original.clips)
     assert len(rebuilt.animations) == len(original.animations)
@@ -245,8 +297,20 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_clip.hash.uint == original_clip.hash.uint
         assert rebuilt_clip.short_name == original_clip.short_name
         assert rebuilt_clip.clip_type == original_clip.clip_type
+        assert rebuilt_clip.flags == original_clip.flags
+        assert rebuilt_clip.reserved_34h == original_clip.reserved_34h
+        assert rebuilt_clip.has_block_tag == original_clip.has_block_tag
+        assert rebuilt_clip.tag_list_reserved_0ch == original_clip.tag_list_reserved_0ch
+        assert rebuilt_clip.tag_list_reserved_14h == original_clip.tag_list_reserved_14h
+        assert rebuilt_clip.tag_list_reserved_18h == original_clip.tag_list_reserved_18h
+        assert rebuilt_clip.tag_list_reserved_1ch == original_clip.tag_list_reserved_1ch
+        assert rebuilt_clip.property_map_reserved_0ch == original_clip.property_map_reserved_0ch
         assert len(rebuilt_clip.tags) == len(original_clip.tags)
         assert len(rebuilt_clip.properties) == len(original_clip.properties)
+        for original_tag, rebuilt_tag in zip(original_clip.tags, rebuilt_clip.tags, strict=True):
+            _assert_tag_equivalent(original_tag, rebuilt_tag)
+        for original_property, rebuilt_property in zip(original_clip.properties, rebuilt_clip.properties, strict=True):
+            _assert_property_equivalent(original_property, rebuilt_property)
         if isinstance(original_clip, YcdClipAnimation):
             assert isinstance(rebuilt_clip, YcdClipAnimation)
             assert original_clip.animation is not None
@@ -255,6 +319,23 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
             assert rebuilt_clip.animation.frames == original_clip.animation.frames
             assert rebuilt_clip.animation.sequence_count == original_clip.animation.sequence_count
             assert rebuilt_clip.animation.bone_id_count == original_clip.animation.bone_id_count
+            assert rebuilt_clip.reserved_64h == original_clip.reserved_64h
+            assert rebuilt_clip.reserved_68h == original_clip.reserved_68h
+            assert rebuilt_clip.reserved_6ch == original_clip.reserved_6ch
+        else:
+            assert isinstance(rebuilt_clip, type(original_clip))
+            if hasattr(original_clip, "total_duration"):
+                assert rebuilt_clip.total_duration == pytest.approx(original_clip.total_duration)
+                assert rebuilt_clip.parallel == original_clip.parallel
+                assert rebuilt_clip.parallel_padding == original_clip.parallel_padding
+                assert rebuilt_clip.reserved_68h == original_clip.reserved_68h
+                assert rebuilt_clip.reserved_6ch == original_clip.reserved_6ch
+                assert len(rebuilt_clip.animations) == len(original_clip.animations)
+                for original_entry, rebuilt_entry in zip(original_clip.animations, rebuilt_clip.animations, strict=True):
+                    assert rebuilt_entry.start_time == pytest.approx(original_entry.start_time)
+                    assert rebuilt_entry.end_time == pytest.approx(original_entry.end_time)
+                    assert rebuilt_entry.rate == pytest.approx(original_entry.rate)
+                    assert rebuilt_entry.alignment_padding_0ch == original_entry.alignment_padding_0ch
 
 
 def test_ycd_roundtrip_smoke() -> None:
@@ -267,6 +348,73 @@ def test_ycd_roundtrip_smoke() -> None:
     assert system_data[pages_info_offset + 0x08] == get_resource_total_page_count(header.system_flags)
     assert system_data[pages_info_offset + 0x09] == get_resource_total_page_count(header.graphics_flags)
     _assert_ycd_roundtrip_equivalent(original, rebuilt)
+
+
+def _mutate_first_serializable_channel(animation) -> tuple[int, int, int, str, object]:
+    for sequence_index, sequence in enumerate(animation.sequences):
+        for anim_sequence_index, anim_sequence in enumerate(sequence.anim_sequences):
+            for channel_index, channel in enumerate(anim_sequence.channels):
+                if hasattr(channel, "frames") and hasattr(channel, "values"):
+                    target = float(getattr(channel, "offset", 0.0)) + (float(getattr(channel, "quantum", 0.0)) or 1.0)
+                    channel.values = [target]
+                    channel.frames = [0] * max(sequence.num_frames, 1)
+                    return sequence_index, anim_sequence_index, channel_index, "values", target
+                if hasattr(channel, "values"):
+                    values = getattr(channel, "values")
+                    if values:
+                        target = float(getattr(channel, "offset", 0.0)) + (float(getattr(channel, "quantum", 0.0)) or 1.0)
+                        channel.values = [target] * len(values)
+                        return sequence_index, anim_sequence_index, channel_index, "values", target
+                if hasattr(channel, "value"):
+                    current = getattr(channel, "value")
+                    if isinstance(current, tuple) and len(current) == 4:
+                        xyz = (0.1, 0.2, 0.3)
+                        w = math.sqrt(max(1.0 - sum(component * component for component in xyz), 0.0))
+                        target = (*xyz, w)
+                    elif isinstance(current, tuple) and len(current) == 3:
+                        target = (1.0, 2.0, 3.0)
+                    else:
+                        target = 1.25
+                    channel.value = target
+                    return sequence_index, anim_sequence_index, channel_index, "value", target
+    raise AssertionError("No serializable YCD channel was found")
+
+
+def test_ycd_roundtrip_rebuilds_sequences_without_raw_data() -> None:
+    original = read_ycd(YCD_PATH)
+    for animation in original.animations:
+        for sequence in animation.sequences:
+            sequence.raw_data = b""
+    rebuilt = read_ycd(build_ycd_bytes(original))
+    _assert_ycd_roundtrip_equivalent(original, rebuilt)
+
+
+def test_ycd_roundtrip_persists_channel_edits() -> None:
+    ycd = read_ycd(YCD_PATH)
+    clip = ycd.get_clip("exportcamera-0")
+    assert clip is not None
+    assert clip.animation is not None
+
+    sequence_index, anim_sequence_index, channel_index, attribute_name, target = _mutate_first_serializable_channel(clip.animation)
+    for sequence in clip.animation.sequences:
+        sequence.raw_data = b""
+
+    rebuilt = read_ycd(build_ycd_bytes(ycd))
+    rebuilt_clip = rebuilt.get_clip("exportcamera-0")
+    assert rebuilt_clip is not None
+    assert rebuilt_clip.animation is not None
+    rebuilt_channel = rebuilt_clip.animation.sequences[sequence_index].anim_sequences[anim_sequence_index].channels[channel_index]
+
+    if attribute_name == "values":
+        rebuilt_values = getattr(rebuilt_channel, "values")
+        assert rebuilt_values
+        assert rebuilt_values[0] == pytest.approx(target)
+    else:
+        rebuilt_value = getattr(rebuilt_channel, "value")
+        if isinstance(target, tuple):
+            assert rebuilt_value == pytest.approx(target)
+        else:
+            assert rebuilt_value == pytest.approx(target)
 
 
 @pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")

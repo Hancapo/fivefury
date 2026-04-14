@@ -19,6 +19,7 @@ from .model import (
     YcdClipType,
     YcdSequence,
 )
+from .sequences import build_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
 _RESOURCE_FILE_VFT = 1079444200
@@ -158,17 +159,17 @@ class _YcdWriter:
         cached = self.sequence_offsets.get(key)
         if cached is not None:
             return cached
-        raw_data = bytes(sequence.raw_data)
+        raw_data = build_sequence_data(sequence)
         offset = self.writer.alloc(0x20 + len(raw_data), 16, relocate_pointers=False)
         self.writer.pack_into(
             "IIIIIHHHHHBB",
             offset,
             _resolve_hash(sequence.hash).uint,
             len(raw_data),
-            int(sequence.unknown_08h),
+            int(sequence.unused_08h),
             int(sequence.frame_offset),
             int(sequence.root_motion_refs_offset),
-            int(sequence.unknown_14h),
+            int(sequence.unused_14h),
             int(sequence.num_frames),
             int(sequence.frame_length),
             int(sequence.indirect_quantize_float_num_ints),
@@ -322,7 +323,7 @@ class _YcdWriter:
         self.property_offsets[key] = offset
         return offset
 
-    def write_clip_property_map(self, properties: list[YcdClipProperty]) -> int:
+    def write_clip_property_map(self, properties: list[YcdClipProperty], *, reserved_0ch: int = _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH) -> int:
         if not properties:
             return 0
         property_offsets = {self._identity(prop): self.write_clip_property(prop) for prop in properties}
@@ -357,7 +358,7 @@ class _YcdWriter:
             self.vptr(buckets_array_offset) if buckets_array_offset else 0,
             capacity,
             len(properties),
-            _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH,
+            int(reserved_0ch),
         )
         return offset
 
@@ -368,7 +369,14 @@ class _YcdWriter:
             return cached
         attribute_offsets = [self.write_clip_property_attribute(attribute) for attribute in tag.attributes]
         attributes_array_offset = self.write_pointer_array(attribute_offsets)
-        nested_tag_list_offset = self.write_clip_tag_list(tag.tags, has_block_tag=tag.has_block_tag)
+        nested_tag_list_offset = self.write_clip_tag_list(
+            tag.tags,
+            has_block_tag=tag.has_block_tag,
+            reserved_0ch=tag.tag_list_reserved_0ch,
+            reserved_14h=tag.tag_list_reserved_14h,
+            reserved_18h=tag.tag_list_reserved_18h,
+            reserved_1ch=tag.tag_list_reserved_1ch,
+        )
         offset = self.writer.alloc(0x50, 16)
         self.writer.pack_into(
             "IIIIIIIIQHHIIIIIffQ",
@@ -396,7 +404,16 @@ class _YcdWriter:
         self.tag_offsets[key] = offset
         return offset
 
-    def write_clip_tag_list(self, tags: list[YcdClipTag], *, has_block_tag: bool | None = None) -> int:
+    def write_clip_tag_list(
+        self,
+        tags: list[YcdClipTag],
+        *,
+        has_block_tag: bool | None = None,
+        reserved_0ch: int = 0,
+        reserved_14h: int = 0,
+        reserved_18h: int = 0,
+        reserved_1ch: int = 0,
+    ) -> int:
         if not tags:
             return 0
         tag_offsets = [self.write_clip_tag(tag) for tag in tags]
@@ -410,11 +427,11 @@ class _YcdWriter:
             self.vptr(tags_array_offset) if tags_array_offset else 0,
             len(tags),
             len(tags),
-            0,
+            int(reserved_0ch),
             1 if has_block_tag else 0,
-            0,
-            0,
-            0,
+            int(reserved_14h),
+            int(reserved_18h),
+            int(reserved_1ch),
         )
         return offset
 
@@ -432,7 +449,7 @@ class _YcdWriter:
                 float(entry.start_time),
                 float(entry.end_time),
                 float(entry.rate),
-                int(entry.unknown_0ch),
+                int(entry.alignment_padding_0ch),
                 self.vptr(animation_offset) if animation_offset else 0,
             )
         return offset
@@ -443,8 +460,15 @@ class _YcdWriter:
         if cached is not None:
             return cached
         name = str(clip.name or "")
-        tag_list_offset = self.write_clip_tag_list(clip.tags)
-        property_map_offset = self.write_clip_property_map(clip.properties)
+        tag_list_offset = self.write_clip_tag_list(
+            clip.tags,
+            has_block_tag=clip.has_block_tag,
+            reserved_0ch=clip.tag_list_reserved_0ch,
+            reserved_14h=clip.tag_list_reserved_14h,
+            reserved_18h=clip.tag_list_reserved_18h,
+            reserved_1ch=clip.tag_list_reserved_1ch,
+        )
+        property_map_offset = self.write_clip_property_map(clip.properties, reserved_0ch=clip.property_map_reserved_0ch)
         name_offset = self.write_string(name) if name else 0
 
         offset = self.writer.alloc(0x70, 16)
@@ -462,8 +486,8 @@ class _YcdWriter:
             len(name) + 1 if name else 0,
             int(clip.unknown_24h),
             DAT_VIRTUAL_BASE,
-            int(clip.unknown_30h),
-            int(getattr(clip, "unknown_34h", 0)),
+            int(clip.flags),
+            int(clip.reserved_34h),
             self.vptr(tag_list_offset) if tag_list_offset else 0,
             self.vptr(property_map_offset) if property_map_offset else 0,
             int(clip.unknown_48h),
@@ -479,9 +503,9 @@ class _YcdWriter:
                 float(clip.start_time),
                 float(clip.end_time),
                 float(clip.rate),
-                int(clip.unknown_64h),
-                int(clip.unknown_68h),
-                int(clip.unknown_6ch),
+                int(clip.reserved_64h),
+                int(clip.reserved_68h),
+                int(clip.reserved_6ch),
             )
         elif isinstance(clip, YcdClipAnimationList):
             entries_offset = self.write_clip_animation_entry_array(clip.animations)
@@ -492,10 +516,10 @@ class _YcdWriter:
                 len(clip.animations),
                 len(clip.animations),
                 int(clip.unknown_5ch),
-                float(clip.duration),
-                int(clip.unknown_64h),
-                int(clip.unknown_68h),
-                int(clip.unknown_6ch),
+                float(clip.total_duration),
+                (1 if clip.parallel else 0) | (int.from_bytes(bytes(clip.parallel_padding[:3]).ljust(3, b"\x00"), "little") << 8),
+                int(clip.reserved_68h),
+                int(clip.reserved_6ch),
             )
         self.clip_offsets[key] = offset
         return offset
