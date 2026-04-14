@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.34]
+
+### Changed
+- Reworked `YCD` sequence writing so encoded resources are rebuilt from parsed high-level channels and sequences instead of depending on preserved raw sequence blobs.
+- Split the oversized `fivefury.ycd.sequences` implementation into smaller track, channel, and codec modules while keeping the public import surface stable.
+
 ## [0.1.33]
 
 ### Added
