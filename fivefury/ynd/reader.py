@@ -156,6 +156,7 @@ def read_ynd(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     ynd = Ynd(
         version=int(header.version),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
+        area_id=(int(nodes[0].area_id) if nodes and all(node.area_id == nodes[0].area_id for node in nodes) else None),
         nodes=nodes,
         file_vft=u32(system_data, 0x00),
         file_unknown=u32(system_data, 0x04),

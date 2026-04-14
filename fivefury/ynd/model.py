@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 import math
+from collections.abc import Hashable
 from enum import IntEnum, IntFlag
 from pathlib import Path
 
 from ..resource import ResourcePagesInfo
+from .regions import position_matches_ynd_area
 
 
 class _FlexibleIntEnum(IntEnum):
@@ -113,8 +115,9 @@ YndResourcePagesInfo = ResourcePagesInfo
 
 @dataclasses.dataclass(slots=True)
 class YndLink:
-    area_id: int
-    node_id: int
+    area_id: int | None = None
+    node_id: int = 0
+    target_key: Hashable | None = None
     travel_flags: YndLinkTravelFlags = YndLinkTravelFlags.NONE
     shape_flags: YndLinkShapeFlags = YndLinkShapeFlags.NONE
     navigation_flags: YndLinkNavigationFlags = YndLinkNavigationFlags.NONE
@@ -186,8 +189,10 @@ class YndLink:
         self.distance = int(value) & 0xFF
 
     def build(self) -> "YndLink":
-        self.area_id = int(self.area_id) & 0xFFFF
+        self.area_id = None if self.area_id is None else (int(self.area_id) & 0xFFFF)
         self.node_id = int(self.node_id) & 0xFFFF
+        if self.target_key is not None and not isinstance(self.target_key, Hashable):
+            raise TypeError("YND link target_key must be hashable")
         self.travel_flags = YndLinkTravelFlags(int(self.travel_flags) & 0x03)
         self.shape_flags = YndLinkShapeFlags(int(self.shape_flags) & 0x1E)
         self.navigation_flags = YndLinkNavigationFlags(int(self.navigation_flags) & 0x03)
@@ -230,9 +235,10 @@ class YndJunction:
 
 @dataclasses.dataclass(slots=True)
 class YndNode:
-    area_id: int
-    node_id: int
-    position: tuple[float, float, float]
+    area_id: int | None = None
+    node_id: int = 0
+    key: Hashable | None = None
+    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     street_name_hash: int = 0
     group: int = 0
     movement_flags: YndNodeMovementFlags = YndNodeMovementFlags.NONE
@@ -375,8 +381,10 @@ class YndNode:
             self.routing_flags &= ~YndNodeRoutingFlags.IN_TUNNEL
 
     def build(self) -> "YndNode":
-        self.area_id = int(self.area_id) & 0xFFFF
+        self.area_id = None if self.area_id is None else (int(self.area_id) & 0xFFFF)
         self.node_id = int(self.node_id) & 0xFFFF
+        if self.key is not None and not isinstance(self.key, Hashable):
+            raise TypeError("YND node key must be hashable")
         self.position = (
             float(self.position[0]),
             float(self.position[1]),
@@ -415,6 +423,7 @@ def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> i
 class Ynd:
     version: int = 1
     path: str = ""
+    area_id: int | None = None
     nodes: list[YndNode] = dataclasses.field(default_factory=list)
     file_vft: int = 0x406203D0
     file_unknown: int = 1
@@ -430,8 +439,15 @@ class Ynd:
     graphics_pages_count: int = 0
 
     @classmethod
-    def from_nodes(cls, nodes: list[YndNode], *, path: str | Path = "", version: int = 1) -> "Ynd":
-        return cls(version=int(version), path=str(path) if path else "", nodes=list(nodes))
+    def from_nodes(
+        cls,
+        nodes: list[YndNode],
+        *,
+        area_id: int | None = None,
+        path: str | Path = "",
+        version: int = 1,
+    ) -> "Ynd":
+        return cls(version=int(version), path=str(path) if path else "", area_id=area_id, nodes=list(nodes))
 
     @property
     def vehicle_node_count(self) -> int:
@@ -454,6 +470,22 @@ class Ynd:
         self.file_vft = int(self.file_vft) & 0xFFFFFFFF
         self.file_unknown = int(self.file_unknown) & 0xFFFFFFFF
         self.nodes = [node.build() for node in self.nodes]
+        if self.area_id is None:
+            node_area_ids = {int(node.area_id) for node in self.nodes if node.area_id is not None}
+            if len(node_area_ids) > 1:
+                raise ValueError("YND nodes reference multiple area_id values; set Ynd.area_id explicitly or normalize them")
+            self.area_id = next(iter(node_area_ids), 0)
+        self.area_id = int(self.area_id) & 0xFFFF
+        for node in self.nodes:
+            if node.area_id is None:
+                node.area_id = self.area_id
+            if not position_matches_ynd_area(self.area_id, node.position):
+                raise ValueError(
+                    f"YND node at {node.position[:2]} does not belong to area_id {self.area_id}; build a YndNetwork first"
+                )
+            for link in node.links:
+                if link.area_id is None:
+                    link.area_id = node.area_id
         sorted_nodes = sorted(self.nodes, key=lambda node: (1 if node.is_ped_node else 0, int(node.node_id)))
 
         id_map: dict[tuple[int, int], int] = {}

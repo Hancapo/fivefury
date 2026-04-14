@@ -280,6 +280,7 @@ from .ycd import (
 )
 from .ybn import Ybn, build_ybn_bytes, read_ybn, save_ybn
 from .ynd import (
+    YndAreaBounds,
     Ynd,
     YndJunction,
     YndLink,
@@ -294,8 +295,13 @@ from .ynd import (
     YndNodeSpeed,
     YndNodeStateFlags,
     YndNodeTopographyFlags,
+    YndNetwork,
     YndResourcePagesInfo,
     build_ynd_bytes,
+    get_ynd_area_bounds,
+    get_ynd_area_id,
+    get_ynd_area_indices,
+    position_matches_ynd_area,
     read_ynd,
     save_ynd,
 )
@@ -546,6 +552,7 @@ __all__ = [
     "YdrTextureInput",
     "YdrTextureRef",
     "YdrValidationIssue",
+    "YndAreaBounds",
     "Ynd",
     "YndJunction",
     "YndLink",
@@ -560,7 +567,12 @@ __all__ = [
     "YndNodeSpeed",
     "YndNodeStateFlags",
     "YndNodeTopographyFlags",
+    "YndNetwork",
     "YndResourcePagesInfo",
+    "get_ynd_area_bounds",
+    "get_ynd_area_id",
+    "get_ynd_area_indices",
+    "position_matches_ynd_area",
     "calculate_bone_tag",
     "Ymap",
     "YddAsset",

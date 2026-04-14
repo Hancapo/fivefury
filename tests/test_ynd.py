@@ -4,7 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from fivefury import GameFileCache, GameFileType, Ynd, build_ynd_bytes, read_ynd
+from fivefury import (
+    GameFileCache,
+    GameFileType,
+    Ynd,
+    YndLink,
+    YndNetwork,
+    YndNode,
+    build_ynd_bytes,
+    get_ynd_area_id,
+    read_ynd,
+)
 
 
 _REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references" / "ynd"
@@ -130,3 +140,26 @@ def test_gamefilecache_parses_loose_ynd(tmp_path: Path) -> None:
     assert game_file.kind == GameFileType.YND
     assert isinstance(game_file.parsed, Ynd)
     assert game_file.parsed.nodes
+
+
+def test_build_rejects_nodes_outside_ynd_area() -> None:
+    node = YndNode(node_id=10, position=(0.0, 0.0, 0.0))
+    area_id = get_ynd_area_id((4608.0, -6144.0, 0.0))
+
+    with pytest.raises(ValueError, match="does not belong to area_id"):
+        Ynd.from_nodes([node], area_id=area_id).build()
+
+
+def test_network_partitions_nodes_into_multiple_ynds() -> None:
+    node_a = YndNode(node_id=10, key="a", position=(0.0, 0.0, 0.0))
+    node_b = YndNode(node_id=11, key="b", position=(600.0, 0.0, 0.0))
+    node_a.links.append(YndLink(target_key="b"))
+    node_b.links.append(YndLink(target_key="a"))
+
+    ynds = YndNetwork.from_nodes([node_a, node_b]).build_ynds()
+
+    assert len(ynds) == 2
+    area_ids = [ynd.area_id for ynd in ynds]
+    assert area_ids == sorted(area_ids)
+    assert area_ids[0] != area_ids[1]
+    assert {node.area_id for ynd in ynds for node in ynd.nodes} == set(area_ids)
