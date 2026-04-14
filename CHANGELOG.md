@@ -6,6 +6,14 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.33]
+
+### Added
+- Added `YND` area helpers and `YndNetwork` partitioning so high-level node graphs can be split into CodeWalker/dev_ng-style pathfind regions automatically.
+
+### Changed
+- Tightened `YND` final-resource validation so a single `Ynd` rejects nodes whose coordinates belong to a different pathfind area, while keeping the pathfind representation limits (`WORLDLIMITS_REP_*`) distinct from global world/navmesh limits.
+
 ## [0.1.32]
 
 ### Added
