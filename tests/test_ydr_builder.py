@@ -920,6 +920,64 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     assert [bone.name for bone in mesh.resolve_bones(ydr.skeleton)] == ["root", "child"]
 
 
+def test_skinned_default_layout_uses_canonical_default_vertex_data_type(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=YdrSkeletonBinding.skinned(),
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skinned_default_decl",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "skinned_default_decl.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+    mesh = ydr.meshes[0]
+
+    assert mesh.declaration_flags == 95
+    assert mesh.declaration_types == 0x7755555555996996
+    assert mesh.vertex_stride == 44
+
+
+def test_explicit_skinned_ubyte4_blend_indices_are_canonicalized(tmp_path: Path) -> None:
+    mesh = _skinned_triangle_mesh(material="main")
+    mesh.declaration_flags = 95
+    mesh.declaration_types = 8598872888530528406
+
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[mesh],
+            skeleton_binding=YdrSkeletonBinding.skinned(),
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skinned_decl_fixup",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "skinned_decl_fixup.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+    rebuilt_mesh = ydr.meshes[0]
+
+    assert rebuilt_mesh.declaration_flags == 95
+    assert rebuilt_mesh.declaration_types == 0x7755555555996996
+    assert rebuilt_mesh.blend_indices == [(0, 0, 0, 0), (0, 1, 0, 0), (1, 0, 0, 0)]
+
+
 def test_skinned_layout_selected() -> None:
     from fivefury.ydr.shaders import load_shader_library
 
@@ -1012,6 +1070,74 @@ def test_skinned_model_writes_formal_skeleton_binding_bytes(tmp_path: Path) -> N
 
     assert int.from_bytes(system_data[model_off + 0x28 : model_off + 0x2C], "little") == 0x00000111
     assert system_data[model_off + 0x28 : model_off + 0x2C] == bytes((0x11, 0x01, 0x00, 0x00))
+
+
+def test_rigid_model_bone_binding_roundtrip(tmp_path: Path) -> None:
+    skeleton = _simple_skeleton()
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [
+            YdrModelInput(
+                meshes=[_triangle_mesh(material="main")],
+                skeleton_binding=YdrSkeletonBinding.rigid(bone_index=0),
+            ),
+            YdrModelInput(
+                meshes=[_triangle_mesh(material="main")],
+                skeleton_binding=YdrSkeletonBinding.rigid(bone_index=1),
+            ),
+        ]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="rigid_bone_binding",
+        skeleton=skeleton,
+    )
+
+    ydr_path = tmp_path / "rigid_bone_binding.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.model_count == 2
+    assert ydr.models[0].has_skin is False
+    assert ydr.models[0].bone_index == 0
+    assert ydr.models[0].skeleton_binding == YdrSkeletonBinding.rigid(bone_index=0)
+    assert ydr.models[1].has_skin is False
+    assert ydr.models[1].bone_index == 1
+    assert ydr.models[1].skeleton_binding == YdrSkeletonBinding.rigid(bone_index=1)
+    assert ydr.validate() == []
+
+
+def test_bind_model_to_bone_helper_roundtrip(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh(material="main")],
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="bind_model_to_bone",
+    )
+    ydr_path = tmp_path / "bind_model_to_bone.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    root = ydr.add_bone("root", tag=0)
+    child = ydr.add_bone("child", parent=root, tag=1)
+    ydr.ensure_skeleton().build()
+    ydr.bind_model_to_bone(0, child)
+
+    out_path = tmp_path / "bind_model_to_bone_out.ydr"
+    ydr.save(out_path)
+    rebuilt = read_ydr(out_path)
+
+    assert rebuilt.get_model(0).has_skin is False
+    assert rebuilt.get_model(0).bone_index == 1
+    assert rebuilt.get_model(0).skeleton_binding == YdrSkeletonBinding.rigid(bone_index=1)
 
 
 def test_drawable_model_writes_outer_bounds_data_for_multi_geometry(tmp_path: Path) -> None:

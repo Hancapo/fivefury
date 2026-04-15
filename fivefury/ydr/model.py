@@ -971,6 +971,29 @@ class YdrModel:
         )
         return self
 
+    def bind_to_bone(
+        self,
+        bone: YdrBone | str | int,
+        *,
+        skeleton: YdrSkeleton | None = None,
+        unknown_1: int = 0,
+        unknown_2: int = 0,
+    ) -> "YdrModel":
+        if isinstance(bone, YdrBone):
+            bone_index = int(bone.index)
+        elif isinstance(bone, str):
+            if skeleton is None:
+                raise ValueError("skeleton= is required when binding a model by bone name")
+            bone_index = int(skeleton.require_bone(bone).index)
+        else:
+            bone_index = int(bone)
+        self.skeleton_binding = YdrSkeletonBinding.rigid(
+            bone_index=bone_index,
+            unknown_1=unknown_1,
+            unknown_2=unknown_2,
+        )
+        return self
+
     def clear_skin_binding(self) -> "YdrModel":
         self.skeleton_binding = YdrSkeletonBinding()
         return self
@@ -1360,6 +1383,26 @@ class Ydr:
             unknown_2=unknown_2,
         )
 
+    def bind_model_to_bone(
+        self,
+        model: int,
+        bone: YdrBone | str | int,
+        *,
+        skeleton: YdrSkeleton | None = None,
+        unknown_1: int = 0,
+        unknown_2: int = 0,
+    ) -> YdrModel:
+        target = self.get_model(model)
+        if target is None:
+            raise KeyError(f"Unknown YDR model index {model}")
+        active_skeleton = skeleton if skeleton is not None else self.skeleton
+        return target.bind_to_bone(
+            bone,
+            skeleton=active_skeleton,
+            unknown_1=unknown_1,
+            unknown_2=unknown_2,
+        )
+
     def clear_embedded_textures(self) -> "Ydr":
         self.embedded_textures = None
         return self
@@ -1398,6 +1441,15 @@ class Ydr:
             if model.has_skin and not self.has_skeleton:
                 issues.append(
                     YdrValidationIssue("error", "missing_skeleton", f"Model {model.index} is skinned but the drawable has no skeleton", context=f"model:{model.index}")
+                )
+            if self.skeleton is not None and model.bone_index >= self.skeleton.bone_count:
+                issues.append(
+                    YdrValidationIssue(
+                        "error",
+                        "invalid_model_bone_binding",
+                        f"Model {model.index} references bone index {model.bone_index} outside skeleton range",
+                        context=f"model:{model.index}",
+                    )
                 )
             if int(model.skeleton_binding.has_skin) not in (0, 1):
                 issues.append(

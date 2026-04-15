@@ -453,6 +453,7 @@ def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -
     mesh = source.meshes[0]
 
     assert source.has_skeleton
+    assert mesh.declaration_types == 0x7755555555996996
     assert mesh.bone_ids == [0, 1, 2]
     assert any(any(component != 0 for component in item) for item in mesh.blend_indices)
 
@@ -460,5 +461,29 @@ def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -
     source.save(out_path)
     rebuilt = read_ydr(out_path)
 
+    assert rebuilt.meshes[0].declaration_types == 0x7755555555996996
     assert rebuilt.meshes[0].bone_ids == mesh.bone_ids
     assert rebuilt.meshes[0].blend_indices == mesh.blend_indices
+
+
+def test_real_reference_rigid_bone_bound_ydr_preserves_model_bindings(tmp_path: Path) -> None:
+    source_path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\ydrs\prop_windmill_01_l1.ydr")
+    if not source_path.exists():
+        pytest.skip("real rigid bone-bound YDR reference not available")
+
+    source = read_ydr(source_path)
+
+    assert source.has_skeleton
+    assert source.skeleton is not None
+    assert source.skeleton.bone_count == 2
+    assert [model.bone_index for model in source.models] == [0, 1]
+    assert [model.has_skin for model in source.models] == [False, False]
+
+    out_path = tmp_path / source_path.name
+    source.save(out_path)
+    rebuilt = read_ydr(out_path)
+
+    assert rebuilt.skeleton is not None
+    assert rebuilt.skeleton.bone_count == 2
+    assert [model.bone_index for model in rebuilt.models] == [0, 1]
+    assert [model.has_skin for model in rebuilt.models] == [False, False]

@@ -34,6 +34,16 @@ _SEMANTIC_ALIASES = {
     "BLENDINDICES": "BLEND_INDICES",
 }
 
+_CANONICAL_COMPONENT_TYPES: dict[VertexSemantic, VertexComponentType] = {
+    VertexSemantic.POSITION: VertexComponentType.FLOAT3,
+    VertexSemantic.BLEND_WEIGHTS: VertexComponentType.COLOUR,
+    VertexSemantic.BLEND_INDICES: VertexComponentType.COLOUR,
+    VertexSemantic.NORMAL: VertexComponentType.FLOAT3,
+    VertexSemantic.COLOUR0: VertexComponentType.COLOUR,
+    VertexSemantic.COLOUR1: VertexComponentType.COLOUR,
+    VertexSemantic.TANGENT: VertexComponentType.FLOAT4,
+}
+
 
 @dataclasses.dataclass(slots=True)
 class PreparedMaterial:
@@ -250,6 +260,20 @@ def _component_size(component_type: VertexComponentType) -> int:
     return size
 
 
+def _canonical_component_type(
+    semantic: VertexSemantic,
+    component_type: VertexComponentType | None = None,
+) -> VertexComponentType:
+    if component_type is None:
+        mapped = _CANONICAL_COMPONENT_TYPES.get(semantic)
+        if mapped is None:
+            raise ValueError(f"Unsupported vertex semantic: {semantic}")
+        return mapped
+    if semantic is VertexSemantic.BLEND_INDICES and component_type is VertexComponentType.UBYTE4:
+        return VertexComponentType.COLOUR
+    return component_type
+
+
 def _semantics_from_flags_types(flags: int, types_value: int) -> list[tuple[VertexSemantic, VertexComponentType]]:
     semantics: list[tuple[VertexSemantic, VertexComponentType]] = []
     for semantic_index in range(16):
@@ -387,16 +411,12 @@ def _encode_vertex_bytes_from_layout(
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
 ) -> tuple[int, int, int, bytes]:
     component_by_semantic: dict[VertexSemantic, VertexComponentType] = {
-        VertexSemantic.POSITION: VertexComponentType.FLOAT3,
-        VertexSemantic.NORMAL: VertexComponentType.FLOAT3,
-        VertexSemantic.COLOUR0: VertexComponentType.COLOUR,
-        VertexSemantic.COLOUR1: VertexComponentType.COLOUR,
-        VertexSemantic.TANGENT: VertexComponentType.FLOAT4,
+        semantic: component_type for semantic, component_type in _CANONICAL_COMPONENT_TYPES.items()
     }
     if blend_weights:
-        component_by_semantic[VertexSemantic.BLEND_WEIGHTS] = VertexComponentType.COLOUR
+        component_by_semantic[VertexSemantic.BLEND_WEIGHTS] = _canonical_component_type(VertexSemantic.BLEND_WEIGHTS)
     if blend_indices:
-        component_by_semantic[VertexSemantic.BLEND_INDICES] = VertexComponentType.UBYTE4
+        component_by_semantic[VertexSemantic.BLEND_INDICES] = _canonical_component_type(VertexSemantic.BLEND_INDICES)
     for channel_index in range(min(8, len(texcoords))):
         if texcoords[channel_index]:
             component_by_semantic[VertexSemantic(int(VertexSemantic.TEXCOORD0) + channel_index)] = VertexComponentType.FLOAT2
@@ -435,7 +455,10 @@ def _encode_vertex_bytes_from_declaration(
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
 ) -> tuple[int, int, int, bytes]:
-    semantics = _semantics_from_flags_types(flags, types_value)
+    semantics = [
+        (semantic, _canonical_component_type(semantic, component_type))
+        for semantic, component_type in _semantics_from_flags_types(flags, types_value)
+    ]
     return _encode_vertex_bytes(
         semantics,
         positions,

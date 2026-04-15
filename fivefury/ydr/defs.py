@@ -91,6 +91,21 @@ class YdrSkeletonBinding:
             bone_index=int(bone_index) & 0xFF,
         )
 
+    @classmethod
+    def rigid(
+        cls,
+        *,
+        bone_index: int = 0,
+        unknown_1: int = 0,
+        unknown_2: int = 0,
+    ) -> "YdrSkeletonBinding":
+        return cls(
+            unknown_1=int(unknown_1) & 0xFF,
+            has_skin=0,
+            unknown_2=int(unknown_2) & 0xFF,
+            bone_index=int(bone_index) & 0xFF,
+        )
+
     @property
     def is_skinned(self) -> bool:
         return bool(self.has_skin)
