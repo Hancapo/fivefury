@@ -4,7 +4,7 @@ import dataclasses
 import math
 
 YND_REGION_SPLIT = 32
-# YND/pathfind regions use dev_ng WORLDLIMITS_REP_*, not the global WORLDLIMITS_* extents.
+# YND/pathfind regions use the replicated world limits, not the global world extents.
 YND_REP_MIN_X = -8192.0
 YND_REP_MAX_X = 8192.0
 YND_REP_MIN_Y = -8192.0

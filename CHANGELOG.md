@@ -21,7 +21,7 @@ This project follows a simple release-oriented changelog format with consistent 
 ## [0.1.33]
 
 ### Added
-- Added `YND` area helpers and `YndNetwork` partitioning so high-level node graphs can be split into CodeWalker/dev_ng-style pathfind regions automatically.
+- Added `YND` area helpers and `YndNetwork` partitioning so high-level node graphs can be split into game-style pathfind regions automatically.
 
 ### Changed
 - Tightened `YND` final-resource validation so a single `Ynd` rejects nodes whose coordinates belong to a different pathfind area, while keeping the pathfind representation limits (`WORLDLIMITS_REP_*`) distinct from global world/navmesh limits.
@@ -51,7 +51,7 @@ This project follows a simple release-oriented changelog format with consistent 
 ## [0.1.29]
 
 ### Fixed
-- Corrected the shared `phBound` header layout used by `YBN` bounds read/write so bounding-box vectors, centroid data, and packed material words now align with `dev_ng`/CodeWalker-style resources instead of being written one `Vec4` block too late.
+- Corrected the shared `phBound` header layout used by `YBN` bounds read/write so bounding-box vectors, centroid data, and packed material words now align with real game resources instead of being written one `Vec4` block too late.
 - Fixed regenerated `YBN` collision resources that could load but fail broadphase/physical interaction because child bounds were serialized with the wrong common header offsets.
 
 ## [0.1.28]
@@ -147,7 +147,7 @@ This project follows a simple release-oriented changelog format with consistent 
 ### Changed
 - Added or standardized `build()` and `validate()` entry points across the higher-level `YDR`, `YTD`, `YBN`, `bounds`, `YTYP`, `YMAP`, and `CUT` authoring surfaces.
 - Updated the test suite and high-level examples to follow the normalized API style instead of the older mixed naming scheme.
-- Expanded `YCD` parsing and evaluation with formal `dev_ng` track names, plus support for UV, object, camera, root motion, and facial animation tracks.
+- Expanded `YCD` parsing and evaluation with formal track names, plus support for UV, object, camera, root motion, and facial animation tracks.
 
 ### Added
 - `YCD` write support with `build_ycd_bytes(...)`, `save_ycd(...)`, `Ycd.to_bytes()`, and `Ycd.save(...)`.

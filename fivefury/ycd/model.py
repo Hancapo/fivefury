@@ -792,7 +792,7 @@ class Ycd:
                     raise ValueError(f"YCD UV clip '{expected_short_name}' contains a UV sequence without bone metadata")
                 if int(bone.bone_id) != 0:
                     raise ValueError(
-                        f"YCD UV clip '{expected_short_name}' uses bone_id={bone.bone_id}, but dev_ng runtime expects UV tracks on bone_id 0"
+                        f"YCD UV clip '{expected_short_name}' uses bone_id={bone.bone_id}, but the runtime expects UV tracks on bone_id 0"
                     )
                 if int(bone.track) not in (
                     int(YcdAnimationTrack.SHADER_SLIDE_U),

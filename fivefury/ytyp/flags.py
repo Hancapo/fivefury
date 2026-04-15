@@ -3,31 +3,41 @@ from __future__ import annotations
 from enum import IntFlag
 
 
-class EntityFlags(IntFlag):
-    """Flags for CEntityDef / CBaseArchetypeDef ``flags`` field."""
+class ArchetypeFlags(IntFlag):
+    """Flags for ``CBaseArchetypeDef.flags`` / ``CBaseArchetypeDefLoadFlags``."""
 
-    FULL_MATRIX = 1
-    STREAM_LOW_PRIORITY = 2
-    DONT_INSTANCE_COLLISION = 4
-    LOD_IS_IN_PARENT_MAPDATA = 8
-    LOD_ADOPT_ME = 16
-    IS_FIXED = 32
-    IS_INTERIOR_LOD = 64
-    DRAWABLE_LOD_USE_ALT_FADE = 1 << 15
-    UNUSED = 1 << 16
-    DOES_NOT_TOUCH_WATER = 1 << 17
-    DOES_NOT_SPAWN_PEDS = 1 << 18
-    LIGHTS_CAST_STATIC_SHADOWS = 1 << 19
-    LIGHTS_CAST_DYNAMIC_SHADOWS = 1 << 20
-    LIGHTS_IGNORE_DAY_NIGHT_SETTINGS = 1 << 21
-    DONT_RENDER_IN_SHADOWS = 1 << 22
-    ONLY_RENDER_IN_SHADOWS = 1 << 23
-    DONT_RENDER_IN_REFLECTIONS = 1 << 24
-    ONLY_RENDER_IN_REFLECTIONS = 1 << 25
-    DONT_RENDER_IN_WATER_REFLECTIONS = 1 << 26
-    ONLY_RENDER_IN_WATER_REFLECTIONS = 1 << 27
-    DONT_RENDER_IN_MIRROR_REFLECTIONS = 1 << 28
-    ONLY_RENDER_IN_MIRROR_REFLECTIONS = 1 << 29
+    WET_ROAD_REFLECTION = 1 << 0
+    DONT_FADE = 1 << 1
+    DRAW_LAST = 1 << 2
+    PROP_CLIMBABLE_BY_AI = 1 << 3
+    SUPPRESS_HD_TXDS = 1 << 4
+    IS_FIXED = 1 << 5
+    DONT_WRITE_ZBUFFER = 1 << 6
+    TOUGH_FOR_BULLETS = 1 << 7
+    IS_GENERIC = 1 << 8
+    HAS_ANIM = 1 << 9
+    HAS_UVANIM = 1 << 10
+    SHADOW_ONLY = 1 << 11
+    DAMAGE_MODEL = 1 << 12
+    DONT_CAST_SHADOWS = 1 << 13
+    CAST_TEXTURE_SHADOWS = 1 << 14
+    DONT_COLLIDE_WITH_FLYER = 1 << 15
+    IS_TREE = 1 << 16
+    IS_TYPE_OBJECT = 1 << 17
+    OVERRIDE_PHYSICS_BOUNDS = 1 << 18
+    AUTOSTART_ANIM = 1 << 19
+    HAS_PRE_REFLECTED_WATER_PROXY = 1 << 20
+    HAS_DRAWABLE_PROXY_FOR_WATER_REFLECTIONS = 1 << 21
+    DOES_NOT_PROVIDE_AI_COVER = 1 << 22
+    DOES_NOT_PROVIDE_PLAYER_COVER = 1 << 23
+    IS_LADDER_DEPRECATED = 1 << 24
+    HAS_CLOTH = 1 << 25
+    DOOR_PHYSICS = 1 << 26
+    IS_FIXED_FOR_NAVIGATION = 1 << 27
+    DONT_AVOID_BY_PEDS = 1 << 28
+    USE_AMBIENT_SCALE = 1 << 29
+    IS_DEBUG = 1 << 30
+    HAS_ALPHA_SHADOW = 1 << 31
 
 
 class MloInteriorFlags(IntFlag):
@@ -88,7 +98,7 @@ class PortalFlags(IntFlag):
 
 
 __all__ = [
-    "EntityFlags",
+    "ArchetypeFlags",
     "MloInstanceFlags",
     "MloInteriorFlags",
     "PortalFlags",
