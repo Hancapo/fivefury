@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.36]
+
+### Changed
+- Corrected `YTYP` archetype flag naming and bit mapping so `CBaseArchetypeDef.flags` now reflects the actual archetype load flags instead of an unrelated entity-style flag set.
+- Removed internal source-tree references from public library strings and documentation where they did not belong.
+
 ## [0.1.35]
 
 ### Changed
