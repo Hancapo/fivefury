@@ -6,6 +6,12 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.37]
+
+### Fixed
+- Corrected skinned `YDR` vertex declaration typing so `BLEND_INDICES` is exported with the canonical packed colour layout expected by real drawable resources instead of an invalid `UBYTE4` declaration.
+- Added explicit rigid bone-binding support for non-skinned drawable models attached to skeleton bones, matching real animated prop layouts that use a skeleton without per-vertex skinning.
+
 ## [0.1.36]
 
 ### Changed
