@@ -6,6 +6,16 @@ This project follows a simple release-oriented changelog format with consistent 
 
 ## [Unreleased]
 
+## [0.1.38]
+
+### Added
+- Added static `YdrShader` `.sps` enums generated from the shader XML so IDEs can autocomplete all known drawable shader file variants directly.
+- Added shader inspection helpers (`get_ydr_shader_info`, `format_ydr_shader_info`, `print_ydr_shader_info`) to expose render buckets, layouts, texture slots, and numeric parameters without manually reading `Shaders.xml`.
+
+### Changed
+- `YDR` material inputs now accept `YdrShader` enum values in addition to raw strings.
+- Shader file inputs now infer their canonical render bucket automatically, and `SpecularSampler` is normalized to the real shader slot name `SpecSampler`.
+
 ## [0.1.37]
 
 ### Fixed
