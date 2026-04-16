@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import hashlib
 from pathlib import Path
 
@@ -47,6 +48,23 @@ _DEFAULT_BOUND_MATERIAL_NAMES = (
     'TEMP_21', 'TEMP_22', 'TEMP_23', 'TEMP_24', 'TEMP_25', 'TEMP_26', 'TEMP_27', 'TEMP_28',
     'TEMP_29', 'TEMP_30',
 )
+
+BoundMaterialType = enum.IntEnum(
+    "BoundMaterialType",
+    {name: index for index, name in enumerate(_DEFAULT_BOUND_MATERIAL_NAMES)},
+    module=__name__,
+)
+
+
+def coerce_bound_material_index(value: int | BoundMaterialType) -> int:
+    return int(value)
+
+
+def get_bound_material_type(index: int) -> BoundMaterialType | None:
+    try:
+        return BoundMaterialType(int(index))
+    except ValueError:
+        return None
 
 
 def _fallback_color_from_name(name: str) -> RGB:
@@ -103,12 +121,12 @@ class BoundMaterialLibrary:
 DEFAULT_BOUND_MATERIAL_LIBRARY = BoundMaterialLibrary(_DEFAULT_BOUND_MATERIAL_NAMES)
 
 
-def get_bound_material_name(index: int) -> str:
-    return DEFAULT_BOUND_MATERIAL_LIBRARY.get_name(index)
+def get_bound_material_name(index: int | BoundMaterialType) -> str:
+    return DEFAULT_BOUND_MATERIAL_LIBRARY.get_name(int(index))
 
 
-def get_bound_material_color(index: int) -> RGB:
-    return DEFAULT_BOUND_MATERIAL_LIBRARY.get_color(index)
+def get_bound_material_color(index: int | BoundMaterialType) -> RGB:
+    return DEFAULT_BOUND_MATERIAL_LIBRARY.get_color(int(index))
 
 
 def parse_bound_material_names(text: str) -> BoundMaterialLibrary:
@@ -135,9 +153,12 @@ def read_bound_material_names(path: str | Path) -> BoundMaterialLibrary:
 __all__ = [
     "BoundMaterialInfo",
     "BoundMaterialLibrary",
+    "BoundMaterialType",
     "DEFAULT_BOUND_MATERIAL_LIBRARY",
+    "coerce_bound_material_index",
     "get_bound_material_color",
     "get_bound_material_name",
+    "get_bound_material_type",
     "parse_bound_material_names",
     "read_bound_material_names",
 ]

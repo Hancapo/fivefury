@@ -117,7 +117,7 @@ def _pack_bound_material_words(bound: Bound) -> tuple[int, int]:
     data2 = (
         (bound.poly_flags & 0xFF)
         | ((bound.material_color_index & 0xFF) << 8)
-        | ((bound.unknown_5eh & 0xFFFF) << 16)
+        | ((bound.packed_material_hi_bits & 0xFFFF) << 16)
     )
     return (data1, data2)
 
@@ -145,20 +145,20 @@ def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> No
     material_word1, material_word2 = _pack_bound_material_words(bound)
     _write_resource_file_base(writer, offset, bound)
     writer.pack_into("B", offset + 0x10, int(bound.bound_type))
-    writer.pack_into("B", offset + 0x11, bound.unknown_11h & 0xFF)
-    writer.pack_into("H", offset + 0x12, bound.unknown_12h & 0xFFFF)
+    writer.pack_into("B", offset + 0x11, int(bound.flags) & 0xFF)
+    writer.pack_into("H", offset + 0x12, bound.part_index & 0xFFFF)
     writer.pack_into("f", offset + 0x14, bound.sphere_radius)
-    writer.pack_into("I", offset + 0x18, bound.unknown_18h)
-    writer.pack_into("I", offset + 0x1C, bound.unknown_1ch)
+    writer.pack_into("I", offset + 0x18, bound.alignment_padding_18h)
+    writer.pack_into("I", offset + 0x1C, bound.alignment_padding_1ch)
     _write_vec3(writer, offset + 0x20, bound.box_max)
     writer.pack_into("f", offset + 0x2C, bound.margin)
     _write_vec3(writer, offset + 0x30, bound.box_min)
-    writer.pack_into("I", offset + 0x3C, bound.unknown_3ch)
+    writer.pack_into("I", offset + 0x3C, bound.ref_count)
     _write_vec3(writer, offset + 0x40, bound.box_center)
     writer.pack_into("I", offset + 0x4C, material_word1)
     _write_vec3(writer, offset + 0x50, bound.sphere_center)
     writer.pack_into("I", offset + 0x5C, material_word2)
-    _write_vec3(writer, offset + 0x60, bound.unknown_60h)
+    _write_vec3(writer, offset + 0x60, bound.angular_inertia)
     writer.pack_into("f", offset + 0x6C, bound.volume)
 
 
@@ -179,6 +179,16 @@ def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = N
         _write_geometry(writer, bound_offset, bound, with_bvh=False)
     elif not isinstance(bound, (BoundSphere, BoundBox, BoundCapsule, BoundDisc, BoundCylinder, BoundCloth)):
         raise NotImplementedError(f"bound writer does not support {bound.__class__.__name__} yet")
+    if isinstance(bound, BoundCapsule):
+        writer.pack_into("f", bound_offset + 0x70, float(bound.capsule_half_height))
+        writer.pack_into("I", bound_offset + 0x74, bound.padding_74h)
+        writer.pack_into("I", bound_offset + 0x78, bound.padding_78h)
+        writer.pack_into("I", bound_offset + 0x7C, bound.padding_7ch)
+    elif isinstance(bound, (BoundDisc, BoundCylinder, BoundCloth)):
+        writer.pack_into("I", bound_offset + 0x70, bound.padding_70h)
+        writer.pack_into("I", bound_offset + 0x74, bound.padding_74h)
+        writer.pack_into("I", bound_offset + 0x78, bound.padding_78h)
+        writer.pack_into("I", bound_offset + 0x7C, bound.padding_7ch)
     return bound_offset
 
 
@@ -253,7 +263,7 @@ def _material_data(material: BoundMaterial) -> tuple[int, int]:
     data2 = (
         ((material.flags >> 8) & 0xFF)
         | ((material.material_color_index & 0xFF) << 8)
-        | ((material.unknown & 0xFFFF) << 16)
+        | ((material.reserved & 0xFFFF) << 16)
     )
     return (data1, data2)
 

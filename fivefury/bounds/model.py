@@ -8,6 +8,7 @@ from typing import Iterator
 
 from .. import _native as _native_backend
 from ..resource import ResourcePagesInfo
+from .materials import BoundMaterialType, coerce_bound_material_index, get_bound_material_type
 
 
 class BoundType(enum.IntEnum):
@@ -107,6 +108,16 @@ class BoundCompositeFlag(enum.IntFlag):
     MAP_DEEP_SURFACE = 1 << 31
 
 
+class BoundFlag(enum.IntFlag):
+    NONE = 0
+    OCTANT_MAP_INDEX_IS_U16 = 1 << 0
+    GEOMETRY_BOUND_HAS_OCTANT_MAP = 1 << 1
+    FORCE_CCD = 1 << 2
+    USE_NEW_BACK_FACE_CULL = 1 << 3
+    USE_PROJECTION_EDGE_FILTERING = 1 << 4
+    USE_CURRENT_INSTANCE_MATRIX_ONLY = 1 << 5
+
+
 def _transform_point(point: tuple[float, float, float], transform: BoundTransform | None) -> tuple[float, float, float]:
     if transform is None:
         return point
@@ -165,15 +176,26 @@ class BoundCompositeFlags:
 
 @dataclasses.dataclass(slots=True)
 class BoundMaterial:
-    type: int = 0
+    type: int | BoundMaterialType = 0
     procedural_id: int = 0
     room_id: int = 0
     ped_density: int = 0
     flags: int = 0
     material_color_index: int = 0
-    unknown: int = 0
+    reserved: int = 0
     data1: int = 0
     data2: int = 0
+
+    def __post_init__(self) -> None:
+        self.type = coerce_bound_material_index(self.type)
+
+    @property
+    def material_type(self) -> BoundMaterialType | None:
+        return get_bound_material_type(self.type)
+
+    @material_type.setter
+    def material_type(self, value: int | BoundMaterialType) -> None:
+        self.type = coerce_bound_material_index(value)
 
     @property
     def name(self) -> str:
@@ -340,7 +362,18 @@ class BoundPolygon:
     polygon_type: BoundPolygonType
     raw: bytes
     index: int = -1
-    material_index: int = -1
+    material_index: int | BoundMaterialType = -1
+
+    def __post_init__(self) -> None:
+        self.material_index = int(self.material_index)
+
+    @property
+    def material_type(self) -> BoundMaterialType | None:
+        return get_bound_material_type(self.material_index)
+
+    @material_type.setter
+    def material_type(self, value: int | BoundMaterialType) -> None:
+        self.material_index = coerce_bound_material_index(value)
 
     @property
     def vertex_indices(self) -> tuple[int, ...]:
@@ -473,25 +506,90 @@ class Bound:
     file_vft: int = 0
     file_unknown: int = 1
     file_pages_info: BoundResourcePagesInfo | None = None
-    unknown_11h: int = 0
-    unknown_12h: int = 0
-    unknown_18h: int = 0
-    unknown_1ch: int = 0
-    material_index: int = 0
+    flags: BoundFlag | int = BoundFlag.NONE
+    part_index: int = 0
+    alignment_padding_18h: int = 0
+    alignment_padding_1ch: int = 0
+    material_index: int | BoundMaterialType = 0
     procedural_id: int = 0
     room_id: int = 0
     ped_density: int = 0
     unk_flags: int = 0
     poly_flags: int = 0
     material_color_index: int = 0
-    unknown_3ch: int = 1
-    unknown_5eh: int = 0
-    unknown_60h: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    ref_count: int = 1
+    packed_material_hi_bits: int = 0
+    angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0)
     volume: float = 0.0
 
     @property
     def bounds(self) -> BoundAabb:
         return BoundAabb(self.box_min, self.box_max)
+
+    @property
+    def enclosing_radius(self) -> float:
+        return float(self.sphere_radius)
+
+    @enclosing_radius.setter
+    def enclosing_radius(self, value: float) -> None:
+        self.sphere_radius = float(value)
+
+    @property
+    def aabb_center(self) -> tuple[float, float, float]:
+        return tuple((self.box_min[axis] + self.box_max[axis]) * 0.5 for axis in range(3))
+
+    @property
+    def minimum(self) -> tuple[float, float, float]:
+        return self.box_min
+
+    @minimum.setter
+    def minimum(self, value: tuple[float, float, float]) -> None:
+        self.box_min = tuple(float(axis) for axis in value)
+
+    @property
+    def maximum(self) -> tuple[float, float, float]:
+        return self.box_max
+
+    @maximum.setter
+    def maximum(self, value: tuple[float, float, float]) -> None:
+        self.box_max = tuple(float(axis) for axis in value)
+
+    @property
+    def center(self) -> tuple[float, float, float]:
+        return self.aabb_center
+
+    @property
+    def material_type(self) -> BoundMaterialType | None:
+        return get_bound_material_type(self.material_index)
+
+    @material_type.setter
+    def material_type(self, value: int | BoundMaterialType) -> None:
+        self.material_index = coerce_bound_material_index(value)
+
+    @property
+    def half_extents(self) -> tuple[float, float, float]:
+        center = self.aabb_center
+        return tuple(self.box_max[axis] - center[axis] for axis in range(3))
+
+    @property
+    def dimensions(self) -> tuple[float, float, float]:
+        return tuple(self.box_max[axis] - self.box_min[axis] for axis in range(3))
+
+    @property
+    def size(self) -> tuple[float, float, float]:
+        return self.dimensions
+
+    @property
+    def width(self) -> float:
+        return float(self.dimensions[0])
+
+    @property
+    def depth(self) -> float:
+        return float(self.dimensions[1])
+
+    @property
+    def height(self) -> float:
+        return float(self.dimensions[2])
 
     @property
     def type_name(self) -> str:
@@ -533,6 +631,10 @@ class Bound:
         self.box_min = normalized.minimum
         self.box_max = normalized.maximum
         self.box_center = tuple((normalized.minimum[axis] + normalized.maximum[axis]) * 0.5 for axis in range(3))
+        self.flags = BoundFlag(int(self.flags))
+        self.part_index = int(self.part_index) & 0xFFFF
+        self.material_index = coerce_bound_material_index(self.material_index)
+        self.ref_count = int(self.ref_count)
         return self
 
     def validate(self) -> list[str]:
@@ -544,46 +646,310 @@ class Bound:
         return issues
 
 
+def _build_primitive_bound(
+    cls: type["Bound"],
+    bound_type: BoundType,
+    minimum: tuple[float, float, float],
+    maximum: tuple[float, float, float],
+    *,
+    material_index: int | BoundMaterialType = 0,
+    margin: float = 0.0,
+    ref_count: int = 1,
+    angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    volume: float | None = None,
+) -> "Bound":
+    bounds = _normalize_aabb(BoundAabb(minimum, maximum))
+    dimensions = tuple(bounds.maximum[axis] - bounds.minimum[axis] for axis in range(3))
+    center = tuple((bounds.minimum[axis] + bounds.maximum[axis]) * 0.5 for axis in range(3))
+    if volume is None:
+        volume = dimensions[0] * dimensions[1] * dimensions[2]
+    return cls(
+        bound_type=bound_type,
+        sphere_radius=_sphere_radius_from_bounds(bounds, center),
+        box_max=bounds.maximum,
+        margin=float(margin),
+        box_min=bounds.minimum,
+        box_center=center,
+        sphere_center=center,
+        material_index=int(material_index),
+        ref_count=int(ref_count),
+        angular_inertia=tuple(float(value) for value in angular_inertia),
+        volume=float(volume),
+    )
+
+
 @dataclasses.dataclass(slots=True)
 class BoundSphere(Bound):
-    pass
+    @property
+    def radius(self) -> float:
+        return self.enclosing_radius
+
+    @radius.setter
+    def radius(self, value: float) -> None:
+        self.enclosing_radius = value
+
+    @property
+    def diameter(self) -> float:
+        return self.radius * 2.0
 
 
 @dataclasses.dataclass(slots=True)
 class BoundBox(Bound):
-    pass
+    @classmethod
+    def from_bounds(
+        cls,
+        minimum: tuple[float, float, float],
+        maximum: tuple[float, float, float],
+        *,
+        material_index: int | BoundMaterialType = 0,
+        margin: float = 0.0,
+        ref_count: int = 1,
+        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        volume: float | None = None,
+    ) -> "BoundBox":
+        return _build_primitive_bound(
+            cls,
+            BoundType.BOX,
+            minimum,
+            maximum,
+            material_index=material_index,
+            margin=margin,
+            ref_count=ref_count,
+            angular_inertia=angular_inertia,
+            volume=volume,
+        )
+
+    @classmethod
+    def from_center_size(
+        cls,
+        center: tuple[float, float, float],
+        size: tuple[float, float, float],
+        *,
+        material_index: int | BoundMaterialType = 0,
+        margin: float = 0.0,
+        ref_count: int = 1,
+        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        volume: float | None = None,
+    ) -> "BoundBox":
+        half_size = tuple(float(value) * 0.5 for value in size)
+        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
+        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+        return cls.from_bounds(
+            minimum,
+            maximum,
+            material_index=material_index,
+            margin=margin,
+            ref_count=ref_count,
+            angular_inertia=angular_inertia,
+            volume=volume,
+        )
 
 
 @dataclasses.dataclass(slots=True)
 class BoundCapsule(Bound):
-    unknown_70h: int = 0
-    unknown_74h: int = 0
-    unknown_78h: int = 0
-    unknown_7ch: int = 0
+    capsule_half_height: float = 0.0
+    padding_74h: int = 0
+    padding_78h: int = 0
+    padding_7ch: int = 0
+
+    @property
+    def radius(self) -> float:
+        return max(0.0, min(self.half_extents[0], self.half_extents[2]))
+
+    @property
+    def shaft_half_height(self) -> float:
+        if self.capsule_half_height > 0.0:
+            return float(self.capsule_half_height)
+        return max(0.0, self.half_extents[1] - self.radius)
+
+    @property
+    def shaft_length(self) -> float:
+        return self.shaft_half_height * 2.0
+
+    @property
+    def total_height(self) -> float:
+        return self.shaft_length + (self.radius * 2.0)
 
 
 @dataclasses.dataclass(slots=True)
 class BoundDisc(Bound):
-    unknown_70h: int = 0
-    unknown_74h: int = 0
-    unknown_78h: int = 0
-    unknown_7ch: int = 0
+    padding_70h: int = 0
+    padding_74h: int = 0
+    padding_78h: int = 0
+    padding_7ch: int = 0
+
+    @classmethod
+    def from_bounds(
+        cls,
+        minimum: tuple[float, float, float],
+        maximum: tuple[float, float, float],
+        *,
+        material_index: int | BoundMaterialType = 0,
+        margin: float = 0.0,
+        ref_count: int = 1,
+        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        volume: float | None = None,
+    ) -> "BoundDisc":
+        return _build_primitive_bound(
+            cls,
+            BoundType.DISC,
+            minimum,
+            maximum,
+            material_index=material_index,
+            margin=margin,
+            ref_count=ref_count,
+            angular_inertia=angular_inertia,
+            volume=volume,
+        )
+
+    @classmethod
+    def from_center_size(
+        cls,
+        center: tuple[float, float, float],
+        size: tuple[float, float, float],
+        **kwargs: float | int | tuple[float, float, float],
+    ) -> "BoundDisc":
+        half_size = tuple(float(value) * 0.5 for value in size)
+        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
+        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+        return cls.from_bounds(minimum, maximum, **kwargs)
+
+    @classmethod
+    def from_center_radius(
+        cls,
+        center: tuple[float, float, float],
+        radius: float,
+        *,
+        thickness: float = 0.0,
+        **kwargs: float | int | tuple[float, float, float],
+    ) -> "BoundDisc":
+        return cls.from_center_size(center, (radius * 2.0, thickness, radius * 2.0), **kwargs)
+
+    @property
+    def radius(self) -> float:
+        return max(0.0, min(self.half_extents[0], self.half_extents[2]))
+
+    @property
+    def diameter(self) -> float:
+        return self.radius * 2.0
+
+    @property
+    def half_thickness(self) -> float:
+        return max(0.0, self.half_extents[1])
+
+    @property
+    def thickness(self) -> float:
+        return self.half_thickness * 2.0
 
 
 @dataclasses.dataclass(slots=True)
 class BoundCylinder(Bound):
-    unknown_70h: int = 0
-    unknown_74h: int = 0
-    unknown_78h: int = 0
-    unknown_7ch: int = 0
+    padding_70h: int = 0
+    padding_74h: int = 0
+    padding_78h: int = 0
+    padding_7ch: int = 0
+
+    @classmethod
+    def from_bounds(
+        cls,
+        minimum: tuple[float, float, float],
+        maximum: tuple[float, float, float],
+        *,
+        material_index: int | BoundMaterialType = 0,
+        margin: float = 0.0,
+        ref_count: int = 1,
+        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        volume: float | None = None,
+    ) -> "BoundCylinder":
+        return _build_primitive_bound(
+            cls,
+            BoundType.CYLINDER,
+            minimum,
+            maximum,
+            material_index=material_index,
+            margin=margin,
+            ref_count=ref_count,
+            angular_inertia=angular_inertia,
+            volume=volume,
+        )
+
+    @classmethod
+    def from_center_size(
+        cls,
+        center: tuple[float, float, float],
+        size: tuple[float, float, float],
+        **kwargs: float | int | tuple[float, float, float],
+    ) -> "BoundCylinder":
+        half_size = tuple(float(value) * 0.5 for value in size)
+        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
+        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+        return cls.from_bounds(minimum, maximum, **kwargs)
+
+    @classmethod
+    def from_center_radius_height(
+        cls,
+        center: tuple[float, float, float],
+        radius: float,
+        height: float,
+        **kwargs: float | int | tuple[float, float, float],
+    ) -> "BoundCylinder":
+        return cls.from_center_size(center, (radius * 2.0, height, radius * 2.0), **kwargs)
+
+    @property
+    def radius(self) -> float:
+        return max(0.0, min(self.half_extents[0], self.half_extents[2]))
+
+    @property
+    def half_height(self) -> float:
+        return max(0.0, self.half_extents[1])
+
+    @property
+    def height(self) -> float:
+        return self.half_height * 2.0
 
 
 @dataclasses.dataclass(slots=True)
 class BoundCloth(Bound):
-    unknown_70h: int = 0
-    unknown_74h: int = 0
-    unknown_78h: int = 0
-    unknown_7ch: int = 0
+    padding_70h: int = 0
+    padding_74h: int = 0
+    padding_78h: int = 0
+    padding_7ch: int = 0
+
+    @classmethod
+    def from_bounds(
+        cls,
+        minimum: tuple[float, float, float],
+        maximum: tuple[float, float, float],
+        *,
+        material_index: int | BoundMaterialType = 0,
+        margin: float = 0.0,
+        ref_count: int = 1,
+        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        volume: float | None = None,
+    ) -> "BoundCloth":
+        return _build_primitive_bound(
+            cls,
+            BoundType.CLOTH,
+            minimum,
+            maximum,
+            material_index=material_index,
+            margin=margin,
+            ref_count=ref_count,
+            angular_inertia=angular_inertia,
+            volume=volume,
+        )
+
+    @classmethod
+    def from_center_size(
+        cls,
+        center: tuple[float, float, float],
+        size: tuple[float, float, float],
+        **kwargs: float | int | tuple[float, float, float],
+    ) -> "BoundCloth":
+        half_size = tuple(float(value) * 0.5 for value in size)
+        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
+        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+        return cls.from_bounds(minimum, maximum, **kwargs)
 
 
 @dataclasses.dataclass(slots=True)

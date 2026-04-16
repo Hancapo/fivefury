@@ -7,6 +7,7 @@ from ..resource import checked_virtual_offset, read_resource_pages_info, read_vi
 from .model import (
     Bound,
     BoundAabb,
+    BoundFlag,
     BoundBvh,
     BoundBvhNode,
     BoundBvhTree,
@@ -52,7 +53,7 @@ def _unpack_bound_material_words(data1: int, data2: int) -> dict[str, int]:
         "unk_flags": (data1 >> 24) & 0xFF,
         "poly_flags": data2 & 0xFF,
         "material_color_index": (data2 >> 8) & 0xFF,
-        "unknown_5eh": (data2 >> 16) & 0xFFFF,
+        "packed_material_hi_bits": (data2 >> 16) & 0xFFFF,
     }
 
 
@@ -277,7 +278,7 @@ def _read_materials(pointer: int, count: int, system_data: bytes) -> list[BoundM
                 ped_density=(data1 >> 21) & 0x07,
                 flags=((data1 >> 24) & 0xFF) | ((data2 & 0xFF) << 8),
                 material_color_index=(data2 >> 8) & 0xFF,
-                unknown=(data2 >> 16) & 0xFFFF,
+                reserved=(data2 >> 16) & 0xFFFF,
                 data1=data1,
                 data2=data2,
             )
@@ -364,18 +365,18 @@ def _read_bound_common(offset: int, system_data: bytes) -> dict[str, object]:
         "file_unknown": u32(system_data, offset + 0x04),
         "file_pages_info": read_resource_pages_info(pages_info_pointer, system_data),
         "bound_type": BoundType(system_data[data_offset + 0x00]),
-        "unknown_11h": system_data[data_offset + 0x01],
-        "unknown_12h": u16(system_data, data_offset + 0x02),
+        "flags": BoundFlag(system_data[data_offset + 0x01]),
+        "part_index": u16(system_data, data_offset + 0x02),
         "sphere_radius": f32(system_data, data_offset + 0x04),
-        "unknown_18h": u32(system_data, data_offset + 0x08),
-        "unknown_1ch": u32(system_data, data_offset + 0x0C),
+        "alignment_padding_18h": u32(system_data, data_offset + 0x08),
+        "alignment_padding_1ch": u32(system_data, data_offset + 0x0C),
         "box_max": vec3(system_data, data_offset + 0x10),
         "margin": f32(system_data, data_offset + 0x1C),
         "box_min": vec3(system_data, data_offset + 0x20),
-        "unknown_3ch": u32(system_data, data_offset + 0x2C),
+        "ref_count": u32(system_data, data_offset + 0x2C),
         "box_center": vec3(system_data, data_offset + 0x30),
         "sphere_center": vec3(system_data, data_offset + 0x40),
-        "unknown_60h": vec3(system_data, data_offset + 0x50),
+        "angular_inertia": vec3(system_data, data_offset + 0x50),
         "volume": f32(system_data, data_offset + 0x5C),
         **material_values,
     }
@@ -476,34 +477,34 @@ def read_bound_at(offset: int, system_data: bytes) -> Bound:
     if bound_type is BoundType.CAPSULE:
         return BoundCapsule(
             **values,
-            unknown_70h=u32(system_data, offset + 0x70),
-            unknown_74h=u32(system_data, offset + 0x74),
-            unknown_78h=u32(system_data, offset + 0x78),
-            unknown_7ch=u32(system_data, offset + 0x7C),
+            capsule_half_height=f32(system_data, offset + 0x70),
+            padding_74h=u32(system_data, offset + 0x74),
+            padding_78h=u32(system_data, offset + 0x78),
+            padding_7ch=u32(system_data, offset + 0x7C),
         )
     if bound_type is BoundType.DISC:
         return BoundDisc(
             **values,
-            unknown_70h=u32(system_data, offset + 0x70),
-            unknown_74h=u32(system_data, offset + 0x74),
-            unknown_78h=u32(system_data, offset + 0x78),
-            unknown_7ch=u32(system_data, offset + 0x7C),
+            padding_70h=u32(system_data, offset + 0x70),
+            padding_74h=u32(system_data, offset + 0x74),
+            padding_78h=u32(system_data, offset + 0x78),
+            padding_7ch=u32(system_data, offset + 0x7C),
         )
     if bound_type is BoundType.CYLINDER:
         return BoundCylinder(
             **values,
-            unknown_70h=u32(system_data, offset + 0x70),
-            unknown_74h=u32(system_data, offset + 0x74),
-            unknown_78h=u32(system_data, offset + 0x78),
-            unknown_7ch=u32(system_data, offset + 0x7C),
+            padding_70h=u32(system_data, offset + 0x70),
+            padding_74h=u32(system_data, offset + 0x74),
+            padding_78h=u32(system_data, offset + 0x78),
+            padding_7ch=u32(system_data, offset + 0x7C),
         )
     if bound_type is BoundType.CLOTH:
         return BoundCloth(
             **values,
-            unknown_70h=u32(system_data, offset + 0x70),
-            unknown_74h=u32(system_data, offset + 0x74),
-            unknown_78h=u32(system_data, offset + 0x78),
-            unknown_7ch=u32(system_data, offset + 0x7C),
+            padding_70h=u32(system_data, offset + 0x70),
+            padding_74h=u32(system_data, offset + 0x74),
+            padding_78h=u32(system_data, offset + 0x78),
+            padding_7ch=u32(system_data, offset + 0x7C),
         )
     if bound_type is BoundType.GEOMETRY:
         return _read_geometry(offset, system_data, with_bvh=False)
