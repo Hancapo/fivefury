@@ -9,6 +9,7 @@ from ..hashing import jenk_hash
 from ..metahash import MetaHash
 from ..assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
 from ..rpf import RpfFileEntry
+from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
 from ..ytd import Texture, Ytd, read_ytd
 
 _EMBEDDED_TEXTURE_RESOURCE_TYPES = frozenset(RESOURCE_TEXTURE_ASSET_TYPES)
@@ -18,12 +19,13 @@ def _coerce_hash_value(value: int | MetaHash | str) -> int:
     return int(value) if not isinstance(value, str) else jenk_hash(value)
 
 
-def _asset_kind_from_archetype_type(asset_type: int) -> GameFileType | None:
-    if int(asset_type) == 1:
+def _asset_kind_from_archetype_type(asset_type: int | ArchetypeAssetType) -> GameFileType | None:
+    asset_kind = coerce_archetype_asset_type(asset_type)
+    if asset_kind is ArchetypeAssetType.FRAGMENT:
         return GameFileType.YFT
-    if int(asset_type) == 2:
+    if asset_kind is ArchetypeAssetType.DRAWABLE:
         return GameFileType.YDR
-    if int(asset_type) == 3:
+    if asset_kind is ArchetypeAssetType.DRAWABLE_DICTIONARY:
         return GameFileType.YDD
     return None
 
@@ -111,7 +113,7 @@ class GameFileCacheAssetMixin:
         asset_name = getattr(archetype, "asset_name", None) or getattr(archetype, "name", None)
         if asset_name in (None, "", 0):
             return None
-        kind = _asset_kind_from_archetype_type(int(getattr(archetype, "asset_type", 0) or 0))
+        kind = _asset_kind_from_archetype_type(getattr(archetype, "asset_type", ArchetypeAssetType.UNINITIALIZED) or ArchetypeAssetType.UNINITIALIZED)
         if kind is not None:
             asset = self.get_asset(asset_name, kind=kind)
             if asset is not None:

@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 from typing import Any
 
 from ..extensions import extensions_from_meta, extensions_to_meta
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+
+
+class ArchetypeAssetType(enum.IntEnum):
+    UNINITIALIZED = 0
+    FRAGMENT = 1
+    DRAWABLE = 2
+    DRAWABLE_DICTIONARY = 3
+    ASSETLESS = 4
+
+    DRAWABLEDICTIONARY = DRAWABLE_DICTIONARY
+
+
+def coerce_archetype_asset_type(value: int | ArchetypeAssetType) -> ArchetypeAssetType:
+    return value if isinstance(value, ArchetypeAssetType) else ArchetypeAssetType(int(value))
 
 
 @dataclasses.dataclass(slots=True)
@@ -25,11 +40,12 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
     clip_dictionary: MetaHash | HashLike = 0
     drawable_dictionary: MetaHash | HashLike = 0
     physics_dictionary: MetaHash | HashLike = 0
-    asset_type: int = 0
+    asset_type: ArchetypeAssetType = ArchetypeAssetType.UNINITIALIZED
     asset_name: MetaHash | HashLike = 0
     extensions: list[Any] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
+        self.asset_type = coerce_archetype_asset_type(self.asset_type)
         if self.asset_name in (0, "") and self.name not in (0, ""):
             self.asset_name = self.name
 
@@ -52,7 +68,7 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
             "clipDictionary": self.clip_dictionary,
             "drawableDictionary": self.drawable_dictionary,
             "physicsDictionary": self.physics_dictionary,
-            "assetType": self.asset_type,
+            "assetType": int(self.asset_type),
             "assetName": self.asset_name,
             "extensions": extensions_to_meta(self.extensions),
             "_meta_name_hash": meta_name("CBaseArchetypeDef"),
@@ -74,7 +90,7 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
             clip_dictionary=value.get("clipDictionary", 0),
             drawable_dictionary=value.get("drawableDictionary", 0),
             physics_dictionary=value.get("physicsDictionary", 0),
-            asset_type=int(value.get("assetType", 0)),
+            asset_type=coerce_archetype_asset_type(value.get("assetType", ArchetypeAssetType.UNINITIALIZED)),
             asset_name=value.get("assetName", 0),
             extensions=extensions_from_meta(value.get("extensions", []) or []),
         )

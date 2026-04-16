@@ -9,6 +9,7 @@ from .write_geometry import compute_bounds
 from .builder import save_ydr
 from .defs import YdrLod
 from ..ytyp import Archetype, Ytyp
+from ..ytyp.archetypes import ArchetypeAssetType
 
 
 @dataclasses.dataclass(slots=True)
@@ -168,7 +169,7 @@ def _save_companion_ytyp(scene: ObjScene, destination: str | Path) -> Path:
             name=base_name,
             asset_name=base_name,
             texture_dictionary=f"{base_name}_txd",
-            asset_type=2,
+            asset_type=ArchetypeAssetType.DRAWABLE,
             bb_min=bb_min,
             bb_max=bb_max,
             bs_centre=centre,

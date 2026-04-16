@@ -6,7 +6,7 @@ from typing import Any
 
 from ..metahash import HashLike, MetaHash
 
-from .archetypes import BaseArchetypeDef, TimeArchetypeDef
+from .archetypes import ArchetypeAssetType, BaseArchetypeDef, TimeArchetypeDef
 from .mlo import MloArchetypeDef
 from .model import Ytyp
 
@@ -150,7 +150,7 @@ def ytyp_from_ydr_folder(
                 name=model_name,
                 asset_name=model_name,
                 texture_dictionary=f"{model_name}{texture_suffix}",
-                asset_type=2,
+                asset_type=ArchetypeAssetType.DRAWABLE,
                 bb_min=ydr.bounding_box_min,
                 bb_max=ydr.bounding_box_max,
                 bs_centre=ydr.bounding_center,

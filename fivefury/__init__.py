@@ -318,8 +318,10 @@ from .ynd import (
 from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
 from .ytyp import (
     Archetype,
+    ArchetypeAssetType,
     ArchetypeFlags,
     BaseArchetypeDef,
+    coerce_archetype_asset_type,
     EntitySet,
     MloArchetype,
     MloArchetypeDef,
@@ -343,6 +345,7 @@ from .ytyp import (
 __all__ = [
     "Aabb",
     "Archetype",
+    "ArchetypeAssetType",
     "ArchetypeFlags",
     "AudioCollisionSettingsExtension",
     "AudioEmitterExtension",
@@ -405,6 +408,7 @@ __all__ = [
     "sphere_radius_from_vertices",
     "triangle_area",
     "BaseArchetypeDef",
+    "coerce_archetype_asset_type",
     "Block",
     "BoxOccluder",
     "BuoyancyExtension",

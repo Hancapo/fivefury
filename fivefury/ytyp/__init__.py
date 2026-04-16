@@ -1,4 +1,11 @@
-from .archetypes import Archetype, BaseArchetypeDef, TimeArchetype, TimeArchetypeDef
+from .archetypes import (
+    Archetype,
+    ArchetypeAssetType,
+    BaseArchetypeDef,
+    TimeArchetype,
+    TimeArchetypeDef,
+    coerce_archetype_asset_type,
+)
 from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .flags import ArchetypeFlags, MloInstanceFlags, MloInteriorFlags, PortalFlags, RoomFlags
 from .helpers import merge_ytyps, time_flags, ytyp_from_ydr_folder
@@ -18,8 +25,10 @@ from .model import Ytyp, read_ytyp, save_ytyp
 
 __all__ = [
     "Archetype",
+    "ArchetypeAssetType",
     "ArchetypeFlags",
     "BaseArchetypeDef",
+    "coerce_archetype_asset_type",
     "EntitySet",
     "MloArchetype",
     "MloArchetypeDef",

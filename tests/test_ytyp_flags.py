@@ -1,4 +1,4 @@
-from fivefury import ArchetypeFlags, BaseArchetypeDef
+from fivefury import ArchetypeAssetType, ArchetypeFlags, BaseArchetypeDef
 
 
 def test_archetype_flags_match_cbasearchetypedef_load_flags() -> None:
@@ -22,3 +22,14 @@ def test_base_archetype_flags_roundtrip_as_int() -> None:
 
     parsed = BaseArchetypeDef.from_meta(meta)
     assert parsed.flags == int(flags)
+
+
+def test_base_archetype_asset_type_roundtrips_as_enum() -> None:
+    archetype = BaseArchetypeDef(name="test_arch", asset_type=ArchetypeAssetType.DRAWABLE)
+
+    meta = archetype.to_meta()
+
+    assert meta["assetType"] == int(ArchetypeAssetType.DRAWABLE)
+
+    parsed = BaseArchetypeDef.from_meta(meta)
+    assert parsed.asset_type is ArchetypeAssetType.DRAWABLE
