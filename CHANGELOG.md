@@ -11,10 +11,13 @@ This project follows a simple release-oriented changelog format with consistent 
 ### Added
 - Added static `YdrShader` `.sps` enums generated from the shader XML so IDEs can autocomplete all known drawable shader file variants directly.
 - Added shader inspection helpers (`get_ydr_shader_info`, `format_ydr_shader_info`, `print_ydr_shader_info`) to expose render buckets, layouts, texture slots, and numeric parameters without manually reading `Shaders.xml`.
+- Added clearer high-level bounds shape helpers and aliases for `BoundBox`, `BoundDisc`, `BoundCylinder`, and `BoundCloth`, including declarative primitive builders and collision-material enums on the public API.
 
 ### Changed
 - `YDR` material inputs now accept `YdrShader` enum values in addition to raw strings.
 - Shader file inputs now infer their canonical render bucket automatically, and `SpecularSampler` is normalized to the real shader slot name `SpecSampler`.
+- `YTYP` archetype definitions now expose `asset_type` as the typed `ArchetypeAssetType` enum on the high-level API instead of a bare integer.
+- Bound common-header fields and primitive-specific metadata were renamed away from generic `unknown_*` and `reserved_*` placeholders where their storage role is now understood, improving bounds authoring clarity without changing the binary layout.
 
 ## [0.1.37]
 
@@ -190,6 +193,32 @@ This project follows a simple release-oriented changelog format with consistent 
 ### Changed
 - `YDR` LOD names now use the `YdrLod` enum instead of plain strings in the main API surface.
 - `YDR` readers and builders now preserve skeleton data instead of only passing through blend weights, blend indices, and skeleton binding flags.
+
+## [0.1.16]
+
+### Added
+- Added declarative `CarGen` builders with heading, body-color helpers, and higher-level defaults that fit the rest of the `YMAP` authoring API.
+- Added declarative `TimeCycleModifier` builders using center/size style inputs, plus helpers to create modifiers either from explicit dimensions or from existing bounds.
+
+### Changed
+- `YMAP` high-level helpers now expose more ergonomic `car_gen(...)` and `time_cycle_modifier(...)` creation paths instead of requiring callers to work directly against raw extents and packed fields.
+
+## [0.1.15]
+
+### Added
+- Added high-level occluder builders for `YMAP`, including `BoxOccluder` creation from world-space position and size plus `OccludeModel` builders from faces, boxes, and quads.
+
+### Changed
+- Occlude-model authoring now auto-splits generated geometry when the encoded occluder vertex budget would be exceeded, which makes the high-level API safer for larger source meshes.
+
+## [0.1.14]
+
+### Added
+- Added typed `ContainerLodDef` support plus a `Ymap.container_lod()` helper for authoring container LOD metadata directly from the high-level API.
+
+### Changed
+- Split the `ymap` implementation into smaller package modules while keeping the public import surface stable.
+- `obj_to_ydr(...)` now returns the built `YdrBuild`, defaults its output beside the source `.obj`, skips unused materials during import, and infers more appropriate drawable shaders from normal/specular texture slots in the source material data.
 
 ## [0.1.13]
 
