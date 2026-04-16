@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Mapping, Sequence
 from ..bounds import Bound
 from ..ytd import Ytd
 from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_lod, coerce_render_mask, coerce_skeleton_binding
+from .shader_enums import YdrShader
 
 if TYPE_CHECKING:
     from .model import YdrJoints, YdrLight, YdrSkeleton
@@ -28,7 +29,7 @@ TextureInputValue = str | Path | YdrTextureInput
 @dataclasses.dataclass(slots=True)
 class YdrMaterialInput:
     name: str = "default"
-    shader: str = "default.sps"
+    shader: str | YdrShader = YdrShader.DEFAULT
     textures: Mapping[str, TextureInputValue] = dataclasses.field(default_factory=dict)
     parameters: Mapping[str, MaterialParameterValue] = dataclasses.field(default_factory=dict)
     render_bucket: int = 0
@@ -115,7 +116,7 @@ class YdrBuild:
         *,
         meshes: Sequence[YdrMeshInput],
         materials: Sequence[YdrMaterialInput] | None = None,
-        shader: str = "default.sps",
+        shader: str | YdrShader = YdrShader.DEFAULT,
         material_textures: Mapping[str, TextureInputValue] | None = None,
         skeleton: YdrSkeleton | None = None,
         joints: YdrJoints | None = None,
@@ -215,7 +216,7 @@ def create_ydr(
     *,
     meshes: Sequence[YdrMeshInput],
     materials: Sequence[YdrMaterialInput] | None = None,
-    shader: str = "default.sps",
+    shader: str | YdrShader = YdrShader.DEFAULT,
     material_textures: Mapping[str, TextureInputValue] | None = None,
     skeleton: YdrSkeleton | None = None,
     joints: YdrJoints | None = None,

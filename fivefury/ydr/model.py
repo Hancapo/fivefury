@@ -651,17 +651,11 @@ class YdrMaterial:
         shader_library: ShaderLibrary | None = None,
         preserve_values: bool = True,
     ) -> None:
-        from .shaders import load_shader_library
+        from .shaders import load_shader_library, resolve_shader_reference
 
         active_shader_library = shader_library if shader_library is not None else load_shader_library()
-        shader_definition = active_shader_library.resolve_shader(shader_name=shader, shader_file_name=shader)
-        if shader_definition is None:
-            raise ValueError(f"Unknown YDR shader '{shader}'")
-
         next_render_bucket = int(self.render_bucket if render_bucket is None else render_bucket)
-        shader_file_name = shader_definition.pick_file_name(next_render_bucket)
-        if shader_file_name is None:
-            raise ValueError(f"Shader '{shader_definition.name}' has no file for render bucket {next_render_bucket}")
+        shader_definition, shader_file_name, next_render_bucket = resolve_shader_reference(shader, next_render_bucket, active_shader_library)
 
         previous_parameters = {parameter.name.lower(): parameter for parameter in self.parameters}
         next_parameters: list[YdrMaterialParameterRef] = []

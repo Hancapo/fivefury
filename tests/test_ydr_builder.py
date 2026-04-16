@@ -18,6 +18,7 @@ from fivefury import (
     YdrLightType,
     YdrLod,
     YdrRenderMask,
+    YdrShader,
     YdrSkeletonBinding,
     YdrMaterialInput,
     YdrMeshInput,
@@ -485,6 +486,56 @@ def test_edit_parsed_ydr_material_declaratively(tmp_path: Path) -> None:
     assert edited_material.get_texture("SpecSampler").name == "wall_c_s"
     assert edited_material.get_texture("BumpSampler") is None
     assert edited_material.get_numeric_parameter("specularIntensityMult") == pytest.approx(3.0)
+
+
+def test_create_ydr_accepts_shader_enum() -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        materials=[
+            YdrMaterialInput(
+                shader=YdrShader.SPEC,
+                textures={
+                    "DiffuseSampler": "wall_a",
+                    "SpecSampler": "wall_a_s",
+                },
+            )
+        ],
+    )
+
+    assert build.materials[0].shader == YdrShader.SPEC
+
+
+def test_shader_file_name_infers_render_bucket_and_slot_alias(tmp_path: Path) -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        materials=[
+            YdrMaterialInput(
+                shader="normal_spec_cutout.sps",
+                textures={
+                    "DiffuseSampler": "wall_a",
+                    "BumpSampler": "wall_a_n",
+                    "SpecularSampler": "wall_a_s",
+                },
+            )
+        ],
+        name="bucket_inferred",
+    )
+    target = tmp_path / "bucket_inferred.ydr"
+    build.save(target)
+
+    ydr = read_ydr(target)
+    material = ydr.materials[0]
+    assert material.render_bucket == 3
+    assert material.resolved_shader_file_name == "normal_spec_cutout.sps"
+    assert material.get_texture("SpecSampler").name == "wall_a_s"
+
+
+def test_unknown_shader_file_name_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unknown YDR shader 'specular.sps'"):
+        create_ydr(
+            meshes=[_triangle_mesh()],
+            materials=[YdrMaterialInput(shader="specular.sps")],
+        ).to_bytes()
 
 
 def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:

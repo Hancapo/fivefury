@@ -69,7 +69,7 @@ def prepare_materials(
         key = material.name.lower()
         if key in index_by_name:
             raise ValueError(f"Duplicate YDR material name '{material.name}'")
-        shader_definition, shader_file_name = resolve_shader(material.shader, int(material.render_bucket), shader_library)
+        shader_definition, shader_file_name, resolved_render_bucket = resolve_shader(material.shader, int(material.render_bucket), shader_library)
         normalized_textures = normalize_material_textures(material.textures)
         valid_texture_slots = {parameter.name.lower(): parameter for parameter in shader_definition.texture_parameters}
         for slot_name in normalized_textures:
@@ -83,7 +83,7 @@ def prepare_materials(
                 name=material.name,
                 shader_definition=shader_definition,
                 shader_file_name=shader_file_name,
-                render_bucket=int(material.render_bucket),
+                render_bucket=int(resolved_render_bucket),
                 textures=normalized_textures,
                 parameters=merge_shader_parameter_defaults(
                     {str(name): value for name, value in material.parameters.items()},

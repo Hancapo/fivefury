@@ -27,6 +27,15 @@ from .model import (
 )
 from .obj import ObjMaterial, ObjScene, obj_to_ydr, read_obj_scene
 from .reader import read_ydr
+from .shader_enums import YdrShader, coerce_shader_name
+from .shader_info import (
+    YdrShaderInfo,
+    YdrShaderLayoutInfo,
+    YdrShaderParameterInfo,
+    format_ydr_shader_info,
+    get_ydr_shader_info,
+    print_ydr_shader_info,
+)
 from .shaders import (
     ShaderDefinition,
     ShaderLayoutDefinition,
@@ -34,6 +43,7 @@ from .shaders import (
     ShaderParameterDefinition,
     load_shader_library,
     read_shader_library,
+    resolve_shader_reference,
 )
 
 __all__ = [
@@ -68,6 +78,10 @@ __all__ = [
     "YdrModelInput",
     "YdrModel",
     "YdrSkeleton",
+    "YdrShader",
+    "YdrShaderInfo",
+    "YdrShaderLayoutInfo",
+    "YdrShaderParameterInfo",
     "YdrTextureInput",
     "YdrTextureRef",
     "YdrValidationIssue",
@@ -75,7 +89,10 @@ __all__ = [
     "build_bound_from_render_geometry",
     "build_material_descriptor",
     "build_ydr_bytes",
+    "coerce_shader_name",
     "create_ydr",
+    "format_ydr_shader_info",
+    "get_ydr_shader_info",
     "load_shader_library",
     "ColorChannel",
     "obj_to_ydr",
@@ -84,6 +101,8 @@ __all__ = [
     "read_obj_scene",
     "read_shader_library",
     "read_ydr",
+    "resolve_shader_reference",
+    "print_ydr_shader_info",
     "save_ydr",
     "set_bound_from_render_geometry",
     "ydr_to_build",

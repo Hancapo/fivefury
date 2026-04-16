@@ -8,7 +8,7 @@ from typing import Mapping, Sequence
 
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, _copy_model_input
 from .defs import COMPONENT_SIZES, LOD_ORDER, VertexComponentType, VertexSemantic, YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_skeleton_binding
-from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition
+from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition, resolve_shader_reference
 
 _DEFAULT_DECLARATION_TYPES = (
     (int(VertexComponentType.FLOAT3) << (int(VertexSemantic.POSITION) * 4))
@@ -32,6 +32,10 @@ _DEFAULT_DECLARATION_TYPES = (
 _SEMANTIC_ALIASES = {
     "BLENDWEIGHTS": "BLEND_WEIGHTS",
     "BLENDINDICES": "BLEND_INDICES",
+}
+
+_TEXTURE_SLOT_ALIASES = {
+    "SPECULARSAMPLER": "SpecSampler",
 }
 
 _CANONICAL_COMPONENT_TYPES: dict[VertexSemantic, VertexComponentType] = {
@@ -111,20 +115,16 @@ def coerce_texture_input(value: str | Path | YdrTextureInput) -> YdrTextureInput
 
 
 def normalize_material_textures(textures: Mapping[str, str | YdrTextureInput]) -> dict[str, YdrTextureInput]:
-    return {str(slot): coerce_texture_input(value) for slot, value in textures.items()}
+    normalized: dict[str, YdrTextureInput] = {}
+    for slot, value in textures.items():
+        slot_name = str(slot).strip()
+        slot_name = _TEXTURE_SLOT_ALIASES.get(slot_name.upper(), slot_name)
+        normalized[slot_name] = coerce_texture_input(value)
+    return normalized
 
 
-def resolve_shader(shader_value: str, render_bucket: int, shader_library: ShaderLibrary) -> tuple[ShaderDefinition, str]:
-    shader_definition = shader_library.resolve_shader(shader_name=shader_value, shader_file_name=shader_value)
-    if shader_definition is None:
-        raise ValueError(f"Unknown YDR shader '{shader_value}'")
-    if shader_value.lower().endswith('.sps'):
-        shader_file_name = shader_value
-    else:
-        shader_file_name = shader_definition.pick_file_name(render_bucket)
-        if shader_file_name is None:
-            raise ValueError(f"Shader '{shader_definition.name}' has no file for render bucket {render_bucket}")
-    return shader_definition, shader_file_name
+def resolve_shader(shader_value: str, render_bucket: int, shader_library: ShaderLibrary) -> tuple[ShaderDefinition, str, int]:
+    return resolve_shader_reference(shader_value, render_bucket, shader_library)
 
 
 def normalize_materials(
