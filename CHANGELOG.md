@@ -7,6 +7,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.40]
+
+### Fixed
+- `YCD` export preparation now normalizes skeletal channel slot indices before serialization, preventing malformed component layouts when animations are built from high-level objects instead of reparsed samples.
+- `YCD` export preparation now derives and synchronizes animation `bone_ids` from sequence bindings, so skeletal animations no longer depend on callers manually keeping bone tables in sync with sequence data.
+- `YCD` high-level `build()` now hardens skeletal animations before writing, making the authoring path behave more like the validated roundtrip path used by parsed sample files.
+
 ## [0.1.39]
 
 ### Fixed
