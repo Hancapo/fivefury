@@ -346,11 +346,8 @@ def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter) -> None:
         for chunk_index in range(num_chunks):
             chunk_offsets[chunk_index] = bit_offset
             for local_frame in range(1, chunk_size):
-                frame_index = (chunk_index * chunk_size) + local_frame
-                if frame_index >= num_frames:
-                    break
                 delta = chunk_deltas[chunk_index][local_frame]
-                bit_offset += count3 + (2 if delta < 0 else 1)
+                bit_offset += count3 + (2 if delta != 0 else 1)
         count1 = writer.bit_count_values(chunk_offsets)
         count2 = writer.bit_count_values(chunk_values)
         writer.reset_bitstream()
@@ -362,14 +359,11 @@ def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter) -> None:
                 writer.write_bits(value, count2)
         for chunk_index in range(num_chunks):
             for local_frame in range(1, chunk_size):
-                frame_index = (chunk_index * chunk_size) + local_frame
-                if frame_index >= num_frames:
-                    break
                 delta = chunk_deltas[chunk_index][local_frame]
                 writer.write_bits(abs(delta), count3)
                 writer.write_bits(1, 1)
-                if delta < 0:
-                    writer.write_bits(1, 1)
+                if delta != 0:
+                    writer.write_bits(1 if delta < 0 else 0, 1)
         channel.num_ints = 4 + len(writer.bitstream)
         channel.counts = (count1 & 0xFF) | ((count2 & 0xFF) << 8) | ((count3 & 0xFF) << 16)
         writer.write_int32(channel.num_ints)

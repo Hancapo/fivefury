@@ -116,6 +116,10 @@ class _YcdWriter:
 
     def _compute_animation_usage_counts(self) -> dict[int, int]:
         counts: dict[int, int] = {}
+        for animation in self.ycd.animations:
+            animation_hash = _resolve_hash(animation.hash, fallback_text=animation.name).uint
+            if animation_hash:
+                counts[animation_hash] = counts.get(animation_hash, 0) + 1
         for clip in self.ycd.clips:
             if isinstance(clip, YcdClipAnimation):
                 animation_hash = _resolve_hash(
@@ -204,7 +208,7 @@ class _YcdWriter:
         max_seq_block_length = max((0x20 + len(sequence.raw_data) for sequence in animation.sequences), default=0)
         animation_hash = _resolve_hash(animation.hash, fallback_text=animation.name)
         self.writer.pack_into(
-            "IIIIBBHHHfIIIIIIII",
+            "IIIIBBHHHfIIIIIIIII",
             offset,
             int(animation.vft),
             1,
@@ -217,6 +221,7 @@ class _YcdWriter:
             int(animation.sequence_frame_limit),
             float(animation.duration),
             animation.raw_unknown_hash.uint,
+            0,
             0,
             0,
             0,

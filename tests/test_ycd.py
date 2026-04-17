@@ -311,6 +311,92 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         for original_nested_tag, rebuilt_nested_tag in zip(original_tag.tags, rebuilt_tag.tags, strict=True):
             _assert_tag_equivalent(original_nested_tag, rebuilt_nested_tag)
 
+    def _assert_channel_equivalent(original_channel, rebuilt_channel) -> None:
+        assert type(rebuilt_channel) is type(original_channel)
+        assert rebuilt_channel.channel_type == original_channel.channel_type
+        assert rebuilt_channel.sequence_index == original_channel.sequence_index
+        assert rebuilt_channel.channel_index == original_channel.channel_index
+        if hasattr(original_channel, "value"):
+            original_value = original_channel.value
+            rebuilt_value = rebuilt_channel.value
+            if isinstance(original_value, tuple):
+                assert rebuilt_value == pytest.approx(original_value)
+            else:
+                assert rebuilt_value == pytest.approx(original_value)
+        if hasattr(original_channel, "values"):
+            assert rebuilt_channel.values == pytest.approx(original_channel.values)
+        if hasattr(original_channel, "frames"):
+            assert rebuilt_channel.frames == original_channel.frames
+        if hasattr(original_channel, "value_list"):
+            assert rebuilt_channel.value_list == original_channel.value_list
+        if hasattr(original_channel, "quat_index"):
+            assert rebuilt_channel.quat_index == original_channel.quat_index
+        for attribute_name in ("quantum", "offset"):
+            if hasattr(original_channel, attribute_name):
+                assert getattr(rebuilt_channel, attribute_name) == pytest.approx(getattr(original_channel, attribute_name))
+
+    def _assert_anim_sequence_equivalent(original_anim_sequence, rebuilt_anim_sequence) -> None:
+        assert rebuilt_anim_sequence.is_cached_quaternion == original_anim_sequence.is_cached_quaternion
+        original_bone = original_anim_sequence.bone_id
+        rebuilt_bone = rebuilt_anim_sequence.bone_id
+        if original_bone is None:
+            assert rebuilt_bone is None
+        else:
+            assert rebuilt_bone is not None
+            assert rebuilt_bone.bone_id == original_bone.bone_id
+            assert rebuilt_bone.track == original_bone.track
+            assert rebuilt_bone.unknown == original_bone.unknown
+        assert len(rebuilt_anim_sequence.channels) == len(original_anim_sequence.channels)
+        for original_channel, rebuilt_channel in zip(
+            original_anim_sequence.channels,
+            rebuilt_anim_sequence.channels,
+            strict=True,
+        ):
+            _assert_channel_equivalent(original_channel, rebuilt_channel)
+
+    def _assert_sequence_equivalent(original_sequence, rebuilt_sequence) -> None:
+        assert rebuilt_sequence.hash.uint == original_sequence.hash.uint
+        assert rebuilt_sequence.num_frames == original_sequence.num_frames
+        assert rebuilt_sequence.frame_length == original_sequence.frame_length
+        assert rebuilt_sequence.chunk_size == original_sequence.chunk_size
+        assert rebuilt_sequence.root_motion_ref_counts == original_sequence.root_motion_ref_counts
+        assert rebuilt_sequence.unused_08h == original_sequence.unused_08h
+        assert rebuilt_sequence.unused_14h == original_sequence.unused_14h
+        assert [(item.channel_type, item.channel_index) for item in rebuilt_sequence.root_position_refs] == [
+            (item.channel_type, item.channel_index) for item in original_sequence.root_position_refs
+        ]
+        assert [(item.channel_type, item.channel_index) for item in rebuilt_sequence.root_rotation_refs] == [
+            (item.channel_type, item.channel_index) for item in original_sequence.root_rotation_refs
+        ]
+        assert len(rebuilt_sequence.anim_sequences) == len(original_sequence.anim_sequences)
+        for original_anim_sequence, rebuilt_anim_sequence in zip(
+            original_sequence.anim_sequences,
+            rebuilt_sequence.anim_sequences,
+            strict=True,
+        ):
+            _assert_anim_sequence_equivalent(original_anim_sequence, rebuilt_anim_sequence)
+
+    def _assert_animation_equivalent(original_animation, rebuilt_animation) -> None:
+        assert rebuilt_animation.hash.uint == original_animation.hash.uint
+        assert rebuilt_animation.frames == original_animation.frames
+        assert rebuilt_animation.sequence_frame_limit == original_animation.sequence_frame_limit
+        assert rebuilt_animation.duration == pytest.approx(original_animation.duration)
+        assert rebuilt_animation.usage_count == original_animation.usage_count
+        assert rebuilt_animation.sequence_count == original_animation.sequence_count
+        assert rebuilt_animation.bone_id_count == original_animation.bone_id_count
+        assert rebuilt_animation.vft == original_animation.vft
+        assert rebuilt_animation.flags == original_animation.flags
+        assert rebuilt_animation.max_seq_block_length == original_animation.max_seq_block_length
+        assert rebuilt_animation.raw_unknown_hash.uint == original_animation.raw_unknown_hash.uint
+        assert len(rebuilt_animation.bone_ids) == len(original_animation.bone_ids)
+        for original_bone_id, rebuilt_bone_id in zip(original_animation.bone_ids, rebuilt_animation.bone_ids, strict=True):
+            assert rebuilt_bone_id.bone_id == original_bone_id.bone_id
+            assert rebuilt_bone_id.track == original_bone_id.track
+            assert rebuilt_bone_id.unknown == original_bone_id.unknown
+        assert len(rebuilt_animation.sequences) == len(original_animation.sequences)
+        for original_sequence, rebuilt_sequence in zip(original_animation.sequences, rebuilt_animation.sequences, strict=True):
+            _assert_sequence_equivalent(original_sequence, rebuilt_sequence)
+
     assert rebuilt.header.version == original.header.version
     assert len(rebuilt.clips) == len(original.clips)
     assert len(rebuilt.animations) == len(original.animations)
@@ -318,6 +404,9 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
     assert rebuilt.animation_entry_count == original.animation_entry_count
     assert rebuilt.clip_bucket_capacity >= rebuilt.clip_entry_count
     assert rebuilt.animation_bucket_capacity >= rebuilt.animation_entry_count
+
+    for original_animation, rebuilt_animation in zip(original.animations, rebuilt.animations, strict=True):
+        _assert_animation_equivalent(original_animation, rebuilt_animation)
 
     for original_clip, rebuilt_clip in zip(original.clips, rebuilt.clips, strict=True):
         assert rebuilt_clip.hash.uint == original_clip.hash.uint
@@ -342,9 +431,6 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
             assert original_clip.animation is not None
             assert rebuilt_clip.animation is not None
             assert rebuilt_clip.animation.hash.uint == original_clip.animation.hash.uint
-            assert rebuilt_clip.animation.frames == original_clip.animation.frames
-            assert rebuilt_clip.animation.sequence_count == original_clip.animation.sequence_count
-            assert rebuilt_clip.animation.bone_id_count == original_clip.animation.bone_id_count
             assert rebuilt_clip.reserved_64h == original_clip.reserved_64h
             assert rebuilt_clip.reserved_68h == original_clip.reserved_68h
             assert rebuilt_clip.reserved_6ch == original_clip.reserved_6ch
@@ -365,15 +451,16 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
 
 
 def test_ycd_roundtrip_smoke() -> None:
-    original = read_ycd(YCD_PATH)
-    raw = build_ycd_bytes(original)
+    expected = read_ycd(YCD_PATH)
+    source = read_ycd(YCD_PATH)
+    raw = build_ycd_bytes(source)
     rebuilt = read_ycd(raw)
     header, system_data, _ = split_rsc7_sections(raw)
     pages_info_offset = int.from_bytes(system_data[0x08:0x10], "little") - 0x50000000
 
     assert system_data[pages_info_offset + 0x08] == get_resource_total_page_count(header.system_flags)
     assert system_data[pages_info_offset + 0x09] == get_resource_total_page_count(header.graphics_flags)
-    _assert_ycd_roundtrip_equivalent(original, rebuilt)
+    _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
 def _mutate_first_serializable_channel(animation) -> tuple[int, int, int, str, object]:
@@ -407,12 +494,13 @@ def _mutate_first_serializable_channel(animation) -> tuple[int, int, int, str, o
 
 
 def test_ycd_roundtrip_rebuilds_sequences_without_raw_data() -> None:
-    original = read_ycd(YCD_PATH)
-    for animation in original.animations:
+    expected = read_ycd(YCD_PATH)
+    source = read_ycd(YCD_PATH)
+    for animation in source.animations:
         for sequence in animation.sequences:
             sequence.raw_data = b""
-    rebuilt = read_ycd(build_ycd_bytes(original))
-    _assert_ycd_roundtrip_equivalent(original, rebuilt)
+    rebuilt = read_ycd(build_ycd_bytes(source))
+    _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
 def test_ycd_roundtrip_persists_channel_edits() -> None:
@@ -471,6 +559,34 @@ def test_ycd_roundtrip_all_reference_samples() -> None:
     sample_paths = sorted(REFERENCE_YCD_DIR.glob("*.ycd"))
     assert sample_paths
     for path in sample_paths:
-        original = read_ycd(path)
-        rebuilt = read_ycd(build_ycd_bytes(original))
-        _assert_ycd_roundtrip_equivalent(original, rebuilt)
+        expected = read_ycd(path)
+        source = read_ycd(path)
+        rebuilt = read_ycd(build_ycd_bytes(source))
+        _assert_ycd_roundtrip_equivalent(expected, rebuilt)
+
+
+@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+def test_ycd_roundtrip_preserves_linear_float_channels() -> None:
+    path = REFERENCE_YCD_DIR / "cs2_08.ycd"
+    expected = read_ycd(path)
+    rebuilt = read_ycd(build_ycd_bytes(read_ycd(path)))
+
+    matched = False
+    for original_animation, rebuilt_animation in zip(expected.animations, rebuilt.animations, strict=True):
+        for original_sequence, rebuilt_sequence in zip(original_animation.sequences, rebuilt_animation.sequences, strict=True):
+            for original_anim_sequence, rebuilt_anim_sequence in zip(
+                original_sequence.anim_sequences,
+                rebuilt_sequence.anim_sequences,
+                strict=True,
+            ):
+                for original_channel, rebuilt_channel in zip(
+                    original_anim_sequence.channels,
+                    rebuilt_anim_sequence.channels,
+                    strict=True,
+                ):
+                    if original_channel.channel_type is not YcdChannelType.LINEAR_FLOAT:
+                        continue
+                    matched = True
+                    assert rebuilt_channel.values == pytest.approx(original_channel.values)
+                    assert rebuilt_channel.value_list == original_channel.value_list
+    assert matched
