@@ -268,6 +268,18 @@ def _channel_reference_index(channel: YcdAnimChannel) -> int:
     return int(channel.channel_index)
 
 
+def _normalize_anim_sequence_channels(anim_sequences: list[YcdAnimSequence]) -> None:
+    for anim_sequence in anim_sequences:
+        next_index = 0
+        for channel in anim_sequence.channels:
+            if isinstance(channel, YcdCachedQuaternionChannel):
+                channel.channel_index = 3 if channel.channel_type is YcdChannelType.CACHED_QUATERNION1 else 4
+                channel.parent_sequence = anim_sequence
+                continue
+            channel.channel_index = next_index
+            next_index += int(channel.component_count)
+
+
 def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter) -> None:
     if isinstance(channel, YcdStaticFloatChannel):
         writer.write_single(channel.value)
@@ -430,6 +442,7 @@ def build_sequence_data(sequence: object) -> bytes:
             sequence.data_length = len(raw_data)
         return raw_data
 
+    _normalize_anim_sequence_channels(anim_sequences)
     num_frames = int(getattr(sequence, "num_frames", 0))
     writer = _ChannelDataWriter(num_frames)
     channel_lists: list[list[YcdAnimChannel] | None] = [None] * 9

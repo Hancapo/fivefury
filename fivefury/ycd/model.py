@@ -10,6 +10,7 @@ from ..resource import ResourceHeader
 from .sequences import (
     YcdAnimSequence,
     YcdAnimationTrack,
+    YcdCachedQuaternionChannel,
     YcdChannelType,
     YcdSequenceRootChannelRef,
     is_ycd_camera_track,
@@ -284,6 +285,74 @@ class YcdAnimation:
                     continue
                 result.append(anim_sequence)
         return result
+
+    def normalize_channel_layout(self) -> YcdAnimation:
+        for sequence in self.sequences:
+            for anim_sequence_index, anim_sequence in enumerate(sequence.anim_sequences):
+                next_channel_index = 0
+                for channel in anim_sequence.channels:
+                    channel.sequence_index = anim_sequence_index
+                    if isinstance(channel, YcdCachedQuaternionChannel):
+                        channel.channel_index = 3 if channel.channel_type is YcdChannelType.CACHED_QUATERNION1 else 4
+                        channel.parent_sequence = anim_sequence
+                        continue
+                    channel.channel_index = next_channel_index
+                    next_channel_index += int(channel.component_count)
+        return self
+
+    def synchronize_bone_ids(self) -> YcdAnimation:
+        expected_count = max((len(sequence.anim_sequences) for sequence in self.sequences), default=0)
+        if expected_count <= 0:
+            self.bone_ids = []
+            self.bone_id_count = 0
+            self.sequence_count = len(self.sequences)
+            return self
+
+        resolved_bone_ids: list[YcdAnimationBoneId] = []
+        existing_bone_ids = list(self.bone_ids)
+
+        for index in range(expected_count):
+            resolved = existing_bone_ids[index] if index < len(existing_bone_ids) else None
+            for sequence in self.sequences:
+                if index >= len(sequence.anim_sequences):
+                    continue
+                anim_sequence = sequence.anim_sequences[index]
+                bone_id = anim_sequence.bone_id
+                if bone_id is None:
+                    if resolved is not None:
+                        anim_sequence.bone_id = resolved
+                    continue
+                if resolved is None:
+                    resolved = YcdAnimationBoneId(
+                        bone_id=int(bone_id.bone_id),
+                        track=int(bone_id.track),
+                        unknown=int(bone_id.unknown),
+                    )
+                elif (
+                    int(resolved.bone_id) != int(bone_id.bone_id)
+                    or int(resolved.track) != int(bone_id.track)
+                    or int(resolved.unknown) != int(bone_id.unknown)
+                ):
+                    raise ValueError(
+                        f"YCD animation '{self.name or self.hash.uint:#x}' has inconsistent bone binding at sequence index {index}"
+                    )
+                anim_sequence.bone_id = resolved
+            if resolved is None:
+                raise ValueError(
+                    f"YCD animation '{self.name or self.hash.uint:#x}' is missing bone binding metadata for sequence index {index}"
+                )
+            resolved_bone_ids.append(resolved)
+
+        self.bone_ids = resolved_bone_ids
+        self.bone_id_count = len(resolved_bone_ids)
+        self.sequence_count = len(self.sequences)
+        return self
+
+    def prepare_for_export(self) -> YcdAnimation:
+        self.normalize_channel_layout()
+        self.synchronize_bone_ids()
+        self.sequence_count = len(self.sequences)
+        return self
 
     @property
     def uv_sequences(self) -> list[YcdAnimSequence]:
@@ -808,6 +877,7 @@ class Ycd:
         for animation in self.animations:
             if animation.hash.uint == 0 and animation.name:
                 animation.hash = MetaHash(animation.name)
+            animation.prepare_for_export()
             self.animation_map[animation.hash.uint] = animation
 
         for clip in self.clips:

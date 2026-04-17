@@ -8,6 +8,7 @@ from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resour
 from .model import (
     Ycd,
     YcdAnimation,
+    YcdAnimationBoneId,
     YcdClip,
     YcdClipAnimation,
     YcdClipAnimationEntry,
@@ -132,11 +133,58 @@ class _YcdWriter:
                 for entry in clip.animations:
                     animation_hash = _resolve_hash(
                         entry.animation.hash if entry.animation is not None else entry.animation_hash,
-                        fallback_text=entry.animation.name if entry.animation is not None else None,
-                    ).uint
-                    if animation_hash:
-                        counts[animation_hash] = counts.get(animation_hash, 0) + 1
+                    fallback_text=entry.animation.name if entry.animation is not None else None,
+                ).uint
+                if animation_hash:
+                    counts[animation_hash] = counts.get(animation_hash, 0) + 1
         return counts
+
+    def _synchronize_animation_bone_ids(self, animation: YcdAnimation) -> None:
+        expected_count = max((len(sequence.anim_sequences) for sequence in animation.sequences), default=0)
+        if expected_count <= 0:
+            animation.bone_ids = []
+            animation.bone_id_count = 0
+            animation.sequence_count = len(animation.sequences)
+            return
+
+        resolved_bone_ids: list[YcdAnimationBoneId] = []
+        existing_bone_ids = list(animation.bone_ids)
+
+        for index in range(expected_count):
+            resolved = existing_bone_ids[index] if index < len(existing_bone_ids) else None
+            for sequence in animation.sequences:
+                if index >= len(sequence.anim_sequences):
+                    continue
+                anim_sequence = sequence.anim_sequences[index]
+                bone_id = anim_sequence.bone_id
+                if bone_id is None:
+                    if resolved is not None:
+                        anim_sequence.bone_id = resolved
+                    continue
+                if resolved is None:
+                    resolved = YcdAnimationBoneId(
+                        bone_id=int(bone_id.bone_id),
+                        track=int(bone_id.track),
+                        unknown=int(bone_id.unknown),
+                    )
+                elif (
+                    int(resolved.bone_id) != int(bone_id.bone_id)
+                    or int(resolved.track) != int(bone_id.track)
+                    or int(resolved.unknown) != int(bone_id.unknown)
+                ):
+                    raise ValueError(
+                        f"YCD animation '{animation.name or animation.hash.uint:#x}' has inconsistent bone binding at sequence index {index}"
+                    )
+                anim_sequence.bone_id = resolved
+            if resolved is None:
+                raise ValueError(
+                    f"YCD animation '{animation.name or animation.hash.uint:#x}' is missing bone binding metadata for sequence index {index}"
+                )
+            resolved_bone_ids.append(resolved)
+
+        animation.bone_ids = resolved_bone_ids
+        animation.bone_id_count = len(resolved_bone_ids)
+        animation.sequence_count = len(animation.sequences)
 
     def write_string(self, value: str) -> int:
         key = str(value)
@@ -188,6 +236,7 @@ class _YcdWriter:
         if cached is not None:
             return cached
 
+        self._synchronize_animation_bone_ids(animation)
         sequence_offsets = [self.write_sequence(sequence) for sequence in animation.sequences]
         sequences_array_offset = self.write_pointer_array(sequence_offsets)
 

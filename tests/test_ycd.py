@@ -590,3 +590,33 @@ def test_ycd_roundtrip_preserves_linear_float_channels() -> None:
                     assert rebuilt_channel.values == pytest.approx(original_channel.values)
                     assert rebuilt_channel.value_list == original_channel.value_list
     assert matched
+
+
+@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+def test_ycd_writer_derives_skeletal_bone_ids_and_channel_indices() -> None:
+    path = REFERENCE_YCD_DIR / "cs2_08.ycd"
+    expected = read_ycd(path)
+    source = read_ycd(path)
+
+    animation = source.animations[0]
+    animation.bone_ids = []
+    animation.bone_id_count = 0
+    for sequence in animation.sequences:
+        for anim_sequence in sequence.anim_sequences:
+            for channel in anim_sequence.channels:
+                channel.channel_index = 0
+                channel.sequence_index = 0
+
+    source.build()
+    prepared_animation = source.animations[0]
+    assert len(prepared_animation.bone_ids) == len(expected.animations[0].bone_ids)
+    cached_sequence = next(
+        anim_sequence
+        for sequence in prepared_animation.sequences
+        for anim_sequence in sequence.anim_sequences
+        if any(channel.channel_type is YcdChannelType.CACHED_QUATERNION2 for channel in anim_sequence.channels)
+    )
+    assert [channel.channel_index for channel in cached_sequence.channels] == [0, 1, 2, 3, 4]
+
+    rebuilt = read_ycd(build_ycd_bytes(source))
+    _assert_ycd_roundtrip_equivalent(expected, rebuilt)
