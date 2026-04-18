@@ -7,6 +7,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.41]
+
+### Fixed
+- `YCD` animation bone entries now write the correct per-track format byte instead of treating that field as an opaque unknown, aligning skeletal exports with the layout expected by downstream XML tooling and the game runtime.
+- `YCD` track-format mapping now covers additional real sample tracks encountered in skeletal clip dictionaries, preventing fallback guesses during export preparation.
+- High-level `YCD` authoring now auto-derives bone-entry formats from track semantics, so skeletal animations built from scratch no longer emit `BoneRotation` entries with an invalid vector format.
+
 ## [0.1.40]
 
 ### Fixed
