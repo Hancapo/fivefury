@@ -130,7 +130,7 @@ class _YcdReader:
                 bone_ids.append(
                     YcdAnimationBoneId(
                         bone_id=_u16(self.data, entry_offset + 0x00),
-                        unknown=int(self.data[entry_offset + 0x02]),
+                        format=int(self.data[entry_offset + 0x02]),
                         track=int(self.data[entry_offset + 0x03]),
                     )
                 )

@@ -21,6 +21,8 @@ from .sequence_tracks import (
     FACIAL_TRACK_IDS,
     ROOT_MOTION_TRACK_IDS,
     YcdAnimationTrack,
+    YcdTrackFormat,
+    get_ycd_track_format,
     get_ycd_track_name,
     is_ycd_camera_track,
     is_ycd_facial_track,
@@ -33,6 +35,7 @@ from .sequence_tracks import (
 
 __all__ = [
     "YcdAnimationTrack",
+    "YcdTrackFormat",
     "YcdChannelType",
     "CAMERA_TRACK_IDS",
     "ROOT_MOTION_TRACK_IDS",
@@ -50,6 +53,7 @@ __all__ = [
     "YcdStaticVector3Channel",
     "build_sequence_data",
     "channel_frame_bits",
+    "get_ycd_track_format",
     "get_ycd_track_name",
     "is_ycd_camera_track",
     "is_ycd_facial_track",

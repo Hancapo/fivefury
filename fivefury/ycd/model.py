@@ -13,6 +13,8 @@ from .sequences import (
     YcdCachedQuaternionChannel,
     YcdChannelType,
     YcdSequenceRootChannelRef,
+    YcdTrackFormat,
+    get_ycd_track_format,
     is_ycd_camera_track,
     is_ycd_facial_track,
     get_ycd_track_name,
@@ -110,11 +112,23 @@ class YcdClipPropertyAttributeType(IntEnum):
 class YcdAnimationBoneId:
     bone_id: int
     track: int
-    unknown: int = 0
+    format: int | YcdTrackFormat | None = None
+
+    def __post_init__(self) -> None:
+        self.bone_id = int(self.bone_id)
+        self.track = int(self.track)
+        if self.format is None:
+            self.format = get_ycd_track_format(self.track)
+        else:
+            self.format = YcdTrackFormat(int(self.format))
 
     @property
     def track_name(self) -> str:
         return get_ycd_track_name(self.track)
+
+    @property
+    def format_name(self) -> str:
+        return YcdTrackFormat(int(self.format)).name
 
     @property
     def is_uv_track(self) -> bool:
@@ -326,12 +340,12 @@ class YcdAnimation:
                     resolved = YcdAnimationBoneId(
                         bone_id=int(bone_id.bone_id),
                         track=int(bone_id.track),
-                        unknown=int(bone_id.unknown),
+                        format=int(bone_id.format),
                     )
                 elif (
                     int(resolved.bone_id) != int(bone_id.bone_id)
                     or int(resolved.track) != int(bone_id.track)
-                    or int(resolved.unknown) != int(bone_id.unknown)
+                    or int(resolved.format) != int(bone_id.format)
                 ):
                     raise ValueError(
                         f"YCD animation '{self.name or self.hash.uint:#x}' has inconsistent bone binding at sequence index {index}"
@@ -344,6 +358,8 @@ class YcdAnimation:
             resolved_bone_ids.append(resolved)
 
         self.bone_ids = resolved_bone_ids
+        for bone_id in self.bone_ids:
+            bone_id.format = get_ycd_track_format(bone_id.track)
         self.bone_id_count = len(resolved_bone_ids)
         self.sequence_count = len(self.sequences)
         return self

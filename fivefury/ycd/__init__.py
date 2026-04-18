@@ -3,6 +3,7 @@ from .model import (
     YcdAnimation,
     YcdAnimationBoneId,
     YcdAnimationTrack,
+    YcdTrackFormat,
     YcdAnimSequence,
     YcdCameraAnimationSample,
     YcdChannelType,
@@ -27,6 +28,7 @@ from .model import (
     build_ycd_uv_clip_name,
     create_ycd_uv_clip,
     parse_ycd_uv_clip_binding,
+    get_ycd_track_format,
 )
 from .reader import read_ycd
 from .write import build_ycd_bytes, save_ycd
@@ -36,6 +38,7 @@ __all__ = [
     "YcdAnimation",
     "YcdAnimationBoneId",
     "YcdAnimationTrack",
+    "YcdTrackFormat",
     "YcdAnimSequence",
     "YcdCameraAnimationSample",
     "YcdChannelType",
@@ -59,6 +62,7 @@ __all__ = [
     "build_ycd_uv_clip_hash",
     "build_ycd_uv_clip_name",
     "create_ycd_uv_clip",
+    "get_ycd_track_format",
     "parse_ycd_uv_clip_binding",
     "build_ycd_bytes",
     "read_ycd",

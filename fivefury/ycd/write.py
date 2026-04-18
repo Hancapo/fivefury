@@ -22,6 +22,7 @@ from .model import (
     _resolve_ycd_clip_hash,
 )
 from .sequences import build_sequence_data
+from .sequence_tracks import get_ycd_track_format
 
 DAT_VIRTUAL_BASE = 0x50000000
 _RESOURCE_FILE_VFT = 1079444200
@@ -165,12 +166,12 @@ class _YcdWriter:
                     resolved = YcdAnimationBoneId(
                         bone_id=int(bone_id.bone_id),
                         track=int(bone_id.track),
-                        unknown=int(bone_id.unknown),
+                        format=int(bone_id.format),
                     )
                 elif (
                     int(resolved.bone_id) != int(bone_id.bone_id)
                     or int(resolved.track) != int(bone_id.track)
-                    or int(resolved.unknown) != int(bone_id.unknown)
+                    or int(resolved.format) != int(bone_id.format)
                 ):
                     raise ValueError(
                         f"YCD animation '{animation.name or animation.hash.uint:#x}' has inconsistent bone binding at sequence index {index}"
@@ -183,6 +184,8 @@ class _YcdWriter:
             resolved_bone_ids.append(resolved)
 
         animation.bone_ids = resolved_bone_ids
+        for bone_id in animation.bone_ids:
+            bone_id.format = get_ycd_track_format(bone_id.track)
         animation.bone_id_count = len(resolved_bone_ids)
         animation.sequence_count = len(animation.sequences)
 
@@ -249,7 +252,7 @@ class _YcdWriter:
                     "HBB",
                     entry_offset,
                     int(bone_id.bone_id),
-                    int(bone_id.unknown),
+                    int(bone_id.format),
                     int(bone_id.track),
                 )
 

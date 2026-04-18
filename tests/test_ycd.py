@@ -8,12 +8,14 @@ import pytest
 from fivefury import (
     MetaHash,
     YcdAnimationTrack,
+    YcdAnimationBoneId,
     YcdCameraAnimationSample,
     YcdChannelType,
     YcdClipAnimation,
     YcdFacialAnimationSample,
     YcdClipPropertyAttributeType,
     YcdSequence,
+    YcdTrackFormat,
     YcdTransformSample,
     YcdUvAnimationSample,
     YcdUvClipBinding,
@@ -21,6 +23,7 @@ from fivefury import (
     build_ycd_bytes,
     build_ycd_uv_clip_hash,
     build_ycd_uv_clip_name,
+    get_ycd_track_format,
     parse_ycd_uv_clip_binding,
     read_ycd,
 )
@@ -345,7 +348,7 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
             assert rebuilt_bone is not None
             assert rebuilt_bone.bone_id == original_bone.bone_id
             assert rebuilt_bone.track == original_bone.track
-            assert rebuilt_bone.unknown == original_bone.unknown
+            assert int(rebuilt_bone.format) == int(original_bone.format)
         assert len(rebuilt_anim_sequence.channels) == len(original_anim_sequence.channels)
         for original_channel, rebuilt_channel in zip(
             original_anim_sequence.channels,
@@ -392,7 +395,7 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         for original_bone_id, rebuilt_bone_id in zip(original_animation.bone_ids, rebuilt_animation.bone_ids, strict=True):
             assert rebuilt_bone_id.bone_id == original_bone_id.bone_id
             assert rebuilt_bone_id.track == original_bone_id.track
-            assert rebuilt_bone_id.unknown == original_bone_id.unknown
+        assert int(rebuilt_bone_id.format) == int(original_bone_id.format)
         assert len(rebuilt_animation.sequences) == len(original_animation.sequences)
         for original_sequence, rebuilt_sequence in zip(original_animation.sequences, rebuilt_animation.sequences, strict=True):
             _assert_sequence_equivalent(original_sequence, rebuilt_sequence)
@@ -620,3 +623,37 @@ def test_ycd_writer_derives_skeletal_bone_ids_and_channel_indices() -> None:
 
     rebuilt = read_ycd(build_ycd_bytes(source))
     _assert_ycd_roundtrip_equivalent(expected, rebuilt)
+
+
+@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+def test_ycd_rotation_bone_ids_preserve_quaternion_format() -> None:
+    source = read_ycd(REFERENCE_YCD_DIR / "cs2_08.ycd")
+
+    rotation_bones = [
+        bone
+        for animation in source.animations
+        for bone in animation.bone_ids
+        if int(bone.track) == int(YcdAnimationTrack.BONE_ROTATION)
+    ]
+    assert rotation_bones
+    assert all(int(bone.format) == int(YcdTrackFormat.QUATERNION) for bone in rotation_bones)
+
+    rebuilt = read_ycd(build_ycd_bytes(source))
+    rebuilt_rotation_bones = [
+        bone
+        for animation in rebuilt.animations
+        for bone in animation.bone_ids
+        if int(bone.track) == int(YcdAnimationTrack.BONE_ROTATION)
+    ]
+    assert rebuilt_rotation_bones
+    assert all(int(bone.format) == int(YcdTrackFormat.QUATERNION) for bone in rebuilt_rotation_bones)
+
+
+def test_ycd_bone_id_format_defaults_from_track() -> None:
+    rotation_bone = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.BONE_ROTATION)
+    translation_bone = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.BONE_TRANSLATION)
+    uv_bone = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.SHADER_SLIDE_U)
+
+    assert int(rotation_bone.format) == int(YcdTrackFormat.QUATERNION)
+    assert int(translation_bone.format) == int(YcdTrackFormat.VECTOR3)
+    assert int(uv_bone.format) == int(get_ycd_track_format(YcdAnimationTrack.SHADER_SLIDE_U))
