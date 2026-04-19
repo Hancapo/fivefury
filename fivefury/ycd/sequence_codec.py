@@ -262,6 +262,63 @@ def _quantize_to_bits(value: float, quantum: float, offset: float) -> int:
     return int(((float(value) - float(offset)) / quantum_value) + 0.5)
 
 
+def _float32(value: float) -> float:
+    return struct.unpack("<f", struct.pack("<f", float(value)))[0]
+
+
+def _max_quantized_value(values: list[float], quantum: float, offset: float) -> int:
+    if not values:
+        return 0
+    return max(_quantize_to_bits(value, quantum, offset) for value in values)
+
+
+def _min_quantized_value(values: list[float], quantum: float, offset: float) -> int:
+    if not values:
+        return 0
+    return min(_quantize_to_bits(value, quantum, offset) for value in values)
+
+
+def _sanitize_quantize_channel(channel: YcdQuantizeFloatChannel, track: int | None) -> None:
+    if track in (int(YcdAnimationTrack.SHADER_SLIDE_U), int(YcdAnimationTrack.SHADER_SLIDE_V)):
+        return
+
+    values = [float(value) for value in channel.values]
+    if not values:
+        return
+
+    offset = float(channel.offset)
+    minimum = min(values)
+    maximum = max(values)
+    if minimum < offset:
+        offset = minimum
+
+    quantum = _float32(channel.quantum)
+    if abs(quantum) <= 1e-12:
+        span = max(maximum - offset, 0.0)
+        quantum = _float32((span / 65535.0) if span > 1e-12 else (1.0 / 65535.0))
+
+    min_encoded = _min_quantized_value(values, quantum, offset)
+    max_encoded = _max_quantized_value(values, quantum, offset)
+    if min_encoded >= 0 and max_encoded <= 65535:
+        channel.offset = offset
+        channel.quantum = quantum
+        return
+
+    span = max(maximum - offset, 0.0)
+    safe_quantum = _float32((span / 65535.0) if span > 1e-12 else (1.0 / 65535.0))
+    for _ in range(32):
+        max_encoded = _max_quantized_value(values, safe_quantum, offset)
+        min_encoded = _min_quantized_value(values, safe_quantum, offset)
+        if min_encoded >= 0 and max_encoded <= 65535:
+            channel.offset = _float32(offset)
+            channel.quantum = safe_quantum
+            return
+        safe_quantum = _float32(math.nextafter(float(safe_quantum), math.inf))
+
+    channel.offset = _float32(offset)
+    channel.quantum = safe_quantum
+
+
 def _channel_reference_index(channel: YcdAnimChannel) -> int:
     if isinstance(channel, YcdCachedQuaternionChannel):
         return int(channel.quat_index)
@@ -470,6 +527,9 @@ def build_sequence_data(sequence: object) -> bytes:
         channels = channel_list or []
         writer.write_channel_list_data(len(channels))
         for channel in channels:
+            track = getattr(anim_sequences[int(channel.sequence_index)], "track", None) if 0 <= int(channel.sequence_index) < len(anim_sequences) else None
+            if isinstance(channel, YcdQuantizeFloatChannel):
+                _sanitize_quantize_channel(channel, track)
             encoded_index = channel.quat_index if isinstance(channel, YcdCachedQuaternionChannel) else int(channel.channel_index)
             channel_data_bits = int(encoded_index) + (int(channel.sequence_index) << 2)
             writer.write_channel_item_data(channel_data_bits)
