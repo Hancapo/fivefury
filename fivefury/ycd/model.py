@@ -27,6 +27,7 @@ from .sequences import (
 
 
 YCD_UV_CLIP_MARKER = "_uv_"
+YCD_UV_UNKNOWN1C = 0x6B002400
 
 
 def _normalize_ycd_clip_name(value: str) -> str:
@@ -367,8 +368,23 @@ class YcdAnimation:
     def prepare_for_export(self) -> YcdAnimation:
         self.normalize_channel_layout()
         self.synchronize_bone_ids()
+        self.raw_unknown_hash = self._default_raw_unknown_hash()
         self.sequence_count = len(self.sequences)
         return self
+
+    def _default_raw_unknown_hash(self) -> MetaHash:
+        current = MetaHash(self.raw_unknown_hash)
+        if current.uint != 0:
+            return current
+
+        tracks = {int(bone.track) for bone in self.bone_ids}
+        if not tracks:
+            return current
+        if tracks.issubset({int(YcdAnimationTrack.SHADER_SLIDE_U), int(YcdAnimationTrack.SHADER_SLIDE_V)}):
+            return MetaHash(YCD_UV_UNKNOWN1C)
+        if tracks.issubset({int(YcdAnimationTrack.BONE_TRANSLATION), int(YcdAnimationTrack.BONE_ROTATION)}):
+            return MetaHash((int(self.hash.uint) + 1) & 0xFFFFFFFF)
+        return current
 
     @property
     def uv_sequences(self) -> list[YcdAnimSequence]:

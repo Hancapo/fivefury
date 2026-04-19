@@ -7,6 +7,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.43]
+
+### Fixed
+- `YCD` export preparation now derives `Unknown1C` more defensively for rebuilt animation clips, preserving existing values, forcing the known runtime constant for UV clips, and only applying the observed `hash + 1` fallback to object/skeletal `{0,1}` track sets when the field would otherwise be empty.
+- Added regression coverage for `Unknown1C` derivation so rebuilt UV clips keep the expected special-case value and rebuilt object animations no longer serialize an empty field in the authoring path.
+
 ## [0.1.42]
 
 ### Fixed

@@ -737,3 +737,93 @@ def test_ycd_writer_sanitizes_non_uv_quantize_overflow() -> None:
     assert all(channel.value_bits <= 16 for channel in rebuilt_quantized)
     assert rebuilt_quantized[0].values == pytest.approx(values_z, abs=1e-5)
     assert rebuilt_quantized[1].values == pytest.approx(values_w, abs=2e-5)
+
+
+def test_ycd_build_derives_unknown1c_for_object_animation() -> None:
+    bone = YcdAnimationBoneId(bone_id=1234, track=YcdAnimationTrack.BONE_ROTATION)
+    animation = YcdAnimation(
+        hash=MetaHash("object_anim_unknown1c"),
+        frames=1,
+        sequence_frame_limit=1,
+        duration=0.0,
+        usage_count=1,
+        sequence_count=1,
+        bone_id_count=1,
+        sequences=[
+            YcdSequence(
+                hash=MetaHash("object_anim_unknown1c_seq"),
+                data_length=0,
+                frame_offset=0,
+                root_motion_refs_offset=0,
+                num_frames=1,
+                frame_length=0,
+                indirect_quantize_float_num_ints=0,
+                quantize_float_value_bits=0,
+                chunk_size=0,
+                root_motion_ref_counts=0,
+                raw_data=b"",
+                anim_sequences=[
+                    YcdAnimSequence(
+                        bone_id=bone,
+                        channels=[
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=2, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=3, value=1.0),
+                        ],
+                    )
+                ],
+            )
+        ],
+        bone_ids=[bone],
+    )
+    ycd = Ycd(header=read_ycd(YCD_PATH).header, clips=[], animations=[animation], path="object_unknown1c.ycd")
+
+    ycd.build()
+
+    assert ycd.animations[0].raw_unknown_hash.uint == ((ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF)
+
+
+def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
+    uv_u = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.SHADER_SLIDE_U)
+    uv_v = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.SHADER_SLIDE_V)
+    animation = YcdAnimation(
+        hash=MetaHash("uv_anim_unknown1c"),
+        frames=1,
+        sequence_frame_limit=1,
+        duration=0.0,
+        usage_count=1,
+        sequence_count=1,
+        bone_id_count=2,
+        sequences=[
+            YcdSequence(
+                hash=MetaHash("uv_anim_unknown1c_seq"),
+                data_length=0,
+                frame_offset=0,
+                root_motion_refs_offset=0,
+                num_frames=1,
+                frame_length=0,
+                indirect_quantize_float_num_ints=0,
+                quantize_float_value_bits=0,
+                chunk_size=0,
+                root_motion_ref_counts=0,
+                raw_data=b"",
+                anim_sequences=[
+                    YcdAnimSequence(
+                        bone_id=uv_u,
+                        channels=[YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0)],
+                    ),
+                    YcdAnimSequence(
+                        bone_id=uv_v,
+                        channels=[YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0)],
+                    ),
+                ],
+            )
+        ],
+        bone_ids=[uv_u, uv_v],
+    )
+    ycd = Ycd(header=read_ycd(YCD_PATH).header, clips=[], animations=[animation], path="uv_unknown1c.ycd")
+
+    ycd.build()
+
+    assert ycd.animations[0].raw_unknown_hash.uint == 0x6B002400
