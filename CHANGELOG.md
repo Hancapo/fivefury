@@ -7,6 +7,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.42]
+
+### Fixed
+- `YCD` writer now sanitizes invalid non-UV `QuantizeFloat` channels before packing sequence data, preventing skeletal and object animation channels from overflowing into 17+ bit payloads when source quantization steps are too small.
+- Rewritten skeletal/object `YCD` sequences now rebuild with valid per-channel bit widths and smaller frame payloads, matching the structure of known-good files more closely and avoiding the malformed sequence blocks seen in crashing converted clip dictionaries.
+- Added regression coverage for quantized non-UV channel overflow so future writer changes cannot silently reintroduce invalid skeletal sequence packing.
+
 ## [0.1.41]
 
 ### Fixed

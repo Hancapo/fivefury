@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fivefury"
-version = "0.1.41"
+version = "0.1.42"
 description = "Python library for GTA V asset workflows including YMAP, YTYP, RPF, YTD and GameFileCache utilities."
 readme = "README.md"
 requires-python = ">=3.11"
