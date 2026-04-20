@@ -9,6 +9,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [0.1.46]
 
+### Added
+- `YMAP` now exposes typed enums for map flags, content flags, entity flags, MLO instance flags, car generator flags, `LOD` levels, priority levels, and `LOD light` categories/types on the high-level API.
+- `YTYP` time archetypes now expose `TimeArchetypeFlags` as a real enum instead of a bare integer and provide helpers for hour masks and `flip_while_visible`.
+
 ### Changed
 - `YMAP` `LOD lights` generation now normalizes paired `LODLightsSOA` and `DistantLODLightsSOA` data before writing, ensuring street lights occupy the leading prefix required by the runtime and automatically recalculating `numStreetLights`.
 - High-level `YMAP` `LOD light` authoring now accepts semantic angle, capsule, color, and corona-intensity inputs and packs them into the byte ranges used by the game instead of forcing callers to provide raw packed values.
