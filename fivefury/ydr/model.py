@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import math
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Sequence, Union
 
@@ -62,6 +63,42 @@ class YdrBoneFlags(enum.IntFlag):
     UNKNOWN_1 = 0x2000
     UNKNOWN_2 = 0x4000
     UNKNOWN_3 = 0x8000
+
+
+class YdrBoneFlagName(enum.StrEnum):
+    ROT_X = "RotX"
+    ROT_Y = "RotY"
+    ROT_Z = "RotZ"
+    LIMIT_ROTATION = "LimitRotation"
+    TRANS_X = "TransX"
+    TRANS_Y = "TransY"
+    TRANS_Z = "TransZ"
+    LIMIT_TRANSLATION = "LimitTranslation"
+    SCALE_X = "ScaleX"
+    SCALE_Y = "ScaleY"
+    SCALE_Z = "ScaleZ"
+    UNKNOWN_0 = "Unk0"
+
+
+_SKELETON_HASH_FLAG_NAMES = (
+    (YdrBoneFlags.ROT_X, YdrBoneFlagName.ROT_X),
+    (YdrBoneFlags.ROT_Y, YdrBoneFlagName.ROT_Y),
+    (YdrBoneFlags.ROT_Z, YdrBoneFlagName.ROT_Z),
+    (YdrBoneFlags.LIMIT_ROTATION, YdrBoneFlagName.LIMIT_ROTATION),
+    (YdrBoneFlags.TRANS_X, YdrBoneFlagName.TRANS_X),
+    (YdrBoneFlags.TRANS_Y, YdrBoneFlagName.TRANS_Y),
+    (YdrBoneFlags.TRANS_Z, YdrBoneFlagName.TRANS_Z),
+    (YdrBoneFlags.LIMIT_TRANSLATION, YdrBoneFlagName.LIMIT_TRANSLATION),
+    (YdrBoneFlags.SCALE_X, YdrBoneFlagName.SCALE_X),
+    (YdrBoneFlags.SCALE_Y, YdrBoneFlagName.SCALE_Y),
+    (YdrBoneFlags.SCALE_Z, YdrBoneFlagName.SCALE_Z),
+    (YdrBoneFlags.UNKNOWN_0, YdrBoneFlagName.UNKNOWN_0),
+)
+
+
+def skeleton_bone_flag_names(flags: YdrBoneFlags | int) -> tuple[YdrBoneFlagName, ...]:
+    value = YdrBoneFlags(flags)
+    return tuple(name for flag, name in _SKELETON_HASH_FLAG_NAMES if value & flag)
 
 
 def calculate_bone_tag(name: str) -> int:
@@ -211,6 +248,32 @@ class YdrSkeleton:
             if bone is not None:
                 resolved.append(bone)
         return resolved
+
+    def calculate_unknown_hashes(self) -> tuple[int, int, int]:
+        return calculate_skeleton_unknown_hashes(self)
+
+    def recalculate_unknown_hashes(self) -> "YdrSkeleton":
+        self.unknown_50h, self.unknown_54h, self.unknown_58h = calculate_skeleton_unknown_hashes(self)
+        return self
+
+
+def calculate_skeleton_unknown_hashes(skeleton: YdrSkeleton) -> tuple[int, int, int]:
+    unknown_50_parts: list[str] = []
+    unknown_58_parts: list[str] = []
+    for bone in skeleton.bones:
+        flags = " ".join(flag.value for flag in skeleton_bone_flag_names(bone.flags))
+        unknown_50_parts.append(" ".join((str(int(bone.tag)), flags)))
+        translation = " ".join(str(float(value)) for value in bone.translation)
+        rotation = " ".join(str(float(value)) for value in bone.rotation)
+        scale = " ".join(str(float(value)) for value in bone.scale)
+        unknown_58_parts.append(" ".join((str(int(bone.tag)), flags, translation, rotation, scale)))
+    unknown_50_text = " ".join(unknown_50_parts)
+    unknown_58_text = " ".join(unknown_58_parts)
+    return (
+        jenk_hash(unknown_50_text) & 0xFFFFFFFF,
+        zlib.crc32(unknown_50_text.encode("utf-8")) & 0xFFFFFFFF,
+        zlib.crc32(unknown_58_text.encode("utf-8")) & 0xFFFFFFFF,
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -1549,8 +1612,18 @@ class Ydr:
             unknown_9c=int(self.unknown_9c),
         )
 
-    def save(self, destination: str | Path, *, lod: YdrLod | str | None = None, name: str | None = None) -> Path:
-        return self.to_build(lod=lod, name=name).save(destination)
+    def save(
+        self,
+        destination: str | Path,
+        *,
+        lod: YdrLod | str | None = None,
+        name: str | None = None,
+        recalculate_skeleton_hashes: bool = False,
+    ) -> Path:
+        return self.to_build(lod=lod, name=name).save(
+            destination,
+            recalculate_skeleton_hashes=recalculate_skeleton_hashes,
+        )
 
 
 Color4 = tuple[float, float, float, float]
@@ -1704,6 +1777,7 @@ __all__ = [
     "ColorChannel",
     "Ydr",
     "YdrBone",
+    "YdrBoneFlagName",
     "YdrBoneFlags",
     "YdrJointControlPoint",
     "YdrJointRotationLimit",
@@ -1719,6 +1793,8 @@ __all__ = [
     "YdrTextureRef",
     "YdrValidationIssue",
     "calculate_bone_tag",
+    "calculate_skeleton_unknown_hashes",
     "paint_mesh",
     "paint_vertices",
+    "skeleton_bone_flag_names",
 ]

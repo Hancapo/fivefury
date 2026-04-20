@@ -7,6 +7,7 @@ from .model import (
     ColorChannel,
     Ydr,
     YdrBone,
+    YdrBoneFlagName,
     YdrBoneFlags,
     YdrJointControlPoint,
     YdrJointRotationLimit,
@@ -22,8 +23,10 @@ from .model import (
     YdrTextureRef,
     YdrValidationIssue,
     calculate_bone_tag,
+    calculate_skeleton_unknown_hashes,
     paint_mesh,
     paint_vertices,
+    skeleton_bone_flag_names,
 )
 from .obj import ObjMaterial, ObjScene, obj_to_ydr, read_obj_scene
 from .reader import read_ydr
@@ -55,6 +58,7 @@ __all__ = [
     "ShaderParameterDefinition",
     "Ydr",
     "YdrBone",
+    "YdrBoneFlagName",
     "YdrBoneFlags",
     "YdrBuild",
     "YdrCollisionStats",
@@ -86,6 +90,7 @@ __all__ = [
     "YdrTextureRef",
     "YdrValidationIssue",
     "calculate_bone_tag",
+    "calculate_skeleton_unknown_hashes",
     "build_bound_from_render_geometry",
     "build_material_descriptor",
     "build_ydr_bytes",
@@ -98,6 +103,7 @@ __all__ = [
     "obj_to_ydr",
     "paint_mesh",
     "paint_vertices",
+    "skeleton_bone_flag_names",
     "read_obj_scene",
     "read_shader_library",
     "read_ydr",

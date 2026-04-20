@@ -4,7 +4,7 @@ import math
 import struct
 
 from ..resource import ResourceWriter
-from .model import Matrix4, YdrBone, YdrSkeleton
+from .model import Matrix4, YdrBone, YdrSkeleton, calculate_skeleton_unknown_hashes
 
 _SKELETON_VFT = 0x40613CA0
 
@@ -194,7 +194,13 @@ def _build_inverse_transformations(skeleton: YdrSkeleton) -> list[Matrix4]:
     return matrices
 
 
-def write_skeleton(system: ResourceWriter, skeleton: YdrSkeleton | None, *, virtual) -> int:
+def write_skeleton(
+    system: ResourceWriter,
+    skeleton: YdrSkeleton | None,
+    *,
+    virtual,
+    recalculate_hashes: bool = False,
+) -> int:
     if skeleton is None or not skeleton.bones:
         return 0
 
@@ -257,6 +263,12 @@ def write_skeleton(system: ResourceWriter, skeleton: YdrSkeleton | None, *, virt
 
     bone_tags_off, bone_tags_capacity, bone_tags_count = _build_bone_tag_block(system, skeleton, virtual=virtual)
 
+    unknown_50h, unknown_54h, unknown_58h = (
+        calculate_skeleton_unknown_hashes(skeleton)
+        if recalculate_hashes
+        else (int(skeleton.unknown_50h), int(skeleton.unknown_54h), int(skeleton.unknown_58h))
+    )
+
     skeleton_off = system.alloc(112, 16)
     system.pack_into("I", skeleton_off + 0x00, _SKELETON_VFT)
     system.pack_into("I", skeleton_off + 0x04, 1)
@@ -271,9 +283,9 @@ def write_skeleton(system: ResourceWriter, skeleton: YdrSkeleton | None, *, virt
     system.pack_into("Q", skeleton_off + 0x38, virtual(parent_indices_off) if parent_indices_off else 0)
     system.pack_into("Q", skeleton_off + 0x40, virtual(child_indices_off) if child_indices_off else 0)
     system.pack_into("Q", skeleton_off + 0x48, 0)
-    system.pack_into("I", skeleton_off + 0x50, int(skeleton.unknown_50h))
-    system.pack_into("I", skeleton_off + 0x54, int(skeleton.unknown_54h))
-    system.pack_into("I", skeleton_off + 0x58, int(skeleton.unknown_58h))
+    system.pack_into("I", skeleton_off + 0x50, unknown_50h)
+    system.pack_into("I", skeleton_off + 0x54, unknown_54h)
+    system.pack_into("I", skeleton_off + 0x58, unknown_58h)
     system.pack_into("H", skeleton_off + 0x5C, int(skeleton.unknown_5ch))
     system.pack_into("H", skeleton_off + 0x5E, len(skeleton.bones))
     system.pack_into("H", skeleton_off + 0x60, len(child_indices))

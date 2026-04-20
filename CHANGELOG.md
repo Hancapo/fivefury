@@ -7,6 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.45]
+
+### Added
+- `YDR` skeleton hash helpers now expose the formal bone-flag names as enums and can calculate the `unknown_50h`, `unknown_54h`, and `unknown_58h` fields required by some animated rigid skeletons.
+
+### Changed
+- `YDR` writing can explicitly recalculate skeleton hashes via `recalculate_skeleton_hashes=True` while keeping the default roundtrip path preservative.
+
 ## [0.1.44]
 
 ### Fixed

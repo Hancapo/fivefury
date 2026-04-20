@@ -201,15 +201,24 @@ class YdrBuild:
     def model_count(self) -> int:
         return sum(len(models) for models in self.lods.values())
 
-    def to_bytes(self, *, shader_library=None) -> bytes:
+    def to_bytes(self, *, shader_library=None, recalculate_skeleton_hashes: bool = False) -> bytes:
         from .builder import build_ydr_bytes
 
-        return build_ydr_bytes(self, shader_library=shader_library)
+        return build_ydr_bytes(
+            self,
+            shader_library=shader_library,
+            recalculate_skeleton_hashes=recalculate_skeleton_hashes,
+        )
 
-    def save(self, destination: str | Path, *, shader_library=None) -> Path:
+    def save(self, destination: str | Path, *, shader_library=None, recalculate_skeleton_hashes: bool = False) -> Path:
         from .builder import save_ydr
 
-        return save_ydr(self, destination, shader_library=shader_library)
+        return save_ydr(
+            self,
+            destination,
+            shader_library=shader_library,
+            recalculate_skeleton_hashes=recalculate_skeleton_hashes,
+        )
 
 
 def create_ydr(

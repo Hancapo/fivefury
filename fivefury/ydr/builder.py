@@ -128,6 +128,7 @@ def _write_drawable_payload(
     root_off: int,
     drawable_file_vft: int = _DRAWABLE_FILE_VFT,
     write_pages: bool = True,
+    recalculate_skeleton_hashes: bool = False,
 ) -> None:
     shader_group_off, _shader_group_blocks_size = write_shader_blocks(
         system,
@@ -137,7 +138,12 @@ def _write_drawable_payload(
         shader_group_vft=_SHADER_GROUP_VFT,
         virtual=_virtual,
     )
-    skeleton_off = write_skeleton(system, source.skeleton, virtual=_virtual)
+    skeleton_off = write_skeleton(
+        system,
+        source.skeleton,
+        virtual=_virtual,
+        recalculate_hashes=recalculate_skeleton_hashes,
+    )
     joints_off = write_joints(system, source.joints, virtual=_virtual)
     lights_block_off = write_lights(system, source.lights)
     bound_off = write_bound_resource(system, source.bound) if source.bound is not None else 0
@@ -220,6 +226,8 @@ def _build_system_payload(
     prepared_materials: list[PreparedMaterial],
     prepared_lods,
     page_counts: tuple[int, int],
+    *,
+    recalculate_skeleton_hashes: bool = False,
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
@@ -232,6 +240,7 @@ def _build_system_payload(
         page_counts,
         root_off=0,
         write_pages=True,
+        recalculate_skeleton_hashes=recalculate_skeleton_hashes,
     )
     return system.finish(), graphics.finish(), system.block_spans, graphics.block_spans
 
@@ -247,6 +256,7 @@ def build_ydr_bytes(
     generate_normals: bool = True,
     generate_tangents: bool = True,
     fill_vertex_colours: bool = True,
+    recalculate_skeleton_hashes: bool = False,
 ) -> bytes:
     from .model import Ydr
 
@@ -276,6 +286,7 @@ def build_ydr_bytes(
             prepared_materials,
             prepared_lods,
             page_counts,
+            recalculate_skeleton_hashes=recalculate_skeleton_hashes,
         )
         system_data, graphics_data, system_flags, graphics_flags = layout_resource_sections(
             system_data,
@@ -306,10 +317,22 @@ def build_ydr_bytes(
     )
 
 
-def save_ydr(source: 'YdrBuild | Ydr', destination: str | Path, *, shader_library: ShaderLibrary | None = None) -> Path:
+def save_ydr(
+    source: 'YdrBuild | Ydr',
+    destination: str | Path,
+    *,
+    shader_library: ShaderLibrary | None = None,
+    recalculate_skeleton_hashes: bool = False,
+) -> Path:
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(build_ydr_bytes(source, shader_library=shader_library))
+    target.write_bytes(
+        build_ydr_bytes(
+            source,
+            shader_library=shader_library,
+            recalculate_skeleton_hashes=recalculate_skeleton_hashes,
+        )
+    )
     return target
 
 
