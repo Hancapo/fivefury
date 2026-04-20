@@ -4,16 +4,21 @@ FiveFury is a Python library for GTA V asset workflows.
 
 It provides practical support for:
 
-- `YDR` read/write for static drawable workflows, including materials, drawable models, and lights
+- `YDR` read/write for drawable workflows, including materials, shaders, drawable models, embedded textures, embedded collisions, skeletons, skinning, rigid bone bindings, and lights
 - `YDD` read/write support for drawable dictionaries with multiple embedded drawables
-- `YCD` read support for clip dictionaries and animation metadata
+- `YCD` read/write support for clip dictionaries, animation metadata, UV animation bindings, object tracks, skeletal tracks, camera tracks, root motion, and facial samples
+- `YBN` read/write support for bounds, collision materials, geometry, BVH data, octants, and composite bounds
+- `YND` read/write support for path nodes, links, flags, area helpers, and automatic network partitioning
 - `YMAP` read/write
-- `YTYP` read/write
+- `YTYP` read/write with typed archetype, MLO, portal, room, extension, and flag helpers
+- `YTD` read/write and texture extraction helpers
 - `RPF7 OPEN` archives and nested `.rpf`
 - `ZIP -> RPF`, `RPF -> ZIP`, and `RPF -> folder`
 - opening encrypted standalone `.rpf` files without preloading game keys
 - fast asset indexing with `GameFileCache`
 - texture extraction from `YTD`, `GTXD` parent chains and embedded dictionaries in `YDR`, `YDD`, `YFT` and `YPT`
+- shared `RSC7`, `META`, hashing, and binary helper layers used by the resource formats
+- optional native acceleration for heavier bounds and archive operations when the compiled extension is available
 
 ## Installation
 
@@ -38,6 +43,8 @@ The preferred high-level authoring style is now:
 - `build()` to normalize derived state before serialization
 - `validate()` to collect consistency issues
 
+Enums are preferred where the game format has stable names: shaders, LODs, render masks, archetype asset types, bound material types, YND flags, YCD track formats, and skeleton flag-name mappings all expose typed values on the public API.
+
 Some newer high-level helpers were renamed to match that convention. If you were using recent pre-release `YDR` helpers, notable renames are:
 
 - `create_bone(...)` -> `add_bone(...)`
@@ -45,6 +52,19 @@ Some newer high-level helpers were renamed to match that convention. If you were
 - `unembed_texture(...)` -> `remove_embedded_texture(...)`
 - `use_bound(...)` -> `set_bound(...)`
 - `skin_model(...)` -> `set_model_skin(...)`
+
+## Current Format Coverage
+
+This is the practical coverage exposed by the high-level API:
+
+- `YDR`: read, edit, build, and write drawable resources with materials, shaders, samplers, numeric parameters, drawable models, LODs, render masks, lights, embedded textures, embedded bounds, skeletons, skinning, rigid bone bindings, shader inspection, and skeleton hash recalculation.
+- `YDD`: read and write drawable dictionaries, including creating a dictionary from named `YDR` drawables.
+- `YCD`: read and write clip dictionaries, preserve parsed metadata, rebuild sequence data, evaluate known track types, create UV clip bindings, and harden skeletal/object animation metadata before export.
+- `YBN` and bounds: read and write standalone collision resources, primitive bounds, composite bounds, geometry bounds, BVH bounds, octants, material names, material colors, and generated collision chunks from triangle meshes.
+- `YND`: read and write nav/path node resources, preserve node/link metadata, use typed flags/enums, compute area IDs from positions, and split a high-level node network into per-area `YND` resources.
+- `YMAP` and `YTYP`: author entities, car generators, timecycle modifiers, occluders, archetypes, extensions, MLO structures, flags, and typed asset metadata.
+- `YTD`: read and write texture dictionaries, preserve resource texture payloads, and extract textures through cache and embedded-asset helpers.
+- `RPF`: create, read, extract, convert, and pack archives, including nested `.rpf` directories and standalone resource extraction.
 
 ## Quick Start
 
@@ -98,14 +118,14 @@ for cg in ymap.car_generators:
 ### Create a YTYP
 
 ```python
-from fivefury import Archetype, ParticleEffectExtension, Ytyp
+from fivefury import Archetype, ArchetypeAssetType, ParticleEffectExtension, Ytyp
 
 ytyp = Ytyp(name="example_types")
 
 archetype = Archetype(
     name="prop_tree_pine_01",
     lod_dist=150.0,
-    asset_type=0,
+    asset_type=ArchetypeAssetType.DRAWABLE,
     bb_min=(-1.5, -1.5, -0.5),
     bb_max=(1.5, 1.5, 8.0),
     bs_centre=(0.0, 0.0, 3.5),
@@ -241,6 +261,7 @@ FiveFury exposes:
 - editable material shaders, samplers, and numeric parameters
 - embedded texture helpers through `add_embedded_texture(...)` and `remove_embedded_texture(...)`
 - embedded collision helpers through `set_bound(...)` and `clear_bound()`
+- skeleton helpers for bones, skinning, rigid bone bindings, and explicit skeleton hash recalculation
 - `build()` / `validate()` helpers for authoring flows
 
 ### Skin a YDR model declaratively
@@ -273,6 +294,54 @@ mesh.set_skin(
 print(ydr.validate())
 ydr.save("weapon_example_out.ydr")
 ```
+
+### Write skeleton hashes for animated YDRs
+
+Some animated YDRs, especially rigid object rigs where drawable models are bound to bones without vertex weights, need skeleton hash fields derived from bone tags, flags, and transforms. FiveFury preserves existing values by default for safe read/edit/write roundtrips. When authoring a skeleton from scratch, opt in explicitly:
+
+```python
+from fivefury import YdrBoneFlags, YdrSkeleton, YdrSkeletonBinding, create_ydr
+
+skeleton = YdrSkeleton.create()
+root = skeleton.add_bone(
+    "root",
+    tag=0,
+    flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
+)
+skeleton.add_bone(
+    "moving_part",
+    parent=root,
+    tag=1,
+    flags=YdrBoneFlags.ROT_X | YdrBoneFlags.TRANS_Y,
+    translation=(0.0, 0.25, 0.0),
+)
+skeleton.build()
+
+build = create_ydr(
+    meshes=[...],
+    material_textures={"DiffuseSampler": "animated_prop_d"},
+    skeleton=skeleton,
+    skeleton_binding=YdrSkeletonBinding.rigid(bone_index=0),
+    name="animated_prop",
+)
+
+# Recalculate only for this write. The in-memory skeleton is not mutated.
+build.save("animated_prop.ydr", recalculate_skeleton_hashes=True)
+```
+
+If you want to store the values on the skeleton object before writing:
+
+```python
+from fivefury import calculate_skeleton_unknown_hashes
+
+hashes = calculate_skeleton_unknown_hashes(skeleton)
+print(hashes)
+
+skeleton.recalculate_unknown_hashes()
+build.save("animated_prop.ydr")
+```
+
+The formal flag-name mapping used by the hash helper is exposed through `YdrBoneFlagName` and `skeleton_bone_flag_names(...)`.
 
 ### Create a simple YDR
 
@@ -315,6 +384,28 @@ obj_to_ydr(
 
 This can also emit a companion `YTYP` with lowercase naming and `textureDictionary` set to `<model>_txd`.
 
+### Inspect and choose YDR shaders
+
+```python
+from fivefury import YdrShader, print_ydr_shader_info, read_ydr
+
+print_ydr_shader_info(YdrShader.NORMAL_SPEC_CUTOUT)
+
+ydr = read_ydr("prop_example.ydr")
+ydr.update_material(
+    0,
+    shader=YdrShader.NORMAL_SPEC_CUTOUT,
+    textures={
+        "DiffuseSampler": "prop_example_d",
+        "BumpSampler": "prop_example_n",
+        "SpecSampler": "prop_example_s",
+    },
+)
+ydr.save("prop_example_cutout.ydr")
+```
+
+`YdrShader` is generated from the bundled shader definitions, so IDEs can autocomplete known `.sps` names. Shader info helpers expose render bucket, vertex layout, texture slots, and numeric parameters. If an authoring path provides `SpecularSampler`, FiveFury normalizes it to the drawable slot name `SpecSampler`.
+
 ### Read and write a YDD
 
 ```python
@@ -330,9 +421,48 @@ out = Ydd.from_drawables({ydd.drawables[0].name: ydd.drawables[0].drawable}, ver
 out.save("single_drawable.ydd")
 ```
 
+## YBN and Bounds
+
+### Create primitive bounds
+
+```python
+from fivefury import BoundBox, BoundMaterialType, Ybn
+
+bound = BoundBox.from_center_size(
+    center=(0.0, 0.0, 1.0),
+    size=(4.0, 4.0, 2.0),
+    material_index=BoundMaterialType.CONCRETE,
+)
+
+ybn = Ybn.from_bound(bound)
+print(ybn.validate())
+ybn.save("simple_collision.ybn")
+```
+
+Primitive helpers are available for `BoundSphere`, `BoundBox`, `BoundDisc`, `BoundCylinder`, and `BoundCloth`. Material indices accept `BoundMaterialType` enum values instead of requiring raw integers.
+
+### Build collision from triangles
+
+```python
+from fivefury import BoundMaterial, BoundMaterialType, build_bound_from_triangles, save_ybn
+
+triangles = [
+    ((0.0, 0.0, 0.0), (4.0, 0.0, 0.0), (0.0, 4.0, 0.0)),
+    ((4.0, 0.0, 0.0), (4.0, 4.0, 0.0), (0.0, 4.0, 0.0)),
+]
+
+bound = build_bound_from_triangles(
+    triangles,
+    material=BoundMaterial(type=BoundMaterialType.CONCRETE),
+)
+save_ybn(bound, "floor_collision.ybn")
+```
+
+Generated geometry is chunked when needed, gets BVH data, and includes octants for `BoundGeometry` children. The same bounds model is used by standalone `YBN` files and embedded `YDR` collisions.
+
 ## YCD
 
-### Read a YCD clip dictionary
+### Read and write a YCD clip dictionary
 
 ```python
 from fivefury import read_ycd
@@ -343,7 +473,43 @@ print(len(ycd.clips))
 print(len(ycd.animations))
 print(ycd.clips[0].short_name)
 print(ycd.animations[0].duration)
+
+ycd.build()
+ycd.save("maude_mcs_1-0_roundtrip.ycd")
 ```
+
+FiveFury preserves parsed clip and animation metadata, rebuilds sequence data through typed channels, and hardens known skeletal/object animation fields before export. UV clips use the runtime binding convention `<object>_uv_<slot_index>` and `MetaHash(object) + slot_index + 1`.
+
+### Create or inspect UV clip bindings
+
+```python
+from fivefury import build_ycd_uv_clip_hash, build_ycd_uv_clip_name, create_ycd_uv_clip
+
+clip_name = build_ycd_uv_clip_name("prop_sign", 0)
+clip_hash = build_ycd_uv_clip_hash("prop_sign", 0)
+clip = create_ycd_uv_clip(object_name="prop_sign", slot_index=0, start_time=0.0, end_time=1.0)
+
+print(clip_name, clip_hash, clip.short_name)
+```
+
+## YND
+
+### Build path nodes and partition by area
+
+```python
+from fivefury import YndLink, YndNetwork, YndNode
+
+node_a = YndNode(key="a", position=(0.0, 0.0, 0.0))
+node_b = YndNode(key="b", position=(600.0, 0.0, 0.0))
+
+node_a.links.append(YndLink(target_key="b"))
+node_b.links.append(YndLink(target_key="a"))
+
+for ynd in YndNetwork.from_nodes([node_a, node_b]).build_ynds():
+    ynd.save(f"nodes_{ynd.area_id}.ynd")
+```
+
+`YndNetwork` computes each node's `area_id` from its world position, assigns local node IDs per area, and resolves links by `target_key`. Use `Ynd.from_nodes(...)` directly when you already know all nodes belong to one area.
 
 ## GameFileCache
 
