@@ -7,11 +7,18 @@ from typing import Any
 from ..metahash import HashLike, MetaHash
 
 from .archetypes import ArchetypeAssetType, BaseArchetypeDef, TimeArchetypeDef
+from .flags import TimeArchetypeFlags
 from .mlo import MloArchetypeDef
 from .model import Ytyp
 
 
-def time_flags(start: int, end: int, *, invert: bool = False) -> int:
+def time_flags(
+    start: int,
+    end: int,
+    *,
+    invert: bool = False,
+    flip_while_visible: bool = False,
+) -> TimeArchetypeFlags:
     """Build a 24-bit ``time_flags`` mask from an hour range.
 
     Hours use a 24h clock (0-23).  The range wraps around midnight::
@@ -24,21 +31,26 @@ def time_flags(start: int, end: int, *, invert: bool = False) -> int:
 
         time_flags(13, 18, invert=True)  # hidden 13:00-17:59
 
-    Returns an ``int`` ready for :attr:`TimeArchetypeDef.time_flags`.
+    Set *flip_while_visible* to include the extra `CTimeInfo` bit 24.
+
+    Returns a :class:`TimeArchetypeFlags` ready for :attr:`TimeArchetypeDef.time_flags`.
     """
     if start < 0 or end < 0 or start > 24 or end > 24:
         raise ValueError("Hours must be between 0 and 24")
     start_h = start % 24
     end_h = end % 24
     if start == end or (start_h == 0 and end == 24):
-        mask = 0xFFFFFF
+        mask = int(TimeArchetypeFlags.ALL_HOURS)
     elif start_h < end_h:
         mask = sum(1 << h for h in range(start_h, end_h))
     else:
         mask = sum(1 << h for h in range(start_h, 24)) | sum(1 << h for h in range(0, end_h))
     if invert:
-        mask = 0xFFFFFF & ~mask
-    return mask
+        mask = int(TimeArchetypeFlags.ALL_HOURS) & ~mask
+    flags = TimeArchetypeFlags(mask)
+    if flip_while_visible:
+        flags |= TimeArchetypeFlags.FLIP_WHILE_VISIBLE
+    return flags
 
 
 def _coerce_ytyp_source(source: Ytyp | bytes | str | Path) -> Ytyp:

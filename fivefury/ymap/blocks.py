@@ -6,6 +6,7 @@ from typing import Any
 
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+from .enums import YmapCarGenFlags, coerce_ymap_cargen_flags
 
 
 @dataclasses.dataclass(slots=True)
@@ -170,13 +171,16 @@ class CarGen(MetaHashFieldsMixin):
     orient_y: float = 0.0
     perpendicular_length: float = 0.0
     car_model: MetaHash | HashLike = 0
-    flags: int = 0
+    flags: YmapCarGenFlags | int = YmapCarGenFlags.NONE
     body_color_remap1: int = -1
     body_color_remap2: int = -1
     body_color_remap3: int = -1
     body_color_remap4: int = -1
     pop_group: MetaHash | HashLike = 0
     livery: int = -1
+
+    def __post_init__(self) -> None:
+        self.flags = coerce_ymap_cargen_flags(self.flags)
 
     def to_meta(self) -> dict[str, Any]:
         return {
@@ -185,7 +189,7 @@ class CarGen(MetaHashFieldsMixin):
             "orientY": self.orient_y,
             "perpendicularLength": self.perpendicular_length,
             "carModel": self.car_model,
-            "flags": self.flags,
+            "flags": int(self.flags),
             "bodyColorRemap1": self.body_color_remap1,
             "bodyColorRemap2": self.body_color_remap2,
             "bodyColorRemap3": self.body_color_remap3,
@@ -203,7 +207,7 @@ class CarGen(MetaHashFieldsMixin):
             orient_y=float(value.get("orientY", 0.0)),
             perpendicular_length=float(value.get("perpendicularLength", 0.0)),
             car_model=value.get("carModel", 0),
-            flags=int(value.get("flags", 0)),
+            flags=coerce_ymap_cargen_flags(int(value.get("flags", 0))),
             body_color_remap1=int(value.get("bodyColorRemap1", -1)),
             body_color_remap2=int(value.get("bodyColorRemap2", -1)),
             body_color_remap3=int(value.get("bodyColorRemap3", -1)),
@@ -246,7 +250,7 @@ class CarGen(MetaHashFieldsMixin):
         heading: float = 0.0,
         *,
         perpendicular_length: float = 2.6,
-        flags: int = 0,
+        flags: YmapCarGenFlags | int = YmapCarGenFlags.NONE,
         body_colors: tuple[int, ...] = (-1, -1, -1, -1),
         pop_group: HashLike = 0,
         livery: int = -1,

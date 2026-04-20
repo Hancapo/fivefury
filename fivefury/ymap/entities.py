@@ -6,6 +6,16 @@ from typing import Any
 from ..extensions import extensions_from_meta, extensions_to_meta
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+from .enums import (
+    YmapEntityFlags,
+    YmapLodLevel,
+    YmapMloInstanceFlags,
+    YmapPriorityLevel,
+    coerce_ymap_entity_flags,
+    coerce_ymap_lod_level,
+    coerce_ymap_mlo_instance_flags,
+    coerce_ymap_priority_level,
+)
 
 
 @dataclasses.dataclass(slots=True)
@@ -13,7 +23,7 @@ class EntityDef(MetaHashFieldsMixin):
     _hash_fields = ("archetype_name",)
 
     archetype_name: MetaHash | HashLike = 0
-    flags: int = 0
+    flags: YmapEntityFlags | int = YmapEntityFlags.NONE
     guid: int = 0
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
@@ -22,13 +32,18 @@ class EntityDef(MetaHashFieldsMixin):
     parent_index: int = -1
     lod_dist: float = 0.0
     child_lod_dist: float = 0.0
-    lod_level: int = 0
+    lod_level: YmapLodLevel | int = YmapLodLevel.DEPTH_HD
     num_children: int = 0
-    priority_level: int = 0
+    priority_level: YmapPriorityLevel | int = YmapPriorityLevel.REQUIRED
     extensions: list[Any] = dataclasses.field(default_factory=list)
     ambient_occlusion_multiplier: int = 255
     artificial_ambient_occlusion: int = 255
     tint_value: int = 0
+
+    def __post_init__(self) -> None:
+        self.flags = coerce_ymap_entity_flags(self.flags)
+        self.lod_level = coerce_ymap_lod_level(self.lod_level)
+        self.priority_level = coerce_ymap_priority_level(self.priority_level)
 
     def add_extension(self, extension: Any) -> Any:
         self.extensions.append(extension)
@@ -37,7 +52,7 @@ class EntityDef(MetaHashFieldsMixin):
     def to_meta(self) -> dict[str, Any]:
         return {
             "archetypeName": self.archetype_name,
-            "flags": self.flags,
+            "flags": int(self.flags),
             "guid": self.guid,
             "position": self.position,
             "rotation": self.rotation,
@@ -46,9 +61,9 @@ class EntityDef(MetaHashFieldsMixin):
             "parentIndex": self.parent_index,
             "lodDist": self.lod_dist,
             "childLodDist": self.child_lod_dist,
-            "lodLevel": self.lod_level,
+            "lodLevel": int(self.lod_level),
             "numChildren": self.num_children,
-            "priorityLevel": self.priority_level,
+            "priorityLevel": int(self.priority_level),
             "extensions": extensions_to_meta(self.extensions),
             "ambientOcclusionMultiplier": self.ambient_occlusion_multiplier,
             "artificialAmbientOcclusion": self.artificial_ambient_occlusion,
@@ -60,7 +75,7 @@ class EntityDef(MetaHashFieldsMixin):
     def from_meta(cls, value: Any) -> "EntityDef":
         return cls(
             archetype_name=value.get("archetypeName", 0),
-            flags=int(value.get("flags", 0)),
+            flags=coerce_ymap_entity_flags(int(value.get("flags", 0))),
             guid=int(value.get("guid", 0)),
             position=tuple(value.get("position", (0.0, 0.0, 0.0))),
             rotation=tuple(value.get("rotation", (0.0, 0.0, 0.0, 1.0))),
@@ -69,9 +84,9 @@ class EntityDef(MetaHashFieldsMixin):
             parent_index=int(value.get("parentIndex", -1)),
             lod_dist=float(value.get("lodDist", 0.0)),
             child_lod_dist=float(value.get("childLodDist", 0.0)),
-            lod_level=int(value.get("lodLevel", 0)),
+            lod_level=coerce_ymap_lod_level(int(value.get("lodLevel", 0))),
             num_children=int(value.get("numChildren", 0)),
-            priority_level=int(value.get("priorityLevel", 0)),
+            priority_level=coerce_ymap_priority_level(int(value.get("priorityLevel", 0))),
             extensions=extensions_from_meta(value.get("extensions", []) or []),
             ambient_occlusion_multiplier=int(value.get("ambientOcclusionMultiplier", 255)),
             artificial_ambient_occlusion=int(value.get("artificialAmbientOcclusion", 255)),
@@ -87,7 +102,11 @@ class MloInstanceDef(EntityDef):
     floor_id: int = 0
     default_entity_sets: list[MetaHash | HashLike] = dataclasses.field(default_factory=list)
     num_exit_portals: int = 0
-    mlo_inst_flags: int = 0
+    mlo_inst_flags: YmapMloInstanceFlags | int = YmapMloInstanceFlags.NONE
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.mlo_inst_flags = coerce_ymap_mlo_instance_flags(self.mlo_inst_flags)
 
     def to_meta(self) -> dict[str, Any]:
         data = super().to_meta()
@@ -97,7 +116,7 @@ class MloInstanceDef(EntityDef):
                 "floorId": self.floor_id,
                 "defaultEntitySets": self.default_entity_sets,
                 "numExitPortals": self.num_exit_portals,
-                "MLOInstflags": self.mlo_inst_flags,
+                "MLOInstflags": int(self.mlo_inst_flags),
                 "_meta_name_hash": meta_name("CMloInstanceDef"),
             }
         )
@@ -128,5 +147,5 @@ class MloInstanceDef(EntityDef):
             floor_id=int(value.get("floorId", 0)),
             default_entity_sets=list(value.get("defaultEntitySets", []) or []),
             num_exit_portals=int(value.get("numExitPortals", 0)),
-            mlo_inst_flags=int(value.get("MLOInstflags", 0)),
+            mlo_inst_flags=coerce_ymap_mlo_instance_flags(int(value.get("MLOInstflags", 0))),
         )

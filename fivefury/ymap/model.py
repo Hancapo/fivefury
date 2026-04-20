@@ -10,6 +10,13 @@ from ..meta.defs import meta_name
 from ..resource import build_rsc7
 from .blocks import BlockDesc, CarGen, ContainerLodDef, TimeCycleModifier
 from .entities import EntityDef, MloInstanceDef
+from .enums import (
+    YmapContentFlags,
+    YmapFlags,
+    YmapLodLevel,
+    coerce_ymap_content_flags,
+    coerce_ymap_flags,
+)
 from .surfaces import (
     AngleMode,
     BoxOccluder,
@@ -111,8 +118,8 @@ class Ymap(MetaHashFieldsMixin):
 
     name: MetaHash | HashLike = 0
     parent: MetaHash | HashLike = 0
-    flags: int = 0
-    content_flags: int = 0
+    flags: YmapFlags | int = YmapFlags.NONE
+    content_flags: YmapContentFlags | int = YmapContentFlags.NONE
     streaming_extents_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
     streaming_extents_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
     entities_extents_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -132,6 +139,8 @@ class Ymap(MetaHashFieldsMixin):
 
     def __post_init__(self) -> None:
         self.name = _ensure_base_name(self.name, ".ymap")
+        self.flags = coerce_ymap_flags(self.flags)
+        self.content_flags = coerce_ymap_content_flags(self.content_flags)
 
     @property
     def resource_name(self) -> str:
@@ -357,40 +366,43 @@ class Ymap(MetaHashFieldsMixin):
         return self
 
     def recalculate_flags(self) -> "Ymap":
-        flags = 0
-        content_flags = 0
+        flags = YmapFlags.NONE
+        content_flags = YmapContentFlags.NONE
 
         for entity in self.entities:
-            lod_level = int(getattr(entity, "lod_level", 0) or 0)
-            if lod_level in (0, 5):
-                content_flags |= 1
-            elif lod_level == 1:
-                content_flags |= 2
-                flags |= 2
-            elif lod_level == 2:
-                content_flags |= 16
-                flags |= 2
-            elif lod_level in (3, 4, 6):
-                content_flags |= 4 | 16
-                flags |= 2
+            lod_level = YmapLodLevel(int(getattr(entity, "lod_level", YmapLodLevel.DEPTH_HD) or 0))
+            if lod_level in (YmapLodLevel.DEPTH_HD, YmapLodLevel.DEPTH_ORPHANHD):
+                content_flags |= YmapContentFlags.ENTITIES_HD
+            elif lod_level == YmapLodLevel.DEPTH_LOD:
+                content_flags |= YmapContentFlags.ENTITIES_LOD
+                flags |= YmapFlags.HAS_LODS
+            elif lod_level == YmapLodLevel.DEPTH_SLOD1:
+                content_flags |= YmapContentFlags.ENTITIES_CRITICAL
+                flags |= YmapFlags.HAS_LODS
+            elif lod_level in (YmapLodLevel.DEPTH_SLOD2, YmapLodLevel.DEPTH_SLOD3, YmapLodLevel.DEPTH_SLOD4):
+                content_flags |= YmapContentFlags.ENTITIES_CONTAINER_LOD | YmapContentFlags.ENTITIES_CRITICAL
+                flags |= YmapFlags.HAS_LODS
 
             if isinstance(entity, MloInstanceDef) or getattr(entity, "_meta_name", "") == "CMloInstanceDef":
-                content_flags |= 8
+                content_flags |= YmapContentFlags.MLO
+
+        if self.block.version or self.block.flags or self.block.name or self.block.exported_by or self.block.owner or self.block.time:
+            content_flags |= YmapContentFlags.BLOCKINFO
 
         if self.physics_dictionaries:
-            content_flags |= 64
+            content_flags |= YmapContentFlags.ENTITIES_USING_PHYSICS
         if isinstance(self.instanced_data, InstancedMapData) and self.instanced_data.grass_instance_list:
-            content_flags |= 1024
+            content_flags |= YmapContentFlags.INSTANCE_LIST
         if isinstance(self.lod_lights, LodLightsSoa) and len(self.lod_lights) > 0:
-            content_flags |= 128
+            content_flags |= YmapContentFlags.LOD_LIGHTS
         if isinstance(self.distant_lod_lights, DistantLodLightsSoa) and len(self.distant_lod_lights) > 0:
-            flags |= 2
-            content_flags |= 256
+            flags |= YmapFlags.HAS_LODS
+            content_flags |= YmapContentFlags.DISTANT_LOD_LIGHTS
         if self.box_occluders or self.occlude_models:
-            content_flags |= 32
+            content_flags |= YmapContentFlags.OCCLUDER
 
-        self.flags = int(flags)
-        self.content_flags = int(content_flags)
+        self.flags = flags
+        self.content_flags = content_flags
         return self
 
     def build(self, *, auto_extents: bool = False, auto_flags: bool = True) -> "Ymap":
@@ -411,8 +423,8 @@ class Ymap(MetaHashFieldsMixin):
         return {
             "name": self.name,
             "parent": self.parent,
-            "flags": self.flags,
-            "contentFlags": self.content_flags,
+            "flags": int(self.flags),
+            "contentFlags": int(self.content_flags),
             "streamingExtentsMin": self.streaming_extents_min,
             "streamingExtentsMax": self.streaming_extents_max,
             "entitiesExtentsMin": self.entities_extents_min,
@@ -497,8 +509,8 @@ class Ymap(MetaHashFieldsMixin):
         return cls(
             name=root.get("name", 0),
             parent=root.get("parent", 0),
-            flags=int(root.get("flags", 0)),
-            content_flags=int(root.get("contentFlags", 0)),
+            flags=coerce_ymap_flags(int(root.get("flags", 0))),
+            content_flags=coerce_ymap_content_flags(int(root.get("contentFlags", 0))),
             streaming_extents_min=tuple(root.get("streamingExtentsMin", (0.0, 0.0, 0.0))),
             streaming_extents_max=tuple(root.get("streamingExtentsMax", (0.0, 0.0, 0.0))),
             entities_extents_min=tuple(root.get("entitiesExtentsMin", (0.0, 0.0, 0.0))),

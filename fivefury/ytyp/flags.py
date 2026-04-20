@@ -40,6 +40,39 @@ class ArchetypeFlags(IntFlag):
     HAS_ALPHA_SHADOW = 1 << 31
 
 
+class TimeArchetypeFlags(IntFlag):
+    """Flags for ``CTimeArchetypeDef.m_timeFlags`` / ``CTimeInfo.m_hoursOnOff``."""
+
+    NONE = 0
+    HOUR_00 = 1 << 0
+    HOUR_01 = 1 << 1
+    HOUR_02 = 1 << 2
+    HOUR_03 = 1 << 3
+    HOUR_04 = 1 << 4
+    HOUR_05 = 1 << 5
+    HOUR_06 = 1 << 6
+    HOUR_07 = 1 << 7
+    HOUR_08 = 1 << 8
+    HOUR_09 = 1 << 9
+    HOUR_10 = 1 << 10
+    HOUR_11 = 1 << 11
+    HOUR_12 = 1 << 12
+    HOUR_13 = 1 << 13
+    HOUR_14 = 1 << 14
+    HOUR_15 = 1 << 15
+    HOUR_16 = 1 << 16
+    HOUR_17 = 1 << 17
+    HOUR_18 = 1 << 18
+    HOUR_19 = 1 << 19
+    HOUR_20 = 1 << 20
+    HOUR_21 = 1 << 21
+    HOUR_22 = 1 << 22
+    HOUR_23 = 1 << 23
+    ALL_HOURS = (1 << 24) - 1
+    HOUR_BITMASK = ALL_HOURS
+    FLIP_WHILE_VISIBLE = 1 << 24
+
+
 class MloInteriorFlags(IntFlag):
     """Flags for CMloArchetypeDef ``mlo_flags`` field."""
 
@@ -103,4 +136,5 @@ __all__ = [
     "MloInteriorFlags",
     "PortalFlags",
     "RoomFlags",
+    "TimeArchetypeFlags",
 ]

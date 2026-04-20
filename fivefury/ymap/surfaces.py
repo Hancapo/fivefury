@@ -10,6 +10,12 @@ from ..hashing import jenk_hash
 from ..meta import MetaFieldInfo, MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
+from .enums import (
+    YmapLodLightCategory,
+    YmapLodLightType,
+    coerce_ymap_lod_light_category,
+    coerce_ymap_lod_light_type,
+)
 
 
 BATCH_VERT_MULTIPLIER = 0.00001525878
@@ -462,20 +468,61 @@ class LodLight:
     rgbi: int = 0
 
     @property
-    def light_type(self) -> int:
-        return (self.time_and_state_flags >> 26) & 7
+    def light_type(self) -> YmapLodLightType:
+        return coerce_ymap_lod_light_type((self.time_and_state_flags >> 26) & 0x1F)
+
+    @light_type.setter
+    def light_type(self, value: int | YmapLodLightType) -> None:
+        light_type = coerce_ymap_lod_light_type(value)
+        self.time_and_state_flags = (self.time_and_state_flags & 0x83FFFFFF) | ((int(light_type) & 0x1F) << 26)
 
     @property
     def time_flags(self) -> int:
         return self.time_and_state_flags & 0xFFFFFF
 
+    @time_flags.setter
+    def time_flags(self, value: int) -> None:
+        self.time_and_state_flags = (self.time_and_state_flags & 0xFF000000) | (int(value) & 0xFFFFFF)
+
     @property
     def state_flags_1(self) -> int:
         return (self.time_and_state_flags >> 24) & 3
 
+    @state_flags_1.setter
+    def state_flags_1(self, value: int) -> None:
+        self.time_and_state_flags = (self.time_and_state_flags & 0xFCFFFFFF) | ((int(value) & 3) << 24)
+
     @property
     def state_flags_2(self) -> int:
-        return (self.time_and_state_flags >> 29) & 7
+        return (self.time_and_state_flags >> 31) & 1
+
+    @state_flags_2.setter
+    def state_flags_2(self, value: int) -> None:
+        self.time_and_state_flags = (self.time_and_state_flags & 0x7FFFFFFF) | ((int(value) & 1) << 31)
+
+    @property
+    def is_street_light(self) -> bool:
+        return bool((self.time_and_state_flags >> 24) & 1)
+
+    @is_street_light.setter
+    def is_street_light(self, value: bool) -> None:
+        self.state_flags_1 = (self.state_flags_1 & ~0x1) | (1 if value else 0)
+
+    @property
+    def is_corona_only(self) -> bool:
+        return bool((self.time_and_state_flags >> 25) & 1)
+
+    @is_corona_only.setter
+    def is_corona_only(self, value: bool) -> None:
+        self.state_flags_1 = (self.state_flags_1 & ~0x2) | (0x2 if value else 0)
+
+    @property
+    def dont_use_in_cutscene(self) -> bool:
+        return bool(self.state_flags_2)
+
+    @dont_use_in_cutscene.setter
+    def dont_use_in_cutscene(self, value: bool) -> None:
+        self.state_flags_2 = 1 if value else 0
 
     @property
     def colour(self) -> tuple[int, int, int]:
@@ -545,7 +592,10 @@ class DistantLodLightsSoa:
     position: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
     RGBI: list[int] = dataclasses.field(default_factory=list)
     num_street_lights: int = 0
-    category: int = 0
+    category: YmapLodLightCategory | int = YmapLodLightCategory.SMALL
+
+    def __post_init__(self) -> None:
+        self.category = coerce_ymap_lod_light_category(self.category)
 
     def __len__(self) -> int:
         return len(self.position)
@@ -567,7 +617,7 @@ class DistantLodLightsSoa:
             position=[tuple(item) for item in value.get("position", []) or []],
             RGBI=[int(item) for item in value.get("RGBI", []) or []],
             num_street_lights=int(value.get("numStreetLights", 0)),
-            category=int(value.get("category", 0)),
+            category=coerce_ymap_lod_light_category(int(value.get("category", 0))),
         )
 
     def append(self, position: tuple[float, float, float], rgbi: int) -> None:
@@ -703,6 +753,4 @@ __all__ = [
     "OccludeModel",
     "YMAP_SURFACE_STRUCT_INFOS",
 ]
-
-
 

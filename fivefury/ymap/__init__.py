@@ -1,5 +1,16 @@
 from .blocks import BlockDesc, CarGen, ContainerLodDef, TimeCycleModifier
 from .defs import YMAP_ENUM_INFOS, YMAP_STRUCT_INFOS
+from .enums import (
+    YmapCarGenFlags,
+    YmapContentFlags,
+    YmapEntityFlags,
+    YmapFlags,
+    YmapLodLevel,
+    YmapLodLightCategory,
+    YmapLodLightType,
+    YmapMloInstanceFlags,
+    YmapPriorityLevel,
+)
 from .entities import EntityDef, MloInstanceDef
 from .model import Ymap, _suggest_resource_path, read_ymap, save_ymap
 from .surfaces import (
@@ -41,6 +52,15 @@ __all__ = [
     "MloInstanceDef",
     "OccludeModel",
     "TimeCycleModifier",
+    "YmapCarGenFlags",
+    "YmapContentFlags",
+    "YmapEntityFlags",
+    "YmapFlags",
+    "YmapLodLevel",
+    "YmapLodLightCategory",
+    "YmapLodLightType",
+    "YmapMloInstanceFlags",
+    "YmapPriorityLevel",
     "YMAP_ENUM_INFOS",
     "YMAP_STRUCT_INFOS",
     "Ymap",
