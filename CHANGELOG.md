@@ -7,6 +7,15 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.46]
+
+### Changed
+- `YMAP` `LOD lights` generation now normalizes paired `LODLightsSOA` and `DistantLODLightsSOA` data before writing, ensuring street lights occupy the leading prefix required by the runtime and automatically recalculating `numStreetLights`.
+- High-level `YMAP` `LOD light` authoring now accepts semantic angle, capsule, color, and corona-intensity inputs and packs them into the byte ranges used by the game instead of forcing callers to provide raw packed values.
+
+### Fixed
+- `YMAP` validation and build paths now catch mismatched `LODLightsSOA`/`DistantLODLightsSOA` counts and invalid street-light partitioning before serialization, reducing malformed `LOD light` outputs.
+
 ## [0.1.45]
 
 ### Added
