@@ -20,6 +20,7 @@ from .sequence_channels import (
     channel_frame_bits,
 )
 from .sequence_tracks import YcdAnimationTrack
+from .sequence_tracks import is_ycd_object_track, is_ycd_uv_track
 
 
 class _ChannelDataReader:
@@ -279,7 +280,7 @@ def _min_quantized_value(values: list[float], quantum: float, offset: float) -> 
 
 
 def _sanitize_quantize_channel(channel: YcdQuantizeFloatChannel, track: int | None) -> None:
-    if track in (int(YcdAnimationTrack.SHADER_SLIDE_U), int(YcdAnimationTrack.SHADER_SLIDE_V)):
+    if track is not None and (is_ycd_uv_track(int(track)) or is_ycd_object_track(int(track))):
         return
 
     values = [float(value) for value in channel.values]
@@ -337,7 +338,7 @@ def _normalize_anim_sequence_channels(anim_sequences: list[YcdAnimSequence]) -> 
             next_index += int(channel.component_count)
 
 
-def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter) -> None:
+def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter, track: int | None) -> None:
     if isinstance(channel, YcdStaticFloatChannel):
         writer.write_single(channel.value)
         return
@@ -355,7 +356,11 @@ def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter) -> None:
             for index in range(writer.num_frames)
         ]
         channel.value_list = values
-        channel.value_bits = max(writer.bit_count_values(values), 1)
+        computed_value_bits = max(writer.bit_count_values(values), 1)
+        if track is not None and is_ycd_object_track(int(track)) and int(channel.value_bits) > computed_value_bits:
+            channel.value_bits = int(channel.value_bits)
+        else:
+            channel.value_bits = computed_value_bits
         writer.write_int32(channel.value_bits)
         writer.write_single(channel.quantum)
         writer.write_single(channel.offset)
@@ -534,7 +539,7 @@ def build_sequence_data(sequence: object) -> bytes:
             channel_data_bits = int(encoded_index) + (int(channel.sequence_index) << 2)
             writer.write_channel_item_data(channel_data_bits)
             channel.data_offset = writer.position // 4
-            _write_channel(channel, writer)
+            _write_channel(channel, writer, track)
         writer.align_channel_item_data(len(channels), len(anim_sequences))
 
     for frame in range(num_frames):

@@ -7,6 +7,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.44]
+
+### Fixed
+- `YCD` object-track `QuantizeFloat` channels now keep their existing quantization metadata during export instead of being sanitized and recomputed like generic tracks, preventing valid object quaternion/object transform clips from collapsing from `17/18` bit layouts down to `16` bits.
+- `YCD` export no longer applies the non-UV quantization sanitizer to object tracks, matching the workaround previously required by downstream tools and preserving known-good object animation ranges more faithfully.
+- Added regression coverage for object-track quantization so future writer changes cannot silently reintroduce the metadata collapse seen in converted `good`/`bad` binary comparisons.
+
 ## [0.1.43]
 
 ### Fixed

@@ -666,7 +666,7 @@ def test_ycd_bone_id_format_defaults_from_track() -> None:
 def test_ycd_writer_sanitizes_non_uv_quantize_overflow() -> None:
     values_z = [0.0, 0.5, 1.0]
     values_w = [-1.0, 0.0, 1.0]
-    bone = YcdAnimationBoneId(bone_id=1234, track=YcdAnimationTrack.BONE_ROTATION)
+    bone = YcdAnimationBoneId(bone_id=1234, track=YcdAnimationTrack.MOVER_ROTATION)
     animation = YcdAnimation(
         hash=MetaHash("quantize_overflow_test"),
         frames=3,
@@ -737,6 +737,81 @@ def test_ycd_writer_sanitizes_non_uv_quantize_overflow() -> None:
     assert all(channel.value_bits <= 16 for channel in rebuilt_quantized)
     assert rebuilt_quantized[0].values == pytest.approx(values_z, abs=1e-5)
     assert rebuilt_quantized[1].values == pytest.approx(values_w, abs=2e-5)
+
+
+def test_ycd_writer_preserves_object_quantize_metadata() -> None:
+    values_z = [0.0, 0.5, 1.0]
+    values_w = [-1.0, 0.0, 1.0]
+    bone = YcdAnimationBoneId(bone_id=20761, track=YcdAnimationTrack.BONE_ROTATION)
+    animation = YcdAnimation(
+        hash=MetaHash("object_quantize_preserve_test"),
+        frames=3,
+        sequence_frame_limit=3,
+        duration=0.1,
+        usage_count=1,
+        sequence_count=1,
+        bone_id_count=1,
+        sequences=[
+            YcdSequence(
+                hash=MetaHash("object_quantize_preserve_test_seq"),
+                data_length=0,
+                frame_offset=0,
+                root_motion_refs_offset=0,
+                num_frames=3,
+                frame_length=0,
+                indirect_quantize_float_num_ints=0,
+                quantize_float_value_bits=0,
+                chunk_size=0,
+                root_motion_ref_counts=0,
+                raw_data=b"",
+                anim_sequences=[
+                    YcdAnimSequence(
+                        bone_id=bone,
+                        channels=[
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
+                            YcdQuantizeFloatChannel(
+                                channel_type=YcdChannelType.QUANTIZE_FLOAT,
+                                channel_index=2,
+                                value_bits=17,
+                                quantum=1.0 / 32768.0,
+                                offset=0.0,
+                                values=values_z,
+                            ),
+                            YcdQuantizeFloatChannel(
+                                channel_type=YcdChannelType.QUANTIZE_FLOAT,
+                                channel_index=3,
+                                value_bits=18,
+                                quantum=1.0 / 65536.0,
+                                offset=-1.0,
+                                values=values_w,
+                            ),
+                        ],
+                    )
+                ],
+            )
+        ],
+        bone_ids=[bone],
+    )
+
+    ycd = Ycd(
+        header=read_ycd(YCD_PATH).header,
+        clips=[],
+        animations=[animation],
+        path="object_quantize_preserve_test.ycd",
+    )
+
+    rebuilt = read_ycd(build_ycd_bytes(ycd))
+    rebuilt_quantized = [
+        channel
+        for channel in rebuilt.animations[0].sequences[0].anim_sequences[0].channels
+        if isinstance(channel, YcdQuantizeFloatChannel)
+    ]
+
+    assert rebuilt_quantized[0].value_bits == 17
+    assert rebuilt_quantized[1].value_bits == 18
+    assert rebuilt_quantized[0].quantum == pytest.approx(1.0 / 32768.0)
+    assert rebuilt_quantized[1].quantum == pytest.approx(1.0 / 65536.0)
 
 
 def test_ycd_build_derives_unknown1c_for_object_animation() -> None:
