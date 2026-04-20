@@ -302,6 +302,40 @@ class Ymap(MetaHashFieldsMixin):
             )
         return lights
 
+    def normalize_lod_lights(self) -> "Ymap":
+        lod = self.ensure_lod_lights() if self.lod_lights is not None else None
+        distant = self.ensure_distant_lod_lights() if self.distant_lod_lights is not None else None
+        lod_count = len(lod) if isinstance(lod, LodLightsSoa) else 0
+        distant_count = len(distant) if isinstance(distant, DistantLodLightsSoa) else 0
+
+        if lod_count == 0:
+            if isinstance(distant, DistantLodLightsSoa):
+                distant.clamp_street_light_count()
+            return self
+
+        if not isinstance(distant, DistantLodLightsSoa) or distant_count == 0:
+            raise ValueError("YMAP LOD lights require matching DistantLODLightsSOA entries for positions and RGBI")
+        if distant_count != lod_count:
+            raise ValueError(
+                f"YMAP LOD light count mismatch: LODLightsSOA has {lod_count} entries but DistantLODLightsSOA has {distant_count}"
+            )
+
+        ordered_lights = self.iter_lod_lights()
+        street_lights = [light for light in ordered_lights if light.is_street_light]
+        other_lights = [light for light in ordered_lights if not light.is_street_light]
+        normalized = street_lights + other_lights
+
+        normalized_lod = LodLightsSoa()
+        normalized_distant = DistantLodLightsSoa(category=distant.category)
+        for light in normalized:
+            normalized_lod.append(light)
+            normalized_distant.append(light.position, light.rgbi)
+        normalized_distant.num_street_lights = len(street_lights)
+
+        self.lod_lights = normalized_lod
+        self.distant_lod_lights = normalized_distant
+        return self
+
     def add_car_gen(self, car_gen: CarGen) -> None:
         self.car_generators.append(car_gen)
 
@@ -406,6 +440,7 @@ class Ymap(MetaHashFieldsMixin):
         return self
 
     def build(self, *, auto_extents: bool = False, auto_flags: bool = True) -> "Ymap":
+        self.normalize_lod_lights()
         if auto_extents:
             self.recalculate_extents()
         if auto_flags:
@@ -417,6 +452,25 @@ class Ymap(MetaHashFieldsMixin):
         issues: list[str] = []
         if not self.entities and not self.box_occluders and not self.occlude_models and not self.car_generators:
             issues.append("YMAP has no entities or surfaces")
+        lod_count = len(self.lod_lights) if isinstance(self.lod_lights, LodLightsSoa) else 0
+        distant_count = len(self.distant_lod_lights) if isinstance(self.distant_lod_lights, DistantLodLightsSoa) else 0
+        if lod_count > 0 and distant_count == 0:
+            issues.append("YMAP LODLightsSOA requires matching DistantLODLightsSOA entries")
+        elif lod_count > 0 and lod_count != distant_count:
+            issues.append(
+                f"YMAP LOD light count mismatch: LODLightsSOA has {lod_count} entries but DistantLODLightsSOA has {distant_count}"
+            )
+        if isinstance(self.distant_lod_lights, DistantLodLightsSoa):
+            if self.distant_lod_lights.num_street_lights > len(self.distant_lod_lights):
+                issues.append("YMAP DistantLODLightsSOA numStreetLights exceeds the distant light count")
+        if lod_count > 0 and distant_count == lod_count:
+            seen_non_street = False
+            for light in self.iter_lod_lights():
+                if light.is_street_light and seen_non_street:
+                    issues.append("YMAP street lights must occupy the leading prefix of the paired LOD light arrays")
+                    break
+                if not light.is_street_light:
+                    seen_non_street = True
         return issues
 
     def to_meta_root(self) -> dict[str, Any]:

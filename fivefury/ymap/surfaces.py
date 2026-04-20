@@ -19,6 +19,9 @@ from .enums import (
 
 
 BATCH_VERT_MULTIPLIER = 0.00001525878
+MAX_LOD_LIGHT_CONE_ANGLE = 180.0
+MAX_LOD_LIGHT_CORONA_INTENSITY = 32.0
+MAX_LOD_LIGHT_CAPSULE_EXTENT = 140.0
 
 def _clamp_byte(value: float | int) -> int:
     return max(0, min(255, int(round(value))))
@@ -35,6 +38,14 @@ def _pack_rgbi(colour: tuple[int, int, int], intensity: int) -> int:
 
 def _unpack_rgbi(value: int) -> tuple[tuple[int, int, int], int]:
     return ((value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF), (value >> 24) & 0xFF)
+
+
+def _pack_lod_light_u8(value: float | int, value_range: float) -> int:
+    return _clamp_byte(float(value) * (255.0 / float(value_range)))
+
+
+def _unpack_lod_light_u8(value: int, value_range: float) -> float:
+    return (int(value) & 0xFF) * (float(value_range) / 255.0)
 
 
 @dataclasses.dataclass(slots=True)
@@ -528,9 +539,49 @@ class LodLight:
     def colour(self) -> tuple[int, int, int]:
         return _unpack_rgbi(self.rgbi)[0]
 
+    @colour.setter
+    def colour(self, value: tuple[int, int, int]) -> None:
+        self.rgbi = _pack_rgbi(value, self.intensity)
+
     @property
     def intensity(self) -> int:
         return _unpack_rgbi(self.rgbi)[1]
+
+    @intensity.setter
+    def intensity(self, value: int) -> None:
+        self.rgbi = _pack_rgbi(self.colour, value)
+
+    @property
+    def cone_inner_angle_degrees(self) -> float:
+        return _unpack_lod_light_u8(self.cone_inner_angle, MAX_LOD_LIGHT_CONE_ANGLE)
+
+    @cone_inner_angle_degrees.setter
+    def cone_inner_angle_degrees(self, value: float) -> None:
+        self.cone_inner_angle = _pack_lod_light_u8(value, MAX_LOD_LIGHT_CONE_ANGLE)
+
+    @property
+    def cone_outer_angle_degrees(self) -> float:
+        return _unpack_lod_light_u8(self.cone_outer_angle_or_cap_ext, MAX_LOD_LIGHT_CONE_ANGLE)
+
+    @cone_outer_angle_degrees.setter
+    def cone_outer_angle_degrees(self, value: float) -> None:
+        self.cone_outer_angle_or_cap_ext = _pack_lod_light_u8(value, MAX_LOD_LIGHT_CONE_ANGLE)
+
+    @property
+    def capsule_extent(self) -> float:
+        return _unpack_lod_light_u8(self.cone_outer_angle_or_cap_ext, MAX_LOD_LIGHT_CAPSULE_EXTENT)
+
+    @capsule_extent.setter
+    def capsule_extent(self, value: float) -> None:
+        self.cone_outer_angle_or_cap_ext = _pack_lod_light_u8(value, MAX_LOD_LIGHT_CAPSULE_EXTENT)
+
+    @property
+    def corona_intensity_value(self) -> float:
+        return _unpack_lod_light_u8(self.corona_intensity, MAX_LOD_LIGHT_CORONA_INTENSITY)
+
+    @corona_intensity_value.setter
+    def corona_intensity_value(self, value: float) -> None:
+        self.corona_intensity = _pack_lod_light_u8(value, MAX_LOD_LIGHT_CORONA_INTENSITY)
 
 
 @dataclasses.dataclass(slots=True)
@@ -623,6 +674,10 @@ class DistantLodLightsSoa:
     def append(self, position: tuple[float, float, float], rgbi: int) -> None:
         self.position.append(tuple(position))
         self.RGBI.append(int(rgbi))
+
+    def clamp_street_light_count(self) -> "DistantLodLightsSoa":
+        self.num_street_lights = max(0, min(int(self.num_street_lights), len(self.position)))
+        return self
 
 
 YMAP_SURFACE_STRUCT_INFOS = [
@@ -719,6 +774,7 @@ def _coerce_lod_lights(**kwargs: Any) -> LodLightsSoa:
 def _coerce_lod_light(**kwargs: Any) -> LodLight | LodLightsSoa:
     if isinstance(kwargs.get("direction"), list) or isinstance(kwargs.get("falloff"), list):
         return _coerce_lod_lights(**kwargs)
+    deferred: dict[str, Any] = {}
     if "timeAndStateFlags" in kwargs:
         kwargs["time_and_state_flags"] = kwargs.pop("timeAndStateFlags")
     if "coneInnerAngle" in kwargs:
@@ -727,7 +783,43 @@ def _coerce_lod_light(**kwargs: Any) -> LodLight | LodLightsSoa:
         kwargs["cone_outer_angle_or_cap_ext"] = kwargs.pop("coneOuterAngleOrCapExt")
     if "coronaIntensity" in kwargs:
         kwargs["corona_intensity"] = kwargs.pop("coronaIntensity")
-    return LodLight(**kwargs)
+    if "color" in kwargs and "colour" not in kwargs:
+        kwargs["colour"] = kwargs.pop("color")
+    if "colour" in kwargs:
+        colour = tuple(kwargs.pop("colour"))
+        intensity = int(kwargs.pop("intensity", kwargs.pop("alpha", 255)))
+        kwargs["rgbi"] = _pack_rgbi(colour, intensity)
+    if "coneInnerAngleDegrees" in kwargs:
+        deferred["cone_inner_angle_degrees"] = kwargs.pop("coneInnerAngleDegrees")
+    if "cone_inner_angle_degrees" in kwargs:
+        deferred["cone_inner_angle_degrees"] = kwargs.pop("cone_inner_angle_degrees")
+    if "coneOuterAngleDegrees" in kwargs:
+        deferred["cone_outer_angle_degrees"] = kwargs.pop("coneOuterAngleDegrees")
+    if "cone_outer_angle_degrees" in kwargs:
+        deferred["cone_outer_angle_degrees"] = kwargs.pop("cone_outer_angle_degrees")
+    if "capsuleExtent" in kwargs:
+        deferred["capsule_extent"] = kwargs.pop("capsuleExtent")
+    if "capsule_extent" in kwargs:
+        deferred["capsule_extent"] = kwargs.pop("capsule_extent")
+    if "coronaIntensityValue" in kwargs:
+        deferred["corona_intensity_value"] = kwargs.pop("coronaIntensityValue")
+    if "corona_intensity_value" in kwargs:
+        deferred["corona_intensity_value"] = kwargs.pop("corona_intensity_value")
+    for name in (
+        "time_flags",
+        "state_flags_1",
+        "state_flags_2",
+        "light_type",
+        "is_street_light",
+        "is_corona_only",
+        "dont_use_in_cutscene",
+    ):
+        if name in kwargs:
+            deferred[name] = kwargs.pop(name)
+    light = LodLight(**kwargs)
+    for name, value in deferred.items():
+        setattr(light, name, value)
+    return light
 
 
 GrassBatch = GrassInstanceBatch
@@ -750,7 +842,9 @@ __all__ = [
     "LodLight",
     "LodLights",
     "LodLightsSoa",
+    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
+    "MAX_LOD_LIGHT_CONE_ANGLE",
+    "MAX_LOD_LIGHT_CORONA_INTENSITY",
     "OccludeModel",
     "YMAP_SURFACE_STRUCT_INFOS",
 ]
-

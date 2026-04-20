@@ -274,6 +274,9 @@ from .ymap.surfaces import (
     LodLight,
     LodLights,
     LodLightsSoa,
+    MAX_LOD_LIGHT_CAPSULE_EXTENT,
+    MAX_LOD_LIGHT_CONE_ANGLE,
+    MAX_LOD_LIGHT_CORONA_INTENSITY,
     OccludeModel,
 )
 from .ycd import (
@@ -509,6 +512,9 @@ __all__ = [
     "LodLight",
     "LodLights",
     "LodLightsSoa",
+    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
+    "MAX_LOD_LIGHT_CONE_ANGLE",
+    "MAX_LOD_LIGHT_CORONA_INTENSITY",
     "Meta",
     "MetaHash",
     "MloArchetype",

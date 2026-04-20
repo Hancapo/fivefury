@@ -23,6 +23,9 @@ from .surfaces import (
     InstancedMapData,
     LodLight,
     LodLightsSoa,
+    MAX_LOD_LIGHT_CAPSULE_EXTENT,
+    MAX_LOD_LIGHT_CONE_ANGLE,
+    MAX_LOD_LIGHT_CORONA_INTENSITY,
     OccludeModel,
 )
 
@@ -48,6 +51,9 @@ __all__ = [
     "InstancedMapData",
     "LodLight",
     "LodLightsSoa",
+    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
+    "MAX_LOD_LIGHT_CONE_ANGLE",
+    "MAX_LOD_LIGHT_CORONA_INTENSITY",
     "MloInstance",
     "MloInstanceDef",
     "OccludeModel",
