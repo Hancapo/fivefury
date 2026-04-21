@@ -10,6 +10,7 @@ from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, ResourceHeader, checked_virtual_offset, physical_to_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod, YdrSkeletonBinding
+from .gen9 import decode_gen9_vertex_declaration, load_gen9_shader_library
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
 from .read_lights import parse_lights
 from .read_materials import parse_materials
@@ -18,6 +19,7 @@ from .read_skeleton import parse_skeleton
 from .shaders import ShaderLibrary, load_shader_library
 
 _ROOT_OFFSET = 0x10
+_ENHANCED_YDR_VERSIONS = frozenset({154, 159})
 
 
 def _virtual_offset(pointer: int, data: bytes) -> int:
@@ -242,7 +244,17 @@ def _parse_model_list(pointer: int, system_data: bytes) -> list[int]:
     return _read_pointer_array(data_pointer, count, system_data)
 
 
-def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int, material: YdrMaterial | None, material_index: int, render_mask: int, flags: int) -> YdrMesh:
+def _parse_mesh(
+    system_data: bytes,
+    graphics_data: bytes,
+    geometry_pointer: int,
+    material: YdrMaterial | None,
+    material_index: int,
+    render_mask: int,
+    flags: int,
+    *,
+    enhanced: bool = False,
+) -> YdrMesh:
     geometry_off = _virtual_offset(geometry_pointer, system_data)
     vertex_buffer_pointer = _u64(system_data, geometry_off + 0x18)
     index_buffer_pointer = _u64(system_data, geometry_off + 0x38)
@@ -253,24 +265,34 @@ def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int,
     bone_ids_count = _u16(system_data, geometry_off + 0x72)
 
     vertex_buffer_off = _virtual_offset(vertex_buffer_pointer, system_data)
-    vb_stride = _u16(system_data, vertex_buffer_off + 0x08)
-    vb_flags = _u16(system_data, vertex_buffer_off + 0x0A)
-    vertex_data_pointer = _u64(system_data, vertex_buffer_off + 0x10) or _u64(system_data, vertex_buffer_off + 0x20)
-    vertex_count = _u32(system_data, vertex_buffer_off + 0x18)
-    info_pointer = _u64(system_data, vertex_buffer_off + 0x30)
+    if enhanced:
+        vertex_count = _u32(system_data, vertex_buffer_off + 0x08)
+        vb_stride = _u16(system_data, vertex_buffer_off + 0x0C)
+        vb_flags = _u32(system_data, vertex_buffer_off + 0x10)
+        vertex_data_pointer = _u64(system_data, vertex_buffer_off + 0x18)
+        info_pointer = _u64(system_data, vertex_buffer_off + 0x38)
+        declaration_data = _read_buffer(info_pointer, 320, system_data, b"")
+        declaration_flags, declaration_types, declaration_stride, declaration_vertex_count = decode_gen9_vertex_declaration(declaration_data)
+    else:
+        vb_stride = _u16(system_data, vertex_buffer_off + 0x08)
+        vb_flags = _u16(system_data, vertex_buffer_off + 0x0A)
+        vertex_data_pointer = _u64(system_data, vertex_buffer_off + 0x10) or _u64(system_data, vertex_buffer_off + 0x20)
+        vertex_count = _u32(system_data, vertex_buffer_off + 0x18)
+        info_pointer = _u64(system_data, vertex_buffer_off + 0x30)
 
-    declaration_off = _virtual_offset(info_pointer, system_data)
-    declaration_flags = _u32(system_data, declaration_off + 0x00)
-    declaration_stride = _u16(system_data, declaration_off + 0x04)
-    declaration_types = _u64(system_data, declaration_off + 0x08)
+        declaration_off = _virtual_offset(info_pointer, system_data)
+        declaration_flags = _u32(system_data, declaration_off + 0x00)
+        declaration_stride = _u16(system_data, declaration_off + 0x04)
+        declaration_types = _u64(system_data, declaration_off + 0x08)
+        declaration_vertex_count = 0
 
     stride = int(declaration_stride or vb_stride or vertex_stride)
-    count = int(vertices_count or vertex_count)
+    count = int(vertices_count or vertex_count or declaration_vertex_count)
     vertex_bytes = _read_buffer(vertex_data_pointer, stride * count, system_data, graphics_data)
     decoded = _decode_vertices(vertex_bytes, count, stride, declaration_flags, declaration_types)
 
     index_buffer_off = _virtual_offset(index_buffer_pointer, system_data)
-    indices_pointer = _u64(system_data, index_buffer_off + 0x10)
+    indices_pointer = _u64(system_data, index_buffer_off + 0x18) if enhanced else _u64(system_data, index_buffer_off + 0x10)
     index_bytes = _read_buffer(indices_pointer, int(indices_count) * 2, system_data, graphics_data)
     indices = list(struct.unpack_from(f"<{indices_count}H", index_bytes, 0)) if indices_count else []
     bone_ids = _read_ushort_array(bone_ids_pointer, bone_ids_count, system_data, graphics_data)
@@ -291,13 +313,21 @@ def _parse_mesh(system_data: bytes, graphics_data: bytes, geometry_pointer: int,
         vertex_stride=stride,
         declaration_flags=declaration_flags,
         declaration_types=declaration_types,
-        vertex_buffer_flags=vb_flags,
+        vertex_buffer_flags=int(vb_flags),
         render_mask=render_mask,
         flags=flags,
     )
 
 
-def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, materials: list[YdrMaterial], lod: YdrLod) -> YdrModel:
+def _parse_model(
+    system_data: bytes,
+    graphics_data: bytes,
+    model_pointer: int,
+    materials: list[YdrMaterial],
+    lod: YdrLod,
+    *,
+    enhanced: bool = False,
+) -> YdrModel:
     model_off = _virtual_offset(model_pointer, system_data)
     geometries_pointer = _u64(system_data, model_off + 0x08)
     geometry_count = _u16(system_data, model_off + 0x10)
@@ -314,7 +344,18 @@ def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, m
     for geometry_index, geometry_pointer in enumerate(geometry_pointers):
         material_index = shader_mapping[geometry_index] if geometry_index < len(shader_mapping) else -1
         material = materials[material_index] if 0 <= material_index < len(materials) else None
-        meshes.append(_parse_mesh(system_data, graphics_data, geometry_pointer, material, material_index, render_mask, flags))
+        meshes.append(
+            _parse_mesh(
+                system_data,
+                graphics_data,
+                geometry_pointer,
+                material,
+                material_index,
+                render_mask,
+                flags,
+                enhanced=enhanced,
+            )
+        )
 
     return YdrModel(
         index=0,
@@ -326,14 +367,24 @@ def _parse_model(system_data: bytes, graphics_data: bytes, model_pointer: int, m
     )
 
 
-def _parse_lods(system_data: bytes, graphics_data: bytes, materials: list[YdrMaterial], *, root_offset: int) -> dict[YdrLod, list[YdrModel]]:
+def _parse_lods(
+    system_data: bytes,
+    graphics_data: bytes,
+    materials: list[YdrMaterial],
+    *,
+    root_offset: int,
+    enhanced: bool = False,
+) -> dict[YdrLod, list[YdrModel]]:
     lods: dict[YdrLod, list[YdrModel]] = {}
     for lod_name in LOD_ORDER:
         pointer = _u64(system_data, root_offset + LOD_POINTER_OFFSETS[lod_name])
         model_pointers = _parse_model_list(pointer, system_data)
         if not model_pointers:
             continue
-        lod_models = [_parse_model(system_data, graphics_data, model_pointer, materials, lod_name) for model_pointer in model_pointers]
+        lod_models = [
+            _parse_model(system_data, graphics_data, model_pointer, materials, lod_name, enhanced=enhanced)
+            for model_pointer in model_pointers
+        ]
         for model_index, model in enumerate(lod_models):
             model.index = model_index
         lods[lod_name] = lod_models
@@ -365,6 +416,8 @@ def _read_ydr_from_sections(
     shader_library: ShaderLibrary | None = None,
 ) -> Ydr:
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
+    enhanced = int(header.version) in _ENHANCED_YDR_VERSIONS
+    gen9_library = load_gen9_shader_library() if enhanced else None
     materials, texture_dictionary_pointer = parse_materials(
         system_data,
         active_shader_library,
@@ -378,8 +431,10 @@ def _read_ydr_from_sections(
         hash_name=_hash_name,
         decode_parameter_value=_decode_parameter_value,
         try_read_c_string=_try_read_c_string,
+        enhanced=enhanced,
+        gen9_library=gen9_library,
     )
-    lods = _parse_lods(system_data, graphics_data, materials, root_offset=root_offset)
+    lods = _parse_lods(system_data, graphics_data, materials, root_offset=root_offset, enhanced=enhanced)
     skeleton = parse_skeleton(
         system_data,
         _u64(system_data, root_offset + 0x08),

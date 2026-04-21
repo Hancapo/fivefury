@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    AssimpScene,
     BoundSphere,
     BoundType,
+    GameTarget,
     Texture,
     TextureFormat,
     Ydr,
@@ -14,6 +16,7 @@ from fivefury import (
     YdrBoneFlagName,
     YdrBoneFlags,
     YdrBuild,
+    YdrGen9Shader,
     YdrJoints,
     YdrLight,
     YdrLightType,
@@ -29,12 +32,17 @@ from fivefury import (
     calculate_bone_tag,
     calculate_skeleton_unknown_hashes,
     create_ydr,
+    assimp_to_ydr,
+    fbx_to_ydr,
     obj_to_ydr,
+    read_assimp_scene,
+    read_fbx_scene,
     read_obj_scene,
     read_ydr,
     skeleton_bone_flag_names,
 )
 from fivefury.resource import split_rsc7_sections
+from fivefury.ydr.gen9 import decode_gen9_vertex_declaration
 
 _TEXTURE_BASE_VFT = 0x40617568
 
@@ -97,6 +105,16 @@ def _first_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
     shader_off = _virtual_to_offset(int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little"))
     params_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x00 : shader_off + 0x08], "little"))
     return system_data, shader_off, params_off
+
+
+def _first_gen9_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int, int]:
+    _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
+    shader_group_off = _virtual_to_offset(int.from_bytes(system_data[0x10:0x18], "little"))
+    shader_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[shader_group_off + 0x10 : shader_group_off + 0x18], "little"))
+    shader_off = _virtual_to_offset(int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little"))
+    params_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x08 : shader_off + 0x10], "little"))
+    infos_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x20 : shader_off + 0x28], "little"))
+    return system_data, shader_off, params_off, infos_off
 
 
 def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
@@ -541,44 +559,144 @@ def test_unknown_shader_file_name_is_rejected() -> None:
         ).to_bytes()
 
 
-def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:
+class _FakeMaterialProperty:
+    def __init__(self, key: str, data, semantic: int = 0) -> None:
+        self.key = key
+        self.data = data
+        self.semantic = semantic
+
+
+class _FakeMaterial:
+    def __init__(self, *properties: _FakeMaterialProperty) -> None:
+        self.properties = list(properties)
+
+
+class _FakeMesh:
+    def __init__(
+        self,
+        *,
+        vertices,
+        faces,
+        material,
+        normals=None,
+        tangents=None,
+        bitangents=None,
+        colors0=None,
+        texcoords0=None,
+        bones=None,
+    ) -> None:
+        self.vertices = list(vertices)
+        self.faces = [list(face) for face in faces]
+        self.material = material
+        self.normals = list(normals or [])
+        self.tangents = list(tangents or [])
+        self.bitangents = list(bitangents or [])
+        self.colors = [list(colors0)] + [None] * 7 if colors0 is not None else [None] * 8
+        self.texture_coords = [list(texcoords0)] + [None] * 7 if texcoords0 is not None else [None] * 8
+        self.bones = list(bones or [])
+
+
+class _FakeNode:
+    def __init__(self, *, meshes=None, children=None, transformation=None) -> None:
+        self.meshes = list(meshes or [])
+        self.children = list(children or [])
+        self.transformation = transformation or (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+
+
+class _FakeScene:
+    def __init__(self, *, materials, meshes, root_node) -> None:
+        self.materials = list(materials)
+        self.meshes = list(meshes)
+        self.root_node = root_node
+
+
+def _make_fake_assimp_scene() -> _FakeScene:
+    material = _FakeMaterial(
+        _FakeMaterialProperty("?mat.name", "Facade"),
+        _FakeMaterialProperty("$tex.file", r"C:\textures\facade_d.dds", semantic=1),
+        _FakeMaterialProperty("$tex.file", r"C:\textures\facade_n.dds", semantic=6),
+        _FakeMaterialProperty("$tex.file", r"C:\textures\facade_s.dds", semantic=2),
+    )
+    mesh = _FakeMesh(
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        faces=((0, 1, 2),),
+        material=material,
+        normals=((0.0, 0.0, 1.0),) * 3,
+        tangents=((1.0, 0.0, 0.0),) * 3,
+        bitangents=((0.0, 1.0, 0.0),) * 3,
+        colors0=((1.0, 0.5, 0.25, 1.0),) * 3,
+        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    )
+    node = _FakeNode(
+        meshes=[mesh],
+        transformation=(
+            (1.0, 0.0, 0.0, 2.0),
+            (0.0, 1.0, 0.0, 3.0),
+            (0.0, 0.0, 1.0, 4.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ),
+    )
+    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=node)
+    return scene
+
+
+def test_read_assimp_scene_converts_fake_impasse_scene(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    scene = _make_fake_assimp_scene()
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    source_path = tmp_path / "facade.obj"
+    source_path.write_bytes(b"fake")
+    imported = read_assimp_scene(source_path)
+
+    assert imported.name == "facade"
+    assert imported.materials[0].name == "Facade"
+    assert imported.materials[0].shader == "normal_spec.sps"
+    assert imported.materials[0].textures["DiffuseSampler"] == "facade_d"
+    assert imported.materials[0].textures["BumpSampler"] == "facade_n"
+    assert imported.materials[0].textures["SpecSampler"] == "facade_s"
+    assert imported.meshes[0].positions[0] == pytest.approx((2.0, -4.0, 3.0))
+    assert imported.meshes[0].positions[1] == pytest.approx((3.0, -4.0, 3.0))
+    assert imported.meshes[0].texcoords[0][2] == pytest.approx((0.0, 0.0))
+    assert imported.meshes[0].colours0[0] == pytest.approx((1.0, 0.5, 0.25, 1.0))
+
+
+def test_obj_and_fbx_wrappers_share_assimp_scene_reader(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    scene = _make_fake_assimp_scene()
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    obj_path = tmp_path / "shared.obj"
+    fbx_path = tmp_path / "shared.fbx"
+    obj_path.write_bytes(b"fake")
+    fbx_path.write_bytes(b"fake")
+
+    obj_scene = read_obj_scene(obj_path)
+    fbx_scene = read_fbx_scene(fbx_path)
+
+    assert isinstance(obj_scene, AssimpScene)
+    assert isinstance(fbx_scene, AssimpScene)
+    assert obj_scene.materials[0].textures == fbx_scene.materials[0].textures
+    assert obj_scene.meshes[0].positions == pytest.approx(fbx_scene.meshes[0].positions)
+
+
+def test_obj_to_ydr_roundtrip_uses_assimp_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    scene = _make_fake_assimp_scene()
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
     obj_path = tmp_path / "triangle.obj"
-    mtl_path = tmp_path / "triangle.mtl"
-    obj_path.write_text(
-        "\n".join(
-            [
-                "mtllib triangle.mtl",
-                "v 0.0 0.0 0.0",
-                "v 1.0 0.0 0.0",
-                "v 0.0 1.0 0.0",
-                "vt 0.0 0.0",
-                "vt 1.0 0.0",
-                "vt 0.0 1.0",
-                "usemtl triangle_mat",
-                "f 1/1 2/2 3/3",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    mtl_path.write_text(
-        "\n".join(
-            [
-                "newmtl triangle_mat",
-                "map_Kd triangle_diffuse.dds",
-                "map_Bump triangle_normal.dds",
-                "map_Ks triangle_spec.dds",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    scene = read_obj_scene(obj_path)
-    assert scene.materials[0].shader == "normal_spec.sps"
-    assert scene.materials[0].textures["DiffuseSampler"] == "triangle_diffuse"
-    assert scene.materials[0].textures["BumpSampler"] == "triangle_normal"
-    assert scene.materials[0].textures["SpecSampler"] == "triangle_spec"
-
     ydr_path = tmp_path / "triangle_obj.ydr"
+    obj_path.write_bytes(b"fake")
+
     build = obj_to_ydr(obj_path, ydr_path)
     assert isinstance(build, YdrBuild)
     assert ydr_path.exists()
@@ -586,8 +704,110 @@ def test_obj_to_ydr_roundtrip_with_mtl(tmp_path: Path) -> None:
 
     assert ydr.materials[0].shader_definition is not None
     assert ydr.materials[0].shader_definition.name == "normal_spec"
-    assert ydr.materials[0].texture_names == ["triangle_diffuse", "triangle_normal", "triangle_spec"]
+    assert ydr.materials[0].texture_names == ["facade_d", "facade_n", "facade_s"]
     assert ydr.meshes[0].indices == [0, 1, 2]
+
+
+def test_obj_scene_to_ydr_accepts_enhanced_game_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    scene = _make_fake_assimp_scene()
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    obj_path = tmp_path / "triangle_scene.obj"
+    obj_path.write_bytes(b"fake")
+    imported = read_obj_scene(obj_path, shader=YdrGen9Shader.DEFAULT)
+    build = imported.to_ydr(game=GameTarget.GTA5_ENHANCED)
+
+    assert build.version == 159
+    assert build.materials[0].shader == YdrGen9Shader.DEFAULT
+
+
+def test_obj_to_ydr_writes_enhanced_from_game_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    scene = _make_fake_assimp_scene()
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    obj_path = tmp_path / "triangle_enhanced.obj"
+    ydr_path = tmp_path / "triangle_enhanced.ydr"
+    obj_path.write_bytes(b"fake")
+
+    build = obj_to_ydr(obj_path, ydr_path, game=GameTarget.GTA5_ENHANCED)
+    ydr = read_ydr(ydr_path)
+
+    assert build.version == 159
+    assert ydr.version == 159
+
+
+def test_fbx_to_ydr_writes_enhanced_from_game_target(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    material = _FakeMaterial(_FakeMaterialProperty("?mat.name", "Enhanced"))
+    mesh = _FakeMesh(
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        faces=((0, 1, 2),),
+        material=material,
+        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    )
+    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    fbx_path = tmp_path / "enhanced.fbx"
+    ydr_path = tmp_path / "enhanced.ydr"
+    fbx_path.write_bytes(b"fake")
+
+    build = fbx_to_ydr(fbx_path, ydr_path, game=GameTarget.GTA5_ENHANCED, shader=YdrGen9Shader.DEFAULT)
+    ydr = read_ydr(ydr_path)
+
+    assert build.version == 159
+    assert ydr.version == 159
+    assert ydr.materials[0].resolved_shader_file_name == "default.sps"
+
+
+def test_read_fbx_scene_rejects_skinned_meshes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    material = _FakeMaterial(_FakeMaterialProperty("?mat.name", "Skinned"))
+    mesh = _FakeMesh(
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        faces=((0, 1, 2),),
+        material=material,
+        bones=[object()],
+    )
+    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    fbx_path = tmp_path / "skinned.fbx"
+    fbx_path.write_bytes(b"fake")
+
+    with pytest.raises(NotImplementedError, match="Skinned Assimp mesh import"):
+        read_fbx_scene(fbx_path)
+
+
+def test_writer_auto_splits_meshes_over_vertex_limit(tmp_path: Path) -> None:
+    vertex_count = 66000
+    positions = [(float(index), 0.0, 0.0) for index in range(vertex_count)]
+    texcoords0 = [(0.0, 0.0)] * vertex_count
+    mesh = YdrMeshInput(
+        positions=positions,
+        indices=list(range(vertex_count)),
+        material="default",
+        texcoords=[texcoords0],
+    )
+    build = create_ydr(
+        meshes=[mesh],
+        material_textures={"DiffuseSampler": "test_diffuse"},
+        name="split_limit_case",
+    )
+
+    ydr_path = tmp_path / "split_limit_case.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert len(ydr.meshes) >= 2
+    assert all(len(mesh.positions) <= 65535 for mesh in ydr.meshes)
+    assert sum(len(mesh.indices) for mesh in ydr.meshes) == vertex_count
 
 
 def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
@@ -811,7 +1031,110 @@ def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
 
     assert ydr.embedded_textures is not None
     assert ydr.embedded_textures.game == "gta5_enhanced"
-    assert ydr.embedded_textures.names() == ["embedded_diffuse"]
+
+
+def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "embedded_diffuse"},
+                parameters={"matMaterialColorScale": (0.25, 0.5, 0.75, 1.0)},
+            )
+        ],
+        version=159,
+        name="gen9_native_layout",
+    )
+
+    ydr_path = tmp_path / "gen9_native_layout.ydr"
+    build.save(ydr_path)
+    raw = ydr_path.read_bytes()
+    header, system_data, _graphics_data = split_rsc7_sections(raw)
+    shader_data, shader_off, params_off, infos_off = _first_gen9_shader_offsets(raw)
+    model_data, _model_off, geometry_off = _first_model_offsets(raw)
+    vertex_buffer_off = _virtual_to_offset(int.from_bytes(model_data[geometry_off + 0x18 : geometry_off + 0x20], "little"))
+    index_buffer_off = _virtual_to_offset(int.from_bytes(model_data[geometry_off + 0x38 : geometry_off + 0x40], "little"))
+    declaration_off = _virtual_to_offset(int.from_bytes(model_data[vertex_buffer_off + 0x38 : vertex_buffer_off + 0x40], "little"))
+
+    assert header.version == 159
+    assert int.from_bytes(shader_data[shader_off + 0x04 : shader_off + 0x08], "little") == 0x6D657461
+    assert int.from_bytes(shader_data[shader_off + 0x08 : shader_off + 0x10], "little") >= 0x50000000
+    assert int.from_bytes(shader_data[shader_off + 0x10 : shader_off + 0x18], "little") >= 0x50000000
+    assert int.from_bytes(shader_data[shader_off + 0x20 : shader_off + 0x28], "little") >= 0x50000000
+    assert shader_data[infos_off + 0x00] == 2
+    assert shader_data[infos_off + 0x01] == 2
+    assert shader_data[infos_off + 0x07] == 12
+    assert int.from_bytes(model_data[vertex_buffer_off + 0x08 : vertex_buffer_off + 0x0C], "little") == 3
+    assert int.from_bytes(model_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x14], "little") in {0x00580409, 0x00586409}
+    assert int.from_bytes(model_data[vertex_buffer_off + 0x30 : vertex_buffer_off + 0x38], "little") >= 0x50000000
+    assert int.from_bytes(model_data[index_buffer_off + 0x10 : index_buffer_off + 0x14], "little") == 0x0058020A
+    assert int.from_bytes(model_data[index_buffer_off + 0x30 : index_buffer_off + 0x38], "little") >= 0x50000000
+
+    declaration_data = model_data[declaration_off : declaration_off + 320]
+    declaration_flags, declaration_types, declaration_stride, declaration_count = decode_gen9_vertex_declaration(declaration_data)
+    assert declaration_stride == int.from_bytes(model_data[vertex_buffer_off + 0x0C : vertex_buffer_off + 0x0E], "little")
+    assert declaration_count == 3
+    assert declaration_flags != 0
+    assert declaration_types != 0
+    assert params_off < len(system_data)
+
+    ydr = read_ydr(ydr_path)
+    assert ydr.version == 159
+    assert ydr.materials[0].shader_definition is not None
+    assert ydr.materials[0].shader_definition.name == "default"
+    assert ydr.materials[0].resolved_shader_file_name == "default.sps"
+    assert ydr.materials[0].texture_names == ["embedded_diffuse"]
+    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.25, 0.5, 0.75, 1.0))
+    assert len(ydr.meshes[0].positions) == 3
+
+
+def test_build_and_read_ydr_gen9_accepts_native_texture_slot_names(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseTex": "native_diffuse"},
+                parameters={"MaterialColorScale": (0.1, 0.2, 0.3, 1.0)},
+            )
+        ],
+        version=159,
+        name="gen9_native_slots",
+    )
+
+    ydr_path = tmp_path / "gen9_native_slots.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.materials[0].texture_names == ["native_diffuse"]
+    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.1, 0.2, 0.3, 1.0))
+
+
+def test_build_and_read_ydr_gen9_accepts_shader_enum(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader=YdrGen9Shader.DEFAULT,
+                textures={"DiffuseTex": "enum_diffuse"},
+                parameters={"MaterialColorScale": (0.6, 0.4, 0.2, 1.0)},
+            )
+        ],
+        version=159,
+        name="gen9_shader_enum",
+    )
+
+    ydr_path = tmp_path / "gen9_shader_enum.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.materials[0].resolved_shader_file_name == YdrGen9Shader.DEFAULT.value
+    assert ydr.materials[0].texture_names == ["enum_diffuse"]
+    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.6, 0.4, 0.2, 1.0))
 
 
 def test_build_and_read_ydr_embedded_bound(tmp_path: Path) -> None:

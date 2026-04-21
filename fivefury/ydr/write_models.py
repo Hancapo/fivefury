@@ -69,6 +69,7 @@ def prepare_model_block(
     vertex_buffer_vft: int,
     index_buffer_vft: int,
     drawable_geometry_vft: int,
+    gen9: bool = False,
 ) -> PreparedModelBlock:
     mesh_packs = build_mesh_buffer_packs(
         system,
@@ -77,6 +78,7 @@ def prepare_model_block(
         virtual=virtual,
         vertex_buffer_vft=vertex_buffer_vft,
         index_buffer_vft=index_buffer_vft,
+        gen9=gen9,
     )
 
     geometry_lengths = [len(pack.mesh.bone_ids) for pack in mesh_packs]

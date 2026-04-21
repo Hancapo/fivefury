@@ -7,6 +7,7 @@ from ..binary import align
 from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
 from .defs import DAT_VIRTUAL_BASE, LOD_ORDER, YdrLod
+from .gen9 import load_gen9_shader_library
 from .prepare import (
     PreparedMaterial,
     ShaderParameterEntry,
@@ -21,7 +22,7 @@ from .shaders import ShaderLibrary, load_shader_library
 from .write_buffers import GraphicsWriter
 from .write_drawable import pages_info_length, write_drawable_models_block, write_drawable_root, write_pages_info
 from .write_lights import write_lights
-from .write_materials import prepare_materials, write_shader_blocks
+from .write_materials import prepare_materials, write_shader_blocks, write_shader_blocks_gen9
 from .write_joints import write_joints
 from .write_models import prepare_model_block, write_model_block
 from .write_skeleton import write_skeleton
@@ -36,7 +37,7 @@ _VERTEX_BUFFER_VFT = 0x4061D3F8
 _INDEX_BUFFER_VFT = 0x4061D158
 _UNKNOWN_FLOAT_SENTINEL = 0x7F800001
 _ROOT_SIZE = 0xD0
-_ENHANCED_YDR_VERSIONS = frozenset({154, 159, 171})
+_ENHANCED_YDR_VERSIONS = frozenset({154, 159})
 
 
 def _virtual(offset: int) -> int:
@@ -130,14 +131,23 @@ def _write_drawable_payload(
     write_pages: bool = True,
     recalculate_skeleton_hashes: bool = False,
 ) -> None:
-    shader_group_off, _shader_group_blocks_size = write_shader_blocks(
-        system,
-        prepared_materials,
-        shader_parameter_entry_cls=ShaderParameterEntry,
-        texture_base_vft=_TEXTURE_BASE_VFT,
-        shader_group_vft=_SHADER_GROUP_VFT,
-        virtual=_virtual,
-    )
+    enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
+    if enhanced:
+        shader_group_off, _shader_group_blocks_size = write_shader_blocks_gen9(
+            system,
+            prepared_materials,
+            shader_group_vft=_SHADER_GROUP_VFT,
+            virtual=_virtual,
+        )
+    else:
+        shader_group_off, _shader_group_blocks_size = write_shader_blocks(
+            system,
+            prepared_materials,
+            shader_parameter_entry_cls=ShaderParameterEntry,
+            texture_base_vft=_TEXTURE_BASE_VFT,
+            shader_group_vft=_SHADER_GROUP_VFT,
+            virtual=_virtual,
+        )
     skeleton_off = write_skeleton(
         system,
         source.skeleton,
@@ -164,6 +174,7 @@ def _write_drawable_payload(
                 vertex_buffer_vft=_VERTEX_BUFFER_VFT,
                 index_buffer_vft=_INDEX_BUFFER_VFT,
                 drawable_geometry_vft=_DRAWABLE_GEOMETRY_VFT,
+                gen9=enhanced,
             )
             prepared_model_blocks_by_lod[lod_name].append(prepared_block)
 
@@ -266,10 +277,19 @@ def build_ydr_bytes(
         raise ValueError('YDR builder requires at least one mesh')
 
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
+    enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
+    gen9_library = load_gen9_shader_library() if enhanced else None
     prepared_materials, prepared_lods = prepare_build(
         source,
         active_shader_library,
-        prepare_materials=prepare_materials,
+        prepare_materials=(
+            lambda *args, **kwargs: prepare_materials(
+                *args,
+                enhanced=enhanced,
+                gen9_library=gen9_library,
+                **kwargs,
+            )
+        ),
         generate_normals=generate_normals,
         generate_tangents=generate_tangents,
         fill_vertex_colours=fill_vertex_colours,

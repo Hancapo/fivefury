@@ -370,17 +370,24 @@ ydr.add_light(YdrLight.spot(
 ydr.save("example_drawable.ydr")
 ```
 
-### Convert OBJ to YDR
+### Convert Assimp-supported meshes to YDR
 
 ```python
-from fivefury import obj_to_ydr
+from fivefury import assimp_to_ydr, obj_to_ydr
 
-obj_to_ydr(
-    r"C:\mods\example.obj",
+assimp_to_ydr(
+    r"C:\mods\example.fbx",
     r"C:\mods\example.ydr",
     generate_ytyp=True,
 )
+
+obj_to_ydr(
+    r"C:\mods\example.obj",
+    r"C:\mods\example_obj.ydr",
+)
 ```
+
+`assimp_to_ydr(...)` is now the unified import path for any source format that Assimp can read. `obj_to_ydr(...)` and `fbx_to_ydr(...)` are thin wrappers over that same pipeline.
 
 This can also emit a companion `YTYP` with lowercase naming and `textureDictionary` set to `<model>_txd`.
 

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from fivefury import YdrShader, format_ydr_shader_info, get_ydr_shader_info
+from fivefury import (
+    YdrGen9Shader,
+    YdrShader,
+    format_ydr_gen9_shader_info,
+    format_ydr_shader_info,
+    get_ydr_gen9_shader_info,
+    get_ydr_shader_info,
+)
 
 
 def test_get_ydr_shader_info_for_shader_file_enum() -> None:
@@ -23,3 +30,23 @@ def test_format_ydr_shader_info_lists_bucket_and_parameters() -> None:
     assert "[3] normal_spec_cutout.sps, normal_spec_screendooralpha.sps" in formatted
     assert "DiffuseSampler (Texture, uv=0)" in formatted
     assert "SpecSampler (Texture, uv=0)" in formatted
+
+
+def test_get_ydr_gen9_shader_info_for_shader_file_enum() -> None:
+    info = get_ydr_gen9_shader_info(YdrGen9Shader.SPEC)
+
+    assert info.requested_shader == "spec.sps"
+    assert info.shader_name == "spec"
+    assert info.resolved_file_name == "spec.sps"
+    assert info.buffer_sizes == (32, 48)
+    assert [parameter.name for parameter in info.texture_parameters] == ["DiffuseTex", "depthbuffertex", "SpecularTex"]
+
+
+def test_format_ydr_gen9_shader_info_lists_buffers_and_parameters() -> None:
+    formatted = format_ydr_gen9_shader_info(YdrGen9Shader.NORMAL_SPEC)
+
+    assert "Gen9 Shader: normal_spec" in formatted
+    assert "Resolved File: normal_spec.sps" in formatted
+    assert "Buffer Sizes:" in formatted
+    assert "DiffuseTex (Texture, legacy=DiffuseSampler, index=0)" in formatted
+    assert "SpecularTex (Texture, legacy=SpecSampler, index=3)" in formatted

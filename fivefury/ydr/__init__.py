@@ -2,6 +2,24 @@ from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput
 from .builder import build_ydr_bytes, save_ydr, ydr_to_build
 from .collision import YdrCollisionStats, build_bound_from_render_geometry, set_bound_from_render_geometry
 from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding
+from .assimp import AssimpMaterial, AssimpScene, assimp_to_ydr, read_assimp_scene
+from .fbx import fbx_to_ydr, read_fbx_scene
+from .gen9 import (
+    ShaderGen9Definition,
+    ShaderGen9Library,
+    ShaderGen9ParameterDefinition,
+    load_gen9_shader_library,
+    read_gen9_shader_library,
+    resolve_gen9_shader_reference,
+)
+from .gen9_shader_enums import YdrGen9Shader, coerce_gen9_shader_name
+from .gen9_shader_info import (
+    YdrGen9ShaderInfo,
+    YdrGen9ShaderParameterInfo,
+    format_ydr_gen9_shader_info,
+    get_ydr_gen9_shader_info,
+    print_ydr_gen9_shader_info,
+)
 from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialParameter, build_material_descriptor
 from .model import (
     ColorChannel,
@@ -52,7 +70,12 @@ from .shaders import (
 __all__ = [
     "ObjMaterial",
     "ObjScene",
+    "AssimpMaterial",
+    "AssimpScene",
     "ShaderDefinition",
+    "ShaderGen9Definition",
+    "ShaderGen9Library",
+    "ShaderGen9ParameterDefinition",
     "ShaderLayoutDefinition",
     "ShaderLibrary",
     "ShaderParameterDefinition",
@@ -62,6 +85,9 @@ __all__ = [
     "YdrBoneFlags",
     "YdrBuild",
     "YdrCollisionStats",
+    "YdrGen9Shader",
+    "YdrGen9ShaderInfo",
+    "YdrGen9ShaderParameterInfo",
     "YdrJointControlPoint",
     "YdrJointRotationLimit",
     "YdrJointTranslationLimit",
@@ -94,21 +120,32 @@ __all__ = [
     "build_bound_from_render_geometry",
     "build_material_descriptor",
     "build_ydr_bytes",
+    "assimp_to_ydr",
+    "coerce_gen9_shader_name",
     "coerce_shader_name",
     "create_ydr",
+    "fbx_to_ydr",
+    "format_ydr_gen9_shader_info",
     "format_ydr_shader_info",
+    "get_ydr_gen9_shader_info",
     "get_ydr_shader_info",
+    "load_gen9_shader_library",
     "load_shader_library",
     "ColorChannel",
     "obj_to_ydr",
     "paint_mesh",
     "paint_vertices",
     "skeleton_bone_flag_names",
+    "read_gen9_shader_library",
     "read_obj_scene",
     "read_shader_library",
     "read_ydr",
+    "resolve_gen9_shader_reference",
     "resolve_shader_reference",
+    "print_ydr_gen9_shader_info",
     "print_ydr_shader_info",
+    "read_assimp_scene",
+    "read_fbx_scene",
     "save_ydr",
     "set_bound_from_render_geometry",
     "ydr_to_build",

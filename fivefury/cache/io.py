@@ -17,6 +17,7 @@ from ..ybn import read_ybn
 from ..ydd import read_ydd
 from ..ydr import read_ydr
 from ..ynd import read_ynd
+from ..ynv import read_ynv
 from ..ytd import read_ytd
 
 try:
@@ -87,6 +88,12 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
             return read_ynd(source, path=path), GameFileType.YND
         except Exception:
             return source, GameFileType.YND
+    if ext == ".ynv":
+        source = raw if raw is not None else data
+        try:
+            return read_ynv(source, path=path), GameFileType.YNV
+        except Exception:
+            return source, GameFileType.YNV
     if ext == ".cut":
         source = raw if raw is not None else data
         try:
@@ -236,7 +243,7 @@ class GameFileCacheIOMixin:
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             ext = Path(asset.path).suffix.lower()
-            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".ycd", ".ybn", ".ynd"} else stored_native
+            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".ycd", ".ybn", ".ynd", ".ynv"} else stored_native
             parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
@@ -260,7 +267,7 @@ class GameFileCacheIOMixin:
             stored = entry.read(logical=False)
             logical = entry.read(logical=True)
             raw_source = None
-            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".ycd", ".ybn", ".ynd")):
+            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".ycd", ".ybn", ".ynd", ".ynv")):
                 raw_source = entry._archive.read_entry_standalone(entry)
             parsed, kind = _decode_payload(asset.path, logical, raw=raw_source)
             game_file = GameFile(
