@@ -9,6 +9,7 @@ It provides practical support for:
 - `YCD` read/write support for clip dictionaries, animation metadata, UV animation bindings, object tracks, skeletal tracks, camera tracks, root motion, and facial samples
 - `YBN` read/write support for bounds, collision materials, geometry, BVH data, octants, and composite bounds
 - `YND` read/write support for path nodes, links, flags, area helpers, and automatic network partitioning
+- `YNV` read/write support for navmesh resources, typed poly/point/portal metadata, validation, and simple Assimp-based OBJ partitioning
 - `YMAP` read/write
 - `YTYP` read/write with typed archetype, MLO, portal, room, extension, and flag helpers
 - `YTD` read/write and texture extraction helpers
@@ -33,6 +34,13 @@ pip install -e .
 ```
 
 Python `3.11+` is required.
+
+Assimp-backed import helpers such as `assimp_to_ydr(...)`, `obj_to_ydr(...)`, `fbx_to_ydr(...)`, and `obj_to_nav(...)` also require:
+
+- the Python package `impasse`
+- a working native `assimp` library discoverable by the current process
+
+FiveFury does not currently probe common install locations on its own. The native library must already be reachable through the environment, usually via `PATH`.
 
 ## API Style
 
@@ -62,6 +70,7 @@ This is the practical coverage exposed by the high-level API:
 - `YCD`: read and write clip dictionaries, preserve parsed metadata, rebuild sequence data, evaluate known track types, create UV clip bindings, and harden skeletal/object animation metadata before export.
 - `YBN` and bounds: read and write standalone collision resources, primitive bounds, composite bounds, geometry bounds, BVH bounds, octants, material names, material colors, and generated collision chunks from triangle meshes.
 - `YND`: read and write nav/path node resources, preserve node/link metadata, use typed flags/enums, compute area IDs from positions, and split a high-level node network into per-area `YND` resources.
+- `YNV`: read and write navmesh resources, preserve sector trees, use typed point and portal metadata, validate structural consistency, and generate basic per-cell navmeshes from Assimp geometry.
 - `YMAP` and `YTYP`: author entities, car generators, timecycle modifiers, occluders, archetypes, extensions, MLO structures, flags, and typed asset metadata.
 - `YTD`: read and write texture dictionaries, preserve resource texture payloads, and extract textures through cache and embedded-asset helpers.
 - `RPF`: create, read, extract, convert, and pack archives, including nested `.rpf` directories and standalone resource extraction.
@@ -391,6 +400,8 @@ obj_to_ydr(
 
 This can also emit a companion `YTYP` with lowercase naming and `textureDictionary` set to `<model>_txd`.
 
+These helpers require `impasse` plus a native `assimp` library that is already discoverable by the current process.
+
 ### Inspect and choose YDR shaders
 
 ```python
@@ -517,6 +528,51 @@ for ynd in YndNetwork.from_nodes([node_a, node_b]).build_ynds():
 ```
 
 `YndNetwork` computes each node's `area_id` from its world position, assigns local node IDs per area, and resolves links by `target_key`. Use `Ynd.from_nodes(...)` directly when you already know all nodes belong to one area.
+
+## YNV
+
+### Read and validate a YNV
+
+```python
+from fivefury import read_ynv
+
+ynv = read_ynv("navmesh[120][120].ynv")
+
+print(ynv.area_id)
+print(len(ynv.polys))
+print(len(ynv.vertices))
+print(ynv.validate())
+```
+
+`YNV` support currently includes:
+
+- typed `YnvAdjacencyType`, `YnvPointType`, and `YnvPortalType`
+- editable `vertices`, `indices`, `edges`, `polys`, `portals`, and `sector_tree`
+- `build()` to normalize derived fields such as `points_start_id` and content flags
+- `validate()` to catch invalid poly spans, portal-link spans, and sector metadata mismatches before writing
+
+### Split an OBJ into per-cell navmeshes
+
+```python
+from fivefury import obj_to_nav
+
+paths = obj_to_nav(
+    "test.obj",
+    "out_navmeshes",
+)
+
+print(len(paths))
+print(paths[0].name)
+```
+
+`obj_to_nav(...)` is a simple Assimp-backed helper that:
+
+- reads geometry through the shared Assimp pipeline
+- clips triangles against GTA V navmesh cells
+- writes one `YNV` per touched cell
+- names outputs as `navmesh[file_x][file_y].ynv`
+
+This is intentionally a basic geometry partitioner, not a full navgen pipeline. It does not yet generate advanced navigation semantics such as cover, climb/drop adjacencies, portals, or point placement.
 
 ## GameFileCache
 

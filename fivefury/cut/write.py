@@ -46,7 +46,7 @@ from .pso import (
     _PsoPointer,
     _PsoStruct,
 )
-from .schema import builtin_cut_template
+from .schema import BUILTIN_CUT_STRUCTS, _serialize_psch, builtin_cut_template
 
 
 def _resolve_hash(value: int | str | CutHashedString | None) -> int:
@@ -458,16 +458,32 @@ class _CutWriter:
 
 
 def _resolve_template(template: CutFile | bytes | str | Path | None, cut: CutFile) -> dict[str, Any]:
+    def _merge_builtin_structs(resolved: dict[str, Any]) -> dict[str, Any]:
+        structs = dict(resolved.get("structs", {}))
+        changed = False
+        for type_hash, struct_info in BUILTIN_CUT_STRUCTS.items():
+            if type_hash not in structs:
+                structs[type_hash] = struct_info
+                changed = True
+        if not changed:
+            return resolved
+        sections = dict(resolved.get("sections", {}))
+        sections[PSCH] = _serialize_psch(structs)
+        merged = dict(resolved)
+        merged["structs"] = structs
+        merged["sections"] = sections
+        return merged
+
     if template is None:
         resolved = cut.metadata.get("pso_template")
         if resolved is not None:
-            return resolved
+            return _merge_builtin_structs(resolved)
         return builtin_cut_template()
     if isinstance(template, CutFile):
         resolved = template.metadata.get("pso_template")
         if resolved is None:
             raise ValueError("template CutFile has no PSO metadata; load it from a .cut first")
-        return resolved
+        return _merge_builtin_structs(resolved)
     from .pso import read_cut
 
     return _resolve_template(read_cut(template), cut)

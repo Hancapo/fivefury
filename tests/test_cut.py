@@ -5,9 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from fivefury.hashing import jenk_hash
 from fivefury import (
+    CutCascadeShadowPayload,
     CutFile,
     CutHashedString,
+    CutFinalNamePayload,
+    CutHashFloatPayload,
     CutPlayParticleEffectPayload,
     CutScreenFadePayload,
     CutScene,
@@ -182,26 +186,42 @@ def test_cut_scene_builder_from_scratch() -> None:
     assert len(rebuilt.event_args) == 4
 
 
-def test_cut_scene_builder_supports_overlay_and_load_name_events() -> None:
+def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> None:
     scene = CutScene.create(duration=20.0, face_dir="x:/gta5/assets_ng/cuts/test_plus/faces")
     asset_manager = scene.add_asset_manager()
     overlay = scene.add_object("overlay", name="overlay_track")
+    particle_fx = scene.add_object("rage__cutfParticleEffectObject", name="core_fx")
 
     scene.load_scene(0.0, payload={"cName": "test_plus"})
-    scene.load_particle_effects(0.0, "core_fx", target=asset_manager)
-    scene.load_overlays(0.0, "ui_overlays", target=asset_manager)
-    scene.show_overlay(0.0, overlay, "overlay_track")
-    scene.hide_overlay(1.0, overlay, "overlay_track")
+    scene.load_particle_effects(0.0, [particle_fx], target=asset_manager)
+    scene.load_overlays(0.0, [overlay], target=asset_manager)
+    scene.load_subtitles(0.0, CutFinalNamePayload("TEST_PLUS"), target=asset_manager)
+    scene.show_overlay(0.0, overlay)
+    scene.hide_overlay(1.0, overlay)
 
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
 
     assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(20.0)
-    assert len(rebuilt.load_events) == 3
+    assert len(rebuilt.load_events) == 4
     assert len(rebuilt.events) == 2
     assert any(event.fields["iEventId"] == 8 for event in rebuilt.load_events)  # load_particle_effects
     assert any(event.fields["iEventId"] == 10 for event in rebuilt.load_events)  # load_overlays
+    assert any(event.fields["iEventId"] == 12 for event in rebuilt.load_events)  # load_subtitles
     assert any(event.fields["iEventId"] == 26 for event in rebuilt.events)  # show_overlay
     assert any(event.fields["iEventId"] == 27 for event in rebuilt.events)  # hide_overlay
+    load_fx_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.load_events if event.fields["iEventId"] == 8)
+    load_overlay_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.load_events if event.fields["iEventId"] == 10)
+    subtitle_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.load_events if event.fields["iEventId"] == 12)
+    show_overlay_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.events if event.fields["iEventId"] == 26)
+    hide_overlay_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 27)
+    assert load_fx_args is not None and load_fx_args.type_name == "rage__cutfObjectIdListEventArgs"
+    assert load_fx_args.fields["iObjectIdList"] == [particle_fx.object_id]
+    assert load_overlay_args is not None and load_overlay_args.type_name == "rage__cutfObjectIdListEventArgs"
+    assert load_overlay_args.fields["iObjectIdList"] == [overlay.object_id]
+    assert subtitle_args is not None and subtitle_args.type_name == "rage__cutfFinalNameEventArgs"
+    assert subtitle_args.fields["cName"] == "TEST_PLUS"
+    assert show_overlay_args is not None and show_overlay_args.type_name == "rage__cutfEventArgs"
+    assert hide_overlay_event.fields["iEventArgsIndex"] == -1
 
 
 def test_cut_scene_builder_supports_variation_events_with_real_template() -> None:
@@ -225,3 +245,62 @@ def test_cut_scene_builder_supports_variation_events_with_real_template() -> Non
     assert args.fields["iComponent"] == 3
     assert args.fields["iDrawable"] == 1
     assert args.fields["iTexture"] == 2
+
+
+def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templates() -> None:
+    scene = CutScene.create(duration=12.0, face_dir="x:/gta5/assets_ng/cuts/test_fx/faces")
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("cam_fx")
+    hidden = scene.add_object("hidden_object", name="hidden_target")
+    bounds = scene.add_object("blocking_bounds", name="blocker")
+
+    scene.load_scene(0.0, payload={"cName": "test_fx"})
+    scene.load_models(0.0, [hidden.object_id, bounds.object_id], target=asset_manager)
+    scene.add_blocking_bounds(0.0, bounds)
+    scene.hide_objects(0.0, hidden)
+    scene.enable_dof(0.0, camera)
+    scene.enable_cascade_shadow_bounds(
+        0.0,
+        camera,
+        CutCascadeShadowPayload(
+            camera_cut_hash="cam_fx",
+            position=(1.0, 2.0, 3.0),
+            radius=5.0,
+            interp_time=0.25,
+            cascade_index=2,
+            enabled=True,
+            interpolate_to_disabled=False,
+        ),
+    )
+    scene.cascade_shadows_set_dynamic_depth_value(0.5, camera, 0.75)
+    scene.blendout_camera(1.0, camera)
+    scene.first_person_blendout_camera(2.0, camera, CutHashFloatPayload(1.0))
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=LAMAR_CUT_PATH))
+
+    event_ids = [event.fields["iEventId"] for event in rebuilt.events]
+    assert 18 in event_ids  # add_blocking_bounds
+    assert 14 in event_ids  # hide_objects
+    assert 48 in event_ids  # enable_dof
+    assert 54 in event_ids  # enable_cascade_shadow_bounds
+    assert 73 in event_ids  # cascade_shadows_set_dynamic_depth_value
+    assert 51 in event_ids  # blendout_camera
+    assert 79 in event_ids  # first_person_blendout_camera
+
+    cascade_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 54)
+    cascade_args = rebuilt.get_event_args(cascade_event.fields["iEventArgsIndex"])
+    assert cascade_args is not None
+    assert cascade_args.type_name == "rage__cutfCascadeShadowEventArgs"
+    assert cascade_args.fields["cameraCutHashTag"].hash == jenk_hash("cam_fx")
+    assert cascade_args.fields["position"] == pytest.approx((1.0, 2.0, 3.0))
+    assert cascade_args.fields["radius"] == pytest.approx(5.0)
+    assert cascade_args.fields["interpTimeTag"] == pytest.approx(0.25)
+    assert cascade_args.fields["cascadeIndexTag"] == 2
+    assert cascade_args.fields["enabled"] is True
+    assert cascade_args.fields["interpolateToDisabledTag"] is False
+
+    depth_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 73)
+    depth_args = rebuilt.get_event_args(depth_event.fields["iEventArgsIndex"])
+    assert depth_args is not None
+    assert depth_args.type_name == "hash_5FF00EA5"
+    assert depth_args.fields["hash_0BD8B46C"] == pytest.approx(0.75)

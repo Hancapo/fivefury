@@ -62,6 +62,18 @@ class CutAnimationDictPayload(CutNamePayload):
 
 
 @dataclass(slots=True)
+class CutFinalNamePayload(CutEventPayload):
+    name: str
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"cName": str(self.name)}
+
+    @property
+    def event_label(self) -> str | None:
+        return self.name
+
+
+@dataclass(slots=True)
 class CutAnimationTargetPayload(CutEventPayload):
     object_id: int
 
@@ -99,6 +111,14 @@ class CutObjectVariationPayload(CutEventPayload):
             "iDrawable": int(self.drawable),
             "iTexture": int(self.texture),
         }
+
+
+@dataclass(slots=True)
+class CutObjectTargetPayload(CutEventPayload):
+    object_id: int
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"iObjectId": int(self.object_id)}
 
 
 @dataclass(slots=True)
@@ -165,6 +185,44 @@ class CutScreenFadePayload(CutEventPayload):
             "fValue": float(self.value),
             "color": int(self.color),
         }
+
+
+@dataclass(slots=True)
+class CutCascadeShadowPayload(CutEventPayload):
+    camera_cut_hash: int | str
+    position: tuple[float, float, float]
+    radius: float
+    interp_time: float = 0.0
+    cascade_index: int = 0
+    enabled: bool = True
+    interpolate_to_disabled: bool = True
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "cameraCutHashTag": self.camera_cut_hash,
+            "position": self.position,
+            "radius": float(self.radius),
+            "interpTimeTag": float(self.interp_time),
+            "cascadeIndexTag": int(self.cascade_index),
+            "enabled": bool(self.enabled),
+            "interpolateToDisabledTag": bool(self.interpolate_to_disabled),
+        }
+
+
+@dataclass(slots=True)
+class CutHashFloatPayload(CutEventPayload):
+    value: float
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"hash_0BD8B46C": float(self.value)}
+
+
+@dataclass(slots=True)
+class CutHashBoolPayload(CutEventPayload):
+    value: bool
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"hash_0C74B449": bool(self.value)}
 
 
 @dataclass(slots=True)
