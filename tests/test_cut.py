@@ -8,11 +8,14 @@ import pytest
 from fivefury.hashing import jenk_hash
 from fivefury import (
     CutCascadeShadowPayload,
+    CutDecalPayload,
     CutFile,
     CutHashedString,
     CutFinalNamePayload,
     CutHashFloatPayload,
     CutPlayParticleEffectPayload,
+    CutPropAnimationPreset,
+    CutTypeFileStrategy,
     CutScreenFadePayload,
     CutScene,
     GameFileType,
@@ -304,3 +307,194 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     assert depth_args is not None
     assert depth_args.type_name == "hash_5FF00EA5"
     assert depth_args.fields["hash_0BD8B46C"] == pytest.approx(0.75)
+
+
+def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> None:
+    scene = CutScene.create(duration=6.0, face_dir="x:/gta5/assets_ng/cuts/test_decal/faces")
+    decal = scene.add_decal("blood_mark")
+    light = scene.add_light("fx_light")
+    hidden = scene.add_object("hidden_object", name="hidden_target", fields={"vPosition": (0.0, 0.0, 0.0), "fRadius": 1.5})
+
+    scene.trigger_decal(
+        0.0,
+        decal,
+        CutDecalPayload(
+            position=(1.0, 2.0, 3.0),
+            rotation=(0.0, 0.0, 0.0, 1.0),
+            width=0.75,
+            height=1.25,
+            colour=0xFFAA5500,
+            lifetime=10.0,
+        ),
+    )
+    scene.remove_decal(1.0, decal)
+    scene.set_light(0.0, light)
+    scene.clear_light(2.0, light)
+    scene.hide_hidden_object(0.0, hidden)
+    scene.show_hidden_object(1.0, hidden)
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+
+    event_names = [get_cut_event_name(event.fields["iEventId"]) for event in rebuilt.events]
+    assert "trigger_decal" in event_names
+    assert "remove_decal" in event_names
+    assert "set_light" in event_names
+    assert "clear_light" in event_names
+    assert "hide_hidden_object" in event_names
+    assert "show_hidden_object" in event_names
+
+    trigger_decal_event = next(event for event in rebuilt.events if get_cut_event_name(event.fields["iEventId"]) == "trigger_decal")
+    decal_args = rebuilt.get_event_args(trigger_decal_event.fields["iEventArgsIndex"])
+    assert decal_args is not None
+    assert decal_args.type_name == "rage__cutfDecalEventArgs"
+    assert decal_args.fields["vPosition"] == pytest.approx((1.0, 2.0, 3.0))
+    assert decal_args.fields["fWidth"] == pytest.approx(0.75)
+    assert decal_args.fields["fHeight"] == pytest.approx(1.25)
+    assert decal_args.fields["Colour"] == 0xFFAA5500
+    assert decal_args.fields["fLifeTime"] == pytest.approx(10.0)
+
+
+def test_cut_prop_binding_exposes_real_streaming_fields() -> None:
+    scene = CutScene.create(duration=4.0, face_dir="x:/gta5/assets_ng/cuts/test_prop/faces")
+    prop = scene.add_prop(
+        "prop_stream",
+        cutscene_name="prop_local",
+        anim_streaming_base=0x1234,
+        anim_export_ctrl_spec_file="anim_ctrl",
+        face_export_ctrl_spec_file="face_ctrl",
+        anim_compression_file="anim_comp",
+        handle="prop_handle",
+        type_file="prop_type",
+    )
+
+    assert prop.streaming_name == "prop_stream"
+    assert prop.cutscene_name == "prop_local"
+    assert prop.anim_streaming_base == 0x1234
+    assert prop.anim_export_ctrl_spec_file == "anim_ctrl"
+    assert prop.face_export_ctrl_spec_file == "face_ctrl"
+    assert prop.anim_compression_file == "anim_comp"
+    assert prop.handle == "prop_handle"
+    assert prop.type_file == "prop_type"
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+    rebuilt_prop = rebuilt.objects[0]
+
+    assert rebuilt_prop.type_name == "rage__cutfPropModelObject"
+    assert rebuilt_prop.fields["StreamingName"].hash == jenk_hash("prop_stream")
+    assert rebuilt_prop.fields["cName"].hash == jenk_hash("prop_local")
+    assert rebuilt_prop.fields["AnimStreamingBase"] == 0x1234
+    assert rebuilt_prop.fields["cAnimExportCtrlSpecFile"].hash == jenk_hash("anim_ctrl")
+    assert rebuilt_prop.fields["cFaceExportCtrlSpecFile"].hash == jenk_hash("face_ctrl")
+    assert rebuilt_prop.fields["cAnimCompressionFile"].hash == jenk_hash("anim_comp")
+    assert rebuilt_prop.fields["cHandle"].hash == jenk_hash("prop_handle")
+    assert rebuilt_prop.fields["typeFile"].hash == jenk_hash("prop_type")
+
+    roundtrip_scene = read_cut_scene(scene_to_cut(scene))
+    roundtrip_prop = roundtrip_scene.props[0]
+    assert roundtrip_prop.streaming_name == "prop_stream"
+    assert roundtrip_prop.cutscene_name == "prop_local"
+    assert roundtrip_prop.anim_streaming_base == 0x1234
+    assert roundtrip_prop.anim_export_ctrl_spec_file == "anim_ctrl"
+    assert roundtrip_prop.face_export_ctrl_spec_file == "face_ctrl"
+    assert roundtrip_prop.anim_compression_file == "anim_comp"
+    assert roundtrip_prop.handle == "prop_handle"
+    assert roundtrip_prop.type_file == "prop_type"
+
+
+def test_cut_prop_binding_supports_clear_aliases_for_real_fields() -> None:
+    scene = CutScene.create(duration=1.0)
+    prop = scene.add_prop(
+        model_name="prop_npc_phone",
+        scene_name="phone_local",
+        animation_streaming_base=0xE99D162E,
+        animation_export_spec_file="anim_ctrl",
+        face_animation_export_spec_file="face_ctrl",
+        animation_compression_filename="anim_comp",
+        object_handle="phone_handle",
+        ytyp_name="xm4_props_phone",
+    )
+
+    assert prop.model_name == "prop_npc_phone"
+    assert prop.streaming_name == "prop_npc_phone"
+    assert prop.scene_name == "phone_local"
+    assert prop.cutscene_name == "phone_local"
+    assert prop.animation_streaming_base == 0xE99D162E
+    assert prop.animation_export_spec_file == "anim_ctrl"
+    assert prop.face_animation_export_spec_file == "face_ctrl"
+    assert prop.animation_compression_filename == "anim_comp"
+    assert prop.object_handle == "phone_handle"
+    assert prop.ytyp_name == "xm4_props_phone"
+
+
+def test_cut_prop_animation_presets_are_selectable() -> None:
+    scene = CutScene.create(duration=1.0)
+    prop = scene.add_prop(
+        model_name="prop_npc_phone",
+        animation_preset=CutPropAnimationPreset.COMMON_PROP,
+    )
+
+    assert prop.anim_export_ctrl_spec_file == "0x7097694E"
+    assert prop.face_export_ctrl_spec_file == "0x00000000"
+    assert prop.anim_compression_file == "0x47FB8D46"
+    assert prop.fields["cAnimExportCtrlSpecFile"].hash == 1888971086
+    assert prop.fields["cFaceExportCtrlSpecFile"].hash == 0
+    assert prop.fields["cAnimCompressionFile"].hash == 1207668038
+
+    prop.apply_animation_preset(CutPropAnimationPreset.NONE)
+    assert "cAnimExportCtrlSpecFile" not in prop.fields
+    assert "cFaceExportCtrlSpecFile" not in prop.fields
+    assert "cAnimCompressionFile" not in prop.fields
+
+
+@pytest.mark.parametrize(
+    ("preset", "expected_export", "expected_comp"),
+    [
+        (CutPropAnimationPreset.COMMON_PROP_ALT_COMPRESSION, 1888971086, 4002728289),
+        (CutPropAnimationPreset.ALT_EXPORT_A, 2678174446, 1207668038),
+        (CutPropAnimationPreset.ALT_EXPORT_B, 2700143237, 1207668038),
+    ],
+)
+def test_cut_prop_animation_alternative_presets_match_real_cut_patterns(
+    preset: CutPropAnimationPreset,
+    expected_export: int,
+    expected_comp: int,
+) -> None:
+    prop = CutScene.create().add_prop(model_name="prop_test", animation_preset=preset)
+    assert prop.fields["cAnimExportCtrlSpecFile"].hash == expected_export
+    assert prop.fields["cFaceExportCtrlSpecFile"].hash == 0
+    assert prop.fields["cAnimCompressionFile"].hash == expected_comp
+
+
+def test_cut_prop_can_be_built_from_runtime_sources_with_explicit_ytyp() -> None:
+    scene = CutScene.create(duration=1.0)
+    prop = scene.add_prop(
+        model=r"update/x64/dlcpacks/mpchristmas2018/dlc.rpf/x64/levels/gta5/props/prop_arena_cutscene.rpf/xs_prop_arena_clipboard_01a.ydr",
+        ytyp=r"update/x64/dlcpacks/mpchristmas2018/dlc.rpf/x64/levels/gta5/props/prop_arena_cutscene.rpf/xs_prop_arena_cutscene.ytyp",
+        scene_name="clipboard_local",
+    )
+
+    assert prop.model_name == "xs_prop_arena_clipboard_01a"
+    assert prop.ytyp_name == "xs_prop_arena_cutscene"
+    assert prop.scene_name == "clipboard_local"
+
+
+def test_cut_prop_runtime_source_auto_falls_back_to_container_stem() -> None:
+    scene = CutScene.create(duration=1.0)
+    prop = scene.add_prop_from_runtime_asset(
+        model=r"update/x64/dlcpacks/mpgunrunning/dlc.rpf/x64/levels/gta5/props/prop_gr_crates.rpf/gr_prop_gr_torque_wrench_01a.ydr",
+        scene_name="wrench_local",
+    )
+
+    assert prop.model_name == "gr_prop_gr_torque_wrench_01a"
+    assert prop.type_file == "prop_gr_crates"
+    assert prop.scene_name == "wrench_local"
+
+
+def test_cut_prop_runtime_source_can_disable_type_file_inference() -> None:
+    prop = CutScene.create().add_prop(
+        model=r"x64c.rpf/levels/gta5/props/lev_des/lev_des.rpf/prop_npc_phone.ydr",
+        type_file_strategy=CutTypeFileStrategy.NONE,
+    )
+
+    assert prop.model_name == "prop_npc_phone"
+    assert prop.type_file is None

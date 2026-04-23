@@ -8,6 +8,7 @@ from ..payloads import (
     CutAnimationTargetPayload,
     CutCameraCutPayload,
     CutCascadeShadowPayload,
+    CutDecalPayload,
     CutFinalNamePayload,
     CutFloatValuePayload,
     CutHashBoolPayload,
@@ -73,6 +74,16 @@ def load_anim_dict(self: CutScene, start: float, name: str | CutAnimationDictPay
 def unload_anim_dict(self: CutScene, start: float, name: str | CutAnimationDictPayload, *, target: CutBinding | int | None = None) -> CutTimelineEvent:
     payload = name if isinstance(name, CutAnimationDictPayload) else CutAnimationDictPayload(str(name))
     return self.create_event(CutEventType.UNLOAD_ANIM_DICT, start=start, target=target, track="animation_state", payload=payload)
+
+
+def load_audio(self: CutScene, start: float, name: str | CutNamePayload, *, target: CutBinding | int | None = None) -> CutTimelineEvent:
+    payload = name if isinstance(name, CutNamePayload) else CutNamePayload(str(name))
+    return self.create_event(CutEventType.LOAD_AUDIO, start=start, target=target, track="audio_cue", payload=payload)
+
+
+def unload_audio(self: CutScene, start: float, name: str | CutNamePayload, *, target: CutBinding | int | None = None) -> CutTimelineEvent:
+    payload = name if isinstance(name, CutNamePayload) else CutNamePayload(str(name))
+    return self.create_event(CutEventType.UNLOAD_AUDIO, start=start, target=target, track="audio_cue", payload=payload)
 
 
 def set_anim(self: CutScene, start: float, animated: CutBinding | int, *, target: CutBinding | int | None = None) -> CutTimelineEvent:
@@ -158,6 +169,16 @@ def set_variation(self: CutScene, start: float, target: CutBinding | int, *, com
     )
 
 
+def hide_hidden_object(self: CutScene, start: float, target: CutBinding | int) -> CutTimelineEvent:
+    object_id = _coerce_object_id(target)
+    return self.create_event(CutEventType.HIDE_HIDDEN_OBJECT, start=start, target=target, payload=CutObjectTargetPayload(object_id))
+
+
+def show_hidden_object(self: CutScene, start: float, target: CutBinding | int) -> CutTimelineEvent:
+    object_id = _coerce_object_id(target)
+    return self.create_event(CutEventType.SHOW_HIDDEN_OBJECT, start=start, target=target, payload=CutObjectTargetPayload(object_id))
+
+
 def show_overlay(self: CutScene, start: float, overlay: CutBinding | int | None) -> CutTimelineEvent:
     return self.create_event(CutEventType.SHOW_OVERLAY, start=start, target=overlay)
 
@@ -201,6 +222,22 @@ def stop_particle_effect(self: CutScene, start: float, particle_fx: CutBinding |
     return self.create_event(CutEventType.STOP_PARTICLE_EFFECT, start=start, target=particle_fx)
 
 
+def trigger_decal(self: CutScene, start: float, decal: CutBinding | int | None, payload: CutDecalPayload) -> CutTimelineEvent:
+    return self.create_event(CutEventType.TRIGGER_DECAL, start=start, target=decal, payload=payload)
+
+
+def remove_decal(self: CutScene, start: float, decal: CutBinding | int | None) -> CutTimelineEvent:
+    return self.create_event(CutEventType.REMOVE_DECAL, start=start, target=decal)
+
+
+def set_light(self: CutScene, start: float, light: CutBinding | int | None) -> CutTimelineEvent:
+    return self.create_event(CutEventType.SET_LIGHT, start=start, target=light)
+
+
+def clear_light(self: CutScene, start: float, light: CutBinding | int | None) -> CutTimelineEvent:
+    return self.create_event(CutEventType.CLEAR_LIGHT, start=start, target=light)
+
+
 def show_subtitle(self: CutScene, start: float, subtitle: CutBinding | int | None, payload: CutSubtitlePayload) -> CutTimelineEvent:
     return self.create_event(CutEventType.SHOW_SUBTITLE, start=start, target=subtitle, payload=payload)
 
@@ -229,6 +266,8 @@ for _name in (
     "unload_subtitles",
     "load_anim_dict",
     "unload_anim_dict",
+    "load_audio",
+    "unload_audio",
     "set_anim",
     "clear_anim",
     "play_animation",
@@ -243,6 +282,8 @@ for _name in (
     "enable_dof",
     "disable_dof",
     "set_variation",
+    "hide_hidden_object",
+    "show_hidden_object",
     "show_overlay",
     "hide_overlay",
     "blendout_camera",
@@ -252,6 +293,10 @@ for _name in (
     "cascade_shadows_reset_cascade_shadows",
     "play_particle_effect",
     "stop_particle_effect",
+    "trigger_decal",
+    "remove_decal",
+    "set_light",
+    "clear_light",
     "show_subtitle",
     "hide_subtitle",
     "play_audio",

@@ -239,3 +239,39 @@ class CutPlayParticleEffectPayload(CutEventPayload):
             "iAttachParentId": int(self.attach_parent_id),
             "iAttachBoneHash": int(self.attach_bone_hash),
         }
+
+
+@dataclass(slots=True)
+class CutDecalPayload(CutEventPayload):
+    position: tuple[float, float, float]
+    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    width: float = 1.0
+    height: float = 1.0
+    colour: int = 0xFFFFFFFF
+    lifetime: float = 0.0
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "vPosition": self.position,
+            "vRotation": self.rotation,
+            "fWidth": float(self.width),
+            "fHeight": float(self.height),
+            "Colour": int(self.colour),
+            "fLifeTime": float(self.lifetime),
+        }
+
+
+@dataclass(slots=True)
+class CutLightEffectPayload(CutEventPayload):
+    attach_parent_id: int = -1
+    attach_bone_hash: int = 0
+    attached_parent_name: str | None = None
+
+    def to_fields(self) -> dict[str, Any]:
+        fields = {
+            "iAttachParentId": int(self.attach_parent_id),
+            "iAttachBoneHash": int(self.attach_bone_hash),
+        }
+        if self.attached_parent_name is not None:
+            fields["AttachedParentName"] = self.attached_parent_name
+        return fields

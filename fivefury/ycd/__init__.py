@@ -30,6 +30,17 @@ from .model import (
     parse_ycd_uv_clip_binding,
     get_ycd_track_format,
 )
+from .cutscene import (
+    YCD_CUTSCENE_DEFAULT_FPS,
+    YCD_CUTSCENE_DEFAULT_VERSION,
+    YcdCutsceneBoneAnimation,
+    YcdCutsceneBuilder,
+    YcdCutsceneClip,
+    YcdCutsceneSection,
+    YcdCutsceneTrack,
+    build_cutscene_sections,
+    build_cutscene_ycds,
+)
 from .reader import read_ycd
 from .write import build_ycd_bytes, save_ycd
 
@@ -39,6 +50,11 @@ __all__ = [
     "YcdAnimationBoneId",
     "YcdAnimationTrack",
     "YcdTrackFormat",
+    "YcdCutsceneBoneAnimation",
+    "YcdCutsceneBuilder",
+    "YcdCutsceneClip",
+    "YcdCutsceneSection",
+    "YcdCutsceneTrack",
     "YcdAnimSequence",
     "YcdCameraAnimationSample",
     "YcdChannelType",
@@ -61,9 +77,13 @@ __all__ = [
     "YcdUvTransformSample",
     "build_ycd_uv_clip_hash",
     "build_ycd_uv_clip_name",
+    "build_cutscene_sections",
+    "build_cutscene_ycds",
     "create_ycd_uv_clip",
     "get_ycd_track_format",
     "parse_ycd_uv_clip_binding",
+    "YCD_CUTSCENE_DEFAULT_FPS",
+    "YCD_CUTSCENE_DEFAULT_VERSION",
     "build_ycd_bytes",
     "read_ycd",
     "save_ycd",

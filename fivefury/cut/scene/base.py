@@ -11,7 +11,16 @@ from ...metahash import MetaHash
 from ..events import CutEventType, get_cut_event_spec
 from ..model import CutFile
 from ..payloads import CutEventPayload
-from .bindings import _BINDING_ADDERS, _BINDING_CLASS_BY_TYPE, _ROLE_PROPERTY_NAMES, _TypedCutBinding, CutBinding
+from .bindings import (
+    _BINDING_ADDERS,
+    _BINDING_CLASS_BY_TYPE,
+    _ROLE_PROPERTY_NAMES,
+    _TypedCutBinding,
+    CutBinding,
+    CutProp,
+    CutPropAnimationPreset,
+    CutTypeFileStrategy,
+)
 from .shared import _ROLE_DEFAULT_OBJECT_TYPE, _is_scene_entity, _object_role
 from .timeline import CutTimelineEvent, CutTrack
 
@@ -317,3 +326,107 @@ for _role, _property_name in _ROLE_PROPERTY_NAMES.items():
 
 for _role, _binding_cls in _BINDING_ADDERS.items():
     setattr(CutScene, f"add_{_role}", _make_binding_adder(_binding_cls))
+
+
+def add_prop(
+    self: CutScene,
+    name: str | None = None,
+    *,
+    object_id: int | None = None,
+    animation_preset: CutPropAnimationPreset | str | None = None,
+    cutscene_name: str | None = None,
+    scene_name: str | None = None,
+    streaming_name: str | None = None,
+    model_name: str | None = None,
+    anim_streaming_base: int | None = None,
+    animation_streaming_base: int | None = None,
+    anim_export_ctrl_spec_file: str | None = None,
+    animation_export_spec_file: str | None = None,
+    face_export_ctrl_spec_file: str | None = None,
+    face_animation_export_spec_file: str | None = None,
+    anim_compression_file: str | None = None,
+    animation_compression_filename: str | None = None,
+    handle: str | None = None,
+    object_handle: str | None = None,
+    type_file: str | None = None,
+    ytyp_name: str | None = None,
+    model: Any | None = None,
+    archetype: Any | None = None,
+    ytyp: Any | None = None,
+    type_source: Any | None = None,
+    type_file_strategy: CutTypeFileStrategy | str | None = None,
+    fields: dict[str, Any] | None = None,
+) -> CutProp:
+    prop = self.add_typed_binding(CutProp, name, object_id=object_id, fields=fields)
+    assert isinstance(prop, CutProp)
+    if animation_preset is not None:
+        prop.apply_animation_preset(animation_preset)
+    prop.configure_runtime_source(
+        model=model,
+        archetype=archetype,
+        ytyp=ytyp,
+        type_source=type_source,
+        type_file_strategy=type_file_strategy,
+    )
+    prop.configure_model_asset(
+        cutscene_name=cutscene_name if cutscene_name is not None else scene_name,
+        streaming_name=streaming_name if streaming_name is not None else model_name,
+        anim_streaming_base=anim_streaming_base if anim_streaming_base is not None else animation_streaming_base,
+        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file if anim_export_ctrl_spec_file is not None else animation_export_spec_file,
+        face_export_ctrl_spec_file=face_export_ctrl_spec_file if face_export_ctrl_spec_file is not None else face_animation_export_spec_file,
+        anim_compression_file=anim_compression_file if anim_compression_file is not None else animation_compression_filename,
+        handle=handle if handle is not None else object_handle,
+        type_file=type_file if type_file is not None else ytyp_name,
+    )
+    return prop
+
+
+setattr(CutScene, "add_prop", add_prop)
+
+
+def add_prop_from_runtime_asset(
+    self: CutScene,
+    *,
+    model: Any | None = None,
+    archetype: Any | None = None,
+    ytyp: Any | None = None,
+    type_source: Any | None = None,
+    type_file_strategy: CutTypeFileStrategy | str | None = None,
+    name: str | None = None,
+    object_id: int | None = None,
+    animation_preset: CutPropAnimationPreset | str | None = None,
+    cutscene_name: str | None = None,
+    scene_name: str | None = None,
+    anim_streaming_base: int | None = None,
+    animation_streaming_base: int | None = None,
+    anim_export_ctrl_spec_file: str | None = None,
+    animation_export_spec_file: str | None = None,
+    face_export_ctrl_spec_file: str | None = None,
+    face_animation_export_spec_file: str | None = None,
+    anim_compression_file: str | None = None,
+    animation_compression_filename: str | None = None,
+    handle: str | None = None,
+    object_handle: str | None = None,
+    fields: dict[str, Any] | None = None,
+) -> CutProp:
+    return add_prop(
+        self,
+        name=name,
+        object_id=object_id,
+        animation_preset=animation_preset,
+        cutscene_name=cutscene_name if cutscene_name is not None else scene_name,
+        model=model,
+        archetype=archetype,
+        ytyp=ytyp,
+        type_source=type_source,
+        type_file_strategy=type_file_strategy,
+        anim_streaming_base=anim_streaming_base if anim_streaming_base is not None else animation_streaming_base,
+        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file if anim_export_ctrl_spec_file is not None else animation_export_spec_file,
+        face_export_ctrl_spec_file=face_export_ctrl_spec_file if face_export_ctrl_spec_file is not None else face_animation_export_spec_file,
+        anim_compression_file=anim_compression_file if anim_compression_file is not None else animation_compression_filename,
+        handle=handle if handle is not None else object_handle,
+        fields=fields,
+    )
+
+
+setattr(CutScene, "add_prop_from_runtime_asset", add_prop_from_runtime_asset)
