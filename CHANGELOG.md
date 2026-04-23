@@ -7,6 +7,17 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.47]
+
+### Added
+- `.cut` high-level authoring now covers additional real-world scene objects and events, including decals, fixup objects, hidden-object visibility control, extra light/decal payloads, and more explicit runtime-source helpers for cutscene props.
+- `YCD` now exposes a dedicated cutscene builder that can derive section files from camera-cut timings, generate sectioned clip dictionaries directly, and author camera/object clips without manually assembling low-level track tables.
+- The cutscene `YCD` builder now supports multi-bone object clips declaratively, so animated props and other articulated cutscene assets can be authored with per-bone transforms plus root-motion tracks from a single high-level input structure.
+
+### Changed
+- Cutscene prop authoring now uses clearer runtime-facing semantics around model names, type sources, and animation presets, making it easier to build `.cut` props from loose `YDR`/`YTYP` assets instead of hand-filling obscure fields.
+- Public exports were updated so the new cutscene `YCD` builder types and the expanded `.cut` helpers are available directly from `fivefury`.
+
 ## [0.1.46]
 
 ### Added
