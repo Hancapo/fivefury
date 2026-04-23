@@ -15,11 +15,16 @@ from .names import CUT_NAME_VALUES
 from .payloads import (
     CutAnimationDictPayload,
     CutAnimationTargetPayload,
+    CutBoolValuePayload,
     CutCameraCutPayload,
     CutEventPayload,
+    CutFloatValuePayload,
     CutLoadScenePayload,
     CutNamePayload,
     CutObjectIdListPayload,
+    CutObjectVariationPayload,
+    CutPlayParticleEffectPayload,
+    CutScreenFadePayload,
     CutSubtitlePayload,
 )
 from .pso import read_cut
@@ -891,6 +896,46 @@ class CutScene:
     ) -> CutTimelineEvent:
         return self.create_event(CutEventType.UNLOAD_MODELS, start=start, target=target, payload=CutObjectIdListPayload(object_ids))
 
+    def load_particle_effects(
+        self,
+        start: float,
+        name: str | CutNamePayload,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        payload = name if isinstance(name, CutNamePayload) else CutNamePayload(str(name))
+        return self.create_event(CutEventType.LOAD_PARTICLE_EFFECTS, start=start, target=target, track="load", payload=payload)
+
+    def unload_particle_effects(
+        self,
+        start: float,
+        name: str | CutNamePayload,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        payload = name if isinstance(name, CutNamePayload) else CutNamePayload(str(name))
+        return self.create_event(CutEventType.UNLOAD_PARTICLE_EFFECTS, start=start, target=target, track="load", payload=payload)
+
+    def load_overlays(
+        self,
+        start: float,
+        name: str | CutNamePayload,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        payload = name if isinstance(name, CutNamePayload) else CutNamePayload(str(name))
+        return self.create_event(CutEventType.LOAD_OVERLAYS, start=start, target=target, track="load", payload=payload)
+
+    def unload_overlays(
+        self,
+        start: float,
+        name: str | CutNamePayload,
+        *,
+        target: CutBinding | int | None = None,
+    ) -> CutTimelineEvent:
+        payload = name if isinstance(name, CutNamePayload) else CutNamePayload(str(name))
+        return self.create_event(CutEventType.UNLOAD_OVERLAYS, start=start, target=target, track="load", payload=payload)
+
     def load_anim_dict(
         self,
         start: float,
@@ -988,6 +1033,89 @@ class CutScene:
         payload: CutCameraCutPayload,
     ) -> CutTimelineEvent:
         return self.create_event(CutEventType.CAMERA_CUT, start=start, target=camera, payload=payload)
+
+    def fade_out(
+        self,
+        start: float,
+        fade: CutBinding | int | None,
+        payload: CutScreenFadePayload,
+    ) -> CutTimelineEvent:
+        return self.create_event(CutEventType.FADE_OUT, start=start, target=fade, payload=payload)
+
+    def fade_in(
+        self,
+        start: float,
+        fade: CutBinding | int | None,
+        payload: CutScreenFadePayload,
+    ) -> CutTimelineEvent:
+        return self.create_event(CutEventType.FADE_IN, start=start, target=fade, payload=payload)
+
+    def set_draw_distance(
+        self,
+        start: float,
+        camera: CutBinding | int | None,
+        value: float | CutFloatValuePayload,
+    ) -> CutTimelineEvent:
+        payload = value if isinstance(value, CutFloatValuePayload) else CutFloatValuePayload(float(value))
+        return self.create_event(CutEventType.SET_DRAW_DISTANCE, start=start, target=camera, payload=payload)
+
+    def set_variation(
+        self,
+        start: float,
+        target: CutBinding | int,
+        *,
+        component: int,
+        drawable: int,
+        texture: int,
+    ) -> CutTimelineEvent:
+        object_id = target.object_id if isinstance(target, CutBinding) else int(target)
+        return self.create_event(
+            CutEventType.SET_VARIATION,
+            start=start,
+            target=target,
+            payload=CutObjectVariationPayload(
+                object_id=object_id,
+                component=component,
+                drawable=drawable,
+                texture=texture,
+            ),
+        )
+
+    def show_overlay(
+        self,
+        start: float,
+        overlay: CutBinding | int | None,
+        name: str,
+    ) -> CutTimelineEvent:
+        return self.create_event(CutEventType.SHOW_OVERLAY, start=start, target=overlay, payload=CutNamePayload(name))
+
+    def hide_overlay(
+        self,
+        start: float,
+        overlay: CutBinding | int | None,
+        name: str,
+    ) -> CutTimelineEvent:
+        return self.create_event(CutEventType.HIDE_OVERLAY, start=start, target=overlay, payload=CutNamePayload(name))
+
+    def play_particle_effect(
+        self,
+        start: float,
+        particle_fx: CutBinding | int | None,
+        payload: CutPlayParticleEffectPayload | None = None,
+    ) -> CutTimelineEvent:
+        return self.create_event(
+            CutEventType.PLAY_PARTICLE_EFFECT,
+            start=start,
+            target=particle_fx,
+            payload=payload or CutPlayParticleEffectPayload(),
+        )
+
+    def stop_particle_effect(
+        self,
+        start: float,
+        particle_fx: CutBinding | int | None,
+    ) -> CutTimelineEvent:
+        return self.create_event(CutEventType.STOP_PARTICLE_EFFECT, start=start, target=particle_fx)
 
     def show_subtitle(
         self,

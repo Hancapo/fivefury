@@ -13,6 +13,8 @@ from .gen9_shader_enums import YdrGen9Shader
 from .shader_enums import YdrShader
 from .write_geometry import compute_bounds
 from ..game_target import GameTarget, coerce_game_target
+from ..texture import Texture
+from ..ytd import TextureFormat, Ytd
 from ..ytyp import Archetype, Ytyp
 from ..ytyp.archetypes import ArchetypeAssetType
 
@@ -24,6 +26,7 @@ _SEMANTIC_DIFFUSE = 1
 _SEMANTIC_SPECULAR = 2
 _SEMANTIC_HEIGHT = 5
 _SEMANTIC_NORMALS = 6
+_SUPPORTED_ASSIMP_SUFFIXES = {".obj", ".fbx", ".x"}
 
 
 @dataclasses.dataclass(slots=True)
@@ -32,6 +35,7 @@ class AssimpMaterial:
     diffuse_texture: str | None = None
     normal_texture: str | None = None
     specular_texture: str | None = None
+    diffuse_color: tuple[float, float, float, float] | None = None
 
     def to_ydr_material(self, *, shader: str | YdrShader | YdrGen9Shader) -> YdrMaterialInput:
         textures: dict[str, str] = {}
@@ -49,6 +53,7 @@ class AssimpScene:
     meshes: list[YdrMeshInput]
     materials: list[YdrMaterialInput]
     name: str = ""
+    embedded_textures: Ytd | None = None
 
     def to_ydr(
         self,
@@ -63,7 +68,17 @@ class AssimpScene:
             name=self.name,
             lod=lod,
             version=_resolve_target_version(version=version, game=game),
+            embedded_textures=self.embedded_textures,
         )
+
+
+def _validate_input_format(source: str | Path) -> Path:
+    source_path = Path(source)
+    suffix = source_path.suffix.lower()
+    if suffix not in _SUPPORTED_ASSIMP_SUFFIXES:
+        supported = ", ".join(sorted(_SUPPORTED_ASSIMP_SUFFIXES))
+        raise ValueError(f"Unsupported Assimp source suffix {source_path.suffix!r}; expected one of {supported}")
+    return source_path
 
 
 def _load_impasse():
@@ -167,6 +182,60 @@ def _texture_name(value: Any) -> str | None:
     return path.stem or path.name
 
 
+def _clamp_unit(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _colour4(value: Any) -> tuple[float, float, float, float] | None:
+    if value is None:
+        return None
+    try:
+        r, g, b, a = _vector4(value)
+    except Exception:
+        return None
+    return (_clamp_unit(r), _clamp_unit(g), _clamp_unit(b), _clamp_unit(a))
+
+
+def _byte_from_unit(value: float) -> int:
+    return int(round(_clamp_unit(value) * 255.0)) & 0xFF
+
+
+def _solid_colour_texfury_texture(name: str, colour: tuple[float, float, float, float]) -> Texture:
+    try:
+        import texfury
+        from PIL import Image as PILImage
+    except Exception as exc:  # pragma: no cover - depends on optional runtime deps
+        raise RuntimeError(
+            "material_colours_as_textures requires texfury and Pillow to be installed and importable."
+        ) from exc
+
+    rgba = tuple(_byte_from_unit(channel) for channel in colour)
+    image = PILImage.new("RGBA", (4, 4), rgba)
+    compressed = texfury.Texture.from_pil(
+        image,
+        format=texfury.BCFormat.BC1,
+        quality=1.0,
+        generate_mipmaps=False,
+        resize_to_pot=False,
+        name=name,
+    )
+    return Texture.from_raw(
+        compressed.data,
+        compressed.width,
+        compressed.height,
+        TextureFormat.BC1,
+        compressed.mip_count,
+        name=name,
+        mip_offsets=getattr(compressed, "_mip_offsets", None),
+        mip_sizes=getattr(compressed, "_mip_sizes", None),
+    )
+
+
+def _material_colour_texture_name(material_name: str) -> str:
+    base = (material_name or "material").strip().lower().replace(" ", "_")
+    return f"{base}_colour"
+
+
 def _iter_material_properties(material: Any) -> Iterable[tuple[str, int, Any]]:
     properties = getattr(material, "properties", None)
     if properties is not None:
@@ -233,13 +302,16 @@ def _build_material_inputs(
     *,
     default_shader: str | YdrShader | YdrGen9Shader,
     shader: str | YdrShader | YdrGen9Shader | None,
-) -> tuple[list[YdrMaterialInput], dict[int, str]]:
+    material_colours_as_textures: bool,
+) -> tuple[list[YdrMaterialInput], dict[int, str], Ytd | None]:
     if not scene_materials:
         selected_shader = shader if shader is not None else default_shader
-        return ([AssimpMaterial(name="default").to_ydr_material(shader=selected_shader)], {0: "default"})
+        return ([AssimpMaterial(name="default").to_ydr_material(shader=selected_shader)], {0: "default"}, None)
     used_names: set[str] = set()
+    used_texture_names: set[str] = set()
     material_inputs: list[YdrMaterialInput] = []
     index_to_name: dict[int, str] = {}
+    embedded_textures: Ytd | None = None
     for index, material in enumerate(scene_materials):
         name = _make_unique_name(_material_name(material, index), used_names)
         parsed = AssimpMaterial(
@@ -247,11 +319,18 @@ def _build_material_inputs(
             diffuse_texture=_texture_name(_find_material_property(material, ("$tex.file",), (_SEMANTIC_DIFFUSE,))),
             normal_texture=_texture_name(_find_material_property(material, ("$tex.file",), (_SEMANTIC_NORMALS, _SEMANTIC_HEIGHT))),
             specular_texture=_texture_name(_find_material_property(material, ("$tex.file",), (_SEMANTIC_SPECULAR,))),
+            diffuse_color=_colour4(_find_material_property(material, ("$clr.diffuse", "?clr.diffuse"), (_SEMANTIC_NONE,))),
         )
+        if material_colours_as_textures and parsed.diffuse_texture is None and parsed.diffuse_color is not None:
+            texture_name = _make_unique_name(_material_colour_texture_name(name), used_texture_names)
+            parsed.diffuse_texture = texture_name
+            if embedded_textures is None:
+                embedded_textures = Ytd()
+            embedded_textures.add_texture(_solid_colour_texfury_texture(texture_name, parsed.diffuse_color))
         selected_shader = shader if shader is not None else _infer_shader(parsed, default_shader)
         material_inputs.append(parsed.to_ydr_material(shader=selected_shader))
         index_to_name[index] = name
-    return material_inputs, index_to_name
+    return material_inputs, index_to_name, embedded_textures
 
 
 def _resolve_mesh_material_name(scene_materials: Sequence[Any], mesh: Any, material_names: dict[int, str]) -> str:
@@ -401,11 +480,17 @@ def read_assimp_scene(
     shader: str | YdrShader | YdrGen9Shader | None = None,
     processing: int | None = None,
     default_colour: tuple[float, float, float, float] | None = None,
+    material_colours_as_textures: bool = False,
 ) -> AssimpScene:
-    source_path = Path(source)
+    source_path = _validate_input_format(source)
     scene = _read_impasse_scene(source_path, processing=processing)
     scene_materials = _safe_list(getattr(scene, "materials", []))
-    materials, material_names = _build_material_inputs(scene_materials, default_shader=default_shader, shader=shader)
+    materials, material_names, embedded_textures = _build_material_inputs(
+        scene_materials,
+        default_shader=default_shader,
+        shader=shader,
+        material_colours_as_textures=material_colours_as_textures,
+    )
     meshes: list[YdrMeshInput] = []
     for mesh, transform in _mesh_instances(scene):
         material_name = _resolve_mesh_material_name(scene_materials, mesh, material_names)
@@ -414,7 +499,7 @@ def read_assimp_scene(
             meshes.append(mesh_input)
     if not meshes:
         raise ValueError(f"Assimp source '{source_path}' does not contain any triangle meshes")
-    return AssimpScene(meshes=meshes, materials=materials, name=source_path.stem.lower())
+    return AssimpScene(meshes=meshes, materials=materials, name=source_path.stem.lower(), embedded_textures=embedded_textures)
 
 
 def assimp_to_ydr(
@@ -425,6 +510,7 @@ def assimp_to_ydr(
     shader: str | YdrShader | YdrGen9Shader | None = None,
     processing: int | None = None,
     default_colour: tuple[float, float, float, float] | None = None,
+    material_colours_as_textures: bool = False,
     generate_ytyp: bool = False,
     version: int | None = None,
     game: GameTarget | None = None,
@@ -435,6 +521,7 @@ def assimp_to_ydr(
         shader=shader,
         processing=processing,
         default_colour=default_colour,
+        material_colours_as_textures=material_colours_as_textures,
     )
     build = scene.to_ydr(version=version, game=game)
     if destination is None:

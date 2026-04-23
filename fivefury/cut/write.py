@@ -253,6 +253,16 @@ class _CutWriter:
             return CutNode(type_name=f"hash_{fallback_type_hash:08X}", type_hash=fallback_type_hash, fields=dict(value))
         raise TypeError(f"expected CutNode or dict, got {type(value)!r}")
 
+    def _resolve_dynamic_type_hash(self, node: CutNode, *, context: str) -> int:
+        type_hash = node.type_hash if node.type_hash not in {None, 0} else CUT_NAME_VALUES.get(node.type_name)
+        if type_hash in {None, 0}:
+            raise ValueError(f"missing dynamic cut type hash for {context}: {node.type_name!r}")
+        if type_hash not in self.structs:
+            raise ValueError(
+                f"unknown dynamic cut type hash 0x{type_hash:08X} for {context}: {node.type_name!r}"
+            )
+        return type_hash
+
     def _write_inline_structure(self, struct_hash: int, value: Any) -> bytes:
         node = self._coerce_node(value or {}, struct_hash)
         return self._serialize_structure(struct_hash, node)
@@ -307,11 +317,9 @@ class _CutWriter:
 
             pointer_payload = bytearray()
             pointer_patch_specs: list[tuple[int, int, int]] = []
-            for item in values:
+            for index, item in enumerate(values):
                 node = self._coerce_node(item, 0)
-                type_hash = node.type_hash or CUT_NAME_VALUES.get(node.type_name)
-                if type_hash is None:
-                    raise ValueError(f"missing type hash for cut node {node.type_name!r}")
+                type_hash = self._resolve_dynamic_type_hash(node, context=f"array item {index}")
                 _, rel = self._alloc_structure(type_hash, node)
                 pointer_payload.extend(_u32(0))
                 pointer_payload.extend(b"\x00\x00\x00\x00")
@@ -354,7 +362,16 @@ class _CutWriter:
                 elif entry.subtype in {3, 4}:
                     if value is None:
                         continue
-                    block_hash, rel = self._alloc_structure(entry.reference_key, value)
+                    node = self._coerce_node(value, entry.reference_key)
+                    block_hash = (
+                        entry.reference_key
+                        if entry.reference_key not in {None, 0}
+                        else self._resolve_dynamic_type_hash(
+                            node,
+                            context=f"pointer field {CUT_HASH_NAMES.get(entry.name_hash, f'hash_{entry.name_hash:08X}')}",
+                        )
+                    )
+                    block_hash, rel = self._alloc_structure(block_hash, node)
                     self._record_pointer_patch(buffer, offset, block_hash, rel)
                 else:
                     raise ValueError(f"unsupported structure subtype {entry.subtype}")

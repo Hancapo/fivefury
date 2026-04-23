@@ -8,6 +8,8 @@ import pytest
 from fivefury import (
     CutFile,
     CutHashedString,
+    CutPlayParticleEffectPayload,
+    CutScreenFadePayload,
     CutScene,
     GameFileType,
     analyze_cut,
@@ -24,6 +26,9 @@ from fivefury.gamefile import guess_game_file_type
 TESTS_DIR = Path(__file__).resolve().parent
 CUT_PATH = TESTS_DIR / "mp_int_mcs_18_a1.cut"
 CUTXML_PATH = TESTS_DIR / "mp_int_mcs_18_a1.cutxml"
+LAMAR_CUT_PATH = TESTS_DIR.parent / "references" / "lamar_1_int.cut"
+EF_CUT_PATH = TESTS_DIR / "ef_1_rcm.cut"
+MAUDE_CUT_PATH = TESTS_DIR / "maude_mcs_1.cut"
 
 
 pytestmark = pytest.mark.skipif(not CUT_PATH.is_file() or not CUTXML_PATH.is_file(), reason="cut samples not available")
@@ -100,6 +105,21 @@ def test_cut_roundtrip_binary_writer() -> None:
     assert rebuilt.root.fields["pCutsceneObjects"][0].type_name == cut.root.fields["pCutsceneObjects"][0].type_name
 
 
+@pytest.mark.parametrize("path", [CUT_PATH, EF_CUT_PATH, LAMAR_CUT_PATH])
+def test_cut_roundtrip_preserves_complex_real_templates(path: Path) -> None:
+    if not path.is_file():
+        pytest.skip(f"cut sample not available: {path.name}")
+    cut = read_cut(path)
+
+    rebuilt = read_cut(build_cut_bytes(cut, template=cut))
+
+    assert rebuilt.root.type_name == cut.root.type_name
+    assert _counts(rebuilt) == _counts(cut)
+    assert len(rebuilt.objects) == len(cut.objects)
+    assert len(rebuilt.events) == len(cut.events)
+    assert len(rebuilt.event_args) == len(cut.event_args)
+
+
 def test_cut_scene_abstraction_reads_like_timeline() -> None:
     scene = read_cut_scene(CUT_PATH)
 
@@ -160,3 +180,48 @@ def test_cut_scene_builder_from_scratch() -> None:
     assert len(rebuilt.load_events) == 2
     assert len(rebuilt.events) == 2
     assert len(rebuilt.event_args) == 4
+
+
+def test_cut_scene_builder_supports_overlay_and_load_name_events() -> None:
+    scene = CutScene.create(duration=20.0, face_dir="x:/gta5/assets_ng/cuts/test_plus/faces")
+    asset_manager = scene.add_asset_manager()
+    overlay = scene.add_object("overlay", name="overlay_track")
+
+    scene.load_scene(0.0, payload={"cName": "test_plus"})
+    scene.load_particle_effects(0.0, "core_fx", target=asset_manager)
+    scene.load_overlays(0.0, "ui_overlays", target=asset_manager)
+    scene.show_overlay(0.0, overlay, "overlay_track")
+    scene.hide_overlay(1.0, overlay, "overlay_track")
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+
+    assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(20.0)
+    assert len(rebuilt.load_events) == 3
+    assert len(rebuilt.events) == 2
+    assert any(event.fields["iEventId"] == 8 for event in rebuilt.load_events)  # load_particle_effects
+    assert any(event.fields["iEventId"] == 10 for event in rebuilt.load_events)  # load_overlays
+    assert any(event.fields["iEventId"] == 26 for event in rebuilt.events)  # show_overlay
+    assert any(event.fields["iEventId"] == 27 for event in rebuilt.events)  # hide_overlay
+
+
+def test_cut_scene_builder_supports_variation_events_with_real_template() -> None:
+    scene = CutScene.create(duration=8.0, face_dir="x:/gta5/assets_ng/cuts/test_variation/faces")
+    asset_manager = scene.add_asset_manager()
+    ped = scene.add_ped("ped_plus")
+
+    scene.load_scene(0.0, payload={"cName": "test_variation"})
+    scene.load_models(0.0, [ped.object_id], target=asset_manager)
+    scene.set_variation(0.0, ped, component=3, drawable=1, texture=2)
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=LAMAR_CUT_PATH))
+
+    assert len(rebuilt.load_events) == 2
+    assert len(rebuilt.events) == 1
+    assert rebuilt.events[0].fields["iEventId"] == 34
+    args = rebuilt.get_event_args(rebuilt.events[0].fields["iEventArgsIndex"])
+    assert args is not None
+    assert args.type_name == "rage__cutfObjectVariationEventArgs"
+    assert args.fields["iObjectId"] == ped.object_id
+    assert args.fields["iComponent"] == 3
+    assert args.fields["iDrawable"] == 1
+    assert args.fields["iTexture"] == 2

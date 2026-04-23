@@ -33,11 +33,7 @@ from fivefury import (
     calculate_skeleton_unknown_hashes,
     create_ydr,
     assimp_to_ydr,
-    fbx_to_ydr,
-    obj_to_ydr,
     read_assimp_scene,
-    read_fbx_scene,
-    read_obj_scene,
     read_ydr,
     skeleton_bone_flag_names,
 )
@@ -667,27 +663,73 @@ def test_read_assimp_scene_converts_fake_impasse_scene(monkeypatch: pytest.Monke
     assert imported.meshes[0].colours0[0] == pytest.approx((1.0, 0.5, 0.25, 1.0))
 
 
-def test_obj_and_fbx_wrappers_share_assimp_scene_reader(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_read_assimp_scene_can_convert_material_colours_to_embedded_textures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from fivefury.ydr import assimp as assimp_module
+
+    material = _FakeMaterial(
+        _FakeMaterialProperty("?mat.name", "FlatColor"),
+        _FakeMaterialProperty("$clr.diffuse", (0.25, 0.5, 0.75, 1.0)),
+    )
+    mesh = _FakeMesh(
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        faces=((0, 1, 2),),
+        material=material,
+        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    )
+    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
+    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+
+    source_path = tmp_path / "flat_colour.obj"
+    source_path.write_bytes(b"fake")
+
+    imported = read_assimp_scene(source_path, material_colours_as_textures=True)
+
+    assert imported.embedded_textures is not None
+    assert len(imported.embedded_textures.textures) == 1
+    texture = imported.embedded_textures.textures[0]
+    assert texture.name == "flatcolor_colour"
+    assert texture.width == 4
+    assert texture.height == 4
+    assert texture.format == TextureFormat.BC1
+    assert len(texture.data) == 8
+    assert imported.materials[0].textures["DiffuseSampler"] == "flatcolor_colour"
+
+
+@pytest.mark.parametrize("suffix", [".obj", ".fbx", ".x"])
+def test_read_assimp_scene_autodetects_supported_input_formats(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    suffix: str,
+) -> None:
     from fivefury.ydr import assimp as assimp_module
 
     scene = _make_fake_assimp_scene()
     monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
 
-    obj_path = tmp_path / "shared.obj"
-    fbx_path = tmp_path / "shared.fbx"
-    obj_path.write_bytes(b"fake")
-    fbx_path.write_bytes(b"fake")
+    source_path = tmp_path / f"shared{suffix}"
+    source_path.write_bytes(b"fake")
 
-    obj_scene = read_obj_scene(obj_path)
-    fbx_scene = read_fbx_scene(fbx_path)
+    imported = read_assimp_scene(source_path)
 
-    assert isinstance(obj_scene, AssimpScene)
-    assert isinstance(fbx_scene, AssimpScene)
-    assert obj_scene.materials[0].textures == fbx_scene.materials[0].textures
-    assert obj_scene.meshes[0].positions == pytest.approx(fbx_scene.meshes[0].positions)
+    assert isinstance(imported, AssimpScene)
+    assert imported.materials[0].textures["DiffuseSampler"] == "facade_d"
+    assert imported.materials[0].textures["BumpSampler"] == "facade_n"
+    assert imported.materials[0].textures["SpecSampler"] == "facade_s"
+    assert imported.meshes[0].positions[0] == pytest.approx((2.0, -4.0, 3.0))
 
 
-def test_obj_to_ydr_roundtrip_uses_assimp_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_read_assimp_scene_rejects_unsupported_suffix(tmp_path: Path) -> None:
+    source_path = tmp_path / "shared.3ds"
+    source_path.write_bytes(b"fake")
+
+    with pytest.raises(ValueError, match="Unsupported Assimp source suffix"):
+        read_assimp_scene(source_path)
+
+
+def test_assimp_to_ydr_roundtrip_uses_autodetected_input_format(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from fivefury.ydr import assimp as assimp_module
 
     scene = _make_fake_assimp_scene()
@@ -697,7 +739,7 @@ def test_obj_to_ydr_roundtrip_uses_assimp_pipeline(monkeypatch: pytest.MonkeyPat
     ydr_path = tmp_path / "triangle_obj.ydr"
     obj_path.write_bytes(b"fake")
 
-    build = obj_to_ydr(obj_path, ydr_path)
+    build = assimp_to_ydr(obj_path, ydr_path)
     assert isinstance(build, YdrBuild)
     assert ydr_path.exists()
     ydr = read_ydr(ydr_path)
@@ -708,7 +750,7 @@ def test_obj_to_ydr_roundtrip_uses_assimp_pipeline(monkeypatch: pytest.MonkeyPat
     assert ydr.meshes[0].indices == [0, 1, 2]
 
 
-def test_obj_scene_to_ydr_accepts_enhanced_game_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_assimp_scene_to_ydr_accepts_enhanced_game_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from fivefury.ydr import assimp as assimp_module
 
     scene = _make_fake_assimp_scene()
@@ -716,31 +758,49 @@ def test_obj_scene_to_ydr_accepts_enhanced_game_alias(monkeypatch: pytest.Monkey
 
     obj_path = tmp_path / "triangle_scene.obj"
     obj_path.write_bytes(b"fake")
-    imported = read_obj_scene(obj_path, shader=YdrGen9Shader.DEFAULT)
+    imported = read_assimp_scene(obj_path, shader=YdrGen9Shader.DEFAULT)
     build = imported.to_ydr(game=GameTarget.GTA5_ENHANCED)
 
     assert build.version == 159
     assert build.materials[0].shader == YdrGen9Shader.DEFAULT
 
 
-def test_obj_to_ydr_writes_enhanced_from_game_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_assimp_to_ydr_persists_embedded_colour_textures(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from fivefury.ydr import assimp as assimp_module
 
-    scene = _make_fake_assimp_scene()
+    material = _FakeMaterial(
+        _FakeMaterialProperty("?mat.name", "FlatColor"),
+        _FakeMaterialProperty("$clr.diffuse", (1.0, 0.0, 0.0, 0.5)),
+    )
+    mesh = _FakeMesh(
+        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        faces=((0, 1, 2),),
+        material=material,
+        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    )
+    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
     monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
 
-    obj_path = tmp_path / "triangle_enhanced.obj"
-    ydr_path = tmp_path / "triangle_enhanced.ydr"
-    obj_path.write_bytes(b"fake")
+    source_path = tmp_path / "flat_colour.fbx"
+    ydr_path = tmp_path / "flat_colour.ydr"
+    source_path.write_bytes(b"fake")
 
-    build = obj_to_ydr(obj_path, ydr_path, game=GameTarget.GTA5_ENHANCED)
+    build = assimp_to_ydr(source_path, ydr_path, material_colours_as_textures=True)
     ydr = read_ydr(ydr_path)
 
-    assert build.version == 159
-    assert ydr.version == 159
+    assert build.embedded_textures is not None
+    assert len(build.embedded_textures.textures) == 1
+    assert ydr.embedded_textures is not None
+    assert ydr.embedded_textures.textures[0].name == "flatcolor_colour"
+    assert ydr.materials[0].texture_names == ["flatcolor_colour"]
 
 
-def test_fbx_to_ydr_writes_enhanced_from_game_target(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("suffix", [".obj", ".fbx", ".x"])
+def test_assimp_to_ydr_writes_enhanced_from_supported_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    suffix: str,
+) -> None:
     from fivefury.ydr import assimp as assimp_module
 
     material = _FakeMaterial(_FakeMaterialProperty("?mat.name", "Enhanced"))
@@ -753,11 +813,11 @@ def test_fbx_to_ydr_writes_enhanced_from_game_target(monkeypatch: pytest.MonkeyP
     scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
     monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
 
-    fbx_path = tmp_path / "enhanced.fbx"
-    ydr_path = tmp_path / "enhanced.ydr"
-    fbx_path.write_bytes(b"fake")
+    source_path = tmp_path / f"enhanced{suffix}"
+    ydr_path = tmp_path / f"enhanced_{suffix[1:]}.ydr"
+    source_path.write_bytes(b"fake")
 
-    build = fbx_to_ydr(fbx_path, ydr_path, game=GameTarget.GTA5_ENHANCED, shader=YdrGen9Shader.DEFAULT)
+    build = assimp_to_ydr(source_path, ydr_path, game=GameTarget.GTA5_ENHANCED, shader=YdrGen9Shader.DEFAULT)
     ydr = read_ydr(ydr_path)
 
     assert build.version == 159
@@ -765,7 +825,7 @@ def test_fbx_to_ydr_writes_enhanced_from_game_target(monkeypatch: pytest.MonkeyP
     assert ydr.materials[0].resolved_shader_file_name == "default.sps"
 
 
-def test_read_fbx_scene_rejects_skinned_meshes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_read_assimp_scene_rejects_skinned_meshes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from fivefury.ydr import assimp as assimp_module
 
     material = _FakeMaterial(_FakeMaterialProperty("?mat.name", "Skinned"))
@@ -778,11 +838,11 @@ def test_read_fbx_scene_rejects_skinned_meshes(monkeypatch: pytest.MonkeyPatch, 
     scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
     monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
 
-    fbx_path = tmp_path / "skinned.fbx"
-    fbx_path.write_bytes(b"fake")
+    source_path = tmp_path / "skinned.fbx"
+    source_path.write_bytes(b"fake")
 
     with pytest.raises(NotImplementedError, match="Skinned Assimp mesh import"):
-        read_fbx_scene(fbx_path)
+        read_assimp_scene(source_path)
 
 
 def test_writer_auto_splits_meshes_over_vertex_limit(tmp_path: Path) -> None:

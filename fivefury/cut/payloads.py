@@ -70,6 +70,38 @@ class CutAnimationTargetPayload(CutEventPayload):
 
 
 @dataclass(slots=True)
+class CutFloatValuePayload(CutEventPayload):
+    value: float
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"fValue": float(self.value)}
+
+
+@dataclass(slots=True)
+class CutBoolValuePayload(CutEventPayload):
+    value: bool
+
+    def to_fields(self) -> dict[str, Any]:
+        return {"bValue": bool(self.value)}
+
+
+@dataclass(slots=True)
+class CutObjectVariationPayload(CutEventPayload):
+    object_id: int
+    component: int
+    drawable: int
+    texture: int
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "iObjectId": int(self.object_id),
+            "iComponent": int(self.component),
+            "iDrawable": int(self.drawable),
+            "iTexture": int(self.texture),
+        }
+
+
+@dataclass(slots=True)
 class CutSubtitlePayload(CutEventPayload):
     text: str
     duration: float
@@ -121,3 +153,31 @@ class CutCameraCutPayload(CutEventPayload):
     @property
     def event_label(self) -> str | None:
         return self.name
+
+
+@dataclass(slots=True)
+class CutScreenFadePayload(CutEventPayload):
+    value: float
+    color: int = 0xFF000000
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "fValue": float(self.value),
+            "color": int(self.color),
+        }
+
+
+@dataclass(slots=True)
+class CutPlayParticleEffectPayload(CutEventPayload):
+    initial_bone_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    initial_bone_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    attach_parent_id: int = -1
+    attach_bone_hash: int = 0
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "vInitialBoneRotation": self.initial_bone_rotation,
+            "vInitialBoneOffset": self.initial_bone_offset,
+            "iAttachParentId": int(self.attach_parent_id),
+            "iAttachBoneHash": int(self.attach_bone_hash),
+        }

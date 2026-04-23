@@ -3,7 +3,6 @@ from .builder import build_ydr_bytes, save_ydr, ydr_to_build
 from .collision import YdrCollisionStats, build_bound_from_render_geometry, set_bound_from_render_geometry
 from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding
 from .assimp import AssimpMaterial, AssimpScene, assimp_to_ydr, read_assimp_scene
-from .fbx import fbx_to_ydr, read_fbx_scene
 from .gen9 import (
     ShaderGen9Definition,
     ShaderGen9Library,
@@ -46,7 +45,6 @@ from .model import (
     paint_vertices,
     skeleton_bone_flag_names,
 )
-from .obj import ObjMaterial, ObjScene, obj_to_ydr, read_obj_scene
 from .reader import read_ydr
 from .shader_enums import YdrShader, coerce_shader_name
 from .shader_info import (
@@ -68,8 +66,6 @@ from .shaders import (
 )
 
 __all__ = [
-    "ObjMaterial",
-    "ObjScene",
     "AssimpMaterial",
     "AssimpScene",
     "ShaderDefinition",
@@ -124,7 +120,6 @@ __all__ = [
     "coerce_gen9_shader_name",
     "coerce_shader_name",
     "create_ydr",
-    "fbx_to_ydr",
     "format_ydr_gen9_shader_info",
     "format_ydr_shader_info",
     "get_ydr_gen9_shader_info",
@@ -132,12 +127,10 @@ __all__ = [
     "load_gen9_shader_library",
     "load_shader_library",
     "ColorChannel",
-    "obj_to_ydr",
     "paint_mesh",
     "paint_vertices",
     "skeleton_bone_flag_names",
     "read_gen9_shader_library",
-    "read_obj_scene",
     "read_shader_library",
     "read_ydr",
     "resolve_gen9_shader_reference",
@@ -145,7 +138,6 @@ __all__ = [
     "print_ydr_gen9_shader_info",
     "print_ydr_shader_info",
     "read_assimp_scene",
-    "read_fbx_scene",
     "save_ydr",
     "set_bound_from_render_geometry",
     "ydr_to_build",
