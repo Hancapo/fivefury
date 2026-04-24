@@ -8,6 +8,7 @@ from ..extensions import extensions_from_meta, extensions_to_meta
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
 from .flags import TimeArchetypeFlags
+from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 
 
 class ArchetypeAssetType(enum.IntEnum):
@@ -53,6 +54,19 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
         self.asset_type = coerce_archetype_asset_type(self.asset_type)
         if self.asset_name in (0, "") and self.name not in (0, ""):
             self.asset_name = self.name
+        if self.lod_dist <= 0.0:
+            self.lod_dist = infer_archetype_lod_dist(
+                bs_radius=self.bs_radius,
+                bb_min=self.bb_min,
+                bb_max=self.bb_max,
+            )
+        if self.hd_texture_dist <= 0.0:
+            self.hd_texture_dist = infer_archetype_hd_texture_dist(
+                bs_radius=self.bs_radius,
+                lod_dist=self.lod_dist,
+                bb_min=self.bb_min,
+                bb_max=self.bb_max,
+            )
 
     def add_extension(self, extension: Any) -> Any:
         self.extensions.append(extension)
@@ -81,7 +95,7 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
 
     @classmethod
     def from_meta(cls, value: Any) -> "BaseArchetypeDef":
-        return cls(
+        archetype = cls(
             lod_dist=float(value.get("lodDist", 0.0)),
             flags=int(value.get("flags", 0)),
             special_attribute=int(value.get("specialAttribute", 0)),
@@ -99,6 +113,9 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
             asset_name=value.get("assetName", 0),
             extensions=extensions_from_meta(value.get("extensions", []) or []),
         )
+        archetype.lod_dist = float(value.get("lodDist", 0.0))
+        archetype.hd_texture_dist = float(value.get("hdTextureDist", 0.0))
+        return archetype
 
 
 @dataclasses.dataclass(slots=True)

@@ -1,4 +1,4 @@
-from fivefury import ArchetypeAssetType, ArchetypeFlags, BaseArchetypeDef
+from fivefury import ArchetypeAssetType, ArchetypeFlags, BaseArchetypeDef, infer_archetype_lod_dist
 
 
 def test_archetype_flags_match_cbasearchetypedef_load_flags() -> None:
@@ -33,3 +33,53 @@ def test_base_archetype_asset_type_roundtrips_as_enum() -> None:
 
     parsed = BaseArchetypeDef.from_meta(meta)
     assert parsed.asset_type is ArchetypeAssetType.DRAWABLE
+
+
+def test_archetype_defaults_infer_visible_lod_dist_from_bounds() -> None:
+    archetype = BaseArchetypeDef(
+        name="test_arch",
+        bs_radius=12.0,
+        bb_min=(-12.0, -12.0, -2.0),
+        bb_max=(12.0, 12.0, 2.0),
+        asset_type=ArchetypeAssetType.DRAWABLE,
+    )
+
+    assert archetype.lod_dist == 100.0
+    assert archetype.hd_texture_dist == 50.0
+
+
+def test_archetype_lod_default_scales_for_large_bounds() -> None:
+    archetype = BaseArchetypeDef(
+        name="test_large_arch",
+        bs_radius=80.0,
+        asset_type=ArchetypeAssetType.DRAWABLE,
+    )
+
+    assert archetype.lod_dist == 240.0
+    assert archetype.hd_texture_dist == 120.0
+
+
+def test_archetype_lod_can_be_inferred_from_aabb_when_radius_missing() -> None:
+    lod_dist = infer_archetype_lod_dist(
+        bb_min=(-10.0, -10.0, -10.0),
+        bb_max=(10.0, 10.0, 10.0),
+    )
+
+    assert lod_dist == 100.0
+
+
+def test_archetype_from_meta_preserves_explicit_zero_lod_distances() -> None:
+    parsed = BaseArchetypeDef.from_meta(
+        {
+            "name": "raw_arch",
+            "assetType": int(ArchetypeAssetType.DRAWABLE),
+            "lodDist": 0.0,
+            "hdTextureDist": 0.0,
+            "bsRadius": 12.0,
+            "bbMin": (-12.0, -12.0, -2.0),
+            "bbMax": (12.0, 12.0, 2.0),
+        }
+    )
+
+    assert parsed.lod_dist == 0.0
+    assert parsed.hd_texture_dist == 0.0

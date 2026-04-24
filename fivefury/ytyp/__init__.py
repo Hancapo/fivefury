@@ -10,6 +10,15 @@ from .archetypes import (
 from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .flags import ArchetypeFlags, MloInstanceFlags, MloInteriorFlags, PortalFlags, RoomFlags, TimeArchetypeFlags
 from .helpers import merge_ytyps, time_flags, ytyp_from_ydr_folder
+from .lod import (
+    ARCHETYPE_HD_TEXTURE_RADIUS_SCALE,
+    ARCHETYPE_LOD_RADIUS_SCALE,
+    DEFAULT_ARCHETYPE_HD_TEXTURE_DIST,
+    DEFAULT_ARCHETYPE_LOD_DIST,
+    infer_archetype_hd_texture_dist,
+    infer_archetype_lod_dist,
+    infer_archetype_radius,
+)
 from .mlo import (
     EntitySet,
     MloArchetype,
@@ -29,6 +38,10 @@ __all__ = [
     "ArchetypeAssetType",
     "ArchetypeFlags",
     "BaseArchetypeDef",
+    "ARCHETYPE_HD_TEXTURE_RADIUS_SCALE",
+    "ARCHETYPE_LOD_RADIUS_SCALE",
+    "DEFAULT_ARCHETYPE_HD_TEXTURE_DIST",
+    "DEFAULT_ARCHETYPE_LOD_DIST",
     "coerce_archetype_asset_type",
     "coerce_time_archetype_flags",
     "EntitySet",
@@ -51,6 +64,9 @@ __all__ = [
     "YTYP_ENUM_INFOS",
     "YTYP_STRUCT_INFOS",
     "Ytyp",
+    "infer_archetype_hd_texture_dist",
+    "infer_archetype_lod_dist",
+    "infer_archetype_radius",
     "merge_ytyps",
     "read_ytyp",
     "save_ytyp",

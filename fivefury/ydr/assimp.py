@@ -17,6 +17,7 @@ from ..texture import Texture
 from ..ytd import TextureFormat, Ytd
 from ..ytyp import Archetype, Ytyp
 from ..ytyp.archetypes import ArchetypeAssetType
+from ..ytyp.lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 
 _LEGACY_YDR_VERSION = 165
 _ENHANCED_YDR_VERSION = 159
@@ -457,6 +458,13 @@ def save_companion_ytyp(scene: AssimpScene, destination: str | Path) -> Path:
     base_name = target.stem.lower()
     ytyp_name = f"{base_name}_meta"
     centre, bb_min, bb_max, radius = _compute_scene_bounds(scene.meshes)
+    lod_dist = infer_archetype_lod_dist(bs_radius=radius, bb_min=bb_min, bb_max=bb_max)
+    hd_texture_dist = infer_archetype_hd_texture_dist(
+        bs_radius=radius,
+        lod_dist=lod_dist,
+        bb_min=bb_min,
+        bb_max=bb_max,
+    )
     ytyp = Ytyp(name=ytyp_name)
     ytyp.add_archetype(
         Archetype(
@@ -464,6 +472,8 @@ def save_companion_ytyp(scene: AssimpScene, destination: str | Path) -> Path:
             asset_name=base_name,
             texture_dictionary=f"{base_name}_txd",
             asset_type=ArchetypeAssetType.DRAWABLE,
+            lod_dist=lod_dist,
+            hd_texture_dist=hd_texture_dist,
             bb_min=bb_min,
             bb_max=bb_max,
             bs_centre=centre,

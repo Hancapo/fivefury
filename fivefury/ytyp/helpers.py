@@ -8,6 +8,7 @@ from ..metahash import HashLike, MetaHash
 
 from .archetypes import ArchetypeAssetType, BaseArchetypeDef, TimeArchetypeDef
 from .flags import TimeArchetypeFlags
+from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 from .mlo import MloArchetypeDef
 from .model import Ytyp
 
@@ -157,12 +158,25 @@ def ytyp_from_ydr_folder(
     for ydr_path in ydr_paths:
         model_name = ydr_path.stem.lower()
         ydr = read_ydr(ydr_path, path=ydr_path)
+        lod_dist = infer_archetype_lod_dist(
+            bs_radius=ydr.bounding_sphere_radius,
+            bb_min=ydr.bounding_box_min,
+            bb_max=ydr.bounding_box_max,
+        )
+        hd_texture_dist = infer_archetype_hd_texture_dist(
+            bs_radius=ydr.bounding_sphere_radius,
+            lod_dist=lod_dist,
+            bb_min=ydr.bounding_box_min,
+            bb_max=ydr.bounding_box_max,
+        )
         ytyp.add_archetype(
             BaseArchetypeDef(
                 name=model_name,
                 asset_name=model_name,
                 texture_dictionary=f"{model_name}{texture_suffix}",
                 asset_type=ArchetypeAssetType.DRAWABLE,
+                lod_dist=lod_dist,
+                hd_texture_dist=hd_texture_dist,
                 bb_min=ydr.bounding_box_min,
                 bb_max=ydr.bounding_box_max,
                 bs_centre=ydr.bounding_center,
