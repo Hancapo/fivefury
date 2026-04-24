@@ -288,7 +288,7 @@ class _CutWriter:
         values = list(value or [])
         if array_info is None:
             return
-        if entry.subtype in {1, 2}:
+        if entry.subtype in {1, 2, 4}:
             capacity = (entry.reference_key >> 16) & 0xFFFF
             values = values[:capacity]
             if array_info.type_id == PsoDataTypeStructure and array_info.reference_key != 0:
@@ -298,6 +298,63 @@ class _CutWriter:
                     chunk = self._write_inline_structure(array_info.reference_key, values[index] if index < len(values) else {})
                     start = offset + index * stride
                     buffer[start : start + stride] = chunk
+                return
+            if array_info.type_id == PsoDataTypeUInt:
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else 0
+                    start = offset + index * 4
+                    buffer[start : start + 4] = _u32(int(value))
+                return
+            if array_info.type_id == PsoDataTypeSInt:
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else 0
+                    start = offset + index * 4
+                    buffer[start : start + 4] = _i32(int(value))
+                return
+            if array_info.type_id == PsoDataTypeFloat:
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else 0.0
+                    start = offset + index * 4
+                    buffer[start : start + 4] = _f32(float(value))
+                return
+            if array_info.type_id == PsoDataTypeFloat2:
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else (0.0, 0.0)
+                    x, y = _ensure_vector(value, 2)
+                    start = offset + index * 8
+                    buffer[start : start + 8] = _f32(x) + _f32(y)
+                return
+            if array_info.type_id in {PsoDataTypeFloat3, PsoDataTypeFloat3a}:
+                stride = 16 if array_info.type_id == PsoDataTypeFloat3 else 12
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else (0.0, 0.0, 0.0)
+                    x, y, z = _ensure_vector(value, 3)
+                    payload = _f32(x) + _f32(y) + _f32(z)
+                    if array_info.type_id == PsoDataTypeFloat3:
+                        payload += b"\x00\x00\x00\x00"
+                    start = offset + index * stride
+                    buffer[start : start + stride] = payload
+                return
+            if array_info.type_id in {PsoDataTypeFloat4, PsoDataTypeFloat4a}:
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else (0.0, 0.0, 0.0, 0.0)
+                    x, y, z, w = _ensure_vector(value, 4)
+                    start = offset + index * 16
+                    buffer[start : start + 16] = _f32(x) + _f32(y) + _f32(z) + _f32(w)
+                return
+            if array_info.type_id == PsoDataTypeUShort:
+                for index in range(capacity):
+                    value = values[index] if index < len(values) else 0
+                    start = offset + index * 2
+                    buffer[start : start + 2] = _u16(int(value))
+                return
+            if array_info.type_id == PsoDataTypeUByte:
+                for index in range(capacity):
+                    buffer[offset + index] = int(values[index] if index < len(values) else 0) & 0xFF
+                return
+            if array_info.type_id == PsoDataTypeBool:
+                for index in range(capacity):
+                    buffer[offset + index] = 1 if bool(values[index] if index < len(values) else False) else 0
                 return
             raise ValueError("unsupported inline array shape")
 

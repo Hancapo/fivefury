@@ -3,12 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..model import CutFile, CutNode
+from ..flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS, pack_cutscene_flags, unpack_cutscene_flags
 from ..pso import read_cut
 from ..xml import read_cutxml
 from .base import CutScene
 from .bindings import _binding_from_node
-from .shared import _clone_value, _coerce_name, _freeze_value
+from .shared import _clone_value, _coerce_name, _freeze_value, _hashed_string
 from .timeline import CutTrack, _timeline_event_from_resolved
+
+
+_CUTSCENE_FPS = 30.0
+_CONCAT_DATA_TYPE_HASH = 1737539928
 
 
 def cut_to_scene(data: CutFile | CutNode) -> CutScene:
@@ -29,12 +34,20 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
         track.events.sort(key=lambda item: (item.start, item.event_id or -1))
     root = cut.root.fields
     return CutScene(
+        scene_name=None,
         duration=root.get("fTotalDuration"),
         playback_rate=1.0,
         face_dir=_coerce_name(root.get("cFaceDir")),
+        cutscene_flags=unpack_cutscene_flags(root.get("iCutsceneFlags")),
         offset=_clone_value(root.get("vOffset")),
         rotation=root.get("fRotation"),
         trigger_offset=_clone_value(root.get("vTriggerOffset")),
+        range_start=root.get("iRangeStart"),
+        range_end=root.get("iRangeEnd"),
+        alt_range_end=root.get("iAltRangeEnd"),
+        section_by_time_slice_duration=root.get("fSectionByTimeSliceDuration"),
+        camera_cut_list=list(root.get("cameraCutList") or []),
+        section_split_list=list(root.get("sectionSplitList") or []),
         bindings=bindings,
         tracks=sorted(tracks, key=lambda item: item.key),
         raw=cut,
@@ -72,7 +85,7 @@ def _default_root(cut: CutFile | None) -> CutNode:
         fields={
             "fTotalDuration": 0.0,
             "cFaceDir": "",
-            "iCutsceneFlags": [],
+            "iCutsceneFlags": pack_cutscene_flags(None),
             "vOffset": (0.0, 0.0, 0.0),
             "fRotation": 0.0,
             "vTriggerOffset": (0.0, 0.0, 0.0),
@@ -86,14 +99,98 @@ def _default_root(cut: CutFile | None) -> CutNode:
     )
 
 
+def _infer_scene_name(scene: CutScene) -> str:
+    if scene.scene_name:
+        return str(scene.scene_name)
+    for event in scene.timeline:
+        if event.event_name == "load_scene":
+            raw = event.payload.get("cName") if event.payload else None
+            name = _coerce_name(raw)
+            if name:
+                return name
+            if event.label:
+                return event.label
+    return "cutscene"
+
+
+def _infer_face_dir(scene: CutScene, scene_name: str) -> str:
+    if scene.face_dir:
+        return scene.face_dir
+    return f"x:/gta5/assets_ng/cuts/{scene_name.upper()}/faces"
+
+
+def _timeline_camera_cut_list(scene: CutScene) -> list[float]:
+    values = scene.camera_cut_list
+    if values is None:
+        values = [event.start for event in scene.timeline if event.event_name == "camera_cut" and event.start > 0.0]
+    duration = float(scene.duration or 0.0)
+    result = sorted({round(float(value), 6) for value in values if 0.0 < float(value) < duration})
+    return result
+
+
+def _resolved_cutscene_flags(scene: CutScene, camera_cut_list: list[float]) -> list[int]:
+    if scene.cutscene_flags is not None:
+        return pack_cutscene_flags(scene.cutscene_flags)
+    if scene.raw is not None:
+        existing = scene.raw.root.fields.get("iCutsceneFlags")
+        if existing:
+            return pack_cutscene_flags(existing)
+    flags = CutSceneFlags(DEFAULT_PLAYABLE_CUTSCENE_FLAGS)
+    if camera_cut_list:
+        flags |= CutSceneFlags.SECTION_BY_CAMERA_CUTS
+    return pack_cutscene_flags(flags)
+
+
+def _range_end(scene: CutScene) -> int:
+    if scene.range_end is not None:
+        return int(scene.range_end)
+    return max(0, int(round(float(scene.duration or 0.0) * _CUTSCENE_FPS)))
+
+
+def _concat_data(scene: CutScene, scene_name: str, range_start: int, range_end: int) -> list[CutNode]:
+    if scene.raw is not None:
+        existing = scene.raw.root.fields.get("concatDataList")
+        if existing:
+            return _clone_value(existing)
+    return [
+        CutNode(
+            type_name="hash_6790C158",
+            type_hash=_CONCAT_DATA_TYPE_HASH,
+            fields={
+                "cSceneName": _hashed_string(scene_name),
+                "vOffset": _clone_value(scene.offset) if scene.offset is not None else (0.0, 0.0, 0.0),
+                "fStartTime": 0.0,
+                "fRotation": float(scene.rotation or 0.0),
+                "fPitch": 0.0,
+                "fRoll": 0.0,
+                "iRangeStart": int(range_start),
+                "iRangeEnd": int(range_end),
+                "bValidForPlayBack": True,
+            },
+        )
+    ]
+
+
 def scene_to_cut(scene: CutScene) -> CutFile:
     base_cut = scene.raw
     root = _default_root(base_cut)
+    scene_name = _infer_scene_name(scene)
+    camera_cut_list = _timeline_camera_cut_list(scene)
+    range_start = int(scene.range_start or 0)
+    range_end = _range_end(scene)
     root.fields["fTotalDuration"] = float(scene.duration or 0.0)
-    root.fields["cFaceDir"] = scene.face_dir or ""
+    root.fields["cFaceDir"] = _infer_face_dir(scene, scene_name)
+    root.fields["iCutsceneFlags"] = _resolved_cutscene_flags(scene, camera_cut_list)
     root.fields["vOffset"] = _clone_value(scene.offset) if scene.offset is not None else (0.0, 0.0, 0.0)
     root.fields["fRotation"] = float(scene.rotation or 0.0)
     root.fields["vTriggerOffset"] = _clone_value(scene.trigger_offset) if scene.trigger_offset is not None else (0.0, 0.0, 0.0)
+    root.fields["iRangeStart"] = range_start
+    root.fields["iRangeEnd"] = range_end
+    root.fields["iAltRangeEnd"] = int(scene.alt_range_end or 0)
+    root.fields["fSectionByTimeSliceDuration"] = float(scene.section_by_time_slice_duration or 4.0)
+    root.fields["cameraCutList"] = camera_cut_list
+    root.fields["sectionSplitList"] = list(scene.section_split_list or [])
+    root.fields["concatDataList"] = _concat_data(scene, scene_name, range_start, range_end)
     root.fields["pCutsceneObjects"] = [binding.to_node() for binding in scene.bindings]
 
     load_events: list[CutNode] = []

@@ -131,6 +131,28 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
     assert root_motion.position == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
 
 
+def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None:
+    builder = YcdCutsceneBuilder.create("bone_only_scene", duration=1.0, fps=30.0)
+    builder.add_prop(
+        "skinned_prop",
+        bones={
+            1: YcdCutsceneBoneAnimation(
+                position={0.0: (0.0, 0.0, 0.0), 1.0: (1.0, 0.0, 0.0)},
+                rotation=(0.0, 0.0, 0.0, 1.0),
+            )
+        },
+    )
+
+    ycd = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
+    clip = ycd.get_clip("skinned_prop-0")
+
+    assert clip is not None and clip.animation is not None
+    bone_pairs = {(int(bone.bone_id), int(bone.track)) for bone in clip.animation.bone_ids}
+    assert (0, int(YcdAnimationTrack.MOVER_TRANSLATION)) in bone_pairs
+    assert (0, int(YcdAnimationTrack.MOVER_ROTATION)) in bone_pairs
+    assert clip.evaluate_root_motion_at_time(0.5).position == pytest.approx((0.0, 0.0, 0.0), abs=0.01)
+
+
 @pytest.mark.skipif(not CUT_SAMPLE_PATH.is_file(), reason="cut sample not available")
 def test_cutscene_builder_from_cut_reads_camera_cuts() -> None:
     cut = read_cut(CUT_SAMPLE_PATH)

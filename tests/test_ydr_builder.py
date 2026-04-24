@@ -1400,6 +1400,7 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     model = ydr.get_model(0)
     assert model is not None
     assert model.has_skin is True
+    assert model.flags == 1
     assert model.skeleton_binding == YdrSkeletonBinding.skinned()
     assert ydr.has_skeleton is True
     assert ydr.skeleton is not None
@@ -1434,6 +1435,56 @@ def test_skinned_default_layout_uses_canonical_default_vertex_data_type(tmp_path
     assert mesh.declaration_flags == 95
     assert mesh.declaration_types == 0x7755555555996996
     assert mesh.vertex_stride == 44
+
+
+def test_skinned_models_auto_enable_model_skin_flag(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=YdrSkeletonBinding.skinned(),
+            flags=0,
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skinned_auto_flags",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "skinned_auto_flags.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.get_model(0).flags == 1
+
+
+def test_skinned_models_preserve_other_model_flags_when_auto_enabling_skin(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=YdrSkeletonBinding.skinned(),
+            flags=0x24,
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="skinned_auto_flags_preserve",
+        skeleton=_simple_skeleton(),
+    )
+
+    ydr_path = tmp_path / "skinned_auto_flags_preserve.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.get_model(0).flags == 0x25
 
 
 def test_explicit_skinned_ubyte4_blend_indices_are_canonicalized(tmp_path: Path) -> None:

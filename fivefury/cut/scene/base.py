@@ -8,7 +8,9 @@ if TYPE_CHECKING:
     from ...ycd.model import Ycd, YcdAnimation, YcdClip
 
 from ...metahash import MetaHash
+from ...hashing import jenk_finalize_hash, jenk_partial_hash
 from ..events import CutEventType, get_cut_event_spec
+from ..flags import CutSceneFlags
 from ..model import CutFile
 from ..payloads import CutEventPayload
 from .bindings import (
@@ -27,12 +29,20 @@ from .timeline import CutTimelineEvent, CutTrack
 
 @dataclass(slots=True)
 class CutScene:
+    scene_name: str | None = None
     duration: float | None = None
     playback_rate: float = 1.0
     face_dir: str | None = None
+    cutscene_flags: CutSceneFlags | int | list[int] | None = None
     offset: tuple[float, float, float] | None = None
     rotation: float | None = None
     trigger_offset: tuple[float, float, float] | None = None
+    range_start: int | None = None
+    range_end: int | None = None
+    alt_range_end: int | None = None
+    section_by_time_slice_duration: float | None = None
+    camera_cut_list: list[float] | None = None
+    section_split_list: list[float] | None = None
     bindings: list[CutBinding] = field(default_factory=list)
     tracks: list[CutTrack] = field(default_factory=list)
     clip_dicts: list[Ycd] = field(default_factory=list)
@@ -142,18 +152,34 @@ class CutScene:
     def create(
         cls,
         *,
+        scene_name: str | None = None,
         duration: float = 0.0,
         face_dir: str | None = None,
+        cutscene_flags: CutSceneFlags | int | list[int] | None = None,
         offset: tuple[float, float, float] | None = None,
         rotation: float = 0.0,
         trigger_offset: tuple[float, float, float] | None = None,
+        range_start: int | None = None,
+        range_end: int | None = None,
+        alt_range_end: int | None = None,
+        section_by_time_slice_duration: float = 4.0,
+        camera_cut_list: list[float] | None = None,
+        section_split_list: list[float] | None = None,
     ) -> "CutScene":
         return cls(
+            scene_name=scene_name,
             duration=float(duration),
             face_dir=face_dir,
+            cutscene_flags=cutscene_flags,
             offset=offset or (0.0, 0.0, 0.0),
             rotation=float(rotation),
             trigger_offset=trigger_offset or (0.0, 0.0, 0.0),
+            range_start=range_start,
+            range_end=range_end,
+            alt_range_end=alt_range_end,
+            section_by_time_slice_duration=section_by_time_slice_duration,
+            camera_cut_list=list(camera_cut_list) if camera_cut_list is not None else None,
+            section_split_list=list(section_split_list) if section_split_list is not None else None,
             bindings=[],
             tracks=[],
             raw=None,
@@ -303,10 +329,38 @@ class CutScene:
                 oid = event.payload.get("iObjectId")
                 if oid is not None:
                     bound = self.get_binding(int(oid))
-                    if bound is not None and bound.name:
-                        key = MetaHash(bound.name).uint
-                        if key not in clip_map:
-                            warnings.append(f"set_anim target '{bound.name}' (id={oid}) has no matching clip in attached YCDs")
+                    if bound is None:
+                        continue
+                    candidate_hashes: list[int] = []
+                    candidate_labels: list[str] = []
+                    animation_clip_base = getattr(bound, "animation_clip_base", None)
+                    if animation_clip_base:
+                        expected_clip_name = f"{animation_clip_base}-{int(cut_index)}"
+                        candidate_hashes.append(MetaHash(animation_clip_base).uint)
+                        candidate_hashes.append(MetaHash(expected_clip_name).uint)
+                        candidate_labels.append(expected_clip_name)
+                    if not animation_clip_base and bound.name:
+                        candidate_hashes.append(MetaHash(bound.name).uint)
+                        candidate_labels.append(bound.name)
+                    cutscene_name = getattr(bound, "cutscene_name", None)
+                    if not animation_clip_base and cutscene_name:
+                        candidate_hashes.append(MetaHash(cutscene_name).uint)
+                        candidate_hashes.append(MetaHash(f"{cutscene_name}-{int(cut_index)}").uint)
+                        candidate_labels.append(cutscene_name)
+                    anim_streaming_base = getattr(bound, "animation_streaming_base", None)
+                    if anim_streaming_base not in (None, "", 0):
+                        candidate_hashes.append(jenk_finalize_hash(int(anim_streaming_base)))
+                        candidate_labels.append(f"AnimStreamingBase=0x{int(anim_streaming_base):08X}")
+                    if animation_clip_base and anim_streaming_base not in (None, "", 0):
+                        expected_base = jenk_partial_hash(animation_clip_base)
+                        if int(anim_streaming_base) != expected_base:
+                            warnings.append(
+                                f"set_anim target '{animation_clip_base}' (id={oid}) has AnimStreamingBase=0x{int(anim_streaming_base):08X}, "
+                                f"expected 0x{expected_base:08X}"
+                            )
+                    if candidate_hashes and not any(key in clip_map for key in candidate_hashes):
+                        label = " / ".join(dict.fromkeys(candidate_labels)) or f"id={oid}"
+                        warnings.append(f"set_anim target '{label}' (id={oid}) has no matching clip in attached YCDs")
         return warnings
 
 
@@ -338,6 +392,7 @@ def add_prop(
     scene_name: str | None = None,
     streaming_name: str | None = None,
     model_name: str | None = None,
+    animation_clip_base: str | None = None,
     anim_streaming_base: int | None = None,
     animation_streaming_base: int | None = None,
     anim_export_ctrl_spec_file: str | None = None,
@@ -371,6 +426,7 @@ def add_prop(
     prop.configure_model_asset(
         cutscene_name=cutscene_name if cutscene_name is not None else scene_name,
         streaming_name=streaming_name if streaming_name is not None else model_name,
+        animation_clip_base=animation_clip_base,
         anim_streaming_base=anim_streaming_base if anim_streaming_base is not None else animation_streaming_base,
         anim_export_ctrl_spec_file=anim_export_ctrl_spec_file if anim_export_ctrl_spec_file is not None else animation_export_spec_file,
         face_export_ctrl_spec_file=face_export_ctrl_spec_file if face_export_ctrl_spec_file is not None else face_animation_export_spec_file,
@@ -378,6 +434,10 @@ def add_prop(
         handle=handle if handle is not None else object_handle,
         type_file=type_file if type_file is not None else ytyp_name,
     )
+    if animation_clip_base is None and animation_preset is not None and (anim_streaming_base is None and animation_streaming_base is None):
+        inferred_clip_base = prop.model_name
+        if inferred_clip_base:
+            prop.animation_clip_base = inferred_clip_base
     return prop
 
 
@@ -397,6 +457,7 @@ def add_prop_from_runtime_asset(
     animation_preset: CutPropAnimationPreset | str | None = None,
     cutscene_name: str | None = None,
     scene_name: str | None = None,
+    animation_clip_base: str | None = None,
     anim_streaming_base: int | None = None,
     animation_streaming_base: int | None = None,
     anim_export_ctrl_spec_file: str | None = None,
@@ -420,6 +481,7 @@ def add_prop_from_runtime_asset(
         ytyp=ytyp,
         type_source=type_source,
         type_file_strategy=type_file_strategy,
+        animation_clip_base=animation_clip_base,
         anim_streaming_base=anim_streaming_base if anim_streaming_base is not None else animation_streaming_base,
         anim_export_ctrl_spec_file=anim_export_ctrl_spec_file if anim_export_ctrl_spec_file is not None else animation_export_spec_file,
         face_export_ctrl_spec_file=face_export_ctrl_spec_file if face_export_ctrl_spec_file is not None else face_animation_export_spec_file,

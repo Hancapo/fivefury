@@ -780,22 +780,28 @@ def prepare_build(
         normalized_models = normalized.get(lod_name)
         if not normalized_models:
             continue
-        prepared_lods[lod_name] = [
-            PreparedModel(
-                meshes=_prepare_meshes(
-                    model.meshes,
-                    prepared_materials,
-                    material_lookup,
-                    generate_normals=generate_normals,
-                    generate_tangents=generate_tangents,
-                    fill_vertex_colours=fill_vertex_colours,
-                ),
-                render_mask=int(model.render_mask),
-                flags=int(model.flags),
-                skeleton_binding=coerce_skeleton_binding(model.skeleton_binding),
+        prepared_models: list[PreparedModel] = []
+        for model in normalized_models:
+            prepared_meshes = _prepare_meshes(
+                model.meshes,
+                prepared_materials,
+                material_lookup,
+                generate_normals=generate_normals,
+                generate_tangents=generate_tangents,
+                fill_vertex_colours=fill_vertex_colours,
             )
-            for model in normalized_models
-        ]
+            effective_flags = int(model.flags)
+            if any(mesh.blend_weights for mesh in prepared_meshes):
+                effective_flags |= 0x1
+            prepared_models.append(
+                PreparedModel(
+                    meshes=prepared_meshes,
+                    render_mask=int(model.render_mask),
+                    flags=effective_flags,
+                    skeleton_binding=coerce_skeleton_binding(model.skeleton_binding),
+                )
+            )
+        prepared_lods[lod_name] = prepared_models
     return prepared_materials, prepared_lods
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from fivefury.hashing import jenk_hash
+from fivefury.hashing import jenk_hash, jenk_partial_hash
 from fivefury import (
     CutCascadeShadowPayload,
     CutDecalPayload,
@@ -18,7 +18,9 @@ from fivefury import (
     CutTypeFileStrategy,
     CutScreenFadePayload,
     CutScene,
+    CutSceneFlags,
     GameFileType,
+    YcdCutsceneBuilder,
     analyze_cut,
     build_cut_bytes,
     get_cut_event_name,
@@ -187,6 +189,41 @@ def test_cut_scene_builder_from_scratch() -> None:
     assert len(rebuilt.load_events) == 2
     assert len(rebuilt.events) == 2
     assert len(rebuilt.event_args) == 4
+
+
+def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
+    scene = CutScene.create(scene_name="sample_scene", duration=2.5)
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("cam_main")
+
+    scene.load_scene(0.0, payload={"cName": "sample_scene"}, target=asset_manager)
+    scene.create_event("camera_cut", start=1.0, target=camera, label="cam_main")
+
+    cut = scene_to_cut(scene)
+    root = cut.root.fields
+    flags = CutSceneFlags(root["iCutsceneFlags"][0])
+
+    assert root["cFaceDir"] == "x:/gta5/assets_ng/cuts/SAMPLE_SCENE/faces"
+    assert root["iRangeStart"] == 0
+    assert root["iRangeEnd"] == 75
+    assert root["iAltRangeEnd"] == 0
+    assert root["fSectionByTimeSliceDuration"] == pytest.approx(4.0)
+    assert root["cameraCutList"] == [1.0]
+    assert len(root["concatDataList"]) == 1
+    assert root["concatDataList"][0].fields["cSceneName"].hash == jenk_hash("sample_scene")
+    assert flags & CutSceneFlags.IS_SECTIONED
+    assert flags & CutSceneFlags.USE_ONE_AUDIO
+    assert flags & CutSceneFlags.USE_STORY_MODE
+    assert flags & CutSceneFlags.USE_IN_GAME_DOF_START
+    assert flags & CutSceneFlags.INTERNAL_CONCAT
+    assert flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+
+    rebuilt = read_cut(build_cut_bytes(cut))
+    rebuilt_flags = CutSceneFlags(rebuilt.root.fields["iCutsceneFlags"][0])
+
+    assert rebuilt.root.fields["iCutsceneFlags"] == root["iCutsceneFlags"]
+    assert rebuilt_flags & CutSceneFlags.IS_SECTIONED
+    assert rebuilt_flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
 
 
 def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> None:
@@ -444,6 +481,54 @@ def test_cut_prop_animation_presets_are_selectable() -> None:
     assert "cAnimExportCtrlSpecFile" not in prop.fields
     assert "cFaceExportCtrlSpecFile" not in prop.fields
     assert "cAnimCompressionFile" not in prop.fields
+
+
+def test_cut_prop_animation_clip_base_defaults_to_model_name() -> None:
+    prop = CutScene.create().add_prop(
+        name="mmd_model_001",
+        model=r"assets/miku_hatsune_metal.ydr",
+        scene_name="mmd_model_001",
+        animation_preset=CutPropAnimationPreset.COMMON_PROP,
+    )
+
+    assert prop.model_name == "miku_hatsune_metal"
+    assert prop.animation_clip_base == "miku_hatsune_metal"
+    assert prop.animation_streaming_base == jenk_partial_hash("miku_hatsune_metal")
+    assert prop.animation_streaming_base != jenk_partial_hash("mmd_model_001")
+
+
+def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
+    scene = CutScene.create(duration=1.0)
+    manager = scene.add_animation_manager()
+    prop = scene.add_prop(
+        name="mmd_model_001",
+        model=r"assets/miku_hatsune_metal.ydr",
+        scene_name="mmd_model_001",
+        animation_preset=CutPropAnimationPreset.COMMON_PROP,
+    )
+    builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
+    builder.add_prop("miku_hatsune_metal", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0))
+    scene.attach_clip_dict(builder.build_ycds()[0])
+    scene.set_anim(0.0, prop, target=manager)
+
+    assert scene.validate_animations() == []
+
+
+def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
+    scene = CutScene.create(duration=1.0)
+    manager = scene.add_animation_manager()
+    prop = scene.add_prop(
+        name="mmd_model_001",
+        model=r"assets/miku_hatsune_metal.ydr",
+        scene_name="mmd_model_001",
+        animation_preset=CutPropAnimationPreset.COMMON_PROP,
+    )
+    builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
+    builder.add_prop("mmd_model_001", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0))
+    scene.attach_clip_dict(builder.build_ycds()[0])
+    scene.set_anim(0.0, prop, target=manager)
+
+    assert any("miku_hatsune_metal-0" in warning for warning in scene.validate_animations())
 
 
 @pytest.mark.parametrize(

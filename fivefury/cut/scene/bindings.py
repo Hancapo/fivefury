@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ...hashing import jenk_hash
+from ...hashing import jenk_hash, jenk_partial_hash
 from ..model import CutHashedString, CutNode
 from .shared import _clone_value, _coerce_name, _hashed_string, _node_type_hash, _object_name_field, _object_role
 
@@ -18,6 +18,7 @@ class CutBinding:
     name: str | None
     fields: dict[str, Any] = field(default_factory=dict)
     raw: CutNode | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def display_name(self) -> str:
@@ -303,6 +304,7 @@ class _CutStreamedModelBinding(_TypedCutBinding):
         *,
         cutscene_name: str | None = None,
         streaming_name: str | None = None,
+        animation_clip_base: str | None = None,
         anim_streaming_base: int | None = None,
         anim_export_ctrl_spec_file: str | None = None,
         face_export_ctrl_spec_file: str | None = None,
@@ -314,6 +316,8 @@ class _CutStreamedModelBinding(_TypedCutBinding):
             self.cutscene_name = cutscene_name
         if streaming_name is not None:
             self.streaming_name = streaming_name
+        if animation_clip_base is not None:
+            self.animation_clip_base = animation_clip_base
         if anim_streaming_base is not None:
             self.anim_streaming_base = anim_streaming_base
         if anim_export_ctrl_spec_file is not None:
@@ -398,6 +402,22 @@ class _CutStreamedModelBinding(_TypedCutBinding):
     @animation_streaming_base.setter
     def animation_streaming_base(self, value: int | None) -> None:
         self.anim_streaming_base = value
+
+    @property
+    def animation_clip_base(self) -> str | None:
+        value = self.metadata.get("animation_clip_base")
+        if isinstance(value, str) and value:
+            return value
+        return self.model_name
+
+    @animation_clip_base.setter
+    def animation_clip_base(self, value: str | None) -> None:
+        if value in (None, ""):
+            self.metadata.pop("animation_clip_base", None)
+            return
+        base = str(value)
+        self.metadata["animation_clip_base"] = base
+        self.anim_streaming_base = jenk_partial_hash(base)
 
     @property
     def animation_export_spec_file(self) -> str | None:

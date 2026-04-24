@@ -429,6 +429,11 @@ class YcdCutsceneBuilder:
         bone_id: int = 0,
         bones: Mapping[int, YcdCutsceneBoneAnimation | Mapping[str, object]] | None = None,
     ) -> YcdCutsceneBuilder:
+        if bones:
+            if mover_position is None:
+                mover_position = (0.0, 0.0, 0.0)
+            if mover_rotation is None:
+                mover_rotation = (0.0, 0.0, 0.0, 1.0)
         track_map = {
             YcdAnimationTrack.BONE_TRANSLATION: position,
             YcdAnimationTrack.BONE_ROTATION: rotation,

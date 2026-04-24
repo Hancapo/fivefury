@@ -1,5 +1,6 @@
 from .analysis import analyze_cut
 from .events import CutEventBehavior, CutEventSpec, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
+from .flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS
 from .model import CutFile, CutHashedString, CutNode
 from .payloads import (
     CutAnimationDictPayload,
@@ -72,6 +73,8 @@ __all__ = [
     "CutEventType",
     "CutEventPayload",
     "CutEventBehavior",
+    "CutSceneFlags",
+    "DEFAULT_PLAYABLE_CUTSCENE_FLAGS",
     "CutFinalNamePayload",
     "CutFloatValuePayload",
     "CutFade",
