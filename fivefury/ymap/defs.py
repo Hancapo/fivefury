@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ..extensions import EXTENSION_STRUCT_INFOS
 from ..metahash import HashLike, MetaHash
-from ..meta import MetaEnumEntry, MetaEnumInfo, MetaFieldInfo, MetaStructInfo
+from ..meta import MetaEnumEntry, MetaEnumInfo, MetaStructInfo
 from ..meta.defs import KNOWN_ENUMS, MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
 from .surfaces import YMAP_SURFACE_STRUCT_INFOS

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32, vec3 as _vec3
 from ..bounds import read_bound_from_pointer
+from ..common import ByteSource, read_source_bytes
 from ..hashing import jenk_hash
 from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, ResourceHeader, checked_virtual_offset, physical_to_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
@@ -13,7 +14,7 @@ from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDE
 from .gen9 import decode_gen9_vertex_declaration, load_gen9_shader_library
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
 from .read_lights import parse_lights
-from .read_materials import parse_materials
+from .read_materials import parameter_component_count, parse_materials
 from .read_joints import parse_joints
 from .read_skeleton import parse_skeleton
 from .shaders import ShaderLibrary, load_shader_library
@@ -148,22 +149,11 @@ def _decode_component(data: bytes, offset: int, component_type: int):
     return None
 
 
-def _parameter_component_count(type_name: str | None) -> int:
-    lowered = (type_name or "").strip().lower()
-    if lowered == "float":
-        return 1
-    if lowered == "float2":
-        return 2
-    if lowered == "float3":
-        return 3
-    return 4
-
-
 def _decode_parameter_value(data_type: int, data_pointer: int, system_data: bytes, *, type_name: str | None) -> object | None:
     if data_type <= 0 or not data_pointer:
         return None
     raw = _read_buffer(data_pointer, max(1, int(data_type)) * 16, system_data, b"")
-    component_count = _parameter_component_count(type_name)
+    component_count = parameter_component_count(type_name)
     values: list[tuple[float, ...]] = []
     for chunk_index in range(max(1, int(data_type))):
         offset = chunk_index * 16
@@ -409,12 +399,6 @@ def _parse_embedded_textures(system_data: bytes, graphics_data: bytes, version: 
         return None
 
 
-def _read_source_bytes(source: bytes | bytearray | memoryview | str | Path) -> bytes:
-    if isinstance(source, (str, Path)):
-        return Path(source).read_bytes()
-    return bytes(source)
-
-
 def _read_ydr_from_sections(
     header: ResourceHeader,
     system_data: bytes,
@@ -512,12 +496,12 @@ def _read_ydr_from_sections(
 
 
 def read_ydr(
-    source: bytes | bytearray | memoryview | str | Path,
+    source: ByteSource,
     *,
     path: str | Path = "",
     shader_library: ShaderLibrary | None = None,
 ) -> Ydr:
-    data = _read_source_bytes(source)
+    data = read_source_bytes(source)
     if len(data) < 16:
         raise ValueError("YDR data is too short")
     magic = struct.unpack_from("<I", data, 0)[0]

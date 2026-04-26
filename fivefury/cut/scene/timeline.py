@@ -5,7 +5,7 @@ from typing import Any
 
 from ...hashing import jenk_hash
 from ..events import CutEventBehavior, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
-from ..model import CutFile, CutHashedString, CutNode, CutResolvedEvent
+from ..model import CutHashedString, CutNode, CutResolvedEvent
 from ..payloads import CutEventPayload
 from .bindings import CutBinding
 from .shared import (

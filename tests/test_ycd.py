@@ -964,7 +964,7 @@ def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
     assert ycd.animations[0].raw_unknown_hash.uint == 0x6B002400
 
 
-def test_cutscene_builder_keeps_skeletal_props_in_one_sequence() -> None:
+def test_cutscene_builder_splits_long_skeletal_props_into_vanilla_sized_sequences() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
     builder.add_prop(
         "miku_hatsune_metal",
@@ -982,10 +982,11 @@ def test_cutscene_builder_keeps_skeletal_props_in_one_sequence() -> None:
 
     assert animation is not None
     assert animation.frames == 733
-    assert animation.sequence_count == 1
-    assert animation.sequence_frame_limit > animation.frames
-    assert len(animation.root_motion_sequences) == 2
-    assert len(animation.object_sequences) == 1
+    assert animation.sequence_count == 3
+    assert animation.sequence_frame_limit == 287
+    assert [sequence.num_frames for sequence in animation.sequences] == [288, 288, 159]
+    assert len(animation.root_motion_sequences) == 6
+    assert len(animation.object_sequences) == 3
     assert [(bone.bone_id, bone.track) for bone in animation.bone_ids] == [
         (6783, int(YcdAnimationTrack.BONE_ROTATION)),
         (0, int(YcdAnimationTrack.MOVER_TRANSLATION)),

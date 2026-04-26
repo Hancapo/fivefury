@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 from collections.abc import Hashable
 
-from .model import Ynd, YndLink, YndNode
+from .model import Ynd, YndNode
 from .regions import get_ynd_area_id
 
 

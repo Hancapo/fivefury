@@ -2,19 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from enum import IntEnum, IntFlag
+from enum import IntFlag
 from pathlib import Path
 
+from ..common import FlexibleIntEnum
 
-class _FlexibleIntEnum(IntEnum):
-    @classmethod
-    def _missing_(cls, value: object) -> "_FlexibleIntEnum":
-        if not isinstance(value, int):
-            raise ValueError(f"{value!r} is not a valid {cls.__name__}")
-        member = int.__new__(cls, value)
-        member._name_ = f"UNKNOWN_{value}"
-        member._value_ = value
-        return member
 
 
 def identity_4x4() -> tuple[float, ...]:
@@ -47,14 +39,14 @@ class YnvContentFlags(IntFlag):
     UNKNOWN_16 = 1 << 4
 
 
-class YnvAdjacencyType(_FlexibleIntEnum):
+class YnvAdjacencyType(FlexibleIntEnum):
     NORMAL = 0
     CLIMB_LOW = 1
     CLIMB_HIGH = 2
     DROPDOWN = 3
 
 
-class YnvPointType(_FlexibleIntEnum):
+class YnvPointType(FlexibleIntEnum):
     TYPE_0 = 0
     TYPE_1 = 1
     TYPE_2 = 2
@@ -69,7 +61,7 @@ class YnvPointType(_FlexibleIntEnum):
     TYPE_254 = 254
 
 
-class YnvPortalType(_FlexibleIntEnum):
+class YnvPortalType(FlexibleIntEnum):
     TYPE_1 = 1
     TYPE_2 = 2
     TYPE_3 = 3

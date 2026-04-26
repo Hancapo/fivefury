@@ -3,32 +3,22 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Hashable
-from enum import IntEnum, IntFlag
+from enum import IntFlag
 from pathlib import Path
 
+from ..common import FlexibleIntEnum
 from ..resource import ResourcePagesInfo
 from .regions import position_matches_ynd_area
 
 
-class _FlexibleIntEnum(IntEnum):
-    @classmethod
-    def _missing_(cls, value: object) -> "_FlexibleIntEnum":
-        if not isinstance(value, int):
-            raise ValueError(f"{value!r} is not a valid {cls.__name__}")
-        member = int.__new__(cls, value)
-        member._name_ = f"UNKNOWN_{value}"
-        member._value_ = value
-        return member
-
-
-class YndNodeSpeed(_FlexibleIntEnum):
+class YndNodeSpeed(FlexibleIntEnum):
     SLOW = 0
     NORMAL = 1
     FAST = 2
     FASTER = 3
 
 
-class YndNodeSpecialType(_FlexibleIntEnum):
+class YndNodeSpecialType(FlexibleIntEnum):
     NONE = 0
     PARKING_PARALLEL = 1
     PARKING_PERPENDICULAR = 2

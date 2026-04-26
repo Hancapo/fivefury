@@ -12,7 +12,6 @@ from fivefury import (
     Texture,
     TextureFormat,
     Ydr,
-    YdrBone,
     YdrBoneFlagName,
     YdrBoneFlags,
     YdrBuild,

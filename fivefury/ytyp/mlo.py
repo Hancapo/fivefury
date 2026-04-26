@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from ..extensions import extensions_from_meta
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta import RawStruct
 from ..meta.defs import meta_name

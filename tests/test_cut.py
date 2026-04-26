@@ -13,14 +13,12 @@ from fivefury import (
     CutHashedString,
     CutFinalNamePayload,
     CutHashFloatPayload,
-    CutPlayParticleEffectPayload,
     CutEventType,
     CutLightFlag,
     CutLightProperty,
     CutLightType,
     CutPropAnimationPreset,
     CutTypeFileStrategy,
-    CutScreenFadePayload,
     CutScene,
     CutSceneFlags,
     GameFileType,
@@ -294,8 +292,8 @@ def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
 
     assert [event.fields["iEventId"] for event in cut.load_events] == [
         int(CutEventType.LOAD_SCENE),
-        int(CutEventType.LOAD_MODELS),
         int(CutEventType.LOAD_ANIM_DICT),
+        int(CutEventType.LOAD_MODELS),
     ]
 
 

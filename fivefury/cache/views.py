@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from ..gamefile import GameFileType
-from ..hashing import jenk_hash
+from ..common import hash_value
+from ..gamefile import GameFileType, guess_game_file_type
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
 from .paths import path_name as _path_name, path_stem as _path_stem, split_archive_asset_path as _split_archive_asset_path
@@ -40,10 +40,6 @@ def _coerce_kind(value: GameFileType | str | int | None) -> GameFileType | None:
             return None
 
 
-def _coerce_hash_value(value: int | MetaHash | str) -> int:
-    return int(value) if not isinstance(value, str) else jenk_hash(value)
-
-
 class AssetRecord:
     __slots__ = ("_cache", "id")
 
@@ -68,7 +64,8 @@ class AssetRecord:
 
     @property
     def kind(self) -> GameFileType:
-        return GameFileType(int(self._cache._index.get_kind(self.id)))
+        stored = GameFileType(int(self._cache._index.get_kind(self.id)))
+        return guess_game_file_type(self.path, stored)
 
     @property
     def size(self) -> int:
@@ -224,8 +221,10 @@ class _KindHashRecordMap(Mapping[int, AssetRecord]):
         if self._generation == self._cache._view_generation:
             return
         hash_to_id: dict[int, int] = {}
-        for asset_id in self._cache._index.find_kind_ids(int(self._kind)):
-            hash_to_id[int(self._cache._index.get_short_hash(asset_id))] = int(asset_id)
+        for asset_id in range(self._cache.asset_count):
+            asset = self._cache._record_from_id(asset_id)
+            if asset.kind is self._kind:
+                hash_to_id[int(self._cache._index.get_short_hash(asset_id))] = int(asset_id)
         self._hash_to_id = hash_to_id
         self._generation = self._cache._view_generation
 
@@ -305,7 +304,7 @@ class _ArchetypeMap(Mapping[int, Any]):
     def get(self, key: int | str | MetaHash, default: Any = None) -> Any:
         self._ensure_index()
         try:
-            return self._hash_to_archetype[_coerce_hash_value(key)]
+            return self._hash_to_archetype[hash_value(key)]
         except KeyError:
             return default
 
@@ -323,7 +322,7 @@ class _TextureParentMap(Mapping[int, int]):
         parent_name = str(parent).strip().lower()
         if not child_name or not parent_name:
             return
-        mapping[jenk_hash(child_name)] = jenk_hash(parent_name)
+        mapping[hash_value(child_name)] = hash_value(parent_name)
 
     def _load_xml_relations(self, xml_text: str, mapping: dict[int, int]) -> None:
         try:
@@ -369,7 +368,7 @@ class _TextureParentMap(Mapping[int, int]):
 
     def get(self, key: int | str | MetaHash, default: int | None = None) -> int | None:
         self._ensure_index()
-        return self._hash_to_parent.get(_coerce_hash_value(key), default)
+        return self._hash_to_parent.get(hash_value(key), default)
 
 
 class _KindCountsView(Mapping[GameFileType, int]):
@@ -385,7 +384,7 @@ class _KindCountsView(Mapping[GameFileType, int]):
             return
         counts: dict[GameFileType, int] = {}
         for asset_id in range(self._cache.asset_count):
-            kind = GameFileType(int(self._cache._index.get_kind(asset_id)))
+            kind = self._cache._record_from_id(asset_id).kind
             counts[kind] = counts.get(kind, 0) + 1
         self._counts = counts
         self._generation = self._cache._view_generation

@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 
 from ..hashing import jenk_hash
-from ..meta import MetaFieldInfo, MetaStructInfo
+from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
 from .enums import (

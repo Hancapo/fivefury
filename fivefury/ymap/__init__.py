@@ -12,7 +12,7 @@ from .enums import (
     YmapPriorityLevel,
 )
 from .entities import EntityDef, MloInstanceDef
-from .model import Ymap, _suggest_resource_path, read_ymap, save_ymap
+from .model import Ymap, read_ymap, save_ymap
 from .surfaces import (
     Aabb,
     AngleMode,

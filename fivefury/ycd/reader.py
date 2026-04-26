@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..binary import f32 as _f32, read_c_string, u16 as _u16, u32 as _u32, u64 as _u64
+from ..common import clip_short_name
 from ..metahash import MetaHash
 from ..resource import checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections
 from ..resolver import register_name
@@ -24,15 +25,6 @@ from .model import (
 from .sequences import parse_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
-
-
-def _clip_short_name(name: str) -> str:
-    normalized = str(name or "").replace("\\", "/")
-    if "/" in normalized:
-        normalized = normalized.rsplit("/", 1)[-1]
-    if "." in normalized:
-        normalized = normalized.split(".", 1)[0]
-    return normalized.lower()
 
 
 class _YcdReader:
@@ -360,14 +352,14 @@ class _YcdReader:
         name = self.read_c_string_at(name_pointer)
         if name:
             register_name(name)
-            register_name(_clip_short_name(name))
+            register_name(clip_short_name(name))
         tags, has_block_tag, tag_list_header = self.parse_clip_tag_list(tags_pointer)
         properties, property_map_reserved_0ch = self.parse_clip_property_map(properties_pointer)
         return (
             {
                 "hash": MetaHash(0),
                 "name": name,
-                "short_name": _clip_short_name(name),
+                "short_name": clip_short_name(name),
                 "clip_type": YcdClipType(_u32(self.data, offset + 0x10)),
                 "property_count": len(properties),
                 "tag_count": len(tags),

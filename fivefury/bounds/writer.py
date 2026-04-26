@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 import struct
 
 from .. import _native as _native_backend
-from ..binary import align
 from ..resource import ResourceBlockSpan, ResourceWriter, write_resource_pages_info
 from .model import (
     Bound,
@@ -25,7 +23,6 @@ from .model import (
     BoundGeometry,
     BoundGeometryOctants,
     BoundMaterial,
-    BoundMaterialColor,
     BoundPolygon,
     BoundPolygonBox,
     BoundPolygonCapsule,
@@ -35,6 +32,9 @@ from .model import (
     BoundResourcePagesInfo,
     BoundSphere,
     BoundTransform,
+    _merge_bounds,
+    _sphere_radius_from_bounds,
+    _transform_point,
 )
 
 _DAT_VIRTUAL_BASE = 0x50000000
@@ -437,14 +437,6 @@ def _primitive_bounds(bound: BoundGeometry, polygon: BoundPolygon) -> BoundAabb:
     return BoundAabb(bound.box_min, bound.box_max)
 
 
-def _merge_aabbs(bounds: list[BoundAabb], fallback: BoundAabb) -> BoundAabb:
-    if not bounds:
-        return fallback
-    minimum = tuple(min(item.minimum[axis] for item in bounds) for axis in range(3))
-    maximum = tuple(max(item.maximum[axis] for item in bounds) for axis in range(3))
-    return BoundAabb(minimum, maximum)
-
-
 def _choose_bvh_quantum(bounds: BoundAabb, center: tuple[float, float, float]) -> tuple[float, float, float]:
     values: list[float] = []
     for axis in range(3):
@@ -503,7 +495,7 @@ class _BvhBuildNode:
             source = [BoundAabb(item.minimum, item.maximum) for item in self.items]
         else:
             source = [BoundAabb(child.minimum, child.maximum) for child in (self.children or [])]
-        bounds = _merge_aabbs(source, BoundAabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))
+        bounds = _merge_bounds(source, BoundAabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))
         self.minimum = bounds.minimum
         self.maximum = bounds.maximum
 
@@ -597,14 +589,6 @@ def _needs_bvh_rebuild(bound: BoundGeometry, bvh: BoundBvh | None) -> bool:
     return node.is_leaf and node.item_id == 0 and node.item_count >= len(bound.polygons)
 
 
-def _bounds_radius_from_aabb(bounds: BoundAabb, center: tuple[float, float, float]) -> float:
-    return math.sqrt(
-        max(abs(bounds.minimum[0] - center[0]), abs(bounds.maximum[0] - center[0])) ** 2
-        + max(abs(bounds.minimum[1] - center[1]), abs(bounds.maximum[1] - center[1])) ** 2
-        + max(abs(bounds.minimum[2] - center[2]), abs(bounds.maximum[2] - center[2])) ** 2
-    )
-
-
 def _refresh_geometry_bvh_metrics(bound: BoundBVH) -> None:
     bvh, _polygons, _polygon_material_indices = _build_geometry_bvh(bound)
     overall = BoundAabb(bvh.minimum, bvh.maximum)
@@ -613,7 +597,7 @@ def _refresh_geometry_bvh_metrics(bound: BoundBVH) -> None:
     bound.box_max = overall.maximum
     bound.box_center = bvh.center
     bound.sphere_center = bvh.center
-    bound.sphere_radius = _bounds_radius_from_aabb(overall, bvh.center)
+    bound.sphere_radius = _sphere_radius_from_bounds(overall, bvh.center)
 
 
 def _reordered_leaf_polygons(nodes: list[_BvhBuildNode], item_threshold: int) -> list[_BvhBuildItem]:
@@ -858,16 +842,6 @@ def _build_geometry_bvh(bound: BoundGeometry, item_threshold: int = _GEOMETRY_BV
     )
 
 
-def _transform_point(point: tuple[float, float, float], transform: BoundTransform | None) -> tuple[float, float, float]:
-    if transform is None:
-        return point
-    return (
-        (transform.column1[0] * point[0]) + (transform.column2[0] * point[1]) + (transform.column3[0] * point[2]) + transform.column4[0],
-        (transform.column1[1] * point[0]) + (transform.column2[1] * point[1]) + (transform.column3[1] * point[2]) + transform.column4[1],
-        (transform.column1[2] * point[0]) + (transform.column2[2] * point[1]) + (transform.column3[2] * point[2]) + transform.column4[2],
-    )
-
-
 def _transform_aabb(bounds: BoundAabb, transform: BoundTransform | None) -> BoundAabb:
     if transform is None:
         return bounds
@@ -906,13 +880,13 @@ def _refresh_composite_metrics(bound: BoundComposite) -> None:
         bound.bvh = None
         return
     transformed_bounds = [_transform_aabb(_child_bounds(child), child.transform) for child in bound.children]
-    overall = _merge_aabbs(transformed_bounds, BoundAabb(bound.box_min, bound.box_max))
+    overall = _merge_bounds(transformed_bounds, BoundAabb(bound.box_min, bound.box_max))
     center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
     bound.box_min = overall.minimum
     bound.box_max = overall.maximum
     bound.box_center = center
     bound.sphere_center = center
-    bound.sphere_radius = _bounds_radius_from_aabb(overall, center)
+    bound.sphere_radius = _sphere_radius_from_bounds(overall, center)
     bound.bvh = _build_composite_bvh(bound)
 
 

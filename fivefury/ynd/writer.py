@@ -12,7 +12,7 @@ from ..resource import (
     layout_resource_sections,
     write_resource_pages_info,
 )
-from .model import Ynd, YndResourcePagesInfo
+from .model import Ynd
 
 _ROOT_SIZE = 0x70
 _NODE_SIZE = 0x28

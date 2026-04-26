@@ -2,16 +2,7 @@ from __future__ import annotations
 
 import enum
 
-
-class _FlexibleIntEnum(enum.IntEnum):
-    @classmethod
-    def _missing_(cls, value: object) -> "_FlexibleIntEnum":
-        if not isinstance(value, int):
-            raise ValueError(f"{value!r} is not a valid {cls.__name__}")
-        member = int.__new__(cls, value)
-        member._name_ = f"UNKNOWN_{value}"
-        member._value_ = value
-        return member
+from ..common import FlexibleIntEnum
 
 
 class YmapFlags(enum.IntFlag):
@@ -40,7 +31,7 @@ class YmapContentFlags(enum.IntFlag):
     MASK_RETAINED = INSTANCE_LIST | OCCLUDER | LOD_LIGHTS | DISTANT_LOD_LIGHTS
 
 
-class YmapLodLevel(_FlexibleIntEnum):
+class YmapLodLevel(FlexibleIntEnum):
     DEPTH_HD = 0
     DEPTH_LOD = 1
     DEPTH_SLOD1 = 2
@@ -50,7 +41,7 @@ class YmapLodLevel(_FlexibleIntEnum):
     DEPTH_SLOD4 = 6
 
 
-class YmapPriorityLevel(_FlexibleIntEnum):
+class YmapPriorityLevel(FlexibleIntEnum):
     REQUIRED = 0
     OPTIONAL_HIGH = 1
     OPTIONAL_MEDIUM = 2
@@ -112,13 +103,13 @@ class YmapCarGenFlags(enum.IntFlag):
     PREVENT_ENTRY = 1 << 12
 
 
-class YmapLodLightType(_FlexibleIntEnum):
+class YmapLodLightType(FlexibleIntEnum):
     POINT = 1
     SPOT = 2
     CAPSULE = 4
 
 
-class YmapLodLightCategory(_FlexibleIntEnum):
+class YmapLodLightCategory(FlexibleIntEnum):
     SMALL = 0
     MEDIUM = 1
     LARGE = 2

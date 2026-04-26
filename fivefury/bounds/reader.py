@@ -31,7 +31,6 @@ from .model import (
     BoundPolygonSphere,
     BoundPolygonTriangle,
     BoundPolygonType,
-    BoundResourcePagesInfo,
     BoundSphere,
     BoundTransform,
     BoundType,

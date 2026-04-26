@@ -4,7 +4,7 @@ import dataclasses
 import math
 import struct
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence, TypeVar
 
 from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, _copy_model_input
 from .defs import COMPONENT_SIZES, LOD_ORDER, VertexComponentType, VertexSemantic, YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_skeleton_binding
@@ -14,6 +14,8 @@ from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, Sh
 
 if TYPE_CHECKING:
     from .gen9 import ShaderGen9Definition
+
+T = TypeVar("T")
 
 _DEFAULT_DECLARATION_TYPES = (
     (int(VertexComponentType.FLOAT3) << (int(VertexSemantic.POSITION) * 4))
@@ -511,7 +513,7 @@ def compute_model_collection_bounds(models: Sequence[PreparedModel]) -> tuple[tu
     return compute_bounds(positions)
 
 
-def _copy_vertex_channel[T](channel: Sequence[T] | None, vertex_indices: Sequence[int]) -> list[T] | None:
+def _copy_vertex_channel(channel: Sequence[T] | None, vertex_indices: Sequence[int]) -> list[T] | None:
     if channel is None:
         return None
     return [channel[index] for index in vertex_indices]

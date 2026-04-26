@@ -11,9 +11,7 @@ from ..binary import (
     i64_be as _i64,
     u16_be as _u16,
     u32_be as _u32,
-    u64_be as _u64,
 )
-from ..metahash import MetaHash
 from .model import CutFile, CutHashedString, CutNode
 from .names import ARRAY_INFO_HASH, hash_name
 

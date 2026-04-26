@@ -23,7 +23,7 @@ def parse_texture_base(
     return try_read_c_string(name_pointer, system_data)
 
 
-def _parameter_component_count(type_name: str | None) -> int:
+def parameter_component_count(type_name: str | None) -> int:
     lowered = (type_name or '').strip().lower()
     if lowered == 'float':
         return 1
@@ -37,7 +37,7 @@ def _parameter_component_count(type_name: str | None) -> int:
 def _decode_numeric_parameter(raw: bytes, *, type_name: str | None) -> object | None:
     if not raw:
         return None
-    component_count = _parameter_component_count(type_name)
+    component_count = parameter_component_count(type_name)
     if len(raw) <= 16:
         padded = raw.ljust(16, b'\x00')
         values = struct.unpack_from('<4f', padded, 0)[:component_count]

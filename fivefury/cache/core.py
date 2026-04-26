@@ -527,7 +527,8 @@ _KIND_DICT_TYPES: dict[str, GameFileType] = {
     "RelDict": GameFileType.REL,
     "YwrDict": GameFileType.YWR,
     "YvrDict": GameFileType.YVR,
-    "Gxt2Dict": GameFileType.GTXD,
+    "Gxt2Dict": GameFileType.GXT2,
+    "AwcDict": GameFileType.AWC,
     "YedDict": GameFileType.YED,
 }
 

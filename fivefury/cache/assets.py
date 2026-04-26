@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
+from ..common import hash_value
 from ..gamefile import GameFileType
-from ..hashing import jenk_hash
 from ..metahash import MetaHash
 from ..assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
 from ..rpf import RpfFileEntry
@@ -13,10 +13,6 @@ from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
 from ..ytd import Texture, Ytd, read_ytd
 
 _EMBEDDED_TEXTURE_RESOURCE_TYPES = frozenset(RESOURCE_TEXTURE_ASSET_TYPES)
-
-
-def _coerce_hash_value(value: int | MetaHash | str) -> int:
-    return int(value) if not isinstance(value, str) else jenk_hash(value)
 
 
 def _asset_kind_from_archetype_type(asset_type: int | ArchetypeAssetType) -> GameFileType | None:
@@ -249,7 +245,7 @@ class GameFileCacheAssetMixin:
 
     def _iter_texture_dict_chain_assets(self, value: int | str | MetaHash) -> Iterator[tuple["AssetRecord", int]]:
         seen_hashes: set[int] = set()
-        current_hash = _coerce_hash_value(value)
+        current_hash = hash_value(value)
         depth = 0
         while current_hash and current_hash not in seen_hashes:
             seen_hashes.add(current_hash)

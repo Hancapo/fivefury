@@ -56,6 +56,13 @@ def _merge_bounds(bounds: list[BoundAabb], fallback: BoundAabb) -> BoundAabb:
     return BoundAabb(minimum, maximum)
 
 
+def _aabb_from_center_size(center: tuple[float, float, float], size: tuple[float, float, float]) -> BoundAabb:
+    half_size = tuple(float(value) * 0.5 for value in size)
+    minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
+    maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+    return BoundAabb(minimum, maximum)
+
+
 @dataclasses.dataclass(slots=True)
 class BoundTransform:
     column1: tuple[float, float, float]
@@ -809,10 +816,8 @@ class BoundDisc(Bound):
         size: tuple[float, float, float],
         **kwargs: float | int | tuple[float, float, float],
     ) -> "BoundDisc":
-        half_size = tuple(float(value) * 0.5 for value in size)
-        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
-        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
-        return cls.from_bounds(minimum, maximum, **kwargs)
+        bounds = _aabb_from_center_size(center, size)
+        return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
 
     @classmethod
     def from_center_radius(
@@ -880,10 +885,8 @@ class BoundCylinder(Bound):
         size: tuple[float, float, float],
         **kwargs: float | int | tuple[float, float, float],
     ) -> "BoundCylinder":
-        half_size = tuple(float(value) * 0.5 for value in size)
-        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
-        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
-        return cls.from_bounds(minimum, maximum, **kwargs)
+        bounds = _aabb_from_center_size(center, size)
+        return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
 
     @classmethod
     def from_center_radius_height(
@@ -946,10 +949,8 @@ class BoundCloth(Bound):
         size: tuple[float, float, float],
         **kwargs: float | int | tuple[float, float, float],
     ) -> "BoundCloth":
-        half_size = tuple(float(value) * 0.5 for value in size)
-        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
-        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
-        return cls.from_bounds(minimum, maximum, **kwargs)
+        bounds = _aabb_from_center_size(center, size)
+        return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
 
 
 @dataclasses.dataclass(slots=True)

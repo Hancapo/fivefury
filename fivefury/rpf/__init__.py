@@ -43,7 +43,6 @@ from .utils import (
     _pad,
     _resource_flags_from_size,
     _resource_version_from_flags,
-    _size_from_resource_flags,
     _split_rsc7,
 )
 from .entries import (
@@ -811,6 +810,30 @@ class RpfArchive:
         recurse_nested: bool = True,
     ) -> list[Path]:
         return self.to_folder(output_dir, mode=mode, recurse_nested=recurse_nested)
+
+
+__all__ = [
+    "AES_ENCRYPTION",
+    "NG_ENCRYPTION",
+    "NONE_ENCRYPTION",
+    "OPEN_ENCRYPTION",
+    "RPF_BLOCK_SIZE",
+    "RPF_MAGIC",
+    "RSC7_MAGIC",
+    "RpfArchive",
+    "RpfBinaryFileEntry",
+    "RpfDirectoryEntry",
+    "RpfEntry",
+    "RpfExportMode",
+    "RpfFileEntry",
+    "RpfResourceFileEntry",
+    "RpfResourcePageFlags",
+    "create_rpf",
+    "load_rpf",
+    "rpf_to_folder",
+    "rpf_to_zip",
+    "zip_to_rpf",
+]
 
 
 

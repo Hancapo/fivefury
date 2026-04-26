@@ -6,11 +6,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from .backends import DotNetRandom, _AesEcbCipher, _build_windows_aes_decryptor, _decompress_any, _to_signed_i32
+from .backends import _AesEcbCipher, _build_windows_aes_decryptor
 from .keys import (
     _AES_KEY_SHA1,
     _DEFAULT_AES_KEY_B64,
+    _DEFAULT_AWC_KEY,
     _NG_BLOB_SIZE,
+    _decode_awc_key,
     _decode_magic_payload,
     _decode_ng_blob,
     _default_cache_path,
@@ -37,6 +39,7 @@ class GameCrypto:
     ng_keys: tuple[bytes, ...]
     ng_tables: tuple[tuple[tuple[int, ...], ...], ...]
     ng_blob: bytes = b""
+    awc_key: tuple[int, int, int, int] | None = None
     magic_path: str = ""
     _aes: _AesEcbCipher = field(init=False, repr=False, compare=False)
     _ng_subkeys: tuple[tuple[tuple[int, int, int, int], ...], ...] = field(init=False, repr=False, compare=False)
@@ -47,6 +50,7 @@ class GameCrypto:
         self.ng_keys = tuple(bytes(key) for key in self.ng_keys)
         self.ng_tables = tuple(tuple(tuple(table) for table in round_tables) for round_tables in self.ng_tables)
         self.ng_blob = bytes(self.ng_blob)
+        self.awc_key = tuple(int(value) & 0xFFFFFFFF for value in self.awc_key) if self.awc_key is not None else None
         self._aes = _AesEcbCipher(self.aes_key)
         self._ng_subkeys = tuple(
             tuple(
@@ -63,6 +67,7 @@ class GameCrypto:
         else:
             aes_bytes = bytes(aes_key)
         source_path = Path(magic_path) if magic_path is not None else None
+        awc_key: tuple[int, int, int, int] | None = None
         if source_path is not None:
             if source_path.name.lower() == "ng.dat" or source_path.stat().st_size == _NG_BLOB_SIZE:
                 ng_blob = source_path.read_bytes()
@@ -70,11 +75,13 @@ class GameCrypto:
             else:
                 ng_blob = _decode_magic_payload(aes_bytes, source_path.read_bytes())
                 ng_keys, ng_tables = _decode_ng_blob(ng_blob)
+                awc_key = _decode_awc_key(ng_blob)
             return cls(
                 aes_key=aes_bytes,
                 ng_keys=ng_keys,
                 ng_tables=ng_tables,
                 ng_blob=ng_blob,
+                awc_key=awc_key or _DEFAULT_AWC_KEY,
                 magic_path=str(source_path),
             )
 
@@ -82,22 +89,31 @@ class GameCrypto:
         if packaged_ng is not None:
             ng_blob = packaged_ng[0]
             ng_keys, ng_tables = _decode_ng_blob(ng_blob)
+            packaged_magic = _read_packaged_data("magic.dat")
+            if packaged_magic is not None:
+                try:
+                    awc_key = _decode_awc_key(_decode_magic_payload(aes_bytes, packaged_magic[0]))
+                except Exception:
+                    awc_key = None
             return cls(
                 aes_key=aes_bytes,
                 ng_keys=ng_keys,
                 ng_tables=ng_tables,
                 ng_blob=ng_blob,
+                awc_key=awc_key or _DEFAULT_AWC_KEY,
                 magic_path=packaged_ng[1],
             )
 
         magic = _default_magic_path()
         ng_blob = _decode_magic_payload(aes_bytes, magic.read_bytes())
         ng_keys, ng_tables = _decode_ng_blob(ng_blob)
+        awc_key = _decode_awc_key(ng_blob)
         return cls(
             aes_key=aes_bytes,
             ng_keys=ng_keys,
             ng_tables=ng_tables,
             ng_blob=ng_blob,
+            awc_key=awc_key or _DEFAULT_AWC_KEY,
             magic_path=str(magic),
         )
 
@@ -178,6 +194,7 @@ class GameCrypto:
         clone.ng_keys = self.ng_keys
         clone.ng_tables = self.ng_tables
         clone.ng_blob = self.ng_blob
+        clone.awc_key = self.awc_key
         clone.magic_path = self.magic_path
         clone._aes = _AesEcbCipher(self.aes_key)
         clone._ng_subkeys = self._ng_subkeys
@@ -287,6 +304,7 @@ __all__ = [
     "get_game_crypto",
     "load_game_keys",
     "set_game_crypto",
+    "_build_windows_aes_decryptor",
 ]
 
 

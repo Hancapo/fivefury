@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..common import clip_short_name
 from ..metahash import MetaHash
 from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections
 from .model import (
@@ -17,7 +18,6 @@ from .model import (
     YcdClipPropertyAttribute,
     YcdClipPropertyAttributeType,
     YcdClipTag,
-    YcdClipType,
     YcdSequence,
     _resolve_ycd_clip_hash,
 )
@@ -30,15 +30,6 @@ _ANIMATION_MAP_VFT = 1079671816
 _DEFAULT_ROOT_UNKNOWN_20H = 0x00000101
 _DEFAULT_ROOT_UNKNOWN_34H = 0x01000000
 _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH = 0x01000000
-
-
-def _clip_short_name(name: str) -> str:
-    normalized = str(name or "").replace("\\", "/")
-    if "/" in normalized:
-        normalized = normalized.rsplit("/", 1)[-1]
-    if "." in normalized:
-        normalized = normalized.split(".", 1)[0]
-    return normalized.lower()
 
 
 def _get_num_hash_buckets(n_hashes: int) -> int:
@@ -95,7 +86,7 @@ def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
     resolved = _resolve_ycd_clip_hash(clip)
     if resolved.uint:
         return resolved
-    return MetaHash(clip.short_name or _clip_short_name(clip.name))
+    return MetaHash(clip.short_name or clip_short_name(clip.name))
 
 
 class _YcdWriter:

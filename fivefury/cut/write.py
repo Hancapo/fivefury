@@ -17,10 +17,8 @@ from .names import CUT_HASH_NAMES, CUT_NAME_VALUES
 from .pso import (
     ARRAY_INFO_HASH,
     CHKS,
-    PMAP,
     PSCH,
     PSIG,
-    PSIN,
     STRE,
     PsoDataTypeArray,
     PsoDataTypeBool,
@@ -43,7 +41,6 @@ from .pso import (
     PsoDataTypeUInt,
     PsoDataTypeUShort,
     _PsoEntry,
-    _PsoPointer,
     _PsoStruct,
 )
 from .schema import BUILTIN_CUT_STRUCTS, _serialize_psch, builtin_cut_template

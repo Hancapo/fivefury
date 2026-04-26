@@ -9,12 +9,12 @@ from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
 from ..resource import build_rsc7
-from ..ymap import _suggest_resource_path
 from ..ymap.defs import _ensure_base_name
+from ..ymap.model import _suggest_resource_path
 
 from .archetypes import BaseArchetypeDef, TimeArchetypeDef
 from .defs import YTYP_STRUCT_INFOS, YTYP_ENUM_INFOS
-from .mlo import MloArchetypeDef, MloRoomDef, MloPortalDef, MloEntitySet, MloTimeCycleModifier
+from .mlo import MloArchetypeDef
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..rpf import RpfArchive, RpfFileEntry

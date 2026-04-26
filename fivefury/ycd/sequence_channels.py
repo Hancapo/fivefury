@@ -74,6 +74,12 @@ class YcdSequenceRootChannelRef:
         return int(self.raw_bytes[4] | (self.raw_bytes[5] << 8))
 
 
+def _cycled_float(values: list[float], frame: int, default: float = 0.0) -> float:
+    if not values:
+        return float(default)
+    return float(values[int(frame) % len(values)])
+
+
 @dataclass(slots=True)
 class YcdAnimChannel:
     channel_type: YcdChannelType
@@ -130,9 +136,7 @@ class YcdRawFloatChannel(YcdAnimChannel):
     values: list[float] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
-        if not self.values:
-            return 0.0
-        return float(self.values[int(frame) % len(self.values)])
+        return _cycled_float(self.values, frame)
 
 
 @dataclass(slots=True)
@@ -144,9 +148,7 @@ class YcdQuantizeFloatChannel(YcdAnimChannel):
     value_list: list[int] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
-        if not self.values:
-            return float(self.offset)
-        return float(self.values[int(frame) % len(self.values)])
+        return _cycled_float(self.values, frame, self.offset)
 
 
 @dataclass(slots=True)
@@ -179,9 +181,7 @@ class YcdLinearFloatChannel(YcdAnimChannel):
     value_list: list[int] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
-        if not self.values:
-            return float(self.offset)
-        return float(self.values[int(frame) % len(self.values)])
+        return _cycled_float(self.values, frame, self.offset)
 
 
 @dataclass(slots=True)

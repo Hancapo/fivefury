@@ -135,14 +135,14 @@ def _timeline_camera_cut_list(scene: CutScene) -> list[float]:
 
 def _load_event_sort_key(event: CutNode) -> tuple[float, int, int]:
     event_id = int(event.fields.get("iEventId", -1))
-    # Prop-heavy streamed cuts need scene/model requests before animation
-    # binding. Viewers are tolerant here, but the game is not.
+    # Keep loads in the same dependency order used by retail cutscene tables:
+    # scene first, animation dictionaries before the models that bind them.
     priority = {
         0: 0,   # load_scene
-        6: 10,  # load_models
-        8: 10,  # load_particle_effects
-        10: 10, # load_overlays
-        2: 20,  # load_anim_dict
+        2: 10,  # load_anim_dict
+        6: 20,  # load_models
+        8: 20,  # load_particle_effects
+        10: 20, # load_overlays
         4: 30,  # load_audio
         12: 40, # load_subtitles
         7: 90,  # unload_models

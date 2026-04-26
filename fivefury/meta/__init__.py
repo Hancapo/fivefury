@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import dataclasses
 import struct
-from collections.abc import Iterable, Mapping
+import dataclasses
+from collections.abc import Mapping
 from typing import Any
 
-from ..binary import align, pad_bytes
-from ..metahash import MetaHash
 from .defs import (
     ENUMS_BY_HASH,
     GRAPHICS_BASE,
@@ -27,7 +25,7 @@ from .defs import (
     StructDef,
 )
 from ..hashing import jenk_hash
-from ..resource import build_rsc7, parse_rsc7
+from ..resource import build_rsc7
 
 
 META_FILE_VFT = 0x405BC808
@@ -172,8 +170,8 @@ class RawStruct:
 
 
 
-from .read import ParsedMeta, read_meta
 from .builder import MetaBuilder, build_meta_system
+from .read import ParsedMeta, read_meta
 
 @dataclasses.dataclass(slots=True)
 class Meta:
@@ -235,6 +233,45 @@ class Meta:
             resource_version=parsed.resource_version or 2,
         )
         return meta
+
+
+__all__ = [
+    "ENUMS_BY_HASH",
+    "FLOAT_XYZ_NAME_HASH",
+    "GRAPHICS_BASE",
+    "KNOWN_STRUCTS",
+    "META_FILE_VFT",
+    "META_ROOT_SIZE",
+    "META_TYPE_NAME_ARRAYINFO",
+    "META_TYPE_NAME_BYTE",
+    "META_TYPE_NAME_FLOAT",
+    "META_TYPE_NAME_HASH",
+    "META_TYPE_NAME_POINTER",
+    "META_TYPE_NAME_STRING",
+    "META_TYPE_NAME_UINT",
+    "META_TYPE_NAME_USHORT",
+    "Meta",
+    "MetaArrayRef",
+    "MetaBuilder",
+    "MetaDataBlock",
+    "MetaDataRef",
+    "MetaDataType",
+    "MetaEnumEntry",
+    "MetaEnumInfo",
+    "MetaFieldInfo",
+    "MetaPointer",
+    "MetaStructInfo",
+    "ParsedMeta",
+    "RawStruct",
+    "RESOURCE_FILE_BASE_SIZE",
+    "RESOURCE_PAGES_INFO_SIZE",
+    "STRUCTS_BY_HASH",
+    "SYSTEM_BASE",
+    "EnumDef",
+    "StructDef",
+    "build_meta_system",
+    "read_meta",
+]
 
 
 

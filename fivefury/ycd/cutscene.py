@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from ..cut import CutFile, CutScene, read_cut, read_cut_scene
+from ..cut import CutFile, CutScene, read_cut
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from .model import Ycd, YcdAnimation, YcdAnimationBoneId, YcdClipAnimation, YcdClipType, YcdSequence
@@ -616,15 +616,9 @@ class YcdCutsceneBuilder:
             animation_hash = MetaHash(short_name)
             bone_ids: list[YcdAnimationBoneId] = []
             track_windows: list[tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]] = []
-            uses_camera_tracks = any(_is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks)
             sequence_limit = min(YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT, max(section.frame_count - 1, 0))
             sample_frame_limit = sequence_limit
-            if not uses_camera_tracks:
-                # Blender/Sollumz keep skeletal/object cutscene clips in one
-                # sequence. Splitting those clips is parseable but GTA only
-                # applies root motion for some skinned props.
-                sequence_limit = max(section.frame_count + int(round(self.fps)), 1)
-                sample_frame_limit = max(section.frame_count, 1)
+            uses_camera_tracks = any(_is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks)
             sorted_tracks = list(clip_spec.tracks)
             if not uses_camera_tracks:
                 # GTA cutscene YCDs group object tracks by semantic track id,

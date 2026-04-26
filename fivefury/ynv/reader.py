@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import f32, i16, u16, u32, u64, vec3, vec4
+from ..binary import i16, u16, u32, u64, vec3, vec4
 from ..resource import RSC7_MAGIC, checked_virtual_offset, get_resource_total_page_count, split_rsc7_sections
 from .model import (
     Ynv,

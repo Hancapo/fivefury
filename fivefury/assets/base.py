@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import ClassVar, Iterator
 
 from ..binary import u16 as _u16, u32 as _u32, u64 as _u64
+from ..common import ByteSource, read_source_bytes
 from ..gamefile import GameFileType, guess_game_file_type
 from ..resource import checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections
 from ..ytd import Ytd, read_embedded_texture_dictionary
@@ -20,7 +21,7 @@ class EmbeddedTextureDictionary:
 
 def _coerce_kind(
     value: GameFileType | str | None,
-    source: bytes | bytearray | memoryview | str | Path,
+    source: ByteSource,
 ) -> GameFileType | None:
     if isinstance(value, GameFileType):
         return value
@@ -31,12 +32,6 @@ def _coerce_kind(
     if isinstance(source, (str, Path)):
         return guess_game_file_type(source, GameFileType.UNKNOWN)
     return None
-
-
-def _load_source_bytes(source: bytes | bytearray | memoryview | str | Path) -> bytes:
-    if isinstance(source, (str, Path)):
-        return Path(source).read_bytes()
-    return bytes(source)
 
 
 def _virtual_offset(pointer_or_offset: int, data: bytes) -> int:
@@ -117,11 +112,9 @@ __all__ = [
     "_DAT_VIRTUAL_BASE",
     "_coerce_kind",
     "_drawable_texture_dictionary_pointer",
-    "_load_source_bytes",
     "_read_pointer_array",
     "_u16",
     "_u32",
     "_u64",
     "_virtual_offset",
 ]
-

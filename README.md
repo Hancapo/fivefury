@@ -1,25 +1,17 @@
 # FiveFury
 
-FiveFury is a Python library for GTA V asset workflows.
+FiveFury is a Python library for authoring, reading, writing, indexing, and packaging GTA V asset files.
 
-It provides practical support for:
+It focuses on practical modding workflows: building drawable assets, collision resources, map metadata, animation dictionaries, nav data, texture dictionaries, text tables, and RPF archives from Python without forcing every user to work directly with binary layouts.
 
-- `YDR` read/write for drawable workflows, including materials, shaders, drawable models, embedded textures, embedded collisions, skeletons, skinning, rigid bone bindings, and lights
-- `YDD` read/write support for drawable dictionaries with multiple embedded drawables
-- `YCD` read/write support for clip dictionaries, animation metadata, UV animation bindings, object tracks, skeletal tracks, camera tracks, root motion, and facial samples
-- `YBN` read/write support for bounds, collision materials, geometry, BVH data, octants, and composite bounds
-- `YND` read/write support for path nodes, links, flags, area helpers, and automatic network partitioning
-- `YNV` read/write support for navmesh resources, typed poly/point/portal metadata, validation, and simple Assimp-based OBJ partitioning
-- `YMAP` read/write
-- `YTYP` read/write with typed archetype, MLO, portal, room, extension, and flag helpers
-- `YTD` read/write and texture extraction helpers
-- `RPF7 OPEN` archives and nested `.rpf`
-- `ZIP -> RPF`, `RPF -> ZIP`, and `RPF -> folder`
-- opening encrypted standalone `.rpf` files without preloading game keys
-- fast asset indexing with `GameFileCache`
-- texture extraction from `YTD`, `GTXD` parent chains and embedded dictionaries in `YDR`, `YDD`, `YFT` and `YPT`
-- shared `RSC7`, `META`, hashing, and binary helper layers used by the resource formats
-- optional native acceleration for heavier bounds and archive operations when the compiled extension is available
+## Highlights
+
+- Read, edit, build, and write core GTA V formats such as `YDR`, `YDD`, `YBN`, `YCD`, `YMAP`, `YTYP`, `YTD`, `YND`, `YNV`, `CUT`, `GXT2`, `AWC`, and `RPF`.
+- Use declarative high-level helpers for common authoring tasks while still keeping access to lower-level binary/resource details.
+- Index game installs, loose folders, and archives with `GameFileCache`, including typed lookups by asset name, hash, and format.
+- Extract texture dictionaries from `YTD`, `GTXD` parent chains, and embedded dictionaries in resource assets.
+- Share common `RSC7`, `META`, hashing, material, bounds, resource, and archive layers across formats.
+- Use optional native acceleration for heavier bounds and archive operations when the compiled extension is available.
 
 ## Installation
 
@@ -42,6 +34,52 @@ Assimp-backed import helpers such as `assimp_to_ydr(...)`, `obj_to_ydr(...)`, `f
 
 FiveFury does not currently probe common install locations on its own. The native library must already be reachable through the environment, usually via `PATH`.
 
+## Format Support
+
+Support levels:
+
+| Status | Meaning |
+| --- | --- |
+| Full | Has practical read/write support and public high-level helpers for normal workflows. |
+| Partial | Recognized or parsed enough for selected workflows, but not complete authoring support. |
+| Indexed | Detected by `GameFileCache` and RPF tooling, but no dedicated high-level parser/writer yet. |
+| Not implemented | Known GTA V format, but FiveFury does not currently expose dedicated support. |
+
+### Full Support
+
+| Format | Scope |
+| --- | --- |
+| `YDR` | Drawable resources: materials, shaders, samplers, numeric parameters, drawable models, LODs, render masks, lights, embedded textures, embedded bounds, skeletons, skinning, rigid bone bindings, shader inspection, and skeleton hash recalculation. |
+| `YDD` | Drawable dictionaries with multiple embedded drawables and high-level creation from named `YDR` drawables. |
+| `YBN` | Bounds/collisions: primitive bounds, composite bounds, geometry bounds, BVH bounds, octants, material names, material colors, and generated collision chunks from triangle meshes. |
+| `YCD` | Clip dictionaries: parsed metadata, sequence rebuilds, known track types, UV clip bindings, object animation metadata, skeletal tracks, root motion, camera tracks, and facial samples. |
+| `YMAP` | Map metadata: entities, car generators, timecycle modifiers, occluders, content flags, entity flags, LOD lights, distant lights, and typed metadata. |
+| `YTYP` | Archetypes: base/time/MLO archetypes, extensions, rooms, portals, entity sets, typed asset metadata, flags, LOD distances, physics dictionaries, and cutscene prop helpers. |
+| `YTD` | Texture dictionaries: read/write, resource texture payload preservation, cache extraction, and embedded-asset helpers. |
+| `YND` | Path node resources: nodes, links, typed flags/enums, area helpers, automatic area ID calculation, and network partitioning. |
+| `YNV` | Navmesh resources: sectors, polys, points, portals, typed metadata, validation, and basic Assimp/OBJ partitioning. |
+| `CUT` | Cutscene files: cameras, tracks, events, props, peds, vehicles, lights, high-level scene conversion, and authoring helpers. |
+| `GXT2` | Hashed UTF-8 text tables with binary read/write, CodeWalker-style text import/export, mapping-style helpers, and `GameFileCache` loading. |
+| `RPF` | RPF7 OPEN archives, nested `.rpf`, folder/ZIP conversion, extraction modes, and encrypted standalone RPF opening when keys are available. |
+
+### Partial Or Indexed Support
+
+| Format | Current behavior |
+| --- | --- |
+| `YFT` | Resource texture dictionaries can be discovered/extracted from fragments, but full fragment authoring is not implemented. |
+| `YPT` | Resource texture dictionaries can be discovered/extracted from particle dictionaries, but full particle authoring is not implemented. |
+| `AWC` | Audio wave containers can be read/written structurally, opened through `GameFileCache`, exported back to WAV for PCM/ADPCM streams, and built from mono 16-bit PCM WAV input. REL audio metadata authoring is separate and not implemented yet. |
+| `YMF`, `YMT`, `REL`, `YWR`, `YVR`, `YED` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
+| `GTXD` metadata | Used by cache texture lookup and parent-chain resolution, but it is not a standalone binary asset format like `.gxt2`. |
+
+### Not Implemented Yet
+
+| Format family | Notes |
+| --- | --- |
+| `YLD`, `YFD`, `YPDB`, `MRF` | Known game file types, currently no dedicated high-level support. |
+| Heightmap and watermap resources | Recognized as game concepts, but no complete public reader/writer yet. |
+| Audio REL banks and vehicle/ped meta specializations | Some metadata can be indexed as files, but specialized semantic authoring is not currently exposed. |
+
 ## API Style
 
 The preferred high-level authoring style is now:
@@ -60,20 +98,6 @@ Some newer high-level helpers were renamed to match that convention. If you were
 - `unembed_texture(...)` -> `remove_embedded_texture(...)`
 - `use_bound(...)` -> `set_bound(...)`
 - `skin_model(...)` -> `set_model_skin(...)`
-
-## Current Format Coverage
-
-This is the practical coverage exposed by the high-level API:
-
-- `YDR`: read, edit, build, and write drawable resources with materials, shaders, samplers, numeric parameters, drawable models, LODs, render masks, lights, embedded textures, embedded bounds, skeletons, skinning, rigid bone bindings, shader inspection, and skeleton hash recalculation.
-- `YDD`: read and write drawable dictionaries, including creating a dictionary from named `YDR` drawables.
-- `YCD`: read and write clip dictionaries, preserve parsed metadata, rebuild sequence data, evaluate known track types, create UV clip bindings, and harden skeletal/object animation metadata before export.
-- `YBN` and bounds: read and write standalone collision resources, primitive bounds, composite bounds, geometry bounds, BVH bounds, octants, material names, material colors, and generated collision chunks from triangle meshes.
-- `YND`: read and write nav/path node resources, preserve node/link metadata, use typed flags/enums, compute area IDs from positions, and split a high-level node network into per-area `YND` resources.
-- `YNV`: read and write navmesh resources, preserve sector trees, use typed point and portal metadata, validate structural consistency, and generate basic per-cell navmeshes from Assimp geometry.
-- `YMAP` and `YTYP`: author entities, car generators, timecycle modifiers, occluders, archetypes, extensions, MLO structures, flags, and typed asset metadata.
-- `YTD`: read and write texture dictionaries, preserve resource texture payloads, and extract textures through cache and embedded-asset helpers.
-- `RPF`: create, read, extract, convert, and pack archives, including nested `.rpf` directories and standalone resource extraction.
 
 ## Quick Start
 
@@ -710,7 +734,7 @@ ytd = cache.YtdDict[jenk_hash("vehshare")]
 ybn = cache.YbnDict[jenk_hash("v_carshowroom")]
 ```
 
-Available dictionaries include `YdrDict`, `YddDict`, `YtdDict`, `YmapDict`, `YtypDict`, `YftDict`, `YbnDict`, `YcdDict`, `YptDict`, `YndDict`, `YnvDict`, `YedDict`, `YwrDict`, `YvrDict`, `RelDict` and `Gxt2Dict`.
+Available dictionaries include `YdrDict`, `YddDict`, `YtdDict`, `YmapDict`, `YtypDict`, `YftDict`, `YbnDict`, `YcdDict`, `YptDict`, `YndDict`, `YnvDict`, `YedDict`, `YwrDict`, `YvrDict`, `RelDict`, `Gxt2Dict`, and `AwcDict`.
 
 ### Archetype Lookup
 

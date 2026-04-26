@@ -4,6 +4,7 @@ import struct
 from pathlib import Path
 
 from ..binary import u16 as _u16, u32 as _u32, u64 as _u64
+from ..common import ByteSource, read_source_bytes
 from ..resolver import resolve_hash
 from ..resource import RSC7_MAGIC, checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
 from ..ydr.shaders import ShaderLibrary
@@ -16,12 +17,6 @@ _HASHES_POINTER_OFFSET = 0x20
 _HASHES_COUNT_OFFSET = 0x28
 _DRAWABLES_POINTER_OFFSET = 0x30
 _DRAWABLES_COUNT_OFFSET = 0x38
-
-
-def _read_source_bytes(source: bytes | bytearray | memoryview | str | Path) -> bytes:
-    if isinstance(source, (str, Path)):
-        return Path(source).read_bytes()
-    return bytes(source)
 
 
 def _read_uint_array(system_data: bytes, pointer: int, count: int) -> list[int]:
@@ -53,12 +48,12 @@ def _internal_drawable_path(container_path: str, name: str, index: int) -> str:
 
 
 def read_ydd(
-    source: bytes | bytearray | memoryview | str | Path,
+    source: ByteSource,
     *,
     path: str | Path = "",
     shader_library: ShaderLibrary | None = None,
 ) -> Ydd:
-    data = _read_source_bytes(source)
+    data = read_source_bytes(source)
     if len(data) < 16:
         raise ValueError("YDD data is too short")
     magic = struct.unpack_from("<I", data, 0)[0]

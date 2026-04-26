@@ -6,8 +6,10 @@ from typing import Any, Optional
 
 from .paths import split_archive_asset_path as _split_archive_asset_path
 from .views import AssetRecord
-from ..cut import read_cut, read_cutxml
+from ..awc import read_awc
+from ..cut import read_cut
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
+from ..gxt2 import read_gxt2
 from ..hashing import _get_lut
 from ..metahash import MetaHash
 from ..resource import parse_rsc7
@@ -34,78 +36,52 @@ def _try_load_decoder(module_name: str, attribute: str) -> Any | None:
     return getattr(module, attribute, None)
 
 
+def _decode_or_fallback(kind: GameFileType, source: bytes, fallback: bytes, decoder: Any) -> tuple[Any, GameFileType]:
+    try:
+        return decoder(source), kind
+    except Exception:
+        return fallback, kind
+
+
+def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: GameFileType) -> tuple[Any, GameFileType]:
+    decoder = _try_load_decoder(module_name, attribute)
+    if decoder is None:
+        return data, kind
+    return _decode_or_fallback(kind, data, data, decoder)
+
+
 def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
     if ext == ".ymap":
-        decoder = _try_load_decoder("fivefury.ymap", "read_ymap")
-        if decoder is not None:
-            try:
-                return decoder(data), GameFileType.YMAP
-            except Exception:
-                pass
-        return data, GameFileType.YMAP
+        return _decode_dynamic(data, module_name="fivefury.ymap", attribute="read_ymap", kind=GameFileType.YMAP)
     if ext == ".ytyp":
-        decoder = _try_load_decoder("fivefury.ytyp", "read_ytyp")
-        if decoder is not None:
-            try:
-                return decoder(data), GameFileType.YTYP
-            except Exception:
-                pass
-        return data, GameFileType.YTYP
-    if ext == ".ydr":
-        source = raw if raw is not None else data
-        try:
-            return read_ydr(source, path=path), GameFileType.YDR
-        except Exception:
-            return source, GameFileType.YDR
-    if ext == ".ydd":
-        source = raw if raw is not None else data
-        try:
-            return read_ydd(source, path=path), GameFileType.YDD
-        except Exception:
-            return source, GameFileType.YDD
-    if ext == ".ytd":
-        source = raw if raw is not None else data
-        try:
-            return read_ytd(source), GameFileType.YTD
-        except Exception:
-            return source, GameFileType.YTD
-    if ext == ".ycd":
-        source = raw if raw is not None else data
-        try:
-            return read_ycd(source, path=path), GameFileType.YCD
-        except Exception:
-            return source, GameFileType.YCD
-    if ext == ".ybn":
-        source = raw if raw is not None else data
-        try:
-            return read_ybn(source, path=path), GameFileType.YBN
-        except Exception:
-            return source, GameFileType.YBN
-    if ext == ".ynd":
-        source = raw if raw is not None else data
-        try:
-            return read_ynd(source, path=path), GameFileType.YND
-        except Exception:
-            return source, GameFileType.YND
-    if ext == ".ynv":
-        source = raw if raw is not None else data
-        try:
-            return read_ynv(source, path=path), GameFileType.YNV
-        except Exception:
-            return source, GameFileType.YNV
-    if ext == ".cut":
-        source = raw if raw is not None else data
-        try:
-            return read_cut(source), GameFileType.CUT
-        except Exception:
-            return source, GameFileType.CUT
-    if ext == ".rpf":
-        try:
-            return RpfArchive.from_bytes(data), GameFileType.RPF
-        except Exception:
-            return data, GameFileType.RPF
+        return _decode_dynamic(data, module_name="fivefury.ytyp", attribute="read_ytyp", kind=GameFileType.YTYP)
+
+    source = raw if raw is not None else data
+    resource_decoders = {
+        ".ydr": (GameFileType.YDR, lambda payload: read_ydr(payload, path=path)),
+        ".ydd": (GameFileType.YDD, lambda payload: read_ydd(payload, path=path)),
+        ".ytd": (GameFileType.YTD, read_ytd),
+        ".ycd": (GameFileType.YCD, lambda payload: read_ycd(payload, path=path)),
+        ".ybn": (GameFileType.YBN, lambda payload: read_ybn(payload, path=path)),
+        ".ynd": (GameFileType.YND, lambda payload: read_ynd(payload, path=path)),
+        ".ynv": (GameFileType.YNV, lambda payload: read_ynv(payload, path=path)),
+        ".cut": (GameFileType.CUT, read_cut),
+    }
+    if ext in resource_decoders:
+        kind, decoder = resource_decoders[ext]
+        return _decode_or_fallback(kind, source, source, decoder)
+
+    direct_decoders = {
+        ".gxt2": (GameFileType.GXT2, lambda payload: read_gxt2(payload, path=path)),
+        ".awc": (GameFileType.AWC, lambda payload: read_awc(payload, path=path)),
+        ".rpf": (GameFileType.RPF, RpfArchive.from_bytes),
+    }
+    if ext in direct_decoders:
+        kind, decoder = direct_decoders[ext]
+        return _decode_or_fallback(kind, data, data, decoder)
     return data, guess_game_file_type(path, GameFileType.UNKNOWN)
+
 
 class GameFileCacheIOMixin:
     def iter_files(self):

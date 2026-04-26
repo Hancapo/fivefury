@@ -27,23 +27,25 @@ class GameFileType(IntEnum):
     REL = 13
     YWR = 14
     YVR = 15
+    GXT2 = 16
     GTXD = 16
-    VEHICLES = 17
-    CAR_COLS = 18
-    CAR_MOD_COLS = 19
-    CAR_VARIATIONS = 20
-    VEHICLE_LAYOUTS = 21
-    PEDS = 22
-    PED = 23
-    YED = 24
-    YLD = 25
-    YFD = 26
-    HEIGHTMAP = 27
-    WATERMAP = 28
-    MRF = 29
-    DISTANT_LIGHTS = 30
-    YPDB = 31
-    CUT = 32
+    AWC = 17
+    VEHICLES = 18
+    CAR_COLS = 19
+    CAR_MOD_COLS = 20
+    CAR_VARIATIONS = 21
+    VEHICLE_LAYOUTS = 22
+    PEDS = 23
+    PED = 24
+    YED = 25
+    YLD = 26
+    YFD = 27
+    HEIGHTMAP = 28
+    WATERMAP = 29
+    MRF = 30
+    DISTANT_LIGHTS = 31
+    YPDB = 32
+    CUT = 33
     RPF = 100
     BINARY = 101
 
@@ -61,9 +63,10 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".ynd": GameFileType.YND,
     ".ynv": GameFileType.YNV,
     ".rel": GameFileType.REL,
+    ".awc": GameFileType.AWC,
     ".ywr": GameFileType.YWR,
     ".yvr": GameFileType.YVR,
-    ".gxt2": GameFileType.GTXD,
+    ".gxt2": GameFileType.GXT2,
     ".cut": GameFileType.CUT,
     ".rpf": GameFileType.RPF,
 }

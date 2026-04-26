@@ -4,7 +4,7 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from ..meta import MetaFieldInfo, MetaStructInfo, RawStruct
+from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
 

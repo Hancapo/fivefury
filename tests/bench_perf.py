@@ -24,8 +24,7 @@ import pytest
 from fivefury.hashing import jenk_hash
 from fivefury.metahash import MetaHash
 from fivefury.resolver import clear_hash_resolver, register_name, resolve_hash
-from fivefury.meta import MetaBuilder, MetaStructInfo, MetaFieldInfo, ParsedMeta, build_meta_system
-from fivefury.meta.defs import MetaDataType, meta_name
+from fivefury.meta import MetaBuilder
 from fivefury.ymap import Ymap, Entity
 from fivefury.ytyp import Ytyp, Archetype
 from fivefury.rpf import create_rpf

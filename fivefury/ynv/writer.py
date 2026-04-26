@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import ByteWriter, align
+from ..binary import ByteWriter
 from ..resource import build_rsc7, get_resource_total_page_count
 from .model import Ynv, YnvEdge, YnvPoint, YnvPortal, YnvSector, YnvSectorData
 

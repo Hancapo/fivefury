@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterator
 
+from ..common import read_source_bytes
 from ..gamefile import GameFileType
-from .base import EmbeddedTextureDictionary, ResourceTextureAsset, _coerce_kind, _load_source_bytes
+from .base import EmbeddedTextureDictionary, ResourceTextureAsset, _coerce_kind
 from .ydd import YddAsset
 from .ydr import YdrAsset
 from .yft import YftAsset
@@ -24,7 +25,7 @@ def open_resource_texture_asset(
     kind: GameFileType | str | None = None,
     path: str | Path = "",
 ) -> ResourceTextureAsset | None:
-    data = _load_source_bytes(source)
+    data = read_source_bytes(source)
     kind_value = _coerce_kind(kind, source)
     asset_type = RESOURCE_TEXTURE_ASSET_TYPES.get(kind_value) if kind_value is not None else None
     if asset_type is None:

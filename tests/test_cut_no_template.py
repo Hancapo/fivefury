@@ -117,8 +117,8 @@ def test_cut_scene_normalizes_retail_prop_startup_order() -> None:
         int(CutEventType.LOAD_MODELS),
     ]
     assert [(event.fields["fTime"], event.fields["iEventId"]) for event in rebuilt.events[:2]] == [
-        (0.0, int(CutEventType.SET_ANIM)),
         (0.0, int(CutEventType.CAMERA_CUT)),
+        (pytest.approx(1.0 / 30.0), int(CutEventType.SET_ANIM)),
     ]
     rebuilt_prop = next(node for node in rebuilt.objects if node.type_name == "rage__cutfPropModelObject")
     assert rebuilt_prop.fields["cHandle"].hash == 0
