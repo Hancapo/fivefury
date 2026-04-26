@@ -7,6 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.1.48]
+
+### Added
+- `.cut` authoring now exposes `CutLightType`, `CutLightProperty`, and `CutLightFlag` enums for cutscene light objects instead of forcing raw integer flags.
+- `CutScene.ensure_ydr_embedded_lights(...)` can materialize embedded `YDR` lights as real `cutfLightObject` entries with matching `SET_LIGHT` events, covering cutscene props whose drawable lights illuminate in normal entity mode but are not activated by the cutscene runtime.
+- Added helpers for converting `YdrLight` values into cutscene light fields while preserving compatible type, shadow, volume, reflection, alpha, colour, intensity, falloff, cone, corona, and hour-mask data.
+
+### Changed
+- Cutscene authoring exports the new light helpers directly from `fivefury`, `fivefury.cut`, and `fivefury.cut.scene` so external tools can reuse the runtime-safe path instead of duplicating cutscene-light flag mappings.
+
 ## [0.1.47]
 
 ### Added
