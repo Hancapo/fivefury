@@ -171,6 +171,7 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     constexpr std::int32_t YWR = 14;
     constexpr std::int32_t YVR = 15;
     constexpr std::int32_t GTXD = 16;
+    constexpr std::int32_t CUT = 32;
     constexpr std::int32_t RPF = 100;
 
     const auto dot = path.find_last_of('.');
@@ -193,6 +194,7 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     if (ext == ".ywr") return YWR;
     if (ext == ".yvr") return YVR;
     if (ext == ".gxt2") return GTXD;
+    if (ext == ".cut") return CUT;
     if (ext == ".rpf") return RPF;
     return UNKNOWN;
 }

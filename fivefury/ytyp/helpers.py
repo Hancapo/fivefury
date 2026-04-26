@@ -7,10 +7,52 @@ from typing import Any
 from ..metahash import HashLike, MetaHash
 
 from .archetypes import ArchetypeAssetType, BaseArchetypeDef, TimeArchetypeDef
-from .flags import TimeArchetypeFlags
+from .flags import ArchetypeFlags, TimeArchetypeFlags
 from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 from .mlo import MloArchetypeDef
 from .model import Ytyp
+
+
+CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS = ArchetypeFlags.IS_TYPE_OBJECT
+CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS = ArchetypeFlags.IS_TYPE_OBJECT | ArchetypeFlags.USE_AMBIENT_SCALE
+
+
+def cutscene_prop_flags(
+    *,
+    animated: bool = True,
+    extra: int | ArchetypeFlags = ArchetypeFlags(0),
+) -> ArchetypeFlags:
+    flags = CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS if animated else CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS
+    return flags | ArchetypeFlags(int(extra))
+
+
+def mark_cutscene_prop_archetypes(
+    ytyp: Ytyp,
+    *,
+    animated: bool = True,
+    names: list[HashLike] | set[HashLike] | tuple[HashLike, ...] | None = None,
+) -> Ytyp:
+    """Mark YTYP archetypes so cutscene prop bindings can spawn them as CObject.
+
+    Cutscene prop entities are only created by the game when the resolved model
+    info is type-object. Retail skinned cutscene props use the ambient-scale bit
+    with type-object, not the generic archetype animation bit.
+    """
+
+    selected = {MetaHash(name).uint for name in names} if names is not None else None
+    required_flags = cutscene_prop_flags(animated=animated)
+    for archetype in ytyp.archetypes:
+        archetype_name = getattr(archetype, "name", 0)
+        asset_name = getattr(archetype, "asset_name", 0)
+        keys = {MetaHash(value).uint for value in (archetype_name, asset_name) if value not in (None, "", 0)}
+        if selected is not None and not (keys & selected):
+            continue
+        current_flags = int(getattr(archetype, "flags", 0) or 0)
+        resolved_flags = ArchetypeFlags(current_flags)
+        if animated:
+            resolved_flags &= ~ArchetypeFlags.HAS_ANIM
+        setattr(archetype, "flags", int(resolved_flags | required_flags))
+    return ytyp
 
 
 def time_flags(
@@ -136,6 +178,8 @@ def ytyp_from_ydr_folder(
     name: HashLike | None = None,
     recursive: bool = False,
     texture_suffix: str = "_txd",
+    cutscene_props: bool = False,
+    cutscene_props_animated: bool = True,
     version: int = 2,
 ) -> Ytyp | Path:
     folder = Path(source)
@@ -175,6 +219,7 @@ def ytyp_from_ydr_folder(
                 asset_name=model_name,
                 texture_dictionary=f"{model_name}{texture_suffix}",
                 asset_type=ArchetypeAssetType.DRAWABLE,
+                flags=int(cutscene_prop_flags(animated=cutscene_props_animated)) if cutscene_props else 0,
                 lod_dist=lod_dist,
                 hd_texture_dist=hd_texture_dist,
                 bb_min=ydr.bounding_box_min,

@@ -129,7 +129,7 @@ def _write_drawable_payload(
     root_off: int,
     drawable_file_vft: int = _DRAWABLE_FILE_VFT,
     write_pages: bool = True,
-    recalculate_skeleton_hashes: bool = False,
+    recalculate_skeleton_hashes: bool = True,
 ) -> None:
     enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
     if enhanced:
@@ -238,7 +238,7 @@ def _build_system_payload(
     prepared_lods,
     page_counts: tuple[int, int],
     *,
-    recalculate_skeleton_hashes: bool = False,
+    recalculate_skeleton_hashes: bool = True,
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
@@ -260,6 +260,27 @@ def ydr_to_build(source: 'Ydr', *, lod: YdrLod | str | None = None, name: str | 
     return source.to_build(lod=lod, name=name)
 
 
+def _remap_root_bone_id_in_build(source: YdrBuild) -> None:
+    skeleton = source.skeleton
+    if skeleton is None or not skeleton.bones:
+        return
+    old_root_tag = int(skeleton.bones[0].tag)
+    if old_root_tag == 0:
+        return
+    skeleton.bones[0].tag = 0
+    for model in source.iter_models():
+        for mesh in model.meshes:
+            if mesh.bone_ids is not None:
+                mesh.bone_ids = [0 if int(bone_id) == old_root_tag else int(bone_id) for bone_id in mesh.bone_ids]
+    if source.joints is not None:
+        for limit in source.joints.rotation_limits:
+            if int(limit.bone_id) == old_root_tag:
+                limit.bone_id = 0
+        for limit in source.joints.translation_limits:
+            if int(limit.bone_id) == old_root_tag:
+                limit.bone_id = 0
+
+
 def build_ydr_bytes(
     source: 'YdrBuild | Ydr',
     *,
@@ -267,12 +288,13 @@ def build_ydr_bytes(
     generate_normals: bool = True,
     generate_tangents: bool = True,
     fill_vertex_colours: bool = True,
-    recalculate_skeleton_hashes: bool = False,
+    recalculate_skeleton_hashes: bool = True,
 ) -> bytes:
     from .model import Ydr
 
     if isinstance(source, Ydr):
         source = source.to_build()
+    _remap_root_bone_id_in_build(source)
     if source.model_count == 0:
         raise ValueError('YDR builder requires at least one mesh')
 
@@ -342,7 +364,7 @@ def save_ydr(
     destination: str | Path,
     *,
     shader_library: ShaderLibrary | None = None,
-    recalculate_skeleton_hashes: bool = False,
+    recalculate_skeleton_hashes: bool = True,
 ) -> Path:
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)

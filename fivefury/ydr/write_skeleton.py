@@ -4,7 +4,7 @@ import math
 import struct
 
 from ..resource import ResourceWriter
-from .model import Matrix4, YdrBone, YdrSkeleton, calculate_skeleton_unknown_hashes
+from .model import Matrix4, YdrBone, YdrBoneFlags, YdrSkeleton, calculate_skeleton_unknown_hashes
 
 _SKELETON_VFT = 0x40613CA0
 
@@ -75,6 +75,16 @@ def _build_parent_indices(skeleton: YdrSkeleton) -> list[int]:
     if len(skeleton.parent_indices) == skeleton.bone_count:
         return [int(value) for value in skeleton.parent_indices]
     return [int(bone.parent_index) for bone in skeleton.bones]
+
+
+def _sync_has_child_flags(skeleton: YdrSkeleton) -> None:
+    for bone in skeleton.bones:
+        bone.flags = YdrBoneFlags(int(bone.flags) & ~int(YdrBoneFlags.HAS_CHILD))
+    parent_indices = _build_parent_indices(skeleton)
+    for parent_index in parent_indices:
+        if 0 <= int(parent_index) < skeleton.bone_count:
+            parent = skeleton.bones[int(parent_index)]
+            parent.flags = YdrBoneFlags(int(parent.flags) | int(YdrBoneFlags.HAS_CHILD))
 
 
 def _build_child_indices(skeleton: YdrSkeleton) -> list[int]:
@@ -155,7 +165,7 @@ def _get_num_hash_buckets(hash_count: int) -> int:
 
 
 def _build_bone_tag_block(system: ResourceWriter, skeleton: YdrSkeleton, *, virtual) -> tuple[int, int, int]:
-    if skeleton.bone_count < 2:
+    if not _skeleton_uses_bone_id_table(skeleton):
         return 0, 0, 0
     bucket_count = _get_num_hash_buckets(skeleton.bone_count)
     buckets: list[list[YdrBone]] = [[] for _ in range(bucket_count)]
@@ -177,6 +187,10 @@ def _build_bone_tag_block(system: ResourceWriter, skeleton: YdrSkeleton, *, virt
     for index, pointer in enumerate(heads):
         system.pack_into("Q", tags_off + (index * 8), pointer)
     return tags_off, bucket_count, min(skeleton.bone_count, bucket_count)
+
+
+def _skeleton_uses_bone_id_table(skeleton: YdrSkeleton) -> bool:
+    return any(int(bone.tag) != index for index, bone in enumerate(skeleton.bones))
 
 
 def _build_transformations(skeleton: YdrSkeleton) -> list[Matrix4]:
@@ -204,6 +218,7 @@ def write_skeleton(
     if skeleton is None or not skeleton.bones:
         return 0
 
+    _sync_has_child_flags(skeleton)
     bone_name_offsets = {
         index: system.c_string(bone.name or f"bone_{index}", alignment=8)
         for index, bone in enumerate(skeleton.bones)
@@ -276,7 +291,8 @@ def write_skeleton(
     system.pack_into("Q", skeleton_off + 0x10, virtual(bone_tags_off) if bone_tags_off else 0)
     system.pack_into("H", skeleton_off + 0x18, bone_tags_capacity)
     system.pack_into("H", skeleton_off + 0x1A, bone_tags_count)
-    system.pack_into("I", skeleton_off + 0x1C, int(skeleton.unknown_1ch))
+    bone_id_table_flags = int(skeleton.unknown_1ch) or (0x01000000 if _skeleton_uses_bone_id_table(skeleton) else 0)
+    system.pack_into("I", skeleton_off + 0x1C, bone_id_table_flags)
     system.pack_into("Q", skeleton_off + 0x20, virtual(bones_pointer))
     system.pack_into("Q", skeleton_off + 0x28, virtual(transformations_inverted_off) if transformations_inverted_off else 0)
     system.pack_into("Q", skeleton_off + 0x30, virtual(transformations_off) if transformations_off else 0)

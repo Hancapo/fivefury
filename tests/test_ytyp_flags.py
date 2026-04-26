@@ -1,4 +1,12 @@
-from fivefury import ArchetypeAssetType, ArchetypeFlags, BaseArchetypeDef, infer_archetype_lod_dist
+from fivefury import (
+    ArchetypeAssetType,
+    ArchetypeFlags,
+    BaseArchetypeDef,
+    Ytyp,
+    cutscene_prop_flags,
+    infer_archetype_lod_dist,
+    mark_cutscene_prop_archetypes,
+)
 
 
 def test_archetype_flags_match_cbasearchetypedef_load_flags() -> None:
@@ -22,6 +30,26 @@ def test_base_archetype_flags_roundtrip_as_int() -> None:
 
     parsed = BaseArchetypeDef.from_meta(meta)
     assert parsed.flags == int(flags)
+
+
+def test_cutscene_prop_flags_match_retail_cutscene_props() -> None:
+    assert cutscene_prop_flags() == (ArchetypeFlags.IS_TYPE_OBJECT | ArchetypeFlags.USE_AMBIENT_SCALE)
+    assert cutscene_prop_flags(animated=False) == ArchetypeFlags.IS_TYPE_OBJECT
+
+
+def test_mark_cutscene_prop_archetypes_can_target_specific_assets() -> None:
+    ytyp = Ytyp(name="sample_meta")
+    animated = ytyp.archetype(
+        "animated_prop",
+        asset_type=ArchetypeAssetType.DRAWABLE,
+        flags=int(ArchetypeFlags.HAS_ANIM),
+    )
+    static = ytyp.archetype("static_prop", asset_type=ArchetypeAssetType.DRAWABLE)
+
+    mark_cutscene_prop_archetypes(ytyp, names=["animated_prop"])
+
+    assert animated.flags == int(ArchetypeFlags.IS_TYPE_OBJECT | ArchetypeFlags.USE_AMBIENT_SCALE)
+    assert static.flags == 0
 
 
 def test_base_archetype_asset_type_roundtrips_as_enum() -> None:

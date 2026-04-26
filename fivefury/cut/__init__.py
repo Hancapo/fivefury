@@ -1,6 +1,16 @@
 from .analysis import analyze_cut
 from .events import CutEventBehavior, CutEventSpec, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
 from .flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS
+from .lights import (
+    CutLightFlag,
+    CutLightProperty,
+    CutLightType,
+    cut_light_fields_from_ydr_light,
+    cut_light_flags_from_ydr_flags,
+    cut_light_property_from_ydr_flags,
+    cut_light_type_from_ydr_light_type,
+    ensure_ydr_embedded_lights,
+)
 from .model import CutFile, CutHashedString, CutNode
 from .payloads import (
     CutAnimationDictPayload,
@@ -85,6 +95,9 @@ __all__ = [
     "CutHashedString",
     "CutHiddenObject",
     "CutLight",
+    "CutLightFlag",
+    "CutLightProperty",
+    "CutLightType",
     "CutNode",
     "CutObjectTargetPayload",
     "CutOverlay",
@@ -105,7 +118,12 @@ __all__ = [
     "CutTimelineEvent",
     "CutTrack",
     "CutVehicle",
+    "cut_light_fields_from_ydr_light",
+    "cut_light_flags_from_ydr_flags",
+    "cut_light_property_from_ydr_flags",
+    "cut_light_type_from_ydr_light_type",
     "cut_to_scene",
+    "ensure_ydr_embedded_lights",
     "get_cut_event_enum_name",
     "get_cut_event_id",
     "get_cut_event_name",

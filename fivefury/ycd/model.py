@@ -382,7 +382,16 @@ class YcdAnimation:
             return current
         if tracks.issubset({int(YcdAnimationTrack.SHADER_SLIDE_U), int(YcdAnimationTrack.SHADER_SLIDE_V)}):
             return MetaHash(YCD_UV_UNKNOWN1C)
-        if tracks.issubset({int(YcdAnimationTrack.BONE_TRANSLATION), int(YcdAnimationTrack.BONE_ROTATION)}):
+        skeletal_tracks = {
+            int(YcdAnimationTrack.BONE_TRANSLATION),
+            int(YcdAnimationTrack.BONE_ROTATION),
+            int(YcdAnimationTrack.MOVER_TRANSLATION),
+            int(YcdAnimationTrack.MOVER_ROTATION),
+            int(YcdAnimationTrack.FACIAL_CONTROL),
+            int(YcdAnimationTrack.FACIAL_TRANSLATION),
+            int(YcdAnimationTrack.FACIAL_ROTATION),
+        }
+        if tracks & {int(YcdAnimationTrack.BONE_TRANSLATION), int(YcdAnimationTrack.BONE_ROTATION)} and tracks.issubset(skeletal_tracks):
             return MetaHash((int(self.hash.uint) + 1) & 0xFFFFFFFF)
         return current
 

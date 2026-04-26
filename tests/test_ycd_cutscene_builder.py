@@ -8,6 +8,8 @@ from fivefury import (
     YcdCutsceneBuilder,
     YcdCutsceneBoneAnimation,
     YcdAnimationTrack,
+    YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+    YcdChannelType,
     build_cutscene_sections,
     build_ycd_bytes,
     read_cut,
@@ -151,6 +153,35 @@ def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None
     assert (0, int(YcdAnimationTrack.MOVER_TRANSLATION)) in bone_pairs
     assert (0, int(YcdAnimationTrack.MOVER_ROTATION)) in bone_pairs
     assert clip.evaluate_root_motion_at_time(0.5).position == pytest.approx((0.0, 0.0, 0.0), abs=0.01)
+
+
+def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequences() -> None:
+    builder = YcdCutsceneBuilder.create("long_scene", duration=24.4, fps=30.0)
+    builder.add_prop(
+        "skinned_prop",
+        mover_position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        bones={
+            0xB692: YcdCutsceneBoneAnimation(
+                rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.70710678, 0.70710678)}
+            )
+        },
+    )
+
+    ycd = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
+    clip = ycd.get_clip("skinned_prop-0")
+
+    assert clip is not None and clip.animation is not None
+    assert clip.animation.sequence_frame_limit == YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT
+    assert [sequence.num_frames for sequence in clip.animation.sequences] == [288, 288, 159]
+    assert all(len(sequence.anim_sequences) == len(clip.animation.bone_ids) for sequence in clip.animation.sequences)
+    assert any(
+        int(channel.channel_type) == int(YcdChannelType.QUANTIZE_FLOAT)
+        for sequence in clip.animation.sequences
+        for anim_sequence in sequence.anim_sequences
+        if int(anim_sequence.bone_id.track) == int(YcdAnimationTrack.BONE_ROTATION)
+        for channel in anim_sequence.channels
+    )
 
 
 @pytest.mark.skipif(not CUT_SAMPLE_PATH.is_file(), reason="cut sample not available")

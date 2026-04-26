@@ -253,6 +253,17 @@ def _encode_colour(value: tuple[float, float, float, float]) -> bytes:
     return bytes((_clamp_byte(value[0]), _clamp_byte(value[1]), _clamp_byte(value[2]), _clamp_byte(value[3])))
 
 
+def _encode_skin_colour_order(value: Sequence[float | int]) -> bytes:
+    return bytes(
+        (
+            int(value[2]) & 0xFF,
+            int(value[1]) & 0xFF,
+            int(value[0]) & 0xFF,
+            int(value[3]) & 0xFF,
+        )
+    )
+
+
 def _semantic_enum(name: str) -> VertexSemantic:
     key = name.upper()
     return VertexSemantic[_SEMANTIC_ALIASES.get(key, key)]
@@ -374,19 +385,22 @@ def _encode_vertex_bytes(
                 value = positions[vertex_index]
             elif semantic is VertexSemantic.BLEND_WEIGHTS and blend_weights:
                 value = blend_weights[vertex_index]
-            elif semantic is VertexSemantic.BLEND_INDICES and blend_indices:
-                value = blend_indices[vertex_index]
-                if component_type in (VertexComponentType.COLOUR, VertexComponentType.UBYTE4, VertexComponentType.RGBA8_SNORM):
+                if component_type is VertexComponentType.COLOUR:
                     chunks.extend(
                         bytes(
                             (
-                                int(value[0]) & 0xFF,
-                                int(value[1]) & 0xFF,
-                                int(value[2]) & 0xFF,
-                                int(value[3]) & 0xFF,
+                                _clamp_byte(value[2]),
+                                _clamp_byte(value[1]),
+                                _clamp_byte(value[0]),
+                                _clamp_byte(value[3]),
                             )
                         )
                     )
+                    continue
+            elif semantic is VertexSemantic.BLEND_INDICES and blend_indices:
+                value = blend_indices[vertex_index]
+                if component_type in (VertexComponentType.COLOUR, VertexComponentType.UBYTE4, VertexComponentType.RGBA8_SNORM):
+                    chunks.extend(_encode_skin_colour_order(value))
                     continue
             elif semantic is VertexSemantic.NORMAL:
                 value = normals[vertex_index]
@@ -580,6 +594,7 @@ def _prepare_meshes(
     generate_normals: bool,
     generate_tangents: bool,
     fill_vertex_colours: bool,
+    skeleton=None,
 ) -> list[PreparedMesh]:
     prepared: list[PreparedMesh] = []
     for source_mesh in meshes:
@@ -612,6 +627,26 @@ def _prepare_meshes(
                     raise ValueError('Mesh blend_weights length must match positions length')
                 if len(blend_indices) != len(positions):
                     raise ValueError('Mesh blend_indices length must match positions length')
+                if skeleton is not None and getattr(skeleton, "bones", None):
+                    bone_count = len(skeleton.bones)
+                    if bone_count > 255:
+                        raise ValueError("Skinned YDR models currently support at most 255 bones per skeleton")
+                    source_palette = list(bone_ids) if bone_ids else list(range(bone_count))
+                    resolved_palette = [_resolve_palette_bone_index(bone_id, skeleton) for bone_id in source_palette]
+                    remapped_indices: list[tuple[int, int, int, int]] = []
+                    for vertex_indices, vertex_weights in zip(blend_indices, blend_weights, strict=True):
+                        remapped: list[int] = []
+                        for palette_index, weight in zip(vertex_indices, vertex_weights, strict=True):
+                            index = int(palette_index)
+                            if float(weight) <= 0.0:
+                                remapped.append(0)
+                                continue
+                            if index < 0 or index >= len(resolved_palette):
+                                raise ValueError(f"Vertex blend index {index} is outside the mesh bone palette")
+                            remapped.append(int(resolved_palette[index]))
+                        remapped_indices.append((remapped[0], remapped[1], remapped[2], remapped[3]))
+                    blend_indices = remapped_indices
+                    bone_ids = list(range(bone_count))
 
             if not normals:
                 normals = _generate_normals(positions, indices) if generate_normals else [(0.0, 0.0, 1.0)] * len(positions)
@@ -734,6 +769,38 @@ def prepare_meshes(*args, **kwargs):
     return _prepare_meshes(*args, **kwargs)
 
 
+def _resolve_palette_bone_index(raw_bone_id: int, skeleton) -> int:
+    bone_id = int(raw_bone_id)
+    bone_count = len(skeleton.bones)
+    if 0 <= bone_id < bone_count:
+        return bone_id
+    bone = skeleton.get_bone_by_tag(bone_id)
+    if bone is None:
+        raise ValueError(f"Mesh skin references unknown skeleton bone id/tag {bone_id}")
+    return int(bone.index)
+
+
+def _normalize_skinned_model_palette(model: PreparedModel, skeleton) -> None:
+    if skeleton is None or not skeleton.bones:
+        return
+    bone_count = len(skeleton.bones)
+    if bone_count > 255:
+        raise ValueError("Skinned YDR models currently support at most 255 bones per skeleton")
+
+    model_has_skin = False
+    for mesh in model.meshes:
+        if not mesh.blend_weights:
+            continue
+        model_has_skin = True
+
+    if model_has_skin:
+        model.skeleton_binding = YdrSkeletonBinding.skinned(
+            bone_index=model.skeleton_binding.bone_index,
+            unknown_1=bone_count,
+            unknown_2=model.skeleton_binding.unknown_2,
+        )
+
+
 def normalize_lods(source: YdrBuild) -> dict[YdrLod, list[YdrModelInput]]:
     normalized: dict[YdrLod, list[YdrModelInput]] = {}
     for lod_name in YdrLod:
@@ -789,6 +856,7 @@ def prepare_build(
                 generate_normals=generate_normals,
                 generate_tangents=generate_tangents,
                 fill_vertex_colours=fill_vertex_colours,
+                skeleton=source.skeleton,
             )
             effective_flags = int(model.flags)
             if any(mesh.blend_weights for mesh in prepared_meshes):
@@ -801,6 +869,7 @@ def prepare_build(
                     skeleton_binding=coerce_skeleton_binding(model.skeleton_binding),
                 )
             )
+            _normalize_skinned_model_palette(prepared_models[-1], source.skeleton)
         prepared_lods[lod_name] = prepared_models
     return prepared_materials, prepared_lods
 

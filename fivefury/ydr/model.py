@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import math
+import struct
 import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Sequence, Union
@@ -59,10 +60,20 @@ class YdrBoneFlags(enum.IntFlag):
     SCALE_Y = 0x200
     SCALE_Z = 0x400
     LIMIT_SCALE = 0x800
-    UNKNOWN_0 = 0x1000
-    UNKNOWN_1 = 0x2000
+    HAS_CHILD = 0x1000
+    IS_SKINNED = 0x2000
     UNKNOWN_2 = 0x4000
     UNKNOWN_3 = 0x8000
+
+
+YDR_BONE_ANIMATABLE_FLAGS = (
+    YdrBoneFlags.ROT_X
+    | YdrBoneFlags.ROT_Y
+    | YdrBoneFlags.ROT_Z
+    | YdrBoneFlags.TRANS_X
+    | YdrBoneFlags.TRANS_Y
+    | YdrBoneFlags.TRANS_Z
+)
 
 
 class YdrBoneFlagName(enum.StrEnum):
@@ -77,7 +88,8 @@ class YdrBoneFlagName(enum.StrEnum):
     SCALE_X = "ScaleX"
     SCALE_Y = "ScaleY"
     SCALE_Z = "ScaleZ"
-    UNKNOWN_0 = "Unk0"
+    HAS_CHILD = "HasChild"
+    IS_SKINNED = "IsSkinned"
 
 
 _SKELETON_HASH_FLAG_NAMES = (
@@ -92,7 +104,8 @@ _SKELETON_HASH_FLAG_NAMES = (
     (YdrBoneFlags.SCALE_X, YdrBoneFlagName.SCALE_X),
     (YdrBoneFlags.SCALE_Y, YdrBoneFlagName.SCALE_Y),
     (YdrBoneFlags.SCALE_Z, YdrBoneFlagName.SCALE_Z),
-    (YdrBoneFlags.UNKNOWN_0, YdrBoneFlagName.UNKNOWN_0),
+    (YdrBoneFlags.HAS_CHILD, YdrBoneFlagName.HAS_CHILD),
+    (YdrBoneFlags.IS_SKINNED, YdrBoneFlagName.IS_SKINNED),
 )
 
 
@@ -122,7 +135,7 @@ class YdrBone:
     index: int = 0
     parent_index: int = -1
     next_sibling_index: int = -1
-    flags: YdrBoneFlags = YdrBoneFlags.NONE
+    flags: YdrBoneFlags = YDR_BONE_ANIMATABLE_FLAGS
     rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     translation: tuple[float, float, float] = (0.0, 0.0, 0.0)
     scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
@@ -162,10 +175,14 @@ class YdrSkeleton:
         for index, bone in enumerate(self.bones):
             bone.index = index
             bone.next_sibling_index = -1
+            bone.flags = YdrBoneFlags(int(bone.flags) & ~int(YdrBoneFlags.HAS_CHILD))
         parent_to_children: dict[int, list[YdrBone]] = {}
         for bone in self.bones:
             parent_to_children.setdefault(int(bone.parent_index), []).append(bone)
-        for children in parent_to_children.values():
+        for parent_index, children in parent_to_children.items():
+            if parent_index >= 0 and children:
+                parent_bone = self.bones[parent_index]
+                parent_bone.flags = YdrBoneFlags(int(parent_bone.flags) | int(YdrBoneFlags.HAS_CHILD))
             for current, nxt in zip(children, children[1:]):
                 current.next_sibling_index = int(nxt.index)
         self.parent_indices = [int(item.parent_index) for item in self.bones]
@@ -206,7 +223,7 @@ class YdrSkeleton:
         *,
         parent: YdrBone | str | int | None = None,
         tag: int | None = None,
-        flags: YdrBoneFlags = YdrBoneFlags.NONE,
+        flags: YdrBoneFlags = YDR_BONE_ANIMATABLE_FLAGS,
         rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
         translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
         scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -258,22 +275,66 @@ class YdrSkeleton:
 
 
 def calculate_skeleton_unknown_hashes(skeleton: YdrSkeleton) -> tuple[int, int, int]:
-    unknown_50_parts: list[str] = []
-    unknown_58_parts: list[str] = []
+    signature = 0
+    comprehensive = 0
     for bone in skeleton.bones:
-        flags = " ".join(flag.value for flag in skeleton_bone_flag_names(bone.flags))
-        unknown_50_parts.append(" ".join((str(int(bone.tag)), flags)))
-        translation = " ".join(str(float(value)) for value in bone.translation)
-        rotation = " ".join(str(float(value)) for value in bone.rotation)
-        scale = " ".join(str(float(value)) for value in bone.scale)
-        unknown_58_parts.append(" ".join((str(int(bone.tag)), flags, translation, rotation, scale)))
-    unknown_50_text = " ".join(unknown_50_parts)
-    unknown_58_text = " ".join(unknown_58_parts)
-    return (
-        jenk_hash(unknown_50_text) & 0xFFFFFFFF,
-        zlib.crc32(unknown_50_text.encode("utf-8")) & 0xFFFFFFFF,
-        zlib.crc32(unknown_58_text.encode("utf-8")) & 0xFFFFFFFF,
-    )
+        id_and_dofs = _skeleton_id_and_dofs(bone)
+        signature = _crc32_u64(signature, id_and_dofs)
+        comprehensive = _crc32_u64(comprehensive, id_and_dofs)
+        comprehensive = _crc32_floats(comprehensive, (*bone.translation, float(bone.unknown_1ch)))
+        comprehensive = _crc32_floats(comprehensive, bone.rotation)
+        comprehensive = _crc32_floats(comprehensive, (*bone.scale, float(bone.unknown_2ch)))
+    return (signature, _calculate_skeleton_non_chiral_signature(skeleton), comprehensive)
+
+
+def _crc32_u64(seed: int, value: int) -> int:
+    return zlib.crc32(struct.pack("<Q", int(value) & 0xFFFFFFFFFFFFFFFF), int(seed)) & 0xFFFFFFFF
+
+
+def _crc32_floats(seed: int, values: Sequence[float]) -> int:
+    return zlib.crc32(struct.pack(f"<{len(values)}f", *(float(value) for value in values)), int(seed)) & 0xFFFFFFFF
+
+
+def _skeleton_id_and_dofs(bone: YdrBone) -> int:
+    return (int(bone.tag) << 32) | (int(bone.flags) & 0xFFFF)
+
+
+def _skeleton_non_chiral_id_and_dofs(bone: YdrBone) -> int:
+    flags = int(bone.flags)
+    dofs = 0
+    if flags & int(YdrBoneFlags.TRANS_X | YdrBoneFlags.TRANS_Y | YdrBoneFlags.TRANS_Z):
+        dofs |= 0x1
+    if flags & int(YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z):
+        dofs |= 0x2
+    if flags & int(YdrBoneFlags.SCALE_X | YdrBoneFlags.SCALE_Y | YdrBoneFlags.SCALE_Z):
+        dofs |= 0x4
+    return (int(bone.tag) << 32) | dofs
+
+
+def _calculate_skeleton_non_chiral_signature(skeleton: YdrSkeleton) -> int:
+    if not skeleton.bones:
+        return 0
+    has_bone_ids = any(int(bone.tag) != index for index, bone in enumerate(skeleton.bones))
+    bones = _skeleton_at_map_bone_order(skeleton.bones) if has_bone_ids else list(skeleton.bones)
+    signature = 0
+    for bone in bones:
+        signature = _crc32_u64(signature, _skeleton_non_chiral_id_and_dofs(bone))
+    return signature
+
+
+def _skeleton_at_map_bone_order(bones: Sequence[YdrBone]) -> list[YdrBone]:
+    bucket_count = _get_at_map_slot_count(len(bones))
+    buckets: list[list[YdrBone]] = [[] for _ in range(bucket_count)]
+    for bone in bones:
+        buckets[int(bone.tag) % bucket_count].insert(0, bone)
+    return [bone for bucket in buckets for bone in bucket]
+
+
+def _get_at_map_slot_count(count: int) -> int:
+    for prime in (11, 29, 59, 107, 191, 331, 563, 953, 1609, 2729, 4621, 7841, 13297, 22571, 38351, 65167):
+        if int(count) < prime:
+            return prime
+    return 65521
 
 
 @dataclasses.dataclass(slots=True)
@@ -1097,6 +1158,7 @@ class Ydr:
     def build(self) -> "Ydr":
         if self.skeleton is not None:
             self.skeleton.build()
+            self.normalize_skeleton_bone_ids()
         if self.joints is not None:
             self.joints.build()
         for material_index, material in enumerate(self.materials):
@@ -1127,6 +1189,25 @@ class Ydr:
     def iter_meshes(self, lod: YdrLod | str | None = None) -> Iterator[YdrMesh]:
         for model in self.iter_models(lod=lod):
             yield from model.meshes
+
+    def normalize_skeleton_bone_ids(self) -> "Ydr":
+        if self.skeleton is None or not self.skeleton.bones:
+            return self
+        root = self.skeleton.bones[0]
+        old_root_tag = int(root.tag)
+        if old_root_tag == 0:
+            return self
+        root.tag = 0
+        for mesh in self.iter_meshes():
+            mesh.bone_ids = [0 if int(bone_id) == old_root_tag else int(bone_id) for bone_id in mesh.bone_ids]
+        if self.joints is not None:
+            for limit in self.joints.rotation_limits:
+                if int(limit.bone_id) == old_root_tag:
+                    limit.bone_id = 0
+            for limit in self.joints.translation_limits:
+                if int(limit.bone_id) == old_root_tag:
+                    limit.bone_id = 0
+        return self
 
     @property
     def models(self) -> list[YdrModel]:
@@ -1231,7 +1312,7 @@ class Ydr:
         *,
         parent: YdrBone | str | int | None = None,
         tag: int | None = None,
-        flags: YdrBoneFlags = YdrBoneFlags.NONE,
+        flags: YdrBoneFlags = YDR_BONE_ANIMATABLE_FLAGS,
         rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
         translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
         scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -1618,7 +1699,7 @@ class Ydr:
         *,
         lod: YdrLod | str | None = None,
         name: str | None = None,
-        recalculate_skeleton_hashes: bool = False,
+        recalculate_skeleton_hashes: bool = True,
     ) -> Path:
         return self.to_build(lod=lod, name=name).save(
             destination,
@@ -1776,6 +1857,7 @@ __all__ = [
     "Color4",
     "ColorChannel",
     "Ydr",
+    "YDR_BONE_ANIMATABLE_FLAGS",
     "YdrBone",
     "YdrBoneFlagName",
     "YdrBoneFlags",

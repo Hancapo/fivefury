@@ -14,12 +14,17 @@ from fivefury import (
     CutFinalNamePayload,
     CutHashFloatPayload,
     CutPlayParticleEffectPayload,
+    CutEventType,
+    CutLightFlag,
+    CutLightProperty,
+    CutLightType,
     CutPropAnimationPreset,
     CutTypeFileStrategy,
     CutScreenFadePayload,
     CutScene,
     CutSceneFlags,
     GameFileType,
+    YdrLight,
     YcdCutsceneBuilder,
     analyze_cut,
     build_cut_bytes,
@@ -83,7 +88,7 @@ def test_read_cut_matches_cutxml_shape() -> None:
 
 def test_cut_game_file_type_mapping() -> None:
     assert guess_game_file_type("foo.cut") is GameFileType.CUT
-    assert guess_game_file_type("foo.cutxml") is GameFileType.CUT
+    assert guess_game_file_type("foo.cutxml") is GameFileType.UNKNOWN
 
 
 def test_cut_summary_and_resolution() -> None:
@@ -208,22 +213,107 @@ def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
     assert root["iRangeEnd"] == 75
     assert root["iAltRangeEnd"] == 0
     assert root["fSectionByTimeSliceDuration"] == pytest.approx(4.0)
-    assert root["cameraCutList"] == [1.0]
+    assert root["cameraCutList"] == []
     assert len(root["concatDataList"]) == 1
     assert root["concatDataList"][0].fields["cSceneName"].hash == jenk_hash("sample_scene")
+    load_scene = next(event for event in cut.load_events if event.fields["iEventId"] == int(CutEventType.LOAD_SCENE))
+    load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
+    assert load_scene_args.fields["cName"].hash == 0
     assert flags & CutSceneFlags.IS_SECTIONED
     assert flags & CutSceneFlags.USE_ONE_AUDIO
     assert flags & CutSceneFlags.USE_STORY_MODE
     assert flags & CutSceneFlags.USE_IN_GAME_DOF_START
     assert flags & CutSceneFlags.INTERNAL_CONCAT
-    assert flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+    assert not flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
 
     rebuilt = read_cut(build_cut_bytes(cut))
     rebuilt_flags = CutSceneFlags(rebuilt.root.fields["iCutsceneFlags"][0])
 
     assert rebuilt.root.fields["iCutsceneFlags"] == root["iCutsceneFlags"]
     assert rebuilt_flags & CutSceneFlags.IS_SECTIONED
-    assert rebuilt_flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+    assert not rebuilt_flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+
+
+def test_cut_scene_builder_propagates_relocation_offset() -> None:
+    scene = CutScene.create(scene_name="offset_scene", duration=2.5, offset=(10.0, 20.0, 100.0))
+    asset_manager = scene.add_asset_manager()
+
+    scene.load_scene(0.0, payload={"cName": "offset_scene"}, target=asset_manager)
+
+    cut = scene_to_cut(scene)
+    root = cut.root.fields
+    load_scene = next(event for event in cut.load_events if event.fields["iEventId"] == int(CutEventType.LOAD_SCENE))
+    load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
+
+    assert root["vOffset"] == (10.0, 20.0, 100.0)
+    assert root["vTriggerOffset"] == (10.0, 20.0, 100.0)
+    assert root["concatDataList"][0].fields["vOffset"] == (10.0, 20.0, 100.0)
+    assert load_scene_args.fields["vOffset"] == (10.0, 20.0, 100.0)
+
+
+def test_cut_scene_builder_only_sections_by_camera_cuts_when_explicit() -> None:
+    scene = CutScene.create(scene_name="sample_scene", duration=2.5, camera_cut_list=[1.0])
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("cam_main")
+
+    scene.load_scene(0.0, payload={"cName": "sample_scene"}, target=asset_manager)
+    scene.create_event("camera_cut", start=1.0, target=camera, label="cam_main")
+
+    cut = scene_to_cut(scene)
+    root = cut.root.fields
+    flags = CutSceneFlags(root["iCutsceneFlags"][0])
+
+    assert root["cameraCutList"] == [1.0]
+    assert flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+
+
+def test_cut_scene_builder_uses_external_concat_for_streamed_props() -> None:
+    scene = CutScene.create(scene_name="sample_scene", duration=2.5)
+    scene.add_prop("prop_a")
+
+    cut = scene_to_cut(scene)
+    flags = CutSceneFlags(cut.root.fields["iCutsceneFlags"][0])
+
+    assert flags & CutSceneFlags.IS_SECTIONED
+    assert flags & CutSceneFlags.EXTERNAL_CONCAT
+    assert not flags & CutSceneFlags.INTERNAL_CONCAT
+    assert not flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+
+
+def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
+    scene = CutScene.create(scene_name="sample_scene", duration=2.5)
+    asset_manager = scene.add_asset_manager()
+    animation_manager = scene.add_animation_manager()
+    prop = scene.add_prop("prop_a")
+
+    scene.load_anim_dict(0.0, "sample_scene", target=animation_manager)
+    scene.load_scene(0.0, payload={"cName": "sample_scene"}, target=asset_manager)
+    scene.load_models(0.0, [prop.object_id], target=asset_manager)
+
+    cut = scene_to_cut(scene)
+
+    assert [event.fields["iEventId"] for event in cut.load_events] == [
+        int(CutEventType.LOAD_SCENE),
+        int(CutEventType.LOAD_MODELS),
+        int(CutEventType.LOAD_ANIM_DICT),
+    ]
+
+
+def test_cut_scene_builder_writes_initial_anim_events_before_camera_cut() -> None:
+    scene = CutScene.create(scene_name="sample_scene", duration=2.5)
+    animation_manager = scene.add_animation_manager()
+    camera = scene.add_camera("cam_main")
+    prop = scene.add_prop("prop_a")
+
+    scene.create_event("camera_cut", start=0.0, target=camera, label="cam_main")
+    scene.set_anim(0.0, prop, target=animation_manager)
+
+    cut = scene_to_cut(scene)
+
+    assert [event.fields["iEventId"] for event in cut.events[:2]] == [
+        int(CutEventType.CAMERA_CUT),
+        int(CutEventType.SET_ANIM),
+    ]
 
 
 def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> None:
@@ -389,6 +479,52 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     assert decal_args.fields["fHeight"] == pytest.approx(1.25)
     assert decal_args.fields["Colour"] == 0xFFAA5500
     assert decal_args.fields["fLifeTime"] == pytest.approx(10.0)
+
+
+def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
+    scene = CutScene.create(duration=2.0, face_dir="x:/gta5/assets_ng/cuts/test_lights/faces")
+    ydr = type(
+        "FakeYdr",
+        (),
+        {
+            "lights": [
+                YdrLight.spot(
+                    position=(1.0, 2.0, 3.0),
+                    direction=(0.0, 0.0, -1.0),
+                    color=(255, 128, 0),
+                    intensity=5.0,
+                    falloff=40.0,
+                    cone_inner_angle=25.0,
+                    cone_outer_angle=55.0,
+                    flags=(1 << 7) | (1 << 8) | (1 << 12) | (1 << 23),
+                    volume_intensity=1.0,
+                    volume_size_scale=1.0,
+                    corona_intensity=1.0,
+                    corona_z_bias=0.1,
+                    falloff_exponent=2.0,
+                    time_flags=0xFFFFFF,
+                )
+            ]
+        },
+    )()
+
+    lights = scene.ensure_ydr_embedded_lights(ydr, name_prefix="stage01")
+
+    assert len(lights) == 1
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+    cut_light = next(obj for obj in rebuilt.objects if obj.type_name == "rage__cutfLightObject")
+    assert cut_light.fields["iLightType"] == int(CutLightType.SPOT)
+    assert cut_light.fields["iLightProperty"] == int(CutLightProperty.CASTS_SHADOWS)
+    assert cut_light.fields["uLightFlags"] == int(
+        CutLightFlag.CAST_STATIC_GEOM_SHADOWS
+        | CutLightFlag.CAST_DYNAMIC_GEOM_SHADOWS
+        | CutLightFlag.DRAW_VOLUME
+        | CutLightFlag.DONT_LIGHT_ALPHA
+    )
+    assert cut_light.fields["vColour"] == pytest.approx((1.0, 128.0 / 255.0, 0.0))
+    assert cut_light.fields["vPosition"] == pytest.approx((1.0, 2.0, 3.0))
+    assert cut_light.fields["fFallOff"] == pytest.approx(40.0)
+    assert any(event.fields["iEventId"] == 74 and event.fields["iObjectId"] == cut_light.fields["iObjectId"] for event in rebuilt.events)
 
 
 def test_cut_prop_binding_exposes_real_streaming_fields() -> None:

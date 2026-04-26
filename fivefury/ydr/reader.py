@@ -113,6 +113,11 @@ def _decode_ubyte4(data: bytes, offset: int) -> tuple[int, int, int, int]:
     return struct.unpack_from("<4B", data, offset)
 
 
+def _decode_skin_ubyte4(data: bytes, offset: int) -> tuple[int, int, int, int]:
+    z, y, x, w = _decode_ubyte4(data, offset)
+    return (x, y, z, w)
+
+
 def _decode_snorm(data: bytes, offset: int) -> tuple[float, float, float, float]:
     if offset < 0 or offset + 4 > len(data):
         raise ValueError("snorm is truncated")
@@ -196,7 +201,11 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
             component_offset = _component_offset(flags, types_value, semantic_index)
             semantic = VertexSemantic(semantic_index)
             if semantic is VertexSemantic.BLEND_INDICES and COMPONENT_SIZES.get(component_type) == 4:
-                blend_indices.append(tuple(int(component) for component in _decode_ubyte4(vertex_bytes, base + component_offset)))
+                blend_indices.append(tuple(int(component) for component in _decode_skin_ubyte4(vertex_bytes, base + component_offset)))
+                continue
+            if semantic is VertexSemantic.BLEND_WEIGHTS and component_type == int(VertexComponentType.COLOUR):
+                raw = _decode_skin_ubyte4(vertex_bytes, base + component_offset)
+                blend_weights.append(tuple(component / 255.0 for component in raw))
                 continue
             value = _decode_component(vertex_bytes, base + component_offset, component_type)
             if value is None:

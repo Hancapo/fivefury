@@ -9,7 +9,15 @@ from .archetypes import (
 )
 from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .flags import ArchetypeFlags, MloInstanceFlags, MloInteriorFlags, PortalFlags, RoomFlags, TimeArchetypeFlags
-from .helpers import merge_ytyps, time_flags, ytyp_from_ydr_folder
+from .helpers import (
+    CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS,
+    CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS,
+    cutscene_prop_flags,
+    mark_cutscene_prop_archetypes,
+    merge_ytyps,
+    time_flags,
+    ytyp_from_ydr_folder,
+)
 from .lod import (
     ARCHETYPE_HD_TEXTURE_RADIUS_SCALE,
     ARCHETYPE_LOD_RADIUS_SCALE,
@@ -40,10 +48,13 @@ __all__ = [
     "BaseArchetypeDef",
     "ARCHETYPE_HD_TEXTURE_RADIUS_SCALE",
     "ARCHETYPE_LOD_RADIUS_SCALE",
+    "CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS",
+    "CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS",
     "DEFAULT_ARCHETYPE_HD_TEXTURE_DIST",
     "DEFAULT_ARCHETYPE_LOD_DIST",
     "coerce_archetype_asset_type",
     "coerce_time_archetype_flags",
+    "cutscene_prop_flags",
     "EntitySet",
     "MloArchetype",
     "MloArchetypeDef",
@@ -67,6 +78,7 @@ __all__ = [
     "infer_archetype_hd_texture_dist",
     "infer_archetype_lod_dist",
     "infer_archetype_radius",
+    "mark_cutscene_prop_archetypes",
     "merge_ytyps",
     "read_ytyp",
     "save_ytyp",

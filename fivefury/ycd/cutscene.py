@@ -8,12 +8,21 @@ from ..cut import CutFile, CutScene, read_cut, read_cut_scene
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from .model import Ycd, YcdAnimation, YcdAnimationBoneId, YcdClipAnimation, YcdClipType, YcdSequence
-from .sequence_channels import YcdAnimSequence, YcdChannelType, YcdRawFloatChannel, YcdStaticFloatChannel
+from .sequence_channels import (
+    YcdAnimSequence,
+    YcdChannelType,
+    YcdQuantizeFloatChannel,
+    YcdRawFloatChannel,
+    YcdStaticFloatChannel,
+    YcdStaticQuaternionChannel,
+    YcdStaticVector3Channel,
+)
 from .sequence_tracks import YcdAnimationTrack, get_ycd_track_format
 
 
 YCD_CUTSCENE_DEFAULT_FPS = 30.0
 YCD_CUTSCENE_DEFAULT_VERSION = 46
+YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT = 287
 
 _SCALAR_TRACKS = {
     int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW),
@@ -176,11 +185,75 @@ def _sample_track_values(
     return [constant for _ in range(frame_count)]
 
 
-def _make_channels(samples: list[tuple[float, ...]]) -> list[YcdStaticFloatChannel | YcdRawFloatChannel]:
+def _make_quantize_channel(component_index: int, values: list[float]) -> YcdQuantizeFloatChannel:
+    minimum = min(values)
+    maximum = max(values)
+    span = max(maximum - minimum, 0.0)
+    quantum = (span / 65535.0) if span > 1e-12 else (1.0 / 65535.0)
+    return YcdQuantizeFloatChannel(
+        channel_type=YcdChannelType.QUANTIZE_FLOAT,
+        channel_index=component_index,
+        value_bits=16,
+        quantum=quantum,
+        offset=minimum,
+        values=values,
+    )
+
+
+def _make_channels(
+    samples: list[tuple[float, ...]],
+    *,
+    track: int | YcdAnimationTrack | None = None,
+) -> list[
+    YcdStaticFloatChannel
+    | YcdStaticVector3Channel
+    | YcdStaticQuaternionChannel
+    | YcdQuantizeFloatChannel
+    | YcdRawFloatChannel
+]:
     if not samples:
         return []
     component_count = len(samples[0])
-    channels: list[YcdStaticFloatChannel | YcdRawFloatChannel] = []
+    track_value = None if track is None else int(track)
+    use_quantized = track_value in {
+        int(YcdAnimationTrack.BONE_TRANSLATION),
+        int(YcdAnimationTrack.BONE_ROTATION),
+        int(YcdAnimationTrack.MOVER_TRANSLATION),
+        int(YcdAnimationTrack.MOVER_ROTATION),
+    }
+    if all(sample == samples[0] for sample in samples[1:]):
+        value = samples[0]
+        if component_count == 3:
+            return [
+                YcdStaticVector3Channel(
+                    channel_type=YcdChannelType.STATIC_VECTOR3,
+                    channel_index=0,
+                    value=(float(value[0]), float(value[1]), float(value[2])),
+                )
+            ]
+        if component_count == 4:
+            return [
+                YcdStaticQuaternionChannel(
+                    channel_type=YcdChannelType.STATIC_QUATERNION,
+                    channel_index=0,
+                    value=(float(value[0]), float(value[1]), float(value[2]), float(value[3])),
+                )
+            ]
+        return [
+            YcdStaticFloatChannel(
+                channel_type=YcdChannelType.STATIC_FLOAT,
+                channel_index=0,
+                value=float(value[0]),
+            )
+        ]
+
+    channels: list[
+        YcdStaticFloatChannel
+        | YcdStaticVector3Channel
+        | YcdStaticQuaternionChannel
+        | YcdQuantizeFloatChannel
+        | YcdRawFloatChannel
+    ] = []
     for component_index in range(component_count):
         values = [float(sample[component_index]) for sample in samples]
         if all(abs(value - values[0]) <= 1e-9 for value in values[1:]):
@@ -192,6 +265,9 @@ def _make_channels(samples: list[tuple[float, ...]]) -> list[YcdStaticFloatChann
                 )
             )
             continue
+        if use_quantized:
+            channels.append(_make_quantize_channel(component_index, values))
+            continue
         channels.append(
             YcdRawFloatChannel(
                 channel_type=YcdChannelType.RAW_FLOAT,
@@ -200,6 +276,58 @@ def _make_channels(samples: list[tuple[float, ...]]) -> list[YcdStaticFloatChann
             )
         )
     return channels
+
+
+def _cutscene_track_sort_key(track_spec: YcdCutsceneTrack) -> tuple[int, int, int]:
+    order = {
+        int(YcdAnimationTrack.BONE_TRANSLATION): 0,
+        int(YcdAnimationTrack.BONE_ROTATION): 1,
+        int(YcdAnimationTrack.MOVER_TRANSLATION): 2,
+        int(YcdAnimationTrack.MOVER_ROTATION): 3,
+    }
+    return (order.get(int(track_spec.track), 100 + int(track_spec.track)), int(track_spec.bone_id), int(track_spec.track))
+
+
+def _iter_sequence_sample_windows(
+    samples: list[tuple[float, ...]],
+    *,
+    frame_limit: int = YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+) -> list[tuple[int, list[tuple[float, ...]]]]:
+    if not samples:
+        return []
+    max_step = max(int(frame_limit), 1)
+    max_count = max_step + 1
+    if len(samples) <= max_count:
+        return [(0, samples)]
+    windows: list[tuple[int, list[tuple[float, ...]]]] = []
+    start = 0
+    while start < len(samples):
+        chunk = samples[start : min(start + max_count, len(samples))]
+        if not chunk:
+            break
+        windows.append((start, chunk))
+        if start + len(chunk) >= len(samples):
+            break
+        start += max_step
+    return windows
+
+
+def _is_camera_track_id(track: int) -> bool:
+    return int(track) in {
+        int(YcdAnimationTrack.CAMERA_TRANSLATION),
+        int(YcdAnimationTrack.CAMERA_ROTATION),
+        int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW),
+        int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD),
+        int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_STRENGTH),
+        int(YcdAnimationTrack.CAMERA_MOTION_BLUR),
+        int(YcdAnimationTrack.CAMERA_COC),
+        int(YcdAnimationTrack.CAMERA_FOCUS),
+        int(YcdAnimationTrack.CAMERA_NIGHT_COC),
+        int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_OUT_OF_FOCUS_PLANE),
+        int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_IN_FOCUS_PLANE),
+        int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_OUT_OF_FOCUS_PLANE),
+        int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_IN_FOCUS_PLANE),
+    }
 
 
 @dataclass(slots=True)
@@ -486,37 +614,56 @@ class YcdCutsceneBuilder:
                 continue
             short_name = f"{clip_spec.name}-{section.index}"
             animation_hash = MetaHash(short_name)
-            anim_sequences: list[YcdAnimSequence] = []
             bone_ids: list[YcdAnimationBoneId] = []
-            for track_spec in clip_spec.tracks:
+            track_windows: list[tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]] = []
+            uses_camera_tracks = any(_is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks)
+            sequence_limit = min(YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT, max(section.frame_count - 1, 0))
+            sample_frame_limit = sequence_limit
+            if not uses_camera_tracks:
+                # Blender/Sollumz keep skeletal/object cutscene clips in one
+                # sequence. Splitting those clips is parseable but GTA only
+                # applies root motion for some skinned props.
+                sequence_limit = max(section.frame_count + int(round(self.fps)), 1)
+                sample_frame_limit = max(section.frame_count, 1)
+            sorted_tracks = list(clip_spec.tracks)
+            if not uses_camera_tracks:
+                # GTA cutscene YCDs group object tracks by semantic track id,
+                # then by bone id. The runtime is stricter than the parser here.
+                sorted_tracks.sort(key=_cutscene_track_sort_key)
+            for track_spec in sorted_tracks:
                 frame_samples = track_spec.samples[section.start_frame : section.end_frame + 1]
                 if not frame_samples:
                     continue
                 bone = YcdAnimationBoneId(bone_id=track_spec.bone_id, track=track_spec.track, format=get_ycd_track_format(track_spec.track))
                 bone_ids.append(bone)
-                anim_sequences.append(
-                    YcdAnimSequence(
-                        bone_id=bone,
-                        channels=_make_channels(frame_samples),
-                    )
-                )
-            if not anim_sequences:
+                track_windows.append((track_spec, _iter_sequence_sample_windows(frame_samples, frame_limit=sample_frame_limit)))
+            if not track_windows:
                 continue
-            animation = YcdAnimation(
-                hash=animation_hash,
-                frames=section.frame_count,
-                sequence_frame_limit=section.frame_count,
-                duration=section.duration,
-                usage_count=1,
-                sequence_count=1,
-                bone_id_count=len(bone_ids),
-                sequences=[
+            sequence_count = max((len(windows) for _, windows in track_windows), default=0)
+            sequences: list[YcdSequence] = []
+            for sequence_index in range(sequence_count):
+                anim_sequences: list[YcdAnimSequence] = []
+                sequence_frame_count = 0
+                for track_index, (_track_spec, windows) in enumerate(track_windows):
+                    if sequence_index >= len(windows):
+                        continue
+                    _start_frame, frame_samples = windows[sequence_index]
+                    sequence_frame_count = max(sequence_frame_count, len(frame_samples))
+                    anim_sequences.append(
+                        YcdAnimSequence(
+                            bone_id=bone_ids[track_index],
+                            channels=_make_channels(frame_samples, track=_track_spec.track),
+                        )
+                    )
+                if not anim_sequences:
+                    continue
+                sequences.append(
                     YcdSequence(
-                        hash=MetaHash(f"{short_name}_seq"),
+                        hash=MetaHash(f"{short_name}_seq{sequence_index}"),
                         data_length=0,
                         frame_offset=0,
                         root_motion_refs_offset=0,
-                        num_frames=section.frame_count,
+                        num_frames=sequence_frame_count,
                         frame_length=0,
                         indirect_quantize_float_num_ints=0,
                         quantize_float_value_bits=0,
@@ -525,7 +672,18 @@ class YcdCutsceneBuilder:
                         raw_data=b"",
                         anim_sequences=anim_sequences,
                     )
-                ],
+                )
+            if not sequences:
+                continue
+            animation = YcdAnimation(
+                hash=animation_hash,
+                frames=section.frame_count,
+                sequence_frame_limit=sequence_limit,
+                duration=section.duration,
+                usage_count=1,
+                sequence_count=len(sequences),
+                bone_id_count=len(bone_ids),
+                sequences=sequences,
                 bone_ids=bone_ids,
             )
             animations.append(animation)
@@ -590,6 +748,7 @@ def build_cutscene_ycds(
 __all__ = [
     "YCD_CUTSCENE_DEFAULT_FPS",
     "YCD_CUTSCENE_DEFAULT_VERSION",
+    "YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT",
     "YcdCutsceneBoneAnimation",
     "YcdCutsceneBuilder",
     "YcdCutsceneClip",

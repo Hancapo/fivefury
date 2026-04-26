@@ -166,14 +166,15 @@ class CutScene:
         camera_cut_list: list[float] | None = None,
         section_split_list: list[float] | None = None,
     ) -> "CutScene":
+        resolved_offset = offset or (0.0, 0.0, 0.0)
         return cls(
             scene_name=scene_name,
             duration=float(duration),
             face_dir=face_dir,
             cutscene_flags=cutscene_flags,
-            offset=offset or (0.0, 0.0, 0.0),
+            offset=resolved_offset,
             rotation=float(rotation),
-            trigger_offset=trigger_offset or (0.0, 0.0, 0.0),
+            trigger_offset=trigger_offset or resolved_offset,
             range_start=range_start,
             range_end=range_end,
             alt_range_end=alt_range_end,
@@ -362,6 +363,17 @@ class CutScene:
                         label = " / ".join(dict.fromkeys(candidate_labels)) or f"id={oid}"
                         warnings.append(f"set_anim target '{label}' (id={oid}) has no matching clip in attached YCDs")
         return warnings
+
+    def ensure_ydr_embedded_lights(
+        self,
+        source: Any,
+        *,
+        name_prefix: str | None = None,
+        start: float = 0.0,
+    ) -> list[CutBinding]:
+        from ..lights import ensure_ydr_embedded_lights
+
+        return ensure_ydr_embedded_lights(self, source, name_prefix=name_prefix, start=start)
 
 
 def _make_role_property(role: str):

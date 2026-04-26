@@ -23,6 +23,8 @@ from fivefury import (
     YcdUvAnimationSample,
     YcdUvClipBinding,
     YcdUvTransformSample,
+    YcdCutsceneBoneAnimation,
+    YcdCutsceneBuilder,
     build_ycd_bytes,
     build_ycd_uv_clip_hash,
     build_ycd_uv_clip_name,
@@ -393,7 +395,11 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_animation.bone_id_count == original_animation.bone_id_count
         assert rebuilt_animation.vft == original_animation.vft
         assert rebuilt_animation.flags == original_animation.flags
-        assert rebuilt_animation.max_seq_block_length == original_animation.max_seq_block_length
+        expected_max_seq_block_length = max(
+            (0x20 + len(sequence.raw_data) for sequence in rebuilt_animation.sequences),
+            default=0,
+        )
+        assert rebuilt_animation.max_seq_block_length == expected_max_seq_block_length
         assert rebuilt_animation.raw_unknown_hash.uint == original_animation.raw_unknown_hash.uint
         assert len(rebuilt_animation.bone_ids) == len(original_animation.bone_ids)
         for original_bone_id, rebuilt_bone_id in zip(original_animation.bone_ids, rebuilt_animation.bone_ids, strict=True):
@@ -859,6 +865,60 @@ def test_ycd_build_derives_unknown1c_for_object_animation() -> None:
     assert ycd.animations[0].raw_unknown_hash.uint == ((ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF)
 
 
+def test_ycd_build_derives_unknown1c_for_object_animation_with_mover_tracks() -> None:
+    mover = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.MOVER_TRANSLATION)
+    bone = YcdAnimationBoneId(bone_id=1234, track=YcdAnimationTrack.BONE_ROTATION)
+    animation = YcdAnimation(
+        hash=MetaHash("object_anim_with_mover_unknown1c"),
+        frames=1,
+        sequence_frame_limit=1,
+        duration=0.0,
+        usage_count=1,
+        sequence_count=1,
+        bone_id_count=2,
+        sequences=[
+            YcdSequence(
+                hash=MetaHash("object_anim_with_mover_unknown1c_seq"),
+                data_length=0,
+                frame_offset=0,
+                root_motion_refs_offset=0,
+                num_frames=1,
+                frame_length=0,
+                indirect_quantize_float_num_ints=0,
+                quantize_float_value_bits=0,
+                chunk_size=0,
+                root_motion_ref_counts=0,
+                raw_data=b"",
+                anim_sequences=[
+                    YcdAnimSequence(
+                        bone_id=mover,
+                        channels=[
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=2, value=0.0),
+                        ],
+                    ),
+                    YcdAnimSequence(
+                        bone_id=bone,
+                        channels=[
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=2, value=0.0),
+                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=3, value=1.0),
+                        ],
+                    ),
+                ],
+            )
+        ],
+        bone_ids=[mover, bone],
+    )
+    ycd = Ycd(header=read_ycd(YCD_PATH).header, clips=[], animations=[animation], path="object_mover_unknown1c.ycd")
+
+    ycd.build()
+
+    assert ycd.animations[0].raw_unknown_hash.uint == ((ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF)
+
+
 def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
     uv_u = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.SHADER_SLIDE_U)
     uv_v = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.SHADER_SLIDE_V)
@@ -902,3 +962,77 @@ def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
     ycd.build()
 
     assert ycd.animations[0].raw_unknown_hash.uint == 0x6B002400
+
+
+def test_cutscene_builder_keeps_skeletal_props_in_one_sequence() -> None:
+    builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
+    builder.add_prop(
+        "miku_hatsune_metal",
+        mover_position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
+        mover_rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.0, 1.0)},
+        bones={
+            6783: YcdCutsceneBoneAnimation(
+                rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.7071068, 0.7071068)}
+            )
+        },
+    )
+
+    ycd = builder.build_ycds()[0]
+    animation = ycd.clips[0].animation
+
+    assert animation is not None
+    assert animation.frames == 733
+    assert animation.sequence_count == 1
+    assert animation.sequence_frame_limit > animation.frames
+    assert len(animation.root_motion_sequences) == 2
+    assert len(animation.object_sequences) == 1
+    assert [(bone.bone_id, bone.track) for bone in animation.bone_ids] == [
+        (6783, int(YcdAnimationTrack.BONE_ROTATION)),
+        (0, int(YcdAnimationTrack.MOVER_TRANSLATION)),
+        (0, int(YcdAnimationTrack.MOVER_ROTATION)),
+    ]
+
+
+def test_cutscene_builder_orders_object_tracks_like_game_ycds() -> None:
+    builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
+    builder.add_prop(
+        "miku_hatsune_metal",
+        mover_position={0.0: (0.0, 0.0, 0.0), 1.0: (1.0, 0.0, 0.0)},
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        bones={
+            56259: YcdCutsceneBoneAnimation(position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 0.0, 1.0)}),
+            5195: YcdCutsceneBoneAnimation(position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 1.0, 0.0)}),
+            6783: YcdCutsceneBoneAnimation(rotation={0.0: (0.0, 0.0, 0.0, 1.0), 1.0: (0.0, 0.0, 0.7071068, 0.7071068)}),
+        },
+    )
+
+    animation = builder.build_ycds()[0].clips[0].animation
+
+    assert animation is not None
+    assert [(bone.bone_id, bone.track) for bone in animation.bone_ids] == [
+        (5195, int(YcdAnimationTrack.BONE_TRANSLATION)),
+        (56259, int(YcdAnimationTrack.BONE_TRANSLATION)),
+        (6783, int(YcdAnimationTrack.BONE_ROTATION)),
+        (0, int(YcdAnimationTrack.MOVER_TRANSLATION)),
+        (0, int(YcdAnimationTrack.MOVER_ROTATION)),
+    ]
+    mover_rotation = animation.sequences[0].anim_sequences[-1]
+    assert [int(channel.channel_type) for channel in mover_rotation.channels] == [int(YcdChannelType.STATIC_QUATERNION)]
+
+
+def test_cutscene_builder_preserves_camera_sequence_splitting() -> None:
+    builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
+    builder.add_camera(
+        "exportcamera",
+        position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
+        rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.7071068, 0.7071068)},
+    )
+
+    ycd = builder.build_ycds()[0]
+    animation = ycd.clips[0].animation
+
+    assert animation is not None
+    assert animation.frames == 733
+    assert animation.sequence_count == 3
+    assert animation.sequence_frame_limit == 287
+    assert len(animation.camera_sequences) == 6

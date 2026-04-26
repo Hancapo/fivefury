@@ -11,6 +11,8 @@ from fivefury import (
     CutEventType,
     CutLoadScenePayload,
     CutPed,
+    CutProp,
+    CutPropAnimationPreset,
     CutScene,
     CutSubtitle,
     CutSubtitlePayload,
@@ -86,3 +88,37 @@ def test_cut_scene_animation_manager_writes_without_template() -> None:
         int(CutEventType.CLEAR_ANIM),
         int(CutEventType.UNLOAD_ANIM_DICT),
     }
+
+
+def test_cut_scene_normalizes_retail_prop_startup_order() -> None:
+    scene = CutScene.create(duration=8.0)
+    asset_manager = scene.add(CutAssetManager())
+    animation_manager = scene.add(CutAnimationManager())
+    camera = scene.add(CutCamera("cam"))
+    prop = scene.add(
+        CutProp("prop_local").configure_model_asset(
+            streaming_name="prop_stream",
+            animation_clip_base="prop_stream",
+            type_file="prop_pack",
+        ).apply_animation_preset(CutPropAnimationPreset.COMMON_PROP)
+    )
+
+    scene.load_anim_dict(0.0, "scene-0", target=animation_manager)
+    scene.load_scene(0.0, CutLoadScenePayload("scene"), target=asset_manager)
+    scene.load_models(0.0, [prop.object_id], target=asset_manager)
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam"))
+    scene.set_anim(1.0 / 240.0, prop, target=animation_manager)
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+
+    assert [event.fields["iEventId"] for event in rebuilt.load_events] == [
+        int(CutEventType.LOAD_SCENE),
+        int(CutEventType.LOAD_ANIM_DICT),
+        int(CutEventType.LOAD_MODELS),
+    ]
+    assert [(event.fields["fTime"], event.fields["iEventId"]) for event in rebuilt.events[:2]] == [
+        (0.0, int(CutEventType.SET_ANIM)),
+        (0.0, int(CutEventType.CAMERA_CUT)),
+    ]
+    rebuilt_prop = next(node for node in rebuilt.objects if node.type_name == "rage__cutfPropModelObject")
+    assert rebuilt_prop.fields["cHandle"].hash == 0

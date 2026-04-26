@@ -32,6 +32,7 @@ from .model import (
 )
 from .cutscene import (
     YCD_CUTSCENE_DEFAULT_FPS,
+    YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
     YCD_CUTSCENE_DEFAULT_VERSION,
     YcdCutsceneBoneAnimation,
     YcdCutsceneBuilder,
@@ -83,6 +84,7 @@ __all__ = [
     "get_ycd_track_format",
     "parse_ycd_uv_clip_binding",
     "YCD_CUTSCENE_DEFAULT_FPS",
+    "YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT",
     "YCD_CUTSCENE_DEFAULT_VERSION",
     "build_ycd_bytes",
     "read_ycd",

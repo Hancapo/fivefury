@@ -22,3 +22,13 @@ from .bindings import (
 )
 from .core import CutScene, cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
 from .timeline import CutTimelineEvent, CutTrack
+from ..lights import (
+    CutLightFlag,
+    CutLightProperty,
+    CutLightType,
+    cut_light_fields_from_ydr_light,
+    cut_light_flags_from_ydr_flags,
+    cut_light_property_from_ydr_flags,
+    cut_light_type_from_ydr_light_type,
+    ensure_ydr_embedded_lights,
+)

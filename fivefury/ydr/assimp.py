@@ -15,7 +15,7 @@ from .write_geometry import compute_bounds
 from ..game_target import GameTarget, coerce_game_target
 from ..texture import Texture
 from ..ytd import TextureFormat, Ytd
-from ..ytyp import Archetype, Ytyp
+from ..ytyp import Archetype, Ytyp, cutscene_prop_flags
 from ..ytyp.archetypes import ArchetypeAssetType
 from ..ytyp.lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 
@@ -453,7 +453,7 @@ def _resolve_target_version(*, version: int | None, game: GameTarget | None) -> 
     raise ValueError(f"Unsupported Assimp->YDR target game: {game}")
 
 
-def save_companion_ytyp(scene: AssimpScene, destination: str | Path) -> Path:
+def save_companion_ytyp(scene: AssimpScene, destination: str | Path, *, cutscene_prop: bool = False) -> Path:
     target = _lowercase_output_path(destination)
     base_name = target.stem.lower()
     ytyp_name = f"{base_name}_meta"
@@ -472,6 +472,7 @@ def save_companion_ytyp(scene: AssimpScene, destination: str | Path) -> Path:
             asset_name=base_name,
             texture_dictionary=f"{base_name}_txd",
             asset_type=ArchetypeAssetType.DRAWABLE,
+            flags=int(cutscene_prop_flags(animated=True)) if cutscene_prop else 0,
             lod_dist=lod_dist,
             hd_texture_dist=hd_texture_dist,
             bb_min=bb_min,
@@ -522,6 +523,7 @@ def assimp_to_ydr(
     default_colour: tuple[float, float, float, float] | None = None,
     material_colours_as_textures: bool = False,
     generate_ytyp: bool = False,
+    cutscene_prop: bool = False,
     version: int | None = None,
     game: GameTarget | None = None,
 ) -> YdrBuild:
@@ -538,7 +540,7 @@ def assimp_to_ydr(
         destination = Path(source).with_suffix(".ydr")
     result = save_ydr(build, _lowercase_output_path(destination))
     if generate_ytyp:
-        save_companion_ytyp(scene, result)
+        save_companion_ytyp(scene, result, cutscene_prop=cutscene_prop)
     return build
 
 

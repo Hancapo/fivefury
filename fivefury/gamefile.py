@@ -65,7 +65,6 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".yvr": GameFileType.YVR,
     ".gxt2": GameFileType.GTXD,
     ".cut": GameFileType.CUT,
-    ".cutxml": GameFileType.CUT,
     ".rpf": GameFileType.RPF,
 }
 

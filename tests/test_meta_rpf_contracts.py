@@ -1650,6 +1650,60 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(cache._index.get_path(0), "pack.rpf/stream/a.ydr")
             self.assertEqual(cache._index.get_path(1), "pack.rpf/stream/b.ydr")
 
+    def test_gamefilecache_indexes_cut_and_ycd_from_rpf_as_explicit_kinds(self) -> None:
+        from fivefury import GameFileCache, GameFileType, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("cuts.rpf")
+            archive.add("cuts/sample.cut", b"cut")
+            archive.add("cuts/sample-0.ycd", b"ycd")
+            archive.save(root / "cuts.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            cut = cache.find_path("cuts.rpf/cuts/sample.cut")
+            ycd = cache.find_path("cuts.rpf/cuts/sample-0.ycd")
+
+            self.assertIsNotNone(cut)
+            self.assertIsNotNone(ycd)
+            assert cut is not None
+            assert ycd is not None
+            self.assertEqual(cut.kind, GameFileType.CUT)
+            self.assertEqual(ycd.kind, GameFileType.YCD)
+            self.assertEqual(cache.kind_counts[GameFileType.CUT], 1)
+            self.assertEqual(cache.kind_counts[GameFileType.YCD], 1)
+            self.assertEqual([record.path for record in cache.CutDict.values()], [cut.path])
+            self.assertEqual([record.path for record in cache.YcdDict.values()], [ycd.path])
+
+    def test_gamefilecache_indexes_ynd_and_ynv_from_rpf_as_explicit_kinds(self) -> None:
+        from fivefury import GameFileCache, GameFileType, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archive = create_rpf("nav.rpf")
+            archive.add("nav/roads.YND", b"ynd")
+            archive.add("nav/mesh.YNV", b"ynv")
+            archive.save(root / "nav.rpf")
+
+            cache = GameFileCache(root, use_index_cache=False)
+            cache.scan(use_index_cache=False)
+
+            ynd = cache.find_path("nav.rpf/nav/roads.ynd")
+            ynv = cache.find_path("nav.rpf/nav/mesh.ynv")
+
+            self.assertIsNotNone(ynd)
+            self.assertIsNotNone(ynv)
+            assert ynd is not None
+            assert ynv is not None
+            self.assertEqual(ynd.kind, GameFileType.YND)
+            self.assertEqual(ynv.kind, GameFileType.YNV)
+            self.assertEqual(cache.kind_counts[GameFileType.YND], 1)
+            self.assertEqual(cache.kind_counts[GameFileType.YNV], 1)
+            self.assertEqual([record.path for record in cache.YndDict.values()], [ynd.path])
+            self.assertEqual([record.path for record in cache.YnvDict.values()], [ynv.path])
+
     def test_gamefilecache_bounds_loaded_file_cache(self) -> None:
         from fivefury import GameFileCache, create_rpf
 

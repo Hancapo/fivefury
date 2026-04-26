@@ -520,6 +520,7 @@ _KIND_DICT_TYPES: dict[str, GameFileType] = {
     "YtypDict": GameFileType.YTYP,
     "YbnDict": GameFileType.YBN,
     "YcdDict": GameFileType.YCD,
+    "CutDict": GameFileType.CUT,
     "YptDict": GameFileType.YPT,
     "YndDict": GameFileType.YND,
     "YnvDict": GameFileType.YNV,

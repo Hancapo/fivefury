@@ -100,11 +100,6 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
             return read_cut(source), GameFileType.CUT
         except Exception:
             return source, GameFileType.CUT
-    if ext == ".cutxml":
-        try:
-            return read_cutxml(data.decode("utf-8")), GameFileType.CUT
-        except Exception:
-            return data, GameFileType.CUT
     if ext == ".rpf":
         try:
             return RpfArchive.from_bytes(data), GameFileType.RPF

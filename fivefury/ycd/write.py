@@ -212,6 +212,8 @@ class _YcdWriter:
         if cached is not None:
             return cached
         raw_data = build_sequence_data(sequence)
+        sequence.raw_data = raw_data
+        sequence.data_length = len(raw_data)
         offset = self.writer.alloc(0x20 + len(raw_data), 16, relocate_pointers=False)
         self.writer.pack_into(
             "IIIIIHHHHHBB",
@@ -258,6 +260,7 @@ class _YcdWriter:
 
         offset = self.writer.alloc(0x60, 16)
         max_seq_block_length = max((0x20 + len(sequence.raw_data) for sequence in animation.sequences), default=0)
+        animation.max_seq_block_length = max_seq_block_length
         animation_hash = _resolve_hash(animation.hash, fallback_text=animation.name)
         self.writer.pack_into(
             "IIIIBBHHHfIIIIIIIII",
@@ -279,7 +282,7 @@ class _YcdWriter:
             0,
             0,
             0,
-            int(animation.max_seq_block_length or max_seq_block_length),
+            int(max_seq_block_length),
             int(self.animation_usage_counts.get(animation_hash.uint, animation.usage_count)),
         )
         self.writer.pack_into(

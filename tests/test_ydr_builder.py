@@ -1247,7 +1247,7 @@ def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
         blend_weights=[
             (1.0, 0.0, 0.0, 0.0),
             (0.5, 0.5, 0.0, 0.0),
-            (0.0, 1.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0, 0.0),
         ],
         blend_indices=[
             (0, 0, 0, 0),
@@ -1279,8 +1279,8 @@ def _hashable_skeleton() -> YdrSkeleton:
     skeleton = YdrSkeleton.create()
     root = skeleton.add_bone(
         "root",
-        tag=10,
-        flags=YdrBoneFlags.ROT_X | YdrBoneFlags.TRANS_Y | YdrBoneFlags.UNKNOWN_0,
+        tag=0,
+        flags=YdrBoneFlags.ROT_X | YdrBoneFlags.TRANS_Y | YdrBoneFlags.HAS_CHILD,
         translation=(1.0, 2.0, 3.0),
         rotation=(0.0, 0.0, 0.0, 1.0),
         scale=(1.0, 1.0, 1.0),
@@ -1328,6 +1328,15 @@ def test_declarative_skeleton_helpers() -> None:
     child = skeleton.add_bone("child", parent="root", translation=(0.0, 1.0, 0.0))
     skeleton.build()
 
+    assert root.flags == (
+        YdrBoneFlags.ROT_X
+        | YdrBoneFlags.ROT_Y
+        | YdrBoneFlags.ROT_Z
+        | YdrBoneFlags.TRANS_X
+        | YdrBoneFlags.TRANS_Y
+        | YdrBoneFlags.TRANS_Z
+        | YdrBoneFlags.HAS_CHILD
+    )
     assert root.index == 0
     assert child.index == 1
     assert child.parent_index == 0
@@ -1353,7 +1362,7 @@ def test_skeleton_unknown_hash_helper_is_explicit_and_enum_backed() -> None:
     assert skeleton_bone_flag_names(skeleton.bones[0].flags) == (
         YdrBoneFlagName.ROT_X,
         YdrBoneFlagName.TRANS_Y,
-        YdrBoneFlagName.UNKNOWN_0,
+        YdrBoneFlagName.HAS_CHILD,
     )
     assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (0, 0, 0)
 
@@ -1401,7 +1410,7 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     assert model is not None
     assert model.has_skin is True
     assert model.flags == 1
-    assert model.skeleton_binding == YdrSkeletonBinding.skinned()
+    assert model.skeleton_binding == YdrSkeletonBinding.skinned(unknown_1=2)
     assert ydr.has_skeleton is True
     assert ydr.skeleton is not None
     assert ydr.skeleton.bone_count == 2
@@ -1608,8 +1617,8 @@ def test_skinned_model_writes_formal_skeleton_binding_bytes(tmp_path: Path) -> N
     build.save(ydr_path)
     system_data, model_off, _geometry_off = _first_model_offsets(ydr_path.read_bytes())
 
-    assert int.from_bytes(system_data[model_off + 0x28 : model_off + 0x2C], "little") == 0x00000111
-    assert system_data[model_off + 0x28 : model_off + 0x2C] == bytes((0x11, 0x01, 0x00, 0x00))
+    assert int.from_bytes(system_data[model_off + 0x28 : model_off + 0x2C], "little") == 0x00000102
+    assert system_data[model_off + 0x28 : model_off + 0x2C] == bytes((0x02, 0x01, 0x00, 0x00))
 
 
 def test_rigid_model_bone_binding_roundtrip(tmp_path: Path) -> None:
@@ -1729,6 +1738,11 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
         (0, 1, 2, 4),
         (1, 2, 3, 4),
     ]
+    skeleton = YdrSkeleton.create()
+    root = skeleton.add_bone("root", tag=0)
+    for index in range(1, 5):
+        skeleton.add_bone(f"bone_{index}", parent=root, tag=index)
+    skeleton.build()
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[
@@ -1746,7 +1760,7 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
             )
         ],
         name="bone_ids_tail",
-        skeleton=_simple_skeleton(),
+        skeleton=skeleton,
     )
 
     ydr_path = tmp_path / "bone_ids_tail.ydr"
@@ -1763,10 +1777,11 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
     assert int.from_bytes(system_data[geometry_offsets[0] + 0x68 : geometry_offsets[0] + 0x70], "little") == 0
     assert int.from_bytes(system_data[geometry_offsets[0] + 0x72 : geometry_offsets[0] + 0x74], "little") == 0
 
-    two_bone_ptr = int.from_bytes(system_data[geometry_offsets[1] + 0x68 : geometry_offsets[1] + 0x70], "little")
-    assert _virtual_to_offset(two_bone_ptr) == geometry_offsets[1] + 0x98
-    assert int.from_bytes(system_data[geometry_offsets[1] + 0x72 : geometry_offsets[1] + 0x74], "little") == 2
-    assert system_data[geometry_offsets[1] + 0x98 : geometry_offsets[1] + 0x9C] == b"\x00\x00\x01\x00"
+    normalized_palette_ptr = int.from_bytes(system_data[geometry_offsets[1] + 0x68 : geometry_offsets[1] + 0x70], "little")
+    assert _virtual_to_offset(normalized_palette_ptr) == geometry_offsets[1] + 0xA0
+    assert int.from_bytes(system_data[geometry_offsets[1] + 0x72 : geometry_offsets[1] + 0x74], "little") == 5
+    assert system_data[geometry_offsets[1] + 0x98 : geometry_offsets[1] + 0xA0] == b"\x00" * 8
+    assert system_data[geometry_offsets[1] + 0xA0 : geometry_offsets[1] + 0xAA] == b"\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00"
 
     five_bone_ptr = int.from_bytes(system_data[geometry_offsets[2] + 0x68 : geometry_offsets[2] + 0x70], "little")
     assert _virtual_to_offset(five_bone_ptr) == geometry_offsets[2] + 0xA0
@@ -1952,13 +1967,54 @@ def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
 
     assert ydr.skeleton is not None
     assert ydr.skeleton.parent_indices == [-1, 0]
-    assert ydr.skeleton.bones[0].flags == (YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z)
+    assert ydr.skeleton.bones[0].flags == (
+        YdrBoneFlags.ROT_X
+        | YdrBoneFlags.ROT_Y
+        | YdrBoneFlags.ROT_Z
+        | YdrBoneFlags.HAS_CHILD
+    )
     assert ydr.skeleton.bones[1].parent_index == 0
     assert ydr.skeleton.bones[1].translation == pytest.approx((0.0, 0.25, 0.0))
     assert (ydr.skeleton.unknown_50h, ydr.skeleton.unknown_54h, ydr.skeleton.unknown_58h) == skeleton.calculate_unknown_hashes()
 
 
-def test_ydr_writer_optionally_recalculates_skeleton_unknown_hashes(tmp_path: Path) -> None:
+def test_ydr_writer_normalizes_root_bone_id(tmp_path: Path) -> None:
+    skeleton = YdrSkeleton.create()
+    root = skeleton.add_bone("root", tag=0xB692)
+    child = skeleton.add_bone("child", parent=root, tag=0x1A7F)
+    skeleton.build()
+    joints = YdrJoints()
+    joints.add_rotation_limit(bone_id=root.tag)
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(
+            meshes=[_skinned_triangle_mesh(material="main")],
+            skeleton_binding=YdrSkeletonBinding.skinned(),
+        )]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "test_diffuse"},
+            )
+        ],
+        name="root_id_normalized",
+        skeleton=skeleton,
+        joints=joints,
+    )
+    build.lods[YdrLod.HIGH][0].meshes[0].bone_ids = [root.tag, child.tag]
+
+    ydr_path = tmp_path / "root_id_normalized.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.skeleton is not None
+    assert ydr.skeleton.bones[0].tag == 0
+    assert ydr.meshes[0].bone_ids == [0, 1]
+    assert ydr.joints is not None
+    assert ydr.joints.rotation_limits[0].bone_id == 0
+
+
+def test_ydr_writer_recalculates_skeleton_unknown_hashes_by_default(tmp_path: Path) -> None:
     skeleton = _hashable_skeleton()
     expected_hashes = skeleton.calculate_unknown_hashes()
     build = YdrBuild(
@@ -1977,14 +2033,8 @@ def test_ydr_writer_optionally_recalculates_skeleton_unknown_hashes(tmp_path: Pa
         skeleton=skeleton,
     )
 
-    preserved_path = tmp_path / "skeleton_hash_preserved.ydr"
-    build.save(preserved_path)
-    preserved = read_ydr(preserved_path)
-    assert preserved.skeleton is not None
-    assert (preserved.skeleton.unknown_50h, preserved.skeleton.unknown_54h, preserved.skeleton.unknown_58h) == (0, 0, 0)
-
     recalculated_path = tmp_path / "skeleton_hash_recalculated.ydr"
-    build.save(recalculated_path, recalculate_skeleton_hashes=True)
+    build.save(recalculated_path)
     recalculated = read_ydr(recalculated_path)
     assert recalculated.skeleton is not None
     assert (
@@ -1992,6 +2042,12 @@ def test_ydr_writer_optionally_recalculates_skeleton_unknown_hashes(tmp_path: Pa
         recalculated.skeleton.unknown_54h,
         recalculated.skeleton.unknown_58h,
     ) == expected_hashes
+
+    preserved_path = tmp_path / "skeleton_hash_preserved.ydr"
+    build.save(preserved_path, recalculate_skeleton_hashes=False)
+    preserved = read_ydr(preserved_path)
+    assert preserved.skeleton is not None
+    assert (preserved.skeleton.unknown_50h, preserved.skeleton.unknown_54h, preserved.skeleton.unknown_58h) == (0, 0, 0)
     assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (0, 0, 0)
 
 

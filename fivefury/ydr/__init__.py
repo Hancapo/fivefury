@@ -23,6 +23,7 @@ from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialPara
 from .model import (
     ColorChannel,
     Ydr,
+    YDR_BONE_ANIMATABLE_FLAGS,
     YdrBone,
     YdrBoneFlagName,
     YdrBoneFlags,
@@ -76,6 +77,7 @@ __all__ = [
     "ShaderLibrary",
     "ShaderParameterDefinition",
     "Ydr",
+    "YDR_BONE_ANIMATABLE_FLAGS",
     "YdrBone",
     "YdrBoneFlagName",
     "YdrBoneFlags",
