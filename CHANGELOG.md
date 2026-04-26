@@ -10,12 +10,44 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [0.1.48]
 
 ### Added
+- `.cut` authoring now exposes `CutSceneFlags`, `DEFAULT_PLAYABLE_CUTSCENE_FLAGS`, and helpers for packing/unpacking cutscene flag arrays, covering playable cutscene metadata such as sectioning, concat mode, story-mode playback, camera interpolation, DOF, fades, and ambient/vehicle-light suppression.
+- `.cut` scene creation can now store explicit scene names, range metadata, section timing, camera-cut lists, section split lists, relocation offsets, trigger offsets, and concat-data records instead of relying on sparse root defaults.
 - `.cut` authoring now exposes `CutLightType`, `CutLightProperty`, and `CutLightFlag` enums for cutscene light objects instead of forcing raw integer flags.
 - `CutScene.ensure_ydr_embedded_lights(...)` can materialize embedded `YDR` lights as real `cutfLightObject` entries with matching `SET_LIGHT` events, covering cutscene props whose drawable lights illuminate in normal entity mode but are not activated by the cutscene runtime.
 - Added helpers for converting `YdrLight` values into cutscene light fields while preserving compatible type, shadow, volume, reflection, alpha, colour, intensity, falloff, cone, corona, and hour-mask data.
+- Cutscene prop bindings now expose `animation_clip_base`, allowing the `.cut` animation target to resolve clips by the actual drawable/model clip basename instead of the object handle name.
+- `YCD` cutscene building now exports `YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT` and supports longer object/skeletal cutscene clips without splitting them like camera clips.
+- `YCD` cutscene object clips now support static vector/quaternion channels and quantized transform channels from the high-level builder, reducing invalid raw-float output for object, mover, and bone tracks.
+- `YTYP` now exposes cutscene-prop helpers: `cutscene_prop_flags(...)`, `mark_cutscene_prop_archetypes(...)`, `CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS`, and `CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS`.
+- `YTYP` now includes LOD inference helpers: `infer_archetype_radius`, `infer_archetype_lod_dist`, `infer_archetype_hd_texture_dist`, and the default/radius-scale constants used by generated archetypes.
+- `GameFileCache` now indexes `.cut`, `.ycd`, `.ynd`, and `.ynv` resources from `RPF` archives into their explicit dictionaries and kind counts.
+- Public exports were expanded from `fivefury`, `fivefury.cut`, `fivefury.cut.scene`, `fivefury.ycd`, `fivefury.ydr`, and `fivefury.ytyp` for the new cutscene, YCD, YDR skeleton, and YTYP helper APIs.
 
 ### Changed
-- Cutscene authoring exports the new light helpers directly from `fivefury`, `fivefury.cut`, and `fivefury.cut.scene` so external tools can reuse the runtime-safe path instead of duplicating cutscene-light flag mappings.
+- Cutscene writing now defaults to playable root metadata: a real face directory, range bounds, section duration, concat-data entries, scene offsets, trigger offsets, and default cutscene flags.
+- Cutscene writing now keeps `LOAD_SCENE`, model loads, and animation dictionary loads in game-like order, and delays initial `SET_ANIM` events one frame when they would otherwise start on the same tick as the first camera cut.
+- Cutscene writing now treats camera cut events and `cameraCutList` separately, so one-section cuts can contain camera events without accidentally enabling `SECTION_BY_CAMERA_CUTS`.
+- Cutscene writing now switches streamed prop scenes from internal concat to external concat, matching the runtime path needed by prop-heavy cutscenes.
+- Cutscene `LOAD_SCENE` event args now keep the scene name in concat data and leave the event `cName` empty, preserving relocation semantics used by retail cutfiles.
+- Animated cutscene prop objects now leave `cHandle` empty when the runtime should resolve the handle from `AnimStreamingBase`, avoiding object-animation binding failures caused by forcing `cHandle = cName`.
+- Cutscene animation validation now checks `animation_clip_base`, derived `<clip>-<section>` names, `cutscene_name`, and `AnimStreamingBase` hashes, and warns when the streaming base does not match the expected JOAAT partial hash.
+- `YCD` object/skeletal cutscene tracks are now sorted by semantic track type and bone id, matching the stricter runtime ordering used by game cutscene dictionaries.
+- `YCD` cutscene cameras keep section splitting with the 287-frame sequence limit, while object/skeletal props are kept in a single sequence to avoid the runtime applying only root motion on skinned props.
+- `YCD` animation classification now treats mover and facial tracks as skeletal/object-style animation tracks when deriving runtime metadata such as `Unknown1C`.
+- `YDR` skeleton bones now default to animatable transform flags, formally expose `HAS_CHILD` and `IS_SKINNED`, and automatically rebuild `HAS_CHILD` flags during skeleton construction.
+- `YDR` writing now recalculates skeleton hash fields by default and still allows opting out with `recalculate_skeleton_hashes=False`.
+- `YDR` writing now normalizes the root bone tag to `0` and remaps mesh palettes and joint limits accordingly, matching the root-bone convention required by cutscene/skinned-object workflows.
+- `YDR` skinned mesh preparation now normalizes bone palettes against the skeleton, remaps blend indices to skeleton bone indices, rejects unknown bone ids/tags, and sets the skinned model flag automatically while preserving existing model flags.
+- `YDR` skinned blend indices now use the packed colour byte order expected by the drawable vertex layout.
+- `YTYP` archetypes built from YDR folders now infer non-zero `lodDist` and `hdTextureDist` from drawable bounds and can optionally mark generated archetypes as cutscene props.
+
+### Fixed
+- Fixed generated cutscenes that could start in viewers but fail to show runtime props in-game because the root flags, concat mode, load order, offsets, face directory, or scene-name placement did not match the runtime path.
+- Fixed cutscene prop animation binding where the `.cut` object name differed from the drawable/YCD clip basename, causing only the root mover or no animation to play.
+- Fixed skinned/object cutscene `YCD` output where splitting long non-camera clips into multiple sequences produced parseable files that the game applied incorrectly.
+- Fixed `YDR` skinned drawables with non-zero root bone ids, stale skeleton hashes, missing skinned model flags, or palette/tag mismatches that could import in tools but fail to animate correctly.
+- Fixed generated `YTYP` archetypes with zero LOD distances that made props disappear or become nearly invisible when streamed.
+- Fixed `.cutxml` being treated as a real GTA file type; it now resolves to `UNKNOWN` instead of `CUT`.
 
 ## [0.1.47]
 
