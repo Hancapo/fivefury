@@ -9,14 +9,31 @@
 
 namespace fivefury_native {
 
-std::uint32_t jenk_hash(std::string_view value, std::string_view lut) {
+std::uint32_t jenk_partial_hash(std::string_view value, std::string_view lut) {
     std::uint32_t result = 0;
-    for (const unsigned char byte : value) {
+    std::size_t index = 0;
+    const bool quoted = !value.empty() && static_cast<unsigned char>(value[0]) == 34U;
+    if (quoted) {
+        index = 1;
+    }
+    for (; index < value.size(); ++index) {
+        const auto byte = static_cast<unsigned char>(value[index]);
+        if (byte == 0U || (quoted && byte == 34U)) {
+            break;
+        }
         const auto temp = static_cast<std::uint32_t>(1025U * (static_cast<std::uint8_t>(lut[byte]) + result));
         result = ((temp >> 6U) ^ temp) & 0xFFFFFFFFU;
     }
-    const auto tail = static_cast<std::uint32_t>(9U * result);
+    return result;
+}
+
+std::uint32_t jenk_finalize_hash(std::uint32_t partial_hash) {
+    const auto tail = static_cast<std::uint32_t>(9U * partial_hash);
     return static_cast<std::uint32_t>(32769U * (((tail >> 11U) ^ tail) & 0xFFFFFFFFU));
+}
+
+std::uint32_t jenk_hash(std::string_view value, std::string_view lut) {
+    return jenk_finalize_hash(jenk_partial_hash(value, lut));
 }
 
 namespace {

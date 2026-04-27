@@ -54,6 +54,26 @@ class HashingContractTests(PytestCompat):
         self.assertEqual(_hash_value(symbol, "CMapData"), _hash_value(symbol, "cmapdata"))
         self.assertEqual(_hash_value(symbol, "ymap"), 0xCBADADE4)
 
+    def test_jenk_partial_hash_known_vectors(self) -> None:
+        from fivefury.hashing import jenk_finalize_hash, jenk_hash, jenk_partial_hash
+
+        self.assertEqual(jenk_partial_hash(""), 0)
+        self.assertEqual(jenk_partial_hash("a"), 0x00018270)
+        self.assertEqual(jenk_partial_hash("test"), 0x1100B6AC)
+        self.assertEqual(jenk_partial_hash("CMapData"), 0xC5FA439C)
+        self.assertEqual(jenk_partial_hash('"quoted"suffix'), 0xD840099E)
+        self.assertEqual(jenk_partial_hash("abc\x00def"), 0x589993F5)
+        self.assertEqual(jenk_finalize_hash(jenk_partial_hash("prop_tree_pine_01")), jenk_hash("prop_tree_pine_01"))
+
+    def test_jenk_finalize_hash_known_vectors(self) -> None:
+        from fivefury.hashing import jenk_finalize_hash
+
+        self.assertEqual(jenk_finalize_hash(0), 0)
+        self.assertEqual(jenk_finalize_hash(0x00018270), 0xCA2E9442)
+        self.assertEqual(jenk_finalize_hash(0x1100B6AC), 0x3F75CCC1)
+        self.assertEqual(jenk_finalize_hash(0xC5FA439C), 0x62CAD9F0)
+        self.assertEqual(jenk_finalize_hash(0x1C5FA439C), 0x62CAD9F0)
+
     def test_global_hash_resolver_register_and_resolve(self) -> None:
         register_symbol = resolve_symbol(
             ["fivefury.resolver", "fivefury"],

@@ -26,6 +26,8 @@ PyMethodDef module_methods[] = {
     {"crypto_decrypt_data", mod_crypto_decrypt_data, METH_VARARGS, nullptr},
     {"read_rpf_entry", mod_read_rpf_entry, METH_VARARGS, nullptr},
     {"read_rpf_entry_variants", mod_read_rpf_entry_variants, METH_VARARGS, nullptr},
+    {"jenk_partial_hash", mod_jenk_partial_hash, METH_VARARGS, nullptr},
+    {"jenk_finalize_hash", mod_jenk_finalize_hash, METH_VARARGS, nullptr},
     {"jenk_hash", mod_jenk_hash, METH_VARARGS, nullptr},
     {"scan_rpf_batch_into_index", mod_scan_rpf_batch_into_index, METH_VARARGS, nullptr},
     {"scan_rpf_into_index", mod_scan_rpf_into_index, METH_VARARGS, nullptr},

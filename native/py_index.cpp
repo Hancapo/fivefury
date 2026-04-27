@@ -336,6 +336,38 @@ PyObject* mod_index_import_state(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args) {
+    const char* value = nullptr;
+    Py_ssize_t value_len = 0;
+    PyObject* lut_object = nullptr;
+    if (!PyArg_ParseTuple(args, "s#O:jenk_partial_hash", &value, &value_len, &lut_object)) {
+        return nullptr;
+    }
+    Py_buffer lut_buffer{};
+    if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
+        return nullptr;
+    }
+    if (lut_buffer.len < 256) {
+        PyBuffer_Release(&lut_buffer);
+        PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
+        return nullptr;
+    }
+    const auto result = jenk_partial_hash(
+        std::string_view(value, static_cast<std::size_t>(value_len)),
+        std::string_view(static_cast<const char*>(lut_buffer.buf), 256)
+    );
+    PyBuffer_Release(&lut_buffer);
+    return PyLong_FromUnsignedLong(result);
+}
+
+PyObject* mod_jenk_finalize_hash(PyObject*, PyObject* args) {
+    unsigned int partial_hash = 0;
+    if (!PyArg_ParseTuple(args, "I:jenk_finalize_hash", &partial_hash)) {
+        return nullptr;
+    }
+    return PyLong_FromUnsignedLong(jenk_finalize_hash(static_cast<std::uint32_t>(partial_hash)));
+}
+
 PyObject* mod_jenk_hash(PyObject*, PyObject* args) {
     const char* value = nullptr;
     Py_ssize_t value_len = 0;

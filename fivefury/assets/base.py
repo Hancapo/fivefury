@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import ClassVar, Iterator
 
 from ..binary import u16 as _u16, u32 as _u32, u64 as _u64
-from ..common import ByteSource, read_source_bytes
+from ..common import ByteSource
 from ..gamefile import GameFileType, guess_game_file_type
 from ..resource import checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections
 from ..ytd import Ytd, read_embedded_texture_dictionary

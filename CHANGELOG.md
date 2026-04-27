@@ -7,6 +7,29 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- `Gxt2` and `Gxt2Entry` helpers for reading, editing, writing, and text-exporting `.gxt2` localization tables, including hash-key lookup, mapping-style mutation, sorted binary output, and simple `key = text` text files.
+- Initial `.awc` support as a dedicated `fivefury.awc` package, with stream/chunk structures, codec/chunk enums, RSXXTEA encryption helpers, PCM WAV helpers, ADPCM decoding, and `read_awc`/`build_awc_bytes`/`save_awc` entry points.
+- Shared `fivefury.common` helpers for source-byte loading, hash coercion, clip-short-name normalization, and flexible integer enums used across multiple formats.
+- Public exports for the new AWC, GXT2, cache, CUT, YCD, YDR, YTYP, and bounds APIs from the package facade.
+
+### Changed
+- `jenk_partial_hash` and `jenk_finalize_hash` now run through the native C++ backend while preserving the previous quote and NUL termination semantics used by cutscene `AnimStreamingBase` hashes.
+- Split the large AWC implementation into focused modules for constants, crypto, audio conversion, binary I/O, and data structures.
+- Consolidated repeated byte-source, hash, clip-name, enum, YDR parameter, YCD channel, and bounds math helpers so format readers/writers share the same behavior instead of carrying local copies.
+- Tightened public module exports in `fivefury`, `fivefury.cut.scene`, `fivefury.meta`, and `fivefury.rpf`, replacing broad/internal reexports with explicit API surfaces.
+- Updated the high-level `YCD` cutscene builder tests and behavior around long skeletal/object clips to use the vanilla cutscene sequence frame limit consistently.
+- Simplified cleanup paths across cache, crypto, CUT, YCD, YDD, YDR, YMAP, YND, YNV, and YTYP modules by removing dead imports, redundant wrappers, and unnecessary local safeguards.
+
+### Fixed
+- `GameFileCache.kind_counts` and kind-indexed views now count logical file types derived from paths, so extension-backed resources such as `.cut` and `.ycd` inside RPF archives are reported under their explicit `GameFileType`.
+- Root package exports now include the recently added high-level APIs that were importable from submodules but missing from `fivefury.__all__`.
+- `YDR` reader compatibility on Python versions without PEP 695 generic function syntax by replacing the inline generic helper syntax with a normal `TypeVar`.
+- Windows crypto test coverage for the AES decryptor factory by preserving the expected internal decryptor export.
+
+### Performance
+- Cutscene authoring and validation paths that calculate partial/final JOAAT hashes now avoid Python hash loops and use the same compiled native backend as full `jenk_hash`.
+
 ## [0.1.48]
 
 ### Added
