@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from fivefury.hashing import jenk_hash, jenk_partial_hash
+from fivefury.cut.events import CUT_EVENT_ID_TO_NAME, get_cut_event_spec
 from fivefury import (
     CutCascadeShadowPayload,
     CutDecalPayload,
@@ -14,6 +15,7 @@ from fivefury import (
     CutFinalNamePayload,
     CutHashFloatPayload,
     CutEventType,
+    CutLoadScenePayload,
     CutLightFlag,
     CutLightProperty,
     CutLightType,
@@ -244,7 +246,7 @@ def test_cut_scene_builder_propagates_relocation_offset() -> None:
     load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
 
     assert root["vOffset"] == (10.0, 20.0, 100.0)
-    assert root["vTriggerOffset"] == (10.0, 20.0, 100.0)
+    assert root["vTriggerOffset"] == (0.0, 0.0, 0.0)
     assert root["concatDataList"][0].fields["vOffset"] == (10.0, 20.0, 100.0)
     assert load_scene_args.fields["vOffset"] == (10.0, 20.0, 100.0)
 
@@ -292,8 +294,8 @@ def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
 
     assert [event.fields["iEventId"] for event in cut.load_events] == [
         int(CutEventType.LOAD_SCENE),
-        int(CutEventType.LOAD_ANIM_DICT),
         int(CutEventType.LOAD_MODELS),
+        int(CutEventType.LOAD_ANIM_DICT),
     ]
 
 
@@ -717,3 +719,28 @@ def test_cut_prop_runtime_source_can_disable_type_file_inference() -> None:
 
     assert prop.model_name == "prop_npc_phone"
     assert prop.type_file is None
+
+
+def test_cut_all_event_ids_have_serializable_specs() -> None:
+    scene = CutScene.create(scene_name="all_events_smoke", duration=1.0)
+    scene.add_asset_manager()
+    scene.add_animation_manager()
+    scene.add_camera("camera")
+    scene.add_fade("fade")
+    scene.add_light("light")
+    scene.add_object("subtitle", name="subtitle")
+    scene.add_prop("prop", model_name="prop")
+
+    missing_specs = [name for name in CUT_EVENT_ID_TO_NAME.values() if get_cut_event_spec(name) is None]
+    assert missing_specs == []
+
+    for name in CUT_EVENT_ID_TO_NAME.values():
+        if name == "load_scene":
+            scene.load_scene(0.0, CutLoadScenePayload("all_events_smoke"))
+        elif name == "unload_scene":
+            scene.unload_scene(0.0, CutLoadScenePayload("all_events_smoke"))
+        else:
+            scene.create_event(name, start=0.0)
+
+    summary = read_cut(scene.to_bytes()).summary()
+    assert summary.load_event_count + summary.event_count == len(CUT_EVENT_ID_TO_NAME)

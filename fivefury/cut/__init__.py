@@ -26,6 +26,7 @@ from .payloads import (
     CutHashFloatPayload,
     CutLoadScenePayload,
     CutNamePayload,
+    CutObjectNamePayload,
     CutObjectTargetPayload,
     CutObjectIdListPayload,
     CutObjectVariationPayload,
@@ -53,13 +54,17 @@ from .scene import (
     CutTypeFileStrategy,
     CutScene,
     CutSubtitle,
+    CutSubtitleCue,
+    CutSubtitleTrack,
     CutTimelineEvent,
     CutTrack,
     CutVehicle,
+    build_subtitle_gxt2,
     cut_to_scene,
     read_cut_scene,
     read_cutxml_scene,
     scene_to_cut,
+    subtitle_cues_from_text,
 )
 from .write import build_cut_bytes, save_cut
 from .xml import read_cutxml
@@ -67,6 +72,7 @@ from .xml import read_cutxml
 __all__ = [
     "analyze_cut",
     "build_cut_bytes",
+    "build_subtitle_gxt2",
     "CutAssetManager",
     "CutAnimationManager",
     "CutAnimationDictPayload",
@@ -99,6 +105,7 @@ __all__ = [
     "CutLightProperty",
     "CutLightType",
     "CutNode",
+    "CutObjectNamePayload",
     "CutObjectTargetPayload",
     "CutOverlay",
     "CutPed",
@@ -115,6 +122,8 @@ __all__ = [
     "CutObjectIdListPayload",
     "CutSubtitlePayload",
     "CutSubtitle",
+    "CutSubtitleCue",
+    "CutSubtitleTrack",
     "CutTimelineEvent",
     "CutTrack",
     "CutVehicle",
@@ -134,4 +143,5 @@ __all__ = [
     "read_cutxml_scene",
     "save_cut",
     "scene_to_cut",
+    "subtitle_cues_from_text",
 ]

@@ -10,6 +10,7 @@ from ..common import hash_value
 from ..gamefile import GameFileType, guess_game_file_type
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
+from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name, path_stem as _path_stem, split_archive_asset_path as _split_archive_asset_path
 
 if TYPE_CHECKING:
@@ -18,27 +19,6 @@ if TYPE_CHECKING:
 _FLAG_LOOSE = 1
 _FLAG_RESOURCE = 2
 _FLAG_ENCRYPTED = 4
-
-def _coerce_kind(value: GameFileType | str | int | None) -> GameFileType | None:
-    if value is None:
-        return None
-    if isinstance(value, GameFileType):
-        return value
-    if isinstance(value, int):
-        return GameFileType(int(value))
-    text = str(value).strip().lower()
-    if not text:
-        return None
-    if text.startswith("."):
-        text = text[1:]
-    try:
-        return GameFileType[text.upper()]
-    except KeyError:
-        try:
-            return GameFileType(text)
-        except Exception:
-            return None
-
 
 class AssetRecord:
     __slots__ = ("_cache", "id")

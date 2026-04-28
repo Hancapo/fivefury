@@ -65,6 +65,7 @@ PyObject* mod_bounds_sphere_radius_from_vertices(PyObject*, PyObject* args);
 PyObject* mod_bounds_chunk_triangles(PyObject*, PyObject* args);
 PyObject* mod_bounds_build_octants(PyObject*, PyObject* args);
 PyObject* mod_bounds_build_bvh(PyObject*, PyObject* args);
+PyObject* mod_resource_layout_sections(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;

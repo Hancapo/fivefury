@@ -4,6 +4,7 @@ import dataclasses
 import struct
 import zlib
 
+from . import _native as _native_backend
 from .binary import align
 
 RSC7_MAGIC = 0x37435352
@@ -288,174 +289,6 @@ def _coerce_resource_block_spans(blocks: list[ResourceBlockSpan] | list[tuple[in
     return spans
 
 
-def _assign_resource_section_layout(
-    blocks: list[ResourceBlockSpan],
-    *,
-    version: int,
-    max_page_count: int,
-    is_system: bool,
-) -> tuple[int, tuple[tuple[int, int, int], ...]]:
-    if not blocks:
-        return ((int(version) & 0xF) << 28, ())
-
-    sizes = [max(0, int(block.size)) for block in blocks]
-    max_page_size_mult = 16
-    max_block_size = max(sizes)
-    min_block_size = min(sizes)
-    base_shift = 0
-    base_size = 0x2000
-    while ((base_size < min_block_size) or ((base_size * max_page_size_mult) < max_block_size)) and base_shift < 0xF:
-        base_shift += 1
-        base_size = 0x2000 << base_shift
-    if (base_size * max_page_size_mult) < max_block_size:
-        raise ValueError("unable to fit the largest resource block into RSC7 page flags")
-
-    root_index = 0 if is_system and blocks else None
-    sorted_indices = [index for index in range(len(blocks)) if index != root_index]
-    sorted_indices.sort(key=lambda index: sizes[index], reverse=True)
-    if root_index is not None:
-        sorted_indices.insert(0, root_index)
-
-    while True:
-        page_counts = [0] * 5
-        page_sizes: list[list[int] | None] = [None] * 5
-        block_pages: dict[int, tuple[int, int, int]] = {}
-
-        largest_page_size_index = 0
-        largest_page_size = base_size
-        while largest_page_size < max_block_size:
-            largest_page_size_index += 1
-            largest_page_size *= 2
-
-        for sorted_position, block_index in enumerate(sorted_indices):
-            block_size = sizes[block_index]
-            if sorted_position == 0:
-                page_sizes[largest_page_size_index] = [block_size]
-                block_pages[block_index] = (largest_page_size_index, 0, 0)
-                continue
-
-            page_size_index = 0
-            page_size = base_size
-            while (block_size > page_size) and (page_size_index < largest_page_size_index):
-                page_size_index += 1
-                page_size *= 2
-
-            found = False
-            test_page_size_index = page_size_index
-            test_page_size = page_size
-            while not found and test_page_size_index <= largest_page_size_index:
-                pages = page_sizes[test_page_size_index]
-                if pages is not None:
-                    for page_index, used_size in enumerate(pages):
-                        candidate_offset = used_size + _rsc7_block_pad(used_size)
-                        candidate_size = candidate_offset + block_size
-                        if candidate_size <= test_page_size:
-                            pages[page_index] = candidate_size
-                            block_pages[block_index] = (test_page_size_index, page_index, candidate_offset)
-                            found = True
-                            break
-                test_page_size_index += 1
-                test_page_size *= 2
-            if found:
-                continue
-
-            pages = page_sizes[page_size_index]
-            if pages is None:
-                pages = []
-                page_sizes[page_size_index] = pages
-            page_index = len(pages)
-            pages.append(block_size)
-            block_pages[block_index] = (page_size_index, page_index, 0)
-
-        total_page_count = 0
-        for index, pages in enumerate(page_sizes):
-            page_count = len(pages) if pages is not None else 0
-            page_counts[index] = page_count
-            total_page_count += page_count
-        test_ok = total_page_count <= max_page_count
-        if page_counts[0] > 0x7F:
-            test_ok = False
-        if page_counts[1] > 0x3F:
-            test_ok = False
-        if page_counts[2] > 0xF:
-            test_ok = False
-        if page_counts[3] > 0x3:
-            test_ok = False
-        if page_counts[4] > 0x1:
-            test_ok = False
-        if not test_ok:
-            if base_shift >= 0xF:
-                raise ValueError("unable to pack resource blocks into RSC7 page flags")
-            base_shift += 1
-            base_size = 0x2000 << base_shift
-            continue
-
-        page_offset = 0
-        page_offsets = [0] * 5
-        for index in range(4, -1, -1):
-            page_offsets[index] = page_offset
-            page_offset += (base_size * (1 << index)) * page_counts[index]
-
-        offset_map: list[tuple[int, int, int]] = []
-        for block_index, block in enumerate(blocks):
-            page_size_index, page_index, offset = block_pages[block_index]
-            page_size = base_size * (1 << page_size_index)
-            new_offset = page_offsets[page_size_index] + (page_size * page_index) + offset
-            offset_map.append((int(block.offset), int(block.size), int(new_offset)))
-
-        flags = get_resource_flags_from_page_counts(
-            [page_counts[4], page_counts[3], page_counts[2], page_counts[1], page_counts[0], 0, 0, 0, 0],
-            version,
-            base_shift=base_shift,
-        )
-        return flags, tuple(offset_map)
-
-
-def _remap_resource_pointer(value: int, mappings: tuple[tuple[int, tuple[tuple[int, int, int], ...]], ...]) -> int:
-    raw = int(value)
-    if raw == 0:
-        return raw
-    for base, offset_map in mappings:
-        relative = raw - base
-        if relative < 0:
-            continue
-        for old_offset, size, new_offset in offset_map:
-            if old_offset <= relative < old_offset + size:
-                return base + new_offset + (relative - old_offset)
-    return raw
-
-
-def _rewrite_resource_pointers(
-    data: bytes,
-    blocks: list[ResourceBlockSpan],
-    mappings: tuple[tuple[int, tuple[tuple[int, int, int], ...]], ...],
-) -> bytes:
-    output = bytearray(data)
-    for block in blocks:
-        if not block.relocate_pointers:
-            continue
-        start = align(int(block.offset), 8)
-        end = int(block.offset) + int(block.size)
-        for offset in range(start, max(start, end - 7), 8):
-            value = struct.unpack_from("<Q", output, offset)[0]
-            remapped = _remap_resource_pointer(value, mappings)
-            if remapped != value:
-                struct.pack_into("<Q", output, offset, remapped)
-    return bytes(output)
-
-
-def _apply_resource_section_layout(
-    data: bytes,
-    blocks: list[ResourceBlockSpan],
-    flags: int,
-    offset_map: tuple[tuple[int, int, int], ...],
-) -> bytes:
-    output = bytearray(get_resource_size_from_flags(flags))
-    for old_offset, size, new_offset in offset_map:
-        output[new_offset : new_offset + size] = data[old_offset : old_offset + size]
-    return bytes(output)
-
-
 def layout_resource_sections(
     system_data: bytes,
     system_blocks: list[ResourceBlockSpan] | list[tuple[int, int]] | list[tuple[int, int, bool]],
@@ -469,30 +302,15 @@ def layout_resource_sections(
 ) -> tuple[bytes, bytes, int, int]:
     system_spans = _coerce_resource_block_spans(system_blocks)
     graphics_spans = _coerce_resource_block_spans(list(graphics_blocks or []))
-
-    system_flags, system_map = _assign_resource_section_layout(
-        system_spans,
-        version=(int(version) >> 4) & 0xF,
+    return _native_backend.resource_layout_sections(
+        bytes(system_data),
+        [(span.offset, span.size, span.relocate_pointers) for span in system_spans],
+        bytes(graphics_data),
+        [(span.offset, span.size, span.relocate_pointers) for span in graphics_spans],
+        version=version,
         max_page_count=max_page_count,
-        is_system=True,
-    )
-    system_page_count = get_resource_total_page_count(system_flags)
-    graphics_flags, graphics_map = _assign_resource_section_layout(
-        graphics_spans,
-        version=int(version) & 0xF,
-        max_page_count=max(0, int(max_page_count) - system_page_count),
-        is_system=False,
-    )
-
-    mappings = ((int(virtual_base), system_map), (int(physical_base), graphics_map))
-    relocated_system = _rewrite_resource_pointers(bytes(system_data), system_spans, mappings)
-    relocated_graphics = _rewrite_resource_pointers(bytes(graphics_data), graphics_spans, mappings)
-
-    return (
-        _apply_resource_section_layout(relocated_system, system_spans, system_flags, system_map),
-        _apply_resource_section_layout(relocated_graphics, graphics_spans, graphics_flags, graphics_map),
-        system_flags,
-        graphics_flags,
+        virtual_base=virtual_base,
+        physical_base=physical_base,
     )
 
 

@@ -422,13 +422,13 @@ _SUPPORTED_EVENT_SPECS = {
         name="play_particle_effect",
         event_id=CUT_EVENT_NAME_TO_ID["play_particle_effect"],
         enum_name=CUT_EVENT_ID_TO_ENUM_NAME[CUT_EVENT_NAME_TO_ID["play_particle_effect"]],
-        args_type_name="rage__cutfPlayParticleEffectEventArgs",
+        args_type_name="hash_0D47CF77",
         default_target_role="particle_fx",
         default_args={
-            "vInitialBoneRotation": (0.0, 0.0, 0.0, 1.0),
-            "vInitialBoneOffset": (0.0, 0.0, 0.0),
-            "iAttachParentId": -1,
-            "iAttachBoneHash": 0,
+            "vParticleInitialBoneRotation": (0.0, 0.0, 0.0, 1.0),
+            "vParticleInitialBoneOffset": (0.0, 0.0, 0.0),
+            "hash_33B52A22": -1,
+            "hash_EAA4CB67": 0,
         },
         behavior=CutEventBehavior.STATE,
     ),
@@ -547,6 +547,223 @@ _SUPPORTED_EVENT_SPECS = {
         behavior=CutEventBehavior.STATE,
     ),
 }
+
+
+def _event_spec(
+    name: str,
+    *,
+    args_type_name: str | None = None,
+    default_target_role: str | None = None,
+    default_args: dict[str, Any] | None = None,
+    is_load_event: bool = False,
+    behavior: CutEventBehavior = CutEventBehavior.STATE,
+) -> CutEventSpec:
+    event_id = CUT_EVENT_NAME_TO_ID[name]
+    return CutEventSpec(
+        name=name,
+        event_id=event_id,
+        enum_name=CUT_EVENT_ID_TO_ENUM_NAME[event_id],
+        args_type_name=args_type_name,
+        default_target_role=default_target_role,
+        default_args=dict(default_args or {}),
+        is_load_event=is_load_event,
+        behavior=behavior,
+    )
+
+
+_SUPPORTED_EVENT_SPECS.update(
+    {
+        "unload_scene": _event_spec(
+            "unload_scene",
+            args_type_name="rage__cutfLoadSceneEventArgs",
+            default_target_role="asset_manager",
+            default_args={"fStartTime": 0.0},
+            is_load_event=True,
+        ),
+        "fixup_objects": _event_spec(
+            "fixup_objects",
+            args_type_name="rage__cutfObjectIdListEventArgs",
+            default_target_role="asset_manager",
+            default_args={"iObjectIdList": []},
+        ),
+        "revert_fixup_objects": _event_spec(
+            "revert_fixup_objects",
+            args_type_name="rage__cutfObjectIdListEventArgs",
+            default_target_role="asset_manager",
+            default_args={"iObjectIdList": []},
+        ),
+        "set_attachment": _event_spec(
+            "set_attachment",
+            args_type_name="rage__cutfObjectIdNameEventArgs",
+            default_args={"iObjectId": -1, "cName": ""},
+        ),
+        "activate_blocking_bounds": _event_spec(
+            "activate_blocking_bounds",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "deactivate_blocking_bounds": _event_spec(
+            "deactivate_blocking_bounds",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "fix_fixup_object": _event_spec(
+            "fix_fixup_object",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "revert_fixup_object": _event_spec(
+            "revert_fixup_object",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "add_removal_bounds": _event_spec(
+            "add_removal_bounds",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "remove_removal_bounds": _event_spec(
+            "remove_removal_bounds",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "activate_removal_bounds": _event_spec(
+            "activate_removal_bounds",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "deactivate_removal_bounds": _event_spec(
+            "deactivate_removal_bounds",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_args={"iObjectId": -1},
+        ),
+        "load_rayfire": _event_spec(
+            "load_rayfire",
+            args_type_name="rage__cutfObjectIdNameEventArgs",
+            default_target_role="asset_manager",
+            default_args={"iObjectId": -1, "cName": ""},
+        ),
+        "unload_rayfire": _event_spec(
+            "unload_rayfire",
+            args_type_name="rage__cutfObjectIdNameEventArgs",
+            default_target_role="asset_manager",
+            default_args={"iObjectId": -1, "cName": ""},
+        ),
+        "catchup_camera": _event_spec(
+            "catchup_camera",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_target_role="camera",
+            default_args={"iObjectId": -1},
+        ),
+        "cascade_shadows_enable_entity_tracker": _event_spec(
+            "cascade_shadows_enable_entity_tracker",
+            args_type_name="hash_94061376",
+            default_target_role="camera",
+            default_args={"hash_0C74B449": True},
+        ),
+        "cascade_shadows_set_world_height_update": _event_spec(
+            "cascade_shadows_set_world_height_update",
+            args_type_name="hash_94061376",
+            default_target_role="camera",
+            default_args={"hash_0C74B449": True},
+        ),
+        "cascade_shadows_set_receiver_height_update": _event_spec(
+            "cascade_shadows_set_receiver_height_update",
+            args_type_name="hash_94061376",
+            default_target_role="camera",
+            default_args={"hash_0C74B449": True},
+        ),
+        "cascade_shadows_set_aircraft_mode": _event_spec(
+            "cascade_shadows_set_aircraft_mode",
+            args_type_name="hash_94061376",
+            default_target_role="camera",
+            default_args={"hash_0C74B449": True},
+        ),
+        "cascade_shadows_set_dynamic_depth_mode": _event_spec(
+            "cascade_shadows_set_dynamic_depth_mode",
+            args_type_name="hash_94061376",
+            default_target_role="camera",
+            default_args={"hash_0C74B449": True},
+        ),
+        "cascade_shadows_set_fly_camera_mode": _event_spec(
+            "cascade_shadows_set_fly_camera_mode",
+            args_type_name="hash_94061376",
+            default_target_role="camera",
+            default_args={"hash_0C74B449": True},
+        ),
+        "cascade_shadows_set_cascade_bounds_hfov": _event_spec(
+            "cascade_shadows_set_cascade_bounds_hfov",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_cascade_bounds_vfov": _event_spec(
+            "cascade_shadows_set_cascade_bounds_vfov",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_cascade_bounds_scale": _event_spec(
+            "cascade_shadows_set_cascade_bounds_scale",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_entity_tracker_scale": _event_spec(
+            "cascade_shadows_set_entity_tracker_scale",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_split_z_exp_weight": _event_spec(
+            "cascade_shadows_set_split_z_exp_weight",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_dither_radius_scale": _event_spec(
+            "cascade_shadows_set_dither_radius_scale",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_world_height_minmax": _event_spec(
+            "cascade_shadows_set_world_height_minmax",
+            default_target_role="camera",
+        ),
+        "cascade_shadows_set_receiver_height_minmax": _event_spec(
+            "cascade_shadows_set_receiver_height_minmax",
+            default_target_role="camera",
+        ),
+        "cascade_shadows_set_depth_bias": _event_spec(
+            "cascade_shadows_set_depth_bias",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_slope_bias": _event_spec(
+            "cascade_shadows_set_slope_bias",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "cascade_shadows_set_shadow_sample_type": _event_spec(
+            "cascade_shadows_set_shadow_sample_type",
+            args_type_name="hash_5FF00EA5",
+            default_target_role="camera",
+            default_args={"hash_0BD8B46C": 0.0},
+        ),
+        "reset_adaption": _event_spec("reset_adaption"),
+        "start_replay_record": _event_spec("start_replay_record", args_type_name=None),
+        "stop_replay_record": _event_spec("stop_replay_record", args_type_name=None),
+        "first_person_catchup_camera": _event_spec(
+            "first_person_catchup_camera",
+            args_type_name="rage__cutfObjectIdEventArgs",
+            default_target_role="camera",
+            default_args={"iObjectId": -1},
+        ),
+    }
+)
 
 
 def get_cut_event_name(event_id: int | None) -> str | None:

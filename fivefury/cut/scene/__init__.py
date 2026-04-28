@@ -21,6 +21,7 @@ from .bindings import (
     CutVehicle,
 )
 from .core import CutScene, cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
+from .subtitles import CutSubtitleCue, CutSubtitleTrack, build_subtitle_gxt2, subtitle_cues_from_text
 from .timeline import CutTimelineEvent, CutTrack
 from ..lights import (
     CutLightFlag,
@@ -54,10 +55,13 @@ __all__ = [
     "CutPropAnimationPreset",
     "CutScene",
     "CutSubtitle",
+    "CutSubtitleCue",
+    "CutSubtitleTrack",
     "CutTimelineEvent",
     "CutTrack",
     "CutTypeFileStrategy",
     "CutVehicle",
+    "build_subtitle_gxt2",
     "cut_light_fields_from_ydr_light",
     "cut_light_flags_from_ydr_flags",
     "cut_light_property_from_ydr_flags",
@@ -67,4 +71,5 @@ __all__ = [
     "read_cut_scene",
     "read_cutxml_scene",
     "scene_to_cut",
+    "subtitle_cues_from_text",
 ]

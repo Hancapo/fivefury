@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
-from ...hashing import jenk_hash
+from ...common import hash_value
 from ..model import CutHashedString, CutNode, CutResolvedEvent
 from ..names import CUT_NAME_VALUES
 from ..payloads import CutEventPayload
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .bindings import CutBinding
 
 
 _OBJECT_ROLE_MAP = {
@@ -75,11 +78,11 @@ def _coerce_name(value: Any) -> str | None:
 
 def _hashed_string(text: str | None) -> CutHashedString:
     value = text or ""
-    return CutHashedString(hash=jenk_hash(value) if value else 0, text=value or None)
+    return CutHashedString(hash=hash_value(value) if value else 0, text=value or None)
 
 
 def _node_type_hash(type_name: str, type_hash: int | None = None) -> int:
-    return int(type_hash if type_hash is not None else CUT_NAME_VALUES.get(type_name, jenk_hash(type_name)))
+    return int(type_hash if type_hash is not None else CUT_NAME_VALUES.get(type_name, hash_value(type_name)))
 
 
 def _object_name_field(type_name: str) -> str:
@@ -151,13 +154,13 @@ def _freeze_value(value: Any) -> Any:
     return value
 
 
-def _coerce_object_id(value: "CutBinding | int") -> int:
+def _coerce_object_id(value: CutBinding | int) -> int:
     from .bindings import CutBinding
 
     return value.object_id if isinstance(value, CutBinding) else int(value)
 
 
-def _coerce_object_ids(values: Iterable["CutBinding | int"]) -> list[int]:
+def _coerce_object_ids(values: Iterable[CutBinding | int]) -> list[int]:
     return [_coerce_object_id(value) for value in values]
 
 

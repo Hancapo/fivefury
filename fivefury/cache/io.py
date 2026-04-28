@@ -54,6 +54,10 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
     ext = Path(path).suffix.lower()
     if ext == ".ymap":
         return _decode_dynamic(data, module_name="fivefury.ymap", attribute="read_ymap", kind=GameFileType.YMAP)
+    if ext == ".ymf":
+        return _decode_dynamic(data, module_name="fivefury.ymf", attribute="read_ymf", kind=GameFileType.YMF)
+    if ext == ".ymt":
+        return _decode_dynamic(data, module_name="fivefury.ymt", attribute="read_ymt", kind=GameFileType.YMT)
     if ext == ".ytyp":
         return _decode_dynamic(data, module_name="fivefury.ytyp", attribute="read_ytyp", kind=GameFileType.YTYP)
 

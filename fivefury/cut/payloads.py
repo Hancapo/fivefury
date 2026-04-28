@@ -122,6 +122,22 @@ class CutObjectTargetPayload(CutEventPayload):
 
 
 @dataclass(slots=True)
+class CutObjectNamePayload(CutEventPayload):
+    object_id: int
+    name: str
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "iObjectId": int(self.object_id),
+            "cName": self.name,
+        }
+
+    @property
+    def event_label(self) -> str | None:
+        return self.name
+
+
+@dataclass(slots=True)
 class CutSubtitlePayload(CutEventPayload):
     text: str
     duration: float
@@ -234,10 +250,10 @@ class CutPlayParticleEffectPayload(CutEventPayload):
 
     def to_fields(self) -> dict[str, Any]:
         return {
-            "vInitialBoneRotation": self.initial_bone_rotation,
-            "vInitialBoneOffset": self.initial_bone_offset,
-            "iAttachParentId": int(self.attach_parent_id),
-            "iAttachBoneHash": int(self.attach_bone_hash),
+            "vParticleInitialBoneRotation": self.initial_bone_rotation,
+            "vParticleInitialBoneOffset": self.initial_bone_offset,
+            "hash_33B52A22": int(self.attach_parent_id),
+            "hash_EAA4CB67": int(self.attach_bone_hash),
         }
 
 

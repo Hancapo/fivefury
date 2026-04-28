@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..hashing import jenk_hash
-from .names import ARRAY_INFO_HASH, CUT_NAME_VALUES
-from .pso import (
+from ..common import hash_value
+from ..pso import (
     PSCH,
     PsoDataTypeArray,
     PsoDataTypeBool,
@@ -17,13 +16,15 @@ from .pso import (
     PsoDataTypeUInt,
     PsoDataTypeSInt,
     PsoDataTypeUShort,
-    _PsoEntry,
-    _PsoStruct,
+    PsoEntry as _PsoEntry,
+    PsoStruct as _PsoStruct,
 )
+from ..pso.schema import serialize_psch as _serialize_psch
+from .names import ARRAY_INFO_HASH, CUT_NAME_VALUES
 
 
 def _entry(name: str | int, type_id: int, subtype: int, data_offset: int, reference_key: int = 0) -> _PsoEntry:
-    name_hash = ARRAY_INFO_HASH if name == "ARRAYINFO" else int(name if isinstance(name, int) else CUT_NAME_VALUES.get(name, jenk_hash(name)))
+    name_hash = ARRAY_INFO_HASH if name == "ARRAYINFO" else int(name if isinstance(name, int) else CUT_NAME_VALUES.get(name, hash_value(name)))
     return _PsoEntry(
         name_hash=name_hash,
         type_id=type_id,
@@ -34,7 +35,7 @@ def _entry(name: str | int, type_id: int, subtype: int, data_offset: int, refere
 
 
 def _struct(type_name: str, length: int, *entries: _PsoEntry) -> tuple[int, _PsoStruct]:
-    type_hash = CUT_NAME_VALUES.get(type_name, jenk_hash(type_name))
+    type_hash = CUT_NAME_VALUES.get(type_name, hash_value(type_name))
     return type_hash, _PsoStruct(name_hash=type_hash, length=length, entries=list(entries))
 
 
@@ -343,6 +344,16 @@ _BUILTIN_STRUCT_ITEMS = [
         _entry("bValue", PsoDataTypeBool, 0, 32),
     ),
     _struct(
+        "rage__cutfObjectVariationEventArgs",
+        56,
+        _entry("attributeList", PsoDataTypeStructure, 0, 12, CUT_NAME_VALUES["rage__parAttributeList"]),
+        _entry("cutfAttributes", PsoDataTypeStructure, 4, 24),
+        _entry("iObjectId", PsoDataTypeSInt, 0, 32),
+        _entry("iComponent", PsoDataTypeSInt, 0, 40),
+        _entry("iDrawable", PsoDataTypeSInt, 0, 44),
+        _entry("iTexture", PsoDataTypeSInt, 0, 48),
+    ),
+    _struct(
         "rage__cutfLoadSceneEventArgs",
         80,
         _entry("attributeList", PsoDataTypeStructure, 0, 12, CUT_NAME_VALUES["rage__parAttributeList"]),
@@ -385,6 +396,16 @@ _BUILTIN_STRUCT_ITEMS = [
         _entry("fHeight", PsoDataTypeFloat, 0, 68),
         _entry("Colour", PsoDataTypeUInt, 0, 72),
         _entry("fLifeTime", PsoDataTypeFloat, 0, 76),
+    ),
+    _struct_hash(
+        CUT_NAME_VALUES["hash_0D47CF77"],
+        80,
+        _entry("attributeList", PsoDataTypeStructure, 0, 12, CUT_NAME_VALUES["rage__parAttributeList"]),
+        _entry("cutfAttributes", PsoDataTypeStructure, 4, 24),
+        _entry("vParticleInitialBoneRotation", PsoDataTypeFloat4, 0, 32),
+        _entry("vParticleInitialBoneOffset", PsoDataTypeFloat3, 0, 48),
+        _entry("hash_33B52A22", PsoDataTypeSInt, 0, 64),
+        _entry("hash_EAA4CB67", PsoDataTypeUShort, 0, 68),
     ),
     _struct(
         "rage__cutfCameraCutCharacterLightParams",
@@ -495,40 +516,6 @@ _BUILTIN_STRUCT_ITEMS = [
 
 BUILTIN_CUT_STRUCTS: dict[int, _PsoStruct] = {type_hash: struct_info for type_hash, struct_info in _BUILTIN_STRUCT_ITEMS}
 BUILTIN_CUT_ROOT_TYPE_HASH = CUT_NAME_VALUES["rage__cutfCutsceneFile2"]
-
-
-def _serialize_psch(structs: dict[int, _PsoStruct]) -> bytes:
-    items = list(structs.items())
-    header_size = 12 + len(items) * 8
-    offset = header_size
-    chunks: list[bytes] = []
-    indexes: list[tuple[int, int]] = []
-    for type_hash, struct_info in items:
-        chunk = bytearray()
-        chunk.extend(b"\x00\x00")
-        chunk.extend(int(len(struct_info.entries)).to_bytes(2, "big", signed=False))
-        chunk.extend(int(struct_info.length).to_bytes(4, "big", signed=True))
-        chunk.extend(b"\x00\x00\x00\x00")
-        for entry in struct_info.entries:
-            chunk.extend(int(entry.name_hash).to_bytes(4, "big", signed=False))
-            chunk.append(int(entry.type_id) & 0xFF)
-            chunk.append(int(entry.subtype) & 0xFF)
-            chunk.extend(int(entry.data_offset).to_bytes(2, "big", signed=False))
-            chunk.extend(int(entry.reference_key & 0xFFFFFFFF).to_bytes(4, "big", signed=False))
-        indexes.append((type_hash, offset))
-        chunks.append(bytes(chunk))
-        offset += len(chunk)
-
-    payload = bytearray()
-    payload.extend(b"PSCH")
-    payload.extend((offset).to_bytes(4, "big", signed=False))
-    payload.extend(len(items).to_bytes(4, "big", signed=False))
-    for type_hash, rel_offset in indexes:
-        payload.extend(int(type_hash).to_bytes(4, "big", signed=False))
-        payload.extend(int(rel_offset).to_bytes(4, "big", signed=True))
-    for chunk in chunks:
-        payload.extend(chunk)
-    return bytes(payload)
 
 
 def builtin_cut_template() -> dict[str, Any]:

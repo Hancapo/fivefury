@@ -271,6 +271,30 @@ else:
     _bounds_build_bvh = None
 
 
+def resource_layout_sections(
+    system_data: bytes | bytearray | memoryview,
+    system_blocks: list[tuple[int, int, bool]],
+    graphics_data: bytes | bytearray | memoryview,
+    graphics_blocks: list[tuple[int, int, bool]],
+    *,
+    version: int,
+    max_page_count: int,
+    virtual_base: int,
+    physical_base: int,
+) -> tuple[bytes, bytes, int, int]:
+    system, graphics, system_flags, graphics_flags = _ffi.resource_layout_sections(
+        bytes(system_data),
+        [(int(offset), int(size), bool(relocate)) for offset, size, relocate in system_blocks],
+        bytes(graphics_data),
+        [(int(offset), int(size), bool(relocate)) for offset, size, relocate in graphics_blocks],
+        int(version),
+        int(max_page_count),
+        int(virtual_base),
+        int(physical_base),
+    )
+    return bytes(system), bytes(graphics), int(system_flags), int(graphics_flags)
+
+
 def scan_rpf_into_index(
     index: CompactIndex,
     path: str,
@@ -329,6 +353,7 @@ __all__ = [
     "NativeCryptoContext",
     "read_rpf_entry",
     "read_rpf_entry_variants",
+    "resource_layout_sections",
     "scan_rpf_batch_into_index",
     "scan_rpf_into_index",
 ]

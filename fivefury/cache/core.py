@@ -8,6 +8,7 @@ from typing import Any, Iterator
 
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
+from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name, path_stem as _path_stem
 from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes
 from .views import (
@@ -35,26 +36,6 @@ except ImportError as exc:
 _FLAG_LOOSE = 1
 _FLAG_RESOURCE = 2
 _FLAG_ENCRYPTED = 4
-
-def _coerce_kind(value: GameFileType | str | int | None) -> GameFileType | None:
-    if value is None:
-        return None
-    if isinstance(value, GameFileType):
-        return value
-    if isinstance(value, int):
-        return GameFileType(int(value))
-    text = str(value).strip().lower()
-    if not text:
-        return None
-    if text.startswith("."):
-        return guess_game_file_type(f"x{text}", GameFileType.UNKNOWN)
-    if text in GameFileType.__members__:
-        return GameFileType[text.upper()]
-    try:
-        return GameFileType[text.upper()]
-    except KeyError:
-        guessed = guess_game_file_type(f"x.{text}", GameFileType.UNKNOWN)
-        return guessed if guessed is not GameFileType.UNKNOWN else None
 
 def _maybe_hash_name(value: str) -> tuple[int, int]:
     lower_name = _path_name(value).lower()
@@ -371,10 +352,11 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         for asset_id in ids:
             if asset_id in seen or asset_id < 0 or asset_id >= self.asset_count:
                 continue
-            if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
+            asset = self._record_from_id(asset_id)
+            if kind_value is not None and asset.kind is not kind_value:
                 continue
             seen.add(asset_id)
-            yield self._record_from_id(asset_id)
+            yield asset
 
     def iter_assets(self, kind: GameFileType | str | int | None = None) -> Iterator[AssetRecord]:
         kind_value = _coerce_kind(kind)
@@ -382,8 +364,10 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             for asset_id in range(self.asset_count):
                 yield self._record_from_id(asset_id)
             return
-        for asset_id in self._index.find_kind_ids(int(kind_value)):
-            yield self._record_from_id(asset_id)
+        for asset_id in range(self.asset_count):
+            asset = self._record_from_id(asset_id)
+            if asset.kind is kind_value:
+                yield asset
 
     def iter_paths(self, kind: GameFileType | str | int | None = None) -> Iterator[str]:
         if kind is None:
@@ -412,10 +396,11 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         asset_id = self._index.find_path_id(_normalize_key(path))
         if asset_id is None:
             return None
+        asset = self._record_from_id(asset_id)
         kind_value = _coerce_kind(kind)
-        if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
+        if kind_value is not None and asset.kind is not kind_value:
             return None
-        return self._record_from_id(asset_id)
+        return asset
 
     def find_hash(self, value: int | MetaHash | str, *, kind: GameFileType | str | int | None = None, limit: int | None = None) -> list[AssetRecord]:
         if isinstance(value, str):
@@ -447,13 +432,14 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             for asset_id in ids:
                 if asset_id in seen or asset_id < 0 or asset_id >= self.asset_count:
                     continue
-                if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
+                asset = self._record_from_id(asset_id)
+                if kind_value is not None and asset.kind is not kind_value:
                     continue
                 path_value = self._index.get_path(asset_id)
                 if _path_name(path_value) != text and _path_stem(path_value) != stem:
                     continue
                 seen.add(asset_id)
-                result.append(self._record_from_id(asset_id))
+                result.append(asset)
                 if limit is not None and len(result) >= limit:
                     break
             if not result:
@@ -463,11 +449,12 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         result: list[AssetRecord] = []
         kind_value = _coerce_kind(kind)
         for asset_id in range(self.asset_count):
-            if kind_value is not None and GameFileType(int(self._index.get_kind(asset_id))) is not kind_value:
+            asset = self._record_from_id(asset_id)
+            if kind_value is not None and asset.kind is not kind_value:
                 continue
             path_value = self._index.get_path(asset_id)
             if lower in path_value:
-                result.append(self._record_from_id(asset_id))
+                result.append(asset)
                 if limit is not None and len(result) >= limit:
                     break
         return result

@@ -89,10 +89,25 @@ def _default_root(cut: CutFile | None) -> CutNode:
             "vOffset": (0.0, 0.0, 0.0),
             "fRotation": 0.0,
             "vTriggerOffset": (0.0, 0.0, 0.0),
+            "iRangeStart": 0,
+            "iRangeEnd": 0,
+            "iAltRangeEnd": 0,
+            "fSectionByTimeSliceDuration": 4.0,
+            "fFadeOutCutsceneDuration": 0.8,
+            "fFadeInGameDuration": 0.8,
+            "fadeInColor": 0xFF000000,
+            "iBlendOutCutsceneDuration": 0,
+            "iBlendOutCutsceneOffset": 0,
+            "fFadeOutGameDuration": 0.8,
+            "fFadeInCutsceneDuration": 0.8,
+            "fadeOutColor": 0xFF000000,
+            "DayCoCHours": 2097088,
             "pCutsceneObjects": [],
             "pCutsceneLoadEventList": [],
             "pCutsceneEventList": [],
             "pCutsceneEventArgsList": [],
+            "cameraCutList": [],
+            "sectionSplitList": [],
             "concatDataList": [],
             "discardFrameList": [],
         },
@@ -136,11 +151,11 @@ def _timeline_camera_cut_list(scene: CutScene) -> list[float]:
 def _load_event_sort_key(event: CutNode) -> tuple[float, int, int]:
     event_id = int(event.fields.get("iEventId", -1))
     # Keep loads in the same dependency order used by retail cutscene tables:
-    # scene first, animation dictionaries before the models that bind them.
+    # scene first, streamed models before the animation dictionaries that bind them.
     priority = {
         0: 0,   # load_scene
-        2: 10,  # load_anim_dict
-        6: 20,  # load_models
+        6: 10,  # load_models
+        2: 20,  # load_anim_dict
         8: 20,  # load_particle_effects
         10: 20, # load_overlays
         4: 30,  # load_audio
@@ -204,7 +219,7 @@ def _scene_offset(scene: CutScene) -> tuple[float, float, float]:
 
 
 def _trigger_offset(scene: CutScene, scene_offset: tuple[float, float, float]) -> tuple[float, float, float]:
-    return _clone_value(scene.trigger_offset) if scene.trigger_offset is not None else _clone_value(scene_offset)
+    return _clone_value(scene.trigger_offset) if scene.trigger_offset is not None else (0.0, 0.0, 0.0)
 
 
 def _normalize_load_scene_args(
@@ -323,6 +338,26 @@ def _concat_data(scene: CutScene, scene_name: str, range_start: int, range_end: 
     ]
 
 
+def _discard_frame_list(scene: CutScene, scene_name: str) -> list[CutNode]:
+    if scene.raw is not None:
+        existing = scene.raw.root.fields.get("discardFrameList")
+        if existing:
+            result = _clone_value(existing)
+            if result:
+                result[0].fields["cSceneName"] = _hashed_string(scene_name)
+            return result
+    return [
+        CutNode(
+            type_name="hash_0D200662",
+            type_hash=220202594,
+            fields={
+                "cSceneName": _hashed_string(scene_name),
+                "frames": [],
+            },
+        )
+    ]
+
+
 def scene_to_cut(scene: CutScene) -> CutFile:
     base_cut = scene.raw
     root = _default_root(base_cut)
@@ -345,6 +380,7 @@ def scene_to_cut(scene: CutScene) -> CutFile:
     root.fields["cameraCutList"] = camera_cut_list
     root.fields["sectionSplitList"] = list(scene.section_split_list or [])
     root.fields["concatDataList"] = _concat_data(scene, scene_name, range_start, range_end)
+    root.fields["discardFrameList"] = _discard_frame_list(scene, scene_name)
     object_nodes = [binding.to_node() for binding in scene.bindings]
     for node in object_nodes:
         _normalize_prop_model_node(node)

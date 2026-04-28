@@ -4,6 +4,8 @@ import struct
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, YcdUvClipBinding, Ydr, YdrCollisionStats, build_bound_from_render_geometry, load_shader_library, jenk_hash, read_ydr
 from fivefury.resource import ResourceBlockSpan, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from fivefury.ydr import build_ydr_bytes
@@ -34,10 +36,10 @@ def test_resource_section_layout_reorders_blocks_and_remaps_resource_pointers() 
         ],
         version=165,
     )
-
     assert graphics_data == b""
     assert get_resource_total_page_count(system_flags) == 1
     assert get_resource_total_page_count(graphics_flags) == 0
+    assert len(system_data) == 0x4000
     assert struct.unpack_from("<Q", system_data, 0x08)[0] == _DAT_VIRTUAL_BASE + 0x3020
     assert struct.unpack_from("<Q", system_data, 0x3020)[0] == _DAT_VIRTUAL_BASE + 0x20
     assert struct.unpack_from("<Q", system_data, 0x20)[0] == _DAT_VIRTUAL_BASE + 0x20

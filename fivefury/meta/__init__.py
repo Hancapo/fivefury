@@ -170,8 +170,8 @@ class RawStruct:
 
 
 
-from .builder import MetaBuilder, build_meta_system
-from .read import ParsedMeta, read_meta
+from .builder import MetaBuilder, build_meta_system  # noqa: E402
+from .read import ParsedMeta, read_meta  # noqa: E402
 
 @dataclasses.dataclass(slots=True)
 class Meta:
@@ -235,6 +235,9 @@ class Meta:
         return meta
 
 
+from .resource import MetaResource  # noqa: E402
+
+
 __all__ = [
     "ENUMS_BY_HASH",
     "FLOAT_XYZ_NAME_HASH",
@@ -260,6 +263,7 @@ __all__ = [
     "MetaEnumInfo",
     "MetaFieldInfo",
     "MetaPointer",
+    "MetaResource",
     "MetaStructInfo",
     "ParsedMeta",
     "RawStruct",

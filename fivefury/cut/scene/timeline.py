@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ...hashing import jenk_hash
+from ...common import hash_value
 from ..events import CutEventBehavior, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
 from ..model import CutHashedString, CutNode, CutResolvedEvent
 from ..payloads import CutEventPayload
@@ -192,13 +192,13 @@ class CutTimelineEvent:
                     if _uses_plain_cname(args.type_name):
                         args.fields["cName"] = self.label
                     else:
-                        args.fields["cName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.label), text=self.label)
+                        args.fields["cName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.label), text=self.label)
                 elif "cameraCutHashName" in args.fields:
                     current = args.fields["cameraCutHashName"]
-                    args.fields["cameraCutHashName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.label), text=self.label)
+                    args.fields["cameraCutHashName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.label), text=self.label)
                 elif "cameraCutHashTag" in args.fields:
                     current = args.fields["cameraCutHashTag"]
-                    args.fields["cameraCutHashTag"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.label), text=self.label)
+                    args.fields["cameraCutHashTag"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.label), text=self.label)
             if self.duration is not None:
                 if "fSubtitleDuration" in args.fields:
                     args.fields["fSubtitleDuration"] = float(self.duration)

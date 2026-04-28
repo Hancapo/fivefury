@@ -52,6 +52,8 @@ class GameFileType(IntEnum):
 
 _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".ymap": GameFileType.YMAP,
+    ".ymf": GameFileType.YMF,
+    ".ymt": GameFileType.YMT,
     ".ytyp": GameFileType.YTYP,
     ".ytd": GameFileType.YTD,
     ".ydr": GameFileType.YDR,

@@ -7,16 +7,24 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-28
+
 ### Added
+- High-level cutscene subtitle authoring via `CutSubtitleCue`, `CutSubtitleTrack`, `subtitle_cues_from_text`, `build_subtitle_gxt2`, and `CutScene.install_subtitles`, generating `SHOW_SUBTITLE` events, optional `LOAD_SUBTITLES`/`UNLOAD_SUBTITLES` streaming events, and matching `.gxt2` label dictionaries from one declarative cue list.
+- Complete `.cut` event spec coverage for all 81 known cutscene event IDs, including fixups, attachments, removal/blocking bounds activation, Rayfire loads, camera catchup, cascade-shadow controls, replay recording markers, and first-person camera catchup.
 - `Gxt2` and `Gxt2Entry` helpers for reading, editing, writing, and text-exporting `.gxt2` localization tables, including hash-key lookup, mapping-style mutation, sorted binary output, and simple `key = text` text files.
 - Initial `.awc` support as a dedicated `fivefury.awc` package, with stream/chunk structures, codec/chunk enums, RSXXTEA encryption helpers, PCM WAV helpers, ADPCM decoding, and `read_awc`/`build_awc_bytes`/`save_awc` entry points.
+- Generic `.ymt` and `.ymf` support through the shared META/RSC7 layer, including `Ymt`, `Ymf`, `read_ymt`, `read_ymf`, `save_ymt`, `save_ymf`, file-type detection, and `GameFileCache` decoding.
 - Shared `fivefury.common` helpers for source-byte loading, hash coercion, clip-short-name normalization, and flexible integer enums used across multiple formats.
 - Public exports for the new AWC, GXT2, cache, CUT, YCD, YDR, YTYP, and bounds APIs from the package facade.
 
 ### Changed
+- New `.cut` files now mirror retail root defaults more closely: trigger offsets default to `(0, 0, 0)`, fade durations/colors use the common vanilla values, `DayCoCHours` is initialized, and `discardFrameList` is emitted even when empty.
 - `jenk_partial_hash` and `jenk_finalize_hash` now run through the native C++ backend while preserving the previous quote and NUL termination semantics used by cutscene `AnimStreamingBase` hashes.
 - Split the large AWC implementation into focused modules for constants, crypto, audio conversion, binary I/O, and data structures.
+- Extracted reusable PSO constants, schema records, section parsing, `PSCH` serialization, generic reading, block writing, pointer patching, and checksum finalization into `fivefury.pso`, keeping `.cut` as a format-specific adapter on top of the shared model.
 - Consolidated repeated byte-source, hash, clip-name, enum, YDR parameter, YCD channel, and bounds math helpers so format readers/writers share the same behavior instead of carrying local copies.
+- Consolidated `GameFileCache` kind coercion into one cache helper so string, extension, integer, and `GameFileType` filters resolve consistently across cache views and lookups.
 - Tightened public module exports in `fivefury`, `fivefury.cut.scene`, `fivefury.meta`, and `fivefury.rpf`, replacing broad/internal reexports with explicit API surfaces.
 - Updated the high-level `YCD` cutscene builder tests and behavior around long skeletal/object clips to use the vanilla cutscene sequence frame limit consistently.
 - Simplified cleanup paths across cache, crypto, CUT, YCD, YDD, YDR, YMAP, YND, YNV, and YTYP modules by removing dead imports, redundant wrappers, and unnecessary local safeguards.
@@ -26,9 +34,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Root package exports now include the recently added high-level APIs that were importable from submodules but missing from `fivefury.__all__`.
 - `YDR` reader compatibility on Python versions without PEP 695 generic function syntax by replacing the inline generic helper syntax with a normal `TypeVar`.
 - Windows crypto test coverage for the AES decryptor factory by preserving the expected internal decryptor export.
+- Builtin `.cut` PSO schema coverage for object-variation and particle-effect event args when authoring new cutscenes without a source template.
 
 ### Performance
 - Cutscene authoring and validation paths that calculate partial/final JOAAT hashes now avoid Python hash loops and use the same compiled native backend as full `jenk_hash`.
+- RSC7 section layout now runs through native C++ for page assignment, resource pointer remapping, and section materialization.
 
 ## [0.1.48]
 

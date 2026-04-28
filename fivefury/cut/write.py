@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -11,11 +10,8 @@ from ..binary import (
     pack_u16_be as _u16,
     pack_u32_be as _u32,
 )
-from ..hashing import jenk_hash
-from .model import CutFile, CutHashedString, CutNode
-from .names import CUT_HASH_NAMES, CUT_NAME_VALUES
-from .pso import (
-    ARRAY_INFO_HASH,
+from ..common import hash_value
+from ..pso import (
     CHKS,
     PSCH,
     PSIG,
@@ -40,10 +36,20 @@ from .pso import (
     PsoDataTypeUByte,
     PsoDataTypeUInt,
     PsoDataTypeUShort,
-    _PsoEntry,
-    _PsoStruct,
+    PsoBlockBuilder as _BlockBuilder,
+    PsoEntry as _PsoEntry,
+    PsoPointerPatch as _Patch,
+    PsoStruct as _PsoStruct,
+    build_chks_section,
+    build_pmap_section,
+    build_psin_section,
+    finalize_sections_with_checksum,
+    patch_pointers,
 )
-from .schema import BUILTIN_CUT_STRUCTS, _serialize_psch, builtin_cut_template
+from ..pso.schema import serialize_psch as _serialize_psch
+from .model import CutFile, CutHashedString, CutNode
+from .names import ARRAY_INFO_HASH, CUT_HASH_NAMES, CUT_NAME_VALUES
+from .schema import BUILTIN_CUT_STRUCTS, builtin_cut_template
 
 
 def _resolve_hash(value: int | str | CutHashedString | None) -> int:
@@ -57,7 +63,7 @@ def _resolve_hash(value: int | str | CutHashedString | None) -> int:
         return int(value[5:], 16)
     if value in CUT_NAME_VALUES:
         return CUT_NAME_VALUES[value]
-    return jenk_hash(value)
+    return hash_value(value)
 
 
 def _string_value(value: Any) -> str:
@@ -76,38 +82,6 @@ def _ensure_vector(value: Any, size: int) -> tuple[float, ...]:
     return tuple(0.0 for _ in range(size))
 
 
-def _joaat_checksum(data: bytes) -> int:
-    hash_value = 0x3FAC7125
-    for byte in data:
-        signed = byte if byte < 128 else byte - 256
-        hash_value = (hash_value + signed) & 0xFFFFFFFF
-        hash_value = (hash_value + ((hash_value << 10) & 0xFFFFFFFF)) & 0xFFFFFFFF
-        hash_value ^= (hash_value >> 6)
-    hash_value = (hash_value + ((hash_value << 3) & 0xFFFFFFFF)) & 0xFFFFFFFF
-    hash_value ^= (hash_value >> 11)
-    hash_value = (hash_value + ((hash_value << 15) & 0xFFFFFFFF)) & 0xFFFFFFFF
-    return hash_value
-
-
-@dataclass(slots=True)
-class _BlockBuilder:
-    name_hash: int
-    data: bytearray = field(default_factory=bytearray)
-
-    def append(self, payload: bytes) -> int:
-        offset = len(self.data)
-        self.data.extend(payload)
-        return offset
-
-
-@dataclass(slots=True)
-class _Patch:
-    buffer: bytearray
-    offset: int
-    block_hash: int
-    relative_offset: int
-
-
 class _CutWriter:
     def __init__(self, cut: CutFile, template: dict[str, Any]):
         self.cut = cut
@@ -123,9 +97,6 @@ class _CutWriter:
             block = _BlockBuilder(name_hash=name_hash)
             self.blocks[name_hash] = block
         return block
-
-    def _encode_pointer_word(self, block_id: int, relative_offset: int) -> int:
-        return ((relative_offset & 0xFFFFFFFF) << 12) | (block_id & 0xFFF)
 
     def _record_pointer_patch(self, buffer: bytearray, offset: int, block_hash: int, relative_offset: int) -> None:
         self.patches.append(_Patch(buffer=buffer, offset=offset, block_hash=block_hash, relative_offset=relative_offset))
@@ -451,64 +422,20 @@ class _CutWriter:
         ordered_blocks = self._ordered_blocks()
         block_ids = {block.name_hash: index + 1 for index, block in enumerate(ordered_blocks)}
 
-        psin_body = bytearray(self.template.get("psin_prefix", b"\x70" * 8))
-        while len(psin_body) < 8:
-            psin_body.append(0x70)
-
-        pmap_entries: list[tuple[int, int, int, int]] = []
-        current_offset = 16
-        for block in ordered_blocks:
-            pmap_entries.append((block.name_hash, current_offset, 0, len(block.data)))
-            current_offset += len(block.data)
-
-        for patch in self.patches:
-            block_id = block_ids[patch.block_hash]
-            patch.buffer[patch.offset : patch.offset + 4] = _u32(self._encode_pointer_word(block_id, patch.relative_offset))
-
-        psin = bytearray()
-        psin.extend(b"PSIN")
-        psin.extend(_u32(16 + sum(len(block.data) for block in ordered_blocks)))
-        psin.extend(psin_body[:8])
-        for block in ordered_blocks:
-            psin.extend(block.data)
-
+        patch_pointers(self.patches, block_ids)
+        psin = build_psin_section(ordered_blocks, self.template.get("psin_prefix", b"\x70" * 8))
         root_block_id = block_ids[self.root_type_hash]
-        pmap = bytearray()
-        pmap.extend(b"PMAP")
-        pmap.extend(_u32(16 + len(pmap_entries) * 16))
-        pmap.extend(_i32(root_block_id))
-        pmap.extend(_u16(len(pmap_entries)))
-        pmap.extend(_u16(int(self.template.get("pmap_unknown", 0x7070))))
-        for name_hash, offset, unknown, length in pmap_entries:
-            pmap.extend(_u32(name_hash))
-            pmap.extend(_i32(offset))
-            pmap.extend(_i32(unknown))
-            pmap.extend(_i32(length))
+        pmap = build_pmap_section(ordered_blocks, root_block_id, self.template.get("pmap_unknown", 0x7070))
 
-        sections = [bytes(psin), bytes(pmap)]
+        sections = [psin, pmap]
         template_sections: dict[int, bytes] = self.template["sections"]
         for ident in (PSCH, PSIG, STRE):
             section = template_sections.get(ident)
             if section is not None:
                 sections.append(section)
 
-        chks = bytearray()
-        chks.extend(b"CHKS")
-        chks.extend(_u32(20))
-        chks.extend(b"\x00\x00\x00\x00")
-        chks.extend(b"\x00\x00\x00\x00")
-        template_chks = template_sections.get(CHKS)
-        chks.extend(template_chks[16:20] if template_chks is not None and len(template_chks) >= 20 else _u32(0x79707070))
-        sections.append(bytes(chks))
-
-        file_data = bytearray().join(sections)
-        file_size = len(file_data)
-        file_data[-12:-8] = _u32(0)
-        file_data[-8:-4] = _u32(0)
-        checksum = _joaat_checksum(file_data)
-        file_data[-12:-8] = _u32(file_size)
-        file_data[-8:-4] = _u32(checksum)
-        return bytes(file_data)
+        sections.append(build_chks_section(template_sections.get(CHKS)))
+        return finalize_sections_with_checksum(sections)
 
 
 def _resolve_template(template: CutFile | bytes | str | Path | None, cut: CutFile) -> dict[str, Any]:

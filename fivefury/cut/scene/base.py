@@ -174,7 +174,7 @@ class CutScene:
             cutscene_flags=cutscene_flags,
             offset=resolved_offset,
             rotation=float(rotation),
-            trigger_offset=trigger_offset or resolved_offset,
+            trigger_offset=trigger_offset if trigger_offset is not None else (0.0, 0.0, 0.0),
             range_start=range_start,
             range_end=range_end,
             alt_range_end=alt_range_end,

@@ -5,7 +5,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ...hashing import jenk_hash, jenk_partial_hash
+from ...common import hash_value
+from ...hashing import jenk_partial_hash
 from ..model import CutHashedString, CutNode
 from .shared import _clone_value, _coerce_name, _hashed_string, _node_type_hash, _object_name_field, _object_role
 
@@ -59,7 +60,7 @@ class CutBinding:
                     node.fields[field_name] = self.name
                 else:
                     current = node.fields[field_name]
-                    node.fields[field_name] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else jenk_hash(self.name), text=self.name)
+                    node.fields[field_name] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.name), text=self.name)
         return node
 
 
