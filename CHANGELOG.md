@@ -10,18 +10,29 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [0.2.1] - 2026-05-02
 
 ### Added
+- Initial CutScript DSL for authoring `.cut` files from readable timeline scripts, with `parse_cutscript`, `read_cutscript`, `save_cutscript`, and `cutscene_from_cutscript` exported from the public API.
+- CutScript asset declarations for asset managers, animation managers, cameras, props, peds, vehicles, lights, audio, subtitles, fades, overlays, and decals.
+- CutScript timeline tracks for scene/model/YCD/subtitle/overlay loading, camera cuts, draw distance, animation binding, object visibility, attachments, fades, overlays, cutscene lights, subtitles, audio, and cleanup unload events.
+- Readable CutScript block syntax for multiline declarations such as `PROP name:`, `LIGHT name:`, and `0.000 CUT camera:`, with explicit `END` markers for every `ASSETS` and `TRACK` section.
+- Cutscene validation helpers via `CutScene.validation_report`, `CutScene.assert_valid`, `CutScene.validate`, `validate_cut_scene`, `CutSceneValidationIssue`, and `CutSceneValidationError`.
+- Save-time strict validation for authored cutscenes through `CutScene.to_cut`, `CutScene.to_bytes`, `CutScene.save`, and `save_cutscript`.
 - Shared CSS-style color parsing via `fivefury.colors`, exported from the package facade as `parse_css_rgb`, `parse_css_rgba`, `parse_css_argb`, `parse_css_rgb_unit`, and `parse_css_rgba_unit`.
 - CSS-like color input for high-level color fields across cutscene fades/decals, cutscene DSL lights/fades, YDR lights and vertex painting, YMAP LOD/grass colors, bounds material color tables, and light-related extension structs.
-- CutScript block syntax for clearer multiline declarations such as `PROP name:`, `LIGHT name:`, and `0.000 CUT camera:` while keeping compact one-line syntax available.
+- Native-backed GTA V magic-table decryption support used by the crypto key-loading path.
+- `CUTSCENE_STRUCTURE.md`, a detailed technical guide to the `.cut` object graph, tracks, events, validation model, CutScript syntax, and common authoring pitfalls.
 
 ### Changed
-- CutScript now requires explicit `END` markers for `ASSETS` and every `TRACK`, making scripts easier to validate and safer to autocomplete.
-- CutScript examples and structure documentation now use readable multiline asset/camera blocks and CSS-style colors.
-- The VS Code CutScript extension source and packaged `.vsix` are kept outside the `fivefury` package repository instead of being shipped with the library.
+- Cutscene binary export now routes through `CutScene.to_cut(validate=True)` by default, so invalid high-level scenes fail before writing unreadable `.cut` bytes.
+- CutScene serialization methods now accept the same optional template argument consistently across `to_bytes` and `save`.
+- CutScript examples and structure documentation use the same multiline block style and CSS-like color notation supported by the parser.
+- Local VS Code CutScript tooling is kept as an external artifact instead of being included in the `fivefury` Python package tree.
 
 ### Fixed
+- New cutscene validation catches missing scene metadata, invalid durations, duplicate object IDs, missing required streamed-object metadata, invalid load/model/animation/light/fade/subtitle/overlay event targets, unsafe camera clipping values, missing camera cuts, and timeline events outside the declared duration.
+- Cutscene serialization without a source template is guarded by stricter validation so obviously incomplete scenes are rejected instead of producing broken `.cut` output.
 - CutScript parsing no longer treats CSS hex colors such as `#ff8800` as comments.
-- CutScript autocomplete and syntax support now handle multiline `PROP`, `LIGHT`, and camera `CUT` blocks more reliably.
+- CutScript reports concrete line-numbered errors for unknown assets, duplicate assets, malformed section endings, malformed colors, and missing required arguments.
+- Windows magic-table decryption no longer depends on the removed Python-only decryptor path.
 
 ## [0.2.0] - 2026-04-28
 
