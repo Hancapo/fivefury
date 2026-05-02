@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import unittest
 from pathlib import Path
 
 from tests.compat import PytestCompat
@@ -73,6 +74,13 @@ class HashingContractTests(PytestCompat):
         self.assertEqual(jenk_finalize_hash(0x1100B6AC), 0x3F75CCC1)
         self.assertEqual(jenk_finalize_hash(0xC5FA439C), 0x62CAD9F0)
         self.assertEqual(jenk_finalize_hash(0x1C5FA439C), 0x62CAD9F0)
+
+    def test_crypto_magic_mask_known_vectors(self) -> None:
+        from fivefury._native import crypto_magic_mask
+
+        self.assertEqual(crypto_magic_mask(123456789, 16).hex(), "3e39f9fe36d49b7e9075cb0a45af4c71")
+        self.assertEqual(crypto_magic_mask(-123456789, 16).hex(), "3e39f9fe36d49b7e9075cb0a45af4c71")
+        self.assertEqual(crypto_magic_mask(-2147483648, 16).hex(), "4460a1c7a9963f0813c90d207694fd3a")
 
     def test_global_hash_resolver_register_and_resolve(self) -> None:
         register_symbol = resolve_symbol(

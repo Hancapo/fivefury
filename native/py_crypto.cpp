@@ -1,7 +1,11 @@
 #include "py_bindings.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
+
+#include "crypto_magic.h"
 
 using namespace fivefury_native;
 
@@ -155,6 +159,21 @@ PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args) {
         PyBuffer_Release(&data_buf);
         return translate_cpp_exception();
     }
+}
+
+PyObject* mod_crypto_magic_mask(PyObject*, PyObject* args) {
+    int seed = 0;
+    unsigned long long length = 0;
+    unsigned int rounds = 4;
+    if (!PyArg_ParseTuple(args, "iK|I:crypto_magic_mask", &seed, &length, &rounds)) {
+        return nullptr;
+    }
+    if (length > static_cast<unsigned long long>(std::numeric_limits<Py_ssize_t>::max())) {
+        PyErr_SetString(PyExc_OverflowError, "mask length is too large");
+        return nullptr;
+    }
+    std::string mask = build_magic_mask(static_cast<std::int32_t>(seed), static_cast<std::size_t>(length), rounds);
+    return PyBytes_FromStringAndSize(mask.data(), static_cast<Py_ssize_t>(mask.size()));
 }
 
 }  // namespace fivefury_py

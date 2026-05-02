@@ -742,5 +742,5 @@ def test_cut_all_event_ids_have_serializable_specs() -> None:
         else:
             scene.create_event(name, start=0.0)
 
-    summary = read_cut(scene.to_bytes()).summary()
+    summary = read_cut(scene.to_bytes(validate=False)).summary()
     assert summary.load_event_count + summary.event_count == len(CUT_EVENT_ID_TO_NAME)

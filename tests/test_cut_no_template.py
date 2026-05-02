@@ -14,6 +14,7 @@ from fivefury import (
     CutProp,
     CutPropAnimationPreset,
     CutScene,
+    CutSceneValidationError,
     CutSubtitle,
     CutSubtitleCue,
     CutSubtitlePayload,
@@ -53,6 +54,55 @@ def test_cut_scene_builder_writes_without_template() -> None:
     assert any(event.fields["iEventId"] == 43 for event in rebuilt.events)
     camera_args = next(args for args in rebuilt.event_args if args.type_name == "rage__cutfCameraCutEventArgs")
     assert camera_args.fields["cName"].hash != 0
+
+
+def test_cut_scene_save_validation_allows_playable_minimal_scene() -> None:
+    scene = CutScene.create(scene_name="playable", duration=5.0)
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("cam_main")
+    prop = scene.add_prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
+
+    scene.load_models(0.0, [prop.object_id], target=asset_manager)
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_main", near_draw_distance=0.05, far_draw_distance=1000.0))
+
+    rebuilt = read_cut(scene.to_bytes())
+
+    assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(5.0)
+    assert any(event.fields["iEventId"] == int(CutEventType.CAMERA_CUT) for event in rebuilt.events)
+
+
+def test_cut_scene_save_validation_reports_missing_type_file() -> None:
+    scene = CutScene.create(scene_name="bad_cut", duration=5.0)
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("cam_main")
+    prop = scene.add_prop("prop_a", model_name="prop_a")
+
+    scene.load_models(0.0, [prop.object_id], target=asset_manager)
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_main", near_draw_distance=0.05, far_draw_distance=1000.0))
+
+    with pytest.raises(CutSceneValidationError) as excinfo:
+        scene.to_bytes()
+
+    assert any(issue.code == "object.type_file.missing" for issue in excinfo.value.issues)
+    assert "object.type_file.missing" in str(excinfo.value)
+
+
+def test_cut_scene_save_validation_reports_bad_animation_binding() -> None:
+    scene = CutScene.create(scene_name="bad_anim", duration=5.0)
+    asset_manager = scene.add_asset_manager()
+    animation_manager = scene.add_animation_manager()
+    camera = scene.add_camera("cam_main")
+    prop = scene.add_prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
+
+    scene.load_models(0.0, [prop.object_id], target=asset_manager)
+    scene.load_anim_dict(0.0, "bad_anim", target=animation_manager)
+    scene.set_anim(0.0, prop, target=animation_manager)
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_main", near_draw_distance=0.05, far_draw_distance=1000.0))
+
+    with pytest.raises(CutSceneValidationError) as excinfo:
+        scene.to_bytes()
+
+    assert any(issue.code == "set_anim.streaming_base.mismatch" for issue in excinfo.value.issues)
 
 
 def test_cut_scene_installs_subtitle_track_and_gxt2() -> None:

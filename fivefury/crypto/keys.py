@@ -9,7 +9,8 @@ import struct
 from pathlib import Path
 from typing import Final
 
-from .backends import DotNetRandom, _AesEcbCipher, _decompress_any, _to_signed_i32
+from .backends import _AesEcbCipher, _decompress_any, _to_signed_i32
+from .._native import crypto_magic_mask
 
 _AES_KEY_SHA1: Final[bytes] = bytes(
     [0xA0, 0x79, 0x61, 0x28, 0xA7, 0x75, 0x72, 0x0A, 0xC2, 0x04, 0xD9, 0x81, 0x9F, 0x68, 0xC1, 0x72, 0xE3, 0x95, 0x2C, 0x6D]
@@ -88,16 +89,10 @@ def _resolve_exe_path(root_or_exe: str | Path | None, *, gen9: bool = False) -> 
 
 
 def _decode_magic_payload(aes_key: bytes, magic_bytes: bytes) -> bytes:
-    random_bytes = []
-    rng = DotNetRandom(_to_signed_i32(_jenk_hash_bytes(aes_key)))
-    for _ in range(4):
-        block = bytearray(len(magic_bytes))
-        rng.next_bytes(block)
-        random_bytes.append(block)
+    random_mask = crypto_magic_mask(_to_signed_i32(_jenk_hash_bytes(aes_key)), len(magic_bytes))
     decoded = bytearray(len(magic_bytes))
-    rb1, rb2, rb3, rb4 = random_bytes
     for i, value in enumerate(magic_bytes):
-        decoded[i] = (value - rb1[i] - rb2[i] - rb3[i] - rb4[i]) & 0xFF
+        decoded[i] = (value - random_mask[i]) & 0xFF
     decrypted = _AesEcbCipher(aes_key).decrypt(bytes(decoded))
     return _decompress_any(decrypted)
 

@@ -1,5 +1,6 @@
 from .analysis import analyze_cut
 from .events import CutEventBehavior, CutEventSpec, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
+from .dsl import CutScriptError, CutScriptResult, cutscene_from_cutscript, parse_cutscript, read_cutscript, save_cutscript
 from .flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS
 from .lights import (
     CutLightFlag,
@@ -53,6 +54,8 @@ from .scene import (
     CutPropAnimationPreset,
     CutTypeFileStrategy,
     CutScene,
+    CutSceneValidationError,
+    CutSceneValidationIssue,
     CutSubtitle,
     CutSubtitleCue,
     CutSubtitleTrack,
@@ -65,6 +68,7 @@ from .scene import (
     read_cutxml_scene,
     scene_to_cut,
     subtitle_cues_from_text,
+    validate_cut_scene,
 )
 from .write import build_cut_bytes, save_cut
 from .xml import read_cutxml
@@ -119,6 +123,10 @@ __all__ = [
     "CutTypeFileStrategy",
     "CutScreenFadePayload",
     "CutScene",
+    "CutSceneValidationError",
+    "CutSceneValidationIssue",
+    "CutScriptError",
+    "CutScriptResult",
     "CutObjectIdListPayload",
     "CutSubtitlePayload",
     "CutSubtitle",
@@ -132,6 +140,7 @@ __all__ = [
     "cut_light_property_from_ydr_flags",
     "cut_light_type_from_ydr_light_type",
     "cut_to_scene",
+    "cutscene_from_cutscript",
     "ensure_ydr_embedded_lights",
     "get_cut_event_enum_name",
     "get_cut_event_id",
@@ -141,7 +150,11 @@ __all__ = [
     "read_cut_scene",
     "read_cutxml",
     "read_cutxml_scene",
+    "read_cutscript",
     "save_cut",
+    "save_cutscript",
     "scene_to_cut",
+    "parse_cutscript",
     "subtitle_cues_from_text",
+    "validate_cut_scene",
 ]

@@ -3,59 +3,6 @@ from __future__ import annotations
 import ctypes
 import os
 import zlib
-from typing import Final
-
-
-class DotNetRandom:
-    _MBIG: Final[int] = 2147483647
-    _MSEED: Final[int] = 161803398
-
-    def __init__(self, seed: int) -> None:
-        if seed == -2147483648:
-            subtraction = self._MBIG
-        else:
-            subtraction = abs(int(seed))
-        mj = self._MSEED - subtraction
-        if mj < 0:
-            mj += self._MBIG
-        self._seed_array = [0] * 56
-        self._seed_array[55] = mj
-        mk = 1
-        for i in range(1, 55):
-            ii = (21 * i) % 55
-            self._seed_array[ii] = mk
-            mk = mj - mk
-            if mk < 0:
-                mk += self._MBIG
-            mj = self._seed_array[ii]
-        for _ in range(4):
-            for i in range(1, 56):
-                self._seed_array[i] -= self._seed_array[1 + (i + 30) % 55]
-                if self._seed_array[i] < 0:
-                    self._seed_array[i] += self._MBIG
-        self._inext = 0
-        self._inextp = 21
-
-    def _internal_sample(self) -> int:
-        loc_inext = self._inext + 1
-        if loc_inext >= 56:
-            loc_inext = 1
-        loc_inextp = self._inextp + 1
-        if loc_inextp >= 56:
-            loc_inextp = 1
-        ret = self._seed_array[loc_inext] - self._seed_array[loc_inextp]
-        if ret == self._MBIG:
-            ret -= 1
-        if ret < 0:
-            ret += self._MBIG
-        self._seed_array[loc_inext] = ret
-        self._inext = loc_inext
-        self._inextp = loc_inextp
-        return ret
-
-    def next_bytes(self, buffer: bytearray) -> None:
-        for i in range(len(buffer)):
-            buffer[i] = self._internal_sample() % 256
 
 
 class _AesEcbCipher:
@@ -247,7 +194,6 @@ def _to_signed_i32(value: int) -> int:
 
 
 __all__ = [
-    "DotNetRandom",
     "_AesEcbCipher",
     "_build_windows_aes_decryptor",
     "_decompress_any",

@@ -136,17 +136,29 @@ class CutScene:
     def bindings_by_id(self) -> dict[int, CutBinding]:
         return {item.object_id: item for item in self.bindings}
 
-    def to_cut(self) -> CutFile:
+    def validation_report(self, *, strict: bool = False):
+        from .validation import validate_cut_scene
+
+        return validate_cut_scene(self, strict=strict)
+
+    def assert_valid(self, *, strict: bool = True) -> None:
+        from .validation import assert_cut_scene_valid
+
+        assert_cut_scene_valid(self, strict=strict)
+
+    def to_cut(self, *, validate: bool = True) -> CutFile:
         from .io import scene_to_cut
 
         self.build()
+        if validate:
+            self.assert_valid(strict=True)
         return scene_to_cut(self)
 
-    def to_bytes(self, *, template: CutFile | bytes | str | Path | None = None) -> bytes:
-        return self.to_cut().to_bytes(template=template)
+    def to_bytes(self, *, template: CutFile | bytes | str | Path | None = None, validate: bool = True) -> bytes:
+        return self.to_cut(validate=validate).to_bytes(template=template)
 
-    def save(self, destination: str | Path, *, template: CutFile | bytes | str | Path | None = None) -> None:
-        self.to_cut().save(str(destination), template=template)
+    def save(self, destination: str | Path, *, template: CutFile | bytes | str | Path | None = None, validate: bool = True) -> None:
+        self.to_cut(validate=validate).save(str(destination), template=template)
 
     @classmethod
     def create(
@@ -205,15 +217,8 @@ class CutScene:
             track.events.sort(key=lambda item: (item.start, item.event_id or -1, item.display_name))
         return self
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
-        ids = [binding.object_id for binding in self.bindings]
-        if len(ids) != len(set(ids)):
-            issues.append("CutScene has duplicate binding object ids")
-        if self.duration is not None and self.duration < 0:
-            issues.append("CutScene duration is negative")
-        issues.extend(self.validate_animations())
-        return issues
+    def validate(self, *, strict: bool = False) -> list[str]:
+        return [issue.format() for issue in self.validation_report(strict=strict)]
 
     def add(self, binding: CutBinding) -> CutBinding:
         if binding.object_id < 0:

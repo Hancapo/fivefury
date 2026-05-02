@@ -274,7 +274,6 @@ def _normalize_prop_model_node(node: CutNode) -> None:
         return
     fields = node.fields
     handle_hash = _hash_value(fields.get("cHandle"))
-    name_hash = _hash_value(fields.get("cName"))
     if handle_hash == 0:
         # Retail skinned props commonly leave cHandle empty. The runtime then
         # derives the scene handle from AnimStreamingBase; writing cHandle=cName

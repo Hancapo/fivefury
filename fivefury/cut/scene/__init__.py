@@ -23,6 +23,7 @@ from .bindings import (
 from .core import CutScene, cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
 from .subtitles import CutSubtitleCue, CutSubtitleTrack, build_subtitle_gxt2, subtitle_cues_from_text
 from .timeline import CutTimelineEvent, CutTrack
+from .validation import CutSceneValidationError, CutSceneValidationIssue, validate_cut_scene
 from ..lights import (
     CutLightFlag,
     CutLightProperty,
@@ -54,6 +55,8 @@ __all__ = [
     "CutProp",
     "CutPropAnimationPreset",
     "CutScene",
+    "CutSceneValidationError",
+    "CutSceneValidationIssue",
     "CutSubtitle",
     "CutSubtitleCue",
     "CutSubtitleTrack",
@@ -72,4 +75,5 @@ __all__ = [
     "read_cutxml_scene",
     "scene_to_cut",
     "subtitle_cues_from_text",
+    "validate_cut_scene",
 ]

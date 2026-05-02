@@ -606,6 +606,7 @@ _BINDING_ADDERS = {
     "audio": CutAudio,
     "subtitle": CutSubtitle,
     "fade": CutFade,
+    "overlay": CutOverlay,
     "decal": CutDecal,
 }
 

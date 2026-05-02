@@ -125,6 +125,10 @@ class NativeCryptoContext:
         ))
 
 
+def crypto_magic_mask(seed: int, length: int, rounds: int = 4) -> bytes:
+    return bytes(_ffi.crypto_magic_mask(int(seed), int(length), int(rounds)))
+
+
 def read_rpf_entry(
     path: str | Path,
     entry_path: str | Path,
@@ -350,6 +354,7 @@ def scan_rpf_batch_into_index(
 
 __all__ = [
     "CompactIndex",
+    "crypto_magic_mask",
     "NativeCryptoContext",
     "read_rpf_entry",
     "read_rpf_entry_variants",
