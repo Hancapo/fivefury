@@ -7,6 +7,22 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-02
+
+### Added
+- Shared CSS-style color parsing via `fivefury.colors`, exported from the package facade as `parse_css_rgb`, `parse_css_rgba`, `parse_css_argb`, `parse_css_rgb_unit`, and `parse_css_rgba_unit`.
+- CSS-like color input for high-level color fields across cutscene fades/decals, cutscene DSL lights/fades, YDR lights and vertex painting, YMAP LOD/grass colors, bounds material color tables, and light-related extension structs.
+- CutScript block syntax for clearer multiline declarations such as `PROP name:`, `LIGHT name:`, and `0.000 CUT camera:` while keeping compact one-line syntax available.
+
+### Changed
+- CutScript now requires explicit `END` markers for `ASSETS` and every `TRACK`, making scripts easier to validate and safer to autocomplete.
+- CutScript examples and structure documentation now use readable multiline asset/camera blocks and CSS-style colors.
+- The VS Code CutScript extension source and packaged `.vsix` are kept outside the `fivefury` package repository instead of being shipped with the library.
+
+### Fixed
+- CutScript parsing no longer treats CSS hex colors such as `#ff8800` as comments.
+- CutScript autocomplete and syntax support now handle multiline `PROP`, `LIGHT`, and camera `CUT` blocks more reliably.
+
 ## [0.2.0] - 2026-04-28
 
 ### Added
