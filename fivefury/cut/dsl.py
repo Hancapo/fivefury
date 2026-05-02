@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from ..colors import parse_css_argb, parse_css_rgb_unit
 from .flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS
 from .lights import CutLightFlag, CutLightProperty, CutLightType
 from .payloads import CutCameraCutPayload, CutLoadScenePayload, CutScreenFadePayload, CutSubtitlePayload
@@ -32,7 +33,22 @@ class CutScriptResult:
     save_path: Path | None = None
 
 
+@dataclass(slots=True)
+class _PendingCameraCut:
+    line: int
+    time: float
+    camera: CutBinding
+    name: str
+    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    rotation_quaternion: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    near_draw_distance: float = 0.05
+    far_draw_distance: float = 1000.0
+    map_lod_scale: float = 0.0
+
+
 _ROOT_COMMANDS = {"CUTSCENE", "DURATION", "OFFSET", "ROTATION", "FLAGS", "ASSETS", "TRACK", "SAVE"}
+_MODEL_PROPERTY_COMMANDS = {"MODEL", "YTYP", "ANIM_BASE", "PRESET"}
+_CAMERA_CUT_PROPERTY_COMMANDS = {"NAME", "POSITION", "POS", "ROTATION", "ROT", "NEAR", "FAR", "MAP_LOD"}
 _LIGHT_PROPERTY_COMMANDS = {
     "TYPE",
     "POSITION",
@@ -69,11 +85,23 @@ def _strip_line_comment(line: str) -> str:
         if char in {"'", '"'}:
             quote = char
             continue
+        if char == "#" and _looks_like_css_hex_color(line[index:]):
+            continue
         if char in {"#", ";"}:
             return line[:index]
         if char == "/" and index + 1 < len(line) and line[index + 1] == "/":
             return line[:index]
     return line
+
+
+def _looks_like_css_hex_color(value: str) -> bool:
+    digits = ""
+    for char in value[1:]:
+        if char.isalnum():
+            digits += char
+            continue
+        break
+    return len(digits) in {3, 4, 6, 8} and all(char in "0123456789abcdefABCDEF" for char in digits)
 
 
 def _tokenize(line: str, line_no: int) -> list[str]:
@@ -84,6 +112,13 @@ def _tokenize(line: str, line_no: int) -> list[str]:
         return list(lexer)
     except ValueError as exc:
         raise CutScriptError(line_no, str(exc)) from exc
+
+
+def _block_name(value: str, line_no: int, label: str) -> str:
+    name = value[:-1] if value.endswith(":") else value
+    if not name:
+        raise CutScriptError(line_no, f"{label} name cannot be empty")
+    return name
 
 
 def _expect_count(tokens: list[str], line_no: int, count: int, usage: str) -> None:
@@ -98,6 +133,14 @@ def _float(value: str, line_no: int, name: str) -> float:
         raise CutScriptError(line_no, f"{name} must be a number, got {value!r}") from exc
 
 
+def _is_float_token(value: str) -> bool:
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _int(value: str, line_no: int, name: str) -> int:
     try:
         return int(value, 0)
@@ -109,6 +152,22 @@ def _vec(tokens: list[str], line_no: int, name: str, size: int) -> tuple[float, 
     if len(tokens) < size:
         raise CutScriptError(line_no, f"{name} expects {size} numeric values")
     return tuple(_float(tokens[index], line_no, f"{name}[{index}]") for index in range(size))
+
+
+def _css_rgb(tokens: list[str], line_no: int, name: str) -> tuple[float, float, float]:
+    if len(tokens) == 1 or (tokens and (tokens[0].startswith("#") or "(" in " ".join(tokens) or tokens[0].isalpha())):
+        try:
+            return parse_css_rgb_unit(" ".join(tokens))
+        except ValueError as exc:
+            raise CutScriptError(line_no, f"{name} must be a CSS color, got {' '.join(tokens)!r}") from exc
+    return _vec(tokens, line_no, name, 3)  # type: ignore[return-value]
+
+
+def _css_argb(tokens: list[str], line_no: int, name: str) -> int:
+    try:
+        return parse_css_argb(" ".join(tokens))
+    except ValueError as exc:
+        raise CutScriptError(line_no, f"{name} must be a CSS color, got {' '.join(tokens)!r}") from exc
 
 
 def _euler_xyz_degrees_to_quaternion(x_degrees: float, y_degrees: float, z_degrees: float) -> tuple[float, float, float, float]:
@@ -193,6 +252,7 @@ class _CutScriptParser:
         self.track: str | None = None
         self.bindings: dict[str, CutBinding] = {}
         self.last_asset: CutBinding | None = None
+        self.pending_camera_cut: _PendingCameraCut | None = None
 
     def parse(self) -> CutScriptResult:
         for line_no, raw_line in enumerate(self.lines, start=1):
@@ -200,20 +260,59 @@ class _CutScriptParser:
             if not tokens:
                 continue
             command = tokens[0].upper()
-            if command in _ROOT_COMMANDS:
-                self._parse_root(tokens, line_no)
+            if command == "END":
+                self._parse_end(tokens, line_no)
                 continue
             if self.section == "ASSETS":
+                if command in _ROOT_COMMANDS:
+                    raise CutScriptError(line_no, f"ASSETS section must be closed with END before {command}", code="section.end.missing")
                 self._parse_asset(tokens, line_no)
                 continue
             if self.section == "TRACK":
+                if command in _ROOT_COMMANDS:
+                    track = self.track or "TRACK"
+                    raise CutScriptError(line_no, f"TRACK {track} section must be closed with END before {command}", code="section.end.missing")
                 self._parse_track(tokens, line_no)
+                continue
+            if command in _ROOT_COMMANDS:
+                self._parse_root(tokens, line_no)
                 continue
             raise CutScriptError(line_no, f"unexpected command {tokens[0]!r}")
         if self.scene is None:
             raise CutScriptError(1, "script must start with CUTSCENE", code="cutscene.missing")
+        if self.section != "ROOT":
+            section = f"TRACK {self.track}" if self.section == "TRACK" and self.track else self.section
+            raise CutScriptError(len(self.lines) or 1, f"{section} section missing END", code="section.end.missing")
         self.scene.build()
         return CutScriptResult(scene=self.scene, save_path=self.save_path)
+
+    def _parse_end(self, tokens: list[str], line_no: int) -> None:
+        if len(tokens) != 1:
+            raise CutScriptError(line_no, "END does not take arguments")
+        if self.section == "ROOT":
+            raise CutScriptError(line_no, "END without an open ASSETS or TRACK section", code="section.end.unexpected")
+        self._flush_pending_event(line_no)
+        self.section = "ROOT"
+        self.track = None
+        self.last_asset = None
+
+    def _flush_pending_event(self, line_no: int) -> None:
+        pending = self.pending_camera_cut
+        if pending is None:
+            return
+        self.pending_camera_cut = None
+        self._require_scene(line_no).camera_cut(
+            pending.time,
+            pending.camera,
+            CutCameraCutPayload(
+                pending.name,
+                position=pending.position,
+                rotation_quaternion=pending.rotation_quaternion,
+                near_draw_distance=pending.near_draw_distance,
+                far_draw_distance=pending.far_draw_distance,
+                map_lod_scale=pending.map_lod_scale,
+            ),
+        )
 
     def _require_scene(self, line_no: int) -> CutScene:
         if self.scene is None:
@@ -309,6 +408,11 @@ class _CutScriptParser:
     def _parse_asset(self, tokens: list[str], line_no: int) -> None:
         command = tokens[0].upper()
         scene = self._require_scene(line_no)
+        if command in _MODEL_PROPERTY_COMMANDS:
+            if self.last_asset is None or self.last_asset.role not in {"prop", "ped", "vehicle"}:
+                raise CutScriptError(line_no, f"{command} must follow a PROP, PED or VEHICLE declaration")
+            self._apply_model_property(self.last_asset, tokens, line_no)
+            return
         if command in _LIGHT_PROPERTY_COMMANDS:
             if not isinstance(self.last_asset, CutLight):
                 raise CutScriptError(line_no, f"{command} must follow a LIGHT declaration")
@@ -317,35 +421,44 @@ class _CutScriptParser:
         self.last_asset = None
         if command == "ASSET_MANAGER":
             _expect_count(tokens, line_no, 2, "ASSET_MANAGER name")
-            self._register(tokens[1], scene.add_asset_manager(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "asset manager")
+            self._register(name, scene.add_asset_manager(name), line_no)
         elif command == "ANIM_MANAGER":
             _expect_count(tokens, line_no, 2, "ANIM_MANAGER name")
-            self._register(tokens[1], scene.add_animation_manager(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "animation manager")
+            self._register(name, scene.add_animation_manager(name), line_no)
         elif command == "CAMERA":
             _expect_count(tokens, line_no, 2, "CAMERA name")
-            self._register(tokens[1], scene.add_camera(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "camera")
+            self._register(name, scene.add_camera(name), line_no)
         elif command in {"PROP", "PED", "VEHICLE"}:
-            self._parse_streamed_model(tokens, line_no)
+            self.last_asset = self._parse_streamed_model(tokens, line_no)
         elif command == "LIGHT":
             _expect_count(tokens, line_no, 2, "LIGHT name")
-            light = scene.add_light(tokens[1], fields=self._default_light_fields())
-            self._register(tokens[1], light, line_no)
+            name = _block_name(tokens[1], line_no, "light")
+            light = scene.add_light(name, fields=self._default_light_fields())
+            self._register(name, light, line_no)
             self.last_asset = light
         elif command == "AUDIO":
             _expect_count(tokens, line_no, 2, "AUDIO name")
-            self._register(tokens[1], scene.add_audio(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "audio")
+            self._register(name, scene.add_audio(name), line_no)
         elif command == "SUBTITLE":
             _expect_count(tokens, line_no, 2, "SUBTITLE name")
-            self._register(tokens[1], scene.add_subtitle(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "subtitle")
+            self._register(name, scene.add_subtitle(name), line_no)
         elif command == "FADE":
             _expect_count(tokens, line_no, 2, "FADE name")
-            self._register(tokens[1], scene.add_fade(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "fade")
+            self._register(name, scene.add_fade(name), line_no)
         elif command == "OVERLAY":
             _expect_count(tokens, line_no, 2, "OVERLAY name")
-            self._register(tokens[1], scene.add_overlay(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "overlay")
+            self._register(name, scene.add_overlay(name), line_no)
         elif command == "DECAL":
             _expect_count(tokens, line_no, 2, "DECAL name")
-            self._register(tokens[1], scene.add_decal(tokens[1]), line_no)
+            name = _block_name(tokens[1], line_no, "decal")
+            self._register(name, scene.add_decal(name), line_no)
         else:
             raise CutScriptError(line_no, f"unknown ASSETS command {tokens[0]!r}")
 
@@ -354,10 +467,10 @@ class _CutScriptParser:
             raise CutScriptError(line_no, f"duplicate asset name {name!r}", code="asset.duplicate")
         self.bindings[name] = binding
 
-    def _parse_streamed_model(self, tokens: list[str], line_no: int) -> None:
+    def _parse_streamed_model(self, tokens: list[str], line_no: int) -> CutBinding:
         _expect_count(tokens, line_no, 2, f"{tokens[0].upper()} name")
         command = tokens[0].upper()
-        name = tokens[1]
+        name = _block_name(tokens[1], line_no, command.lower())
         options = self._key_values(tokens[2:], line_no)
         model_name = options.get("MODEL", name)
         ytyp_name = options.get("YTYP")
@@ -375,6 +488,19 @@ class _CutScriptParser:
             if preset is not None:
                 binding.apply_animation_preset(preset)
         self._register(name, binding, line_no)
+        return binding
+
+    def _apply_model_property(self, binding: CutBinding, tokens: list[str], line_no: int) -> None:
+        command = tokens[0].upper()
+        _expect_count(tokens, line_no, 2, f"{command} value")
+        if command == "MODEL":
+            binding.model_name = tokens[1]  # type: ignore[attr-defined]
+        elif command == "YTYP":
+            binding.ytyp_name = tokens[1]  # type: ignore[attr-defined]
+        elif command == "ANIM_BASE":
+            binding.animation_clip_base = tokens[1]  # type: ignore[attr-defined]
+        elif command == "PRESET":
+            binding.apply_animation_preset(_enum_value(CutPropAnimationPreset, tokens[1], line_no, "animation preset"))  # type: ignore[attr-defined]
 
     def _key_values(self, tokens: list[str], line_no: int) -> dict[str, str]:
         if len(tokens) % 2 != 0:
@@ -419,7 +545,7 @@ class _CutScriptParser:
         elif command in {"DIRECTION", "DIR"}:
             light.fields["vDirection"] = _vec(tokens[1:], line_no, "direction", 3)
         elif command in {"COLOR", "COLOUR"}:
-            light.fields["vColour"] = _vec(tokens[1:], line_no, "color", 3)
+            light.fields["vColour"] = _css_rgb(tokens[1:], line_no, "color")
         elif command == "INTENSITY":
             _expect_count(tokens, line_no, 2, "INTENSITY value")
             light.fields["fIntensity"] = _float(tokens[1], line_no, "intensity")
@@ -449,9 +575,16 @@ class _CutScriptParser:
         if self.track is None:
             raise CutScriptError(line_no, "TRACK command missing before timeline event")
         _expect_count(tokens, line_no, 2, "time command")
+        if not _is_float_token(tokens[0]):
+            command = tokens[0].upper()
+            if self.track == "CAMERA" and self.pending_camera_cut is not None and command in _CAMERA_CUT_PROPERTY_COMMANDS:
+                self._apply_camera_cut_property(tokens, line_no)
+                return
+            raise CutScriptError(line_no, "expected timeline event: time command")
         time = _float(tokens[0], line_no, "time")
         command = tokens[1].upper()
         args = tokens[2:]
+        self._flush_pending_event(line_no)
         if command == "SCENE":
             self._load_scene(time, args, line_no, unload=False)
         elif command == "UNLOAD_SCENE":
@@ -465,7 +598,7 @@ class _CutScriptParser:
         elif command == "UNLOAD_ANIM_DICT":
             self._anim_dict(time, args, line_no, unload=True)
         elif command == "CUT":
-            self._camera_cut(time, args, line_no)
+            self._start_camera_cut(time, args, line_no)
         elif command == "DRAW_DISTANCE":
             self._draw_distance(time, args, line_no)
         elif command == "PLAY" and self.track == "AUDIO":
@@ -539,47 +672,46 @@ class _CutScriptParser:
         else:
             scene.load_anim_dict(time, args[0], target=target)
 
-    def _camera_cut(self, time: float, args: list[str], line_no: int) -> None:
+    def _start_camera_cut(self, time: float, args: list[str], line_no: int) -> None:
         _expect_count(args, line_no, 1, "CUT camera")
-        camera = self._binding(args[0], line_no)
+        camera_name = _block_name(args[0], line_no, "camera")
+        camera = self._binding(camera_name, line_no)
         if camera.role != "camera":
-            raise CutScriptError(line_no, f"{args[0]!r} is not a CAMERA asset")
-        values = args[1:]
-        name = args[0]
-        position = (0.0, 0.0, 0.0)
-        rotation = (0.0, 0.0, 0.0, 1.0)
-        near = 0.05
-        far = 1000.0
-        map_lod = 0.0
+            raise CutScriptError(line_no, f"{camera_name!r} is not a CAMERA asset")
+        pending = _PendingCameraCut(line=line_no, time=time, camera=camera, name=camera_name)
+        self.pending_camera_cut = pending
+        self._apply_camera_cut_values(pending, args[1:], line_no)
+
+    def _apply_camera_cut_property(self, tokens: list[str], line_no: int) -> None:
+        if self.pending_camera_cut is None:
+            raise CutScriptError(line_no, "camera cut property without a pending CUT event")
+        self._apply_camera_cut_values(self.pending_camera_cut, tokens, line_no)
+
+    def _apply_camera_cut_values(self, pending: _PendingCameraCut, values: list[str], line_no: int) -> None:
         index = 0
         while index < len(values):
             key = values[index].upper()
             if key == "NAME":
-                name = _option_value(values, index, line_no, "NAME")
+                pending.name = _option_value(values, index, line_no, "NAME")
                 index += 2
             elif key in {"POS", "POSITION"}:
-                position = _vec(values[index + 1 :], line_no, "camera position", 3)  # type: ignore[assignment]
+                pending.position = _vec(values[index + 1 :], line_no, "camera position", 3)  # type: ignore[assignment]
                 index += 4
             elif key in {"ROT", "ROTATION"}:
                 euler = _vec(values[index + 1 :], line_no, "camera Euler XYZ rotation", 3)
-                rotation = _euler_xyz_degrees_to_quaternion(euler[0], euler[1], euler[2])
+                pending.rotation_quaternion = _euler_xyz_degrees_to_quaternion(euler[0], euler[1], euler[2])
                 index += 4
             elif key == "NEAR":
-                near = _float(_option_value(values, index, line_no, "NEAR"), line_no, "near")
+                pending.near_draw_distance = _float(_option_value(values, index, line_no, "NEAR"), line_no, "near")
                 index += 2
             elif key == "FAR":
-                far = _float(_option_value(values, index, line_no, "FAR"), line_no, "far")
+                pending.far_draw_distance = _float(_option_value(values, index, line_no, "FAR"), line_no, "far")
                 index += 2
             elif key == "MAP_LOD":
-                map_lod = _float(_option_value(values, index, line_no, "MAP_LOD"), line_no, "map_lod")
+                pending.map_lod_scale = _float(_option_value(values, index, line_no, "MAP_LOD"), line_no, "map_lod")
                 index += 2
             else:
                 raise CutScriptError(line_no, f"unknown CAMERA CUT option {values[index]!r}")
-        self._require_scene(line_no).camera_cut(
-            time,
-            camera,
-            CutCameraCutPayload(name, position=position, rotation_quaternion=rotation, near_draw_distance=near, far_draw_distance=far, map_lod_scale=map_lod),
-        )
 
     def _draw_distance(self, time: float, args: list[str], line_no: int) -> None:
         _expect_count(args, line_no, 2, "DRAW_DISTANCE camera value")
@@ -707,8 +839,14 @@ class _CutScriptParser:
                 value = _float(_option_value(args, index, line_no, "VALUE"), line_no, "fade value")
                 index += 2
             elif key in {"COLOR", "COLOUR"}:
-                color = _int(_option_value(args, index, line_no, key), line_no, "fade color")
-                index += 2
+                color_values: list[str] = []
+                index += 1
+                while index < len(args) and args[index].upper() not in {"VALUE", "COLOR", "COLOUR"}:
+                    color_values.append(args[index])
+                    index += 1
+                if not color_values:
+                    raise CutScriptError(line_no, f"{key} expects a color")
+                color = _css_argb(color_values, line_no, "fade color")
             else:
                 raise CutScriptError(line_no, f"unknown FADE option {args[index]!r}")
         payload = CutScreenFadePayload(value=value, color=color)

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ..colors import CssColor, parse_css_argb
+
 
 @dataclass(slots=True)
 class CutEventPayload:
@@ -194,12 +196,12 @@ class CutCameraCutPayload(CutEventPayload):
 @dataclass(slots=True)
 class CutScreenFadePayload(CutEventPayload):
     value: float
-    color: int = 0xFF000000
+    color: int | CssColor = 0xFF000000
 
     def to_fields(self) -> dict[str, Any]:
         return {
             "fValue": float(self.value),
-            "color": int(self.color),
+            "color": parse_css_argb(self.color),
         }
 
 
@@ -263,7 +265,7 @@ class CutDecalPayload(CutEventPayload):
     rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     width: float = 1.0
     height: float = 1.0
-    colour: int = 0xFFFFFFFF
+    colour: int | CssColor = 0xFFFFFFFF
     lifetime: float = 0.0
 
     def to_fields(self) -> dict[str, Any]:
@@ -272,7 +274,7 @@ class CutDecalPayload(CutEventPayload):
             "vRotation": self.rotation,
             "fWidth": float(self.width),
             "fHeight": float(self.height),
-            "Colour": int(self.colour),
+            "Colour": parse_css_argb(self.colour),
             "fLifeTime": float(self.lifetime),
         }
 

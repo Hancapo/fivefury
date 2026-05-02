@@ -6,6 +6,7 @@ import struct
 from enum import Enum
 from typing import Any
 
+from ..colors import CssColor, parse_css_rgb
 from ..hashing import jenk_hash
 from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
@@ -31,8 +32,8 @@ def _clamp_ushort(value: float | int) -> int:
     return max(0, min(65535, int(round(value))))
 
 
-def _pack_rgbi(colour: tuple[int, int, int], intensity: int) -> int:
-    r, g, b = (_clamp_byte(component) for component in colour)
+def _pack_rgbi(colour: tuple[int, int, int] | CssColor, intensity: int) -> int:
+    r, g, b = parse_css_rgb(colour)
     return r | (g << 8) | (b << 16) | (_clamp_byte(intensity) << 24)
 
 
@@ -341,10 +342,13 @@ class OccludeModel:
 class GrassInstance:
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
-    color: tuple[int, int, int] = (255, 255, 255)
+    color: tuple[int, int, int] | CssColor = (255, 255, 255)
     scale: int = 255
     ao: int = 255
     pad: tuple[int, int, int] = (0, 0, 0)
+
+    def __post_init__(self) -> None:
+        self.color = parse_css_rgb(self.color)
 
     @classmethod
     def from_meta(cls, value: Any, batch_aabb: Aabb) -> "GrassInstance":
@@ -362,7 +366,7 @@ class GrassInstance:
         return cls(
             position=world_position,
             normal=(normal_x, normal_y, normal_z),
-            color=tuple(value.get("Color", (255, 255, 255))),
+            color=parse_css_rgb(value.get("Color", (255, 255, 255))),
             scale=int(value.get("Scale", 255)),
             ao=int(value.get("Ao", 255)),
             pad=tuple(value.get("Pad", (0, 0, 0))),
@@ -540,7 +544,7 @@ class LodLight:
         return _unpack_rgbi(self.rgbi)[0]
 
     @colour.setter
-    def colour(self, value: tuple[int, int, int]) -> None:
+    def colour(self, value: tuple[int, int, int] | CssColor) -> None:
         self.rgbi = _pack_rgbi(value, self.intensity)
 
     @property
@@ -786,7 +790,7 @@ def _coerce_lod_light(**kwargs: Any) -> LodLight | LodLightsSoa:
     if "color" in kwargs and "colour" not in kwargs:
         kwargs["colour"] = kwargs.pop("color")
     if "colour" in kwargs:
-        colour = tuple(kwargs.pop("colour"))
+        colour = kwargs.pop("colour")
         intensity = int(kwargs.pop("intensity", kwargs.pop("alpha", 255)))
         kwargs["rgbi"] = _pack_rgbi(colour, intensity)
     if "coneInnerAngleDegrees" in kwargs:

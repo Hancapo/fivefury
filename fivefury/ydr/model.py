@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Sequence, Union
 
 from ..bounds import Bound
+from ..colors import CssColor, parse_css_rgb, parse_css_rgba_unit
 from ..hashing import jenk_hash
 from ..ytd import Texture, TextureFormat, Ytd
 from ._helpers import find_material, find_parameter
@@ -17,6 +18,7 @@ from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
     from ..bounds import BoundComposite, BoundCompositeFlags, BoundMaterial
+    from ..ycd import YcdUvClipBinding
     from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
     from .collision import YdrCollisionStats
     from .materials import YdrMaterialDescriptor
@@ -559,7 +561,7 @@ class YdrMaterialParameterRef:
 @dataclasses.dataclass(slots=True)
 class YdrLight:
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    color: tuple[int, int, int] = (255, 255, 255)
+    color: tuple[int, int, int] | CssColor = (255, 255, 255)
     flashiness: int = 0
     intensity: float = 1.0
     flags: int = 0
@@ -574,7 +576,7 @@ class YdrLight:
     shadow_blur: int = 0
     volume_intensity: float = 0.0
     volume_size_scale: float = 0.0
-    volume_outer_color: tuple[int, int, int] = (0, 0, 0)
+    volume_outer_color: tuple[int, int, int] | CssColor = (0, 0, 0)
     light_hash: int = 0
     volume_outer_intensity: float = 0.0
     corona_size: float = 0.0
@@ -600,12 +602,16 @@ class YdrLight:
     unknown_48h: int = 0
     unknown_a4h: int = 0
 
+    def __post_init__(self) -> None:
+        self.color = parse_css_rgb(self.color)
+        self.volume_outer_color = parse_css_rgb(self.volume_outer_color)
+
     @classmethod
     def point(
         cls,
         *,
         position: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        color: tuple[int, int, int] = (255, 255, 255),
+        color: tuple[int, int, int] | CssColor = (255, 255, 255),
         intensity: float = 1.0,
         falloff: float = 0.0,
         flags: int = 0,
@@ -616,7 +622,7 @@ class YdrLight:
     ) -> "YdrLight":
         return cls(
             position=tuple(float(v) for v in position),
-            color=tuple(int(v) for v in color),
+            color=parse_css_rgb(color),
             intensity=float(intensity),
             falloff=float(falloff),
             flags=int(flags),
@@ -633,7 +639,7 @@ class YdrLight:
         *,
         position: tuple[float, float, float] = (0.0, 0.0, 0.0),
         direction: tuple[float, float, float] = (0.0, 0.0, -1.0),
-        color: tuple[int, int, int] = (255, 255, 255),
+        color: tuple[int, int, int] | CssColor = (255, 255, 255),
         intensity: float = 1.0,
         falloff: float = 0.0,
         cone_inner_angle: float = 0.0,
@@ -647,7 +653,7 @@ class YdrLight:
         return cls(
             position=tuple(float(v) for v in position),
             direction=tuple(float(v) for v in direction),
-            color=tuple(int(v) for v in color),
+            color=parse_css_rgb(color),
             intensity=float(intensity),
             falloff=float(falloff),
             cone_inner_angle=float(cone_inner_angle),
@@ -666,7 +672,7 @@ class YdrLight:
         *,
         position: tuple[float, float, float] = (0.0, 0.0, 0.0),
         extent: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        color: tuple[int, int, int] = (255, 255, 255),
+        color: tuple[int, int, int] | CssColor = (255, 255, 255),
         intensity: float = 1.0,
         falloff: float = 0.0,
         flags: int = 0,
@@ -678,7 +684,7 @@ class YdrLight:
         return cls(
             position=tuple(float(v) for v in position),
             extent=tuple(float(v) for v in extent),
-            color=tuple(int(v) for v in color),
+            color=parse_css_rgb(color),
             intensity=float(intensity),
             falloff=float(falloff),
             flags=int(flags),
@@ -1793,7 +1799,7 @@ def _iter_meshes(target: _Paintable) -> Iterator[YdrMesh | YdrMeshInput]:
 
 def paint_mesh(
     target: _Paintable,
-    color: float | tuple[float, ...],
+    color: float | tuple[float, ...] | str,
     *,
     channel: int = 0,
     components: ColorChannel | None = None,
@@ -1803,8 +1809,8 @@ def paint_mesh(
     *target* — a :class:`YdrMesh`, :class:`YdrMeshInput`, or
     :class:`YdrModel` (paints every mesh in the model).
 
-    *color* — RGBA tuple, RGB tuple, or a single float for single-component
-    painting.  Values are 0-1.
+    *color* — CSS color string, RGBA tuple, RGB tuple, or a single float for
+    single-component painting. Numeric tuple values are 0-1.
 
     *channel* — selects ``colours0`` (0, default) or ``colours1`` (1).
 
@@ -1813,7 +1819,7 @@ def paint_mesh(
     (default) overwrites all four channels.
     """
     for mesh in _iter_meshes(target):
-        values = (float(color),) if isinstance(color, (int, float)) else tuple(color)
+        values = parse_css_rgba_unit(color) if isinstance(color, str) else ((float(color),) if isinstance(color, (int, float)) else tuple(color))
         if components is None:
             rgba = _apply_color((0.0, 0.0, 0.0, 1.0), values, None)
             _set_colours(mesh, channel, [rgba] * _vertex_count(mesh))
@@ -1826,7 +1832,7 @@ def paint_mesh(
 def paint_vertices(
     target: _Paintable,
     vertex_indices: Sequence[int],
-    color: float | tuple[float, ...],
+    color: float | tuple[float, ...] | str,
     *,
     channel: int = 0,
     components: ColorChannel | None = None,
@@ -1836,8 +1842,8 @@ def paint_vertices(
     *target* — a :class:`YdrMesh`, :class:`YdrMeshInput`, or
     :class:`YdrModel` (applies to every mesh in the model).
 
-    *color* — RGBA tuple, RGB tuple, or a single float for single-component
-    painting.
+    *color* — CSS color string, RGBA tuple, RGB tuple, or a single float for
+    single-component painting.
 
     *components* — a :class:`ColorChannel` selecting which channels to write.
     ``None`` overwrites all four.  Unmentioned channels and unlisted vertices
@@ -1845,7 +1851,7 @@ def paint_vertices(
     vertices default to ``(0, 0, 0, 1)``.
     """
     for mesh in _iter_meshes(target):
-        values = (float(color),) if isinstance(color, (int, float)) else tuple(color)
+        values = parse_css_rgba_unit(color) if isinstance(color, str) else ((float(color),) if isinstance(color, (int, float)) else tuple(color))
         colours = _get_colours(mesh, channel)
         for idx in vertex_indices:
             if idx < len(colours):

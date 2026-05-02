@@ -1,0 +1,68 @@
+{
+  "name": "fivefury-cutscript",
+  "displayName": "FiveFury CutScript",
+  "description": "Syntax highlighting, completion and compile command for FiveFury .cuts files.",
+  "version": "0.1.0",
+  "publisher": "fivefury",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:cutscript",
+    "onCommand:fivefuryCuts.compile"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "fivefuryCuts.compile",
+        "title": "FiveFury: Compile CutScript to .cut",
+        "category": "FiveFury"
+      }
+    ],
+    "configuration": {
+      "title": "FiveFury CutScript",
+      "properties": {
+        "fivefuryCuts.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run fivefury.save_cutscript."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "cutscript",
+        "aliases": [
+          "FiveFury CutScript",
+          "CutScript"
+        ],
+        "extensions": [
+          ".cuts",
+          ".cutscript"
+        ],
+        "configuration": "./language-configuration/cutscript.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cutscript",
+        "scopeName": "source.cutscript",
+        "path": "./syntaxes/cutscript.tmLanguage.json"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == cutscript",
+          "command": "fivefuryCuts.compile",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

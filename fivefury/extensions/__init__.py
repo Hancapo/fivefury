@@ -4,15 +4,16 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
-from .defs import EXTENSION_STRUCT_INFOS, MetaBackedStruct
+from ..colors import CssColor, parse_css_argb, parse_css_rgb
 from ..meta import RawStruct
+from .defs import EXTENSION_STRUCT_INFOS, MetaBackedStruct
 
 @dataclasses.dataclass(slots=True)
 class LightAttrDef(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CLightAttrDef"
 
     posn: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    colour: tuple[int, int, int] = (255, 255, 255)
+    colour: tuple[int, int, int] | CssColor = (255, 255, 255)
     flashiness: int = 0
     intensity: float = 1.0
     flags: int = 0
@@ -29,7 +30,7 @@ class LightAttrDef(MetaBackedStruct):
     padding3: int = 0
     vol_intensity: float = 0.0
     vol_size_scale: float = 0.0
-    vol_outer_colour: tuple[int, int, int] = (255, 255, 255)
+    vol_outer_colour: tuple[int, int, int] | CssColor = (255, 255, 255)
     light_hash: int = 0
     vol_outer_intensity: float = 0.0
     corona_size: float = 0.0
@@ -47,6 +48,10 @@ class LightAttrDef(MetaBackedStruct):
     cone_outer_angle: float = 0.0
     extents: tuple[float, float, float] = (0.0, 0.0, 0.0)
     projected_texture_key: int = 0
+
+    def __post_init__(self) -> None:
+        self.colour = parse_css_rgb(self.colour)
+        self.vol_outer_colour = parse_css_rgb(self.vol_outer_colour)
 
 
 @dataclasses.dataclass(slots=True)
@@ -98,7 +103,10 @@ class ParticleEffectExtension(MetaBackedStruct):
     scale: float = 1.0
     probability: int = 100
     flags: int = 0
-    color: int = 0
+    color: int | CssColor = 0
+
+    def __post_init__(self) -> None:
+        self.color = parse_css_argb(self.color)
 
 
 @dataclasses.dataclass(slots=True)
@@ -254,7 +262,7 @@ class LightShaftExtension(MetaBackedStruct):
     fade_out_time_end: float = 0.0
     fade_distance_start: float = 0.0
     fade_distance_end: float = 0.0
-    color: int = 0
+    color: int | CssColor = 0
     intensity: float = 0.0
     flashiness: int = 0
     flags: int = 0
@@ -262,6 +270,9 @@ class LightShaftExtension(MetaBackedStruct):
     volume_type: int = 0
     softness: float = 0.0
     scale_by_sun_intensity: bool = False
+
+    def __post_init__(self) -> None:
+        self.color = parse_css_argb(self.color)
 
 
 @dataclasses.dataclass(slots=True)

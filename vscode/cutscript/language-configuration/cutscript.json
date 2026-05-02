@@ -1,0 +1,32 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [
+    ["\"", "\""]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "\"",
+      "close": "\""
+    }
+  ],
+  "surroundingPairs": [
+    {
+      "open": "\"",
+      "close": "\""
+    }
+  ],
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*(ASSETS|TRACK\\b.*|LIGHT\\b.*:|(PROP|PED|VEHICLE)\\b.*:|[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s+CUT\\b.*:)\\s*(#.*|;.*|//.*)?$",
+      "action": {
+        "indent": "indent"
+      }
+    }
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(ASSETS|TRACK\\b.*|LIGHT\\b.*:|(PROP|PED|VEHICLE)\\b.*:|[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s+CUT\\b.*:)\\s*(#.*|;.*|//.*)?$",
+    "decreaseIndentPattern": "^\\s*END\\b"
+  }
+}

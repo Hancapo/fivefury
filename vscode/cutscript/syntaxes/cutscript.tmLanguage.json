@@ -1,0 +1,119 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FiveFury CutScript",
+  "scopeName": "source.cutscript",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#root-keywords"
+    },
+    {
+      "include": "#asset-keywords"
+    },
+    {
+      "include": "#track-keywords"
+    },
+    {
+      "include": "#event-keywords"
+    },
+    {
+      "include": "#option-keywords"
+    },
+    {
+      "include": "#constants"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.cutscript",
+          "match": "(#(?![0-9A-Fa-f]{3}\\b|[0-9A-Fa-f]{4}\\b|[0-9A-Fa-f]{6}\\b|[0-9A-Fa-f]{8}\\b)|;|//).*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.cutscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cutscript",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.cutscript",
+          "match": "\\b0x[0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.cutscript",
+          "match": "\\b[-+]?(?:\\d+\\.\\d*|\\.\\d+|\\d+)(?:[eE][-+]?\\d+)?\\b"
+        }
+      ]
+    },
+    "root-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.root.cutscript",
+          "match": "^\\s*\\b(CUTSCENE|DURATION|OFFSET|ROTATION|FLAGS|ASSETS|TRACK|SAVE|END)\\b"
+        }
+      ]
+    },
+    "asset-keywords": {
+      "patterns": [
+        {
+          "name": "entity.name.type.asset.cutscript",
+          "match": "^\\s*\\b(ASSET_MANAGER|ANIM_MANAGER|CAMERA|PROP|PED|VEHICLE|LIGHT|AUDIO|SUBTITLE|FADE|OVERLAY|DECAL)\\b"
+        }
+      ]
+    },
+    "track-keywords": {
+      "patterns": [
+        {
+          "name": "entity.name.section.track.cutscript",
+          "match": "(?<=\\bTRACK\\s)\\b(LOAD|CAMERA|ANIMATION|OBJECTS|FADE|OVERLAYS|LIGHTS|SUBTITLES|AUDIO|CLEANUP)\\b"
+        }
+      ]
+    },
+    "event-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.other.event.cutscript",
+          "match": "^\\s*\\d+(?:\\.\\d+)?\\s+\\b(SCENE|UNLOAD_SCENE|MODELS|UNLOAD_MODELS|ANIM_DICT|UNLOAD_ANIM_DICT|CUT|DRAW_DISTANCE|PLAY|STOP|SHOW|HIDE|LOAD|UNLOAD|LOAD_OVERLAYS|UNLOAD_OVERLAYS|ATTACH|ATTACHMENT|FADE_IN|FADE_OUT|IN|OUT|ENABLE|ON|DISABLE|OFF|SUBTITLES|UNLOAD_SUBTITLES)\\b"
+        }
+      ]
+    },
+    "option-keywords": {
+      "patterns": [
+        {
+          "name": "support.type.option.cutscript",
+          "match": "\\b(MODEL|YTYP|ANIM_BASE|PRESET|TYPE|POSITION|POS|DIRECTION|DIR|COLOR|COLOUR|INTENSITY|FALLOFF|CONE|INNER_CONE|CORONA|PROPERTY|STATIC|NAME|ROT|ROTATION|NEAR|FAR|MAP_LOD|FOR|LANG|LANGUAGE|TO|VALUE)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.cutscript",
+          "match": "\\b(PLAYABLE|SECTIONED|STORY_MODE|NONE|FADE_IN_GAME|FADE_OUT_GAME|FADE_IN_CUTSCENE|FADE_OUT_CUTSCENE|SHORT_FADE_OUT|LONG_FADE_OUT|FADE_BETWEEN_SECTIONS|NO_AMBIENT_LIGHTS|NO_VEHICLE_LIGHTS|USE_ONE_AUDIO|MUTE_MUSIC_PLAYER|LEAK_RADIO|TRANSLATE_BONE_IDS|INTERP_CAMERA|IS_SECTIONED|SECTION_BY_CAMERA_CUTS|SECTION_BY_DURATION|SECTION_BY_SPLIT|USE_PARENT_SCALE|USE_ONE_SCENE_ORIENTATION|ENABLE_DEPTH_OF_FIELD|STREAM_PROCESSED|USE_STORY_MODE|USE_IN_GAME_DOF_START|USE_IN_GAME_DOF_END|USE_CATCHUP_CAMERA|USE_BLENDOUT_CAMERA|PART|INTERNAL_CONCAT|EXTERNAL_CONCAT|USE_AUDIO_EVENTS_CONCAT|USE_IN_GAME_DOF_START_SECOND_CUT|COMMON_PROP|COMMON_PROP_ALT_COMPRESSION|ALT_EXPORT_A|ALT_EXPORT_B|POINT|SPOT|DIRECTIONAL|true|false|yes|no|on|off)\\b"
+        }
+      ]
+    }
+  }
+}

@@ -5,6 +5,8 @@ import enum
 import hashlib
 from pathlib import Path
 
+from ..colors import parse_css_rgb
+
 RGB = tuple[int, int, int]
 
 _DEFAULT_BOUND_MATERIAL_NAMES = (
@@ -77,15 +79,7 @@ def _fallback_color_from_name(name: str) -> RGB:
 
 
 def _parse_color_spec(spec: str) -> RGB:
-    value = spec.strip()
-    if value.startswith("#"):
-        value = value[1:]
-    if len(value) == 6:
-        return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
-    parts = value.replace(",", " ").split()
-    if len(parts) == 3:
-        return (int(parts[0]), int(parts[1]), int(parts[2]))
-    raise ValueError(f"invalid material colour spec: {spec!r}")
+    return parse_css_rgb(spec)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
