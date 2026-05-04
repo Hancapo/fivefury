@@ -94,6 +94,30 @@ std::vector<std::uint32_t> CompactIndex::find_kind_ids(std::int32_t kind_value) 
     return it->second;
 }
 
+std::vector<std::pair<std::uint32_t, std::uint32_t>> CompactIndex::kind_short_hash_pairs(std::int32_t kind_value) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = kind_to_ids_.find(kind_value);
+    if (it == kind_to_ids_.end()) {
+        return {};
+    }
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> pairs;
+    pairs.reserve(it->second.size());
+    for (const auto asset_id : it->second) {
+        pairs.emplace_back(checked_at(short_hashes_, asset_id), asset_id);
+    }
+    return pairs;
+}
+
+std::vector<std::pair<std::int32_t, std::uint32_t>> CompactIndex::kind_counts() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::pair<std::int32_t, std::uint32_t>> counts;
+    counts.reserve(kind_to_ids_.size());
+    for (const auto& [kind, ids] : kind_to_ids_) {
+        counts.emplace_back(kind, static_cast<std::uint32_t>(ids.size()));
+    }
+    return counts;
+}
+
 std::string CompactIndex::get_path(std::uint32_t asset_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return checked_at(paths_, asset_id);

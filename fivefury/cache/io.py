@@ -12,6 +12,7 @@ from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..gxt2 import read_gxt2
 from ..hashing import _get_lut
 from ..metahash import MetaHash
+from ..rel import read_rel
 from ..resource import parse_rsc7
 from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _normalize_key
 from ..ycd import read_ycd
@@ -79,6 +80,7 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
     direct_decoders = {
         ".gxt2": (GameFileType.GXT2, lambda payload: read_gxt2(payload, path=path)),
         ".awc": (GameFileType.AWC, lambda payload: read_awc(payload, path=path)),
+        ".rel": (GameFileType.REL, lambda payload: read_rel(payload, path=path)),
         ".rpf": (GameFileType.RPF, RpfArchive.from_bytes),
     }
     if ext in direct_decoders:

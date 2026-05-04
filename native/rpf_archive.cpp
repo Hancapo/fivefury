@@ -160,6 +160,8 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     constexpr std::int32_t YDR = 1;
     constexpr std::int32_t YFT = 2;
     constexpr std::int32_t YMAP = 3;
+    constexpr std::int32_t YMF = 4;
+    constexpr std::int32_t YMT = 5;
     constexpr std::int32_t YTD = 6;
     constexpr std::int32_t YTYP = 7;
     constexpr std::int32_t YBN = 8;
@@ -171,7 +173,13 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     constexpr std::int32_t YWR = 14;
     constexpr std::int32_t YVR = 15;
     constexpr std::int32_t GTXD = 16;
-    constexpr std::int32_t CUT = 32;
+    constexpr std::int32_t AWC = 17;
+    constexpr std::int32_t YED = 25;
+    constexpr std::int32_t YLD = 26;
+    constexpr std::int32_t YFD = 27;
+    constexpr std::int32_t MRF = 30;
+    constexpr std::int32_t YPDB = 32;
+    constexpr std::int32_t CUT = 33;
     constexpr std::int32_t RPF = 100;
 
     const auto dot = path.find_last_of('.');
@@ -180,6 +188,8 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     }
     const auto ext = path.substr(dot);
     if (ext == ".ymap") return YMAP;
+    if (ext == ".ymf") return YMF;
+    if (ext == ".ymt") return YMT;
     if (ext == ".ytyp") return YTYP;
     if (ext == ".ytd") return YTD;
     if (ext == ".ydr") return YDR;
@@ -194,6 +204,12 @@ std::int32_t guess_kind(std::string_view path) noexcept {
     if (ext == ".ywr") return YWR;
     if (ext == ".yvr") return YVR;
     if (ext == ".gxt2") return GTXD;
+    if (ext == ".awc") return AWC;
+    if (ext == ".yed") return YED;
+    if (ext == ".yld") return YLD;
+    if (ext == ".yfd") return YFD;
+    if (ext == ".mrf") return MRF;
+    if (ext == ".ypdb") return YPDB;
     if (ext == ".cut") return CUT;
     if (ext == ".rpf") return RPF;
     return UNKNOWN;

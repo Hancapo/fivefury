@@ -6,7 +6,7 @@ It focuses on practical modding workflows: building drawable assets, collision r
 
 ## Highlights
 
-- Read, edit, build, and write core GTA V formats such as `YDR`, `YDD`, `YBN`, `YCD`, `YMAP`, `YTYP`, `YTD`, `YND`, `YNV`, `CUT`, `GXT2`, `AWC`, and `RPF`.
+- Read, edit, build, and write core GTA V formats such as `YDR`, `YDD`, `YBN`, `YCD`, `YMAP`, `YTYP`, `YTD`, `YND`, `YNV`, `CUT`, `GXT2`, `AWC`, `REL`, and `RPF`.
 - Use declarative high-level helpers for common authoring tasks while still keeping access to lower-level binary/resource details.
 - Index game installs, loose folders, and archives with `GameFileCache`, including typed lookups by asset name, hash, and format.
 - Extract texture dictionaries from `YTD`, `GTXD` parent chains, and embedded dictionaries in resource assets.
@@ -68,8 +68,9 @@ Support levels:
 | --- | --- |
 | `YFT` | Resource texture dictionaries can be discovered/extracted from fragments, but full fragment authoring is not implemented. |
 | `YPT` | Resource texture dictionaries can be discovered/extracted from particle dictionaries, but full particle authoring is not implemented. |
-| `AWC` | Audio wave containers can be read/written structurally, opened through `GameFileCache`, exported back to WAV for PCM/ADPCM streams, and built from mono 16-bit PCM WAV input. REL audio metadata authoring is separate and not implemented yet. |
-| `YMF`, `YMT`, `REL`, `YWR`, `YVR`, `YED` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
+| `AWC` | Audio wave containers can be read/written structurally, opened through `GameFileCache`, exported back to WAV for PCM/ADPCM streams, and built from mono or multichannel 16-bit PCM inputs decoded through `miniaudio` (`.wav`, `.mp3`, `.ogg`, `.flac`). Playback metadata lives in `.rel` banks. |
+| `REL` | Audio metadata banks can be read/written structurally, opened through `GameFileCache`, and round-tripped with unknown entries preserved. `dat10.rel` modular synth presets/synths, `dat16.rel` curves, `dat22.rel` categories, and common `dat54.rel` sound graph entries have typed models, including simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, note maps, variable-curve and conditional routing, directional/kinetic routing, variable blocks, math operations, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, and sound-hash lists. Other REL item families currently stay as raw entries. |
+| `YMF`, `YMT`, `YWR`, `YVR`, `YED` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
 | `GTXD` metadata | Used by cache texture lookup and parent-chain resolution, but it is not a standalone binary asset format like `.gxt2`. |
 
 ### Not Implemented Yet
@@ -78,7 +79,27 @@ Support levels:
 | --- | --- |
 | `YLD`, `YFD`, `YPDB`, `MRF` | Known game file types, currently no dedicated high-level support. |
 | Heightmap and watermap resources | Recognized as game concepts, but no complete public reader/writer yet. |
-| Audio REL banks and vehicle/ped meta specializations | Some metadata can be indexed as files, but specialized semantic authoring is not currently exposed. |
+| Vehicle/ped audio REL specializations | REL files can be loaded structurally, but specialized semantic authoring beyond the initial synth/curve/category/sound subset is not currently exposed. |
+
+## Audio AWC Conversion
+
+`fivefury.awc` can decode common desktop audio formats through `miniaudio` and write PCM `.awc` files. Mono input is written as a normal single-channel AWC; stereo or multichannel input is written as a real multichannel AWC with a `STREAM_FORMAT` source stream and logical channel streams.
+
+```python
+from fivefury import Awc, convert_audio_to_awc
+
+# Direct file-to-file conversion. The stream name defaults to the source stem.
+convert_audio_to_awc("music/stinger.mp3", "stream/stinger.awc")
+
+# Force stereo output if the source is mono or has more channels than you need.
+convert_audio_to_awc("music/song.flac", "stream/song.awc", channels=2)
+
+# In-memory authoring when you also need to inspect or post-process the AWC.
+awc = Awc.from_audio("radio_intro", "audio/radio_intro.ogg")
+awc.save("stream/radio_intro.awc")
+```
+
+The converter currently normalizes input to signed 16-bit PCM and preserves the source channel count unless `channels=` is provided. Use `.rel` metadata to expose the resulting `.awc` stream as a playable sound, radio entry, cutscene audio, or other game audio object.
 
 ## API Style
 

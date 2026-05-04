@@ -39,7 +39,7 @@ from .mlo import (
     Portal,
     Room,
 )
-from .model import Ytyp, read_ytyp, save_ytyp
+from .model import CompositeEntityType, Ytyp, YtypDependency, read_ytyp, save_ytyp
 
 __all__ = [
     "Archetype",
@@ -50,6 +50,7 @@ __all__ = [
     "ARCHETYPE_LOD_RADIUS_SCALE",
     "CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS",
     "CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS",
+    "CompositeEntityType",
     "DEFAULT_ARCHETYPE_HD_TEXTURE_DIST",
     "DEFAULT_ARCHETYPE_LOD_DIST",
     "coerce_archetype_asset_type",
@@ -75,6 +76,7 @@ __all__ = [
     "YTYP_ENUM_INFOS",
     "YTYP_STRUCT_INFOS",
     "Ytyp",
+    "YtypDependency",
     "infer_archetype_hd_texture_dist",
     "infer_archetype_lod_dist",
     "infer_archetype_radius",

@@ -10,6 +10,33 @@ from .enums import YmapCarGenFlags, coerce_ymap_cargen_flags
 
 
 @dataclasses.dataclass(slots=True)
+class PhysicsDictionary(MetaHashFieldsMixin):
+    """YMAP physics dictionary reference.
+
+    CMapData stores physics dictionaries as a hash array, but exposing each
+    reference as an object keeps the high-level API consistent with entities,
+    cargens, occluders and other YMAP components.
+    """
+
+    _hash_fields = ("name",)
+
+    name: MetaHash | HashLike = 0
+
+    def to_meta(self) -> MetaHash:
+        return self.name
+
+    @classmethod
+    def from_meta(cls, value: MetaHash | HashLike) -> "PhysicsDictionary":
+        return cls(name=value)
+
+    def __int__(self) -> int:
+        return int(self.name)
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+@dataclasses.dataclass(slots=True)
 class BlockDesc:
     version: int = 0
     flags: int = 0

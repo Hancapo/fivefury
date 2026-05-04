@@ -58,6 +58,12 @@ class CompactIndex:
     def find_kind_ids(self, kind_value: int) -> list[int]:
         return [int(item) for item in _ffi.index_find_kind_ids(self._capsule, int(kind_value))]
 
+    def kind_short_hash_map(self, kind_value: int) -> dict[int, int]:
+        return {int(key): int(value) for key, value in _ffi.index_kind_short_hash_map(self._capsule, int(kind_value)).items()}
+
+    def kind_counts(self) -> dict[int, int]:
+        return {int(key): int(value) for key, value in _ffi.index_kind_counts(self._capsule).items()}
+
     def get_path(self, asset_id: int) -> str:
         return str(_ffi.index_get_path(self._capsule, int(asset_id)))
 

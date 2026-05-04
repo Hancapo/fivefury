@@ -1,4 +1,4 @@
-from .blocks import BlockDesc, CarGen, ContainerLodDef, TimeCycleModifier
+from .blocks import BlockDesc, CarGen, ContainerLodDef, PhysicsDictionary, TimeCycleModifier
 from .defs import YMAP_ENUM_INFOS, YMAP_STRUCT_INFOS
 from .enums import (
     YmapCarGenFlags,
@@ -57,6 +57,7 @@ __all__ = [
     "MloInstance",
     "MloInstanceDef",
     "OccludeModel",
+    "PhysicsDictionary",
     "TimeCycleModifier",
     "YmapCarGenFlags",
     "YmapContentFlags",

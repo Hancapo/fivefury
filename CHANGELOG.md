@@ -7,6 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Initial `.rel` support through the new `fivefury.rel` package, including structural binary read/write, raw preservation for unknown entries, public `read_rel`, `build_rel_bytes`, and `save_rel` helpers, plus `GameFileCache` decoding.
+- Typed REL models and enums for `dat10.rel` modular synth presets/synth definitions, `dat16.rel` curves, `dat22.rel` audio categories, and `dat54.rel` sound graphs, including looping sounds, simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, automation note maps, variable-curve routing, conditional routing, directional and kinetic routing, variable blocks, math-operation routing, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, sound-hash lists, sound headers, environment sound hashes, exposed variables, name tables, index tables, hash tables, and pack tables.
+- `miniaudio`-backed conversion from popular audio formats (`.wav`, `.mp3`, `.ogg`, `.flac`) to mono or multichannel PCM `.awc` files through `Awc.from_audio`, `AwcStream.from_audio`, `decode_audio`, and `convert_audio_to_awc`.
+
+### Performance
+- `GameFileCache` format dictionaries, kind counts, and typed asset iteration now reuse native compact-index kind buckets instead of rebuilding those views by scanning every asset in Python.
+
 ## [0.2.1] - 2026-05-02
 
 ### Added

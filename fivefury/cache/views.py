@@ -200,12 +200,7 @@ class _KindHashRecordMap(Mapping[int, AssetRecord]):
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
             return
-        hash_to_id: dict[int, int] = {}
-        for asset_id in range(self._cache.asset_count):
-            asset = self._cache._record_from_id(asset_id)
-            if asset.kind is self._kind:
-                hash_to_id[int(self._cache._index.get_short_hash(asset_id))] = int(asset_id)
-        self._hash_to_id = hash_to_id
+        self._hash_to_id = self._cache._index.kind_short_hash_map(int(self._kind))
         self._generation = self._cache._view_generation
 
     def __len__(self) -> int:
@@ -362,11 +357,7 @@ class _KindCountsView(Mapping[GameFileType, int]):
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
             return
-        counts: dict[GameFileType, int] = {}
-        for asset_id in range(self._cache.asset_count):
-            kind = self._cache._record_from_id(asset_id).kind
-            counts[kind] = counts.get(kind, 0) + 1
-        self._counts = counts
+        self._counts = {GameFileType(kind): count for kind, count in self._cache._index.kind_counts().items()}
         self._generation = self._cache._view_generation
 
     def __len__(self) -> int:

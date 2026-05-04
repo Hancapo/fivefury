@@ -364,10 +364,8 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             for asset_id in range(self.asset_count):
                 yield self._record_from_id(asset_id)
             return
-        for asset_id in range(self.asset_count):
-            asset = self._record_from_id(asset_id)
-            if asset.kind is kind_value:
-                yield asset
+        for asset_id in self._index.find_kind_ids(int(kind_value)):
+            yield self._record_from_id(asset_id)
 
     def iter_paths(self, kind: GameFileType | str | int | None = None) -> Iterator[str]:
         if kind is None:

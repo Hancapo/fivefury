@@ -159,6 +159,73 @@ PyObject* mod_index_find_kind_ids(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_index_kind_short_hash_map(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    int kind_value = 0;
+    if (!PyArg_ParseTuple(args, "Oi:index_kind_short_hash_map", &capsule, &kind_value)) {
+        return nullptr;
+    }
+    auto* index = require_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    try {
+        const auto pairs = index->kind_short_hash_pairs(static_cast<std::int32_t>(kind_value));
+        PyObject* dict = PyDict_New();
+        if (dict == nullptr) {
+            return nullptr;
+        }
+        for (const auto& [hash_value, asset_id] : pairs) {
+            PyObject* key = PyLong_FromUnsignedLong(hash_value);
+            PyObject* value = PyLong_FromUnsignedLong(asset_id);
+            if (key == nullptr || value == nullptr || PyDict_SetItem(dict, key, value) < 0) {
+                Py_XDECREF(key);
+                Py_XDECREF(value);
+                Py_DECREF(dict);
+                return nullptr;
+            }
+            Py_DECREF(key);
+            Py_DECREF(value);
+        }
+        return dict;
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
+PyObject* mod_index_kind_counts(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    if (!PyArg_ParseTuple(args, "O:index_kind_counts", &capsule)) {
+        return nullptr;
+    }
+    auto* index = require_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    try {
+        const auto counts = index->kind_counts();
+        PyObject* dict = PyDict_New();
+        if (dict == nullptr) {
+            return nullptr;
+        }
+        for (const auto& [kind, count] : counts) {
+            PyObject* key = PyLong_FromLong(kind);
+            PyObject* value = PyLong_FromUnsignedLong(count);
+            if (key == nullptr || value == nullptr || PyDict_SetItem(dict, key, value) < 0) {
+                Py_XDECREF(key);
+                Py_XDECREF(value);
+                Py_DECREF(dict);
+                return nullptr;
+            }
+            Py_DECREF(key);
+            Py_DECREF(value);
+        }
+        return dict;
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_index_get_path(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     unsigned int asset_id = 0;

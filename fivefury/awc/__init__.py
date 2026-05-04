@@ -12,6 +12,7 @@ from .constants import (
     AwcCodecType,
     awc_chunk_name,
 )
+from .conversion import DecodedAudio, SUPPORTED_AUDIO_EXTENSIONS, convert_audio_to_awc, decode_audio
 from .crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
 from .io import build_awc_bytes, read_awc, save_awc
 from .structures import (
@@ -42,10 +43,14 @@ __all__ = [
     "AwcStream",
     "AwcStreamFormat",
     "AwcStreamFormatChunk",
+    "DecodedAudio",
+    "SUPPORTED_AUDIO_EXTENSIONS",
     "awc_chunk_name",
     "build_awc_bytes",
     "build_pcm_wav",
+    "convert_audio_to_awc",
     "decode_awc_adpcm",
+    "decode_audio",
     "decrypt_awc_rsxxtea",
     "encrypt_awc_rsxxtea",
     "parse_pcm_wav",

@@ -22,6 +22,36 @@ def _build_peak_values(pcm: bytes, sample_count: int, *, block_size: int = 4096)
     return values
 
 
+def split_interleaved_pcm16(pcm: bytes, channels: int) -> list[bytes]:
+    if channels <= 0:
+        raise ValueError("channels must be greater than zero")
+    frame_size = channels * 2
+    if len(pcm) % frame_size:
+        raise ValueError("PCM byte length is not aligned to the channel count")
+    outputs = [bytearray() for _ in range(channels)]
+    for frame_offset in range(0, len(pcm), frame_size):
+        for channel_index in range(channels):
+            sample_offset = frame_offset + (channel_index * 2)
+            outputs[channel_index].extend(pcm[sample_offset : sample_offset + 2])
+    return [bytes(output) for output in outputs]
+
+
+def interleave_pcm16(channels: list[bytes], *, sample_count: int | None = None) -> bytes:
+    if not channels:
+        return b""
+    if any(len(channel) % 2 for channel in channels):
+        raise ValueError("PCM channel byte length must be 16-bit aligned")
+    frame_count = min(len(channel) // 2 for channel in channels)
+    if sample_count is not None:
+        frame_count = min(frame_count, int(sample_count))
+    out = bytearray()
+    for frame_index in range(frame_count):
+        offset = frame_index * 2
+        for channel in channels:
+            out.extend(channel[offset : offset + 2])
+    return bytes(out)
+
+
 def parse_pcm_wav(data: bytes) -> tuple[bytes, int, int, int]:
     if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
         raise ValueError("Expected a RIFF/WAVE file")
@@ -213,5 +243,7 @@ __all__ = [
     "_build_peak_values",
     "build_pcm_wav",
     "decode_awc_adpcm",
+    "interleave_pcm16",
     "parse_pcm_wav",
+    "split_interleaved_pcm16",
 ]

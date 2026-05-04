@@ -104,6 +104,12 @@ def read_awc(
         streams.append(AwcStream(stream_id, chunks))
 
     awc = Awc(streams, version=version, flags=flags, path=path, endian=endian, whole_file_encrypted=whole_file_encrypted)
+    if awc.multi_channel_flag:
+        source_stream = next((stream for stream in awc.streams if stream.stream_format_chunk is not None), None)
+        if source_stream is not None and source_stream.stream_format_chunk is not None:
+            channels_by_id = {channel.id & AWC_STREAM_ID_MASK: channel for channel in source_stream.stream_format_chunk.channels}
+            for stream in awc.streams:
+                stream.stream_format = channels_by_id.get(stream.hash)
     if chunk_indices:
         expected = []
         cursor = 0

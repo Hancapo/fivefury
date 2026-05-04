@@ -8,7 +8,7 @@ from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta import MetaBuilder, RawStruct, read_meta, Meta
 from ..meta.defs import meta_name
 from ..resource import build_rsc7
-from .blocks import BlockDesc, CarGen, ContainerLodDef, TimeCycleModifier
+from .blocks import BlockDesc, CarGen, ContainerLodDef, PhysicsDictionary, TimeCycleModifier
 from .entities import EntityDef, MloInstanceDef
 from .enums import (
     YmapContentFlags,
@@ -111,10 +111,13 @@ def _coerce_container_lod(item: Any) -> ContainerLodDef | Any:
     return item
 
 
+def _coerce_physics_dictionary(item: PhysicsDictionary | MetaHash | HashLike) -> PhysicsDictionary:
+    return item if isinstance(item, PhysicsDictionary) else PhysicsDictionary(name=item)
+
+
 @dataclasses.dataclass(slots=True)
 class Ymap(MetaHashFieldsMixin):
     _hash_fields = ("name", "parent")
-    _hash_list_fields = ("physics_dictionaries",)
 
     name: MetaHash | HashLike = 0
     parent: MetaHash | HashLike = 0
@@ -128,7 +131,7 @@ class Ymap(MetaHashFieldsMixin):
     container_lods: list[ContainerLodDef | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
     box_occluders: list[BoxOccluder | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
     occlude_models: list[OccludeModel | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
-    physics_dictionaries: list[MetaHash | HashLike] = dataclasses.field(default_factory=list)
+    physics_dictionaries: list[PhysicsDictionary | MetaHash | HashLike] = dataclasses.field(default_factory=list)
     instanced_data: InstancedMapData | dict[str, Any] | None = None
     time_cycle_modifiers: list[TimeCycleModifier | dict[str, Any]] = dataclasses.field(default_factory=list)
     car_generators: list[CarGen | dict[str, Any]] = dataclasses.field(default_factory=list)
@@ -141,6 +144,7 @@ class Ymap(MetaHashFieldsMixin):
         self.name = _ensure_base_name(self.name, ".ymap")
         self.flags = coerce_ymap_flags(self.flags)
         self.content_flags = coerce_ymap_content_flags(self.content_flags)
+        self.physics_dictionaries = [_coerce_physics_dictionary(item) for item in self.physics_dictionaries]
 
     @property
     def resource_name(self) -> str:
@@ -150,12 +154,17 @@ class Ymap(MetaHashFieldsMixin):
     def resource_name(self, value: str) -> None:
         self.meta_name = str(value or "")
 
-    def add_entity(self, entity: EntityDef | MloInstanceDef) -> None:
+    def add_entity(self, entity: EntityDef | MloInstanceDef) -> EntityDef | MloInstanceDef:
         self.entities.append(entity)
+        return entity
 
-    def add_physics_dictionary(self, name: MetaHash | HashLike) -> MetaHash | HashLike:
-        self.physics_dictionaries.append(name)
-        return name
+    def add_physics_dictionary(self, name: PhysicsDictionary | MetaHash | HashLike) -> PhysicsDictionary:
+        return self.physics_dictionary(name)
+
+    def physics_dictionary(self, name: PhysicsDictionary | MetaHash | HashLike) -> PhysicsDictionary:
+        dictionary = _coerce_physics_dictionary(name)
+        self.physics_dictionaries.append(dictionary)
+        return dictionary
 
     def entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
         entity = EntityDef(archetype_name=archetype_name, **kwargs)
@@ -169,6 +178,43 @@ class Ymap(MetaHashFieldsMixin):
         entity = MloInstanceDef(archetype_name=archetype_name, **kwargs)
         self.add_entity(entity)
         return entity
+
+    def add(self, item: Any) -> Any:
+        return self._add_one(item)
+
+    def _add_one(self, item: Any) -> Any:
+        if isinstance(item, (EntityDef, MloInstanceDef)):
+            return self.add_entity(item)
+        if isinstance(item, PhysicsDictionary):
+            self.physics_dictionaries.append(item)
+            return item
+        if isinstance(item, ContainerLodDef):
+            return self.add_container_lod(item)
+        if isinstance(item, BoxOccluder):
+            return self.add_box_occluder(item)
+        if isinstance(item, OccludeModel):
+            return self.add_occlude_model(item)
+        if isinstance(item, GrassInstanceBatch):
+            return self.add_grass_batch(item)
+        if isinstance(item, LodLight):
+            return self.add_lod_light(item)
+        if isinstance(item, CarGen):
+            return self.add_car_gen(item)
+        if isinstance(item, TimeCycleModifier):
+            return self.add_time_cycle_modifier(item)
+        if isinstance(item, InstancedMapData):
+            self.instanced_data = item
+            return item
+        if isinstance(item, LodLightsSoa):
+            self.lod_lights = item
+            return item
+        if isinstance(item, DistantLodLightsSoa):
+            self.distant_lod_lights = item
+            return item
+        if isinstance(item, BlockDesc):
+            self.block = item
+            return item
+        raise TypeError(f"Unsupported YMAP component: {type(item).__name__}")
 
     def add_box_occluder(self, occluder: BoxOccluder | dict[str, Any]) -> Any:
         self.box_occluders.append(occluder)
@@ -336,16 +382,18 @@ class Ymap(MetaHashFieldsMixin):
         self.distant_lod_lights = normalized_distant
         return self
 
-    def add_car_gen(self, car_gen: CarGen) -> None:
+    def add_car_gen(self, car_gen: CarGen) -> CarGen:
         self.car_generators.append(car_gen)
+        return car_gen
 
     def car_gen(self, car_model: HashLike, position: tuple[float, float, float], heading: float = 0.0, **kwargs: Any) -> CarGen:
         cg = CarGen.create(car_model, position, heading, **kwargs)
         self.add_car_gen(cg)
         return cg
 
-    def add_time_cycle_modifier(self, modifier: TimeCycleModifier) -> None:
+    def add_time_cycle_modifier(self, modifier: TimeCycleModifier) -> TimeCycleModifier:
         self.time_cycle_modifiers.append(modifier)
+        return modifier
 
     def time_cycle_modifier(
         self,
@@ -487,7 +535,10 @@ class Ymap(MetaHashFieldsMixin):
             "containerLods": [item.to_meta() if hasattr(item, "to_meta") else item for item in self.container_lods],
             "boxOccluders": [item.to_meta() if hasattr(item, "to_meta") else item for item in self.box_occluders],
             "occludeModels": [item.to_meta() if hasattr(item, "to_meta") else item for item in self.occlude_models],
-            "physicsDictionaries": self.physics_dictionaries,
+            "physicsDictionaries": [
+                item.to_meta() if hasattr(item, "to_meta") else item
+                for item in self.physics_dictionaries
+            ],
             "instancedData": self.instanced_data.to_meta() if hasattr(self.instanced_data, "to_meta") else self.instanced_data,
             "timeCycleModifiers": [modifier.to_meta() if hasattr(modifier, "to_meta") else modifier for modifier in self.time_cycle_modifiers],
             "carGenerators": [car_gen.to_meta() if hasattr(car_gen, "to_meta") else car_gen for car_gen in self.car_generators],
@@ -573,7 +624,10 @@ class Ymap(MetaHashFieldsMixin):
             container_lods=container_lods,
             box_occluders=[BoxOccluder.from_meta(item) if isinstance(item, dict) else item for item in root.get("boxOccluders", []) or []],
             occlude_models=[OccludeModel.from_meta(item) if isinstance(item, dict) else item for item in root.get("occludeModels", []) or []],
-            physics_dictionaries=list(root.get("physicsDictionaries", []) or []),
+            physics_dictionaries=[
+                PhysicsDictionary.from_meta(item)
+                for item in root.get("physicsDictionaries", []) or []
+            ],
             instanced_data=InstancedMapData.from_meta(root.get("instancedData")) if isinstance(root.get("instancedData"), dict) else root.get("instancedData"),
             time_cycle_modifiers=[TimeCycleModifier.from_meta(item) if isinstance(item, dict) else item for item in root.get("timeCycleModifiers", []) or []],
             car_generators=[CarGen.from_meta(item) if isinstance(item, dict) else item for item in root.get("carGenerators", []) or []],
