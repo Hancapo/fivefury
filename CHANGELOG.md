@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-05
+
 ### Added
 - Initial `.rel` support through the new `fivefury.rel` package, including structural binary read/write, raw preservation for unknown entries, public `read_rel`, `build_rel_bytes`, and `save_rel` helpers, plus `GameFileCache` decoding.
 - Typed REL models and enums for `dat10.rel` modular synth presets/synth definitions, `dat16.rel` curves, `dat22.rel` audio categories, and `dat54.rel` sound graphs, including looping sounds, simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, automation note maps, variable-curve routing, conditional routing, directional and kinetic routing, variable blocks, math-operation routing, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, sound-hash lists, sound headers, environment sound hashes, exposed variables, name tables, index tables, hash tables, and pack tables.
