@@ -76,7 +76,22 @@ def _coerce_name(value: Any) -> str | None:
     return None
 
 
+def _parse_hex_hash(text: str | None) -> int | None:
+    if not isinstance(text, str):
+        return None
+    value = text.strip()
+    if len(value) <= 2 or not value.lower().startswith("0x"):
+        return None
+    try:
+        return int(value, 16) & 0xFFFFFFFF
+    except ValueError:
+        return None
+
+
 def _hashed_string(text: str | None) -> CutHashedString:
+    parsed_hash = _parse_hex_hash(text)
+    if parsed_hash is not None:
+        return CutHashedString(hash=parsed_hash, text=None)
     value = text or ""
     return CutHashedString(hash=hash_value(value) if value else 0, text=value or None)
 

@@ -8,7 +8,9 @@ from fivefury import (
     CutSceneFlags,
     CutScreenFadePayload,
     CutScriptError,
+    cut_to_cutscript,
     GrassInstance,
+    HashResolver,
     LightAttrDef,
     LodLight,
     YdrLight,
@@ -19,6 +21,8 @@ from fivefury import (
     parse_css_rgba,
     parse_cutscript,
     read_cut,
+    read_cut_scene,
+    save_cut_as_cutscript,
     save_cutscript,
 )
 from fivefury.ydr import YdrMeshInput, paint_mesh
@@ -38,15 +42,16 @@ ASSETS
   CAMERA cam_wide
   CAMERA cam_close
 
-  PROP stage:
+  STATIC_PROP stage:
     MODEL "stage01"
     YTYP "stage01"
-  PROP miku:
+  ANIMATED_PROP miku:
     MODEL "miku_hatsune"
     YTYP "miku_pack"
+    CNAME "miku_hatsune"
     ANIM_BASE "miku_hatsune"
     PRESET COMMON_PROP
-  PROP microphone MODEL "mic_01" YTYP "stage_props"
+  STATIC_PROP microphone MODEL "mic_01" YTYP "stage_props"
 
   LIGHT key_light:
     TYPE SPOT
@@ -160,15 +165,37 @@ def test_cutscript_writes_valid_cut_bytes() -> None:
 
     assert cut.root.fields["fTotalDuration"] == pytest.approx(14.0)
     assert len(cut.objects) >= 10
-    assert any(event.fields["iEventId"] == int(CutEventType.CAMERA_CUT) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.SET_ANIM) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.SHOW_SUBTITLE) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.SET_LIGHT) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.FADE_IN) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.FADE_OUT) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.SHOW_OVERLAY) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.SET_DRAW_DISTANCE) for event in cut.events)
-    assert any(event.fields["iEventId"] == int(CutEventType.SET_ATTACHMENT) for event in cut.events)
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.CAMERA_CUT) for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.SET_ANIM) for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.SHOW_SUBTITLE)
+        for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.SET_LIGHT) for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.FADE_IN) for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.FADE_OUT) for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.SHOW_OVERLAY)
+        for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.SET_DRAW_DISTANCE)
+        for event in cut.events
+    )
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.SET_ATTACHMENT)
+        for event in cut.events
+    )
 
 
 def test_cutscript_save_uses_script_save_path(tmp_path) -> None:
@@ -214,6 +241,146 @@ FLAGS {" ".join(flag_names)}
     assert scene.cutscene_flags == expected
 
 
+def test_cutscript_accepts_raw_flags_hashes_and_camera_quat() -> None:
+    result = parse_cutscript(
+        """
+CUTSCENE 0x12345678
+DURATION 1
+FLAGS 0x00004000
+ASSETS
+  ASSET_MANAGER assets
+  ANIM_MANAGER anims
+  CAMERA cam
+  ANIMATED_PROP prop:
+    MODEL 0x11111111
+    YTYP 0x22222222
+    CNAME 0x11111111
+    ANIM_STREAMING_BASE 0x33333333
+    ANIM_EXPORT 0x44444444
+    FACE_EXPORT 0x00000000
+END
+TRACK CAMERA
+  0 CUT cam:
+    NAME 0x77777777
+    POS 1 2 3
+    QUAT 0 0 0 1
+    NEAR 0.1
+    FAR 500
+END
+TRACK ANIMATION
+  0.033 PLAY prop
+END
+"""
+    )
+
+    prop = result.scene.props[0]
+    assert prop.streaming_name == "0x11111111"
+    assert prop.fields["StreamingName"].hash == 0x11111111
+    assert prop.type_file == "0x22222222"
+    assert prop.anim_streaming_base == 0x33333333
+    assert prop.anim_export_ctrl_spec_file == "0x44444444"
+    assert prop.cutscene_name == "0x11111111"
+    assert result.scene.cutscene_flags == CutSceneFlags.IS_SECTIONED
+    camera_event = next(
+        event
+        for track in result.scene.tracks
+        for event in track.events
+        if event.event_name == "camera_cut"
+    )
+    assert camera_event.payload["vRotationQuaternion"] == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_cut_can_export_to_cutscript_and_compile_back(tmp_path) -> None:
+    scene = parse_cutscript(DSL_SAMPLE).scene
+    source_cut = scene.to_bytes(validate=False)
+    script = cut_to_cutscript(source_cut, save_path="roundtrip.cut")
+
+    assert "CUTSCENE" in script
+    assert "TRACK CAMERA" in script
+    assert "TRACK ANIMATION" in script
+    assert "ANIMATED_PROP" in script
+    assert "STATIC_PROP" in script
+    assert "QUAT" in script
+    assert "ANIM_COMPRESSION" not in script
+    assert "HANDLE" not in script
+
+    script_path = tmp_path / "roundtrip.cuts"
+    script_path.write_text(script, encoding="utf-8")
+    output = save_cutscript(script_path, validate=False)
+
+    assert output == tmp_path / "roundtrip.cut"
+    assert read_cut_scene(output).duration == pytest.approx(scene.duration)
+
+
+def test_cut_to_cutscript_resolves_hashes_from_resolver() -> None:
+    scene = parse_cutscript(
+        """
+CUTSCENE sample
+DURATION 1
+ASSETS
+  ASSET_MANAGER assets
+  ANIM_MANAGER anims
+  STATIC_PROP prop:
+    MODEL 0x416CE4CF
+    YTYP 0x32C8CC34
+END
+TRACK LOAD
+  0 MODELS prop
+  0 ANIM_DICT 0x2ED0EC29
+END
+"""
+    ).scene
+    resolver = HashResolver()
+    resolver.register_name("stage01")
+    resolver.register_name("sample_meta")
+    resolver.register_name("sample-0")
+
+    script = cut_to_cutscript(
+        scene.to_bytes(validate=False),
+        save_path="resolved.cut",
+        resolver=resolver,
+    )
+
+    assert "MODEL stage01" in script
+    assert "YTYP sample_meta" in script
+    assert "ANIM_DICT sample-0" in script
+
+
+def test_save_cut_as_cutscript_resolves_hashes_from_sibling_files(tmp_path) -> None:
+    cut_path = tmp_path / "sample.cut"
+    cut_path.write_bytes(
+        parse_cutscript(
+            """
+CUTSCENE sample
+DURATION 1
+ASSETS
+  ASSET_MANAGER assets
+  STATIC_PROP prop:
+    MODEL 0x416CE4CF
+END
+TRACK LOAD
+  0 MODELS prop
+END
+"""
+        ).scene.to_bytes(validate=False)
+    )
+    (tmp_path / "stage01.ydr").write_bytes(b"")
+
+    script_path = save_cut_as_cutscript(cut_path)
+
+    assert "MODEL stage01" in script_path.read_text(encoding="utf-8")
+
+
+def test_save_cut_as_cutscript_writes_neighbor_file(tmp_path) -> None:
+    cut_path = tmp_path / "sample.cut"
+    cut_path.write_bytes(parse_cutscript(DSL_SAMPLE).scene.to_bytes(validate=False))
+
+    script_path = save_cut_as_cutscript(cut_path)
+
+    assert script_path == tmp_path / "sample.cuts"
+    assert "SAVE sample.cut" in script_path.read_text(encoding="utf-8")
+
+
 def test_cutscript_requires_explicit_section_end() -> None:
     with pytest.raises(CutScriptError) as excinfo:
         parse_cutscript(
@@ -238,10 +405,18 @@ def test_css_color_values_work_across_high_level_apis() -> None:
     assert parse_css_rgb("rgba(100%, 50%, 0%, 0.5)") == (255, 128, 0)
     assert parse_css_rgb("hsl(30 100% 50%)") == (255, 128, 0)
     assert parse_css_argb("rgba(255 0 0 / 50%)") == 0x80FF0000
-    assert parse_css_rgb_unit("#808000") == pytest.approx((128 / 255.0, 128 / 255.0, 0.0))
+    assert parse_css_rgb_unit("#808000") == pytest.approx(
+        (128 / 255.0, 128 / 255.0, 0.0)
+    )
 
-    assert CutScreenFadePayload(1.0, color="rgba(0 0 0 / 50%)").to_fields()["color"] == 0x80000000
-    assert CutDecalPayload(position=(0, 0, 0), colour="#ff8800").to_fields()["Colour"] == 0xFFFF8800
+    assert (
+        CutScreenFadePayload(1.0, color="rgba(0 0 0 / 50%)").to_fields()["color"]
+        == 0x80000000
+    )
+    assert (
+        CutDecalPayload(position=(0, 0, 0), colour="#ff8800").to_fields()["Colour"]
+        == 0xFFFF8800
+    )
     assert YdrLight.point(color="orange").color == (255, 165, 0)
     assert GrassInstance(color="lime").color == (0, 255, 0)
 

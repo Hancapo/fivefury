@@ -123,6 +123,7 @@ from .cut import (
     CutSceneValidationError,
     CutSceneValidationIssue,
     CutScriptError,
+    CutScriptHashResolver,
     CutScriptResult,
     CutSubtitlePayload,
     CutScreenFadePayload,
@@ -140,7 +141,9 @@ from .cut import (
     cut_light_property_from_ydr_flags,
     cut_light_type_from_ydr_light_type,
     cut_to_scene,
+    cut_to_cutscript,
     cutscene_from_cutscript,
+    cutscript_from_scene,
     ensure_ydr_embedded_lights,
     get_cut_event_enum_name,
     get_cut_event_id,
@@ -152,6 +155,7 @@ from .cut import (
     read_cutxml_scene,
     read_cutscript,
     save_cut,
+    save_cut_as_cutscript,
     save_cutscript,
     scene_to_cut,
     parse_cutscript,
@@ -321,7 +325,15 @@ from .assets import (
     list_embedded_texture_dictionaries,
     open_resource_texture_asset,
 )
-from .rpf import RpfArchive, RpfExportMode, create_rpf, load_rpf, rpf_to_folder, rpf_to_zip, zip_to_rpf
+from .rpf import (
+    RpfArchive,
+    RpfExportMode,
+    create_rpf,
+    load_rpf,
+    rpf_to_folder,
+    rpf_to_zip,
+    zip_to_rpf,
+)
 from .texture import BCFormat
 from .ydr import (
     AssimpMaterial,
@@ -752,6 +764,7 @@ __all__ = [
     "CutSceneValidationError",
     "CutSceneValidationIssue",
     "CutScriptError",
+    "CutScriptHashResolver",
     "CutScriptResult",
     "CutSubtitlePayload",
     "CutScreenFadePayload",
@@ -767,7 +780,9 @@ __all__ = [
     "cut_light_property_from_ydr_flags",
     "cut_light_type_from_ydr_light_type",
     "cut_to_scene",
+    "cut_to_cutscript",
     "cutscene_from_cutscript",
+    "cutscript_from_scene",
     "build_subtitle_gxt2",
     "ensure_ydr_embedded_lights",
     "get_cut_event_enum_name",
@@ -1151,6 +1166,7 @@ __all__ = [
     "save_ytyp",
     "time_flags",
     "save_cut",
+    "save_cut_as_cutscript",
     "save_cutscript",
     "save_awc",
     "save_rel",
