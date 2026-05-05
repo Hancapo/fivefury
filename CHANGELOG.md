@@ -12,14 +12,26 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - Initial `.rel` support through the new `fivefury.rel` package, including structural binary read/write, raw preservation for unknown entries, public `read_rel`, `build_rel_bytes`, and `save_rel` helpers, plus `GameFileCache` decoding.
 - Typed REL models and enums for `dat10.rel` modular synth presets/synth definitions, `dat16.rel` curves, `dat22.rel` audio categories, and `dat54.rel` sound graphs, including looping sounds, simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, automation note maps, variable-curve routing, conditional routing, directional and kinetic routing, variable blocks, math-operation routing, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, sound-hash lists, sound headers, environment sound hashes, exposed variables, name tables, index tables, hash tables, and pack tables.
-- `miniaudio`-backed conversion from popular audio formats (`.wav`, `.mp3`, `.ogg`, `.flac`) to mono or multichannel PCM `.awc` files through `Awc.from_audio`, `AwcStream.from_audio`, `decode_audio`, and `convert_audio_to_awc`.
-- `.cut` to `.cuts` export through `cutscript_from_scene`, `cut_to_cutscript`, and `save_cut_as_cutscript`, with `HashResolver`/sibling-file hash resolution plus CutScript preservation for unresolved raw hash tokens, numeric flags, camera quaternions, and high-level streamed-model metadata such as `cName`, `AnimStreamingBase`, animation export specs, and `typeFile`.
-- Explicit `STATIC_PROP` and `ANIMATED_PROP` CutScript asset declarations, with exported `.cuts` files using the declarative form that reflects whether a prop carries cutscene/YCD animation metadata.
+- `miniaudio`-backed conversion from popular audio formats (`.wav`, `.mp3`, `.ogg`, `.flac`) to mono or multichannel PCM `.awc` files through `DecodedAudio`, `decode_audio`, `Awc.from_audio`, `AwcStream.from_audio`, and `convert_audio_to_awc`, with `SUPPORTED_AUDIO_EXTENSIONS` exposed for callers.
+- PCM/WAV convenience helpers for AWC streams and dictionaries, including `Awc.from_multichannel_pcm`, `Awc.from_channel_pcm`, `Awc.channel_streams`, `Awc.pcm_bytes`, `Awc.wav_bytes`, and per-stream `channel_pcm`/`stream_format` metadata.
+- `.cut` to `.cuts` export through `cutscript_from_scene`, `cut_to_cutscript`, and `save_cut_as_cutscript`, with `HashResolver` and sibling-file hash resolution for readable decompilation.
+- CutScript support for raw numeric cutscene flags, camera `QUAT`, `TYPE_FILE`, `CNAME`, `ANIM_BASE`, `ANIM_STREAMING_BASE`, `ANIM_EXPORT`, and `FACE_EXPORT` when preserving or authoring streamed cutscene model bindings.
+- Explicit `STATIC_PROP`, `ANIMATED_PROP`, `ANIMATED_PED`, and `ANIMATED_VEHICLE` CutScript declarations, with exported `.cuts` files using the declarative form that reflects whether a streamed model carries cutscene/YCD animation metadata.
 - Declarative YMAP component authoring via `PhysicsDictionary`, `Ymap.physics_dictionary(...)`, and `Ymap.add(...)`, allowing entities, physics dictionaries, occluders, LOD lights, car generators, timecycle modifiers, instanced data, and block descriptors to be appended through one consistent high-level entry point.
 - Declarative YTYP dependency and composite-entry authoring via `YtypDependency`, `CompositeEntityType`, `Ytyp.dependency(...)`, `Ytyp.composite_entity_type(...)`, and `Ytyp.add(...)`, with dependency deduplication preserved during `build()`.
+- Public facade exports for the new REL, AWC conversion, CutScript roundtrip, YMAP, and YTYP helper APIs.
+
+### Changed
+- `.cut` to `.cuts` export now targets a high-level declarative script rather than a byte-for-byte lossless dump, omitting confusing internal fields such as `ANIM_COMPRESSION` and `HANDLE` so the compiler can rebuild them from presets and binding metadata.
+- CutScript decompilation preserves unresolved hashes as safe `0x????????` tokens while resolving known names through explicit resolvers, global hash dictionaries, and sibling filenames.
+- Streamed model binding declarations now separate the loaded asset name (`MODEL`), cutscene/YCD binding name (`CNAME`), animation clip base (`ANIM_BASE`), and type file (`YTYP`/`TYPE_FILE`) instead of conflating those concepts in one prop declaration.
+
+### Fixed
+- Hex strings such as `0x12345678` assigned to hashed cutscene fields now preserve the numeric hash value instead of hashing the literal text.
+- Roundtripped `.cut` files now preserve camera quaternions, raw flags, load/animation/object/light/subtitle/audio events, and static versus animated streamed-model intent in the generated `.cuts` script.
 
 ### Performance
-- `GameFileCache` format dictionaries, kind counts, and typed asset iteration now reuse native compact-index kind buckets instead of rebuilding those views by scanning every asset in Python.
+- `GameFileCache` format dictionaries, kind counts, typed views, and typed asset iteration now reuse native compact-index kind buckets instead of rebuilding those views by scanning every asset in Python.
 
 ## [0.2.1] - 2026-05-02
 
