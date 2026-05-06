@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-06
+
 ### Added
 - Declarative DLC metadata support through `fivefury.dlc`, including enums and models for `setup2.xml`, `content.xml`, `dlclist.xml`, `extratitleupdatedata.meta`, DLC content files, content change sets, content change set groups, and `dlc_patch` title-update overlays.
 - High-level `DlcPack` and `DlcPatch` helpers for generating `dlc.rpf` packages and update overlay RPFs with root metadata, registered content files, change-set activation, patch mount manifests, and nested payload files.
