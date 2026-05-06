@@ -19,6 +19,7 @@ examples/
 tests/
 !tests/
 tests/*
+!tests/test_dlc.py
 !tests/test_ynd.py
 .claude/
 fivefury-*/

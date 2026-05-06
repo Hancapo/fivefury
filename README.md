@@ -60,6 +60,7 @@ Support levels:
 | `YNV` | Navmesh resources: sectors, polys, points, portals, typed metadata, validation, and basic Assimp/OBJ partitioning. |
 | `CUT` | Cutscene files: cameras, tracks, events, props, peds, vehicles, lights, high-level scene conversion, `.cuts` script authoring, and `.cut` to `.cuts` export. |
 | `GXT2` | Hashed UTF-8 text tables with binary read/write, CodeWalker-style text import/export, mapping-style helpers, and `GameFileCache` loading. |
+| DLC metadata | Declarative `setup2.xml`, `content.xml`, `dlclist.xml`, and `extratitleupdatedata.meta` authoring, including content change sets, DLC pack RPF creation, and `dlc_patch` overlays. |
 | `RPF` | RPF7 OPEN archives, nested `.rpf`, folder/ZIP conversion, extraction modes, and encrypted standalone RPF opening when keys are available. |
 
 ### Partial Or Indexed Support
@@ -250,6 +251,43 @@ archive.add("stream/packed_map.ymap", ymap)
 archive.add("docs/readme.txt", b"hello from fivefury")
 archive.save("mods.rpf")
 ```
+
+### Infer DLC Metadata from a Folder
+
+```python
+from fivefury import write_dlc_folder_metadata
+
+# The folder is the extracted root that will become dlc.rpf.
+metadata = write_dlc_folder_metadata(
+    "build/my_pack",
+    pack_name="my_pack",
+    order=60,
+)
+
+print(metadata.setup.device_name)
+print(len(metadata.content.data_files))
+```
+
+The helper scans the folder, ignores dot-prefixed folders, infers common DLC entries such as nested `.rpf` files, `.ityp` requests, audio `.dat` files, `overlayinfo.xml`, `interiorProxies.meta`, `dlctext.meta`, and `gtxd.meta`, then writes `setup2.xml` and `content.xml`.
+
+`content.xml` is the retail GTA V name. If a toolchain needs a different metadata filename, pass `dat_file="context.xml"`; `setup2.xml` will point to that file.
+
+```python
+write_dlc_folder_metadata("build/my_pack", dat_file="context.xml")
+```
+
+### Create a DLC Patch Overlay
+
+```python
+from fivefury import DlcContentGroup, DlcPatch
+
+patch = DlcPatch("my_pack")
+patch.content.rpf("dlc_my_pack:/x64/levels/gta5/LODLights.rpf", map_data=True)
+patch.change_set("MY_PACK_PATCH_MAP", group=DlcContentGroup.MAP)
+patch.save_update_rpf("update.rpf")
+```
+
+`DlcPatch` writes `update:/dlc_patch/<pack>/setup2.xml`, `content.xml`, patch payloads, and a matching `common/data/extratitleupdatedata.meta` mount entry. The patch mount uses the original DLC `deviceName`, matching the title-update overlay behavior used by the game.
 
 ### Convert between ZIP, RPF, and folders
 
