@@ -56,7 +56,7 @@ Support levels:
 | `YMAP` | Map metadata: entities, car generators, timecycle modifiers, occluders, content flags, entity flags, LOD lights, distant lights, and typed metadata. |
 | `YTYP` | Archetypes: base/time/MLO archetypes, extensions, rooms, portals, entity sets, typed asset metadata, flags, LOD distances, physics dictionaries, and cutscene prop helpers. |
 | `YTD` | Texture dictionaries: read/write, resource texture payload preservation, cache extraction, and embedded-asset helpers. |
-| `YND` | Path node resources: nodes, links, typed flags/enums, area helpers, automatic area ID calculation, and network partitioning. |
+| `YND` | Path node resources: nodes, links, typed flags/enums, area helpers, automatic area ID calculation, network partitioning, and game-aligned junction heightmap generation. |
 | `YNV` | Navmesh resources: sectors, polys, points, portals, typed metadata, validation, and basic Assimp/OBJ partitioning. |
 | `CUT` | Cutscene files: cameras, tracks, events, props, peds, vehicles, lights, high-level scene conversion, `.cuts` script authoring, and `.cut` to `.cuts` export. |
 | `GXT2` | Hashed UTF-8 text tables with binary read/write, CodeWalker-style text import/export, mapping-style helpers, and `GameFileCache` loading. |
@@ -72,8 +72,9 @@ Support levels:
 | `AWC` | Audio wave containers can be read/written structurally, opened through `GameFileCache`, exported back to WAV for PCM/ADPCM streams, and built from mono or multichannel 16-bit PCM inputs decoded through `miniaudio` (`.wav`, `.mp3`, `.ogg`, `.flac`). Playback metadata lives in `.rel` banks. |
 | `REL` | Audio metadata banks can be read/written structurally, opened through `GameFileCache`, and round-tripped with unknown entries preserved. `dat10.rel` modular synth presets/synths, `dat16.rel` curves, `dat22.rel` categories, and common `dat54.rel` sound graph entries have typed models, including simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, note maps, variable-curve and conditional routing, directional/kinetic routing, variable blocks, math operations, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, and sound-hash lists. Other REL item families currently stay as raw entries. |
 | `YED` | Expression dictionaries can be detected, opened through `GameFileCache`, inspected for expressions/tracks/streams/springs/instruction opcodes, edited safely for spring-list cloning, built from scratch for spring dictionaries, and validated before writing. |
-| `YMF`, `YMT`, `YWR`, `YVR` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
-| `GTXD` metadata | Used by cache texture lookup and parent-chain resolution, but it is not a standalone binary asset format like `.gxt2`. |
+| `YMT` | Generic META-backed read/write plus ped-variation helpers for component enumeration, drawable file stems, and cloth ownership flags. |
+| `YMF`, `YWR`, `YVR` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
+| `GTXD` metadata | XML read/write for parent texture dictionary relationships, cache texture lookup, and parent-chain resolution. It is metadata rather than a standalone binary asset format like `.gxt2`. |
 
 ### Not Implemented Yet
 
@@ -686,6 +687,25 @@ for ynd in YndNetwork.from_nodes([node_a, node_b]).build_ynds():
 ```
 
 `YndNetwork` computes each node's `area_id` from its world position, assigns local node IDs per area, and resolves links by `target_key`. Use `Ynd.from_nodes(...)` directly when you already know all nodes belong to one area.
+
+### Generate a junction heightmap
+
+```python
+from fivefury import YndNode
+
+node = YndNode(position=(0.0, 0.0, 0.0))
+node.ensure_junction_heightmap(
+    triangles=[
+        ((-1.0, -1.0, 0.0), (1.0, -1.0, 0.25), (-1.0, 1.0, 0.25)),
+        ((1.0, -1.0, 0.25), (1.0, 1.0, 0.5), (-1.0, 1.0, 0.25)),
+    ],
+    bounds=((-1.0, -1.0), (1.0, 1.0)),
+    dim_x=2,
+    dim_y=2,
+)
+```
+
+YND junction heightmaps follow the runtime layout used by GTA V virtual junctions: `position` stores the minimum X/Y sample origin, samples are row-major, the default grid spacing is `2.0` world units, and byte values decode as `min_z + byte * ((max_z - min_z) / 256.0)`.
 
 ## YNV
 

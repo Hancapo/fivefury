@@ -7,12 +7,26 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-09
+
+### Breaking Changes
+- Removed the old shared `fivefury.extensions` package. YMAP and YTYP extension definitions now live with their owning formats as `fivefury.ymap.extensions`, `fivefury.ymap.extension_defs`, `fivefury.ytyp.extensions`, and `fivefury.ytyp.extension_defs`.
+
 ### Added
+- `GTXD` parent texture dictionary metadata support through `Gtxd`, `TxdRelationship`, `create_gtxd`, `read_gtxd`, and `save_gtxd`, including XML read/write, relationship de-duplication by child dictionary, parent-chain iteration, hash-map helpers, `.gtxd.meta` file detection, and `GameFileCache` loading.
+- `YND` junction heightmap generation through `YndJunctionHeightmap`, `build_junction_heightmap`, `encode_junction_heightmap`, `decode_junction_heightmap`, `quantize_junction_z`, `YndJunction.generate_heightmap(...)`, `YndJunction.set_height_values(...)`, and `YndNode.ensure_junction_heightmap(...)`.
 - Initial `.yed` expression dictionary support through `fivefury.yed`, including `.yed` file detection, `GameFileCache` decoding, expression/track/stream/spring inspection, CodeWalker-aligned instruction opcode enums, semantic stream instruction operand parsing/rebuilding for known VM layouts, typed track formats, lossless clean roundtrips, safe spring-list edits for cloning existing spring physics onto additional bones, validation diagnostics, and declarative creation of spring-focused expression dictionaries from scratch.
 - Radial skinning helpers for YDR/YDD meshes through `RadialBoneRigRule`, `rig_mesh_to_bones_radially`, `rig_ydr_to_bones_radially`, `rig_ydd_to_bones_radially`, and `rig_body_folder_jiggle_bones`, allowing missing jiggle-bone weights to be generated from nearby vertices while preserving existing four-weight skin data.
+- Ped-variation helpers for generic YMT-backed ped metadata through `PedComponent`, `PedDrawableVariation`, `iter_ped_drawables`, `ped_drawable_file_stem`, `coerce_ped_component`, and `set_ped_drawable_cloth`.
 
 ### Changed
+- Split YMAP into focused modules for base map metadata, car generators, grass, lights, occluders, packing, timecycle modifiers, utilities, and format-owned extensions, reducing the large shared model files without changing the high-level import surface.
+- Split YTYP into focused modules for asset types, base archetypes, timed archetypes, MLO data, format-owned extensions, and extension definitions.
+- `GameFileCache` texture lookup now understands parsed GTXD parent chains and embedded resource texture dictionaries through the shared asset helpers.
 - Radial rigging automatically reuses existing ped-component bone palettes that store external skeleton indices before appending tag-based bone IDs, avoiding duplicate conceptual bone influences in YDD body components.
+
+### Fixed
+- YND junction heightmap encoding now matches the game runtime layout: junction `position` stores minimum XY, samples use 2.0 world-unit grid spacing by default, Z bounds quantize to the stored 1/32 unit representation, and byte samples decode with `(max_z - min_z) / 256.0` rather than `/255.0`.
 
 ## [0.2.3] - 2026-05-06
 
