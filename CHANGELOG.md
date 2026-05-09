@@ -7,6 +7,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Initial `.yed` expression dictionary support through `fivefury.yed`, including `.yed` file detection, `GameFileCache` decoding, expression/track/stream/spring inspection, CodeWalker-aligned instruction opcode enums, semantic stream instruction operand parsing/rebuilding for known VM layouts, typed track formats, lossless clean roundtrips, safe spring-list edits for cloning existing spring physics onto additional bones, validation diagnostics, and declarative creation of spring-focused expression dictionaries from scratch.
+- Radial skinning helpers for YDR/YDD meshes through `RadialBoneRigRule`, `rig_mesh_to_bones_radially`, `rig_ydr_to_bones_radially`, `rig_ydd_to_bones_radially`, and `rig_body_folder_jiggle_bones`, allowing missing jiggle-bone weights to be generated from nearby vertices while preserving existing four-weight skin data.
+
+### Changed
+- Radial rigging automatically reuses existing ped-component bone palettes that store external skeleton indices before appending tag-based bone IDs, avoiding duplicate conceptual bone influences in YDD body components.
+
 ## [0.2.3] - 2026-05-06
 
 ### Added

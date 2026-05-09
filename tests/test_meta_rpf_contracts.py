@@ -5,6 +5,7 @@ import os
 import struct
 import tempfile
 import time
+import unittest
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -192,7 +193,6 @@ def _build_test_ytd_bytes(*, enhanced: bool = False) -> bytes:
 
 def _relocate_embedded_texture_dictionary(virtual_data: bytes, *, dict_offset: int, enhanced: bool) -> bytes:
     count = int.from_bytes(virtual_data[0x28:0x2A], "little")
-    tex_size = _ENHANCED_TEX_SIZE if enhanced else _GTAV_TEX_SIZE
     ptrs_offset = int.from_bytes(virtual_data[0x30:0x38], "little") - _DAT_VIRTUAL_BASE
     output = bytearray(dict_offset + len(virtual_data))
     output[dict_offset : dict_offset + len(virtual_data)] = virtual_data
@@ -643,6 +643,87 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertEqual(parsed_instance.color, (10, 20, 30))
         self.assertEqual(parsed_instance.scale, 120)
         self.assertEqual(parsed_instance.ao, 90)
+
+    def test_ymap_known_extension_types_roundtrip_as_objects(self) -> None:
+        from fivefury import (
+            ClimbHandHoldExtension,
+            DecalExtension,
+            Entity,
+            LightExtension,
+            ScriptChildExtension,
+            ScriptExtension,
+            ScrollbarsExtension,
+            SwayableEffectExtension,
+            WalkDontWalkExtension,
+            Ymap,
+        )
+
+        ymap = Ymap(name="complete_extensions.ymap")
+        entity = Entity(archetype_name="prop_extension_test", position=(1.0, 2.0, 3.0), lod_dist=50.0)
+        entity.extensions.extend(
+            [
+                DecalExtension(
+                    name="decal_marker",
+                    offset_position=(0.1, 0.2, 0.3),
+                    offset_rotation=(0.0, 0.0, 0.0, 1.0),
+                    decal_name="blood_entry",
+                    decal_type=4,
+                    bone_tag=2,
+                    scale=1.5,
+                    probability=80,
+                    flags=7,
+                ),
+                LightExtension(name="light_marker", offset_position=(1.0, 0.0, 0.0)),
+                WalkDontWalkExtension(name="crossing_marker", offset_position=(2.0, 0.0, 0.0)),
+                ClimbHandHoldExtension(
+                    name="climb_marker",
+                    offset_position=(3.0, 0.0, 0.0),
+                    left=(-0.5, 0.0, 1.0),
+                    right=(0.5, 0.0, 1.0),
+                    normal=(0.0, 1.0, 0.0),
+                ),
+                ScrollbarsExtension(
+                    name="scroll_marker",
+                    offset_position=(4.0, 0.0, 0.0),
+                    height=2.0,
+                    scrollbars_type=3,
+                    points=[(0.0, 0.0, 0.0), (1.0, 2.0, 3.0)],
+                ),
+                SwayableEffectExtension(
+                    name="sway_marker",
+                    offset_position=(5.0, 0.0, 0.0),
+                    bone_tag=5,
+                    low_wind_speed=1.0,
+                    low_wind_amplitude=0.2,
+                    high_wind_speed=6.0,
+                    high_wind_amplitude=0.8,
+                ),
+                ScriptExtension(
+                    name="script_marker",
+                    offset_position=(6.0, 0.0, 0.0),
+                    script_name="example_script",
+                    children=[ScriptChildExtension(position=(7.0, 8.0, 9.0), rotation_z=1.25)],
+                ),
+            ]
+        )
+        ymap.add_entity(entity)
+
+        parsed = Ymap.from_bytes(ymap.build(auto_extents=True).to_bytes())
+        parsed_extensions = parsed.entities[0].extensions
+
+        self.assertEqual([type(extension) for extension in parsed_extensions], [
+            DecalExtension,
+            LightExtension,
+            WalkDontWalkExtension,
+            ClimbHandHoldExtension,
+            ScrollbarsExtension,
+            SwayableEffectExtension,
+            ScriptExtension,
+        ])
+        self.assertEqual(parsed_extensions[0].decal_name, "blood_entry")
+        self.assertEqual(parsed_extensions[4].points, [(0.0, 0.0, 0.0), (1.0, 2.0, 3.0)])
+        self.assertEqual(parsed_extensions[6].script_name, "example_script")
+        self.assertEqual(parsed_extensions[6].children[0].position, (7.0, 8.0, 9.0))
 
     def test_ytyp_archetype_extensions_roundtrip(self) -> None:
         from fivefury import Archetype, ParticleEffectExtension, Ytyp
@@ -1921,7 +2002,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
 
     def test_gamefilecache_extracts_asset_textures_from_external_ymap_and_parent_txd_chain(self) -> None:
-        from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
+        from fivefury import Archetype, Entity, GameFileCache, GameFileType, Gtxd, Ymap, Ytyp
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "game"
@@ -1929,14 +2010,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             write_bytes(root / "stream" / "prop_tree_pine_01.ydr", b"RSC7fake")
             write_bytes(root / "stream" / "child_dict.ytd", _build_test_ytd_bytes(enhanced=False))
             write_bytes(root / "stream" / "parent_dict.ytd", _build_test_ytd_bytes(enhanced=True))
-            write_bytes(
-                root / "common" / "data" / "gtxd.meta",
-                (
-                    "<CMapParentTxds><txdRelationships>"
-                    "<Item><parent>parent_dict</parent><child>child_dict</child></Item>"
-                    "</txdRelationships></CMapParentTxds>"
-                ).encode("utf-8"),
-            )
+            Gtxd.from_mapping({"child_dict": "parent_dict"}).save(root / "common" / "data" / "gtxd.meta")
 
             ytyp = Ytyp(name="types.ytyp")
             ytyp.add_archetype(
@@ -1958,13 +2032,33 @@ class MetaAndArchiveContractTests(PytestCompat):
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
 
+            gtxd_file = cache.get_file("common/data/gtxd.meta")
+            self.assertEqual(gtxd_file.kind, GameFileType.GTXD)
+            self.assertIsInstance(gtxd_file.parsed, Gtxd)
+            self.assertEqual(gtxd_file.parsed.parent_of("child_dict"), "parent_dict")
+
             dictionaries = cache.list_texture_dictionaries(external / "external_map.ymap")
             self.assertEqual({asset.stem for asset in dictionaries}, {"child_dict", "parent_dict"})
+
+            texture_refs = cache.list_asset_textures(external / "external_map.ymap")
+            self.assertEqual({(ref.container_name, ref.parent_depth) for ref in texture_refs}, {("child_dict", 0), ("parent_dict", 1)})
 
             extracted = cache.extract_asset_textures(external / "external_map.ymap", root / "textures_out")
             self.assertEqual(len(extracted), 2)
             self.assertEqual({path.parent.name for path in extracted}, {"child_dict", "parent_dict"})
             self.assertTrue(all(path.read_bytes()[:4] == b"DDS " for path in extracted))
+
+    def test_gtxd_roundtrip_and_parent_chain_helpers(self) -> None:
+        from fivefury import create_gtxd, read_gtxd
+
+        gtxd = create_gtxd({"child_dict.ytd": "parent_dict.ytd"}, grandchild_dict="child_dict")
+        xml = gtxd.to_bytes()
+        parsed = read_gtxd(xml)
+
+        self.assertEqual(parsed.parent_of("child_dict"), "parent_dict")
+        self.assertEqual(parsed.parent_of("grandchild_dict"), "child_dict")
+        self.assertEqual(list(parsed.iter_chain("grandchild_dict")), ["grandchild_dict", "child_dict", "parent_dict"])
+        self.assertIn(b"<CMapParentTxds>", xml)
 
     def test_gamefilecache_extracts_embedded_textures_from_supported_resource_assets(self) -> None:
         from fivefury import GameFileCache

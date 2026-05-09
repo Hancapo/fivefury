@@ -1,4 +1,5 @@
-from .blocks import BlockDesc, CarGen, ContainerLodDef, PhysicsDictionary, TimeCycleModifier
+from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
+from .cargens import CarGen, CarGenerator
 from .defs import YMAP_ENUM_INFOS, YMAP_STRUCT_INFOS
 from .enums import (
     YmapCarGenFlags,
@@ -12,44 +13,87 @@ from .enums import (
     YmapPriorityLevel,
 )
 from .entities import EntityDef, MloInstanceDef
-from .model import Ymap, read_ymap, save_ymap
-from .surfaces import (
-    Aabb,
-    AngleMode,
-    BoxOccluder,
-    DistantLodLightsSoa,
-    GrassInstance,
-    GrassInstanceBatch,
-    InstancedMapData,
-    LodLight,
-    LodLightsSoa,
+from .extensions import (
+    AudioCollisionSettingsExtension,
+    AudioEmitterExtension,
+    BuoyancyExtension,
+    CapsuleBoundDef,
+    ClimbHandHoldExtension,
+    DecalExtension,
+    DoorExtension,
+    ExpressionExtension,
+    ExplosionEffectExtension,
+    LadderExtension,
+    LightAttrDef,
+    LightEffectExtension,
+    LightExtension,
+    LightShaftExtension,
+    ParticleEffectExtension,
+    ProcObjectExtension,
+    ScriptChildExtension,
+    ScriptExtension,
+    ScrollbarsExtension,
+    SpawnPointExtension,
+    SpawnPointOverrideExtension,
+    SwayableEffectExtension,
+    VerletClothCustomBoundsExtension,
+    WalkDontWalkExtension,
+    WindDisturbanceExtension,
+)
+from .grass import Aabb, GrassBatch, GrassInstance, GrassInstanceBatch, InstancedData, InstancedMapData
+from .io import read_ymap, save_ymap
+from .lights import (
     MAX_LOD_LIGHT_CAPSULE_EXTENT,
     MAX_LOD_LIGHT_CONE_ANGLE,
     MAX_LOD_LIGHT_CORONA_INTENSITY,
-    OccludeModel,
+    DistantLodLights,
+    DistantLodLightsSoa,
+    LodLight,
+    LodLights,
+    LodLightsSoa,
 )
+from .model import Ymap
+from .occluders import AngleMode, BoxOccluder, OccludeModel
+from .timecycle import TimeCycleModifier
 
 Entity = EntityDef
 MloInstance = MloInstanceDef
-CarGenerator = CarGen
 Block = BlockDesc
 
 __all__ = [
     "Aabb",
     "AngleMode",
+    "AudioCollisionSettingsExtension",
+    "AudioEmitterExtension",
     "Block",
     "BlockDesc",
     "BoxOccluder",
+    "BuoyancyExtension",
+    "CapsuleBoundDef",
     "CarGen",
     "CarGenerator",
+    "ClimbHandHoldExtension",
     "ContainerLodDef",
+    "DecalExtension",
+    "DistantLodLights",
     "DistantLodLightsSoa",
+    "DoorExtension",
     "Entity",
     "EntityDef",
+    "ExpressionExtension",
+    "ExplosionEffectExtension",
+    "GrassBatch",
     "GrassInstance",
     "GrassInstanceBatch",
+    "InstancedData",
     "InstancedMapData",
+    "LadderExtension",
+    "LightAttrDef",
+    "LightEffectExtension",
+    "LightExtension",
+    "LightShaftExtension",
     "LodLight",
+    "LodLights",
     "LodLightsSoa",
     "MAX_LOD_LIGHT_CAPSULE_EXTENT",
     "MAX_LOD_LIGHT_CONE_ANGLE",
@@ -57,8 +101,19 @@ __all__ = [
     "MloInstance",
     "MloInstanceDef",
     "OccludeModel",
+    "ParticleEffectExtension",
     "PhysicsDictionary",
+    "ProcObjectExtension",
+    "ScriptChildExtension",
+    "ScriptExtension",
+    "ScrollbarsExtension",
+    "SpawnPointExtension",
+    "SpawnPointOverrideExtension",
+    "SwayableEffectExtension",
     "TimeCycleModifier",
+    "VerletClothCustomBoundsExtension",
+    "WalkDontWalkExtension",
+    "WindDisturbanceExtension",
     "YmapCarGenFlags",
     "YmapContentFlags",
     "YmapEntityFlags",

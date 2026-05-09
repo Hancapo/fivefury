@@ -28,7 +28,7 @@ class GameFileType(IntEnum):
     YWR = 14
     YVR = 15
     GXT2 = 16
-    GTXD = 16
+    GTXD = 26
     AWC = 17
     VEHICLES = 18
     CAR_COLS = 19
@@ -38,7 +38,6 @@ class GameFileType(IntEnum):
     PEDS = 23
     PED = 24
     YED = 25
-    YLD = 26
     YFD = 27
     HEIGHTMAP = 28
     WATERMAP = 29
@@ -61,6 +60,7 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".yft": GameFileType.YFT,
     ".ybn": GameFileType.YBN,
     ".ycd": GameFileType.YCD,
+    ".yed": GameFileType.YED,
     ".ypt": GameFileType.YPT,
     ".ynd": GameFileType.YND,
     ".ynv": GameFileType.YNV,
@@ -75,6 +75,9 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
 
 
 def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.UNKNOWN) -> GameFileType:
+    name = Path(str(path)).name.lower()
+    if name == "gtxd.meta":
+        return GameFileType.GTXD
     ext = Path(str(path)).suffix.lower()
     return _FILE_TYPE_MAP.get(ext, default)
 

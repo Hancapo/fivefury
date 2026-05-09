@@ -9,6 +9,7 @@ from .views import AssetRecord
 from ..awc import read_awc
 from ..cut import read_cut
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
+from ..gtxd import read_gtxd
 from ..gxt2 import read_gxt2
 from ..hashing import _get_lut
 from ..metahash import MetaHash
@@ -18,6 +19,7 @@ from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _norm
 from ..ycd import read_ycd
 from ..ybn import read_ybn
 from ..ydd import read_ydd
+from ..yed import read_yed
 from ..ydr import read_ydr
 from ..ynd import read_ynd
 from ..ynv import read_ynv
@@ -53,6 +55,8 @@ def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: Game
 
 def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
+    if Path(path).name.lower() == "gtxd.meta":
+        return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
     if ext == ".ymap":
         return _decode_dynamic(data, module_name="fivefury.ymap", attribute="read_ymap", kind=GameFileType.YMAP)
     if ext == ".ymf":
@@ -68,6 +72,7 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
         ".ydd": (GameFileType.YDD, lambda payload: read_ydd(payload, path=path)),
         ".ytd": (GameFileType.YTD, read_ytd),
         ".ycd": (GameFileType.YCD, lambda payload: read_ycd(payload, path=path)),
+        ".yed": (GameFileType.YED, lambda payload: read_yed(payload, path=path)),
         ".ybn": (GameFileType.YBN, lambda payload: read_ybn(payload, path=path)),
         ".ynd": (GameFileType.YND, lambda payload: read_ynd(payload, path=path)),
         ".ynv": (GameFileType.YNV, lambda payload: read_ynv(payload, path=path)),
@@ -220,7 +225,7 @@ class GameFileCacheIOMixin:
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             ext = Path(asset.path).suffix.lower()
-            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".ycd", ".ybn", ".ynd", ".ynv"} else stored_native
+            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
             parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
@@ -244,7 +249,7 @@ class GameFileCacheIOMixin:
             stored = entry.read(logical=False)
             logical = entry.read(logical=True)
             raw_source = None
-            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".ycd", ".ybn", ".ynd", ".ynv")):
+            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
                 raw_source = entry._archive.read_entry_standalone(entry)
             parsed, kind = _decode_payload(asset.path, logical, raw=raw_source)
             game_file = GameFile(

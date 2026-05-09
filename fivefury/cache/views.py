@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from collections.abc import Iterator as AbcIterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from ..common import hash_value
 from ..gamefile import GameFileType, guess_game_file_type
+from ..gtxd import Gtxd, read_gtxd
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
 from .kinds import coerce_game_file_kind as _coerce_kind
@@ -299,30 +299,31 @@ class _TextureParentMap(Mapping[int, int]):
             return
         mapping[hash_value(child_name)] = hash_value(parent_name)
 
-    def _load_xml_relations(self, xml_text: str, mapping: dict[int, int]) -> None:
-        try:
-            root = ET.fromstring(xml_text)
-        except ET.ParseError:
-            return
-        for item in root.findall(".//txdRelationships/Item") + root.findall(".//txdRelationships/item"):
-            parent = item.findtext("parent", default="").strip()
-            child = item.findtext("child", default="").strip()
-            self._add_relation(child, parent, mapping)
+    def _load_gtxd_relations(self, gtxd: Gtxd, mapping: dict[int, int]) -> None:
+        for relationship in gtxd.relationships:
+            self._add_relation(relationship.child, relationship.parent, mapping)
 
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
             return
         hash_to_parent: dict[int, int] = {}
         for asset in self._cache.iter_assets():
-            if asset.name.lower() not in {"gtxd.meta", "vehicles.meta", "peds.meta", "peds.ymt"}:
+            if asset.kind is not GameFileType.GTXD and asset.name.lower() not in {"gtxd.meta", "vehicles.meta", "peds.meta", "peds.ymt"}:
                 continue
             data = self._cache.read_bytes(asset, logical=True)
             if not data:
                 continue
+            parsed = self._cache.get_file(asset)
+            if parsed is not None and isinstance(parsed.parsed, Gtxd):
+                self._load_gtxd_relations(parsed.parsed, hash_to_parent)
+                continue
             text = data.decode("utf-8", errors="ignore")
             if "<" not in text:
                 continue
-            self._load_xml_relations(text, hash_to_parent)
+            try:
+                self._load_gtxd_relations(read_gtxd(text), hash_to_parent)
+            except Exception:
+                continue
         self._hash_to_parent = hash_to_parent
         self._generation = self._cache._view_generation
 

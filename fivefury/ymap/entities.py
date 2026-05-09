@@ -3,9 +3,9 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from ..extensions import extensions_from_meta, extensions_to_meta
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+from .extensions import extensions_from_meta, extensions_to_meta
 from .enums import (
     YmapEntityFlags,
     YmapLodLevel,

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from ..extensions import EXTENSION_STRUCT_INFOS
 from ..metahash import HashLike, MetaHash
 from ..meta import MetaEnumEntry, MetaEnumInfo, MetaStructInfo
 from ..meta.defs import KNOWN_ENUMS, MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
-from .surfaces import YMAP_SURFACE_STRUCT_INFOS
+from .extension_defs import YMAP_EXTENSION_STRUCT_INFOS
+from .grass import YMAP_GRASS_STRUCT_INFOS
 
 
 def _enum_info(name: str) -> MetaEnumInfo:
@@ -277,17 +277,14 @@ YMAP_STRUCT_INFOS = [
     ),
 ]
 
-YMAP_STRUCT_INFOS.extend(YMAP_SURFACE_STRUCT_INFOS)
-YMAP_STRUCT_INFOS.extend(EXTENSION_STRUCT_INFOS)
+YMAP_STRUCT_INFOS.extend(YMAP_GRASS_STRUCT_INFOS)
+YMAP_STRUCT_INFOS.extend(YMAP_EXTENSION_STRUCT_INFOS)
 
 YMAP_ENUM_INFOS = [
     _enum_info("rage__fwArchetypeDef__eAssetType"),
     _enum_info("rage__eLodType"),
     _enum_info("rage__ePriorityLevel"),
 ]
-
-
-
 
 
 

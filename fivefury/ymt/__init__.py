@@ -21,4 +21,24 @@ def save_ymt(ymt: Ymt | Meta, path: str | Path | None = None) -> Path:
     return resource.save(path)
 
 
-__all__ = ["Ymt", "read_ymt", "save_ymt"]
+from .ped_variation import (  # noqa: E402
+    PedComponent,
+    PedDrawableVariation,
+    coerce_ped_component,
+    iter_ped_drawables,
+    ped_drawable_file_stem,
+    set_ped_drawable_cloth,
+)
+
+
+__all__ = [
+    "PedComponent",
+    "PedDrawableVariation",
+    "Ymt",
+    "coerce_ped_component",
+    "iter_ped_drawables",
+    "ped_drawable_file_stem",
+    "read_ymt",
+    "save_ymt",
+    "set_ped_drawable_cloth",
+]

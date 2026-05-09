@@ -47,6 +47,13 @@ from .model import (
     skeleton_bone_flag_names,
 )
 from .reader import read_ydr
+from .rigging import (
+    RadialBoneRigRule,
+    RadialRigFalloff,
+    RadialRigReport,
+    rig_mesh_to_bones_radially,
+    rig_ydr_to_bones_radially,
+)
 from .shader_enums import YdrShader, coerce_shader_name
 from .shader_info import (
     YdrShaderInfo,
@@ -76,6 +83,9 @@ __all__ = [
     "ShaderLayoutDefinition",
     "ShaderLibrary",
     "ShaderParameterDefinition",
+    "RadialBoneRigRule",
+    "RadialRigFalloff",
+    "RadialRigReport",
     "Ydr",
     "YDR_BONE_ANIMATABLE_FLAGS",
     "YdrBone",
@@ -135,6 +145,8 @@ __all__ = [
     "read_gen9_shader_library",
     "read_shader_library",
     "read_ydr",
+    "rig_mesh_to_bones_radially",
+    "rig_ydr_to_bones_radially",
     "resolve_gen9_shader_reference",
     "resolve_shader_reference",
     "print_ydr_gen9_shader_info",

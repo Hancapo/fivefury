@@ -5,8 +5,9 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from ..colors import CssColor, parse_css_argb, parse_css_rgb
+from ..meta.backed import MetaBackedStruct
 from ..meta import RawStruct
-from .defs import EXTENSION_STRUCT_INFOS, MetaBackedStruct
+from .extension_defs import YTYP_EXTENSION_STRUCT_INFOS
 
 @dataclasses.dataclass(slots=True)
 class LightAttrDef(MetaBackedStruct):
@@ -143,6 +144,21 @@ class ExplosionEffectExtension(MetaBackedStruct):
 
 
 @dataclasses.dataclass(slots=True)
+class DecalExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefDecal"
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    decal_name: str = ""
+    decal_type: int = 0
+    bone_tag: int = 0
+    scale: float = 1.0
+    probability: int = 100
+    flags: int = 0
+
+
+@dataclasses.dataclass(slots=True)
 class SpawnPointExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefSpawnPoint"
 
@@ -232,6 +248,33 @@ class BuoyancyExtension(MetaBackedStruct):
 
 
 @dataclasses.dataclass(slots=True)
+class LightExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefLight"
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+
+@dataclasses.dataclass(slots=True)
+class WalkDontWalkExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefWalkDontWalk"
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+
+@dataclasses.dataclass(slots=True)
+class ClimbHandHoldExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefClimbHandHold"
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    left: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    right: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
+
+
+@dataclasses.dataclass(slots=True)
 class ExpressionExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefExpression"
 
@@ -290,6 +333,30 @@ class WindDisturbanceExtension(MetaBackedStruct):
 
 
 @dataclasses.dataclass(slots=True)
+class ScrollbarsExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefScrollbars"
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    height: float = 0.0
+    scrollbars_type: int = 0
+    points: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(slots=True)
+class SwayableEffectExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefSwayableEffect"
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bone_tag: int = 0
+    low_wind_speed: float = 0.0
+    low_wind_amplitude: float = 0.0
+    high_wind_speed: float = 0.0
+    high_wind_amplitude: float = 0.0
+
+
+@dataclasses.dataclass(slots=True)
 class ProcObjectExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefProcObject"
 
@@ -309,6 +376,25 @@ class ProcObjectExtension(MetaBackedStruct):
 
 
 @dataclasses.dataclass(slots=True)
+class ScriptChildExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefScriptChild"
+
+    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    rotation_z: float = 0.0
+
+
+@dataclasses.dataclass(slots=True)
+class ScriptExtension(MetaBackedStruct):
+    META_NAME: ClassVar[str] = "CExtensionDefScript"
+    META_LIST_TYPES: ClassVar[dict[str, type[MetaBackedStruct]]] = {"children": ScriptChildExtension}
+
+    name: int | str = 0
+    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    script_name: str = ""
+    children: list[ScriptChildExtension] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass(slots=True)
 class VerletClothCustomBoundsExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "rage__phVerletClothCustomBounds"
     META_FIELD_MAP: ClassVar[dict[str, str]] = {"collision_data": "CollisionData"}
@@ -321,6 +407,7 @@ class VerletClothCustomBoundsExtension(MetaBackedStruct):
 KNOWN_EXTENSION_TYPES: tuple[type[MetaBackedStruct], ...] = (
     LightEffectExtension,
     ParticleEffectExtension,
+    DecalExtension,
     AudioCollisionSettingsExtension,
     AudioEmitterExtension,
     ExplosionEffectExtension,
@@ -329,10 +416,17 @@ KNOWN_EXTENSION_TYPES: tuple[type[MetaBackedStruct], ...] = (
     SpawnPointOverrideExtension,
     LadderExtension,
     BuoyancyExtension,
+    LightExtension,
+    WalkDontWalkExtension,
+    ClimbHandHoldExtension,
     ExpressionExtension,
     LightShaftExtension,
     WindDisturbanceExtension,
+    ScrollbarsExtension,
+    SwayableEffectExtension,
     ProcObjectExtension,
+    ScriptChildExtension,
+    ScriptExtension,
     VerletClothCustomBoundsExtension,
 )
 
@@ -369,21 +463,29 @@ __all__ = [
     "AudioEmitterExtension",
     "BuoyancyExtension",
     "CapsuleBoundDef",
+    "ClimbHandHoldExtension",
+    "DecalExtension",
     "DoorExtension",
-    "EXTENSION_STRUCT_INFOS",
+    "YTYP_EXTENSION_STRUCT_INFOS",
     "EXTENSION_TYPES_BY_META_NAME",
     "ExpressionExtension",
     "ExplosionEffectExtension",
     "KNOWN_EXTENSION_TYPES",
     "LadderExtension",
+    "LightExtension",
     "LightAttrDef",
     "LightEffectExtension",
     "LightShaftExtension",
     "ParticleEffectExtension",
     "ProcObjectExtension",
+    "ScriptChildExtension",
+    "ScriptExtension",
+    "ScrollbarsExtension",
     "SpawnPointExtension",
     "SpawnPointOverrideExtension",
+    "SwayableEffectExtension",
     "VerletClothCustomBoundsExtension",
+    "WalkDontWalkExtension",
     "WindDisturbanceExtension",
     "extension_from_meta",
     "extension_to_meta",

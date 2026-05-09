@@ -420,6 +420,35 @@ META_NAME_MAP: dict[str, int] = {
     "LIGHTSHAFT_DENSITYTYPE_QUADRATIC_GRADIENT": 1492299290,
     "LIGHTSHAFT_VOLUMETYPE_SHAFT": 665241531,
     "LIGHTSHAFT_VOLUMETYPE_CYLINDER": 462992848,
+    # Component ped variation YMT names.
+    "CPedVariationInfo": 0x16760659,
+    "bHasTexVariations": 0x49A0E46C,
+    "bHasDrawblVariations": 0xF3928A70,
+    "bHasLowLODs": 0x364F037B,
+    "bIsSuperLOD": 0x12CAF91F,
+    "availComp": 0xB29BE228,
+    "aComponentData3": 0xE2489C4F,
+    "aSelectionSets": 0x7F049899,
+    "compInfos": 0x23532A3B,
+    "propInfo": 0x8590ADD8,
+    "dlcName": 0x8B566EA2,
+    "CPedPropInfo": 0xAA681042,
+    "numAvailProps": 0x9AE1215F,
+    "aPropMetaData": 0xE8A00D49,
+    "aAnchors": 0x09AD30FA,
+    "CPVComponentData": 0xD2E926F4,
+    "numAvailTex": 0xC8F5438B,
+    "aDrawblData3": 0x68AC8351,
+    "CPVDrawblData": 0x5B7EF462,
+    "propMask": 0xAECFE243,
+    "numAlternatives": 0xA7431FBA,
+    "aTexData": 0x4A92222A,
+    "clothData": 0x92E68DB3,
+    "CPVTextureData": 0x3DCECA65,
+    "texId": 0x6A6B87C3,
+    "distribution": 0x36896D17,
+    "CPVDrawblData__CPVClothComponentData": 0x85559CF3,
+    "ownsCloth": 0xA893A361,
 }
 
 META_NAME_REVERSE = {value: key for key, value in META_NAME_MAP.items()}
@@ -707,4 +736,3 @@ KNOWN_STRUCTS: dict[str, StructDef] = {
 
 STRUCTS_BY_HASH = {value.name_hash: value for value in KNOWN_STRUCTS.values()}
 ENUMS_BY_HASH = {value.name_hash: value for value in KNOWN_ENUMS.values()}
-

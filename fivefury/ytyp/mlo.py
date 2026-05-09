@@ -8,7 +8,7 @@ from ..meta import RawStruct
 from ..meta.defs import meta_name
 from ..ymap import EntityDef, MloInstanceDef
 
-from .archetypes import BaseArchetypeDef
+from .base_archetype import BaseArchetypeDef
 
 
 @dataclasses.dataclass(slots=True)

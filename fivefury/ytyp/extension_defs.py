@@ -1,63 +1,10 @@
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Mapping
-from typing import Any, ClassVar
-
 from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
 
-
-def _snake_to_camel(value: str) -> str:
-    head, *tail = value.split("_")
-    return head + "".join(part[:1].upper() + part[1:] for part in tail)
-
-
-@dataclasses.dataclass(slots=True)
-class MetaBackedStruct:
-    META_NAME: ClassVar[str] = ""
-    META_FIELD_MAP: ClassVar[dict[str, str]] = {}
-    META_LIST_TYPES: ClassVar[dict[str, type["MetaBackedStruct"]]] = {}
-
-    def to_meta(self) -> dict[str, Any]:
-        data: dict[str, Any] = {"_meta_name_hash": meta_name(self.META_NAME)}
-        for field in dataclasses.fields(self):
-            attr = field.name
-            meta_field = self.META_FIELD_MAP.get(attr, _snake_to_camel(attr))
-            data[meta_field] = self._serialize_field(attr, getattr(self, attr))
-        return data
-
-    def _serialize_field(self, attr: str, value: Any) -> Any:
-        if isinstance(value, list):
-            return [item.to_meta() if hasattr(item, "to_meta") else item for item in value]
-        if hasattr(value, "to_meta") and not isinstance(value, (str, bytes, bytearray)):
-            return value.to_meta()
-        return value
-
-    @classmethod
-    def from_meta(cls, value: Any) -> "MetaBackedStruct":
-        if not isinstance(value, Mapping):
-            return cls()
-        kwargs: dict[str, Any] = {}
-        for field in dataclasses.fields(cls):
-            attr = field.name
-            meta_field = cls.META_FIELD_MAP.get(attr, _snake_to_camel(attr))
-            if meta_field not in value:
-                continue
-            kwargs[attr] = cls._deserialize_field(attr, value.get(meta_field))
-        return cls(**kwargs)
-
-    @classmethod
-    def _deserialize_field(cls, attr: str, value: Any) -> Any:
-        item_type = cls.META_LIST_TYPES.get(attr)
-        if item_type is not None:
-            return [item_type.from_meta(item) if isinstance(item, Mapping) else item for item in (value or [])]
-        return value
-
-
-
-EXTENSION_STRUCT_INFOS = [
+YTYP_EXTENSION_STRUCT_INFOS = [
     MetaStructInfo(
         name_hash=meta_name("CExtensionDefLightEffect"),
         key=2436199897,
@@ -179,6 +126,23 @@ EXTENSION_STRUCT_INFOS = [
         ],
     ),
     MetaStructInfo(
+        name_hash=meta_name("CExtensionDefDecal"),
+        key=756828039,
+        unknown=1024,
+        structure_size=96,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+            _entry("offsetRotation", 32, MetaDataType.FLOAT_XYZW),
+            _entry("decalName", 48, MetaDataType.CHAR_POINTER),
+            _entry("decalType", 64, MetaDataType.SIGNED_INT),
+            _entry("boneTag", 68, MetaDataType.SIGNED_INT),
+            _entry("scale", 72, MetaDataType.FLOAT),
+            _entry("probability", 76, MetaDataType.SIGNED_INT),
+            _entry("flags", 80, MetaDataType.SIGNED_INT),
+        ],
+    ),
+    MetaStructInfo(
         name_hash=meta_name("CExtensionDefSpawnPoint"),
         key=3077340721,
         unknown=1024,
@@ -267,6 +231,39 @@ EXTENSION_STRUCT_INFOS = [
         ],
     ),
     MetaStructInfo(
+        name_hash=meta_name("CExtensionDefLight"),
+        key=1881823186,
+        unknown=1024,
+        structure_size=32,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+        ],
+    ),
+    MetaStructInfo(
+        name_hash=meta_name("CExtensionDefWalkDontWalk"),
+        key=1011168836,
+        unknown=1024,
+        structure_size=32,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+        ],
+    ),
+    MetaStructInfo(
+        name_hash=meta_name("CExtensionDefClimbHandHold"),
+        key=2881009079,
+        unknown=1024,
+        structure_size=80,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+            _entry("left", 32, MetaDataType.FLOAT_XYZ),
+            _entry("right", 48, MetaDataType.FLOAT_XYZ),
+            _entry("normal", 64, MetaDataType.FLOAT_XYZ),
+        ],
+    ),
+    MetaStructInfo(
         name_hash=meta_name("CExtensionDefExpression"),
         key=24441706,
         unknown=1024,
@@ -328,6 +325,35 @@ EXTENSION_STRUCT_INFOS = [
         ],
     ),
     MetaStructInfo(
+        name_hash=meta_name("CExtensionDefScrollbars"),
+        key=1789465102,
+        unknown=1024,
+        structure_size=64,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+            _entry("height", 32, MetaDataType.FLOAT),
+            _entry("scrollbarsType", 36, MetaDataType.SIGNED_INT),
+            _arrayinfo(MetaDataType.FLOAT_XYZ),
+            _entry("points", 40, MetaDataType.ARRAY, ref_index=4),
+        ],
+    ),
+    MetaStructInfo(
+        name_hash=meta_name("CExtensionDefSwayableEffect"),
+        key=656960190,
+        unknown=1024,
+        structure_size=64,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+            _entry("boneTag", 32, MetaDataType.SIGNED_INT),
+            _entry("lowWindSpeed", 36, MetaDataType.FLOAT),
+            _entry("lowWindAmplitude", 40, MetaDataType.FLOAT),
+            _entry("highWindSpeed", 44, MetaDataType.FLOAT),
+            _entry("highWindAmplitude", 48, MetaDataType.FLOAT),
+        ],
+    ),
+    MetaStructInfo(
         name_hash=meta_name("CExtensionDefProcObject"),
         key=3965391891,
         unknown=1024,
@@ -346,6 +372,29 @@ EXTENSION_STRUCT_INFOS = [
             _entry("maxZOffset", 64, MetaDataType.FLOAT),
             _entry("objectHash", 68, MetaDataType.HASH),
             _entry("flags", 72, MetaDataType.UNSIGNED_INT),
+        ],
+    ),
+    MetaStructInfo(
+        name_hash=meta_name("CExtensionDefScriptChild"),
+        key=1225083455,
+        unknown=1024,
+        structure_size=32,
+        entries=[
+            _entry("position", 0, MetaDataType.FLOAT_XYZ),
+            _entry("rotationZ", 16, MetaDataType.FLOAT),
+        ],
+    ),
+    MetaStructInfo(
+        name_hash=meta_name("CExtensionDefScript"),
+        key=3515145419,
+        unknown=1024,
+        structure_size=64,
+        entries=[
+            _entry("name", 8, MetaDataType.HASH),
+            _entry("offsetPosition", 16, MetaDataType.FLOAT_XYZ),
+            _entry("scriptName", 32, MetaDataType.CHAR_POINTER),
+            _arrayinfo(MetaDataType.STRUCTURE, ref_key="CExtensionDefScriptChild"),
+            _entry("children", 48, MetaDataType.ARRAY, ref_index=3),
         ],
     ),
     MetaStructInfo(
@@ -379,6 +428,6 @@ EXTENSION_STRUCT_INFOS = [
 ]
 
 
-__all__ = ["EXTENSION_STRUCT_INFOS", "MetaBackedStruct"]
+__all__ = ["YTYP_EXTENSION_STRUCT_INFOS"]
 
 

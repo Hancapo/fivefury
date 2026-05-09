@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+from enum import IntEnum
+
+
+class YedTrackFormat(IntEnum):
+    VECTOR3 = 0
+    QUATERNION = 1
+    FLOAT = 2
+
+
+class YedInstructionType(IntEnum):
+    END = 0x00
+    POP = 0x01
+    DUP = 0x02
+    PUSH0 = 0x03
+    PUSH1 = 0x04
+    PUSH_FLOAT = 0x05
+    TRACK_GET = 0x06
+    TRACK_GET_COMP = 0x07
+    TRACK_GET_OFFSET = 0x08
+    TRACK_GET_OFFSET_COMP = 0x09
+    TRACK_GET_BONE_TRANSFORM = 0x0A
+    PUSH_VECTOR = 0x0B
+    DEFINE_SPRING = 0x0E
+    VECTOR_ABS = 0x0F
+    VECTOR_NEG = 0x10
+    VECTOR_RCP = 0x11
+    VECTOR_SQRT = 0x12
+    VECTOR_NEG3 = 0x1B
+    VECTOR_SQUARE = 0x1C
+    VECTOR_DEG2RAD = 0x1D
+    VECTOR_RAD2DEG = 0x1E
+    VECTOR_SATURATE = 0x1F
+    TRACK_VALID = 0x20
+    FROM_EULER = 0x21
+    TO_EULER = 0x22
+    UNKNOWN_23 = 0x23
+    TRACK_SET = 0x26
+    TRACK_SET_COMP = 0x27
+    TRACK_SET_OFFSET = 0x28
+    TRACK_SET_OFFSET_COMP = 0x29
+    TRACK_SET_BONE_TRANSFORM = 0x2A
+    JUMP = 0x2B
+    JUMP_IF_TRUE = 0x2C
+    JUMP_IF_FALSE = 0x2D
+    VECTOR_ADD = 0x2E
+    VECTOR_SUB = 0x2F
+    VECTOR_MUL = 0x30
+    VECTOR_MIN = 0x31
+    VECTOR_MAX = 0x32
+    QUAT_MUL = 0x33
+    VECTOR_GREATER_THAN = 0x35
+    VECTOR_LESS_THAN = 0x36
+    VECTOR_GREATER_EQUAL = 0x37
+    VECTOR_LESS_EQUAL = 0x38
+    VECTOR_CLAMP = 0x39
+    VECTOR_LERP = 0x3A
+    VECTOR_MAD = 0x3B
+    QUAT_SLERP = 0x3C
+    TO_VECTOR = 0x3D
+    LOOK_AT = 0x3E
+    PUSH_TIME = 0x3F
+    VECTOR_TRANSFORM = 0x40
+    GET_VARIABLE = 0x42
+    SET_VARIABLE = 0x43
+    BLEND_VECTOR = 0x44
+    BLEND_QUATERNION = 0x45
+    PUSH_DELTA_TIME = 0x46
+    VECTOR_EQUAL = 0x48
+    VECTOR_NOT_EQUAL = 0x49
+
+
+__all__ = [
+    "YedInstructionType",
+    "YedTrackFormat",
+]

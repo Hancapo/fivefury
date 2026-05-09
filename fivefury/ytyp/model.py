@@ -4,23 +4,25 @@ import dataclasses
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from ..extensions import EXTENSION_STRUCT_INFOS, extensions_from_meta, extensions_to_meta
-from ..extensions.defs import MetaBackedStruct
+from ..meta.backed import MetaBackedStruct
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
 from ..resource import build_rsc7
 from ..ymap.defs import _ensure_base_name
-from ..ymap.model import _suggest_resource_path
+from ..ymap.utils import suggest_resource_path
 
-from .archetypes import BaseArchetypeDef, TimeArchetypeDef
+from .base_archetype import BaseArchetypeDef
+from .timed_archetype import TimeArchetypeDef
 from .defs import YTYP_STRUCT_INFOS, YTYP_ENUM_INFOS
+from .extension_defs import YTYP_EXTENSION_STRUCT_INFOS
+from .extensions import extensions_from_meta, extensions_to_meta
 from .mlo import MloArchetypeDef
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..rpf import RpfArchive, RpfFileEntry
 
-_ALL_STRUCT_INFOS = list(YTYP_STRUCT_INFOS) + list(EXTENSION_STRUCT_INFOS)
+_ALL_STRUCT_INFOS = list(YTYP_STRUCT_INFOS) + list(YTYP_EXTENSION_STRUCT_INFOS)
 
 
 @dataclasses.dataclass(slots=True)
@@ -152,7 +154,7 @@ class Ytyp(MetaHashFieldsMixin):
         return archetype
 
     def suggested_path(self) -> str:
-        return _suggest_resource_path(self.name, self.meta_name, ".ytyp", "unnamed.ytyp")
+        return suggest_resource_path(self.name, self.meta_name, ".ytyp", "unnamed.ytyp")
 
     def build(self) -> "Ytyp":
         self.name = _ensure_base_name(self.name, ".ytyp")

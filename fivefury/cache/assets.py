@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 from ..common import hash_value
 from ..gamefile import GameFileType
@@ -11,6 +11,9 @@ from ..assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_re
 from ..rpf import RpfFileEntry
 from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
 from ..ytd import Texture, Ytd, read_ytd
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .views import AssetRecord
 
 _EMBEDDED_TEXTURE_RESOURCE_TYPES = frozenset(RESOURCE_TEXTURE_ASSET_TYPES)
 
@@ -258,17 +261,17 @@ class GameFileCacheAssetMixin:
             current_hash = int(next_hash)
             depth += 1
 
-    def iter_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> Iterator["AssetRecord"]:
+    def iter_texture_dictionary_chain(self, query: Any, *, include_parents: bool = True) -> Iterator[tuple["AssetRecord", int]]:
         seen_paths: set[str] = set()
 
         direct_ytd = self._coerce_asset(query, kind=GameFileType.YTD)
         if direct_ytd is not None:
-            for asset, _ in self._iter_texture_dict_chain_assets(direct_ytd.short_hash if include_parents else direct_ytd.short_hash):
-                if not include_parents and asset.path != direct_ytd.path:
+            chain = self._iter_texture_dict_chain_assets(direct_ytd.short_hash) if include_parents else [(direct_ytd, 0)]
+            for asset, depth in chain:
+                if asset.path in seen_paths:
                     continue
-                if asset.path not in seen_paths:
-                    seen_paths.add(asset.path)
-                    yield asset
+                seen_paths.add(asset.path)
+                yield asset, depth
             return
 
         ymap = self._coerce_ymap(query)
@@ -277,11 +280,11 @@ class GameFileCacheAssetMixin:
                 if asset.kind is not GameFileType.YTD:
                     continue
                 chain = self._iter_texture_dict_chain_assets(asset.short_hash) if include_parents else [(asset, 0)]
-                for ytd_asset, _ in chain:
+                for ytd_asset, depth in chain:
                     if ytd_asset.path in seen_paths:
                         continue
                     seen_paths.add(ytd_asset.path)
-                    yield ytd_asset
+                    yield ytd_asset, depth
             return
 
         for archetype in self._iter_archetypes_for_query(query):
@@ -290,16 +293,20 @@ class GameFileCacheAssetMixin:
                 continue
             chain = self._iter_texture_dict_chain_assets(texture_dictionary) if include_parents else []
             if include_parents:
-                for asset, _ in chain:
+                for asset, depth in chain:
                     if asset.path in seen_paths:
                         continue
                     seen_paths.add(asset.path)
-                    yield asset
+                    yield asset, depth
                 continue
             asset = self.get_asset(texture_dictionary, kind=GameFileType.YTD)
             if asset is not None and asset.path not in seen_paths:
                 seen_paths.add(asset.path)
-                yield asset
+                yield asset, 0
+
+    def iter_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> Iterator["AssetRecord"]:
+        for asset, _depth in self.iter_texture_dictionary_chain(query, include_parents=include_parents):
+            yield asset
 
     def list_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> list["AssetRecord"]:
         return list(self.iter_texture_dictionaries(query, include_parents=include_parents))
@@ -424,7 +431,7 @@ class GameFileCacheAssetMixin:
             seen.add(key)
             yield item
 
-        for ytd_asset in self.iter_texture_dictionaries(query, include_parents=include_parents):
+        for ytd_asset, parent_depth in self.iter_texture_dictionary_chain(query, include_parents=include_parents):
             ytd = self._coerce_ytd(ytd_asset)
             if ytd is None:
                 continue
@@ -438,7 +445,7 @@ class GameFileCacheAssetMixin:
                     container_path=ytd_asset.path,
                     container_name=ytd_asset.stem,
                     origin="ytd",
-                    parent_depth=0,
+                    parent_depth=parent_depth,
                 )
 
     def list_asset_textures(self, query: Any, *, include_parents: bool = True) -> list[TextureRef]:

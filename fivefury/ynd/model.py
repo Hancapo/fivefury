@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterable
 from enum import IntFlag
 from pathlib import Path
 
@@ -209,6 +209,77 @@ class YndJunction:
     def heightmap_count(self) -> int:
         return len(self.heightmap)
 
+    @property
+    def height_values(self) -> list[float]:
+        from .heightmaps import decode_junction_heightmap
+
+        return decode_junction_heightmap(self.heightmap, self.min_z, self.max_z)
+
+    def set_height_values(
+        self,
+        values: Iterable[float],
+        *,
+        dim_x: int,
+        dim_y: int,
+        min_z: float | None = None,
+        max_z: float | None = None,
+    ) -> "YndJunction":
+        from .heightmaps import encode_junction_heightmap, quantize_junction_z
+
+        dim_x = int(dim_x)
+        dim_y = int(dim_y)
+        if dim_x <= 0 or dim_x > 255 or dim_y <= 0 or dim_y > 255:
+            raise ValueError("junction heightmap dimensions must be in the 1..255 range")
+        heights = [float(value) for value in values]
+        if len(heights) != dim_x * dim_y:
+            raise ValueError("junction height values count does not match dim_x * dim_y")
+        self.min_z = quantize_junction_z(min(heights) if min_z is None and heights else float(min_z or 0.0))
+        self.max_z = quantize_junction_z(max(heights) if max_z is None and heights else float(max_z or 0.0))
+        self.heightmap_dim_x = dim_x
+        self.heightmap_dim_y = dim_y
+        self.heightmap = encode_junction_heightmap(heights, self.min_z, self.max_z)
+        return self
+
+    def generate_heightmap(
+        self,
+        *,
+        samples: Iterable[tuple[float, float, float]] = (),
+        triangles: Iterable[
+            tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
+        ] = (),
+        dim_x: int = 16,
+        dim_y: int = 16,
+        bounds: tuple[tuple[float, float], tuple[float, float]] | None = None,
+        center: tuple[float, float] | None = None,
+        size: tuple[float, float] | float | None = None,
+        min_z: float | None = None,
+        max_z: float | None = None,
+        fallback_z: float = 0.0,
+        grid_spacing: float = 2.0,
+    ) -> "YndJunction":
+        from .heightmaps import build_junction_heightmap
+
+        heightmap = build_junction_heightmap(
+            samples=samples,
+            triangles=triangles,
+            dim_x=dim_x,
+            dim_y=dim_y,
+            bounds=bounds,
+            center=center or self.position,
+            size=size,
+            min_z=min_z,
+            max_z=max_z,
+            fallback_z=fallback_z,
+            grid_spacing=grid_spacing,
+        )
+        self.position = heightmap.position
+        self.min_z = heightmap.min_z
+        self.max_z = heightmap.max_z
+        self.heightmap_dim_x = heightmap.dim_x
+        self.heightmap_dim_y = heightmap.dim_y
+        self.heightmap = heightmap.data
+        return self
+
     def build(self) -> "YndJunction":
         self.position = (float(self.position[0]), float(self.position[1]))
         self.min_z = float(self.min_z)
@@ -369,6 +440,41 @@ class YndNode:
             self.routing_flags |= YndNodeRoutingFlags.IN_TUNNEL
         else:
             self.routing_flags &= ~YndNodeRoutingFlags.IN_TUNNEL
+
+    def ensure_junction_heightmap(
+        self,
+        *,
+        samples: Iterable[tuple[float, float, float]] = (),
+        triangles: Iterable[
+            tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
+        ] = (),
+        dim_x: int = 16,
+        dim_y: int = 16,
+        bounds: tuple[tuple[float, float], tuple[float, float]] | None = None,
+        center: tuple[float, float] | None = None,
+        size: tuple[float, float] | float | None = None,
+        min_z: float | None = None,
+        max_z: float | None = None,
+        fallback_z: float = 0.0,
+        grid_spacing: float = 2.0,
+    ) -> YndJunction:
+        if self.junction is None:
+            self.junction = YndJunction(position=(float(self.position[0]), float(self.position[1])))
+        self.junction.generate_heightmap(
+            samples=samples,
+            triangles=triangles,
+            dim_x=dim_x,
+            dim_y=dim_y,
+            bounds=bounds,
+            center=center or (float(self.position[0]), float(self.position[1])),
+            size=size,
+            min_z=min_z,
+            max_z=max_z,
+            fallback_z=fallback_z,
+            grid_spacing=grid_spacing,
+        )
+        self.qualifies_as_junction = True
+        return self.junction
 
     def build(self) -> "YndNode":
         self.area_id = None if self.area_id is None else (int(self.area_id) & 0xFFFF)

@@ -49,8 +49,8 @@ Support levels:
 
 | Format | Scope |
 | --- | --- |
-| `YDR` | Drawable resources: materials, shaders, samplers, numeric parameters, drawable models, LODs, render masks, lights, embedded textures, embedded bounds, skeletons, skinning, rigid bone bindings, shader inspection, and skeleton hash recalculation. |
-| `YDD` | Drawable dictionaries with multiple embedded drawables and high-level creation from named `YDR` drawables. |
+| `YDR` | Drawable resources: materials, shaders, samplers, numeric parameters, drawable models, LODs, render masks, lights, embedded textures, embedded bounds, skeletons, skinning, radial weight generation, rigid bone bindings, shader inspection, and skeleton hash recalculation. |
+| `YDD` | Drawable dictionaries with multiple embedded drawables, high-level creation from named `YDR` drawables, and external-skeleton radial rigging helpers for ped components. |
 | `YBN` | Bounds/collisions: primitive bounds, composite bounds, geometry bounds, BVH bounds, octants, material names, material colors, and generated collision chunks from triangle meshes. |
 | `YCD` | Clip dictionaries: parsed metadata, sequence rebuilds, known track types, UV clip bindings, object animation metadata, skeletal tracks, root motion, camera tracks, and facial samples. |
 | `YMAP` | Map metadata: entities, car generators, timecycle modifiers, occluders, content flags, entity flags, LOD lights, distant lights, and typed metadata. |
@@ -71,14 +71,15 @@ Support levels:
 | `YPT` | Resource texture dictionaries can be discovered/extracted from particle dictionaries, but full particle authoring is not implemented. |
 | `AWC` | Audio wave containers can be read/written structurally, opened through `GameFileCache`, exported back to WAV for PCM/ADPCM streams, and built from mono or multichannel 16-bit PCM inputs decoded through `miniaudio` (`.wav`, `.mp3`, `.ogg`, `.flac`). Playback metadata lives in `.rel` banks. |
 | `REL` | Audio metadata banks can be read/written structurally, opened through `GameFileCache`, and round-tripped with unknown entries preserved. `dat10.rel` modular synth presets/synths, `dat16.rel` curves, `dat22.rel` categories, and common `dat54.rel` sound graph entries have typed models, including simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, note maps, variable-curve and conditional routing, directional/kinetic routing, variable blocks, math operations, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, and sound-hash lists. Other REL item families currently stay as raw entries. |
-| `YMF`, `YMT`, `YWR`, `YVR`, `YED` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
+| `YED` | Expression dictionaries can be detected, opened through `GameFileCache`, inspected for expressions/tracks/streams/springs/instruction opcodes, edited safely for spring-list cloning, built from scratch for spring dictionaries, and validated before writing. |
+| `YMF`, `YMT`, `YWR`, `YVR` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
 | `GTXD` metadata | Used by cache texture lookup and parent-chain resolution, but it is not a standalone binary asset format like `.gxt2`. |
 
 ### Not Implemented Yet
 
 | Format family | Notes |
 | --- | --- |
-| `YLD`, `YFD`, `YPDB`, `MRF` | Known game file types, currently no dedicated high-level support. |
+| `YFD`, `YPDB`, `MRF` | Known game file types, currently no dedicated high-level support. |
 | Heightmap and watermap resources | Recognized as game concepts, but no complete public reader/writer yet. |
 | Vehicle/ped audio REL specializations | REL files can be loaded structurally, but specialized semantic authoring beyond the initial synth/curve/category/sound subset is not currently exposed. |
 
@@ -392,8 +393,43 @@ FiveFury exposes:
 - editable material shaders, samplers, and numeric parameters
 - embedded texture helpers through `add_embedded_texture(...)` and `remove_embedded_texture(...)`
 - embedded collision helpers through `set_bound(...)` and `clear_bound()`
-- skeleton helpers for bones, skinning, rigid bone bindings, and explicit skeleton hash recalculation
+- skeleton helpers for bones, skinning, radial weight generation, rigid bone bindings, and explicit skeleton hash recalculation
 - `build()` / `validate()` helpers for authoring flows
+
+### Generate radial skin weights
+
+```python
+from fivefury import RadialBoneRigRule, read_ydd, rig_ydd_to_bones_radially
+
+body = read_ydd("tdev_xyuls^lowr_000_u.ydd")
+skeleton_source = read_ydd("tdev_xyuls^head_000_u.ydd")
+
+report = rig_ydd_to_bones_radially(
+    body,
+    [
+        RadialBoneRigRule("SM_R_BackSkirtRoll", radius=0.16, strength=0.65),
+        RadialBoneRigRule("SM_L_BackSkirtRoll", radius=0.16, strength=0.65),
+    ],
+    skeleton_source=skeleton_source,
+)
+
+print(report.vertices)
+body.save("tdev_xyuls^lowr_000_u_rigged.ydd")
+```
+
+For body folders where `head_000_u.ydd` carries the skeleton and `uppr/lowr` carry the meshes, use the convenience pass:
+
+```python
+from fivefury import rig_body_folder_jiggle_bones
+
+report = rig_body_folder_jiggle_bones(
+    r"C:\mods\body",
+    output_folder=r"C:\mods\body_rigged",
+)
+print(report.saved_files)
+```
+
+The helper preserves existing skinning and reuses ped-component palettes that already store external skeleton indices. It only adds or adjusts vertex influences around the requested jiggle bones; it does not generate cloth simulation data by itself.
 
 ### Skin a YDR model declaratively
 
@@ -695,6 +731,66 @@ print(paths[0].name)
 - names outputs as `navmesh[file_x][file_y].ynv`
 
 This is intentionally a basic geometry partitioner, not a full navgen pipeline. It does not yet generate advanced navigation semantics such as cover, climb/drop adjacencies, portals, or point placement.
+
+## YED
+
+`YED` files are expression dictionaries used by peds through expression set metadata. FiveFury exposes expressions, typed tracks, streams, semantic instruction operands, variables, and spring blocks:
+
+```python
+from fivefury import YedTrackFormat, read_yed
+
+yed = read_yed("ambient.yed")
+breasts = yed.require_expression("breasts")
+
+print(breasts.spring_bone_ids)
+print([track.format for track in breasts.tracks])
+for stream in breasts.streams:
+    for instruction in stream.instructions:
+        print(instruction.name, instruction.operands)
+```
+
+Small spring dictionaries can be built declaratively:
+
+```python
+from fivefury import YedTrackFormat, create_yed, save_yed
+
+yed = create_yed("breasts")
+expr = yed.require_expression("breasts")
+expr.ensure_spring(0xFC8E)
+expr.ensure_spring(0x885F)
+expr.ensure_track(0xFC8E, format=YedTrackFormat.VECTOR3)
+
+yed.validate()
+save_yed(yed, "ambient_custom.yed")
+```
+
+Existing spring descriptions can be cloned when a custom skeleton keeps the same physics shape but adds new bone tags:
+
+```python
+yed.clone_breast_springs_to_glutes(
+    left_breast=0xFC8E,
+    right_breast=0x885F,
+    left_glute=0x40B2,
+    right_glute=0xC141,
+)
+```
+
+Complex expression streams are currently preserved and decoded at opcode level. Full semantic editing of every stream instruction is intentionally more conservative because those bytecode operands need to stay 1:1 with the game VM.
+Streams can also be authored with semantic instructions for the supported VM layouts:
+
+```python
+from fivefury import YedInstruction, YedInstructionType, YedStream
+
+expr = yed.ensure_expression("face")
+expr.streams.append(YedStream.raw_stream("main", depth=2, data3=b""))
+expr.streams[0].instructions = [
+    YedInstruction(YedInstructionType.PUSH_FLOAT, operands={"value": 1.0}),
+    YedInstruction(YedInstructionType.PUSH_VECTOR, operands={"value": (1.0, 0.0, 0.0, 0.0)}),
+    YedInstruction(YedInstructionType.END),
+]
+```
+
+The supported semantic layouts currently cover empty stack/vector ops, float/vector constants, bone track ops, variables, jumps, springs, look-at, and blend op payloads. Unknown or malformed bytecode is still preserved from existing files, but validation reports it before semantic rebuilds.
 
 ## GameFileCache
 

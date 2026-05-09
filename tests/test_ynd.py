@@ -11,7 +11,9 @@ from fivefury import (
     YndLink,
     YndNetwork,
     YndNode,
+    build_junction_heightmap,
     build_ynd_bytes,
+    decode_junction_heightmap,
     get_ynd_area_id,
     read_ynd,
 )
@@ -140,6 +142,52 @@ def test_gamefilecache_parses_loose_ynd(tmp_path: Path) -> None:
     assert game_file.kind == GameFileType.YND
     assert isinstance(game_file.parsed, Ynd)
     assert game_file.parsed.nodes
+
+
+def test_build_junction_heightmap_from_triangles() -> None:
+    heightmap = build_junction_heightmap(
+        triangles=[
+            ((-1.0, -1.0, 0.0), (1.0, -1.0, 10.0), (-1.0, 1.0, 10.0)),
+            ((1.0, -1.0, 10.0), (1.0, 1.0, 20.0), (-1.0, 1.0, 10.0)),
+        ],
+        bounds=((-1.0, -1.0), (1.0, 1.0)),
+        dim_x=2,
+        dim_y=2,
+    )
+
+    assert heightmap.position == pytest.approx((-1.0, -1.0))
+    assert heightmap.min_z == pytest.approx(0.0)
+    assert heightmap.max_z == pytest.approx(20.0)
+    assert heightmap.data == bytes([0, 128, 128, 255])
+    assert decode_junction_heightmap(heightmap.data, heightmap.min_z, heightmap.max_z) == pytest.approx(
+        [0.0, 10.0, 10.0, 19.921875]
+    )
+
+
+def test_junction_heightmap_roundtrips_through_ynd_writer() -> None:
+    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
+    node = YndNode(area_id=area_id, node_id=0, position=(0.0, 0.0, 0.0))
+    junction = node.ensure_junction_heightmap(
+        samples=[
+            (-1.0, -1.0, 0.0),
+            (1.0, -1.0, 10.0),
+            (-1.0, 1.0, 10.0),
+            (1.0, 1.0, 20.0),
+        ],
+        bounds=((-1.0, -1.0), (1.0, 1.0)),
+        dim_x=2,
+        dim_y=2,
+    )
+    rebuilt = read_ynd(build_ynd_bytes(Ynd.from_nodes([node], area_id=area_id)))
+
+    assert node.qualifies_as_junction
+    assert rebuilt.nodes[0].junction is not None
+    assert rebuilt.nodes[0].junction.position == pytest.approx(junction.position)
+    assert rebuilt.nodes[0].junction.min_z == pytest.approx(junction.min_z)
+    assert rebuilt.nodes[0].junction.max_z == pytest.approx(junction.max_z)
+    assert rebuilt.nodes[0].junction.heightmap_dim_x == 2
+    assert rebuilt.nodes[0].junction.heightmap_dim_y == 2
+    assert rebuilt.nodes[0].junction.heightmap == junction.heightmap
 
 
 def test_build_rejects_nodes_outside_ynd_area() -> None:

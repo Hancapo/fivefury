@@ -6,7 +6,8 @@ from typing import Any
 
 from ..metahash import HashLike, MetaHash
 
-from .archetypes import ArchetypeAssetType, BaseArchetypeDef
+from .asset_types import ArchetypeAssetType
+from .base_archetype import BaseArchetypeDef
 from .flags import ArchetypeFlags, TimeArchetypeFlags
 from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 from .model import Ytyp
