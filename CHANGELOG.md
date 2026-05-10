@@ -7,633 +7,637 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- YMT can now decode binary RBF and PSO containers, expose known `CMapParentTxds`, scenario manifest, scenario region, ped variation, ped metadata, and streaming request roots, and preserve raw RBF/PSO bytes for safe roundtrips.
+- YMF now exposes `CPackFileMetaData` relationships for IMAP to ITYP dependencies, ITYP to ITYP dependencies, IMAP groups, interior bounds, and HD texture dictionary bindings.
+- YMF manifests can now be generated from YMAP sets, resolving entity archetypes through explicit YTYP inputs or `GameFileCache`.
+- Shared XML helpers now back DLC, GTXD, and YMF parsing/writing to avoid duplicated XML boilerplate.
+
 ## [0.2.4] - 2026-05-09
 
 ### Breaking Changes
-- Removed the old shared `fivefury.extensions` package. YMAP and YTYP extension definitions now live with their owning formats as `fivefury.ymap.extensions`, `fivefury.ymap.extension_defs`, `fivefury.ytyp.extensions`, and `fivefury.ytyp.extension_defs`.
+- YMAP and YTYP extensions now live inside their owning format packages instead of a shared extension package.
 
 ### Added
-- `GTXD` parent texture dictionary metadata support through `Gtxd`, `TxdRelationship`, `create_gtxd`, `read_gtxd`, and `save_gtxd`, including XML read/write, relationship de-duplication by child dictionary, parent-chain iteration, hash-map helpers, `.gtxd.meta` file detection, and `GameFileCache` loading.
-- `YND` junction heightmap generation through `YndJunctionHeightmap`, `build_junction_heightmap`, `encode_junction_heightmap`, `decode_junction_heightmap`, `quantize_junction_z`, `YndJunction.generate_heightmap(...)`, `YndJunction.set_height_values(...)`, and `YndNode.ensure_junction_heightmap(...)`.
-- Initial `.yed` expression dictionary support through `fivefury.yed`, including `.yed` file detection, `GameFileCache` decoding, expression/track/stream/spring inspection, CodeWalker-aligned instruction opcode enums, semantic stream instruction operand parsing/rebuilding for known VM layouts, typed track formats, lossless clean roundtrips, safe spring-list edits for cloning existing spring physics onto additional bones, validation diagnostics, and declarative creation of spring-focused expression dictionaries from scratch.
-- Radial skinning helpers for YDR/YDD meshes through `RadialBoneRigRule`, `rig_mesh_to_bones_radially`, `rig_ydr_to_bones_radially`, `rig_ydd_to_bones_radially`, and `rig_body_folder_jiggle_bones`, allowing missing jiggle-bone weights to be generated from nearby vertices while preserving existing four-weight skin data.
-- Ped-variation helpers for generic YMT-backed ped metadata through `PedComponent`, `PedDrawableVariation`, `iter_ped_drawables`, `ped_drawable_file_stem`, `coerce_ped_component`, and `set_ped_drawable_cloth`.
+- GTXD parent texture dictionary metadata support, including XML read/write, parent-chain lookup, duplicate handling, and cache loading.
+- YND junction heightmap generation with game-aligned sample spacing, XY anchoring, and Z quantization.
+- Initial YED expression dictionary support for reading, editing, validating, and writing spring-focused expression data.
+- Radial skinning helpers for adding missing jiggle-bone weights to YDR and YDD meshes.
+- Ped-variation helpers for editing component drawable metadata backed by generic YMT data.
 
 ### Changed
-- Split YMAP into focused modules for base map metadata, car generators, grass, lights, occluders, packing, timecycle modifiers, utilities, and format-owned extensions, reducing the large shared model files without changing the high-level import surface.
-- Split YTYP into focused modules for asset types, base archetypes, timed archetypes, MLO data, format-owned extensions, and extension definitions.
-- `GameFileCache` texture lookup now understands parsed GTXD parent chains and embedded resource texture dictionaries through the shared asset helpers.
-- Radial rigging automatically reuses existing ped-component bone palettes that store external skeleton indices before appending tag-based bone IDs, avoiding duplicate conceptual bone influences in YDD body components.
+- YMAP code is now split by data type: base metadata, car generators, grass, lights, occluders, packing, timecycle modifiers, and extensions.
+- YTYP code is now split by data type: asset types, base archetypes, timed archetypes, MLO data, and extensions.
+- Texture lookup now respects GTXD parent chains and embedded resource texture dictionaries.
+- Radial rigging now reuses existing ped-component bone palettes before appending new jiggle influences.
 
 ### Fixed
-- YND junction heightmap encoding now matches the game runtime layout: junction `position` stores minimum XY, samples use 2.0 world-unit grid spacing by default, Z bounds quantize to the stored 1/32 unit representation, and byte samples decode with `(max_z - min_z) / 256.0` rather than `/255.0`.
+- YND junction heightmaps now encode minimum XY, 2.0-unit sample spacing, 1/32 Z bounds, and the correct 256-step decode range.
 
 ## [0.2.3] - 2026-05-06
 
 ### Added
-- Declarative DLC metadata support through `fivefury.dlc`, including enums and models for `setup2.xml`, `content.xml`, `dlclist.xml`, `extratitleupdatedata.meta`, DLC content files, content change sets, content change set groups, and `dlc_patch` title-update overlays.
-- High-level `DlcPack` and `DlcPatch` helpers for generating `dlc.rpf` packages and update overlay RPFs with root metadata, registered content files, change-set activation, patch mount manifests, and nested payload files.
-- Folder-based DLC metadata inference helpers through `create_dlc_folder_metadata`, `write_dlc_folder_metadata`, `infer_dlc_content_from_folder`, `read_dlc_pack`, and DLC validation helpers, allowing an existing DLC folder tree to generate the matching `setup2.xml` and `content.xml`/custom dat file metadata.
-- DLC list and patch-manifest helpers through `create_dlc_list_for_packs`, `create_dlc_patch_manifest`, `DlcList`, `DlcExtraTitleUpdateData`, and `DlcPatchMount` for building `dlclist.xml` entries and `extratitleupdatedata.meta` patch mounts.
-- XML read/write helpers for DLC metadata through `read_dlc_setup`, `read_dlc_content`, `read_dlc_list`, `read_dlc_extra_title_update_data`, `build_dlc_setup_xml`, `build_dlc_content_xml`, `build_dlc_list_xml`, and `build_dlc_extra_title_update_data_xml`.
-- Public facade exports for all DLC models, enums, builders, readers, folder inference helpers, and validators.
+- Declarative DLC metadata support for setup, content, DLC lists, title updates, change sets, and DLC patch overlays.
+- High-level DLC pack and patch helpers for building folder-backed DLC packages and update overlays.
+- Folder inference for DLC metadata, allowing a DLC directory to produce matching setup and content files.
+- DLC list and title-update manifest helpers for pack registration and patch mounting.
+- XML read/write support for the supported DLC metadata files.
 
 ### Changed
-- README support tables and examples now document DLC metadata authoring, folder inference, generated `setup2.xml`/`content.xml`, and `dlc_patch` overlay creation.
+- README support tables and examples now cover DLC metadata, folder inference, and patch overlays.
 
 ## [0.2.2] - 2026-05-05
 
 ### Added
-- Initial `.rel` support through the new `fivefury.rel` package, including structural binary read/write, raw preservation for unknown entries, public `read_rel`, `build_rel_bytes`, and `save_rel` helpers, plus `GameFileCache` decoding.
-- Typed REL models and enums for `dat10.rel` modular synth presets/synth definitions, `dat16.rel` curves, `dat22.rel` audio categories, and `dat54.rel` sound graphs, including looping sounds, simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, automation note maps, variable-curve routing, conditional routing, directional and kinetic routing, variable blocks, math-operation routing, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, sound-hash lists, sound headers, environment sound hashes, exposed variables, name tables, index tables, hash tables, and pack tables.
-- `miniaudio`-backed conversion from popular audio formats (`.wav`, `.mp3`, `.ogg`, `.flac`) to mono or multichannel PCM `.awc` files through `DecodedAudio`, `decode_audio`, `Awc.from_audio`, `AwcStream.from_audio`, and `convert_audio_to_awc`, with `SUPPORTED_AUDIO_EXTENSIONS` exposed for callers.
-- PCM/WAV convenience helpers for AWC streams and dictionaries, including `Awc.from_multichannel_pcm`, `Awc.from_channel_pcm`, `Awc.channel_streams`, `Awc.pcm_bytes`, `Awc.wav_bytes`, and per-stream `channel_pcm`/`stream_format` metadata.
-- `.cut` to `.cuts` export through `cutscript_from_scene`, `cut_to_cutscript`, and `save_cut_as_cutscript`, with `HashResolver` and sibling-file hash resolution for readable decompilation.
-- CutScript support for raw numeric cutscene flags, camera `QUAT`, `TYPE_FILE`, `CNAME`, `ANIM_BASE`, `ANIM_STREAMING_BASE`, `ANIM_EXPORT`, and `FACE_EXPORT` when preserving or authoring streamed cutscene model bindings.
-- Explicit `STATIC_PROP`, `ANIMATED_PROP`, `ANIMATED_PED`, and `ANIMATED_VEHICLE` CutScript declarations, with exported `.cuts` files using the declarative form that reflects whether a streamed model carries cutscene/YCD animation metadata.
-- Declarative YMAP component authoring via `PhysicsDictionary`, `Ymap.physics_dictionary(...)`, and `Ymap.add(...)`, allowing entities, physics dictionaries, occluders, LOD lights, car generators, timecycle modifiers, instanced data, and block descriptors to be appended through one consistent high-level entry point.
-- Declarative YTYP dependency and composite-entry authoring via `YtypDependency`, `CompositeEntityType`, `Ytyp.dependency(...)`, `Ytyp.composite_entity_type(...)`, and `Ytyp.add(...)`, with dependency deduplication preserved during `build()`.
-- Public facade exports for the new REL, AWC conversion, CutScript roundtrip, YMAP, and YTYP helper APIs.
+- Initial REL support with binary read/write, raw preservation for unknown records, and cache decoding.
+- Typed REL coverage for synth presets, curves, audio categories, sound graphs, routing data, randomization, sound sets, hashes, and lookup tables.
+- Audio conversion from WAV, MP3, OGG, and FLAC into PCM AWC, including mono and multichannel output.
+- AWC helpers for PCM and WAV extraction from streams and dictionaries.
+- CUT to CutScript export with hash resolution from known names and sibling files.
+- CutScript declarations for static props, animated props, peds, vehicles, camera quaternions, type files, animation bases, and raw flags.
+- Declarative YMAP component authoring for entities, physics dictionaries, occluders, LOD lights, car generators, timecycle modifiers, instanced data, and block descriptors.
+- Declarative YTYP dependency and composite-entry authoring with build-time deduplication.
 
 ### Changed
-- `.cut` to `.cuts` export now targets a high-level declarative script rather than a byte-for-byte lossless dump, omitting confusing internal fields such as `ANIM_COMPRESSION` and `HANDLE` so the compiler can rebuild them from presets and binding metadata.
-- CutScript decompilation preserves unresolved hashes as safe `0x????????` tokens while resolving known names through explicit resolvers, global hash dictionaries, and sibling filenames.
-- Streamed model binding declarations now separate the loaded asset name (`MODEL`), cutscene/YCD binding name (`CNAME`), animation clip base (`ANIM_BASE`), and type file (`YTYP`/`TYPE_FILE`) instead of conflating those concepts in one prop declaration.
+- CUT decompilation now emits a readable script instead of a noisy dump of internal fields.
+- CutScript keeps unresolved hashes readable while preserving their numeric value.
+- Streamed model declarations now separate loaded model name, cutscene binding name, animation base, and type file.
 
 ### Fixed
-- Hex strings such as `0x12345678` assigned to hashed cutscene fields now preserve the numeric hash value instead of hashing the literal text.
-- Roundtripped `.cut` files now preserve camera quaternions, raw flags, load/animation/object/light/subtitle/audio events, and static versus animated streamed-model intent in the generated `.cuts` script.
+- Hex strings assigned to hashed cutscene fields now stay numeric instead of being hashed as text.
+- CUT roundtrips now preserve camera quaternions, raw flags, load events, animation events, object events, light events, subtitle events, audio events, and animated/static model intent.
 
 ### Performance
-- `GameFileCache` format dictionaries, kind counts, typed views, and typed asset iteration now reuse native compact-index kind buckets instead of rebuilding those views by scanning every asset in Python.
+- GameFileCache format views now reuse native kind buckets instead of rescanning every asset in Python.
 
 ## [0.2.1] - 2026-05-02
 
 ### Added
-- Initial CutScript DSL for authoring `.cut` files from readable timeline scripts, with `parse_cutscript`, `read_cutscript`, `save_cutscript`, and `cutscene_from_cutscript` exported from the public API.
-- CutScript asset declarations for asset managers, animation managers, cameras, props, peds, vehicles, lights, audio, subtitles, fades, overlays, and decals.
-- CutScript timeline tracks for scene/model/YCD/subtitle/overlay loading, camera cuts, draw distance, animation binding, object visibility, attachments, fades, overlays, cutscene lights, subtitles, audio, and cleanup unload events.
-- Readable CutScript block syntax for multiline declarations such as `PROP name:`, `LIGHT name:`, and `0.000 CUT camera:`, with explicit `END` markers for every `ASSETS` and `TRACK` section.
-- Cutscene validation helpers via `CutScene.validation_report`, `CutScene.assert_valid`, `CutScene.validate`, `validate_cut_scene`, `CutSceneValidationIssue`, and `CutSceneValidationError`.
-- Save-time strict validation for authored cutscenes through `CutScene.to_cut`, `CutScene.to_bytes`, `CutScene.save`, and `save_cutscript`.
-- Shared CSS-style color parsing via `fivefury.colors`, exported from the package facade as `parse_css_rgb`, `parse_css_rgba`, `parse_css_argb`, `parse_css_rgb_unit`, and `parse_css_rgba_unit`.
-- CSS-like color input for high-level color fields across cutscene fades/decals, cutscene DSL lights/fades, YDR lights and vertex painting, YMAP LOD/grass colors, bounds material color tables, and light-related extension structs.
-- Native-backed GTA V magic-table decryption support used by the crypto key-loading path.
-- `CUTSCENE_STRUCTURE.md`, a detailed technical guide to the `.cut` object graph, tracks, events, validation model, CutScript syntax, and common authoring pitfalls.
+- Initial CutScript DSL for authoring CUT files from readable timeline scripts.
+- CutScript asset declarations for managers, cameras, props, peds, vehicles, lights, audio, subtitles, fades, overlays, and decals.
+- CutScript timeline commands for loading, camera cuts, draw distance, animation binding, visibility, attachments, fades, overlays, lights, subtitles, audio, and cleanup.
+- Multiline CutScript blocks with explicit section endings.
+- Cutscene validation with structured errors before binary export.
+- CSS-style color parsing shared across cutscenes, YDR lights, vertex colors, YMAP lights, bounds material colors, and light extensions.
+- Native-backed magic-table decryption for encrypted game data.
 
 ### Changed
-- Cutscene binary export now routes through `CutScene.to_cut(validate=True)` by default, so invalid high-level scenes fail before writing unreadable `.cut` bytes.
-- CutScene serialization methods now accept the same optional template argument consistently across `to_bytes` and `save`.
-- CutScript examples and structure documentation use the same multiline block style and CSS-like color notation supported by the parser.
-- Local VS Code CutScript tooling is kept as an external artifact instead of being included in the `fivefury` Python package tree.
+- CUT export validates authored scenes by default before writing bytes.
+- CUT serialization now handles optional templates consistently.
+- CutScript examples now match the multiline syntax accepted by the parser.
+- Local VS Code CutScript tooling is kept outside the Python package.
 
 ### Fixed
-- New cutscene validation catches missing scene metadata, invalid durations, duplicate object IDs, missing required streamed-object metadata, invalid load/model/animation/light/fade/subtitle/overlay event targets, unsafe camera clipping values, missing camera cuts, and timeline events outside the declared duration.
-- Cutscene serialization without a source template is guarded by stricter validation so obviously incomplete scenes are rejected instead of producing broken `.cut` output.
-- CutScript parsing no longer treats CSS hex colors such as `#ff8800` as comments.
-- CutScript reports concrete line-numbered errors for unknown assets, duplicate assets, malformed section endings, malformed colors, and missing required arguments.
-- Windows magic-table decryption no longer depends on the removed Python-only decryptor path.
+- Cutscene validation now catches missing metadata, invalid duration, duplicate object IDs, missing streamed-object metadata, invalid event targets, unsafe camera clipping, missing camera cuts, and events outside the scene range.
+- CUT writing without a template now rejects obviously incomplete scenes instead of producing unreadable files.
+- CutScript no longer treats CSS hex colors as comments.
+- CutScript errors now include concrete line numbers.
+- Windows magic-table decryption no longer depends on the removed Python-only path.
 
 ## [0.2.0] - 2026-04-28
 
 ### Added
-- High-level cutscene subtitle authoring via `CutSubtitleCue`, `CutSubtitleTrack`, `subtitle_cues_from_text`, `build_subtitle_gxt2`, and `CutScene.install_subtitles`, generating `SHOW_SUBTITLE` events, optional `LOAD_SUBTITLES`/`UNLOAD_SUBTITLES` streaming events, and matching `.gxt2` label dictionaries from one declarative cue list.
-- Complete `.cut` event spec coverage for all 81 known cutscene event IDs, including fixups, attachments, removal/blocking bounds activation, Rayfire loads, camera catchup, cascade-shadow controls, replay recording markers, and first-person camera catchup.
-- `Gxt2` and `Gxt2Entry` helpers for reading, editing, writing, and text-exporting `.gxt2` localization tables, including hash-key lookup, mapping-style mutation, sorted binary output, and simple `key = text` text files.
-- Initial `.awc` support as a dedicated `fivefury.awc` package, with stream/chunk structures, codec/chunk enums, RSXXTEA encryption helpers, PCM WAV helpers, ADPCM decoding, and `read_awc`/`build_awc_bytes`/`save_awc` entry points.
-- Generic `.ymt` and `.ymf` support through the shared META/RSC7 layer, including `Ymt`, `Ymf`, `read_ymt`, `read_ymf`, `save_ymt`, `save_ymf`, file-type detection, and `GameFileCache` decoding.
-- Shared `fivefury.common` helpers for source-byte loading, hash coercion, clip-short-name normalization, and flexible integer enums used across multiple formats.
-- Public exports for the new AWC, GXT2, cache, CUT, YCD, YDR, YTYP, and bounds APIs from the package facade.
+- High-level cutscene subtitle authoring, including subtitle events and optional GXT2 label dictionaries.
+- Full known CUT event coverage for cutscene authoring.
+- GXT2 localization table read/write/edit support.
+- Initial AWC support with stream chunks, codec metadata, encryption helpers, PCM WAV helpers, and ADPCM decoding.
+- Generic YMT and YMF support on top of the shared META/RSC7 layer.
+- Shared helpers for byte loading, hash coercion, clip-name normalization, and flexible integer enums.
 
 ### Changed
-- New `.cut` files now mirror retail root defaults more closely: trigger offsets default to `(0, 0, 0)`, fade durations/colors use the common vanilla values, `DayCoCHours` is initialized, and `discardFrameList` is emitted even when empty.
-- `jenk_partial_hash` and `jenk_finalize_hash` now run through the native C++ backend while preserving the previous quote and NUL termination semantics used by cutscene `AnimStreamingBase` hashes.
-- Split the large AWC implementation into focused modules for constants, crypto, audio conversion, binary I/O, and data structures.
-- Extracted reusable PSO constants, schema records, section parsing, `PSCH` serialization, generic reading, block writing, pointer patching, and checksum finalization into `fivefury.pso`, keeping `.cut` as a format-specific adapter on top of the shared model.
-- Consolidated repeated byte-source, hash, clip-name, enum, YDR parameter, YCD channel, and bounds math helpers so format readers/writers share the same behavior instead of carrying local copies.
-- Consolidated `GameFileCache` kind coercion into one cache helper so string, extension, integer, and `GameFileType` filters resolve consistently across cache views and lookups.
-- Tightened public module exports in `fivefury`, `fivefury.cut.scene`, `fivefury.meta`, and `fivefury.rpf`, replacing broad/internal reexports with explicit API surfaces.
-- Updated the high-level `YCD` cutscene builder tests and behavior around long skeletal/object clips to use the vanilla cutscene sequence frame limit consistently.
-- Simplified cleanup paths across cache, crypto, CUT, YCD, YDD, YDR, YMAP, YND, YNV, and YTYP modules by removing dead imports, redundant wrappers, and unnecessary local safeguards.
+- New CUT files now use more complete retail-style root defaults.
+- Partial and final JOAAT hash helpers now use the native backend.
+- AWC code is split into constants, crypto, conversion, binary I/O, and data models.
+- Shared PSO reading and writing logic now backs CUT instead of duplicated format-local code.
+- Repeated byte, hash, clip-name, enum, YDR parameter, YCD channel, and bounds math helpers were consolidated.
+- GameFileCache kind filtering is now centralized and consistent across strings, extensions, integers, and enum values.
+- Public exports were tightened to avoid broad internal reexports.
+- Long skeletal and object cutscene clips now follow the vanilla sequence frame limit more consistently.
+- Dead imports, wrappers, and redundant safeguards were removed across cache, crypto, CUT, YCD, YDD, YDR, YMAP, YND, YNV, and YTYP code.
 
 ### Fixed
-- `GameFileCache.kind_counts` and kind-indexed views now count logical file types derived from paths, so extension-backed resources such as `.cut` and `.ycd` inside RPF archives are reported under their explicit `GameFileType`.
-- Root package exports now include the recently added high-level APIs that were importable from submodules but missing from `fivefury.__all__`.
-- `YDR` reader compatibility on Python versions without PEP 695 generic function syntax by replacing the inline generic helper syntax with a normal `TypeVar`.
-- Windows crypto test coverage for the AES decryptor factory by preserving the expected internal decryptor export.
-- Builtin `.cut` PSO schema coverage for object-variation and particle-effect event args when authoring new cutscenes without a source template.
+- GameFileCache kind counts now report logical file types for extension-backed resources inside archives.
+- Root package exports now include recently added high-level APIs.
+- YDR reader compatibility with older Python syntax support was restored.
+- Windows crypto tests now cover the expected AES decryptor path.
+- Built-in CUT schema coverage now includes object-variation and particle-effect event arguments.
 
 ### Performance
-- Cutscene authoring and validation paths that calculate partial/final JOAAT hashes now avoid Python hash loops and use the same compiled native backend as full `jenk_hash`.
-- RSC7 section layout now runs through native C++ for page assignment, resource pointer remapping, and section materialization.
+- Cutscene hash-heavy paths now use the compiled native backend.
+- RSC7 page assignment, pointer remapping, and section materialization now use native code.
 
 ## [0.1.48]
 
 ### Added
-- `CutSceneFlags`, `DEFAULT_PLAYABLE_CUTSCENE_FLAGS`, and pack/unpack helpers for `.cut` flag arrays, covering sectioning, concat mode, story-mode playback, camera interpolation, DOF, fades, and ambient/vehicle-light suppression.
-- Explicit `.cut` scene metadata fields for scene names, ranges, section timing, camera-cut lists, section split lists, relocation offsets, trigger offsets, and concat-data records.
-- `CutLightType`, `CutLightProperty`, and `CutLightFlag` enums for cutscene light objects, replacing raw integer flag authoring.
-- `CutScene.ensure_ydr_embedded_lights(...)` for materializing embedded `YDR` lights as real `cutfLightObject` entries with matching `SET_LIGHT` events.
-- `YdrLight` to cutscene-light conversion helpers that preserve compatible type, shadow, volume, reflection, alpha, colour, intensity, falloff, cone, corona, and hour-mask data.
-- `animation_clip_base` on cutscene prop bindings, allowing `.cut` animation targets to resolve clips by the drawable/model clip basename instead of the object handle name.
-- `YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT` export and long object/skeletal cutscene clip support in the high-level `YCD` cutscene builder.
-- Static vector/quaternion channels and quantized transform channels for high-level `YCD` cutscene object clips, reducing invalid raw-float output for object, mover, and bone tracks.
-- Cutscene-prop `YTYP` helpers: `cutscene_prop_flags(...)`, `mark_cutscene_prop_archetypes(...)`, `CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS`, and `CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS`.
-- `YTYP` LOD inference helpers: `infer_archetype_radius`, `infer_archetype_lod_dist`, `infer_archetype_hd_texture_dist`, and the default/radius-scale constants used by generated archetypes.
-- Explicit `GameFileCache` indexing for `.cut`, `.ycd`, `.ynd`, and `.ynv` resources inside `RPF` archives.
-- Public exports for the new cutscene, YCD, YDR skeleton, and YTYP helper APIs from `fivefury`, `fivefury.cut`, `fivefury.cut.scene`, `fivefury.ycd`, `fivefury.ydr`, and `fivefury.ytyp`.
+- Cutscene flag enums and defaults for sectioning, concat mode, playback, camera behavior, fades, DOF, and ambient suppression.
+- Explicit CUT scene metadata for names, ranges, timing, camera cuts, section splits, offsets, trigger data, and concat records.
+- Cutscene light enums and conversion from embedded YDR lights to cutscene light objects.
+- Animation clip base support for cutscene props whose runtime animation name differs from the object handle.
+- Long object and skeletal cutscene clip support in the high-level YCD cutscene builder.
+- Static and quantized transform channels for high-level YCD object clips.
+- YTYP helpers for marking generated archetypes as cutscene props.
+- YTYP LOD inference helpers for generated archetypes.
+- GameFileCache indexing for CUT, YCD, YND, and YNV resources inside archives.
 
 ### Changed
-- Cutscene writing now defaults to playable root metadata: a real face directory, range bounds, section duration, concat-data entries, scene offsets, trigger offsets, and default cutscene flags.
-- Cutscene writing now keeps `LOAD_SCENE`, model loads, and animation dictionary loads in game-like order, and delays initial `SET_ANIM` events one frame when they would otherwise start on the same tick as the first camera cut.
-- Cutscene writing now treats camera cut events and `cameraCutList` separately, so one-section cuts can contain camera events without accidentally enabling `SECTION_BY_CAMERA_CUTS`.
-- Cutscene writing now switches streamed prop scenes from internal concat to external concat, matching the runtime path needed by prop-heavy cutscenes.
-- Cutscene `LOAD_SCENE` event args now keep the scene name in concat data and leave the event `cName` empty, preserving relocation semantics used by retail cutfiles.
-- Animated cutscene prop objects now leave `cHandle` empty when the runtime should resolve the handle from `AnimStreamingBase`, avoiding object-animation binding failures caused by forcing `cHandle = cName`.
-- Cutscene animation validation now checks `animation_clip_base`, derived `<clip>-<section>` names, `cutscene_name`, and `AnimStreamingBase` hashes, and warns when the streaming base does not match the expected JOAAT partial hash.
-- `YCD` object/skeletal cutscene tracks are now sorted by semantic track type and bone id, matching the stricter runtime ordering used by game cutscene dictionaries.
-- `YCD` cutscene cameras keep section splitting with the 287-frame sequence limit, while object/skeletal props are kept in a single sequence to avoid the runtime applying only root motion on skinned props.
-- `YCD` animation classification now treats mover and facial tracks as skeletal/object-style animation tracks when deriving runtime metadata such as `Unknown1C`.
-- `YDR` skeleton bones now default to animatable transform flags, formally expose `HAS_CHILD` and `IS_SKINNED`, and automatically rebuild `HAS_CHILD` flags during skeleton construction.
-- `YDR` writing now recalculates skeleton hash fields by default and still allows opting out with `recalculate_skeleton_hashes=False`.
-- `YDR` writing now normalizes the root bone tag to `0` and remaps mesh palettes and joint limits accordingly, matching the root-bone convention required by cutscene/skinned-object workflows.
-- `YDR` skinned mesh preparation now normalizes bone palettes against the skeleton, remaps blend indices to skeleton bone indices, rejects unknown bone ids/tags, and sets the skinned model flag automatically while preserving existing model flags.
-- `YDR` skinned blend indices now use the packed colour byte order expected by the drawable vertex layout.
-- `YTYP` archetypes built from YDR folders now infer non-zero `lodDist` and `hdTextureDist` from drawable bounds and can optionally mark generated archetypes as cutscene props.
+- CUT writing now defaults to playable root metadata and game-like load ordering.
+- Initial animation events now start after the first camera tick when needed.
+- Camera cut events and camera cut lists are handled separately.
+- Streamed prop scenes now use the concat mode required by prop-heavy cutscenes.
+- Scene names now stay in concat data during load events to preserve relocation behavior.
+- Animated cutscene props now avoid forcing handles that should be resolved from the animation streaming base.
+- Cutscene animation validation now checks clip bases, derived section names, cutscene names, and streaming-base hashes.
+- YCD object and skeletal tracks now use stricter semantic ordering.
+- Camera clips keep section splitting, while object and skeletal props remain in one sequence to avoid root-only playback.
+- YDR skeletons now default to animatable transform flags and rebuild child flags automatically.
+- YDR writing now recalculates skeleton hashes by default.
+- YDR writing normalizes the root bone to the expected tag and remaps mesh palettes and joint limits.
+- YDR skinned mesh export now validates palettes, blend indices, unknown bones, and skinned model flags.
+- YTYP archetypes built from YDR folders now infer non-zero LOD distances.
 
 ### Fixed
-- Generated cutscenes that could start in viewers but fail to show runtime props in-game because the root flags, concat mode, load order, offsets, face directory, or scene-name placement did not match the runtime path.
-- Cutscene prop animation binding when the `.cut` object name differs from the drawable/YCD clip basename, which previously caused only root motion or no animation to play.
-- Skinned/object cutscene `YCD` output where splitting long non-camera clips into multiple sequences produced parseable files that the game applied incorrectly.
-- `YDR` skinned drawables with non-zero root bone ids, stale skeleton hashes, missing skinned model flags, or palette/tag mismatches that could import in tools but fail to animate correctly.
-- Generated `YTYP` archetypes with zero LOD distances that made props disappear or become nearly invisible when streamed.
-- `.cutxml` file-type detection; it now resolves to `UNKNOWN` instead of `CUT`.
+- Generated cutscenes that loaded in tools but failed to show props in-game because root flags, concat mode, load order, offsets, face directory, or scene-name placement were wrong.
+- Cutscene prop animation binding when object names differ from drawable or clip names.
+- Long skinned/object YCD clips that only played root motion after being split incorrectly.
+- Skinned YDR files with invalid root bone IDs, stale skeleton hashes, missing skinned flags, or palette mismatches.
+- Generated YTYP archetypes with zero LOD distances.
+- CUTXML file detection now resolves as unknown instead of CUT.
 
 ## [0.1.47]
 
 ### Added
-- `.cut` high-level authoring now covers additional real-world scene objects and events, including decals, fixup objects, hidden-object visibility control, extra light/decal payloads, and more explicit runtime-source helpers for cutscene props.
-- `YCD` now exposes a dedicated cutscene builder that can derive section files from camera-cut timings, generate sectioned clip dictionaries directly, and author camera/object clips without manually assembling low-level track tables.
-- The cutscene `YCD` builder now supports multi-bone object clips declaratively, so animated props and other articulated cutscene assets can be authored with per-bone transforms plus root-motion tracks from a single high-level input structure.
+- More cutscene scene objects and events, including decals, fixups, hidden-object visibility, and extra light/decal payloads.
+- A dedicated cutscene YCD builder for camera and object clips.
+- Declarative multi-bone object clips for animated props and articulated cutscene objects.
 
 ### Changed
-- Cutscene prop authoring now uses clearer runtime-facing semantics around model names, type sources, and animation presets, making it easier to build `.cut` props from loose `YDR`/`YTYP` assets instead of hand-filling obscure fields.
-- Public exports were updated so the new cutscene `YCD` builder types and the expanded `.cut` helpers are available directly from `fivefury`.
+- Cutscene prop authoring now uses clearer runtime-facing model, type, and animation metadata.
+- Public exports now expose the expanded cutscene and YCD builder APIs.
 
 ## [0.1.46]
 
 ### Added
-- `YMAP` now exposes typed enums for map flags, content flags, entity flags, MLO instance flags, car generator flags, `LOD` levels, priority levels, and `LOD light` categories/types on the high-level API.
-- `YTYP` time archetypes now expose `TimeArchetypeFlags` as a real enum instead of a bare integer and provide helpers for hour masks and `flip_while_visible`.
+- YMAP enums for map flags, content flags, entity flags, MLO flags, car generator flags, LOD levels, priority levels, and LOD light metadata.
+- YTYP timed-archetype flags as enums, with hour-mask and visibility helpers.
 
 ### Changed
-- `YMAP` `LOD lights` generation now normalizes paired `LODLightsSOA` and `DistantLODLightsSOA` data before writing, ensuring street lights occupy the leading prefix required by the runtime and automatically recalculating `numStreetLights`.
-- High-level `YMAP` `LOD light` authoring now accepts semantic angle, capsule, color, and corona-intensity inputs and packs them into the byte ranges used by the game instead of forcing callers to provide raw packed values.
+- YMAP LOD light generation now normalizes paired near/far data and recalculates street-light counts.
+- High-level LOD light authoring now accepts semantic angle, capsule, color, and corona values instead of raw packed bytes.
 
 ### Fixed
-- `YMAP` validation and build paths now catch mismatched `LODLightsSOA`/`DistantLODLightsSOA` counts and invalid street-light partitioning before serialization, reducing malformed `LOD light` outputs.
+- YMAP validation now catches mismatched LOD light counts and invalid street-light partitions before writing.
 
 ## [0.1.45]
 
 ### Added
-- `YDR` skeleton hash helpers now expose the formal bone-flag names as enums and can calculate the `unknown_50h`, `unknown_54h`, and `unknown_58h` fields required by some animated rigid skeletons.
+- YDR skeleton hash helpers and formal bone flag names for animated rigid skeletons.
 
 ### Changed
-- `YDR` writing can explicitly recalculate skeleton hashes via `recalculate_skeleton_hashes=True` while keeping the default roundtrip path preservative.
+- YDR writing can recalculate skeleton hashes explicitly while preserving roundtrip behavior by default.
 
 ## [0.1.44]
 
 ### Fixed
-- `YCD` object-track `QuantizeFloat` channels now keep their existing quantization metadata during export instead of being sanitized and recomputed like generic tracks, preventing valid object quaternion/object transform clips from collapsing from `17/18` bit layouts down to `16` bits.
-- `YCD` export no longer applies the non-UV quantization sanitizer to object tracks, matching the workaround previously required by downstream tools and preserving known-good object animation ranges more faithfully.
-- Added regression coverage for object-track quantization so future writer changes cannot silently reintroduce the metadata collapse seen in converted `good`/`bad` binary comparisons.
+- YCD object-track quantization metadata is now preserved instead of being recomputed as generic animation data.
+- Object quaternion and transform clips keep their known-good bit layouts during export.
+- Regression coverage now protects object-track quantization.
 
 ## [0.1.43]
 
 ### Fixed
-- `YCD` export preparation now derives `Unknown1C` more defensively for rebuilt animation clips, preserving existing values, forcing the known runtime constant for UV clips, and only applying the observed `hash + 1` fallback to object/skeletal `{0,1}` track sets when the field would otherwise be empty.
-- Added regression coverage for `Unknown1C` derivation so rebuilt UV clips keep the expected special-case value and rebuilt object animations no longer serialize an empty field in the authoring path.
+- YCD export now derives the animation header hash field more defensively for rebuilt clips.
+- UV clips keep their required special-case value.
+- Object animations no longer serialize an empty header field in the authoring path.
 
 ## [0.1.42]
 
 ### Fixed
-- `YCD` writer now sanitizes invalid non-UV `QuantizeFloat` channels before packing sequence data, preventing skeletal and object animation channels from overflowing into 17+ bit payloads when source quantization steps are too small.
-- Rewritten skeletal/object `YCD` sequences now rebuild with valid per-channel bit widths and smaller frame payloads, matching the structure of known-good files more closely and avoiding the malformed sequence blocks seen in crashing converted clip dictionaries.
-- Added regression coverage for quantized non-UV channel overflow so future writer changes cannot silently reintroduce invalid skeletal sequence packing.
+- YCD writer now sanitizes invalid non-UV quantized channels before packing sequence data.
+- Skeletal and object sequences now rebuild with valid per-channel bit widths and smaller frame payloads.
+- Regression coverage now protects against invalid skeletal sequence packing.
 
 ## [0.1.41]
 
 ### Fixed
-- `YCD` animation bone entries now write the correct per-track format byte instead of treating that field as an opaque unknown, aligning skeletal exports with the layout expected by downstream XML tooling and the game runtime.
-- `YCD` track-format mapping now covers additional real sample tracks encountered in skeletal clip dictionaries, preventing fallback guesses during export preparation.
-- High-level `YCD` authoring now auto-derives bone-entry formats from track semantics, so skeletal animations built from scratch no longer emit `BoneRotation` entries with an invalid vector format.
+- YCD skeletal exports now write the correct per-track format byte.
+- Additional real skeletal track formats are now mapped during export preparation.
+- High-level YCD authoring now derives bone-entry formats from track semantics.
 
 ## [0.1.40]
 
 ### Fixed
-- `YCD` export preparation now normalizes skeletal channel slot indices before serialization, preventing malformed component layouts when animations are built from high-level objects instead of reparsed samples.
-- `YCD` export preparation now derives and synchronizes animation `bone_ids` from sequence bindings, so skeletal animations no longer depend on callers manually keeping bone tables in sync with sequence data.
-- `YCD` high-level `build()` now hardens skeletal animations before writing, making the authoring path behave more like the validated roundtrip path used by parsed sample files.
+- YCD export now normalizes skeletal channel slot indices before serialization.
+- YCD export now synchronizes animation bone tables from sequence bindings.
+- High-level YCD builds now harden skeletal animations before writing.
 
 ## [0.1.39]
 
 ### Fixed
-- `YCD` animation headers now write `MaxSeqBlockLength` and `UsageCount` into correct fields instead of shifting later header values during export.
-- `YCD` animation usage counting now matches actual animation-map ownership and clip references, avoiding malformed rebuilt animation metadata.
-- `YCD` `LinearFloat` channel encoding now writes sign bits for every non-zero delta, matching reader expectations and preserving non-UV animation channels through roundtrip export.
-- `YCD` roundtrip tests now compare rebuilt files against fresh parses from real samples instead of reusing mutated in-memory objects, catching writer corruption that previous tests masked.
+- YCD animation headers now write sequence block length and usage count into the correct fields.
+- YCD animation usage counts now match animation-map ownership and clip references.
+- YCD linear-float channels now write sign bits for non-zero deltas.
+- Roundtrip tests now compare rebuilt files against fresh parses from real samples.
 
 ## [0.1.38]
 
 ### Added
-- Static `YdrShader` `.sps` enums generated from the shader XML, so IDEs can autocomplete known drawable shader-file variants directly.
-- Shader inspection helpers: `get_ydr_shader_info`, `format_ydr_shader_info`, and `print_ydr_shader_info`, exposing render buckets, layouts, texture slots, and numeric parameters without reading `Shaders.xml` by hand.
-- Clearer high-level bounds helpers for `BoundBox`, `BoundDisc`, `BoundCylinder`, and `BoundCloth`, including declarative primitive builders, aliases, and collision-material enums on the public API.
+- Static YDR shader enums for IDE autocomplete.
+- Shader inspection helpers for render buckets, layouts, texture slots, and numeric parameters.
+- Clearer high-level builders for box, disc, cylinder, and cloth bounds.
 
 ### Changed
-- `YDR` material inputs now accept `YdrShader` enum values in addition to raw strings.
-- Shader-file inputs now infer their canonical render bucket automatically, and `SpecularSampler` is normalized to the real shader slot name `SpecSampler`.
-- `YTYP` archetype definitions now expose `asset_type` as the typed `ArchetypeAssetType` enum on the high-level API instead of a bare integer.
-- Bounds common-header fields and primitive metadata were renamed away from generic `unknown_*` and `reserved_*` placeholders where their storage role is now understood, improving authoring clarity without changing the binary layout.
+- YDR material inputs now accept shader enum values.
+- Shader inputs now infer canonical render buckets and normalize the specular sampler slot.
+- YTYP archetype asset types now use enums instead of bare integers.
+- Bounds header and primitive fields were renamed where their role is now understood.
 
 ## [0.1.37]
 
-### Fixed
-- Canonical skinned `YDR` vertex-declaration typing for `BLEND_INDICES`, exporting the field with the packed colour layout expected by real drawable resources instead of an invalid `UBYTE4` declaration.
-- Explicit rigid bone-binding support for non-skinned drawable models attached to skeleton bones, matching animated-prop layouts that use a skeleton without per-vertex skinning.
+### Added
+- BoundDisc, BoundCylinder, and BoundCloth support.
+- Declarative BoundBox helpers and material enum support across bound types.
+- Additional bound metadata preservation for simple primitive bounds.
+
+### Changed
+- Bound subclasses now own their shape-specific data instead of storing primitive fields on the base type.
 
 ## [0.1.36]
 
+### Added
+- High-level YDR helpers for skeletons, bones, skinning, embedded textures, embedded collisions, lights, and material editing.
+- Declarative material, sampler, shader, and parameter editing helpers.
+- Drawable model support for YDR files containing multiple models.
+
 ### Changed
-- Correct archetype-flag naming and bit mapping for `YTYP`, so `CBaseArchetypeDef.flags` reflects actual archetype load flags instead of an unrelated entity-style flag set.
-- Removal of internal source-tree references from public library strings and documentation where they did not belong.
+- YDR high-level APIs now use explicit build and validation steps.
+- Material editing is now model-aware instead of treating all materials as one implicit global list.
 
 ## [0.1.35]
 
-### Changed
-- `YCD` UV animation semantics aligned with runtime slot bindings: UV clip names and hashes now derive from `<object>_uv_<slot_index>` and `MetaHash(object) + slot_index + 1`, with explicit validation during export.
-- `YDR` helpers for exposing material slot indices and deriving matching `YCD` UV clip bindings, names, and hashes directly from drawable materials and models.
+### Added
+- YDR light read/write support.
+- High-level light authoring helpers for drawable lights.
+
+### Fixed
+- YDR files with embedded lights now preserve them during roundtrip.
 
 ## [0.1.34]
 
+### Added
+- YDR material-by-material editing for shaders, samplers, parameters, and render buckets.
+- Embedded texture and embedded collision read/write support for YDR.
+
 ### Changed
-- `YCD` sequence writing rebuilt from parsed high-level channels and sequences instead of preserved raw sequence blobs.
-- Oversized `fivefury.ycd.sequences` implementation split into smaller track, channel, and codec modules while keeping the public import surface stable.
+- YDR material APIs are more declarative and less string-heavy.
 
 ## [0.1.33]
 
 ### Added
-- `YND` area helpers and `YndNetwork` partitioning, so high-level node graphs can be split into pathfind regions automatically.
+- YND area helpers and automatic node partitioning into pathfind regions.
 
 ### Changed
-- Stricter `YND` final-resource validation, so a single `Ynd` rejects nodes whose coordinates belong to a different pathfind area while keeping pathfind representation limits (`WORLDLIMITS_REP_*`) distinct from global world and navmesh limits.
+- YND validation now rejects nodes assigned to the wrong pathfind area while keeping world, navmesh, and pathfind limits distinct.
 
 ## [0.1.32]
 
 ### Added
-- Native `bounds` backend for hot geometry helpers, octant generation, and BVH construction used by `YBN` and embedded-collision workflows.
+- Native bounds backend for heavy geometry helpers, octant generation, and BVH construction.
 
 ### Changed
-- Native `bounds` backend split into smaller C++ modules, keeping the binding layer easier to maintain.
+- Native bounds code was split into smaller C++ modules.
 
 ## [0.1.31]
 
 ### Added
-- `YDD` read/write support for drawable dictionaries, including hash/drawable pairing and embedded drawable handling through the shared `YDR` reader and writer.
+- YDD read/write support for drawable dictionaries, hashed drawable entries, and embedded drawables.
 
 ## [0.1.30]
 
 ### Added
-- Generic bounds geometry helpers for building `GeometryBVH` and `BoundComposite` collision bounds from triangle lists.
-- `YDR` convenience helpers for building and attaching embedded collision bounds from render geometry.
+- Bounds geometry helpers for building BVH and composite collision bounds from triangles.
+- YDR helpers for embedded collision bounds built from render geometry.
 
 ### Fixed
-- `RPF` resource writing for large `RSC7` entries, using the `0xFFFFFF` sentinel and storing the true size in the resource header.
+- RPF resource entries larger than the normal size field now store the true size correctly.
 
 ## [0.1.29]
 
 ### Fixed
-- Shared `phBound` common-header layout in `YBN` bounds read/write, so generated collision resources align with the proper header structure instead of serializing child bounds at the wrong offsets.
+- YBN common bound-header layout now matches the expected child-bound offsets.
 
 ## [0.1.28]
 
 ### Changed
-- Tighter `YBN` bounds normalization and validation, with more explicit modeling of composite child bounds, triangle-adjacency data, and public composite flags at the high-level API.
+- YBN normalization and validation now model composite children, triangle adjacency, and public composite flags more explicitly.
 
 ### Fixed
-- Composite `YBN` BVHs rebuilt from child bounds during export, plus normalization of inverted bound boxes on read to reduce drift against real collision resources.
-- Hardened `YDR` resource writing around drawable-model and material block layout so generated resources stay aligned with the expected `RSC7` page structure.
+- Composite YBN BVHs are rebuilt from child bounds during export.
+- Inverted bound boxes are normalized on read.
+- YDR resource writing now keeps drawable-model and material blocks aligned with the expected RSC7 layout.
 
 ## [0.1.27]
 
 ### Changed
-- Unified `RSC7` page-layout flag calculation across `YBN`, `YDR`, and `YCD` writers using a proper block-packing strategy.
-- `META` resource `pages_info` counts aligned with the page counts encoded by the written resource flags.
+- RSC7 page-layout calculation is now shared by YBN, YDR, and YCD writers.
+- META resource page counts now match the encoded resource flags.
 
 ### Fixed
-- Generated `YDR` files with mismatched `ResourcePagesInfo` page counts versus the `RSC7` header, which could produce invalid virtual-page and fixup metadata.
-- Generated and roundtripped `YBN` files with stale root `pages_info` metadata inherited from bad source files.
-- `YCD` `pages_info` metadata sizing and writing based on the actual encoded resource page layout instead of a fixed single-page placeholder.
+- Generated YDR files no longer write mismatched page counts and fixup metadata.
+- Generated and roundtripped YBN files no longer inherit stale root page metadata.
+- YCD page metadata now follows the actual encoded resource layout.
 
 ## [0.1.26]
 
 ### Added
-- `YDR` joint-limit read/write support with `YdrJoints`, rotation limits, translation limits, and high-level helpers for attaching joints to drawables.
-- Expanded real-reference `YDR` roundtrip coverage for the larger `references/ydrs` sample set.
+- YDR joint-limit read/write support for rotation and translation limits.
+- Expanded real-reference YDR roundtrip coverage.
 
 ### Fixed
-- Preservation of legacy `YDR` vertex declarations and vertex-buffer flags during roundtrip instead of rebuilding every mesh through a simplified declaration.
-- Sparse UV-channel handling for declarations using higher UV slots without all intermediate channels, avoiding collapsed or corrupted texture-coordinate streams.
-- `YDR` vertex encoding by declared component type, including half-float and packed-byte formats, instead of writing every vector-like value as `float32`.
-- Skinned `YDR` parsing and roundtrip for packed blend-index streams that use the legacy `COLOUR` component type.
+- Legacy YDR vertex declarations and vertex-buffer flags are preserved during roundtrip.
+- Sparse UV-channel declarations no longer collapse intermediate texture coordinates.
+- YDR vertices now encode by declared component type.
+- Skinned YDR files with packed blend-index streams now parse and roundtrip correctly.
 
 ## [0.1.25]
 
 ### Fixed
-- `YBN` writer stall when exporting generated bounds from geometry-heavy inputs.
-- Preservation of the improved page-count path for valid source `YBN` files while restoring a fast direct-flags path for generated collision resources without explicit root page metadata.
+- YBN writer no longer stalls on geometry-heavy generated bounds.
+- Generated YBN files use a fast direct-flags path unless explicit root page metadata is present.
 
 ## [0.1.24]
 
 ### Fixed
-- `YBN` resource paging for generated standalone collision resources, so `RSC7` flags are no longer derived only from raw byte length.
-- Page-flag calculation from real bound-block sizes, with preservation of explicit root `ResourcePagesInfo.system_pages_count` during roundtrip of valid `YBN` files.
-- `YBN` system-payload padding to the exact size encoded by the written `RSC7` flags, preventing mismatches between root `pages_info` metadata and actual packed resource layout.
-- Regression coverage keeping real `YBN` roundtrips aligned with the page-count metadata found in working collision resources.
+- Generated standalone YBN resources now calculate RSC7 paging from bound-block sizes instead of raw byte length.
+- Roundtripped YBN files preserve explicit root page counts.
+- YBN system payload padding now matches the encoded resource flags.
+- Regression coverage protects real YBN roundtrips against page-count drift.
 
 ## [0.1.23]
 
 ### Fixed
-- Legacy `YDR` mesh-buffer serialization so vertex data now lives in `system` pages instead of `graphics` pages.
-- Written legacy `YDR` roots now use `FileUnknown = 'HCLA'`, matching working resource headers instead of the older generic value.
-- Regression coverage for system-only legacy `YDR` output and real-file roundtrips against working samples.
+- Legacy YDR mesh buffers now live in system pages.
+- Written legacy YDR roots now use the expected resource header marker.
+- Regression coverage protects system-only legacy YDR output.
 
 ## [0.1.22]
 
 ### Fixed
-- `YBN` bounds serialization now writes a real `ResourceFileBase` root, including `FileVFT`, `FileUnknown`, and `ResourcePagesInfo`, instead of emitting zeroed root metadata.
-- Preservation of additional bound-header fields during `YBN` read/write roundtrip, including previously ignored common bound fields and the root `pages_info` block.
-- Generated `YBN` root page counts aligned with the encoded `RSC7` system flags, avoiding empty or inconsistent `pages_info` headers on large collision resources.
-- `BoundBVH` writing now emits `NaN` W components in the BVH bounding vectors, matching the layout used by working resources.
+- YBN serialization now writes a complete resource root instead of zeroed metadata.
+- Additional bound-header fields are preserved during YBN roundtrip.
+- Generated YBN page counts now match the encoded RSC7 flags.
+- BVH bounding vectors now use the expected NaN marker components.
 
 ## [0.1.21]
 
 ### Added
-- Generated octants for `BoundGeometry`, plus roundtrip octant read/write support for `YBN` and embedded `YDR` bounds.
+- Generated octants for geometry bounds.
+- Octant read/write support for YBN and embedded YDR bounds.
 
 ### Fixed
-- `META` and `RSC7` writing for `YMAP` and `YTYP`, preserving the page-based system layout, resource flags, and `DataBlock` packing used by working game files.
-- `MetaBuilder` block grouping aligned with the larger `CMapTypes` `DataBlock` layout seen in real `YTYP` files.
+- META and RSC7 writing for YMAP and YTYP now preserves page layout, resource flags, and data-block packing.
+- YTYP data-block grouping now matches larger real-world map-type files.
 
 ## [0.1.20]
 
 ### Fixed
-- `YDR` `DrawableModel` writing so the render-mask word no longer overwrites `GeometriesCount3`.
-- Restoration of the repeated geometry count in written model headers to match the structure expected by the runtime.
+- YDR drawable-model writing no longer overwrites render-mask data with geometry counts.
+- Written model headers now preserve the repeated geometry count expected by the runtime.
 
 ## [0.1.19]
 
 ### Breaking Changes
-- High-level authoring API normalized around `add_*` for collections, `set_*` for single assignments, plus `build()` and `validate()` as the preferred normalization and validation steps.
-- Newer high-level `YDR` helpers renamed to match that convention:
-  - `create_bone(...)` -> `add_bone(...)`
-  - `embed_texture(...)` -> `add_embedded_texture(...)`
-  - `unembed_texture(...)` -> `remove_embedded_texture(...)`
-  - `use_bound(...)` -> `set_bound(...)`
-  - `skin_model(...)` -> `set_model_skin(...)`
-  - `YdrModel.enable_skin(...)` -> `YdrModel.set_skin_binding(...)`
-  - `YdrModel.disable_skin(...)` -> `YdrModel.clear_skin_binding(...)`
+- High-level authoring APIs were normalized around explicit collection edits, single-value setters, build steps, and validation steps.
+- Several newer YDR helper names were renamed to follow the normalized high-level style.
 
 ### Added
-- `YCD` writer support through `build_ycd_bytes(...)`, `save_ycd(...)`, `Ycd.to_bytes()`, and `Ycd.save(...)`.
-- Real `YCD` roundtrip coverage against the clip dictionaries in `references/ycd`.
+- YCD writer support.
+- Real YCD roundtrip coverage using sample clip dictionaries.
 
 ### Changed
-- Standardized `build()` and `validate()` entry points across higher-level `YDR`, `YTD`, `YBN`, `bounds`, `YTYP`, `YMAP`, and `CUT` authoring surfaces.
-- Test suite and high-level examples updated to the normalized API style instead of the older mixed naming scheme.
-- `YCD` parsing and evaluation expanded with formal track names plus UV, object, camera, root-motion, and facial-animation support.
+- High-level YDR, YTD, YBN, bounds, YTYP, YMAP, and CUT authoring now share the same build and validation style.
+- Tests and examples now use the normalized high-level API style.
+- YCD parsing and evaluation now cover UV, object, camera, root-motion, and facial animation tracks.
 
 ## [0.1.18]
 
 ### Fixed
-- Adaptive `RSC7` page sizing for oversized but valid legacy `YTD` saves.
-- Shared `RSC7` resource-layer sizing logic so the same fix applies beyond `YTD`.
+- Oversized but valid legacy YTD saves now use adaptive RSC7 page sizing.
+- Shared RSC7 sizing logic now applies the same fix beyond YTD.
 
 ## [0.1.17]
 
 ### Added
-- Real `YDR` skeleton support with `YdrSkeleton`, `YdrBone`, `YdrBoneFlags`, bone lookup helpers, and skinned-drawable roundtrip support.
-- Declarative skeleton helpers including `YdrSkeleton.create()`, `add_bone(...)`, `Ydr.ensure_skeleton()`, `Ydr.add_bone(...)`, and `calculate_bone_tag(...)`.
-- Initial shared bounds and `YBN` support, including embedded `YDR` collisions, decoded typed collision polygons, material-name helpers, and minimal `YBN` geometry/BVH writing.
+- Real YDR skeleton support with bones, flags, lookup helpers, and skinned-drawable roundtrips.
+- Declarative skeleton authoring helpers.
+- Initial shared bounds and YBN support, including embedded YDR collisions, typed collision polygons, material names, and minimal geometry/BVH writing.
 
 ### Changed
-- `YDR` LOD names now use the `YdrLod` enum instead of plain strings on the main API surface.
-- Readers and builders now preserve full skeleton data instead of only blend weights, blend indices, and skin-binding flags.
-- Shared resource, `META`, cache, `CUT`, and `YDR` helper layers deduplicated to reduce repeated logic across formats.
-- README updated with higher-level `YMAP` builder examples.
+- YDR LOD names now use enums instead of plain strings.
+- Readers and builders now preserve full skeleton data.
+- Shared resource, META, cache, CUT, and YDR helper layers were deduplicated.
+- README now includes higher-level YMAP builder examples.
 
 ## [0.1.16]
 
 ### Added
-- Declarative `CarGen` builders with heading, body-color helpers, and higher-level defaults that fit the rest of the `YMAP` authoring API.
-- Declarative `TimeCycleModifier` builders using center/size-style inputs, plus helpers to create modifiers from either explicit dimensions or existing bounds.
+- Declarative car generator builders with heading, body-color helpers, and safer defaults.
+- Declarative timecycle modifier builders with center/size inputs and bounds-based creation.
 
 ### Changed
-- `YMAP` high-level helpers now expose more ergonomic `car_gen(...)` and `time_cycle_modifier(...)` creation paths instead of requiring callers to work directly against raw extents and packed fields.
+- YMAP high-level helpers now avoid forcing callers to work with raw extents and packed fields.
 
 ## [0.1.15]
 
 ### Added
-- High-level occluder builders for `YMAP`, including `BoxOccluder` creation from world-space position and size plus `OccludeModel` builders from faces, boxes, and quads.
+- High-level YMAP occluder builders for boxes, faces, quads, and generated occlusion models.
 
 ### Changed
-- Occlude-model authoring now auto-splits generated geometry when the encoded occluder vertex budget would be exceeded, making the high-level API safer for larger source meshes.
+- Occluder authoring now auto-splits generated geometry when the encoded vertex budget would be exceeded.
 
 ## [0.1.14]
 
 ### Added
-- Typed `ContainerLodDef` support plus a `Ymap.container_lod()` helper for authoring container-LOD metadata directly from the high-level API.
+- Typed container LOD support for YMAP authoring.
 
 ### Changed
-- `ymap` implementation split into smaller package modules while keeping the public import surface stable.
-- `obj_to_ydr(...)` now returns the built `YdrBuild`, defaults its output beside the source `.obj`, skips unused materials during import, and infers more appropriate drawable shaders from normal and specular texture slots in the source material data.
+- YMAP code was split into smaller modules without changing the public API.
+- OBJ to YDR conversion now returns build metadata, defaults output beside the source model, skips unused materials, and infers better shaders from material textures.
 
 ## [0.1.13]
 
 ### Added
-- `YTYP` package split into dedicated modules for archetypes, MLO, flags, helpers, and model.
-- Flag enums for `EntityFlags`, `MloInstanceFlags`, `MloInteriorFlags`, `PortalFlags`, and `RoomFlags`.
-- Complete `YTYP` extension support via `META_NAME_MAP` entries for all fourteen extension types and their fields.
-- Extension enums for `CExtensionDefLadderMaterialType`, `CExtensionDefLightShaftDensityType`, and `CExtensionDefLightShaftVolumeType`.
+- YTYP code was split into dedicated modules for archetypes, MLO data, flags, helpers, and models.
+- More YTYP and MLO flag enums.
+- Full YTYP extension coverage for known extension types.
+- More enums for ladder, light shaft density, and light shaft volume extension data.
 
 ### Changed
-- Shared offset-based binary read and write helpers consolidated into `fivefury.binary`, with `YDR`, `YCD`, embedded-asset, and `CUT` PSO modules moved to the shared primitives.
+- Shared offset-based binary read/write helpers now back YDR, YCD, embedded assets, and CUT PSO code.
 
 ### Fixed
-- Reduced drift risk between little-endian resource readers and big-endian `CUT` PSO helpers by centralizing primitive byte operations.
+- Primitive byte operations are now centralized, reducing endian handling drift between readers and writers.
 
 ## [0.1.12]
 
 ### Added
-- Initial `CUT` and `YCD` animation-integration helpers for authoring animation-manager events without editing raw PSO nodes directly.
+- Initial CUT and YCD animation integration helpers for authoring animation-manager events.
 
 ### Fixed
-- `CUT` PSO inline-array handling used by the animation path.
+- CUT PSO inline-array handling used by animation payloads.
 
 ## [0.1.11]
 
 ### Added
-- High-level `CUT` animation-manager authoring helpers for loading animation dictionaries and binding or clearing animation state on scene objects.
-- `CutScene.play_animation(...)` orchestration over `load_anim_dict` and `set_anim`, with optional cleanup support.
-- `YCD` clip-dictionary association helpers on `CutScene`: `attach_clip_dict`, `get_clip`, `get_animation`, and `available_clips`.
-- `validate_animations` helpers for checking referenced animation dictionaries and clip targets against attached `YCD` data.
+- High-level CUT animation-manager helpers for loading animation dictionaries and setting or clearing object animation state.
+- CUT helpers for attaching clip dictionaries and checking available clips.
+- Animation validation helpers for checking clip targets against attached YCD data.
 
 ### Changed
-- Template-free `CUT` authoring now includes typed animation payloads and timeline helpers around the animation-manager path.
+- Template-free CUT authoring now includes typed animation payloads and timeline helpers.
 
 ### Fixed
-- PSO reader handling for inline subtype-4 (`MEMBER`) arrays, avoiding `KeyError` crashes on `.cut` files with inline fixed-size arrays such as `BlockingBounds`.
-- Robust PSO block lookups so missing block references return empty values instead of crashing.
+- CUT PSO reader now handles inline fixed-size member arrays.
+- Missing PSO block references now resolve to empty values instead of crashing.
 
 ## [0.1.10]
 
 ### Added
-- `YDR` light support with parsed drawable light attributes exposed as `ydr.lights`, plus `YdrLight` and `YdrLightType`.
-- Editable `YDR` material roundtrip support for higher-level material workflows.
+- YDR light parsing and editing support.
+- Editable YDR material roundtrip support.
 
 ### Changed
-- `YDR` writer now preserves light lists during roundtrip saves.
-- `YDR` builder keeps the newer models-first structure while allowing lights to be authored from `YdrBuild` and `create_ydr(...)`.
-- `YDR` material and light read/write helpers split into smaller modules.
+- YDR writer now preserves light lists during roundtrip saves.
+- YDR builder can author lights alongside drawable models.
+- YDR material and light code was split into smaller modules.
 
 ## [0.1.9]
 
 ### Added
-- Initial `YCD` reader support with `read_ycd(...)`, clip-dictionary parsing, animation metadata, and cutscene-oriented clip-name mapping.
-- Initial `CUT` readers for both PSO-based `CUT` and `CUTXML` inputs.
-- Template-free `CUT` writing through a scene-layer and timeline model, plus builtin schema fallback support.
-- High-level `CUT` scene builder primitives and event specs for from-scratch cutscene authoring.
+- Initial YCD reader support with clip dictionaries, animation metadata, and cutscene-oriented clip names.
+- Initial CUT readers for binary and XML inputs.
+- Template-free CUT writing with scene and timeline models.
+- High-level CUT scene builder primitives and event specs.
 
 ### Changed
-- `CUT` scene authoring API refined around typed payloads.
+- CUT scene authoring now uses typed payloads.
 
 ## [0.1.8]
 
 ### Added
-- `merge_ytyps(...)` for combining multiple `YTYP` files, including directory-based merges.
-- `ytyp_from_ydr_folder(...)` for generating a minimal `YTYP` from a folder of `YDR` files.
+- YTYP merge support.
+- Minimal YTYP generation from a folder of YDR files.
 
 ### Changed
-- Expanded top-level exports for the `YDR` builder and `YTYP` helper workflows.
+- Top-level exports now cover more YDR builder and YTYP helper workflows.
 
 ### Fixed
-- `OBJ -> YDR` axis conversion, so imported models no longer come out laid down.
-- Companion `YTYP` generation, so the archetype uses `ASSET_TYPE_DRAWABLE` instead of `ASSET_TYPE_DRAWABLEDICTIONARY`.
-- Sparse `YDR` UV-channel indices preserved during parsing instead of being compacted.
+- OBJ to YDR axis conversion now imports models upright.
+- Companion YTYP generation now uses the correct drawable asset type.
+- Sparse YDR UV-channel indices are preserved during parsing.
 
 ## [0.1.7]
 
 ### Added
-- Optional companion `YTYP` generation for `OBJ -> YDR`, with `textureDictionary` set to `<model>_txd`.
+- Optional companion YTYP generation for OBJ to YDR conversion.
 
 ### Changed
-- Lowercased generated `OBJ -> YDR` and companion `YTYP` names so output files and archetype-derived names stay consistent.
+- Generated OBJ to YDR and companion YTYP names are now lowercased consistently.
 
 ## [0.1.6]
 
 ### Added
-- XML-driven `YDR` material descriptors.
-- Builder support for writing valid legacy `YDR` resources.
+- XML-driven YDR material descriptors.
+- Builder support for valid legacy YDR resources.
 
 ### Fixed
-- Flipped OBJ `V` texture coordinates during `OBJ -> YDR` import so generated drawables no longer come out with vertically inverted UVs.
+- OBJ texture V coordinates are flipped correctly during YDR import.
 
 ## [0.1.5]
 
 ### Added
-- README coverage for `RPF -> folder` workflows, `RpfExportMode`, and direct loading of encrypted standalone `.rpf` archives.
+- README coverage for RPF folder export, export modes, and encrypted standalone archive loading.
 
 ### Changed
-- Published package README refreshed so the PyPI page reflects the current `RPF` export API and standalone-archive behavior.
+- Published README now reflects the current RPF export behavior.
 
 ## [0.1.4]
 
 ### Added
-- `RpfArchive.to_folder(...)`, `RpfArchive.from_folder(...)`, and the functional helper `rpf_to_folder(...)` for exporting archives directly to folders.
-- `RpfExportMode` as an explicit enum for `RPF` export workflows, including descriptions for `STORED`, `STANDALONE`, and `LOGICAL`.
-- Automatic default-crypto initialization for encrypted standalone `RPF` loading, so `RpfArchive.from_path(...)` can open encrypted archives without preloading game keys.
+- RPF folder export and folder import helpers.
+- Explicit RPF export modes for stored, standalone, and logical output.
+- Automatic default crypto initialization for encrypted standalone RPF loading.
 
 ### Changed
-- Unified `RPF` ZIP and folder export around the same traversal logic, so nested `.rpf` archives are exported consistently.
-- Standalone export made the default for folder and ZIP export, meaning GTA resources are now written with valid `RSC7` headers unless `LOGICAL` is requested explicitly.
-- `RPF` export API cleaned up around `RpfExportMode` instead of the older boolean-style export flag.
-- Core format modules split into smaller domain packages, including `RPF`, `META`, `YTD`, crypto, cache I/O, and native archive layers.
+- RPF ZIP and folder export now share traversal behavior.
+- Standalone export is now the default for folder and ZIP output.
+- RPF export options now use an enum instead of a boolean-style flag.
+- Core format modules were split into smaller domain packages.
 
 ### Fixed
-- Folder extraction for resource assets, so extracted files no longer lose their `RSC7` container by default.
-- Nested-archive export behavior, preserving nested `.rpf` archives as directories during recursive export.
+- Folder extraction now preserves standalone resource containers by default.
+- Nested RPF archives are preserved as directories during recursive export.
 
 ## [0.1.3]
 
 ### Changed
-- More `RPF` point-read work moved into the native backend, reducing dependence on Python archive objects for one-off reads.
-- Native Python binding layer split by domain (`index`, `crypto`, `rpf`, and module bootstrap) to keep the C++ boundary easier to maintain.
-- Archive-table and entry-payload decryption paths switched to the native crypto backend instead of redundant Python fallbacks.
-- `GameFileCache` reorganized into the `fivefury.cache` package, with smaller modules for core behavior, scanning, views, and asset helpers.
-- Resource texture assets split into per-format modules under `fivefury.resource_assets`.
-- Public README refreshed around current `GameFileCache`, extraction, and texture workflows.
+- More RPF point reads now use the native backend.
+- Native binding code was split by domain.
+- Archive table and payload decryption now use native crypto paths.
+- GameFileCache was reorganized into smaller cache modules.
+- Resource texture assets were split into per-format modules.
+- README was refreshed around current cache, extraction, and texture workflows.
 
 ### Added
-- `ARCHITECTURE.md` with an internal map of the codebase, backend boundaries, and refactor guidance.
-- Lazy `GameFileCache` lookups such as `archetype_dict`, per-kind dictionaries, iteration helpers, and kind statistics.
-- Helpers to extract all referenced assets from a `YMAP`, including support for loose `.ymap` files.
-- `YTD` texture-extraction helpers for listing and exporting textures as `DDS`.
-- Embedded texture extraction for `YDR`, `YDD`, `YFT`, and `YPT` assets.
-- Per-format resource-asset abstractions for embedded-texture traversal.
+- Internal architecture documentation for codebase layout and backend boundaries.
+- Lazy GameFileCache lookups, per-kind dictionaries, iteration helpers, and kind statistics.
+- Helpers to extract all assets referenced by a YMAP.
+- YTD texture extraction as DDS.
+- Embedded texture extraction for YDR, YDD, YFT, and YPT assets.
+- Resource-asset abstractions for embedded-texture traversal.
 
 ### Fixed
-- Standalone extraction for resource assets, so extraction writes valid standalone `RSC7` files by default instead of raw internal blobs.
-- Removal of dead and duplicated scan helpers left behind by the `GameFileCache` refactor.
-- Reduced risk of divergence between Python and native `RPF` decryption paths.
+- Resource extraction now writes valid standalone resources by default.
+- Dead and duplicated scan helpers were removed after the cache refactor.
+- Python and native RPF decryption paths are less likely to diverge.
 
 ### Performance
-- Reduced Python-side overhead for archive-table decryption and point reads inside `RPF` archives.
-- Batched native archive-variant reads used by `get_file()`, avoiding duplicate entry-resolution work for stored and standalone reads.
-- Native `jenk_hash` implementation and additional caching around `MetaHash.uint`, reducing repeated hash work.
-- Performance benchmark suite added for the optimized native and Python paths.
-- `GameFileCache` archive scanning moved further into the native backend, with better skip performance and stabler Windows AES handling.
+- Archive table decryption and point reads now do less Python-side work.
+- Batched native archive reads reduce duplicate entry resolution.
+- Native JOAAT hashing and hash-value caching reduce repeated hash work.
+- Performance benchmarks were added for native and Python paths.
+- GameFileCache archive scanning moved further into native code.
 
 ## [0.1.2]
 
 ### Changed
-- `GameFileCache` reorganized into the `fivefury.cache` package with smaller modules for core behavior, scanning, views, and asset helpers.
-- Resource texture assets split into per-format modules under `fivefury.resource_assets`.
-- Public README refreshed around current `GameFileCache`, extraction, and texture workflows.
+- GameFileCache was reorganized into smaller cache modules.
+- Resource texture assets were split into per-format modules.
+- README was refreshed around current cache, extraction, and texture workflows.
 
 ### Added
-- `ARCHITECTURE.md` with an internal map of the codebase, backend boundaries, and refactor guidance.
-- Lazy `GameFileCache` lookups such as `archetype_dict`, per-kind dictionaries, iteration helpers, and kind statistics.
-- Helpers to extract all referenced assets from a `YMAP`, including support for loose `.ymap` files.
+- Internal architecture documentation for codebase layout and backend boundaries.
+- Lazy GameFileCache lookups, per-kind dictionaries, iteration helpers, and kind statistics.
+- Helpers to extract all assets referenced by a YMAP.
 
 ### Fixed
-- Resource extraction now writes valid standalone `RSC7` files by default instead of invalid raw internal blobs.
+- Resource extraction now writes valid standalone resources by default.
 
 ## [0.1.1]
 
 ### Added
-- `YTD` texture-extraction helpers for listing and exporting textures as `DDS`.
-- Embedded texture extraction for `YDR`, `YDD`, `YFT`, and `YPT` assets.
-- Per-format resource-asset abstractions for embedded-texture traversal.
+- YTD texture extraction as DDS.
+- Embedded texture extraction for YDR, YDD, YFT, and YPT assets.
+- Resource-asset abstractions for embedded-texture traversal.
 
 ### Changed
-- `GameFileCache` can now resolve texture dictionaries through `YTYP` data and `gtxd.meta` parent relationships.
-- README documentation now includes texture-extraction workflows for `YTD` and resource assets.
+- GameFileCache can now resolve texture dictionaries using YTYP data and GTXD parent relationships.
+- README now includes texture-extraction workflows for YTD and embedded resources.
 
 ## [0.1.0]
 
 ### Added
-- Initial public release of `fivefury`.
-- Native `GameFileCache` scanning for GTA V `RPF` archives with DLC filtering, exclusions, and type-aware lookups.
-- `YMAP` and `YTYP` creation, parsing, and saving APIs.
-- Global hash-resolution utilities and `MetaHash` support.
-- Core `YTD` handling and GTA V asset workflow helpers for Python 3.11+ on Windows.
+- Initial public release of fivefury.
+- Native GameFileCache scanning for GTA V RPF archives with DLC filtering, exclusions, and type-aware lookups.
+- YMAP and YTYP creation, parsing, and saving APIs.
+- Global hash-resolution utilities and MetaHash support.
+- Core YTD handling and GTA V asset workflow helpers for Python 3.11+ on Windows.

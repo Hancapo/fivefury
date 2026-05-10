@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from ..common import hash_value
 from ..gamefile import GameFileType, guess_game_file_type
 from ..gtxd import Gtxd, read_gtxd
+from ..ymt import Ymt
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
 from .kinds import coerce_game_file_kind as _coerce_kind
@@ -303,19 +304,27 @@ class _TextureParentMap(Mapping[int, int]):
         for relationship in gtxd.relationships:
             self._add_relation(relationship.child, relationship.parent, mapping)
 
+    def _load_parsed_relations(self, parsed: Any, mapping: dict[int, int]) -> bool:
+        if isinstance(parsed, Gtxd):
+            self._load_gtxd_relations(parsed, mapping)
+            return True
+        if isinstance(parsed, Ymt) and parsed.gtxd is not None:
+            self._load_gtxd_relations(parsed.gtxd, mapping)
+            return True
+        return False
+
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
             return
         hash_to_parent: dict[int, int] = {}
         for asset in self._cache.iter_assets():
-            if asset.kind is not GameFileType.GTXD and asset.name.lower() not in {"gtxd.meta", "vehicles.meta", "peds.meta", "peds.ymt"}:
+            if asset.kind not in {GameFileType.GTXD, GameFileType.YMT} and asset.name.lower() not in {"vehicles.meta", "peds.meta"}:
                 continue
             data = self._cache.read_bytes(asset, logical=True)
             if not data:
                 continue
             parsed = self._cache.get_file(asset)
-            if parsed is not None and isinstance(parsed.parsed, Gtxd):
-                self._load_gtxd_relations(parsed.parsed, hash_to_parent)
+            if parsed is not None and self._load_parsed_relations(parsed.parsed, hash_to_parent):
                 continue
             text = data.decode("utf-8", errors="ignore")
             if "<" not in text:

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from ..binary import i32_be as _i32, u16_be as _u16, u32_be as _u32
-from .model import PsoArrayHeader, PsoBlock, PsoEntry, PsoPointer, PsoStruct
+from .model import PSIN, PsoArrayHeader, PsoBlock, PsoEntry, PsoPointer, PsoStruct
+
+
+def is_pso(data: bytes | bytearray | memoryview) -> bool:
+    view = bytes(data[:4])
+    return len(view) == 4 and int.from_bytes(view, "big", signed=False) == PSIN
 
 
 def decode_pointer_word(word: int) -> PsoPointer:
@@ -91,6 +96,7 @@ __all__ = [
     "decode_array_header",
     "decode_pointer",
     "decode_pointer_word",
+    "is_pso",
     "joaat_checksum",
     "parse_pmap",
     "parse_psch",

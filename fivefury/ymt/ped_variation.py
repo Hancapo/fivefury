@@ -3,9 +3,12 @@ from __future__ import annotations
 import enum
 from collections.abc import Iterator, MutableMapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from . import Ymt
+from ..pso import PsoNode
+
+if TYPE_CHECKING:
+    from . import Ymt
 
 
 class PedComponent(enum.IntEnum):
@@ -103,7 +106,7 @@ def coerce_ped_component(value: PedComponent | str | int) -> PedComponent:
     return PedComponent(int(value))
 
 
-def iter_ped_drawables(ymt: Ymt) -> Iterator[PedDrawableVariation]:
+def iter_ped_drawables(ymt: "Ymt") -> Iterator[PedDrawableVariation]:
     root = _require_ped_root(ymt)
     for component in PedComponent:
         component_data = _component_data(root, component)
@@ -124,7 +127,7 @@ def iter_ped_drawables(ymt: Ymt) -> Iterator[PedDrawableVariation]:
 
 
 def set_ped_drawable_cloth(
-    ymt: Ymt,
+    ymt: "Ymt",
     component: PedComponent | str | int,
     drawable: int = 0,
     *,
@@ -143,7 +146,7 @@ def set_ped_drawable_cloth(
         raise IndexError(f"Drawable {drawable_index} is outside component {component_enum.name}")
     drawable_data = drawables[drawable_index]
     cloth_data = _get(drawable_data, _DRAWABLE_CLOTH, default=None)
-    if not isinstance(cloth_data, MutableMapping):
+    if not _is_mutable_node(cloth_data):
         cloth_data = {}
         _set(drawable_data, _DRAWABLE_CLOTH, cloth_data)
     _set(cloth_data, _CLOTH_OWNS, bool(owns))
@@ -160,14 +163,14 @@ def ped_drawable_file_stem(component: PedComponent | str | int, drawable: int, p
     return variation.file_stem
 
 
-def _require_ped_root(ymt: Ymt) -> MutableMapping[str, Any]:
-    root = ymt.root_value
-    if not isinstance(root, MutableMapping):
-        raise TypeError("YMT root is not a decoded ped variation mapping")
+def _require_ped_root(ymt: "Ymt") -> MutableMapping[str, Any] | PsoNode:
+    root = ymt.ped_variation if ymt.ped_variation is not None else ymt.root_value
+    if not _is_mutable_node(root):
+        raise TypeError("YMT root is not a decoded ped variation mapping or PSO node")
     return root
 
 
-def _component_data(root: MutableMapping[str, Any], component: PedComponent) -> MutableMapping[str, Any] | None:
+def _component_data(root: MutableMapping[str, Any] | PsoNode, component: PedComponent) -> MutableMapping[str, Any] | PsoNode | None:
     available = tuple(_get(root, _ROOT_AVAILABLE, default=()))
     if int(component) >= len(available):
         return None
@@ -178,24 +181,40 @@ def _component_data(root: MutableMapping[str, Any], component: PedComponent) -> 
     if component_data_index < 0 or component_data_index >= len(components):
         return None
     component_data = components[component_data_index]
-    return component_data if isinstance(component_data, MutableMapping) else None
+    return component_data if _is_mutable_node(component_data) else None
 
 
 def _get(mapping: Any, names: tuple[str, str], *, default: Any = None) -> Any:
-    if not isinstance(mapping, MutableMapping):
+    fields = _fields(mapping)
+    if fields is None:
         return default
     for name in names:
-        if name in mapping:
-            return mapping[name]
+        if name in fields:
+            return fields[name]
     return default
 
 
-def _set(mapping: MutableMapping[str, Any], names: tuple[str, str], value: Any) -> None:
+def _set(mapping: MutableMapping[str, Any] | PsoNode, names: tuple[str, str], value: Any) -> None:
+    fields = _fields(mapping)
+    if fields is None:
+        raise TypeError("YMT ped variation value is not mutable")
     for name in names:
-        if name in mapping:
-            mapping[name] = value
+        if name in fields:
+            fields[name] = value
             return
-    mapping[names[0]] = value
+    fields[names[0]] = value
+
+
+def _fields(mapping: Any) -> MutableMapping[str, Any] | None:
+    if isinstance(mapping, PsoNode):
+        return mapping.fields
+    if isinstance(mapping, MutableMapping):
+        return mapping
+    return None
+
+
+def _is_mutable_node(value: Any) -> bool:
+    return isinstance(value, PsoNode) or isinstance(value, MutableMapping)
 
 
 __all__ = [

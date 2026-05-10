@@ -7,8 +7,7 @@ import copy
 import xml.etree.ElementTree as ET
 
 from ..rpf import RpfArchive
-from .enums import DlcContentGroup, DlcDataFileContents, DlcDataFileType, DlcPackType
-from .xml import (
+from ..xml import (
     add_items,
     add_text,
     add_value,
@@ -21,6 +20,7 @@ from .xml import (
     read_xml_text,
     xml_bytes,
 )
+from .enums import DlcContentGroup, DlcDataFileContents, DlcDataFileType, DlcPackType
 
 
 def _device_name(pack_name: str) -> str:
