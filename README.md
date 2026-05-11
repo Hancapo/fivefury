@@ -2,16 +2,17 @@
 
 FiveFury is a Python library for authoring, reading, writing, indexing, and packaging GTA V asset files.
 
-It focuses on practical modding workflows: building drawable assets, collision resources, map metadata, animation dictionaries, nav data, texture dictionaries, text tables, and RPF archives from Python without forcing every user to work directly with binary layouts.
+It focuses on practical modding workflows: building drawable assets, collision resources, map metadata, animation dictionaries, nav data, texture dictionaries, text tables, audio containers, cutscenes, DLC metadata, and RPF archives from Python without forcing every user to work directly with binary layouts.
 
 ## Highlights
 
-- Read, edit, build, and write core GTA V formats such as `YDR`, `YDD`, `YBN`, `YCD`, `YMAP`, `YTYP`, `YTD`, `YND`, `YNV`, `CUT`, `GXT2`, `AWC`, `REL`, and `RPF`.
+- Read, edit, build, and write core GTA V formats such as `YDR`, `YDD`, `YFT`, `YBN`, `YCD`, `YMAP`, `YTYP`, `YMF`, `YMT`, `YTD`, `YND`, `YNV`, `CUT`, `GXT2`, `AWC`, `REL`, and `RPF`.
 - Use declarative high-level helpers for common authoring tasks while still keeping access to lower-level binary/resource details.
-- Index game installs, loose folders, and archives with `GameFileCache`, including typed lookups by asset name, hash, and format.
-- Extract texture dictionaries from `YTD`, `GTXD` parent chains, and embedded dictionaries in resource assets.
-- Share common `RSC7`, `META`, hashing, material, bounds, resource, and archive layers across formats.
-- Use optional native acceleration for heavier bounds and archive operations when the compiled extension is available.
+- Index game installs, loose folders, and archives with `GameFileCache`, including typed lookups by asset name, hash, format, and lazy dictionaries for common asset families.
+- Extract texture dictionaries from `YTD`, `GTXD` parent chains, and embedded dictionaries in drawable, fragment, particle, and ped component resources.
+- Build DLC metadata, map manifests, cutscenes, navigation cells, collision resources, fragment physics, and audio containers from Python.
+- Share common `RSC7`, `META`, `PSO`, `RBF`, XML, hashing, vector math, material, bounds, resource, and archive layers across formats.
+- Use optional native acceleration for heavier bounds, hashing, crypto, resource layout, and archive operations when the compiled extension is available.
 
 ## Installation
 
@@ -34,6 +35,10 @@ Assimp-backed import helpers such as `assimp_to_ydr(...)`, `obj_to_ydr(...)`, `f
 
 FiveFury does not currently probe common install locations on its own. The native library must already be reachable through the environment, usually via `PATH`.
 
+## License
+
+FiveFury is released under the `CC0-1.0` public domain dedication. See [LICENSE](LICENSE).
+
 ## Format Support
 
 Support levels:
@@ -55,12 +60,15 @@ Support levels:
 | `YCD` | Clip dictionaries: parsed metadata, sequence rebuilds, known track types, UV clip bindings, object animation metadata, skeletal tracks, root motion, camera tracks, and facial samples. |
 | `YMAP` | Map metadata: entities, car generators, timecycle modifiers, occluders, content flags, entity flags, LOD lights, distant lights, and typed metadata. |
 | `YTYP` | Archetypes: base/time/MLO archetypes, extensions, rooms, portals, entity sets, typed asset metadata, flags, LOD distances, physics dictionaries, and cutscene prop helpers. |
+| `YMF` | Map manifests: `CPackFileMetaData` read/write, IMAP/ITYP dependency relationships, IMAP groups, interior bounds, HD texture bindings, relationship iteration, and manifest generation from YMAP sets with optional `GameFileCache` archetype lookup. |
 | `YTD` | Texture dictionaries: read/write, resource texture payload preservation, cache extraction, and embedded-asset helpers. |
 | `YND` | Path node resources: nodes, links, typed flags/enums, area helpers, automatic area ID calculation, network partitioning, and game-aligned junction heightmap generation. |
 | `YNV` | Navmesh resources: sectors, polys, points, portals, typed metadata, validation, and basic Assimp/OBJ partitioning. |
 | `CUT` | Cutscene files: cameras, tracks, events, props, peds, vehicles, lights, high-level scene conversion, `.cuts` script authoring, and `.cut` to `.cuts` export. |
 | `GXT2` | Hashed UTF-8 text tables with binary read/write, CodeWalker-style text import/export, mapping-style helpers, and `GameFileCache` loading. |
+| `AWC` | Audio wave containers: structural read/write, PCM and WAV extraction, mono and multichannel PCM authoring, and conversion from `.wav`, `.mp3`, `.ogg`, and `.flac` through `miniaudio`. |
 | DLC metadata | Declarative `setup2.xml`, `content.xml`, `dlclist.xml`, and `extratitleupdatedata.meta` authoring, including content change sets, DLC pack RPF creation, and `dlc_patch` overlays. |
+| `GTXD` metadata | Parent texture dictionary metadata in XML or binary RBF `CMapParentTxds` form, cache loading, parent-chain resolution, and duplicate-safe relationship editing. |
 | `RPF` | RPF7 OPEN archives, nested `.rpf`, folder/ZIP conversion, extraction modes, and encrypted standalone RPF opening when keys are available. |
 
 ### Partial Or Indexed Support
@@ -69,12 +77,11 @@ Support levels:
 | --- | --- |
 | `YFT` | Fragment reading/writing for common, damaged, extra and cloth drawables, including geometry, materials, LOD meshes, bounding sphere metadata, fragment flags, physics LODs, physics groups, physics children, child entity drawables, per-child breaking/inertia data, damping constants, damping archetypes, articulated body metadata, link attachments, group and child event references, editable composite bounds, mass/inertia helpers, glass/cloth/vehicle semantic queries, corpus scanning, validation, declarative physics helpers, geometry summaries and embedded texture dictionaries. |
 | `YPT` | Resource texture dictionaries can be discovered/extracted from particle dictionaries, but full particle authoring is not implemented. |
-| `AWC` | Audio wave containers can be read/written structurally, opened through `GameFileCache`, exported back to WAV for PCM/ADPCM streams, and built from mono or multichannel 16-bit PCM inputs decoded through `miniaudio` (`.wav`, `.mp3`, `.ogg`, `.flac`). Playback metadata lives in `.rel` banks. |
 | `REL` | Audio metadata banks can be read/written structurally, opened through `GameFileCache`, and round-tripped with unknown entries preserved. `dat10.rel` modular synth presets/synths, `dat16.rel` curves, `dat22.rel` categories, and common `dat54.rel` sound graph entries have typed models, including simple AWC-backed sounds, wrappers, sequential/multitrack/streaming child lists, randomized variations, modular synth sounds, automation/MIDI sounds, note maps, variable-curve and conditional routing, directional/kinetic routing, variable blocks, math operations, parameter transforms, fluctuators, external streams, sound sets, sound-set lists, and sound-hash lists. Other REL item families currently stay as raw entries. |
 | `YED` | Expression dictionaries can be detected, opened through `GameFileCache`, inspected for expressions/tracks/streams/springs/instruction opcodes, edited safely for spring-list cloning, built from scratch for spring dictionaries, and validated before writing. |
-| `YMT` | Generic META-backed read/write plus ped-variation helpers for component enumeration, drawable file stems, and cloth ownership flags. |
-| `YMF`, `YWR`, `YVR` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
-| `GTXD` metadata | XML read/write for parent texture dictionary relationships, cache texture lookup, and parent-chain resolution. It is metadata rather than a standalone binary asset format like `.gxt2`. |
+| `YMT` | Generic META-backed read/write plus typed helpers for known roots such as `CMapParentTxds`, scenario manifests/regions/groups, ped variations, ped init metadata, and streaming request records. Unknown RBF/PSO/META payloads are preserved conservatively. |
+| `RBF` metadata | Generic binary RBF parsing is exposed for metadata containers that use `RBF0`. It is a shared metadata layer, not a standalone GTA asset extension. |
+| `YWR`, `YVR` | Recognized/indexed by `GameFileCache` and RPF tooling, but no complete dedicated high-level reader/writer is exposed. |
 
 ### Not Implemented Yet
 
@@ -290,6 +297,35 @@ patch.save_update_rpf("update.rpf")
 ```
 
 `DlcPatch` writes `update:/dlc_patch/<pack>/setup2.xml`, `content.xml`, patch payloads, and a matching `common/data/extratitleupdatedata.meta` mount entry. The patch mount uses the original DLC `deviceName`, matching the title-update overlay behavior used by the game.
+
+### Generate a YMF Manifest for YMAPs
+
+```python
+from fivefury import GameFileCache, create_ymf_for_ymaps, read_ymap, read_ytyp
+
+ymap = read_ymap("stream/custom_city.ymap")
+ytyp = read_ytyp("stream/custom_city.ytyp")
+
+manifest = create_ymf_for_ymaps(
+    [ymap],
+    ytyps=[ytyp],
+    name="_manifest",
+    strict=True,
+)
+manifest.save("stream/_manifest.ymf")
+```
+
+If your custom map uses vanilla archetypes, pass a scanned `GameFileCache` so FiveFury can resolve the IMAP to ITYP relationships from the indexed game data:
+
+```python
+cache = GameFileCache(r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V")
+cache.scan_game(use_index_cache=True)
+
+manifest = cache.create_ymf_for_ymaps(["stream/custom_city.ymap"], name="_manifest")
+manifest.save("stream/_manifest.ymf")
+```
+
+The default manifest name is `_manifest`, matching the convention used by streamed map packs.
 
 ### Convert between ZIP, RPF, and folders
 
@@ -598,6 +634,53 @@ out = Ydd.from_drawables({ydd.drawables[0].name: ydd.drawables[0].drawable}, ver
 out.save("single_drawable.ydd")
 ```
 
+## YFT
+
+`YFT` fragment support is aimed at practical read/edit/write workflows for objects with drawable variants and physics metadata. It shares the same drawable writer used by `YDR`, and the same bounds model used by `YBN`.
+
+### Read and inspect a fragment
+
+```python
+from fivefury import read_yft
+
+yft = read_yft("prop_vehicle_fragment.yft")
+
+print(yft.name)
+print(yft.bounding_sphere)
+print(yft.geometry_stats())
+
+for issue in yft.validate():
+    print(issue.severity, issue.message)
+
+for child in yft.iter_physics_children():
+    print(child.owner_group_name, child.undamaged_mass, child.undamaged_ang_inertia)
+```
+
+### Create a simple fragment from a drawable
+
+```python
+from fivefury import BoundBox, BoundMaterialType, create_yft, read_ydr, save_yft
+
+drawable = read_ydr("crate.ydr")
+physics_bound = BoundBox.from_center_size(
+    center=(0.0, 0.0, 0.5),
+    size=(1.0, 1.0, 1.0),
+    material_index=BoundMaterialType.WOOD_SOLID_MEDIUM,
+)
+
+yft = create_yft(
+    drawable,
+    name="crate_fragment",
+    physics_bound=physics_bound,
+    physics_density=0.65,
+)
+
+yft.validate()
+save_yft(yft, "crate_fragment.yft")
+```
+
+Current `YFT` authoring covers common fragment structure, embedded drawables, geometry and material payloads, fragment flags, bounding sphere metadata, physics LODs, groups, children, damping, articulated body metadata, event refs, mass/inertia helpers, editable composite bounds, and embedded texture dictionaries. Vehicle-specific behavior, advanced damage tuning, and every unknown fragment field are still conservative.
+
 ## YBN and Bounds
 
 ### Create primitive bounds
@@ -811,6 +894,41 @@ expr.streams[0].instructions = [
 ```
 
 The supported semantic layouts currently cover empty stack/vector ops, float/vector constants, bone track ops, variables, jumps, springs, look-at, and blend op payloads. Unknown or malformed bytecode is still preserved from existing files, but validation reports it before semantic rebuilds.
+
+## Metadata Layers
+
+FiveFury exposes a few metadata layers directly because several GTA V formats share them internally.
+
+### Read GTXD parent texture dictionaries
+
+```python
+from fivefury import read_gtxd
+
+gtxd = read_gtxd("gtxd.ymt")
+
+print(gtxd.source)  # "xml" or "rbf"
+print(gtxd.parent_of("custom_asset_txd"))
+print(list(gtxd.iter_chain("custom_asset_txd")))
+```
+
+`GTXD` data maps child texture dictionaries to parent dictionaries. `GameFileCache` uses it when resolving textures for streamed assets, so a drawable can find textures in its own `YTD`, an explicitly assigned dictionary, or inherited parent dictionaries.
+
+### Inspect known YMT roots
+
+```python
+from fivefury import YmtContentType, read_ymt
+
+ymt = read_ymt("peds.ymt")
+
+print(ymt.format)
+print(ymt.content_type)
+
+if ymt.content_type is YmtContentType.PED_METADATA:
+    for item in ymt.ped_metadata.init_datas:
+        print(item.clip_dictionary_name, item.expression_dictionary_name)
+```
+
+`YMT` support is intentionally layered: known roots get typed helpers, while unknown META/PSO/RBF data remains available for safe roundtrips instead of being discarded.
 
 ## GameFileCache
 
