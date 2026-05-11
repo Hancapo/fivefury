@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..metahash import HashLike, MetaHash
+from ..vector import aabb_expand, aabb_from_points, aabb_merge
 from .base import ContainerLodDef, PhysicsDictionary
 from .defs import _resource_text
 
@@ -27,10 +28,7 @@ def entity_positions(entities: list[Any]) -> list[tuple[float, float, float]]:
 
 
 def positions_bounds(positions: list[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    xs = [pos[0] for pos in positions]
-    ys = [pos[1] for pos in positions]
-    zs = [pos[2] for pos in positions]
-    return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
+    return aabb_from_points(positions)
 
 
 def expand_bounds(
@@ -40,32 +38,14 @@ def expand_bounds(
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     if padding <= 0:
         return min_value, max_value
-    return (
-        (min_value[0] - padding, min_value[1] - padding, min_value[2] - padding),
-        (max_value[0] + padding, max_value[1] + padding, max_value[2] + padding),
-    )
+    return aabb_expand((min_value, max_value), padding)
 
 
 def merge_bounds(
     current: tuple[tuple[float, float, float], tuple[float, float, float]] | None,
     new_bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None,
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]] | None:
-    if new_bounds is None:
-        return current
-    if current is None:
-        return new_bounds
-    return (
-        (
-            min(current[0][0], new_bounds[0][0]),
-            min(current[0][1], new_bounds[0][1]),
-            min(current[0][2], new_bounds[0][2]),
-        ),
-        (
-            max(current[1][0], new_bounds[1][0]),
-            max(current[1][1], new_bounds[1][1]),
-            max(current[1][2], new_bounds[1][2]),
-        ),
-    )
+    return aabb_merge(current, new_bounds)
 
 
 def coerce_container_lod(item: Any) -> ContainerLodDef | Any:

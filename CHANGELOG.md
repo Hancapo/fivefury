@@ -8,6 +8,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
+- Basic YFT fragment reading and writing, including common, damaged, extra and cloth drawables, geometry, materials, LOD meshes, bounding sphere metadata, fragment flags, physics LODs, physics groups, physics children, child entity drawables, per-child breaking/inertia data, damping constants, damping archetypes, articulated body metadata, link attachments, group and child event references, editable composite bounds, mass/inertia helpers, glass/cloth/vehicle semantic queries, corpus scanning, validation, declarative physics helpers, geometry summaries, raw field inspection and cache decoding.
 - YMT can now decode binary RBF and PSO containers, expose known `CMapParentTxds`, scenario manifest, scenario region, ped variation, ped metadata, and streaming request roots, and preserve raw RBF/PSO bytes for safe roundtrips.
 - YMF now exposes `CPackFileMetaData` relationships for IMAP to ITYP dependencies, ITYP to ITYP dependencies, IMAP groups, interior bounds, and HD texture dictionary bindings.
 - YMF manifests can now be generated from YMAP sets, resolving entity archetypes through explicit YTYP inputs or `GameFileCache`.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from math import sqrt
+from ..vector import aabb_radius
 
 
 DEFAULT_ARCHETYPE_LOD_DIST = 100.0
@@ -15,12 +15,7 @@ def _radius_from_bounds(
 ) -> float:
     if bb_min is None or bb_max is None:
         return 0.0
-    dx = float(bb_max[0]) - float(bb_min[0])
-    dy = float(bb_max[1]) - float(bb_min[1])
-    dz = float(bb_max[2]) - float(bb_min[2])
-    if dx <= 0.0 and dy <= 0.0 and dz <= 0.0:
-        return 0.0
-    return sqrt(dx * dx + dy * dy + dz * dz) * 0.5
+    return aabb_radius(bb_min, bb_max)
 
 
 def infer_archetype_radius(

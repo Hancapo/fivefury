@@ -8,6 +8,7 @@ from typing import Iterator
 
 from .. import _native as _native_backend
 from ..resource import ResourcePagesInfo
+from ..vector import aabb_center, aabb_from_center_size, vec_add, vec_scale, vec_sub
 from .materials import BoundMaterialType, coerce_bound_material_index, get_bound_material_type
 
 
@@ -57,9 +58,7 @@ def _merge_bounds(bounds: list[BoundAabb], fallback: BoundAabb) -> BoundAabb:
 
 
 def _aabb_from_center_size(center: tuple[float, float, float], size: tuple[float, float, float]) -> BoundAabb:
-    half_size = tuple(float(value) * 0.5 for value in size)
-    minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
-    maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+    minimum, maximum = aabb_from_center_size(center, size)
     return BoundAabb(minimum, maximum)
 
 
@@ -157,6 +156,46 @@ def _sphere_radius_from_bounds(bounds: BoundAabb, center: tuple[float, float, fl
         + max(abs(bounds.minimum[1] - center[1]), abs(bounds.maximum[1] - center[1])) ** 2
         + max(abs(bounds.minimum[2] - center[2]), abs(bounds.maximum[2] - center[2])) ** 2
     )
+
+
+def _box_volume_distribution(size: tuple[float, float, float]) -> tuple[float, float, float]:
+    x, y, z = (abs(float(axis)) for axis in size)
+    return (((y * y) + (z * z)) / 12.0, ((x * x) + (z * z)) / 12.0, ((x * x) + (y * y)) / 12.0)
+
+
+def _sphere_volume_distribution(radius: float) -> tuple[float, float, float]:
+    value = 0.4 * float(radius) * float(radius)
+    return (value, value, value)
+
+
+def _cylinder_volume_distribution(radius: float, length: float) -> tuple[float, float, float]:
+    radius2 = float(radius) * float(radius)
+    central = (radius2 * 0.25) + ((float(length) * float(length)) / 12.0)
+    radial = radius2 * 0.5
+    return (central, radial, central)
+
+
+def _capsule_volume_distribution(radius: float, length: float) -> tuple[float, float, float]:
+    radius = float(radius)
+    length = float(length)
+    denominator = length + (4.0 / 3.0) * radius
+    if denominator <= 0.0:
+        return (0.0, 0.0, 0.0)
+    inverse = 1.0 / denominator
+    radius2 = radius * radius
+    radial = 0.5 * radius2 * (length + 1.0666666666667 * radius) * inverse
+    length2 = length * length
+    central = (
+        (1.0 / 3.0)
+        * (
+            0.25 * length * length2
+            + radius * length2
+            + 2.25 * length * radius2
+            + 1.6 * radius * radius2
+        )
+        * inverse
+    )
+    return (central, radial, central)
 
 
 @dataclasses.dataclass(slots=True)
@@ -633,15 +672,33 @@ class Bound:
     def leaf_bounds(self) -> list[Bound]:
         return [bound for bound in self.walk() if not isinstance(bound, BoundComposite)]
 
+    def compute_volume(self) -> float:
+        if self.volume > 0.0 and math.isfinite(self.volume):
+            return float(self.volume)
+        return abs(self.width * self.depth * self.height)
+
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        if any(abs(value) > 0.0 for value in self.angular_inertia):
+            return tuple(float(value) for value in self.angular_inertia)
+        return _box_volume_distribution(self.dimensions)
+
+    def compute_angular_inertia(self, mass: float) -> tuple[float, float, float]:
+        distribution = self.compute_volume_distribution()
+        return tuple(float(value) * float(mass) for value in distribution)
+
     def build(self) -> "Bound":
         normalized = _normalize_aabb(self.bounds)
         self.box_min = normalized.minimum
         self.box_max = normalized.maximum
         self.box_center = tuple((normalized.minimum[axis] + normalized.maximum[axis]) * 0.5 for axis in range(3))
+        if self.sphere_center == (0.0, 0.0, 0.0) and self.box_center != (0.0, 0.0, 0.0):
+            self.sphere_center = self.box_center
         self.flags = BoundFlag(int(self.flags))
         self.part_index = int(self.part_index) & 0xFFFF
         self.material_index = coerce_bound_material_index(self.material_index)
         self.ref_count = int(self.ref_count)
+        self.volume = self.compute_volume()
+        self.angular_inertia = self.compute_volume_distribution()
         return self
 
     def validate(self) -> list[str]:
@@ -699,9 +756,18 @@ class BoundSphere(Bound):
     def diameter(self) -> float:
         return self.radius * 2.0
 
+    def compute_volume(self) -> float:
+        return (4.0 / 3.0) * math.pi * (self.radius ** 3)
+
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        return _sphere_volume_distribution(self.radius)
+
 
 @dataclasses.dataclass(slots=True)
 class BoundBox(Bound):
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        return _box_volume_distribution(self.dimensions)
+
     @classmethod
     def from_bounds(
         cls,
@@ -777,6 +843,13 @@ class BoundCapsule(Bound):
     def total_height(self) -> float:
         return self.shaft_length + (self.radius * 2.0)
 
+    def compute_volume(self) -> float:
+        radius = self.radius
+        return math.pi * radius * radius * (self.shaft_length + (4.0 / 3.0) * radius)
+
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        return _capsule_volume_distribution(self.radius, self.shaft_length)
+
 
 @dataclasses.dataclass(slots=True)
 class BoundDisc(Bound):
@@ -846,6 +919,12 @@ class BoundDisc(Bound):
     def thickness(self) -> float:
         return self.half_thickness * 2.0
 
+    def compute_volume(self) -> float:
+        return math.pi * self.radius * self.radius * self.thickness
+
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        return _cylinder_volume_distribution(self.radius, self.thickness)
+
 
 @dataclasses.dataclass(slots=True)
 class BoundCylinder(Bound):
@@ -909,6 +988,12 @@ class BoundCylinder(Bound):
     @property
     def height(self) -> float:
         return self.half_height * 2.0
+
+    def compute_volume(self) -> float:
+        return math.pi * self.radius * self.radius * self.height
+
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        return _cylinder_volume_distribution(self.radius, self.height)
 
 
 @dataclasses.dataclass(slots=True)
@@ -1121,6 +1206,70 @@ class BoundComposite(Bound):
         self.children.append(child)
         return child
 
+    def compute_volume(self) -> float:
+        if self.children:
+            return sum(child.bound.compute_volume() for child in self.children)
+        return super().compute_volume()
+
+    def compute_center_of_gravity(
+        self,
+        masses: list[float] | tuple[float, ...] | None = None,
+    ) -> tuple[float, float, float]:
+        weighted = (0.0, 0.0, 0.0)
+        total_weight = 0.0
+        for index, child in enumerate(self.children):
+            weight = (
+                float(masses[index])
+                if masses is not None and index < len(masses)
+                else child.bound.compute_volume()
+            )
+            if weight <= 0.0:
+                continue
+            child_center = _transform_point(child.bound.sphere_center, child.transform)
+            weighted = vec_add(weighted, vec_scale(child_center, weight))
+            total_weight += weight
+        return vec_scale(weighted, 1.0 / total_weight) if total_weight > 0.0 else (0.0, 0.0, 0.0)
+
+    def compute_composite_angular_inertia(
+        self,
+        mass: float,
+        *,
+        masses: list[float] | tuple[float, ...] | None = None,
+        inertias: list[tuple[float, float, float]] | tuple[tuple[float, float, float], ...] | None = None,
+    ) -> tuple[float, float, float]:
+        total_mass = float(mass)
+        total_volume = self.compute_volume()
+        density = total_mass / total_volume if total_volume > 0.0 else 0.0
+        center_of_gravity = self.compute_center_of_gravity(masses)
+        total = (0.0, 0.0, 0.0)
+        for index, child in enumerate(self.children):
+            part_mass = (
+                float(masses[index])
+                if masses is not None and index < len(masses)
+                else density * child.bound.compute_volume()
+            )
+            if inertias is not None and index < len(inertias):
+                part_inertia = inertias[index]
+            else:
+                part_inertia = child.bound.compute_angular_inertia(part_mass)
+            offset = vec_sub(_transform_point(child.bound.sphere_center, child.transform), center_of_gravity)
+            parallel_axis = (
+                part_mass * ((offset[1] * offset[1]) + (offset[2] * offset[2])),
+                part_mass * ((offset[0] * offset[0]) + (offset[2] * offset[2])),
+                part_mass * ((offset[0] * offset[0]) + (offset[1] * offset[1])),
+            )
+            total = vec_add(total, vec_add(part_inertia, parallel_axis))
+        return total
+
+    def compute_volume_distribution(self) -> tuple[float, float, float]:
+        volume = self.compute_volume()
+        if volume <= 0.0:
+            return (0.0, 0.0, 0.0)
+        return vec_scale(self.compute_composite_angular_inertia(volume), 1.0 / volume)
+
+    def compute_angular_inertia(self, mass: float) -> tuple[float, float, float]:
+        return self.compute_composite_angular_inertia(mass)
+
     def build(self) -> "BoundComposite":
         super().build()
         for child in self.children:
@@ -1133,12 +1282,14 @@ class BoundComposite(Bound):
                 for child in self.children
             ]
             overall = _merge_bounds(transformed_bounds, self.bounds)
-            center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
+            center = aabb_center(overall.minimum, overall.maximum)
             self.box_min = overall.minimum
             self.box_max = overall.maximum
             self.box_center = center
-            self.sphere_center = center
+            self.sphere_center = self.compute_center_of_gravity()
             self.sphere_radius = _sphere_radius_from_bounds(overall, center)
+            self.volume = self.compute_volume()
+            self.angular_inertia = self.compute_volume_distribution()
             if len(self.children) <= 5:
                 self.bvh = None
         else:

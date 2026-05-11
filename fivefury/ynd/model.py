@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 from collections.abc import Hashable, Iterable
 from enum import IntFlag
 from pathlib import Path
 
 from ..common import FlexibleIntEnum
 from ..resource import ResourcePagesInfo
+from ..vector import vec_distance
 from .regions import position_matches_ynd_area
 
 
@@ -512,7 +512,7 @@ class YndNode:
 
 
 def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> int:
-    return min(255, int(math.sqrt(((b[0] - a[0]) ** 2) + ((b[1] - a[1]) ** 2) + ((b[2] - a[2]) ** 2))))
+    return min(255, int(vec_distance(b, a)))
 
 
 @dataclasses.dataclass(slots=True)

@@ -11,6 +11,7 @@ from .defs import COMPONENT_SIZES, LOD_ORDER, VertexComponentType, VertexSemanti
 from .gen9_shader_enums import YdrGen9Shader
 from .shader_enums import YdrShader
 from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition, resolve_shader_reference
+from ..vector import vec_cross, vec_dot, vec_normalize, vec_sub
 
 if TYPE_CHECKING:
     from .gen9 import ShaderGen9Definition
@@ -162,41 +163,18 @@ def normalize_materials(
     return [YdrMaterialInput(name='default', shader=shader, textures=default_textures)]
 
 
-def _cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
-    return (
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    )
-
-
-def _subtract(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
-    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
-
-
-def _normalize3(value: tuple[float, float, float], fallback: tuple[float, float, float] = (0.0, 0.0, 1.0)) -> tuple[float, float, float]:
-    length = math.sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2])
-    if length <= 1e-8:
-        return fallback
-    return (value[0] / length, value[1] / length, value[2] / length)
-
-
-def _dot3(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-
-
 def _generate_normals(positions: Sequence[tuple[float, float, float]], indices: Sequence[int]) -> list[tuple[float, float, float]]:
     accum = [[0.0, 0.0, 0.0] for _ in positions]
     for base in range(0, len(indices), 3):
         i0, i1, i2 = indices[base : base + 3]
         if i0 >= len(positions) or i1 >= len(positions) or i2 >= len(positions):
             continue
-        normal = _cross(_subtract(positions[i1], positions[i0]), _subtract(positions[i2], positions[i0]))
+        normal = vec_cross(vec_sub(positions[i1], positions[i0]), vec_sub(positions[i2], positions[i0]))
         for index in (i0, i1, i2):
             accum[index][0] += normal[0]
             accum[index][1] += normal[1]
             accum[index][2] += normal[2]
-    return [_normalize3((value[0], value[1], value[2])) for value in accum]
+    return [vec_normalize((value[0], value[1], value[2])) for value in accum]
 
 
 def _generate_tangents(
@@ -213,8 +191,8 @@ def _generate_tangents(
             continue
         p0, p1, p2 = positions[i0], positions[i1], positions[i2]
         uv0, uv1, uv2 = texcoords[i0], texcoords[i1], texcoords[i2]
-        x1, y1, z1 = _subtract(p1, p0)
-        x2, y2, z2 = _subtract(p2, p0)
+        x1, y1, z1 = vec_sub(p1, p0)
+        x2, y2, z2 = vec_sub(p2, p0)
         s1 = uv1[0] - uv0[0]
         t1 = uv1[1] - uv0[1]
         s2 = uv2[0] - uv0[0]
@@ -237,12 +215,12 @@ def _generate_tangents(
     for index, normal in enumerate(normals):
         t = (tan1[index][0], tan1[index][1], tan1[index][2])
         projected = (
-            t[0] - normal[0] * _dot3(normal, t),
-            t[1] - normal[1] * _dot3(normal, t),
-            t[2] - normal[2] * _dot3(normal, t),
+            t[0] - normal[0] * vec_dot(normal, t),
+            t[1] - normal[1] * vec_dot(normal, t),
+            t[2] - normal[2] * vec_dot(normal, t),
         )
-        tangent3 = _normalize3(projected, fallback=(1.0, 0.0, 0.0))
-        handedness = 1.0 if _dot3(_cross(normal, tangent3), (tan2[index][0], tan2[index][1], tan2[index][2])) >= 0.0 else -1.0
+        tangent3 = vec_normalize(projected, fallback=(1.0, 0.0, 0.0))
+        handedness = 1.0 if vec_dot(vec_cross(normal, tangent3), (tan2[index][0], tan2[index][1], tan2[index][2])) >= 0.0 else -1.0
         tangents.append((tangent3[0], tangent3[1], tangent3[2], handedness))
     return tangents
 

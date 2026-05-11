@@ -21,6 +21,7 @@ from ..ybn import read_ybn
 from ..ydd import read_ydd
 from ..yed import read_yed
 from ..ydr import read_ydr
+from ..yft import read_yft
 from ..ynd import read_ynd
 from ..ynv import read_ynv
 from ..ytd import read_ytd
@@ -70,6 +71,7 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
     resource_decoders = {
         ".ydr": (GameFileType.YDR, lambda payload: read_ydr(payload, path=path)),
         ".ydd": (GameFileType.YDD, lambda payload: read_ydd(payload, path=path)),
+        ".yft": (GameFileType.YFT, lambda payload: read_yft(payload, path=path)),
         ".ytd": (GameFileType.YTD, read_ytd),
         ".ycd": (GameFileType.YCD, lambda payload: read_ycd(payload, path=path)),
         ".yed": (GameFileType.YED, lambda payload: read_yed(payload, path=path)),
@@ -225,7 +227,7 @@ class GameFileCacheIOMixin:
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             ext = Path(asset.path).suffix.lower()
-            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
+            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
             parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
@@ -249,7 +251,7 @@ class GameFileCacheIOMixin:
             stored = entry.read(logical=False)
             logical = entry.read(logical=True)
             raw_source = None
-            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
+            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
                 raw_source = entry._archive.read_entry_standalone(entry)
             parsed, kind = _decode_payload(asset.path, logical, raw=raw_source)
             game_file = GameFile(

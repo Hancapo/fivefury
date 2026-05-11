@@ -13,6 +13,7 @@ from fivefury import (
     BoundBvhTree,
     BoundBVH,
     BoundBox,
+    BoundCapsule,
     BoundCloth,
     BoundChild,
     BoundComposite,
@@ -28,6 +29,7 @@ from fivefury import (
     BoundSphere,
     BoundTransform,
     BoundTriangleChunk,
+    BoundType,
     GameFileCache,
     GameFileType,
     Ybn,
@@ -820,6 +822,7 @@ def test_bound_box_from_bounds_builds_consistent_box_metadata() -> None:
     assert box.box_center == box.center
     assert box.sphere_center == box.center
     assert box.volume == 432.0
+    assert box.compute_angular_inertia(10.0) == (150.0, 150.0, 60.0)
     assert math.isclose(box.enclosing_radius, 7.3484692283495345)
 
 
@@ -874,6 +877,28 @@ def test_bound_cylinder_from_center_radius_height_exposes_clear_shape_metrics() 
     assert cylinder.half_height == 5.0
     assert cylinder.height == 10.0
     assert math.isclose(cylinder.margin, 0.1)
+
+
+def test_bound_inertia_matches_dev_ng_volume_distribution_rules() -> None:
+    cylinder = BoundCylinder.from_center_radius_height((0.0, 0.0, 0.0), 2.0, 6.0).build()
+    capsule = BoundCapsule(
+        bound_type=BoundType.CAPSULE,
+        sphere_radius=5.0,
+        box_max=(2.0, 5.0, 2.0),
+        margin=0.0,
+        box_min=(-2.0, -5.0, -2.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        capsule_half_height=3.0,
+    ).build()
+
+    cylinder_inertia = cylinder.compute_angular_inertia(10.0)
+    capsule_inertia = capsule.compute_angular_inertia(10.0)
+
+    assert cylinder_inertia == (40.0, 20.0, 40.0)
+    assert math.isclose(capsule_inertia[0], 74.1538461538)
+    assert math.isclose(capsule_inertia[1], 18.7692307692)
+    assert math.isclose(capsule_inertia[2], 74.1538461538)
 
 
 def test_bound_cloth_from_center_size_exposes_clear_bounds_aliases() -> None:

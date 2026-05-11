@@ -29,6 +29,9 @@ class YftAsset(ResourceTextureAsset):
         main_drawable_pointer = _u64(self.system_data, 0x30)
         yield from emit("drawable", main_drawable_pointer)
 
+        damaged_drawable_pointer = _u64(self.system_data, 0x50)
+        yield from emit("damaged", damaged_drawable_pointer)
+
         drawable_array_pointer = _u64(self.system_data, 0x38)
         drawable_array_count = _u32(self.system_data, 0x48)
         for index, drawable_pointer in enumerate(

@@ -5,6 +5,7 @@ from typing import Any
 
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+from ..vector import aabb_center, aabb_from_center_size, aabb_size
 
 
 @dataclasses.dataclass(slots=True)
@@ -46,20 +47,12 @@ class TimeCycleModifier(MetaHashFieldsMixin):
     @property
     def center(self) -> tuple[float, float, float]:
         """Return the center point of the modifier volume."""
-        return (
-            (self.min_extents[0] + self.max_extents[0]) * 0.5,
-            (self.min_extents[1] + self.max_extents[1]) * 0.5,
-            (self.min_extents[2] + self.max_extents[2]) * 0.5,
-        )
+        return aabb_center(self.min_extents, self.max_extents)
 
     @property
     def size(self) -> tuple[float, float, float]:
         """Return the full size (width, depth, height) of the modifier volume."""
-        return (
-            self.max_extents[0] - self.min_extents[0],
-            self.max_extents[1] - self.min_extents[1],
-            self.max_extents[2] - self.min_extents[2],
-        )
+        return aabb_size(self.min_extents, self.max_extents)
 
     @property
     def hours(self) -> tuple[int, int]:
@@ -83,11 +76,11 @@ class TimeCycleModifier(MetaHashFieldsMixin):
         hours: tuple[int, int] = (0, 24),
     ) -> "TimeCycleModifier":
         """Create a TimeCycleModifier from center position and size."""
-        half = (size[0] * 0.5, size[1] * 0.5, size[2] * 0.5)
+        min_extents, max_extents = aabb_from_center_size(position, size)
         return cls(
             name=name,
-            min_extents=(position[0] - half[0], position[1] - half[1], position[2] - half[2]),
-            max_extents=(position[0] + half[0], position[1] + half[1], position[2] + half[2]),
+            min_extents=min_extents,
+            max_extents=max_extents,
             percentage=float(percentage),
             range=float(range),
             start_hour=int(hours[0]),

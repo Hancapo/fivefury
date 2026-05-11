@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
-from math import sqrt
-
 from .. import _native as _native_backend
+from ..vector import aabb_center, aabb_from_points, vec_cross, vec_length, vec_sub
 from .model import (
     BoundAabb,
     BoundBVH,
@@ -35,14 +34,7 @@ class BoundTriangleChunk:
 
 
 def _triangle_area_python(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
-    edge1 = (vertex1[0] - vertex0[0], vertex1[1] - vertex0[1], vertex1[2] - vertex0[2])
-    edge2 = (vertex2[0] - vertex0[0], vertex2[1] - vertex0[1], vertex2[2] - vertex0[2])
-    cross = (
-        (edge1[1] * edge2[2]) - (edge1[2] * edge2[1]),
-        (edge1[2] * edge2[0]) - (edge1[0] * edge2[2]),
-        (edge1[0] * edge2[1]) - (edge1[1] * edge2[0]),
-    )
-    return 0.5 * sqrt((cross[0] * cross[0]) + (cross[1] * cross[1]) + (cross[2] * cross[2]))
+    return 0.5 * vec_length(vec_cross(vec_sub(vertex1, vertex0), vec_sub(vertex2, vertex0)))
 
 
 def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
@@ -54,10 +46,7 @@ def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float
 def _bounds_from_vertices_python(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
     if not vertices:
         raise ValueError("At least one vertex is required")
-    return (
-        (min(vertex[0] for vertex in vertices), min(vertex[1] for vertex in vertices), min(vertex[2] for vertex in vertices)),
-        (max(vertex[0] for vertex in vertices), max(vertex[1] for vertex in vertices), max(vertex[2] for vertex in vertices)),
-    )
+    return aabb_from_points(vertices)
 
 
 def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
@@ -67,19 +56,12 @@ def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
 
 
 def center_from_bounds(minimum: Vector3, maximum: Vector3) -> Vector3:
-    return ((minimum[0] + maximum[0]) * 0.5, (minimum[1] + maximum[1]) * 0.5, (minimum[2] + maximum[2]) * 0.5)
+    return aabb_center(minimum, maximum)
 
 
 def _sphere_radius_from_vertices_python(center: Vector3, vertices: list[Vector3]) -> float:
     return max(
-        (
-            sqrt(
-                ((vertex[0] - center[0]) ** 2)
-                + ((vertex[1] - center[1]) ** 2)
-                + ((vertex[2] - center[2]) ** 2)
-            )
-            for vertex in vertices
-        ),
+        (vec_length(vec_sub(vertex, center)) for vertex in vertices),
         default=0.0,
     )
 
