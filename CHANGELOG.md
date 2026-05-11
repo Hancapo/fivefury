@@ -12,9 +12,18 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - Basic YFT fragment reading and writing, including common, damaged, extra and cloth drawables, geometry, materials, LOD meshes, bounding sphere metadata, fragment flags, physics LODs, physics groups, physics children, child entity drawables, per-child breaking/inertia data, damping constants, damping archetypes, articulated body metadata, link attachments, group and child event references, editable composite bounds, mass/inertia helpers, glass/cloth/vehicle semantic queries, corpus scanning, validation, declarative physics helpers, geometry summaries, raw field inspection and cache decoding.
 - YMT can now decode binary RBF and PSO containers, expose known `CMapParentTxds`, scenario manifest, scenario region, ped variation, ped metadata, and streaming request roots, and preserve raw RBF/PSO bytes for safe roundtrips.
+- Generic RBF parsing helpers for binary metadata containers, including structures, attributes, primitive values, byte nodes, detection, and string-field extraction.
+- GTXD can now read binary RBF `CMapParentTxds` data in addition to XML parent texture dictionary metadata.
 - YMF now exposes `CPackFileMetaData` relationships for IMAP to ITYP dependencies, ITYP to ITYP dependencies, IMAP groups, interior bounds, and HD texture dictionary bindings.
 - YMF manifests can now be generated from YMAP sets, resolving entity archetypes through explicit YTYP inputs or `GameFileCache`.
+- `GameFileCache` now exposes convenience helpers for building YMF manifests from loaded or explicit YMAP sets.
+- Shared vector and AABB helpers now cover common vector math used by bounds, YDR tangent generation, YND node distances, and YTYP LOD inference.
 - Shared XML helpers now back DLC, GTXD, and YMF parsing/writing to avoid duplicated XML boilerplate.
+
+### Changed
+- Bounds now compute volume, center of gravity, volume distribution, and angular inertia for primitive and composite shapes during build.
+- YDR mesh preparation now uses the shared vector helpers for normal and tangent generation.
+- YND node distance and YTYP archetype radius inference now use the shared vector/AABB helpers.
 
 ## [0.2.4] - 2026-05-09
 
