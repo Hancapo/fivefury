@@ -9,7 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 - Project licensing is now declared as `CC0-1.0` and packaged with a `LICENSE` file.
-- README now reflects the current YFT, YMF, YMT, GTXD/RBF, AWC, cache, and native-helper support more accurately.
+- README now stays focused on project overview and quick examples, with long-form YFT, YMF, YMT, GTXD/RBF, AWC, cache, and native-helper documentation moved into `docs/`.
 
 ## [0.2.5] - 2026-05-11
 
