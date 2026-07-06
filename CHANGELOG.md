@@ -7,9 +7,25 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-07-06
+
 ### Changed
 - Project licensing is now declared as `CC0-1.0` and packaged with a `LICENSE` file.
 - README now reflects the current YFT, YMF, YMT, GTXD/RBF, AWC, cache, and native-helper support more accurately.
+- `RpfArchive` now keeps a cached read handle for its source file and gained `close()` and context-manager support; the `rpf_to_zip`/`rpf_to_folder` helpers close archives they open internally.
+- RSC7 page packing and BVH construction are now provided solely by the native backend, removing the duplicated pure-Python implementations.
+
+### Fixed
+- The native crypto context now validates the AES key length before initializing the cipher, surfacing a clear error instead of a low-level BCrypt failure.
+
+### Performance
+- YDR drawable vertex buffers are now packed in the native backend, replacing the per-component Python encoder for roughly an order-of-magnitude speedup on large meshes.
+- Collision generation now collects render triangles, computes triangle areas, and quantizes bound vertices in the native backend instead of one Python call per triangle or vertex.
+- RSC7 pointer relocation now uses a sorted binary search over resource blocks instead of a linear scan for every pointer.
+- Bounds now build their BVH a single time per shape rather than rebuilding it to recompute metrics.
+- Octant construction no longer allocates temporary lists per vertex.
+- Collision, GXT2, AWC, and REL readers now decode fixed-size tables with batched struct unpacking.
+- `GameCrypto` now derives its AES cipher and NG subkeys lazily, avoiding setup work when only the native decryptor is used.
 
 ## [0.2.5] - 2026-05-11
 
