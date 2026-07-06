@@ -271,35 +271,10 @@ class BoundMaterialColor:
 BoundResourcePagesInfo = ResourcePagesInfo
 
 
-_OCTANT_SIGNS: tuple[tuple[int, int, int], ...] = (
-    (1, 1, 1),
-    (-1, 1, 1),
-    (1, -1, 1),
-    (-1, -1, 1),
-    (1, 1, -1),
-    (-1, 1, -1),
-    (1, -1, -1),
-    (-1, -1, -1),
-)
-
-
 def _normalize_octant_items(items: list[list[int]] | tuple[tuple[int, ...], ...] | None) -> list[list[int]]:
     source = list(items or [])
     normalized = [list(map(int, source[index])) if index < len(source) else [] for index in range(8)]
     return normalized
-
-
-def _octant_shadowed(
-    vertex1: tuple[float, float, float],
-    vertex2: tuple[float, float, float],
-    signs: tuple[int, int, int],
-) -> bool:
-    direction = (
-        (vertex2[0] - vertex1[0]) * signs[0],
-        (vertex2[1] - vertex1[1]) * signs[1],
-        (vertex2[2] - vertex1[2]) * signs[2],
-    )
-    return direction[0] >= 0.0 and direction[1] >= 0.0 and direction[2] >= 0.0
 
 
 @dataclasses.dataclass(slots=True)
@@ -314,27 +289,7 @@ class BoundGeometryOctants:
         cls,
         vertices: list[tuple[float, float, float]],
     ) -> "BoundGeometryOctants":
-        if _native_backend._bounds_build_octants is not None:
-            return cls(items=_native_backend._bounds_build_octants(vertices))
-        octant_items: list[list[int]] = [[] for _ in range(8)]
-        for octant_index, signs in enumerate(_OCTANT_SIGNS):
-            indices: list[int] = []
-            for vertex_index, vertex in enumerate(vertices):
-                should_add = True
-                next_indices: list[int] = []
-                for other_index in indices:
-                    other_vertex = vertices[other_index]
-                    if _octant_shadowed(vertex, other_vertex, signs):
-                        should_add = False
-                        next_indices = indices
-                        break
-                    if not _octant_shadowed(other_vertex, vertex, signs):
-                        next_indices.append(other_index)
-                if should_add:
-                    next_indices.append(vertex_index)
-                indices = next_indices
-            octant_items[octant_index] = indices
-        return cls(items=octant_items)
+        return cls(items=_native_backend._bounds_build_octants(vertices))
 
     @property
     def counts(self) -> tuple[int, int, int, int, int, int, int, int]:

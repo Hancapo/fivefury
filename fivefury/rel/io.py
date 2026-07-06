@@ -67,7 +67,7 @@ def _parse_name_table(data: bytes, offset: int, length: int, count: int) -> tupl
     if length < 4:
         raise ValueError(f"Invalid REL name table length: {length}")
     table_start = offset + count * 4
-    offsets = [struct.unpack_from("<I", data, offset + i * 4)[0] for i in range(count)]
+    offsets = list(struct.unpack_from(f"<{count}I", data, offset))
     names = [read_c_string(data, table_start + rel_offset) for rel_offset in offsets]
     return names, dict(zip(offsets, names, strict=True)), offset + max(length - 4, 0)
 

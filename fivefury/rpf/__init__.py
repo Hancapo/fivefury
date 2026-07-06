@@ -107,6 +107,7 @@ class RpfArchive:
     crypto: GameCrypto | None = field(default=None, repr=False, compare=False)
     _source_bytes: bytes | None = field(default=None, repr=False, compare=False)
     _source_file: Optional[Path] = field(default=None, repr=False, compare=False)
+    _source_handle: Optional[BinaryIO] = field(default=None, init=False, repr=False, compare=False)
     _index: dict[str, RpfEntry] = field(default_factory=dict, init=False, repr=False, compare=False)
     _index_dirty: bool = field(default=False, init=False, repr=False, compare=False)
 
@@ -168,10 +169,27 @@ class RpfArchive:
         if self._source_bytes is not None:
             return self._source_bytes[offset : offset + size]
         if self._source_file is not None:
-            with self._source_file.open("rb") as fh:
-                fh.seek(offset)
-                return fh.read(size)
+            fh = self._source_handle
+            if fh is None or fh.closed:
+                fh = self._source_file.open("rb")
+                self._source_handle = fh
+            fh.seek(offset)
+            return fh.read(size)
         raise ValueError("Archive has no readable source")
+
+    def close(self) -> None:
+        """Release the cached read handle on the source file, if any."""
+        if self._source_handle is not None:
+            self._source_handle.close()
+            self._source_handle = None
+        for child in self.children:
+            child.close()
+
+    def __enter__(self) -> "RpfArchive":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
 
     def _attach_archive(self, entry: RpfEntry) -> None:
         entry._archive = self
@@ -296,10 +314,10 @@ class RpfArchive:
                     dir_entry.directories.append(child)
                     build_dir(child, child.path)
                 else:
-                    if child.name.lower().endswith(".ysc"):
+                    if child.name_lower.endswith(".ysc"):
                         child.is_encrypted = True
                     dir_entry.files.append(child)
-                    if child.name.lower().endswith(".rpf"):
+                    if child.name_lower.endswith(".rpf"):
                         try:
                             nested_bytes = child.read(logical=True)
                             nested = RpfArchive.from_bytes(
@@ -460,7 +478,8 @@ class RpfArchive:
         built: list[str] = []
         for segment in segments:
             built.append(segment)
-            found = next((d for d in current.directories if d.name_lower == segment.lower()), None)
+            segment_lower = segment.lower()
+            found = next((d for d in current.directories if d.name_lower == segment_lower), None)
             if found is None:
                 found = RpfDirectoryEntry(name=segment, path="/".join(built), parent=current, _archive=self)
                 current.directories.append(found)
@@ -473,7 +492,8 @@ class RpfArchive:
             return self.root
         parent_path, leaf = normalized.rsplit("/", 1) if "/" in normalized else ("", normalized)
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
-        existing = next((d for d in parent.directories if d.name_lower == leaf.lower()), None)
+        leaf_lower = leaf.lower()
+        existing = next((d for d in parent.directories if d.name_lower == leaf_lower), None)
         if existing is not None:
             return existing
         entry = RpfDirectoryEntry(name=leaf, path=normalized, parent=parent, _archive=self)
@@ -485,7 +505,8 @@ class RpfArchive:
         normalized = _normalize_path(path)
         parent_path, leaf = normalized.rsplit("/", 1) if "/" in normalized else ("", normalized)
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
-        entry = next((f for f in parent.files if f.name_lower == leaf.lower()), None)
+        leaf_lower = leaf.lower()
+        entry = next((f for f in parent.files if f.name_lower == leaf_lower), None)
         if isinstance(entry, RpfBinaryFileEntry) and entry.child_archive is not None:
             return entry, entry.child_archive
         if entry is None:
@@ -505,10 +526,11 @@ class RpfArchive:
         normalized = _normalize_path(path)
         parent_path, leaf = normalized.rsplit("/", 1) if "/" in normalized else ("", normalized)
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
-        existing = next((f for f in parent.files if f.name_lower == leaf.lower()), None)
+        leaf_lower = leaf.lower()
+        existing = next((f for f in parent.files if f.name_lower == leaf_lower), None)
         if existing is not None:
             parent.files.remove(existing)
-        if leaf.lower().endswith(".rpf") and data[:4] == struct.pack("<I", RPF_MAGIC):
+        if leaf_lower.endswith(".rpf") and data[:4] == struct.pack("<I", RPF_MAGIC):
             entry = RpfBinaryFileEntry(name=leaf, path=normalized, parent=parent, file_uncompressed_size=len(data), file_size=0, _archive=self, _data=data)
             child_prefix = f"{self.prefix}/{normalized}".strip("/") if self.prefix else normalized
             child = RpfArchive.from_bytes(
@@ -522,7 +544,7 @@ class RpfArchive:
             child.parent_file_entry = entry
             entry.child_archive = child
             self.children.append(child)
-        elif leaf.lower().endswith(".ymap") or leaf.lower().endswith(".ytyp") or _is_rsc7(data):
+        elif leaf_lower.endswith((".ymap", ".ytyp")) or _is_rsc7(data):
             if _is_rsc7(data):
                 _, sys_flags, gfx_flags, _ = _split_rsc7(data)
                 entry = RpfResourceFileEntry(
@@ -633,14 +655,14 @@ class RpfArchive:
             return entry.read_raw()
         raise ValueError(f"Missing payload for {entry.full_path}")
 
-    def _encode_binary_entry(self, entry: RpfBinaryFileEntry, data: bytes, offset_blocks: int) -> bytes:
+    def _encode_binary_entry(self, entry: RpfBinaryFileEntry, data: bytes, offset_blocks: int) -> tuple[bytes, bytes]:
         entry.file_offset = offset_blocks
         if entry.file_size == 0:
             entry.file_uncompressed_size = len(data)
         low = (entry.name_offset & 0xFFFF) | ((entry.file_size & 0xFFFFFF) << 16) | ((entry.file_offset & 0xFFFFFF) << 40)
         return struct.pack("<QII", low, entry.file_uncompressed_size, 1 if entry.is_encrypted else 0), data
 
-    def _encode_resource_entry(self, entry: RpfResourceFileEntry, data: bytes, offset_blocks: int) -> bytes:
+    def _encode_resource_entry(self, entry: RpfResourceFileEntry, data: bytes, offset_blocks: int) -> tuple[bytes, bytes]:
         entry.file_offset = offset_blocks
         if _is_rsc7(data):
             _, sys_flags, gfx_flags, _ = _split_rsc7(data)
@@ -699,13 +721,13 @@ class RpfArchive:
         out.extend(struct.pack("<4I", RPF_MAGIC, entry_count, len(names), self.encryption))
         out.extend(encoded_entries)
         out.extend(names)
-        out.extend(b"\x00" * ((data_start - len(out))))
+        out.extend(bytes(data_start - len(out)))
         for offset_blocks, stored in payloads:
             desired = offset_blocks * RPF_BLOCK_SIZE
             if len(out) < desired:
-                out.extend(b"\x00" * (desired - len(out)))
+                out.extend(bytes(desired - len(out)))
             out.extend(stored)
-            out.extend(b"\x00" * ((_ceil_div(len(out), RPF_BLOCK_SIZE) * RPF_BLOCK_SIZE) - len(out)))
+            out.extend(bytes((_ceil_div(len(out), RPF_BLOCK_SIZE) * RPF_BLOCK_SIZE) - len(out)))
         self._rebuild_index()
         return bytes(out)
 
@@ -834,11 +856,3 @@ __all__ = [
     "rpf_to_zip",
     "zip_to_rpf",
 ]
-
-
-
-
-
-
-
-

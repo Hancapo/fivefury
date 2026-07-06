@@ -98,10 +98,14 @@ def rpf_to_zip(
     mode: "RpfExportMode | None" = None,
     recurse_nested: bool = True,
 ) -> bytes:
-    from . import RpfExportMode
+    from . import RpfArchive, RpfExportMode
 
     archive = _coerce_archive(rpf_source)
-    return archive.to_zip(output, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
+    try:
+        return archive.to_zip(output, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
+    finally:
+        if not isinstance(rpf_source, RpfArchive):
+            archive.close()
 
 
 def rpf_to_folder(
@@ -111,10 +115,14 @@ def rpf_to_folder(
     mode: "RpfExportMode | None" = None,
     recurse_nested: bool = True,
 ) -> list[Path]:
-    from . import RpfExportMode
+    from . import RpfArchive, RpfExportMode
 
     archive = _coerce_archive(rpf_source)
-    return archive.to_folder(output_dir, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
+    try:
+        return archive.to_folder(output_dir, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
+    finally:
+        if not isinstance(rpf_source, RpfArchive):
+            archive.close()
 
 
 def zip_to_rpf(
@@ -155,5 +163,3 @@ __all__ = [
     "_insert_file_path",
     "_zip_to_rpf",
 ]
-
-

@@ -89,7 +89,7 @@ std::uint32_t read_u32_le(const std::uint8_t* data) noexcept;
 std::uint64_t read_u64_le(const std::uint8_t* data) noexcept;
 void write_u32_le(std::uint32_t value, std::uint8_t* out) noexcept;
 std::uint32_t get_resource_size_from_flags(std::uint32_t flags) noexcept;
-std::int32_t guess_kind(std::string_view path) noexcept;
+std::int32_t guess_kind(std::string_view path);
 void log_scan(ScanLogFn log_fn, void* log_context, std::string_view message);
 std::string read_name(const std::vector<std::uint8_t>& names_data, std::uint32_t offset);
 bool is_rsc7(const std::vector<std::uint8_t>& data) noexcept;

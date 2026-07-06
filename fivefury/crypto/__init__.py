@@ -41,8 +41,8 @@ class GameCrypto:
     ng_blob: bytes = b""
     awc_key: tuple[int, int, int, int] | None = None
     magic_path: str = ""
-    _aes: _AesEcbCipher = field(init=False, repr=False, compare=False)
-    _ng_subkeys: tuple[tuple[tuple[int, int, int, int], ...], ...] = field(init=False, repr=False, compare=False)
+    _aes: _AesEcbCipher | None = field(default=None, init=False, repr=False, compare=False)
+    _ng_subkeys: tuple[tuple[tuple[int, int, int, int], ...], ...] | None = field(default=None, init=False, repr=False, compare=False)
     _native_context: object | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -51,14 +51,6 @@ class GameCrypto:
         self.ng_tables = tuple(tuple(tuple(table) for table in round_tables) for round_tables in self.ng_tables)
         self.ng_blob = bytes(self.ng_blob)
         self.awc_key = tuple(int(value) & 0xFFFFFFFF for value in self.awc_key) if self.awc_key is not None else None
-        self._aes = _AesEcbCipher(self.aes_key)
-        self._ng_subkeys = tuple(
-            tuple(
-                struct.unpack_from("<4I", key, index * 16)
-                for index in range(17)
-            )
-            for key in self.ng_keys
-        )
 
     @classmethod
     def from_aes_key(cls, aes_key: bytes | str, *, magic_path: str | Path | None = None) -> "GameCrypto":
@@ -154,14 +146,27 @@ class GameCrypto:
         return cls.from_aes_key(aes_key, magic_path=magic_path)
 
     def decrypt_aes(self, data: bytes) -> bytes:
+        if self._aes is None:
+            self._aes = _AesEcbCipher(self.aes_key)
         return self._aes.decrypt(data)
+
+    def _get_ng_subkeys(self) -> tuple[tuple[tuple[int, int, int, int], ...], ...]:
+        if self._ng_subkeys is None:
+            self._ng_subkeys = tuple(
+                tuple(
+                    struct.unpack_from("<4I", key, index * 16)
+                    for index in range(17)
+                )
+                for key in self.ng_keys
+            )
+        return self._ng_subkeys
 
     def decrypt_ng(self, data: bytes, name: str, length: int) -> bytes:
         if not data:
             return b""
         key_seed = (jenk_hash(name) + (int(length) & 0xFFFFFFFF) + 61) & 0xFFFFFFFF
         key_index = key_seed % 0x65
-        subkeys = self._ng_subkeys[key_index]
+        subkeys = self._get_ng_subkeys()[key_index]
         aligned = len(data) - (len(data) % 16)
         if aligned <= 0:
             return bytes(data)
@@ -196,7 +201,7 @@ class GameCrypto:
         clone.ng_blob = self.ng_blob
         clone.awc_key = self.awc_key
         clone.magic_path = self.magic_path
-        clone._aes = _AesEcbCipher(self.aes_key)
+        clone._aes = None
         clone._ng_subkeys = self._ng_subkeys
         clone._native_context = self._native_context
         return clone
@@ -306,7 +311,3 @@ __all__ = [
     "set_game_crypto",
     "_build_windows_aes_decryptor",
 ]
-
-
-
-

@@ -75,11 +75,10 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
 
 
 def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.UNKNOWN) -> GameFileType:
-    name = Path(str(path)).name.lower()
-    if name == "gtxd.meta":
+    parsed = Path(str(path))
+    if parsed.name.lower() == "gtxd.meta":
         return GameFileType.GTXD
-    ext = Path(str(path)).suffix.lower()
-    return _FILE_TYPE_MAP.get(ext, default)
+    return _FILE_TYPE_MAP.get(parsed.suffix.lower(), default)
 
 
 @dataclass(slots=True)

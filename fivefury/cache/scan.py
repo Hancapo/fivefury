@@ -75,10 +75,8 @@ def _asset_category_mask(path: str | Path) -> int:
 
 
 def _normalize_folder_prefix(value: str | Path) -> str:
-    text = str(value).replace("\\", "/").strip().strip("/").lower()
-    while "//" in text:
-        text = text.replace("//", "/")
-    return text
+    text = str(value).replace("\\", "/").strip().lower()
+    return "/".join(filter(None, text.split("/")))
 
 
 def _coerce_folder_prefixes(value: str | Path | list[str] | tuple[str, ...] | None) -> tuple[str, ...]:

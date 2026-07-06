@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace fivefury_native::rpf_internal {
@@ -16,17 +17,21 @@ std::string ascii_lower(std::string text) {
 }
 
 std::string normalize_path(std::string value) {
-    std::replace(value.begin(), value.end(), '\\', '/');
-    while (value.find("//") != std::string::npos) {
-        value.replace(value.find("//"), 2, "/");
+    std::string out;
+    out.reserve(value.size());
+    for (char ch : value) {
+        if (ch == '\\') {
+            ch = '/';
+        }
+        if (ch == '/' && (out.empty() || out.back() == '/')) {
+            continue;
+        }
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
     }
-    while (!value.empty() && value.front() == '/') {
-        value.erase(value.begin());
+    if (!out.empty() && out.back() == '/') {
+        out.pop_back();
     }
-    while (!value.empty() && value.back() == '/') {
-        value.pop_back();
-    }
-    return ascii_lower(std::move(value));
+    return out;
 }
 
 std::string join_path(std::string_view lhs, std::string_view rhs) {
@@ -154,65 +159,22 @@ std::uint32_t get_resource_size_from_flags(std::uint32_t flags) noexcept {
     return base_size * (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8);
 }
 
-std::int32_t guess_kind(std::string_view path) noexcept {
+std::int32_t guess_kind(std::string_view path) {
     constexpr std::int32_t UNKNOWN = -1;
-    constexpr std::int32_t YDD = 0;
-    constexpr std::int32_t YDR = 1;
-    constexpr std::int32_t YFT = 2;
-    constexpr std::int32_t YMAP = 3;
-    constexpr std::int32_t YMF = 4;
-    constexpr std::int32_t YMT = 5;
-    constexpr std::int32_t YTD = 6;
-    constexpr std::int32_t YTYP = 7;
-    constexpr std::int32_t YBN = 8;
-    constexpr std::int32_t YCD = 9;
-    constexpr std::int32_t YPT = 10;
-    constexpr std::int32_t YND = 11;
-    constexpr std::int32_t YNV = 12;
-    constexpr std::int32_t REL = 13;
-    constexpr std::int32_t YWR = 14;
-    constexpr std::int32_t YVR = 15;
-    constexpr std::int32_t GTXD = 16;
-    constexpr std::int32_t AWC = 17;
-    constexpr std::int32_t YED = 25;
-    constexpr std::int32_t YLD = 26;
-    constexpr std::int32_t YFD = 27;
-    constexpr std::int32_t MRF = 30;
-    constexpr std::int32_t YPDB = 32;
-    constexpr std::int32_t CUT = 33;
-    constexpr std::int32_t RPF = 100;
+    static const std::unordered_map<std::string_view, std::int32_t> kind_by_extension = {
+        {".ydd", 0},   {".ydr", 1},  {".yft", 2},  {".ymap", 3}, {".ymf", 4},
+        {".ymt", 5},   {".ytd", 6},  {".ytyp", 7}, {".ybn", 8},  {".ycd", 9},
+        {".ypt", 10},  {".ynd", 11}, {".ynv", 12}, {".rel", 13}, {".ywr", 14},
+        {".yvr", 15},  {".gxt2", 16}, {".awc", 17}, {".yed", 25}, {".yld", 26},
+        {".yfd", 27},  {".mrf", 30}, {".ypdb", 32}, {".cut", 33}, {".rpf", 100},
+    };
 
     const auto dot = path.find_last_of('.');
     if (dot == std::string_view::npos) {
         return UNKNOWN;
     }
-    const auto ext = path.substr(dot);
-    if (ext == ".ymap") return YMAP;
-    if (ext == ".ymf") return YMF;
-    if (ext == ".ymt") return YMT;
-    if (ext == ".ytyp") return YTYP;
-    if (ext == ".ytd") return YTD;
-    if (ext == ".ydr") return YDR;
-    if (ext == ".ydd") return YDD;
-    if (ext == ".yft") return YFT;
-    if (ext == ".ybn") return YBN;
-    if (ext == ".ycd") return YCD;
-    if (ext == ".ypt") return YPT;
-    if (ext == ".ynd") return YND;
-    if (ext == ".ynv") return YNV;
-    if (ext == ".rel") return REL;
-    if (ext == ".ywr") return YWR;
-    if (ext == ".yvr") return YVR;
-    if (ext == ".gxt2") return GTXD;
-    if (ext == ".awc") return AWC;
-    if (ext == ".yed") return YED;
-    if (ext == ".yld") return YLD;
-    if (ext == ".yfd") return YFD;
-    if (ext == ".mrf") return MRF;
-    if (ext == ".ypdb") return YPDB;
-    if (ext == ".cut") return CUT;
-    if (ext == ".rpf") return RPF;
-    return UNKNOWN;
+    const auto it = kind_by_extension.find(path.substr(dot));
+    return it == kind_by_extension.end() ? UNKNOWN : it->second;
 }
 
 void log_scan(ScanLogFn log_fn, void* log_context, std::string_view message) {

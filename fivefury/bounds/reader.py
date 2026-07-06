@@ -85,17 +85,16 @@ def _read_vertices(
     end = start + (count * 6)
     if end > len(system_data):
         raise ValueError("vertex array is truncated")
-    vertices: list[tuple[float, float, float]] = []
-    for index in range(count):
-        x, y, z = struct.unpack_from("<3h", system_data, start + (index * 6))
-        vertices.append(
-            (
-                center_geom[0] + (x * quantum[0]),
-                center_geom[1] + (y * quantum[1]),
-                center_geom[2] + (z * quantum[2]),
-            )
+    center_x, center_y, center_z = center_geom
+    quantum_x, quantum_y, quantum_z = quantum
+    return [
+        (
+            center_x + (x * quantum_x),
+            center_y + (y * quantum_y),
+            center_z + (z * quantum_z),
         )
-    return vertices
+        for x, y, z in struct.iter_unpack("<3h", system_data[start:end])
+    ]
 
 
 def _decode_polygon(index: int, raw: bytes) -> BoundPolygon:
@@ -212,12 +211,9 @@ def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
         end = start + (nodes_count * 16)
         if end > len(system_data):
             raise ValueError("BVH node array is truncated")
-        for index in range(nodes_count):
-            qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, item_id, item_count = struct.unpack_from(
-                "<6hHH",
-                system_data,
-                start + (index * 16),
-            )
+        for qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, item_id, item_count in struct.iter_unpack(
+            "<6hHH", system_data[start:end]
+        ):
             nodes.append(
                 BoundBvhNode(
                     minimum=_dequantize_bvh_point((qmin_x, qmin_y, qmin_z), center, quantum),
@@ -233,12 +229,9 @@ def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
         end = start + (trees_count * 16)
         if end > len(system_data):
             raise ValueError("BVH tree array is truncated")
-        for index in range(trees_count):
-            qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, node_index, node_index2 = struct.unpack_from(
-                "<6hHH",
-                system_data,
-                start + (index * 16),
-            )
+        for qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, node_index, node_index2 in struct.iter_unpack(
+            "<6hHH", system_data[start:end]
+        ):
             trees.append(
                 BoundBvhTree(
                     minimum=_dequantize_bvh_point((qmin_x, qmin_y, qmin_z), center, quantum),
@@ -267,8 +260,7 @@ def _read_materials(pointer: int, count: int, system_data: bytes) -> list[BoundM
     if end > len(system_data):
         raise ValueError("material array is truncated")
     materials: list[BoundMaterial] = []
-    for index in range(count):
-        data1, data2 = struct.unpack_from("<II", system_data, start + (index * 8))
+    for data1, data2 in struct.iter_unpack("<II", system_data[start:end]):
         materials.append(
             BoundMaterial(
                 type=data1 & 0xFF,
@@ -292,11 +284,10 @@ def _read_material_colours(pointer: int, count: int, system_data: bytes) -> list
     end = start + (count * 4)
     if end > len(system_data):
         raise ValueError("material colour array is truncated")
-    colours: list[BoundMaterialColor] = []
-    for index in range(count):
-        r, g, b, a = struct.unpack_from("<4B", system_data, start + (index * 4))
-        colours.append(BoundMaterialColor(r=r, g=g, b=b, a=a))
-    return colours
+    return [
+        BoundMaterialColor(r=r, g=g, b=b, a=a)
+        for r, g, b, a in struct.iter_unpack("<4B", system_data[start:end])
+    ]
 
 
 def _read_bytes(pointer: int, count: int, system_data: bytes) -> list[int]:

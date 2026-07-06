@@ -40,7 +40,12 @@ PyMethodDef module_methods[] = {
     {"bounds_chunk_triangles", mod_bounds_chunk_triangles, METH_VARARGS, nullptr},
     {"bounds_build_octants", mod_bounds_build_octants, METH_VARARGS, nullptr},
     {"bounds_build_bvh", mod_bounds_build_bvh, METH_VARARGS, nullptr},
+    {"bounds_quantize_vertices", mod_bounds_quantize_vertices, METH_VARARGS, nullptr},
+    {"bounds_indexed_triangle_areas", mod_bounds_indexed_triangle_areas, METH_VARARGS, nullptr},
+    {"bounds_collect_triangles", mod_bounds_collect_triangles, METH_VARARGS, nullptr},
+    {"ydr_pack_vertex_buffer", mod_ydr_pack_vertex_buffer, METH_VARARGS, nullptr},
     {"resource_layout_sections", mod_resource_layout_sections, METH_VARARGS, nullptr},
+    {"resource_pack_block_sizes", mod_resource_pack_block_sizes, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 

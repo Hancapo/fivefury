@@ -161,27 +161,24 @@ private:
 }  // namespace
 
 struct NativeCryptoContext::Impl {
-    explicit Impl(std::vector<std::uint8_t> aes_key_bytes, std::vector<std::uint8_t> ng_blob_bytes)
-#ifdef _WIN32
-        : aes(std::make_unique<AesEcbDecryptor>(aes_key_bytes))
-#endif
-    {
+    explicit Impl(std::vector<std::uint8_t> aes_key_bytes, std::vector<std::uint8_t> ng_blob_bytes) {
         if (aes_key_bytes.size() != 32U) {
             throw std::invalid_argument("AES key must be 32 bytes");
         }
         if (ng_blob_bytes.size() < NG_BLOB_SIZE) {
             throw std::invalid_argument("NG blob is truncated");
         }
-        aes_key = std::move(aes_key_bytes);
-        ng_blob = std::move(ng_blob_bytes);
+#ifdef _WIN32
+        aes = std::make_unique<AesEcbDecryptor>(aes_key_bytes);
+#endif
         ng_tables.resize(NG_TABLES_SIZE / sizeof(std::uint32_t));
-        const auto* tables_data = ng_blob.data() + NG_KEYS_SIZE;
+        const auto* tables_data = ng_blob_bytes.data() + NG_KEYS_SIZE;
         for (std::size_t i = 0; i < ng_tables.size(); ++i) {
             ng_tables[i] = read_u32_le(tables_data + (i * 4U));
         }
         ng_subkeys.resize(101U * 17U * 4U);
         for (std::size_t key_index = 0; key_index < 101U; ++key_index) {
-            const auto* key_base = ng_blob.data() + (key_index * 272U);
+            const auto* key_base = ng_blob_bytes.data() + (key_index * 272U);
             for (std::size_t round_index = 0; round_index < 17U; ++round_index) {
                 const auto* round_base = key_base + (round_index * 16U);
                 const auto out_base = ((key_index * 17U) + round_index) * 4U;
@@ -293,8 +290,6 @@ struct NativeCryptoContext::Impl {
         return ng_tables[base + index];
     }
 
-    std::vector<std::uint8_t> aes_key;
-    std::vector<std::uint8_t> ng_blob;
     std::vector<std::uint32_t> ng_tables;
     std::vector<std::uint32_t> ng_subkeys;
 #ifdef _WIN32

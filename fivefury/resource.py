@@ -136,10 +136,6 @@ def get_resource_flags_from_size_adaptive(size: int, version: int) -> int:
                 raise ValueError("resource size is too large to encode into RSC7 flags") from exc
 
 
-def _rsc7_block_pad(position: int) -> int:
-    return (16 - (position % 16)) % 16
-
-
 def get_resource_flags_from_block_sizes(
     block_sizes: list[int],
     version: int,
@@ -150,98 +146,13 @@ def get_resource_flags_from_block_sizes(
     """Pack RSC blocks into page flags using CodeWalker's AssignPositions2 strategy."""
     if not block_sizes:
         return (version & 0xF) << 28
-
     sizes = [max(0, int(block_size)) for block_size in block_sizes]
-    max_page_size_mult = 16
-    max_block_size = max(sizes)
-    min_block_size = min(sizes)
-    base_shift = 0
-    base_size = 0x2000
-    while ((base_size < min_block_size) or ((base_size * max_page_size_mult) < max_block_size)) and base_shift < 0xF:
-        base_shift += 1
-        base_size = 0x2000 << base_shift
-    if (base_size * max_page_size_mult) < max_block_size:
-        raise ValueError("unable to fit the largest resource block into RSC7 page flags")
-
-    root_block = sizes[0] if is_system and sizes else None
-    sorted_blocks = list(sizes[1:] if root_block is not None else sizes)
-    sorted_blocks.sort(reverse=True)
-    if root_block is not None:
-        sorted_blocks.insert(0, root_block)
-
-    while True:
-        page_counts = [0] * 5
-        page_sizes: list[list[int] | None] = [None] * 5
-
-        largest_page_size_index = 0
-        largest_page_size = base_size
-        while largest_page_size < max_block_size:
-            largest_page_size_index += 1
-            largest_page_size *= 2
-
-        for block_index, block_size in enumerate(sorted_blocks):
-            if block_index == 0:
-                page_sizes[largest_page_size_index] = [block_size]
-                continue
-
-            page_size_index = 0
-            page_size = base_size
-            while (block_size > page_size) and (page_size_index < largest_page_size_index):
-                page_size_index += 1
-                page_size *= 2
-
-            found = False
-            test_page_size_index = page_size_index
-            test_page_size = page_size
-            while not found and test_page_size_index <= largest_page_size_index:
-                pages = page_sizes[test_page_size_index]
-                if pages is not None:
-                    for page_index, used_size in enumerate(pages):
-                        candidate_offset = used_size + _rsc7_block_pad(used_size)
-                        candidate_size = candidate_offset + block_size
-                        if candidate_size <= test_page_size:
-                            pages[page_index] = candidate_size
-                            found = True
-                            break
-                test_page_size_index += 1
-                test_page_size *= 2
-            if found:
-                continue
-
-            pages = page_sizes[page_size_index]
-            if pages is None:
-                pages = []
-                page_sizes[page_size_index] = pages
-            pages.append(block_size)
-
-        test_ok = True
-        total_page_count = 0
-        for index, pages in enumerate(page_sizes):
-            page_count = len(pages) if pages is not None else 0
-            page_counts[index] = page_count
-            total_page_count += page_count
-        if total_page_count > max_page_count:
-            test_ok = False
-        if page_counts[0] > 0x7F:
-            test_ok = False
-        if page_counts[1] > 0x3F:
-            test_ok = False
-        if page_counts[2] > 0xF:
-            test_ok = False
-        if page_counts[3] > 0x3:
-            test_ok = False
-        if page_counts[4] > 0x1:
-            test_ok = False
-        if test_ok:
-            return get_resource_flags_from_page_counts(
-                [page_counts[4], page_counts[3], page_counts[2], page_counts[1], page_counts[0], 0, 0, 0, 0],
-                version,
-                base_shift=base_shift,
-            )
-        if base_shift >= 0xF:
-            raise ValueError("unable to pack resource blocks into RSC7 page flags")
-        base_shift += 1
-        base_size = 0x2000 << base_shift
+    return _native_backend.resource_pack_block_sizes(
+        sizes,
+        version,
+        max_page_count=max_page_count,
+        is_system=is_system,
+    )
 
 
 def get_resource_flags_from_block_layout(
@@ -492,7 +403,7 @@ def read_virtual_pointer_array(
     end = start + (count * 8)
     if end > len(data):
         raise ValueError("pointer array is truncated")
-    return [struct.unpack_from("<Q", data, start + (index * 8))[0] for index in range(count)]
+    return list(struct.unpack_from(f"<{count}Q", data, start))
 
 
 class ResourceWriter:
@@ -505,7 +416,7 @@ class ResourceWriter:
 
     def ensure(self, size: int) -> None:
         if size > len(self.data):
-            self.data.extend(b"\x00" * (size - len(self.data)))
+            self.data.extend(bytes(size - len(self.data)))
 
     def alloc(self, size: int, alignment: int = 16, *, relocate_pointers: bool = True) -> int:
         offset = align(self.cursor, alignment)

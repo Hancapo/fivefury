@@ -10,6 +10,8 @@ from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFile
 from fivefury.resource import ResourceBlockSpan, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
 from fivefury.ydr import build_ydr_bytes
 from fivefury.ydr import YdrMaterialDescriptor
+from fivefury.ydr.defs import VertexComponentType, VertexSemantic
+from fivefury.ydr.reader import _decode_vertices
 from tests.helpers import write_bytes
 
 _DAT_VIRTUAL_BASE = 0x50000000
@@ -281,6 +283,50 @@ def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
     assert mesh.texcoords[0] == [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
     assert mesh.material is material
     assert mesh.material.primary_texture_name == "test_diffuse"
+
+
+def test_ydr_vertex_decoder_preserves_second_colour_channel() -> None:
+    flags = 0
+    types_value = 0
+    for semantic, component_type in (
+        (VertexSemantic.POSITION, VertexComponentType.FLOAT3),
+        (VertexSemantic.NORMAL, VertexComponentType.FLOAT3),
+        (VertexSemantic.COLOUR0, VertexComponentType.COLOUR),
+        (VertexSemantic.COLOUR1, VertexComponentType.COLOUR),
+        (VertexSemantic.TEXCOORD0, VertexComponentType.FLOAT2),
+        (VertexSemantic.TANGENT, VertexComponentType.FLOAT4),
+    ):
+        flags |= 1 << int(semantic)
+        types_value |= int(component_type) << (int(semantic) * 4)
+
+    vertex_bytes = struct.pack(
+        "<3f3f4B4B2f4f",
+        1.0,
+        2.0,
+        3.0,
+        0.0,
+        0.0,
+        1.0,
+        255,
+        128,
+        64,
+        32,
+        7,
+        8,
+        9,
+        10,
+        0.25,
+        0.75,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+    )
+
+    decoded = _decode_vertices(vertex_bytes, 1, len(vertex_bytes), flags, types_value)
+
+    assert decoded["colours0"] == pytest.approx([(1.0, 128 / 255.0, 64 / 255.0, 32 / 255.0)])
+    assert decoded["colours1"] == pytest.approx([(7 / 255.0, 8 / 255.0, 9 / 255.0, 10 / 255.0)])
 
 
 def test_gamefilecache_parses_loose_ydr_as_renderable_model() -> None:

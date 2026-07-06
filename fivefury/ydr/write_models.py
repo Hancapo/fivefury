@@ -81,9 +81,6 @@ def prepare_model_block(
         gen9=gen9,
     )
 
-    geometry_lengths = [len(pack.mesh.bone_ids) for pack in mesh_packs]
-    base_size = model_block_size([0x98 + (8 if count > 4 else 0) + count * 2 if count else 0x98 for count in geometry_lengths])
-
     geometry_blocks: list[GeometryBlock] = []
     geometry_count = len(mesh_packs)
     cursor = 0x30 + (geometry_count * 2)

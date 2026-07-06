@@ -28,6 +28,12 @@ struct ResourceLayoutResult {
 
 std::uint64_t get_resource_size_from_flags_impl(std::uint32_t flags);
 std::uint32_t get_resource_total_page_count_impl(std::uint32_t flags);
+std::uint32_t pack_block_sizes_impl(
+    const std::vector<std::uint64_t>& block_sizes,
+    std::uint32_t version,
+    std::uint32_t max_page_count,
+    bool is_system
+);
 ResourceLayoutResult layout_resource_sections_impl(
     const std::string& system_data,
     const std::vector<ResourceBlockSpan>& system_blocks,

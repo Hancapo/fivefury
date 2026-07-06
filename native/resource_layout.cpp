@@ -180,33 +180,58 @@ ResourceSectionLayout assign_section_layout(
     }
 }
 
+using OffsetMap = std::vector<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>>;
+
+// Non-empty spans sorted by old offset; empty spans can never match a pointer.
+OffsetMap sorted_offset_map(const OffsetMap& offset_map) {
+    OffsetMap sorted;
+    sorted.reserve(offset_map.size());
+    for (const auto& entry : offset_map) {
+        if (std::get<1>(entry) != 0U) {
+            sorted.push_back(entry);
+        }
+    }
+    std::sort(sorted.begin(), sorted.end(), [](const auto& lhs, const auto& rhs) {
+        return std::get<0>(lhs) < std::get<0>(rhs);
+    });
+    return sorted;
+}
+
 std::uint64_t remap_resource_pointer(
     std::uint64_t value,
     std::uint64_t system_base,
-    const std::vector<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>>& system_map,
+    const OffsetMap& sorted_system_map,
     std::uint64_t graphics_base,
-    const std::vector<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>>& graphics_map
+    const OffsetMap& sorted_graphics_map
 ) {
     if (value == 0U) {
         return value;
     }
-    const auto remap_against = [&](std::uint64_t base, const auto& offset_map) -> std::uint64_t {
+    const auto remap_against = [&](std::uint64_t base, const OffsetMap& offset_map) -> std::uint64_t {
         if (value < base) {
             return value;
         }
         const auto relative = value - base;
-        for (const auto& [old_offset, size, new_offset] : offset_map) {
-            if (old_offset <= relative && relative < old_offset + size) {
-                return base + new_offset + (relative - old_offset);
-            }
+        auto it = std::upper_bound(
+            offset_map.begin(),
+            offset_map.end(),
+            relative,
+            [](std::uint64_t lhs, const auto& rhs) { return lhs < std::get<0>(rhs); }
+        );
+        if (it == offset_map.begin()) {
+            return value;
+        }
+        const auto& [old_offset, size, new_offset] = *std::prev(it);
+        if (relative < old_offset + size) {
+            return base + new_offset + (relative - old_offset);
         }
         return value;
     };
-    const auto system_value = remap_against(system_base, system_map);
+    const auto system_value = remap_against(system_base, sorted_system_map);
     if (system_value != value) {
         return system_value;
     }
-    return remap_against(graphics_base, graphics_map);
+    return remap_against(graphics_base, sorted_graphics_map);
 }
 
 std::uint64_t read_u64_le(const std::string& data, std::uint64_t offset) {
@@ -229,10 +254,12 @@ std::string rewrite_resource_pointers(
     std::string data,
     const std::vector<ResourceBlockSpan>& blocks,
     std::uint64_t system_base,
-    const std::vector<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>>& system_map,
+    const OffsetMap& system_map,
     std::uint64_t graphics_base,
-    const std::vector<std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>>& graphics_map
+    const OffsetMap& graphics_map
 ) {
+    const auto sorted_system_map = sorted_offset_map(system_map);
+    const auto sorted_graphics_map = sorted_offset_map(graphics_map);
     for (const auto& block : blocks) {
         if (block.offset > data.size() || block.size > data.size() - block.offset) {
             throw std::invalid_argument("resource block is out of range");
@@ -247,7 +274,7 @@ std::string rewrite_resource_pointers(
         }
         for (std::uint64_t offset = start; offset < end - 7U; offset += 8U) {
             const auto value = read_u64_le(data, offset);
-            const auto remapped = remap_resource_pointer(value, system_base, system_map, graphics_base, graphics_map);
+            const auto remapped = remap_resource_pointer(value, system_base, sorted_system_map, graphics_base, sorted_graphics_map);
             if (remapped != value) {
                 write_u64_le(data, offset, remapped);
             }
@@ -289,6 +316,20 @@ std::uint64_t get_resource_size_from_flags_impl(std::uint32_t flags) {
     const std::uint64_t s8 = ((flags >> 4U) & 0x1U) << 8U;
     const std::uint64_t base_size = 0x200ULL << (flags & 0xFU);
     return base_size * (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8);
+}
+
+std::uint32_t pack_block_sizes_impl(
+    const std::vector<std::uint64_t>& block_sizes,
+    std::uint32_t version,
+    std::uint32_t max_page_count,
+    bool is_system
+) {
+    std::vector<ResourceBlockSpan> blocks;
+    blocks.reserve(block_sizes.size());
+    for (const auto size : block_sizes) {
+        blocks.push_back(ResourceBlockSpan{0U, size, false});
+    }
+    return assign_section_layout(blocks, version, max_page_count, is_system).flags;
 }
 
 std::uint32_t get_resource_total_page_count_impl(std::uint32_t flags) {

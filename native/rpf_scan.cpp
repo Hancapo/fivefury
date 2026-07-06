@@ -64,7 +64,9 @@ void collect_records(
             const auto category_mask = rpf_internal::asset_category_mask(logical_path);
             if (child.type == rpf_internal::EntryType::Directory) {
                 if ((category_mask & skip_mask) != 0U) {
-                    rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] skip dir ") + logical_path);
+                    if (log_fn != nullptr) {
+                        rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] skip dir ") + logical_path);
+                    }
                     continue;
                 }
                 walk_dir(i, archive_path);
@@ -72,10 +74,12 @@ void collect_records(
             }
 
             if ((category_mask & skip_mask) != 0U) {
-                if (child.type == rpf_internal::EntryType::Binary && rpf_internal::ends_with(child.name_lower, ".rpf")) {
-                    rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] skip archive subtree ") + logical_path);
-                } else {
-                    rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] skip asset ") + logical_path);
+                if (log_fn != nullptr) {
+                    if (child.type == rpf_internal::EntryType::Binary && rpf_internal::ends_with(child.name_lower, ".rpf")) {
+                        rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] skip archive subtree ") + logical_path);
+                    } else {
+                        rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] skip asset ") + logical_path);
+                    }
                 }
                 continue;
             }
@@ -96,7 +100,9 @@ void collect_records(
             }
             const auto lower_name = rpf_internal::ascii_lower(rpf_internal::path_name(logical_path));
             const auto stem = rpf_internal::ascii_lower(rpf_internal::path_stem(lower_name));
-            rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] scan asset ") + logical_path);
+            if (log_fn != nullptr) {
+                rpf_internal::log_scan(log_fn, log_context, std::string("[GameFileCache] scan asset ") + logical_path);
+            }
             out_records.push_back(AssetRecordData{
                 logical_path,
                 rpf_internal::guess_kind(logical_path),

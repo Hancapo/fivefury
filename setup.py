@@ -18,6 +18,7 @@ ext_modules = [
             "native/py_index.cpp",
             "native/py_crypto.cpp",
             "native/py_rpf.cpp",
+            "native/py_vertex.cpp",
             "native/py_module.cpp",
             "native/rpf_archive.cpp",
             "native/rpf_crypto.cpp",

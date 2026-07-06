@@ -214,9 +214,7 @@ def read_gxt2(source: bytes | bytearray | memoryview | str | Path, *, path: str 
         raise ValueError("GXT2 string-block end offset is out of range")
 
     entries: list[Gxt2Entry] = []
-    for index in range(entry_count):
-        entry_offset = 8 + (index * _ENTRY_STRUCT.size)
-        key_hash, text_offset = _ENTRY_STRUCT.unpack_from(data, entry_offset)
+    for index, (key_hash, text_offset) in enumerate(_ENTRY_STRUCT.iter_unpack(data[8:table_size])):
         if text_offset < table_size + 8 or text_offset >= end_offset:
             raise ValueError(f"GXT2 text offset for entry {index} is out of range")
         entries.append(Gxt2Entry(key_hash, _read_utf8_z(data, text_offset, end_offset), offset=text_offset))

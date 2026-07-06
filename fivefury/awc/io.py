@@ -64,23 +64,23 @@ def read_awc(
         chunk_indices = list(struct.unpack_from(f"{endian}{stream_count}H", data, offset)) if stream_count else []
         offset += table_size
 
-    stream_infos: list[tuple[int, int]] = []
     if offset + (stream_count * 4) > len(data):
         raise ValueError("AWC stream info table is truncated")
-    for _ in range(stream_count):
-        raw = struct.unpack_from(f"{endian}I", data, offset)[0]
-        stream_infos.append((raw & AWC_STREAM_ID_MASK, raw >> 29))
-        offset += 4
+    stream_infos = [
+        (raw & AWC_STREAM_ID_MASK, raw >> 29)
+        for raw in struct.unpack_from(f"{endian}{stream_count}I", data, offset)
+    ]
+    offset += stream_count * 4
 
     total_chunks = sum(chunk_count for _, chunk_count in stream_infos)
     if offset + (total_chunks * 8) > len(data):
         raise ValueError("AWC chunk info table is truncated")
 
-    chunk_infos: list[AwcChunkInfo] = []
-    for _ in range(total_chunks):
-        raw = struct.unpack_from(f"{endian}Q", data, offset)[0]
-        chunk_infos.append(AwcChunkInfo.from_raw(raw))
-        offset += 8
+    chunk_infos = [
+        AwcChunkInfo.from_raw(raw)
+        for raw in struct.unpack_from(f"{endian}{total_chunks}Q", data, offset)
+    ]
+    offset += total_chunks * 8
 
     if data_offset > len(data):
         raise ValueError("AWC data offset points outside the file")

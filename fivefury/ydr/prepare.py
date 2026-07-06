@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 import struct
 from pathlib import Path
 from typing import TYPE_CHECKING, Mapping, Sequence, TypeVar
@@ -11,6 +10,7 @@ from .defs import COMPONENT_SIZES, LOD_ORDER, VertexComponentType, VertexSemanti
 from .gen9_shader_enums import YdrGen9Shader
 from .shader_enums import YdrShader
 from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition, resolve_shader_reference
+from .. import _native as _native_backend
 from ..vector import vec_cross, vec_dot, vec_normalize, vec_sub
 
 if TYPE_CHECKING:
@@ -225,25 +225,6 @@ def _generate_tangents(
     return tangents
 
 
-def _clamp_byte(value: float) -> int:
-    return max(0, min(255, int(round(float(value) * 255.0))))
-
-
-def _encode_colour(value: tuple[float, float, float, float]) -> bytes:
-    return bytes((_clamp_byte(value[0]), _clamp_byte(value[1]), _clamp_byte(value[2]), _clamp_byte(value[3])))
-
-
-def _encode_skin_colour_order(value: Sequence[float | int]) -> bytes:
-    return bytes(
-        (
-            int(value[2]) & 0xFF,
-            int(value[1]) & 0xFF,
-            int(value[0]) & 0xFF,
-            int(value[3]) & 0xFF,
-        )
-    )
-
-
 def _semantic_enum(name: str) -> VertexSemantic:
     key = name.upper()
     return VertexSemantic[_SEMANTIC_ALIASES.get(key, key)]
@@ -286,40 +267,6 @@ def _stride_from_flags_types(flags: int, types_value: int) -> int:
     return sum(_component_size(component_type) for _semantic, component_type in _semantics_from_flags_types(flags, types_value))
 
 
-def _clamp_signed_byte(value: float) -> int:
-    return max(-127, min(127, int(round(float(value) * 127.0))))
-
-
-def _encode_component(value: Sequence[float | int], component_type: VertexComponentType) -> bytes:
-    if component_type is VertexComponentType.NOTHING:
-        return b""
-    if component_type is VertexComponentType.FLOAT:
-        return struct.pack("<f", float(value[0]))
-    if component_type is VertexComponentType.FLOAT2:
-        return struct.pack("<2f", float(value[0]), float(value[1]))
-    if component_type is VertexComponentType.FLOAT3:
-        return struct.pack("<3f", float(value[0]), float(value[1]), float(value[2]))
-    if component_type is VertexComponentType.FLOAT4:
-        return struct.pack("<4f", float(value[0]), float(value[1]), float(value[2]), float(value[3]))
-    if component_type is VertexComponentType.HALF2:
-        return struct.pack("<2e", float(value[0]), float(value[1]))
-    if component_type is VertexComponentType.HALF4:
-        return struct.pack("<4e", float(value[0]), float(value[1]), float(value[2]), float(value[3]))
-    if component_type is VertexComponentType.COLOUR:
-        return _encode_colour((float(value[0]), float(value[1]), float(value[2]), float(value[3])))
-    if component_type is VertexComponentType.UBYTE4:
-        return bytes((int(value[0]) & 0xFF, int(value[1]) & 0xFF, int(value[2]) & 0xFF, int(value[3]) & 0xFF))
-    if component_type is VertexComponentType.RGBA8_SNORM:
-        return struct.pack(
-            "<4b",
-            _clamp_signed_byte(float(value[0])),
-            _clamp_signed_byte(float(value[1])),
-            _clamp_signed_byte(float(value[2])),
-            _clamp_signed_byte(float(value[3])),
-        )
-    raise ValueError(f"Unsupported vertex component type: {component_type}")
-
-
 def _select_layout(shader_definition: ShaderDefinition, *, used_uv_indices: set[int], skinned: bool = False) -> ShaderLayoutDefinition:
     for layout in shader_definition.layouts:
         semantics = {semantic.lower() for semantic in layout.semantics}
@@ -358,45 +305,18 @@ def _encode_vertex_bytes(
         types_value = (types_value & ~(0xF << shift)) | (int(component_type) << shift)
     stride = _stride_from_flags_types(flags, types_value)
 
-    chunks = bytearray()
-    for vertex_index in range(len(positions)):
-        for semantic, component_type in semantics:
-            if semantic is VertexSemantic.POSITION:
-                value = positions[vertex_index]
-            elif semantic is VertexSemantic.BLEND_WEIGHTS and blend_weights:
-                value = blend_weights[vertex_index]
-                if component_type is VertexComponentType.COLOUR:
-                    chunks.extend(
-                        bytes(
-                            (
-                                _clamp_byte(value[2]),
-                                _clamp_byte(value[1]),
-                                _clamp_byte(value[0]),
-                                _clamp_byte(value[3]),
-                            )
-                        )
-                    )
-                    continue
-            elif semantic is VertexSemantic.BLEND_INDICES and blend_indices:
-                value = blend_indices[vertex_index]
-                if component_type in (VertexComponentType.COLOUR, VertexComponentType.UBYTE4, VertexComponentType.RGBA8_SNORM):
-                    chunks.extend(_encode_skin_colour_order(value))
-                    continue
-            elif semantic is VertexSemantic.NORMAL:
-                value = normals[vertex_index]
-            elif semantic is VertexSemantic.COLOUR0:
-                value = colours0[vertex_index]
-            elif semantic is VertexSemantic.COLOUR1:
-                value = colours1[vertex_index]
-            elif VertexSemantic.TEXCOORD0 <= semantic <= VertexSemantic.TEXCOORD7:
-                channel_index = int(semantic) - int(VertexSemantic.TEXCOORD0)
-                value = texcoords[channel_index][vertex_index]
-            elif semantic is VertexSemantic.TANGENT:
-                value = tangents[vertex_index]
-            else:
-                raise ValueError(f"Unsupported vertex semantic: {semantic}")
-            chunks.extend(_encode_component(value, component_type))
-    return flags, types_value, stride, bytes(chunks)
+    packed = _native_backend._ydr_pack_vertex_buffer(
+        [(int(semantic), int(component_type)) for semantic, component_type in semantics],
+        positions,
+        normals,
+        texcoords,
+        tangents,
+        colours0,
+        colours1,
+        blend_weights if blend_weights else None,
+        blend_indices if blend_indices else None,
+    )
+    return flags, types_value, stride, packed
 
 
 def _encode_vertex_bytes_from_layout(
@@ -476,13 +396,9 @@ def _encode_vertex_bytes_from_declaration(
 def compute_bounds(positions: Sequence[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
     if not positions:
         return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0
-    xs = [p[0] for p in positions]
-    ys = [p[1] for p in positions]
-    zs = [p[2] for p in positions]
-    bb_min = (min(xs), min(ys), min(zs))
-    bb_max = (max(xs), max(ys), max(zs))
+    bb_min, bb_max = _native_backend._bounds_from_vertices(positions)
     centre = ((bb_min[0] + bb_max[0]) * 0.5, (bb_min[1] + bb_max[1]) * 0.5, (bb_min[2] + bb_max[2]) * 0.5)
-    radius = max(math.dist(centre, p) for p in positions)
+    radius = _native_backend._bounds_sphere_radius_from_vertices(centre, positions)
     return centre, bb_min, bb_max, radius
 
 

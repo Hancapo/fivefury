@@ -13,9 +13,7 @@ RPF_BLOCK_SIZE = 512
 
 def _normalize_path(path: str | Path) -> str:
     text = str(path).replace("\\", "/").strip()
-    while "//" in text:
-        text = text.replace("//", "/")
-    return text.strip("/")
+    return "/".join(filter(None, text.split("/")))
 
 
 def _normalize_key(path: str | Path) -> str:
@@ -68,7 +66,7 @@ def _decompress_deflate(data: bytes) -> bytes:
 
 
 def _is_rsc7(data: bytes) -> bool:
-    return len(data) >= 4 and struct.unpack_from("<I", data, 0)[0] == RSC7_MAGIC
+    return data[:4] == b"RSC7"
 
 
 def _resource_version_from_flags(system_flags: int, graphics_flags: int) -> int:

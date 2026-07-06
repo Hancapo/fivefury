@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from .. import _native as _native_backend
-from ..vector import aabb_center, aabb_from_points, vec_cross, vec_length, vec_sub
+from ..vector import aabb_center
 from .model import (
     BoundAabb,
     BoundBVH,
@@ -33,43 +33,20 @@ class BoundTriangleChunk:
     triangles: list[tuple[int, int, int]]
 
 
-def _triangle_area_python(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
-    return 0.5 * vec_length(vec_cross(vec_sub(vertex1, vertex0), vec_sub(vertex2, vertex0)))
-
-
 def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
-    if _native_backend._bounds_triangle_area is not None:
-        return _native_backend._bounds_triangle_area(vertex0, vertex1, vertex2)
-    return _triangle_area_python(vertex0, vertex1, vertex2)
-
-
-def _bounds_from_vertices_python(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
-    if not vertices:
-        raise ValueError("At least one vertex is required")
-    return aabb_from_points(vertices)
+    return _native_backend._bounds_triangle_area(vertex0, vertex1, vertex2)
 
 
 def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
-    if _native_backend._bounds_from_vertices is not None:
-        return _native_backend._bounds_from_vertices(vertices)
-    return _bounds_from_vertices_python(vertices)
+    return _native_backend._bounds_from_vertices(vertices)
 
 
 def center_from_bounds(minimum: Vector3, maximum: Vector3) -> Vector3:
     return aabb_center(minimum, maximum)
 
 
-def _sphere_radius_from_vertices_python(center: Vector3, vertices: list[Vector3]) -> float:
-    return max(
-        (vec_length(vec_sub(vertex, center)) for vertex in vertices),
-        default=0.0,
-    )
-
-
 def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> float:
-    if _native_backend._bounds_sphere_radius_from_vertices is not None:
-        return _native_backend._bounds_sphere_radius_from_vertices(center, vertices)
-    return _sphere_radius_from_vertices_python(center, vertices)
+    return _native_backend._bounds_sphere_radius_from_vertices(center, vertices)
 
 
 def identity_bound_transform() -> BoundTransform:
@@ -91,36 +68,14 @@ def chunk_bound_triangles(
     max_vertices_per_child: int = MAX_BOUND_VERTICES_PER_CHILD,
     max_triangles_per_child: int = MAX_BOUND_TRIANGLES_PER_CHILD,
 ) -> list[BoundTriangleChunk]:
-    chunks: list[BoundTriangleChunk] = []
-    current_vertices: list[Vector3] = []
-    current_triangles: list[tuple[int, int, int]] = []
-    vertex_lookup: dict[Vector3, int] = {}
-
-    def flush() -> None:
-        nonlocal current_vertices, current_triangles, vertex_lookup
-        if current_triangles:
-            chunks.append(BoundTriangleChunk(vertices=current_vertices, triangles=current_triangles))
-        current_vertices = []
-        current_triangles = []
-        vertex_lookup = {}
-
-    for triangle in triangles:
-        if current_triangles and (
-            len(current_triangles) + 1 > max_triangles_per_child
-            or len(current_vertices) + 3 > max_vertices_per_child
-        ):
-            flush()
-        indices: list[int] = []
-        for vertex in triangle:
-            index = vertex_lookup.get(vertex)
-            if index is None:
-                index = len(current_vertices)
-                vertex_lookup[vertex] = index
-                current_vertices.append(vertex)
-            indices.append(index)
-        current_triangles.append((indices[0], indices[1], indices[2]))
-    flush()
-    return chunks
+    return [
+        BoundTriangleChunk(vertices=vertices, triangles=chunk_triangles)
+        for vertices, chunk_triangles in _native_backend._bounds_chunk_triangles(
+            triangles,
+            max_vertices_per_child=max_vertices_per_child,
+            max_triangles_per_child=max_triangles_per_child,
+        )
+    ]
 
 
 def build_geometry_bvh_from_chunk(
@@ -131,12 +86,13 @@ def build_geometry_bvh_from_chunk(
     minimum, maximum = bounds_from_vertices(chunk.vertices)
     center = center_from_bounds(minimum, maximum)
     radius = sphere_radius_from_vertices(center, chunk.vertices)
+    areas = _native_backend._bounds_indexed_triangle_areas(chunk.vertices, chunk.triangles)
     polygons = [
         BoundPolygonTriangle(
             polygon_type=BoundPolygonType.TRIANGLE,
             raw=b"",
             material_index=0,
-            tri_area=triangle_area(chunk.vertices[index0], chunk.vertices[index1], chunk.vertices[index2]),
+            tri_area=area,
             tri_index1=index0,
             tri_index2=index1,
             tri_index3=index2,
@@ -144,7 +100,7 @@ def build_geometry_bvh_from_chunk(
             edge_index2=0xFFFF,
             edge_index3=0xFFFF,
         )
-        for index0, index1, index2 in chunk.triangles
+        for (index0, index1, index2), area in zip(chunk.triangles, areas, strict=True)
     ]
     return BoundBVH(
         bound_type=BoundType.GEOMETRY_BVH,

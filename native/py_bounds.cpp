@@ -1,5 +1,7 @@
 #include "py_bindings.h"
 
+#include <array>
+#include <utility>
 #include <vector>
 
 #include "bounds_algorithms.h"
@@ -25,6 +27,36 @@ PyObject* mod_bounds_triangle_area(PyObject*, PyObject* args) {
         return nullptr;
     }
     return PyFloat_FromDouble(triangle_area_impl(vertex0, vertex1, vertex2));
+}
+
+PyObject* mod_bounds_quantize_vertices(PyObject*, PyObject* args) {
+    PyObject* vertices_object = nullptr;
+    PyObject* center_object = nullptr;
+    PyObject* quantum_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OOO:bounds_quantize_vertices", &vertices_object, &center_object, &quantum_object)) {
+        return nullptr;
+    }
+    Vec3 center;
+    Vec3 quantum;
+    if (!parse_vector3(center_object, center, "center") || !parse_vector3(quantum_object, quantum, "quantum")) {
+        return nullptr;
+    }
+    std::vector<Vec3> vertices;
+    if (!parse_vertices(vertices_object, vertices, "vertices must be a sequence")) {
+        return nullptr;
+    }
+    try {
+        const auto packed = quantize_vertices_impl(vertices, center, quantum);
+        std::vector<char> data(packed.size() * 2U);
+        for (std::size_t index = 0; index < packed.size(); ++index) {
+            const auto value = static_cast<std::uint16_t>(packed[index]);
+            data[index * 2U] = static_cast<char>(value & 0xFFU);
+            data[(index * 2U) + 1U] = static_cast<char>((value >> 8U) & 0xFFU);
+        }
+        return PyBytes_FromStringAndSize(data.data(), static_cast<Py_ssize_t>(data.size()));
+    } catch (...) {
+        return translate_cpp_exception();
+    }
 }
 
 PyObject* mod_bounds_from_vertices(PyObject*, PyObject* args) {
@@ -70,6 +102,171 @@ PyObject* mod_bounds_sphere_radius_from_vertices(PyObject*, PyObject* args) {
         return nullptr;
     }
     return PyFloat_FromDouble(sphere_radius_from_vertices_impl(center, vertices));
+}
+
+namespace {
+
+bool parse_index_triples(PyObject* object, std::vector<std::array<std::uint32_t, 3>>& out) {
+    PyObject* sequence = PySequence_Fast(object, "triangles must be a sequence");
+    if (sequence == nullptr) {
+        return false;
+    }
+    const auto count = PySequence_Size(sequence);
+    if (count < 0) {
+        Py_DECREF(sequence);
+        return false;
+    }
+    out.clear();
+    out.reserve(static_cast<std::size_t>(count));
+    for (Py_ssize_t index = 0; index < count; ++index) {
+        PyObject* item = PySequence_GetItem(sequence, index);
+        if (item == nullptr) {
+            Py_DECREF(sequence);
+            return false;
+        }
+        PyObject* triple = PySequence_Fast(item, "triangle must be a sequence of 3 indices");
+        Py_DECREF(item);
+        if (triple == nullptr) {
+            Py_DECREF(sequence);
+            return false;
+        }
+        if (PySequence_Size(triple) != 3) {
+            Py_DECREF(triple);
+            Py_DECREF(sequence);
+            PyErr_SetString(PyExc_ValueError, "triangle must contain exactly 3 indices");
+            return false;
+        }
+        std::array<std::uint32_t, 3> values{};
+        for (Py_ssize_t component = 0; component < 3; ++component) {
+            PyObject* value = PySequence_GetItem(triple, component);
+            if (value == nullptr) {
+                Py_DECREF(triple);
+                Py_DECREF(sequence);
+                return false;
+            }
+            const auto parsed = PyLong_AsUnsignedLong(value);
+            Py_DECREF(value);
+            if (PyErr_Occurred() != nullptr) {
+                Py_DECREF(triple);
+                Py_DECREF(sequence);
+                return false;
+            }
+            values[static_cast<std::size_t>(component)] = static_cast<std::uint32_t>(parsed);
+        }
+        Py_DECREF(triple);
+        out.push_back(values);
+    }
+    Py_DECREF(sequence);
+    return true;
+}
+
+bool parse_int64_list(PyObject* object, std::vector<std::int64_t>& out) {
+    PyObject* sequence = PySequence_Fast(object, "indices must be a sequence");
+    if (sequence == nullptr) {
+        return false;
+    }
+    const auto count = PySequence_Size(sequence);
+    if (count < 0) {
+        Py_DECREF(sequence);
+        return false;
+    }
+    out.clear();
+    out.reserve(static_cast<std::size_t>(count));
+    for (Py_ssize_t index = 0; index < count; ++index) {
+        PyObject* item = PySequence_GetItem(sequence, index);
+        if (item == nullptr) {
+            Py_DECREF(sequence);
+            return false;
+        }
+        const auto value = PyLong_AsLongLong(item);
+        Py_DECREF(item);
+        if (value == -1 && PyErr_Occurred() != nullptr) {
+            Py_DECREF(sequence);
+            return false;
+        }
+        out.push_back(static_cast<std::int64_t>(value));
+    }
+    Py_DECREF(sequence);
+    return true;
+}
+
+}  // namespace
+
+PyObject* mod_bounds_indexed_triangle_areas(PyObject*, PyObject* args) {
+    PyObject* vertices_object = nullptr;
+    PyObject* triangles_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OO:bounds_indexed_triangle_areas", &vertices_object, &triangles_object)) {
+        return nullptr;
+    }
+    std::vector<Vec3> vertices;
+    if (!parse_vertices(vertices_object, vertices, "vertices must be a sequence")) {
+        return nullptr;
+    }
+    std::vector<std::array<std::uint32_t, 3>> triangles;
+    if (!parse_index_triples(triangles_object, triangles)) {
+        return nullptr;
+    }
+    try {
+        const auto areas = indexed_triangle_areas_impl(vertices, triangles);
+        PyObject* list = PyList_New(static_cast<Py_ssize_t>(areas.size()));
+        if (list == nullptr) {
+            return nullptr;
+        }
+        for (Py_ssize_t index = 0; index < static_cast<Py_ssize_t>(areas.size()); ++index) {
+            PyObject* value = PyFloat_FromDouble(areas[static_cast<std::size_t>(index)]);
+            if (value == nullptr || PyList_SetItem(list, index, value) < 0) {
+                Py_XDECREF(value);
+                Py_DECREF(list);
+                return nullptr;
+            }
+        }
+        return list;
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
+PyObject* mod_bounds_collect_triangles(PyObject*, PyObject* args) {
+    PyObject* positions_object = nullptr;
+    PyObject* indices_object = nullptr;
+    double min_area = 1e-10;
+    if (!PyArg_ParseTuple(args, "OO|d:bounds_collect_triangles", &positions_object, &indices_object, &min_area)) {
+        return nullptr;
+    }
+    std::vector<Vec3> positions;
+    if (!parse_vertices(positions_object, positions, "positions must be a sequence")) {
+        return nullptr;
+    }
+    std::vector<std::int64_t> indices;
+    if (!parse_int64_list(indices_object, indices)) {
+        return nullptr;
+    }
+    try {
+        const auto triangles = collect_triangles_impl(positions, indices, min_area);
+        PyObject* list = PyList_New(static_cast<Py_ssize_t>(triangles.size()));
+        if (list == nullptr) {
+            return nullptr;
+        }
+        for (Py_ssize_t index = 0; index < static_cast<Py_ssize_t>(triangles.size()); ++index) {
+            const auto& triangle = triangles[static_cast<std::size_t>(index)];
+            PyObject* tuple = PyTuple_New(3);
+            PyObject* vertex0 = build_vector3(triangle.vertex0);
+            PyObject* vertex1 = build_vector3(triangle.vertex1);
+            PyObject* vertex2 = build_vector3(triangle.vertex2);
+            if (tuple == nullptr || vertex0 == nullptr || vertex1 == nullptr || vertex2 == nullptr) {
+                Py_XDECREF(tuple); Py_XDECREF(vertex0); Py_XDECREF(vertex1); Py_XDECREF(vertex2); Py_DECREF(list);
+                return nullptr;
+            }
+            if (PyTuple_SetItem(tuple, 0, vertex0) < 0 || PyTuple_SetItem(tuple, 1, vertex1) < 0 ||
+                PyTuple_SetItem(tuple, 2, vertex2) < 0 || PyList_SetItem(list, index, tuple) < 0) {
+                Py_DECREF(tuple); Py_DECREF(list);
+                return nullptr;
+            }
+        }
+        return list;
+    } catch (...) {
+        return translate_cpp_exception();
+    }
 }
 
 PyObject* mod_bounds_chunk_triangles(PyObject*, PyObject* args) {
@@ -143,7 +340,7 @@ PyObject* mod_bounds_build_bvh(PyObject*, PyObject* args) {
     }
     try {
         const auto result = build_bvh_impl(
-            items,
+            std::move(items),
             fallback_minimum,
             fallback_maximum,
             static_cast<std::size_t>(item_threshold),

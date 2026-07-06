@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..bounds import write_bound_resource
 from ..binary import align
@@ -24,8 +25,11 @@ from .write_drawable import pages_info_length, write_drawable_models_block, writ
 from .write_lights import write_lights
 from .write_materials import prepare_materials, write_shader_blocks, write_shader_blocks_gen9
 from .write_joints import write_joints
-from .write_models import prepare_model_block, write_model_block
+from .write_models import PreparedModelBlock, prepare_model_block, write_model_block
 from .write_skeleton import write_skeleton
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .model import Ydr
 
 _DRAWABLE_FILE_VFT = 0x40573178
 _EMBEDDED_DRAWABLE_FILE_VFT = 0x40570C38

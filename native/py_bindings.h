@@ -63,12 +63,17 @@ PyObject* mod_read_rpf_entry_variants(PyObject*, PyObject* args);
 PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args);
 PyObject* mod_scan_rpf_into_index(PyObject*, PyObject* args);
 PyObject* mod_bounds_triangle_area(PyObject*, PyObject* args);
+PyObject* mod_bounds_quantize_vertices(PyObject*, PyObject* args);
 PyObject* mod_bounds_from_vertices(PyObject*, PyObject* args);
 PyObject* mod_bounds_sphere_radius_from_vertices(PyObject*, PyObject* args);
 PyObject* mod_bounds_chunk_triangles(PyObject*, PyObject* args);
 PyObject* mod_bounds_build_octants(PyObject*, PyObject* args);
 PyObject* mod_bounds_build_bvh(PyObject*, PyObject* args);
+PyObject* mod_bounds_indexed_triangle_areas(PyObject*, PyObject* args);
+PyObject* mod_bounds_collect_triangles(PyObject*, PyObject* args);
+PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args);
 PyObject* mod_resource_layout_sections(PyObject*, PyObject* args);
+PyObject* mod_resource_pack_block_sizes(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;

@@ -236,6 +236,32 @@ double triangle_area_impl(const Vec3& vertex0, const Vec3& vertex1, const Vec3& 
     return 0.5 * std::sqrt((crossx * crossx) + (crossy * crossy) + (crossz * crossz));
 }
 
+std::vector<std::int16_t> quantize_vertices_impl(
+    const std::vector<Vec3>& vertices,
+    const Vec3& center,
+    const Vec3& quantum
+) {
+    constexpr double DEFAULT_QUANTUM = 1.0 / 32767.0;
+    const std::array<double, 3> centers = {center.x, center.y, center.z};
+    const std::array<double, 3> quanta = {
+        quantum.x != 0.0 ? quantum.x : DEFAULT_QUANTUM,
+        quantum.y != 0.0 ? quantum.y : DEFAULT_QUANTUM,
+        quantum.z != 0.0 ? quantum.z : DEFAULT_QUANTUM,
+    };
+    std::vector<std::int16_t> packed(vertices.size() * 3U);
+    std::size_t out = 0;
+    for (const auto& vertex : vertices) {
+        const std::array<double, 3> values = {vertex.x, vertex.y, vertex.z};
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            // std::nearbyint under the default rounding mode matches Python's
+            // banker's rounding, keeping output byte-identical to round().
+            const double scaled = std::nearbyint((values[axis] - centers[axis]) / quanta[axis]);
+            packed[out++] = static_cast<std::int16_t>(std::clamp(scaled, -32767.0, 32767.0));
+        }
+    }
+    return packed;
+}
+
 std::pair<Vec3, Vec3> bounds_from_vertices_impl(const std::vector<Vec3>& vertices) {
     if (vertices.empty()) {
         throw std::invalid_argument("At least one vertex is required");
@@ -271,30 +297,73 @@ double sphere_radius_from_vertices_impl(const Vec3& center, const std::vector<Ve
 std::array<std::vector<std::uint32_t>, 8> build_octants_impl(const std::vector<Vec3>& vertices) {
     std::array<std::vector<std::uint32_t>, 8> octants;
     for (std::size_t octant_index = 0; octant_index < OCTANT_SIGNS.size(); ++octant_index) {
+        const auto& signs = OCTANT_SIGNS[octant_index];
         std::vector<std::uint32_t> indices;
         for (std::uint32_t vertex_index = 0; vertex_index < static_cast<std::uint32_t>(vertices.size()); ++vertex_index) {
             const auto& vertex = vertices[vertex_index];
-            bool should_add = true;
-            std::vector<std::uint32_t> next_indices;
+            bool shadowed = false;
             for (const auto other_index : indices) {
-                const auto& other_vertex = vertices[other_index];
-                if (octant_shadowed_impl(vertex, other_vertex, OCTANT_SIGNS[octant_index])) {
-                    should_add = false;
-                    next_indices = indices;
+                if (octant_shadowed_impl(vertex, vertices[other_index], signs)) {
+                    shadowed = true;
                     break;
                 }
-                if (!octant_shadowed_impl(other_vertex, vertex, OCTANT_SIGNS[octant_index])) {
-                    next_indices.push_back(other_index);
-                }
             }
-            if (should_add) {
-                next_indices.push_back(vertex_index);
+            if (shadowed) {
+                continue;
             }
-            indices = std::move(next_indices);
+            std::erase_if(indices, [&](const std::uint32_t other_index) {
+                return octant_shadowed_impl(vertices[other_index], vertex, signs);
+            });
+            indices.push_back(vertex_index);
         }
         octants[octant_index] = std::move(indices);
     }
     return octants;
+}
+
+std::vector<double> indexed_triangle_areas_impl(
+    const std::vector<Vec3>& vertices,
+    const std::vector<std::array<std::uint32_t, 3>>& triangles
+) {
+    std::vector<double> areas;
+    areas.reserve(triangles.size());
+    for (const auto& triangle : triangles) {
+        if (triangle[0] >= vertices.size() || triangle[1] >= vertices.size() || triangle[2] >= vertices.size()) {
+            throw std::invalid_argument("triangle index is out of range");
+        }
+        areas.push_back(triangle_area_impl(vertices[triangle[0]], vertices[triangle[1]], vertices[triangle[2]]));
+    }
+    return areas;
+}
+
+std::vector<Triangle> collect_triangles_impl(
+    const std::vector<Vec3>& positions,
+    const std::vector<std::int64_t>& indices,
+    const double min_area
+) {
+    std::vector<Triangle> triangles;
+    if (indices.size() < 3) {
+        return triangles;
+    }
+    const auto position_count = static_cast<std::int64_t>(positions.size());
+    triangles.reserve(indices.size() / 3);
+    for (std::size_t offset = 0; offset + 2 < indices.size(); offset += 3) {
+        const auto index0 = indices[offset];
+        const auto index1 = indices[offset + 1];
+        const auto index2 = indices[offset + 2];
+        if (index0 < 0 || index1 < 0 || index2 < 0 ||
+            index0 >= position_count || index1 >= position_count || index2 >= position_count) {
+            continue;
+        }
+        const auto& vertex0 = positions[static_cast<std::size_t>(index0)];
+        const auto& vertex1 = positions[static_cast<std::size_t>(index1)];
+        const auto& vertex2 = positions[static_cast<std::size_t>(index2)];
+        if (triangle_area_impl(vertex0, vertex1, vertex2) <= min_area) {
+            continue;
+        }
+        triangles.push_back(Triangle{vertex0, vertex1, vertex2});
+    }
+    return triangles;
 }
 
 std::vector<TriangleChunk> chunk_bound_triangles_impl(
@@ -345,7 +414,7 @@ std::vector<TriangleChunk> chunk_bound_triangles_impl(
 }
 
 BvhBuildResult build_bvh_impl(
-    const std::vector<BvhItem>& items,
+    std::vector<BvhItem> items,
     const Vec3& fallback_minimum,
     const Vec3& fallback_maximum,
     std::size_t item_threshold,
@@ -361,7 +430,8 @@ BvhBuildResult build_bvh_impl(
         return result;
     }
 
-    BvhNodeBuild root{items};
+    const auto item_count = items.size();
+    BvhNodeBuild root{std::move(items)};
     root.build(item_threshold);
 
     std::vector<const BvhNodeBuild*> nodes;
@@ -377,9 +447,9 @@ BvhBuildResult build_bvh_impl(
     result.quantum = choose_bvh_quantum_impl(root.minimum, root.maximum, result.center);
     result.quantum_inverse = invert_vec3(result.quantum);
 
-    result.order.reserve(items.size());
+    result.order.reserve(item_count);
     std::unordered_map<std::uint32_t, std::uint32_t> reordered_index_lookup;
-    reordered_index_lookup.reserve(items.size());
+    reordered_index_lookup.reserve(item_count);
     for (const auto* node : nodes) {
         if (!node->items.empty()) {
             for (const auto& item : node->items) {

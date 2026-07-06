@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import TYPE_CHECKING
 
+from .. import _native as _native_backend
 from ..bounds.geometry import (
     MAX_BOUND_TRIANGLES_PER_CHILD,
     MAX_BOUND_VERTICES_PER_CHILD,
@@ -10,7 +11,6 @@ from ..bounds.geometry import (
     build_bound_from_triangles,
     build_composite_bound_from_chunks,
     chunk_bound_triangles,
-    triangle_area,
 )
 from ..bounds.model import BoundComposite, BoundCompositeFlags, BoundMaterial
 from .defs import YdrLod
@@ -30,20 +30,11 @@ class YdrCollisionStats:
 
 
 def mesh_collision_triangles(mesh: "YdrMesh", *, min_area: float = 1e-10) -> list[BoundTriangle]:
-    positions = [tuple(float(component) for component in position) for position in (mesh.positions or [])]
-    indices = [int(index) for index in (mesh.indices or [])]
-    triangles: list[BoundTriangle] = []
-    for offset in range(0, len(indices) - 2, 3):
-        index0, index1, index2 = indices[offset : offset + 3]
-        if min(index0, index1, index2) < 0 or max(index0, index1, index2) >= len(positions):
-            continue
-        vertex0 = positions[index0]
-        vertex1 = positions[index1]
-        vertex2 = positions[index2]
-        if triangle_area(vertex0, vertex1, vertex2) <= min_area:
-            continue
-        triangles.append((vertex0, vertex1, vertex2))
-    return triangles
+    return _native_backend._bounds_collect_triangles(
+        mesh.positions or [],
+        mesh.indices or [],
+        min_area,
+    )
 
 
 def build_bound_from_render_geometry(

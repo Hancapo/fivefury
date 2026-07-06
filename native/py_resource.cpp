@@ -113,6 +113,53 @@ PyObject* build_layout_result(const fivefury_native::resource::ResourceLayoutRes
 
 }  // namespace
 
+PyObject* mod_resource_pack_block_sizes(PyObject*, PyObject* args) {
+    PyObject* sizes_object = nullptr;
+    unsigned int version = 0;
+    unsigned int max_page_count = 128;
+    int is_system = 1;
+    if (!PyArg_ParseTuple(args, "OI|Ip:resource_pack_block_sizes", &sizes_object, &version, &max_page_count, &is_system)) {
+        return nullptr;
+    }
+    PyObject* sequence = PySequence_Fast(sizes_object, "block sizes must be a sequence");
+    if (sequence == nullptr) {
+        return nullptr;
+    }
+    const auto count = PySequence_Size(sequence);
+    if (count < 0) {
+        Py_DECREF(sequence);
+        return nullptr;
+    }
+    std::vector<std::uint64_t> sizes;
+    sizes.reserve(static_cast<std::size_t>(count));
+    for (Py_ssize_t index = 0; index < count; ++index) {
+        PyObject* item = PySequence_GetItem(sequence, index);
+        if (item == nullptr) {
+            Py_DECREF(sequence);
+            return nullptr;
+        }
+        const auto size = PyLong_AsUnsignedLongLong(item);
+        Py_DECREF(item);
+        if (PyErr_Occurred() != nullptr) {
+            Py_DECREF(sequence);
+            return nullptr;
+        }
+        sizes.push_back(static_cast<std::uint64_t>(size));
+    }
+    Py_DECREF(sequence);
+
+    try {
+        return PyLong_FromUnsignedLong(fivefury_native::resource::pack_block_sizes_impl(
+            sizes,
+            static_cast<std::uint32_t>(version),
+            static_cast<std::uint32_t>(max_page_count),
+            is_system != 0
+        ));
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_resource_layout_sections(PyObject*, PyObject* args) {
     PyObject* system_data_object = nullptr;
     PyObject* system_blocks_object = nullptr;

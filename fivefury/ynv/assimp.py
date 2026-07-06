@@ -222,8 +222,6 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
     cell_x = polygons[0].cell_x
     cell_y = polygons[0].cell_y
     area_id = polygons[0].area_id
-    file_x = polygons[0].file_x
-    file_y = polygons[0].file_y
     min_x, max_x, min_y, max_y = _cell_bounds(cell_x, cell_y)
     z_values = [vertex[2] for polygon in polygons for vertex in polygon.vertices]
     z_min = min(z_values) if z_values else 0.0
@@ -297,7 +295,6 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
         )
 
     sector_tree = _build_sector((min_x, min_y, z_min), (max_x, max_y, z_max), polys, _SECTOR_DEPTH)
-    name = f"navmesh[{file_x}][{file_y}]"
     return Ynv(
         path=source_path,
         content_flags=YnvContentFlags.POLYGONS,

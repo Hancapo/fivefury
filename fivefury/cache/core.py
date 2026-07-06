@@ -26,7 +26,7 @@ from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
 from ..resolver import HashResolver, get_hash_resolver
-from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _normalize_key
+from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, RpfResourceFileEntry, _normalize_key
 
 try:
     from .._native import CompactIndex
@@ -278,7 +278,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             self.entries[_normalize_key(logical_path)] = entry
             size = entry.get_file_size()
             flags = 0
-            if entry.__class__.__name__.lower().startswith("rpfresource"):
+            if isinstance(entry, RpfResourceFileEntry):
                 flags |= _FLAG_RESOURCE
             if entry.is_encrypted:
                 flags |= _FLAG_ENCRYPTED

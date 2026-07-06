@@ -163,10 +163,11 @@ def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> No
 
 
 def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = None) -> int:
+    prepared_bvh = None
     if isinstance(bound, BoundComposite):
         _refresh_composite_metrics(bound)
     elif isinstance(bound, BoundBVH):
-        _refresh_geometry_bvh_metrics(bound)
+        prepared_bvh = _refresh_geometry_bvh_metrics(bound)
     bound_offset = 0 if offset is None else offset
     if offset is None:
         bound_offset = writer.alloc(_bound_size(bound), 16)
@@ -174,7 +175,7 @@ def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = N
     if isinstance(bound, BoundComposite):
         _write_composite(writer, bound_offset, bound)
     elif isinstance(bound, BoundBVH):
-        _write_geometry(writer, bound_offset, bound, with_bvh=True)
+        _write_geometry(writer, bound_offset, bound, with_bvh=True, prepared=prepared_bvh)
     elif isinstance(bound, BoundGeometry):
         _write_geometry(writer, bound_offset, bound, with_bvh=False)
     elif not isinstance(bound, (BoundSphere, BoundBox, BoundCapsule, BoundDisc, BoundCylinder, BoundCloth)):
@@ -286,16 +287,7 @@ def _choose_quantum(vertices: list[tuple[float, float, float]], center_geom: tup
 
 
 def _quantize_vertices(vertices: list[tuple[float, float, float]], center_geom: tuple[float, float, float], quantum: tuple[float, float, float]) -> bytes:
-    data = bytearray(len(vertices) * 6)
-    for index, vertex in enumerate(vertices):
-        packed: list[int] = []
-        for axis in range(3):
-            q = quantum[axis] if quantum[axis] else (1.0 / 32767.0)
-            value = round((vertex[axis] - center_geom[axis]) / q)
-            value = max(-32767, min(32767, value))
-            packed.append(int(value))
-        struct.pack_into("<3h", data, index * 6, *packed)
-    return bytes(data)
+    return _native_backend._bounds_quantize_vertices(vertices, center_geom, quantum)
 
 
 def _choose_vertices_shrunk(bound: BoundGeometry, *, with_bvh: bool) -> list[tuple[float, float, float]]:
@@ -411,10 +403,14 @@ def _primitive_bounds(bound: BoundGeometry, polygon: BoundPolygon) -> BoundAabb:
     if not vertices:
         return BoundAabb(bound.box_min, bound.box_max)
     if isinstance(polygon, BoundPolygonTriangle):
-        points = [vertices[index] for index in polygon.vertex_indices]
-        minimum = tuple(min(point[axis] for point in points) for axis in range(3))
-        maximum = tuple(max(point[axis] for point in points) for axis in range(3))
-        return BoundAabb(minimum, maximum)
+        index0, index1, index2 = polygon.vertex_indices
+        x0, y0, z0 = vertices[index0]
+        x1, y1, z1 = vertices[index1]
+        x2, y2, z2 = vertices[index2]
+        return BoundAabb(
+            (min(x0, x1, x2), min(y0, y1, y2), min(z0, z1, z2)),
+            (max(x0, x1, x2), max(y0, y1, y2), max(z0, z1, z2)),
+        )
     if isinstance(polygon, BoundPolygonSphere):
         center = vertices[polygon.sphere_index]
         radius = polygon.sphere_radius
@@ -437,21 +433,16 @@ def _primitive_bounds(bound: BoundGeometry, polygon: BoundPolygon) -> BoundAabb:
     return BoundAabb(bound.box_min, bound.box_max)
 
 
-def _choose_bvh_quantum(bounds: BoundAabb, center: tuple[float, float, float]) -> tuple[float, float, float]:
-    values: list[float] = []
-    for axis in range(3):
-        half_extent = max(abs(bounds.minimum[axis] - center[axis]), abs(bounds.maximum[axis] - center[axis]))
-        quantum = half_extent / 32767.0 if half_extent > 0 else (1.0 / 32767.0)
-        values.append(quantum)
-    return (values[0], values[1], values[2])
-
-
-def _quantize_bvh_point(point: tuple[float, float, float], center: tuple[float, float, float], inverse: tuple[float, float, float]) -> tuple[int, int, int]:
-    values: list[int] = []
-    for axis in range(3):
-        quantized = int((point[axis] - center[axis]) * inverse[axis])
-        values.append(max(-32767, min(32767, quantized)))
-    return (values[0], values[1], values[2])
+def _quantize_bvh_point(
+    point: tuple[float, float, float],
+    center: tuple[float, float, float],
+    inverse: tuple[float, float, float],
+) -> tuple[int, int, int]:
+    return (
+        max(-32767, min(32767, int((point[0] - center[0]) * inverse[0]))),
+        max(-32767, min(32767, int((point[1] - center[1]) * inverse[1]))),
+        max(-32767, min(32767, int((point[2] - center[2]) * inverse[2]))),
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -460,109 +451,6 @@ class _BvhBuildItem:
     maximum: tuple[float, float, float]
     index: int
     polygon: BoundPolygon | None = None
-
-    @property
-    def center(self) -> tuple[float, float, float]:
-        return tuple((self.minimum[axis] + self.maximum[axis]) * 0.5 for axis in range(3))
-
-
-@dataclasses.dataclass(slots=True)
-class _BvhBuildNode:
-    items: list[_BvhBuildItem] | None = None
-    children: list["_BvhBuildNode"] | None = None
-    minimum: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    maximum: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    index: int = 0
-
-    @property
-    def total_nodes(self) -> int:
-        count = 1
-        if self.children:
-            for child in self.children:
-                count += child.total_nodes
-        return count
-
-    @property
-    def total_items(self) -> int:
-        count = len(self.items or [])
-        if self.children:
-            for child in self.children:
-                count += child.total_items
-        return count
-
-    def update_bounds(self) -> None:
-        if self.items:
-            source = [BoundAabb(item.minimum, item.maximum) for item in self.items]
-        else:
-            source = [BoundAabb(child.minimum, child.maximum) for child in (self.children or [])]
-        bounds = _merge_bounds(source, BoundAabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))
-        self.minimum = bounds.minimum
-        self.maximum = bounds.maximum
-
-    def build(self, item_threshold: int) -> None:
-        self.update_bounds()
-        if not self.items or len(self.items) <= item_threshold:
-            return
-
-        average = [0.0, 0.0, 0.0]
-        for item in self.items:
-            average[0] += item.minimum[0] + item.maximum[0]
-            average[1] += item.minimum[1] + item.maximum[1]
-            average[2] += item.minimum[2] + item.maximum[2]
-        count = 0.5 / len(self.items)
-        average = [component * count for component in average]
-
-        counts = [0, 0, 0]
-        for item in self.items:
-            center = item.center
-            if center[0] < average[0]:
-                counts[0] += 1
-            if center[1] < average[1]:
-                counts[1] += 1
-            if center[2] < average[2]:
-                counts[2] += 1
-
-        target = len(self.items) / 2.0
-        deltas = [abs(target - value) for value in counts]
-        axis = min(range(3), key=deltas.__getitem__)
-
-        upper: list[_BvhBuildItem] = []
-        lower: list[_BvhBuildItem] = []
-        for item in self.items:
-            center = item.center
-            goes_upper = center[axis] > average[axis]
-            (upper if goes_upper else lower).append(item)
-
-        if not upper or not lower:
-            all_items = sorted(self.items, key=lambda item: (item.minimum, item.maximum))
-            midpoint = len(all_items) // 2
-            upper = all_items[:midpoint]
-            lower = all_items[midpoint:]
-            if not upper or not lower:
-                return
-
-        self.items = None
-        self.children = [
-            _BvhBuildNode(items=upper),
-            _BvhBuildNode(items=lower),
-        ]
-        for child in self.children:
-            child.build(item_threshold)
-        self.children.sort(key=lambda child: child.total_items, reverse=True)
-        self.update_bounds()
-
-    def gather_nodes(self, nodes: list["_BvhBuildNode"]) -> None:
-        self.index = len(nodes)
-        nodes.append(self)
-        for child in self.children or []:
-            child.gather_nodes(nodes)
-
-    def gather_trees(self, trees: list["_BvhBuildNode"], max_tree_node_count: int) -> None:
-        if self.total_nodes > max_tree_node_count and self.children:
-            for child in self.children:
-                child.gather_trees(trees, max_tree_node_count)
-            return
-        trees.append(self)
 
 
 def _polygon_material_indices_for_write(bound: BoundGeometry, polygons: list[BoundPolygon] | None = None) -> list[int]:
@@ -578,19 +466,11 @@ def _polygon_material_indices_for_write(bound: BoundGeometry, polygons: list[Bou
     return indices
 
 
-def _needs_bvh_rebuild(bound: BoundGeometry, bvh: BoundBvh | None) -> bool:
-    if bvh is None or not bvh.nodes or not bvh.trees:
-        return True
-    if len(bound.polygons) <= _GEOMETRY_BVH_ITEM_THRESHOLD:
-        return False
-    if len(bvh.nodes) != 1 or len(bvh.trees) != 1:
-        return False
-    node = bvh.nodes[0]
-    return node.is_leaf and node.item_id == 0 and node.item_count >= len(bound.polygons)
-
-
-def _refresh_geometry_bvh_metrics(bound: BoundBVH) -> None:
-    bvh, _polygons, _polygon_material_indices = _build_geometry_bvh(bound)
+def _refresh_geometry_bvh_metrics(bound: BoundBVH) -> tuple[BoundBvh, list[BoundPolygon], list[int]]:
+    """Rebuild the BVH once, refresh the bound metrics from it, and return the
+    prepared (bvh, polygons, material_indices) so the write path can reuse it."""
+    prepared = _build_geometry_bvh(bound)
+    bvh = prepared[0]
     overall = BoundAabb(bvh.minimum, bvh.maximum)
     bound.bvh = bvh
     bound.box_min = overall.minimum
@@ -598,21 +478,7 @@ def _refresh_geometry_bvh_metrics(bound: BoundBVH) -> None:
     bound.box_center = bvh.center
     bound.sphere_center = bvh.center
     bound.sphere_radius = _sphere_radius_from_bounds(overall, bvh.center)
-
-
-def _reordered_leaf_polygons(nodes: list[_BvhBuildNode], item_threshold: int) -> list[_BvhBuildItem]:
-    if item_threshold <= 1:
-        result: list[_BvhBuildItem] = []
-        for node in nodes:
-            if node.items:
-                result.extend(node.items)
-        return result
-
-    result: list[_BvhBuildItem] = []
-    for node in nodes:
-        if node.items:
-            result.extend(node.items)
-    return result
+    return prepared
 
 
 def _copy_polygon_for_reorder(
@@ -621,6 +487,20 @@ def _copy_polygon_for_reorder(
     new_index: int,
     edge_lookup: dict[int, int],
 ) -> BoundPolygon:
+    if type(polygon) is BoundPolygonTriangle:
+        return BoundPolygonTriangle(
+            polygon_type=polygon.polygon_type,
+            raw=polygon.raw,
+            index=new_index,
+            material_index=polygon.material_index,
+            tri_area=polygon.tri_area,
+            tri_index1=polygon.tri_index1,
+            tri_index2=polygon.tri_index2,
+            tri_index3=polygon.tri_index3,
+            edge_index1=edge_lookup.get(polygon.edge_index1, 0xFFFF),
+            edge_index2=edge_lookup.get(polygon.edge_index2, 0xFFFF),
+            edge_index3=edge_lookup.get(polygon.edge_index3, 0xFFFF),
+        )
     new_polygon = dataclasses.replace(polygon, index=new_index)
     if isinstance(new_polygon, BoundPolygonTriangle):
         new_polygon.edge_index1 = edge_lookup.get(polygon.edge_index1, 0xFFFF)
@@ -634,9 +514,7 @@ def _build_bvh_native(
     *,
     fallback: BoundAabb,
     item_threshold: int,
-) -> tuple[BoundBvh, list[_BvhBuildItem]] | None:
-    if _native_backend._bounds_build_bvh is None:
-        return None
+) -> tuple[BoundBvh, list[_BvhBuildItem]]:
     raw_items = [(item.minimum, item.maximum, int(item.index)) for item in items]
     (
         order,
@@ -687,69 +565,8 @@ def _build_bvh_native(
 
 
 def _build_bvh_from_items(items: list[_BvhBuildItem], *, fallback: BoundAabb, item_threshold: int) -> BoundBvh:
-    native = _build_bvh_native(items, fallback=fallback, item_threshold=item_threshold)
-    if native is not None:
-        bvh, _ordered_items = native
-        return bvh
-    if not items:
-        center = tuple((fallback.minimum[axis] + fallback.maximum[axis]) * 0.5 for axis in range(3))
-        quantum = _choose_bvh_quantum(fallback, center)
-        quantum_inverse = tuple((1.0 / value) if value else 0.0 for value in quantum)
-        return BoundBvh(
-            minimum=fallback.minimum,
-            maximum=fallback.maximum,
-            center=center,
-            quantum_inverse=quantum_inverse,
-            quantum=quantum,
-            nodes=[],
-            trees=[],
-        )
-
-    root = _BvhBuildNode(items=list(items))
-    root.build(item_threshold)
-
-    nodes: list[_BvhBuildNode] = []
-    root.gather_nodes(nodes)
-    trees: list[_BvhBuildNode] = []
-    root.gather_trees(trees, _MAX_BVH_TREE_NODE_COUNT)
-
-    overall = BoundAabb(root.minimum, root.maximum)
-    center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
-    quantum = _choose_bvh_quantum(overall, center)
-    quantum_inverse = tuple((1.0 / value) if value else 0.0 for value in quantum)
-
-    bvh_nodes: list[BoundBvhNode] = []
-    for node in nodes:
-        is_leaf = bool(node.items)
-        bvh_nodes.append(
-            BoundBvhNode(
-                minimum=node.minimum,
-                maximum=node.maximum,
-                item_id=(node.items[0].index if is_leaf and node.items else node.total_nodes),
-                item_count=(node.total_items if is_leaf else 0),
-            )
-        )
-
-    bvh_trees: list[BoundBvhTree] = []
-    for tree in trees:
-        bvh_trees.append(
-            BoundBvhTree(
-                minimum=tree.minimum,
-                maximum=tree.maximum,
-                node_index=tree.index,
-                node_index2=tree.index + tree.total_nodes,
-            )
-        )
-
-    return BoundBvh(
-        minimum=overall.minimum,
-        maximum=overall.maximum,
-        center=center,
-        quantum_inverse=quantum_inverse,
-        quantum=quantum,
-        nodes=bvh_nodes,
-        trees=bvh_trees,
-    )
+    bvh, _ordered_items = _build_bvh_native(items, fallback=fallback, item_threshold=item_threshold)
+    return bvh
 
 
 def _build_geometry_bvh(bound: BoundGeometry, item_threshold: int = _GEOMETRY_BVH_ITEM_THRESHOLD) -> tuple[BoundBvh, list[BoundPolygon], list[int]]:
@@ -768,78 +585,15 @@ def _build_geometry_bvh(bound: BoundGeometry, item_threshold: int = _GEOMETRY_BV
     if not items:
         return (_build_bvh_from_items([], fallback=BoundAabb(bound.box_min, bound.box_max), item_threshold=item_threshold), [], [])
 
-    native = _build_bvh_native(items, fallback=BoundAabb(bound.box_min, bound.box_max), item_threshold=item_threshold)
-    if native is not None:
-        bvh, ordered_items = native
-        item_lookup = {item.index: new_index for new_index, item in enumerate(ordered_items)}
-        reordered_polygons: list[BoundPolygon] = []
-        reordered_material_indices: list[int] = []
-        source_material_indices = _polygon_material_indices_for_write(bound)
-        for new_index, item in enumerate(ordered_items):
-            reordered_polygons.append(_copy_polygon_for_reorder(item.polygon, new_index=new_index, edge_lookup=item_lookup))
-            reordered_material_indices.append(source_material_indices[item.index] if item.index < len(source_material_indices) else 0)
-        return bvh, reordered_polygons, reordered_material_indices
-
-    root = _BvhBuildNode(items=list(items))
-    root.build(item_threshold)
-
-    nodes: list[_BvhBuildNode] = []
-    root.gather_nodes(nodes)
-    trees: list[_BvhBuildNode] = []
-    root.gather_trees(trees, _MAX_BVH_TREE_NODE_COUNT)
-
-    ordered_items = _reordered_leaf_polygons(nodes, item_threshold)
+    bvh, ordered_items = _build_bvh_native(items, fallback=BoundAabb(bound.box_min, bound.box_max), item_threshold=item_threshold)
     item_lookup = {item.index: new_index for new_index, item in enumerate(ordered_items)}
-
     reordered_polygons: list[BoundPolygon] = []
     reordered_material_indices: list[int] = []
     source_material_indices = _polygon_material_indices_for_write(bound)
     for new_index, item in enumerate(ordered_items):
         reordered_polygons.append(_copy_polygon_for_reorder(item.polygon, new_index=new_index, edge_lookup=item_lookup))
         reordered_material_indices.append(source_material_indices[item.index] if item.index < len(source_material_indices) else 0)
-        item.index = new_index
-
-    overall = BoundAabb(root.minimum, root.maximum)
-    center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
-    quantum = _choose_bvh_quantum(overall, center)
-    quantum_inverse = tuple((1.0 / value) if value else 0.0 for value in quantum)
-
-    bvh_nodes: list[BoundBvhNode] = []
-    for node in nodes:
-        is_leaf = bool(node.items)
-        bvh_nodes.append(
-            BoundBvhNode(
-                minimum=node.minimum,
-                maximum=node.maximum,
-                item_id=(node.items[0].index if is_leaf and node.items else node.total_nodes),
-                item_count=(node.total_items if is_leaf else 0),
-            )
-        )
-
-    bvh_trees: list[BoundBvhTree] = []
-    for tree in trees:
-        bvh_trees.append(
-            BoundBvhTree(
-                minimum=tree.minimum,
-                maximum=tree.maximum,
-                node_index=tree.index,
-                node_index2=tree.index + tree.total_nodes,
-            )
-        )
-
-    return (
-        BoundBvh(
-            minimum=overall.minimum,
-            maximum=overall.maximum,
-            center=center,
-            quantum_inverse=quantum_inverse,
-            quantum=quantum,
-            nodes=bvh_nodes,
-            trees=bvh_trees,
-        ),
-        reordered_polygons,
-        reordered_material_indices,
-    )
+    return bvh, reordered_polygons, reordered_material_indices
 
 
 def _transform_aabb(bounds: BoundAabb, transform: BoundTransform | None) -> BoundAabb:
@@ -940,12 +694,21 @@ def _write_bvh(writer: ResourceWriter, bound: BoundGeometry | BoundComposite, *,
     return bvh_offset
 
 
-def _write_geometry(writer: ResourceWriter, offset: int, bound: BoundGeometry, *, with_bvh: bool) -> None:
+def _write_geometry(
+    writer: ResourceWriter,
+    offset: int,
+    bound: BoundGeometry,
+    *,
+    with_bvh: bool,
+    prepared: tuple[BoundBvh, list[BoundPolygon], list[int]] | None = None,
+) -> None:
     polygons = bound.polygons
     polygon_material_indices = _polygon_material_indices_for_write(bound)
     prepared_bvh = None
     if with_bvh:
-        prepared_bvh, polygons, polygon_material_indices = _build_geometry_bvh(bound)
+        if prepared is None:
+            prepared = _build_geometry_bvh(bound)
+        prepared_bvh, polygons, polygon_material_indices = prepared
 
     center_geom = _choose_center_geom(bound)
     quantum = bound.quantum if bound.quantum != (1.0, 1.0, 1.0) or not bound.vertices else _choose_quantum(bound.vertices, center_geom)
