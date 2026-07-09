@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
-from enum import IntEnum, StrEnum
+from enum import IntEnum
+
+from ..drawable import DRAWABLE_LOD_ORDER, DrawableLod, coerce_drawable_lod
 
 DAT_VIRTUAL_BASE = 0x50000000
 DAT_PHYSICAL_BASE = 0x60000000
@@ -45,11 +47,7 @@ class VertexSemantic(IntEnum):
     BINORMAL = 15
 
 
-class YdrLod(StrEnum):
-    HIGH = "high"
-    MEDIUM = "med"
-    LOW = "low"
-    VERY_LOW = "vlow"
+YdrLod = DrawableLod
 
 
 class YdrRenderMask(IntEnum):
@@ -146,9 +144,7 @@ def coerce_skeleton_binding(value: "YdrSkeletonBinding | int") -> YdrSkeletonBin
 
 
 def coerce_lod(value: "YdrLod | str") -> YdrLod:
-    if isinstance(value, YdrLod):
-        return value
-    return YdrLod(str(value).strip().lower())
+    return coerce_drawable_lod(value)
 
 
 def coerce_render_mask(value: "YdrRenderMask | int") -> int:
@@ -157,7 +153,7 @@ def coerce_render_mask(value: "YdrRenderMask | int") -> int:
     return max(0, min(255, int(value)))
 
 
-LOD_ORDER = (YdrLod.HIGH, YdrLod.MEDIUM, YdrLod.LOW, YdrLod.VERY_LOW)
+LOD_ORDER = DRAWABLE_LOD_ORDER
 LOD_POINTER_OFFSETS = {
     YdrLod.HIGH: 0x40,
     YdrLod.MEDIUM: 0x48,

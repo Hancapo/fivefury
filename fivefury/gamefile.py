@@ -45,6 +45,7 @@ class GameFileType(IntEnum):
     DISTANT_LIGHTS = 31
     YPDB = 32
     CUT = 33
+    CDR = 34
     RPF = 100
     BINARY = 101
 
@@ -56,6 +57,7 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".ytyp": GameFileType.YTYP,
     ".ytd": GameFileType.YTD,
     ".ydr": GameFileType.YDR,
+    ".cdr": GameFileType.CDR,
     ".ydd": GameFileType.YDD,
     ".yft": GameFileType.YFT,
     ".ybn": GameFileType.YBN,

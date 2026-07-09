@@ -11,6 +11,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from fivefury.meta import RawStruct
 from fivefury.meta.defs import meta_name
 from tests.compat import PytestCompat
@@ -1045,11 +1047,62 @@ class MetaAndArchiveContractTests(PytestCompat):
 
             self.assertEqual((logical_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
             self.assertNotEqual((stored_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
-            self.assertEqual((standalone_dir / "bin" / "data.bin").read_bytes(), (stored_dir / "bin" / "data.bin").read_bytes())
+            self.assertEqual((standalone_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
 
             self.assertEqual((logical_dir / "maps" / "example.ymap").read_bytes(), b"logical payload")
             self.assertEqual((standalone_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
             self.assertEqual((stored_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
+
+    def test_rpf_nested_archives_load_on_demand(self) -> None:
+        from fivefury import RpfArchive, create_rpf
+
+        archive = create_rpf("root.rpf")
+        _, nested = archive.add_nested_archive("nested.rpf")
+        nested.add_file("inner.txt", b"lazy")
+
+        parsed = RpfArchive.from_bytes(archive.to_bytes(), name="root.rpf")
+        self.assertEqual(parsed.children, [])
+        self.assertEqual(parsed.find_entry("nested.rpf").name, "nested.rpf")
+        self.assertEqual(parsed.children, [])
+
+        inner = parsed.find_entry("nested.rpf/inner.txt")
+        self.assertIsNotNone(inner)
+        self.assertEqual(inner.read(), b"lazy")
+        self.assertEqual(len(parsed.children), 1)
+
+    def test_rpf_to_folder_handles_file_directory_collisions(self) -> None:
+        from fivefury import RpfExtractionConflict, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive = create_rpf("collisions.rpf")
+            archive.add_directory("shared")
+            archive.add_file("shared", b"file payload")
+
+            output = Path(tmpdir) / "suffix"
+            written = archive.to_folder(output, conflict=RpfExtractionConflict.SUFFIX)
+            self.assertTrue((output / "shared").is_dir())
+            self.assertEqual((output / "shared.__file__").read_bytes(), b"file payload")
+            self.assertIn(output / "shared.__file__", written)
+
+            with pytest.raises(FileExistsError):
+                archive.to_folder(Path(tmpdir) / "error", conflict=RpfExtractionConflict.ERROR)
+
+    def test_rpf_can_stream_save_over_its_source_path(self) -> None:
+        from fivefury import RpfArchive, create_rpf
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "in_place.rpf"
+            source = create_rpf("in_place.rpf")
+            source.add_file("original.txt", b"original")
+            source.save(path)
+
+            with RpfArchive.from_path(path) as archive:
+                archive.add_file("added.txt", b"added")
+                archive.save(path)
+
+            with RpfArchive.from_path(path) as reread:
+                self.assertEqual(reread.find_entry("original.txt").read(), b"original")
+                self.assertEqual(reread.find_entry("added.txt").read(), b"added")
 
     def test_rpf_to_folder_defaults_to_standalone_export(self) -> None:
         from fivefury import create_rpf

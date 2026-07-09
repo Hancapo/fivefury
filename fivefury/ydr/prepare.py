@@ -403,8 +403,18 @@ def compute_bounds(positions: Sequence[tuple[float, float, float]]) -> tuple[tup
 
 
 def compute_model_collection_bounds(models: Sequence[PreparedModel]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
-    positions = [vertex for model in models for mesh in model.meshes for vertex in mesh.positions]
-    return compute_bounds(positions)
+    position_groups = [mesh.positions for model in models for mesh in model.meshes if mesh.positions]
+    if not position_groups:
+        return compute_bounds(())
+    mesh_bounds = [_native_backend._bounds_from_vertices(positions) for positions in position_groups]
+    bb_min = tuple(min(bounds[0][axis] for bounds in mesh_bounds) for axis in range(3))
+    bb_max = tuple(max(bounds[1][axis] for bounds in mesh_bounds) for axis in range(3))
+    centre = tuple((bb_min[axis] + bb_max[axis]) * 0.5 for axis in range(3))
+    radius = max(
+        _native_backend._bounds_sphere_radius_from_vertices(centre, positions)
+        for positions in position_groups
+    )
+    return centre, bb_min, bb_max, radius
 
 
 def _copy_vertex_channel(channel: Sequence[T] | None, vertex_indices: Sequence[int]) -> list[T] | None:

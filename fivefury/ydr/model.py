@@ -6,13 +6,14 @@ import math
 import struct
 import zlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Sequence, Union
+from typing import TYPE_CHECKING, Iterable, Iterator, Sequence, Union
 
 from ..bounds import Bound
+from ..buckets import at_hash_bucket_capacity
 from ..colors import CssColor, parse_css_rgb, parse_css_rgba_unit
+from ..drawable import DrawableAsset, DrawableMaterial, DrawableMesh, DrawableModel, DrawableParameter
 from ..hashing import jenk_hash
 from ..ytd import Texture, TextureFormat, Ytd
-from ._helpers import find_material, find_parameter
 from .defs import LOD_ORDER, YdrLod, YdrSkeletonBinding, coerce_lod, coerce_skeleton_binding
 from .shaders import ShaderDefinition
 
@@ -164,6 +165,10 @@ class YdrSkeleton:
     unknown_62h: int = 0
     unknown_64h: int = 0
     unknown_68h: int = 0
+    _bone_by_tag: dict[int, YdrBone] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _bone_by_name: dict[str, YdrBone] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _last_child_by_parent: dict[int, int] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _lookup_bone_count: int = dataclasses.field(default=-1, init=False, repr=False)
 
     @classmethod
     def create(cls) -> "YdrSkeleton":
@@ -191,7 +196,22 @@ class YdrSkeleton:
         self.child_indices = []
         self.transformations = []
         self.transformations_inverted = []
+        self._rebuild_bone_lookups()
         return self
+
+    def _rebuild_bone_lookups(self) -> None:
+        self._bone_by_tag.clear()
+        self._bone_by_name.clear()
+        self._last_child_by_parent.clear()
+        for index, bone in enumerate(self.bones):
+            self._bone_by_tag.setdefault(int(bone.tag), bone)
+            self._bone_by_name.setdefault(bone.name.lower(), bone)
+            self._last_child_by_parent[int(bone.parent_index)] = index
+        self._lookup_bone_count = len(self.bones)
+
+    def _ensure_bone_lookups(self) -> None:
+        if self._lookup_bone_count != len(self.bones):
+            self._rebuild_bone_lookups()
 
     def get_bone_by_index(self, index: int) -> YdrBone | None:
         if 0 <= int(index) < len(self.bones):
@@ -199,17 +219,12 @@ class YdrSkeleton:
         return None
 
     def get_bone_by_tag(self, tag: int) -> YdrBone | None:
-        for bone in self.bones:
-            if int(bone.tag) == int(tag):
-                return bone
-        return None
+        self._ensure_bone_lookups()
+        return self._bone_by_tag.get(int(tag))
 
     def get_bone_by_name(self, name: str) -> YdrBone | None:
-        lowered = str(name).lower()
-        for bone in self.bones:
-            if bone.name.lower() == lowered:
-                return bone
-        return None
+        self._ensure_bone_lookups()
+        return self._bone_by_name.get(str(name).lower())
 
     def require_bone(self, value: str | int) -> YdrBone:
         bone = self.get_bone_by_name(value) if isinstance(value, str) else self.get_bone_by_index(value)
@@ -230,6 +245,7 @@ class YdrSkeleton:
         translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
         scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
     ) -> YdrBone:
+        self._ensure_bone_lookups()
         index = len(self.bones)
         parent_index = -1
         if parent is not None:
@@ -240,9 +256,10 @@ class YdrSkeleton:
             else:
                 parent_bone = self.require_bone(int(parent))
             parent_index = int(parent_bone.index)
-            siblings = [bone for bone in self.bones if int(bone.parent_index) == parent_index]
-            if siblings:
-                siblings[-1].next_sibling_index = index
+            previous_sibling = self._last_child_by_parent.get(parent_index)
+            if previous_sibling is not None:
+                self.bones[previous_sibling].next_sibling_index = index
+            parent_bone.flags = YdrBoneFlags(int(parent_bone.flags) | int(YdrBoneFlags.HAS_CHILD))
         bone = YdrBone(
             name=str(name),
             tag=int(calculate_bone_tag(name) if tag is None else tag),
@@ -255,8 +272,25 @@ class YdrSkeleton:
             scale=tuple(float(v) for v in scale),
         )
         self.bones.append(bone)
-        self.build()
+        self.parent_indices.append(parent_index)
+        self.child_indices.clear()
+        self.transformations.clear()
+        self.transformations_inverted.clear()
+        self._bone_by_tag.setdefault(int(bone.tag), bone)
+        self._bone_by_name.setdefault(bone.name.lower(), bone)
+        self._last_child_by_parent[parent_index] = index
+        self._lookup_bone_count = len(self.bones)
         return bone
+
+    def add_bones(self, *bones: YdrBone) -> "YdrSkeleton":
+        """Append existing bone declarations and rebuild hierarchy data once."""
+
+        self.bones.extend(bones)
+        return self.build()
+
+    def extend_bones(self, bones: Iterable[YdrBone]) -> "YdrSkeleton":
+        self.bones.extend(bones)
+        return self.build()
 
     def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
         resolved: list[YdrBone] = []
@@ -325,19 +359,11 @@ def _calculate_skeleton_non_chiral_signature(skeleton: YdrSkeleton) -> int:
 
 
 def _skeleton_at_map_bone_order(bones: Sequence[YdrBone]) -> list[YdrBone]:
-    bucket_count = _get_at_map_slot_count(len(bones))
+    bucket_count = at_hash_bucket_capacity(len(bones))
     buckets: list[list[YdrBone]] = [[] for _ in range(bucket_count)]
     for bone in bones:
         buckets[int(bone.tag) % bucket_count].insert(0, bone)
     return [bone for bucket in buckets for bone in bucket]
-
-
-def _get_at_map_slot_count(count: int) -> int:
-    for prime in (11, 29, 59, 107, 191, 331, 563, 953, 1609, 2729, 4621, 7841, 13297, 22571, 38351, 65167):
-        if int(count) < prime:
-            return prime
-    return 65521
-
 
 @dataclasses.dataclass(slots=True)
 class YdrJointControlPoint:
@@ -513,7 +539,7 @@ class YdrTextureRef:
 
 
 @dataclasses.dataclass(slots=True)
-class YdrMaterialParameterRef:
+class YdrMaterialParameterRef(DrawableParameter):
     name: str
     name_hash: int = 0
     type_name: str | None = None
@@ -697,7 +723,7 @@ class YdrLight:
 
 
 @dataclasses.dataclass(slots=True)
-class YdrMaterial:
+class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
     index: int
     name: str = ""
     shader_name_hash: int = 0
@@ -708,15 +734,6 @@ class YdrMaterial:
     textures: list[YdrTextureRef] = dataclasses.field(default_factory=list)
     parameters: list[YdrMaterialParameterRef] = dataclasses.field(default_factory=list)
     shader_definition: ShaderDefinition | None = None
-
-    @property
-    def texture_names(self) -> list[str]:
-        return [texture.name for texture in self.textures if texture.name]
-
-    @property
-    def primary_texture_name(self) -> str | None:
-        names = self.texture_names
-        return names[0] if names else None
 
     @property
     def resolved_shader_file_name(self) -> str | None:
@@ -755,20 +772,11 @@ class YdrMaterial:
     def ycd_uv_clip_hash(self, *, object_name: str) -> int:
         return int(self.ycd_uv_binding(object_name=object_name).clip_hash.uint)
 
-    def get_parameter(self, value: str | int) -> YdrMaterialParameterRef | None:
-        return find_parameter(self.parameters, value)
-
     def get_texture(self, value: str | int) -> YdrTextureRef | None:
         parameter = self.get_parameter(value)
         if parameter is None or not parameter.is_texture:
             return None
         return parameter.texture
-
-    def get_numeric_parameter(self, value: str | int) -> NumericParameterValue | None:
-        parameter = self.get_parameter(value)
-        if parameter is None or not parameter.is_numeric:
-            return None
-        return parameter.value
 
     def _sync_textures(self) -> None:
         self.textures = [parameter.texture for parameter in self.parameters if parameter.is_texture and parameter.texture is not None]
@@ -910,7 +918,7 @@ class YdrMaterial:
 
 
 @dataclasses.dataclass(slots=True)
-class YdrMesh:
+class YdrMesh(DrawableMesh[YdrMaterial]):
     material_index: int = -1
     material: YdrMaterial | None = None
     indices: list[int] = dataclasses.field(default_factory=list)
@@ -930,22 +938,10 @@ class YdrMesh:
     render_mask: int = 0
     flags: int = 0
 
-    @property
-    def texture_names(self) -> list[str]:
-        return self.material.texture_names if self.material is not None else []
-
     def resolve_bones(self, skeleton: YdrSkeleton | None) -> list[YdrBone]:
         if skeleton is None:
             return []
         return skeleton.resolve_bone_ids(self.bone_ids)
-
-    @property
-    def vertex_count(self) -> int:
-        return len(self.positions)
-
-    @property
-    def is_skinned(self) -> bool:
-        return bool(self.blend_weights or self.blend_indices or self.bone_ids)
 
     def set_bone_ids(self, bone_ids: Sequence[int | YdrBone | str], *, skeleton: YdrSkeleton | None = None) -> "YdrMesh":
         resolved: list[int] = []
@@ -1005,7 +1001,7 @@ class YdrMesh:
 
 
 @dataclasses.dataclass(slots=True)
-class YdrModel:
+class YdrModel(DrawableModel[YdrMesh, YdrMaterial]):
     lod: YdrLod
     index: int = 0
     meshes: list[YdrMesh] = dataclasses.field(default_factory=list)
@@ -1028,47 +1024,6 @@ class YdrModel:
     @property
     def skeleton_binding_value(self) -> int:
         return int(self.skeleton_binding)
-
-    @property
-    def mesh_count(self) -> int:
-        return len(self.meshes)
-
-    @property
-    def material_indices(self) -> list[int]:
-        indices: list[int] = []
-        seen: set[int] = set()
-        for mesh in self.meshes:
-            if mesh.material_index < 0 or mesh.material_index in seen:
-                continue
-            seen.add(mesh.material_index)
-            indices.append(mesh.material_index)
-        return indices
-
-    @property
-    def materials(self) -> list[YdrMaterial]:
-        materials: list[YdrMaterial] = []
-        seen: set[int] = set()
-        for mesh in self.meshes:
-            material = mesh.material
-            if material is None or material.index in seen:
-                continue
-            seen.add(material.index)
-            materials.append(material)
-        return materials
-
-    @property
-    def material_count(self) -> int:
-        return len(self.materials)
-
-    @property
-    def slot_indices(self) -> list[int]:
-        return self.material_indices
-
-    def iter_materials(self) -> Iterator[YdrMaterial]:
-        yield from self.materials
-
-    def get_material(self, value: str | int) -> YdrMaterial | None:
-        return find_material(self.materials, value)
 
     def ycd_uv_binding(self, material: str | int, *, object_name: str) -> "YcdUvClipBinding":
         resolved = self.get_material(material)
@@ -1137,7 +1092,7 @@ class YdrModel:
 
 
 @dataclasses.dataclass(slots=True)
-class Ydr:
+class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
     version: int
     path: str = ""
     materials: list[YdrMaterial] = dataclasses.field(default_factory=list)
@@ -1157,8 +1112,7 @@ class Ydr:
     unknown_9c: int = 0
 
     def __post_init__(self) -> None:
-        self.lods = {coerce_lod(lod): list(models) for lod, models in self.lods.items()}
-        self.lod_distances = {coerce_lod(lod): float(distance) for lod, distance in self.lod_distances.items()}
+        super().__post_init__()
         self.render_mask_flags = {coerce_lod(lod): int(flags) for lod, flags in self.render_mask_flags.items()}
 
     def build(self) -> "Ydr":
@@ -1182,20 +1136,6 @@ class Ydr:
 
         return read_ydr(data, path=path)
 
-    def get_lod(self, name: YdrLod | str) -> list[YdrModel]:
-        return self.lods.get(coerce_lod(name), [])
-
-    def iter_models(self, lod: YdrLod | str | None = None) -> Iterator[YdrModel]:
-        if lod is not None:
-            yield from self.get_lod(lod)
-            return
-        for name in LOD_ORDER:
-            yield from self.lods.get(name, [])
-
-    def iter_meshes(self, lod: YdrLod | str | None = None) -> Iterator[YdrMesh]:
-        for model in self.iter_models(lod=lod):
-            yield from model.meshes
-
     def normalize_skeleton_bone_ids(self) -> "Ydr":
         if self.skeleton is None or not self.skeleton.bones:
             return self
@@ -1213,61 +1153,8 @@ class Ydr:
             for limit in self.joints.translation_limits:
                 if int(limit.bone_id) == old_root_tag:
                     limit.bone_id = 0
+        self.skeleton._rebuild_bone_lookups()
         return self
-
-    @property
-    def models(self) -> list[YdrModel]:
-        models: list[YdrModel] = []
-        for lod in LOD_ORDER:
-            models.extend(self.lods.get(lod, []))
-        return models
-
-    @property
-    def model_count(self) -> int:
-        return len(self.models)
-
-    def get_model(self, index: int, *, lod: YdrLod | str | None = None) -> YdrModel | None:
-        models = list(self.iter_models(lod=lod))
-        if 0 <= int(index) < len(models):
-            return models[int(index)]
-        return None
-
-    @property
-    def meshes(self) -> list[YdrMesh]:
-        for lod in LOD_ORDER:
-            models = self.lods.get(lod)
-            if models:
-                meshes: list[YdrMesh] = []
-                for model in models:
-                    meshes.extend(model.meshes)
-                return meshes
-        return []
-
-    @property
-    def texture_names(self) -> list[str]:
-        names: list[str] = []
-        seen: set[str] = set()
-        for material in self.materials:
-            for name in material.texture_names:
-                lowered = name.lower()
-                if lowered in seen:
-                    continue
-                seen.add(lowered)
-                names.append(name)
-        return names
-
-    @property
-    def name(self) -> str:
-        if self.path:
-            return Path(self.path).stem
-        return "drawable"
-
-    def get_material(self, value: str | int) -> YdrMaterial | None:
-        return find_material(self.materials, value)
-
-    @property
-    def slot_indices(self) -> list[int]:
-        return [int(material.index) for material in self.materials]
 
     def ycd_uv_binding(self, material: str | int, *, object_name: str | None = None) -> "YcdUvClipBinding":
         resolved = self.get_material(material)
@@ -1332,6 +1219,10 @@ class Ydr:
             translation=translation,
             scale=scale,
         )
+
+    def add_bones(self, *bones: YdrBone) -> "Ydr":
+        self.ensure_skeleton().add_bones(*bones)
+        return self
 
     def set_joints(self, joints: YdrJoints) -> YdrJoints:
         self.joints = joints
@@ -1553,7 +1444,8 @@ class Ydr:
 
     def validate(self) -> list[YdrValidationIssue]:
         issues: list[YdrValidationIssue] = []
-        if not self.models:
+        models = list(self.iter_models())
+        if not models:
             issues.append(YdrValidationIssue("error", "missing_models", "YDR has no drawable models"))
         if not self.materials:
             issues.append(YdrValidationIssue("error", "missing_materials", "YDR has no materials"))
@@ -1581,7 +1473,9 @@ class Ydr:
                         YdrValidationIssue("info", "external_texture_reference", f"Texture '{parameter.texture.name}' is not present in embedded textures", context=f"material:{material.index}:{parameter.name}")
                     )
 
-        for model in self.models:
+        bone_count = self.skeleton.bone_count if self.skeleton is not None else 0
+        bone_tags = {int(bone.tag) for bone in self.skeleton.bones} if self.skeleton is not None else set()
+        for model in models:
             if model.has_skin and not self.has_skeleton:
                 issues.append(
                     YdrValidationIssue("error", "missing_skeleton", f"Model {model.index} is skinned but the drawable has no skeleton", context=f"model:{model.index}")
@@ -1642,7 +1536,8 @@ class Ydr:
                     )
                 if mesh.bone_ids and self.skeleton is not None:
                     for bone_id in mesh.bone_ids:
-                        if self.skeleton.get_bone_by_tag(int(bone_id)) is None and self.skeleton.get_bone_by_index(int(bone_id)) is None:
+                        resolved_id = int(bone_id)
+                        if resolved_id not in bone_tags and not 0 <= resolved_id < bone_count:
                             issues.append(
                                 YdrValidationIssue("error", "unknown_bone_id", f"Mesh references unknown bone id {bone_id}", context=context)
                             )
@@ -1652,12 +1547,14 @@ class Ydr:
                     YdrValidationIssue("error", "missing_skeleton_for_joints", "YDR has joint limits but no skeleton", context="joints")
                 )
             for index, limit in enumerate(self.joints.rotation_limits):
-                if self.skeleton is not None and self.skeleton.get_bone_by_tag(int(limit.bone_id)) is None and self.skeleton.get_bone_by_index(int(limit.bone_id)) is None:
+                resolved_id = int(limit.bone_id)
+                if self.skeleton is not None and resolved_id not in bone_tags and not 0 <= resolved_id < bone_count:
                     issues.append(
                         YdrValidationIssue("error", "unknown_joint_rotation_bone", f"Rotation limit references unknown bone id {limit.bone_id}", context=f"joints:rotation:{index}")
                     )
             for index, limit in enumerate(self.joints.translation_limits):
-                if self.skeleton is not None and self.skeleton.get_bone_by_tag(int(limit.bone_id)) is None and self.skeleton.get_bone_by_index(int(limit.bone_id)) is None:
+                resolved_id = int(limit.bone_id)
+                if self.skeleton is not None and resolved_id not in bone_tags and not 0 <= resolved_id < bone_count:
                     issues.append(
                         YdrValidationIssue("error", "unknown_joint_translation_bone", f"Translation limit references unknown bone id {limit.bone_id}", context=f"joints:translation:{index}")
                     )

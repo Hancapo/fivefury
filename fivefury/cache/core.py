@@ -267,6 +267,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         return AssetRecord.from_cache(self, asset_id)
 
     def register_archive(self, archive: RpfArchive, *, source_prefix: str | None = None) -> None:
+        archive.load_nested_archives(recursive=True)
         self.archives.append(archive)
         prefix = (source_prefix or "").replace("\\", "/").strip("/")
         if prefix:
@@ -499,6 +500,7 @@ GameFileCache.extract = GameFileCache.extract_asset
 _KIND_DICT_TYPES: dict[str, GameFileType] = {
     "YddDict": GameFileType.YDD,
     "YdrDict": GameFileType.YDR,
+    "CdrDict": GameFileType.CDR,
     "YftDict": GameFileType.YFT,
     "YmapDict": GameFileType.YMAP,
     "YtdDict": GameFileType.YTD,

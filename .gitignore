@@ -24,6 +24,8 @@ tests/*
 !tests/test_ymf.py
 !tests/test_ynd.py
 !tests/test_rpf_ps3.py
+!tests/test_cdr.py
+!tests/test_drawable.py
 !tests/test_yft.py
 !tests/test_yld.py
 .claude/

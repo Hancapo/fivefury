@@ -7,6 +7,7 @@ from typing import Any, Optional
 from .paths import split_archive_asset_path as _split_archive_asset_path
 from .views import AssetRecord
 from ..awc import read_awc
+from ..cdr import read_cdr
 from ..cut import read_cut
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..gtxd import read_gtxd
@@ -70,6 +71,7 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
     source = raw if raw is not None else data
     resource_decoders = {
         ".ydr": (GameFileType.YDR, lambda payload: read_ydr(payload, path=path)),
+        ".cdr": (GameFileType.CDR, lambda payload: read_cdr(payload, path=path)),
         ".ydd": (GameFileType.YDD, lambda payload: read_ydd(payload, path=path)),
         ".yft": (GameFileType.YFT, lambda payload: read_yft(payload, path=path)),
         ".ytd": (GameFileType.YTD, read_ytd),
@@ -227,7 +229,7 @@ class GameFileCacheIOMixin:
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             ext = Path(asset.path).suffix.lower()
-            raw_source = standalone_native if ext in {".ytd", ".ydr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
+            raw_source = standalone_native if ext in {".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
             parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
@@ -251,7 +253,7 @@ class GameFileCacheIOMixin:
             stored = entry.read(logical=False)
             logical = entry.read(logical=True)
             raw_source = None
-            if asset.path.lower().endswith((".ytd", ".ydr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
+            if asset.path.lower().endswith((".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
                 raw_source = entry._archive.read_entry_standalone(entry)
             parsed, kind = _decode_payload(asset.path, logical, raw=raw_source)
             game_file = GameFile(

@@ -22,7 +22,7 @@ include-package-data = true
 include = ["fivefury*"]
 
 [tool.setuptools.package-data]
-fivefury = ["data/*.dat", "ydr/*.xml"]
+fivefury = ["data/*.dat", "drawable/*.xml", "ydr/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

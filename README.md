@@ -19,6 +19,7 @@ The Assimp-backed import helpers (`assimp_to_ydr`, `obj_to_ydr`, `fbx_to_ydr`, `
 | Format | Status | Scope |
 | --- | --- | --- |
 | `YDR` | Full | Drawables: models, LODs, materials, shaders, lights, embedded textures and bounds, skeletons, skinning |
+| `CDR` | Read | PS3 drawables: materials, LODs, QB/EDGE geometry, compressed indices, skeletons and skinning |
 | `YDD` | Full | Drawable dictionaries, creation from named drawables, ped-component rigging helpers |
 | `YBN` | Full | Primitive, composite, geometry, and BVH bounds; collision generation from triangle meshes |
 | `YCD` | Full | Clip dictionaries: skeletal, object, UV, camera, and root-motion tracks |
@@ -41,6 +42,8 @@ The Assimp-backed import helpers (`assimp_to_ydr`, `obj_to_ydr`, `fbx_to_ydr`, `
 | `YPT` | Partial | Embedded texture dictionary discovery/extraction only |
 | `YWR`, `YVR` | Indexed | Detected by `GameFileCache` and RPF tooling; no dedicated parser yet |
 | `YFD`, `YPDB`, `MRF` | — | Not implemented |
+
+`YDR` and `CDR` expose the same format-neutral drawable interface for LODs, models, meshes, materials, parameters, textures, and shader metadata. Their binary layouts remain isolated: PC/Enhanced authoring stays in `ydr`, while PS3 resource pages, QB/EDGE geometry, and console shader additions stay in `cdr`.
 
 ## Quick start
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from typing import Callable
 
+from ..drawable import parameter_component_count
 from .gen9 import ShaderGen9Library, ShaderParamTypeG9
 from .model import YdrMaterial, YdrMaterialParameterRef, YdrTextureRef
 from .shaders import ShaderLibrary
@@ -21,17 +22,6 @@ def parse_texture_base(
     base_off = virtual_offset(pointer, system_data)
     name_pointer = u64(system_data, base_off + 0x28)
     return try_read_c_string(name_pointer, system_data)
-
-
-def parameter_component_count(type_name: str | None) -> int:
-    lowered = (type_name or '').strip().lower()
-    if lowered == 'float':
-        return 1
-    if lowered == 'float2':
-        return 2
-    if lowered == 'float3':
-        return 3
-    return 4
 
 
 def _decode_numeric_parameter(raw: bytes, *, type_name: str | None) -> object | None:

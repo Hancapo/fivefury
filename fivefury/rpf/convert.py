@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from .utils import _normalize_path
 
 if TYPE_CHECKING:  # pragma: no cover
-    from . import RpfArchive, RpfExportMode
+    from . import RpfArchive, RpfExportMode, RpfExtractionConflict
 
 
 def _ensure_container_path(current: "RpfArchive", parts: list[str]) -> tuple["RpfArchive", str]:
@@ -114,12 +114,18 @@ def rpf_to_folder(
     *,
     mode: "RpfExportMode | None" = None,
     recurse_nested: bool = True,
+    conflict: "RpfExtractionConflict | None" = None,
 ) -> list[Path]:
-    from . import RpfArchive, RpfExportMode
+    from . import RpfArchive, RpfExportMode, RpfExtractionConflict
 
     archive = _coerce_archive(rpf_source)
     try:
-        return archive.to_folder(output_dir, mode=mode or RpfExportMode.STANDALONE, recurse_nested=recurse_nested)
+        return archive.to_folder(
+            output_dir,
+            mode=mode or RpfExportMode.STANDALONE,
+            recurse_nested=recurse_nested,
+            conflict=conflict or RpfExtractionConflict.SUFFIX,
+        )
     finally:
         if not isinstance(rpf_source, RpfArchive):
             archive.close()

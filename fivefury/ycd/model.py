@@ -5,6 +5,7 @@ from enum import IntEnum
 from pathlib import Path
 import math
 
+from ..buckets import at_hash_bucket_capacity
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from .sequences import (
@@ -945,8 +946,8 @@ class Ycd:
         self.clip_map = {clip.hash.uint: clip for clip in self.clips}
         self.clip_entry_count = len(self.clips)
         self.animation_entry_count = len(self.animations)
-        self.clip_bucket_capacity = max(int(self.clip_bucket_capacity), _get_ycd_bucket_capacity(self.clip_entry_count))
-        self.animation_bucket_capacity = max(int(self.animation_bucket_capacity), _get_ycd_bucket_capacity(self.animation_entry_count))
+        self.clip_bucket_capacity = max(int(self.clip_bucket_capacity), at_hash_bucket_capacity(self.clip_entry_count))
+        self.animation_bucket_capacity = max(int(self.animation_bucket_capacity), at_hash_bucket_capacity(self.animation_entry_count))
         self.validate()
         return self
 
@@ -1005,42 +1006,6 @@ def _resolve_ycd_clip_hash(clip: YcdClip) -> MetaHash:
     if clip.name:
         return MetaHash(clip.name)
     return MetaHash(0)
-
-
-def _get_ycd_bucket_capacity(count: int) -> int:
-    if count < 11:
-        return 11
-    if count < 29:
-        return 29
-    if count < 59:
-        return 59
-    if count < 107:
-        return 107
-    if count < 191:
-        return 191
-    if count < 331:
-        return 331
-    if count < 563:
-        return 563
-    if count < 953:
-        return 953
-    if count < 1609:
-        return 1609
-    if count < 2729:
-        return 2729
-    if count < 4621:
-        return 4621
-    if count < 7841:
-        return 7841
-    if count < 13297:
-        return 13297
-    if count < 22571:
-        return 22571
-    if count < 38351:
-        return 38351
-    if count < 65167:
-        return 65167
-    return 65521
 
 
 def create_ycd_uv_clip(

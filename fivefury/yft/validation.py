@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import math
+from collections import Counter
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
@@ -284,7 +285,7 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
         )
 
     labels = [entry.label for entry in source.drawables]
-    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    duplicates = sorted(label for label, count in Counter(labels).items() if count > 1)
     for label in duplicates:
         _issue(
             issues,

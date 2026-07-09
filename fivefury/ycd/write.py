@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..buckets import at_hash_bucket_capacity
 from ..common import clip_short_name
 from ..metahash import MetaHash
 from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections
@@ -30,42 +31,6 @@ _ANIMATION_MAP_VFT = 1079671816
 _DEFAULT_ROOT_UNKNOWN_20H = 0x00000101
 _DEFAULT_ROOT_UNKNOWN_34H = 0x01000000
 _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH = 0x01000000
-
-
-def _get_num_hash_buckets(n_hashes: int) -> int:
-    if n_hashes < 11:
-        return 11
-    if n_hashes < 29:
-        return 29
-    if n_hashes < 59:
-        return 59
-    if n_hashes < 107:
-        return 107
-    if n_hashes < 191:
-        return 191
-    if n_hashes < 331:
-        return 331
-    if n_hashes < 563:
-        return 563
-    if n_hashes < 953:
-        return 953
-    if n_hashes < 1609:
-        return 1609
-    if n_hashes < 2729:
-        return 2729
-    if n_hashes < 4621:
-        return 4621
-    if n_hashes < 7841:
-        return 7841
-    if n_hashes < 13297:
-        return 13297
-    if n_hashes < 22571:
-        return 22571
-    if n_hashes < 38351:
-        return 38351
-    if n_hashes < 65167:
-        return 65167
-    return 65521
 
 
 def _resolve_hash(value: MetaHash | int | str | None, *, fallback_text: str | None = None) -> MetaHash:
@@ -375,7 +340,7 @@ class _YcdWriter:
         if not properties:
             return 0
         property_offsets = {self._identity(prop): self.write_clip_property(prop) for prop in properties}
-        capacity = _get_num_hash_buckets(len(properties))
+        capacity = at_hash_bucket_capacity(len(properties))
         buckets: list[list[YcdClipProperty]] = [[] for _ in range(capacity)]
         for prop in properties:
             buckets[_resolve_hash(prop.name_hash).uint % capacity].append(prop)
@@ -652,8 +617,8 @@ class _YcdWriter:
     def build_system_data(self, page_counts: tuple[int, int] = (0, 0)) -> tuple[bytes, list[ResourceBlockSpan]]:
         clips = list(self.ycd.clips)
         animations = list(self.ycd.animations)
-        clip_bucket_capacity = self.ycd.clip_bucket_capacity or _get_num_hash_buckets(len(clips))
-        animation_bucket_capacity = self.ycd.animation_bucket_capacity or _get_num_hash_buckets(len(animations))
+        clip_bucket_capacity = self.ycd.clip_bucket_capacity or at_hash_bucket_capacity(len(clips))
+        animation_bucket_capacity = self.ycd.animation_bucket_capacity or at_hash_bucket_capacity(len(animations))
 
         animation_map_offset = self.write_animation_map(animations, animation_bucket_capacity)
         clip_map_offset = self.write_clip_map_buckets(clips, clip_bucket_capacity)

@@ -773,6 +773,21 @@ class _CutScriptParser:
         command = tokens[1].upper()
         args = tokens[2:]
         self._flush_pending_event(line_no)
+        if self._dispatch_asset_track_event(time, command, args, line_no):
+            return
+        if self._dispatch_playback_track_event(time, command, args, line_no):
+            return
+        if self._dispatch_visual_track_event(time, command, args, line_no):
+            return
+        if self._dispatch_auxiliary_track_event(time, command, args, line_no):
+            return
+        raise CutScriptError(
+            line_no, f"unknown TRACK {self.track} command {command!r}"
+        )
+
+    def _dispatch_asset_track_event(
+        self, time: float, command: str, args: list[str], line_no: int
+    ) -> bool:
         if command == "SCENE":
             self._load_scene(time, args, line_no, unload=False)
         elif command == "UNLOAD_SCENE":
@@ -789,7 +804,14 @@ class _CutScriptParser:
             self._start_camera_cut(time, args, line_no)
         elif command == "DRAW_DISTANCE":
             self._draw_distance(time, args, line_no)
-        elif command == "PLAY" and self.track == "AUDIO":
+        else:
+            return False
+        return True
+
+    def _dispatch_playback_track_event(
+        self, time: float, command: str, args: list[str], line_no: int
+    ) -> bool:
+        if command == "PLAY" and self.track == "AUDIO":
             self._audio_event(time, args, line_no, action="play")
         elif command == "PLAY":
             self._play_anim(time, args, line_no, stop=False)
@@ -798,7 +820,14 @@ class _CutScriptParser:
                 self._audio_event(time, args, line_no, action="stop")
             else:
                 self._play_anim(time, args, line_no, stop=True)
-        elif command == "SHOW":
+        else:
+            return False
+        return True
+
+    def _dispatch_visual_track_event(
+        self, time: float, command: str, args: list[str], line_no: int
+    ) -> bool:
+        if command == "SHOW":
             if self.track == "SUBTITLES":
                 self._subtitle_event(time, args, line_no, show=True)
             elif self.track in {"OVERLAY", "OVERLAYS"}:
@@ -824,7 +853,14 @@ class _CutScriptParser:
             self._light(time, args, line_no, enabled=True)
         elif command in {"DISABLE", "OFF"}:
             self._light(time, args, line_no, enabled=False)
-        elif command in {"LOAD", "UNLOAD"} and self.track in {
+        else:
+            return False
+        return True
+
+    def _dispatch_auxiliary_track_event(
+        self, time: float, command: str, args: list[str], line_no: int
+    ) -> bool:
+        if command in {"LOAD", "UNLOAD"} and self.track in {
             "AUDIO",
             "LOAD",
             "CLEANUP",
@@ -835,9 +871,8 @@ class _CutScriptParser:
                 time, args, line_no, unload=command.startswith("UNLOAD")
             )
         else:
-            raise CutScriptError(
-                line_no, f"unknown TRACK {self.track} command {command!r}"
-            )
+            return False
+        return True
 
     def _load_scene(
         self, time: float, args: list[str], line_no: int, *, unload: bool

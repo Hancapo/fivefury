@@ -12,6 +12,7 @@ from fivefury import (
     Texture,
     TextureFormat,
     Ydr,
+    YdrBone,
     YdrBoneFlagName,
     YdrBoneFlags,
     YdrBuild,
@@ -20,6 +21,8 @@ from fivefury import (
     YdrLight,
     YdrLightType,
     YdrLod,
+    YdrMesh,
+    YdrModel,
     YdrRenderMask,
     YdrShader,
     YdrSkeletonBinding,
@@ -1918,7 +1921,7 @@ def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
     root = ydr.add_bone("root", tag=0)
     child = ydr.add_bone("child", parent=root, tag=1)
     ydr.ensure_skeleton().build()
-    model = ydr.set_model_skin(0)
+    ydr.set_model_skin(0)
     mesh = ydr.meshes[0]
     mesh.set_skin(
         bone_ids=[root, child],
@@ -2114,3 +2117,50 @@ def test_joints_validation_detects_unknown_bones() -> None:
     issues = ydr.validate()
 
     assert any(issue.code == "missing_skeleton_for_joints" for issue in issues)
+
+
+def test_skeleton_incremental_and_batch_bone_building() -> None:
+    skeleton = YdrSkeleton()
+    root = skeleton.add_bone("root", tag=0)
+    child = skeleton.add_bone("child", parent=root, tag=10)
+
+    assert skeleton.get_bone_by_tag(10) is child
+    assert skeleton.get_bone_by_name("CHILD") is child
+    assert root.flags & YdrBoneFlags.HAS_CHILD
+    assert skeleton.parent_indices == [-1, 0]
+
+    skeleton.add_bones(
+        YdrBone(name="batch_a", tag=20, parent_index=0),
+        YdrBone(name="batch_b", tag=30, parent_index=0),
+    )
+
+    assert [bone.index for bone in skeleton.bones] == [0, 1, 2, 3]
+    assert skeleton.get_bone_by_tag(30).name == "batch_b"
+    assert skeleton.bones[2].next_sibling_index == 3
+
+
+def test_ydr_meshes_include_every_lod_and_primary_meshes_are_explicit() -> None:
+    high_mesh = YdrMesh(positions=[(0.0, 0.0, 0.0)])
+    low_mesh = YdrMesh(positions=[(10.0, 0.0, 0.0)])
+    ydr = Ydr(
+        version=165,
+        lods={
+            YdrLod.HIGH: [YdrModel(YdrLod.HIGH, meshes=[high_mesh])],
+            YdrLod.LOW: [YdrModel(YdrLod.LOW, meshes=[low_mesh])],
+        },
+    )
+
+    assert ydr.meshes == [high_mesh, low_mesh]
+    assert ydr.primary_lod is YdrLod.HIGH
+    assert ydr.primary_meshes == [high_mesh]
+    assert ydr.get_lod_meshes(YdrLod.LOW) == [low_mesh]
+
+
+@pytest.mark.parametrize(
+    ("count", "capacity"),
+    [(0, 11), (10, 11), (11, 29), (28, 29), (29, 59), (65167, 65521)],
+)
+def test_at_hash_bucket_capacity_boundaries(count: int, capacity: int) -> None:
+    from fivefury.buckets import at_hash_bucket_capacity
+
+    assert at_hash_bucket_capacity(count) == capacity

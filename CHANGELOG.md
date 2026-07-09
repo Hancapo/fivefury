@@ -7,11 +7,29 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+- `Ydr.meshes` now returns meshes from every LOD; use `primary_meshes` for the previous first-populated-LOD behavior.
+
 ### Added
+- PS3 CDR drawable reading, including PS3 resource pages, materials, shader mappings, QB geometry and compressed EDGE geometry.
 - PS3 RPF7 reading support, including PS3 AES table decryption, endian-aware headers, name-shift handling, and cache indexing.
+- RPF extraction conflict policies and explicit primary-LOD mesh accessors.
+- Batched YDR skeleton bone insertion.
+
+### Changed
+- YDR and CDR now share a format-neutral drawable model, LOD handling, material queries, parameter definitions, and shader catalog.
+- Nested RPF archives are loaded on demand instead of during the initial archive parse.
+- YDR skeleton lookups now use indexes rebuilt with the hierarchy.
 
 ### Fixed
 - `GameFileCache` can now fall back to the Python RPF reader when the native archive scanner rejects a valid archive variant.
+- RPF folder extraction now handles paths used as both files and directories.
+- CDR materials now resolve effect and preset hashes independently, including PS3-only shader names and parameters.
+
+### Performance
+- RPF saves now stream payloads through a seekable temporary file instead of retaining the complete archive twice in memory.
+- YDR collection bounds no longer flatten every mesh vertex into a temporary list.
+- YDR and YFT validation avoid repeated linear searches.
 
 ## [0.2.6] - 2026-07-06
 

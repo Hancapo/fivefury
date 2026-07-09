@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import struct
 
+from ..buckets import at_hash_bucket_capacity
 from ..resource import ResourceWriter
 from .model import Matrix4, YdrBone, YdrBoneFlags, YdrSkeleton, calculate_skeleton_unknown_hashes
 
@@ -128,46 +129,10 @@ def _build_child_indices(skeleton: YdrSkeleton) -> list[int]:
     return values
 
 
-def _get_num_hash_buckets(hash_count: int) -> int:
-    if hash_count < 11:
-        return 11
-    if hash_count < 29:
-        return 29
-    if hash_count < 59:
-        return 59
-    if hash_count < 107:
-        return 107
-    if hash_count < 191:
-        return 191
-    if hash_count < 331:
-        return 331
-    if hash_count < 563:
-        return 563
-    if hash_count < 953:
-        return 953
-    if hash_count < 1609:
-        return 1609
-    if hash_count < 2729:
-        return 2729
-    if hash_count < 4621:
-        return 4621
-    if hash_count < 7841:
-        return 7841
-    if hash_count < 13297:
-        return 13297
-    if hash_count < 22571:
-        return 22571
-    if hash_count < 38351:
-        return 38351
-    if hash_count < 65167:
-        return 65167
-    return 65521
-
-
 def _build_bone_tag_block(system: ResourceWriter, skeleton: YdrSkeleton, *, virtual) -> tuple[int, int, int]:
     if not _skeleton_uses_bone_id_table(skeleton):
         return 0, 0, 0
-    bucket_count = _get_num_hash_buckets(skeleton.bone_count)
+    bucket_count = at_hash_bucket_capacity(skeleton.bone_count)
     buckets: list[list[YdrBone]] = [[] for _ in range(bucket_count)]
     for bone in skeleton.bones:
         buckets[int(bone.tag) % bucket_count].append(bone)

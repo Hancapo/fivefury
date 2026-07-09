@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-# Generated from fivefury/ydr/Shaders.xml.
+# Generated from fivefury/drawable/Shaders.xml.
 # Keep this file static so IDEs can autocomplete shader members.
 class YdrShader(StrEnum):
     DEFAULT = 'default.sps'

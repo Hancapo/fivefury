@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import io
+import os
 import struct
+import tempfile
 import zipfile
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Optional
 
@@ -34,7 +35,6 @@ from .utils import (
     RSC7_MAGIC,
     _archive_name,
     _build_rsc7,
-    _ceil_div,
     _coerce_file_bytes,
     _compress_deflate,
     _decompress_deflate,
@@ -55,46 +55,15 @@ from .entries import (
     RpfResourceFileEntry,
     RpfResourcePageFlags,
 )
+from .modes import (
+    RpfExportMode,
+    RpfExtractionConflict,
+    RpfPlatform,
+    coerce_export_mode,
+    coerce_extraction_conflict,
+)
 from .ps3 import GTA5_PS3_AES_KEY, normalize_ps3_entries
-
-class RpfExportMode(str, Enum):
-    """Export mode for files read from an RPF archive."""
-
-    STORED = "stored"
-    STANDALONE = "standalone"
-    LOGICAL = "logical"
-
-    @property
-    def description(self) -> str:
-        if self is RpfExportMode.STORED:
-            return "Returns bytes as stored in the RPF entry, without rebuilding a standalone resource container."
-        if self is RpfExportMode.STANDALONE:
-            return "Returns standalone files. GTA resources are rebuilt with a valid RSC7 header and payload."
-        return "Returns the logical payload. GTA resources are unpacked to their inner data without the RSC7 container."
-
-    def __str__(self) -> str:
-        return self.value
-
-
-class RpfPlatform(str, Enum):
-    """Platform byte order used by an RPF archive."""
-
-    PC = "pc"
-    PS3 = "ps3"
-
-    @property
-    def byte_order(self) -> str:
-        return "big" if self is RpfPlatform.PS3 else "little"
-
-    @property
-    def struct_prefix(self) -> str:
-        return ">" if self is RpfPlatform.PS3 else "<"
-
-
-def _coerce_export_mode(mode: RpfExportMode) -> RpfExportMode:
-    if not isinstance(mode, RpfExportMode):
-        raise TypeError("mode must be an instance of RpfExportMode")
-    return mode
+from .streaming import write_archive_stream
 
 
 def _encode_large_resource_header_size(data: bytes, size: int) -> bytes:
@@ -131,6 +100,8 @@ class RpfArchive:
     _source_handle: Optional[BinaryIO] = field(default=None, init=False, repr=False, compare=False)
     _index: dict[str, RpfEntry] = field(default_factory=dict, init=False, repr=False, compare=False)
     _index_dirty: bool = field(default=False, init=False, repr=False, compare=False)
+    _nested_entries: list[RpfFileEntry] = field(default_factory=list, init=False, repr=False, compare=False)
+    _nested_errors: dict[str, str] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.name = self.name or "archive.rpf"
@@ -145,11 +116,19 @@ class RpfArchive:
         return cls(name=_archive_name(name), prefix=prefix, crypto=crypto)
 
     @classmethod
-    def from_path(cls, path: str | Path, *, crypto: GameCrypto | None = None) -> "RpfArchive":
+    def from_path(
+        cls,
+        path: str | Path,
+        *,
+        crypto: GameCrypto | None = None,
+        load_nested: bool = False,
+    ) -> "RpfArchive":
         p = Path(path)
         archive = cls(name=p.name, source_path=str(p), crypto=crypto)
         archive._source_file = p
         archive._parse()
+        if load_nested:
+            archive.load_nested_archives(recursive=True)
         return archive
 
     @classmethod
@@ -161,10 +140,13 @@ class RpfArchive:
         source_path: str = "",
         prefix: str = "",
         crypto: GameCrypto | None = None,
+        load_nested: bool = False,
     ) -> "RpfArchive":
         archive = cls(name=name or Path(source_path).name or "archive.rpf", source_path=source_path, prefix=prefix, crypto=crypto)
         archive._source_bytes = bytes(data)
         archive._parse()
+        if load_nested:
+            archive.load_nested_archives(recursive=True)
         return archive
 
     @classmethod
@@ -368,27 +350,66 @@ class RpfArchive:
                         child.is_encrypted = True
                     dir_entry.files.append(child)
                     if child.name_lower.endswith(".rpf"):
-                        try:
-                            nested_bytes = child.read(logical=True)
-                            if not _is_rpf7(nested_bytes):
-                                continue
-                            nested = RpfArchive.from_bytes(
-                                nested_bytes,
-                                name=child.name,
-                                source_path=self._nested_source_path(child),
-                                prefix=child.full_path,
-                                crypto=self.crypto,
-                            )
-                            nested.parent = self
-                            nested.parent_file_entry = child if isinstance(child, RpfBinaryFileEntry) else None
-                            if isinstance(child, (RpfBinaryFileEntry, RpfResourceFileEntry)):
-                                child.child_archive = nested
-                            self.children.append(nested)
-                        except Exception:
-                            pass
+                        self._nested_entries.append(child)
 
         build_dir(self.root, "")
         self._rebuild_index()
+
+    def load_nested_archive(
+        self,
+        entry: RpfFileEntry,
+        *,
+        recursive: bool = False,
+        strict: bool = False,
+    ) -> "RpfArchive | None":
+        """Load one nested RPF entry on demand."""
+
+        if entry.child_archive is not None:
+            nested = entry.child_archive
+        else:
+            if entry._archive is not self or not entry.name_lower.endswith(".rpf"):
+                raise ValueError("entry is not a nested RPF owned by this archive")
+            try:
+                nested_bytes = entry.read(logical=True)
+                if not _is_rpf7(nested_bytes):
+                    raise ValueError(f"Entry '{entry.full_path}' does not contain an RPF7 archive")
+                nested = RpfArchive.from_bytes(
+                    nested_bytes,
+                    name=entry.name,
+                    source_path=self._nested_source_path(entry),
+                    prefix=entry.full_path,
+                    crypto=self.crypto,
+                )
+            except (OSError, ValueError) as exc:
+                self._nested_errors[_normalize_key(entry.full_path)] = str(exc)
+                if strict:
+                    raise
+                return None
+            nested.parent = self
+            nested.parent_file_entry = entry if isinstance(entry, RpfBinaryFileEntry) else None
+            entry.child_archive = nested
+            self.children.append(nested)
+            self._index_dirty = True
+        if recursive:
+            nested.load_nested_archives(recursive=True, strict=strict)
+        return nested
+
+    def load_nested_archives(
+        self,
+        *,
+        recursive: bool = True,
+        strict: bool = False,
+    ) -> list["RpfArchive"]:
+        """Load pending nested archives and return the successfully parsed children."""
+
+        for entry in self._nested_entries:
+            self.load_nested_archive(entry, recursive=recursive, strict=strict)
+        self._rebuild_index()
+        return list(self.children)
+
+    @property
+    def nested_errors(self) -> dict[str, str]:
+        return dict(self._nested_errors)
 
     def _archive_size(self) -> int:
         if self._source_bytes is not None:
@@ -437,8 +458,19 @@ class RpfArchive:
         yield from walk(self.root)
 
     def find_entry(self, path: str | Path) -> Optional[RpfEntry]:
+        key = _normalize_key(path)
         self._ensure_index()
-        return self._index.get(_normalize_key(path))
+        match = self._index.get(key)
+        if match is not None:
+            return match
+        for entry in self._nested_entries:
+            nested_key = _normalize_key(entry.full_path)
+            if not key.startswith(f"{nested_key}/"):
+                continue
+            nested = self.load_nested_archive(entry)
+            if nested is not None:
+                return nested.find_entry(path)
+        return None
 
     def read_entry_raw(self, entry: RpfFileEntry) -> bytes:
         if getattr(entry, "_data", None) is not None:
@@ -587,7 +619,7 @@ class RpfArchive:
         existing = next((f for f in parent.files if f.name_lower == leaf_lower), None)
         if existing is not None:
             parent.files.remove(existing)
-        if leaf_lower.endswith(".rpf") and data[:4] == struct.pack("<I", RPF_MAGIC):
+        if leaf_lower.endswith(".rpf") and _is_rpf7(data):
             entry = RpfBinaryFileEntry(name=leaf, path=normalized, parent=parent, file_uncompressed_size=len(data), file_size=0, _archive=self, _data=data)
             child_prefix = f"{self.prefix}/{normalized}".strip("/") if self.prefix else normalized
             child = RpfArchive.from_bytes(
@@ -746,50 +778,30 @@ class RpfArchive:
         )
         return raw_entry, payload
 
+    def write_to(self, stream: BinaryIO) -> int:
+        return write_archive_stream(self, stream)
+
     def to_bytes(self) -> bytes:
-        if self.encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
-            raise NotImplementedError("Writing AES/NG-encrypted RPF archives is not supported")
-        entries = self._collect_entries()
-        names, _ = self._build_names(entries)
-        entry_count = len(entries)
-        header_size = 16 + entry_count * 16 + len(names)
-        data_start = _ceil_div(header_size, RPF_BLOCK_SIZE) * RPF_BLOCK_SIZE
-        current_offset = data_start // RPF_BLOCK_SIZE
-        encoded_entries = bytearray()
-        payloads: list[tuple[int, bytes]] = []
-
-        for entry in entries:
-            if isinstance(entry, RpfDirectoryEntry):
-                encoded_entries.extend(struct.pack("<IIII", entry.name_offset, 0x7FFFFF00, entry.entries_index, entry.entries_count))
-                continue
-            payload = self._entry_payload(entry)
-            if isinstance(entry, RpfBinaryFileEntry):
-                raw_entry, stored = self._encode_binary_entry(entry, payload, current_offset)
-                encoded_entries.extend(raw_entry)
-            elif isinstance(entry, RpfResourceFileEntry):
-                raw_entry, stored = self._encode_resource_entry(entry, payload, current_offset)
-                encoded_entries.extend(raw_entry)
-            else:
-                raise TypeError("Unsupported RPF entry type")
-            payloads.append((entry.file_offset, stored))
-            current_offset += _ceil_div(len(stored), RPF_BLOCK_SIZE)
-
-        out = bytearray()
-        out.extend(struct.pack("<4I", RPF_MAGIC, entry_count, len(names), self.encryption))
-        out.extend(encoded_entries)
-        out.extend(names)
-        out.extend(bytes(data_start - len(out)))
-        for offset_blocks, stored in payloads:
-            desired = offset_blocks * RPF_BLOCK_SIZE
-            if len(out) < desired:
-                out.extend(bytes(desired - len(out)))
-            out.extend(stored)
-            out.extend(bytes((_ceil_div(len(out), RPF_BLOCK_SIZE) * RPF_BLOCK_SIZE) - len(out)))
-        self._rebuild_index()
-        return bytes(out)
+        output = io.BytesIO()
+        self.write_to(output)
+        return output.getvalue()
 
     def save(self, path: str | Path) -> None:
-        Path(path).write_bytes(self.to_bytes())
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile("w+b", dir=target.parent, prefix=f".{target.name}.", suffix=".tmp", delete=False) as stream:
+                temporary_path = Path(stream.name)
+                self.write_to(stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if self._source_file is not None and self._source_file.resolve() == target.resolve():
+                self.close()
+            os.replace(temporary_path, target)
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
 
     def _zip_name(self, entry: RpfEntry, prefix: str = "") -> str:
         base = entry.full_path.replace("\\", "/")
@@ -813,9 +825,12 @@ class RpfArchive:
                 yield rel_path, True, None
                 continue
             assert isinstance(entry, RpfFileEntry)
-            if recurse_nested and isinstance(entry, (RpfBinaryFileEntry, RpfResourceFileEntry)) and entry.child_archive is not None:
+            child_archive = entry.child_archive
+            if recurse_nested and child_archive is None and entry.name_lower.endswith(".rpf"):
+                child_archive = self.load_nested_archive(entry)
+            if recurse_nested and child_archive is not None:
                 yield rel_path, True, None
-                yield from entry.child_archive._iter_export_items(recurse_nested=recurse_nested)
+                yield from child_archive._iter_export_items(recurse_nested=recurse_nested)
                 continue
             yield rel_path, False, entry
 
@@ -849,7 +864,7 @@ class RpfArchive:
         - `RpfExportMode.STANDALONE`: standalone GTA files, including RSC7 headers for resources
         - `RpfExportMode.LOGICAL`: inner logical payload, without standalone resource containers
         """
-        export_mode = _coerce_export_mode(mode)
+        export_mode = coerce_export_mode(mode)
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             self._write_zip(zf, recurse_nested=recurse_nested, mode=export_mode)
@@ -864,9 +879,11 @@ class RpfArchive:
         *,
         mode: RpfExportMode = RpfExportMode.STANDALONE,
         recurse_nested: bool = True,
+        conflict: RpfExtractionConflict = RpfExtractionConflict.SUFFIX,
     ) -> list[Path]:
         """Export the archive contents to a folder using the selected `RpfExportMode`."""
-        export_mode = _coerce_export_mode(mode)
+        export_mode = coerce_export_mode(mode)
+        conflict_mode = coerce_extraction_conflict(conflict)
         root = Path(output_dir)
         root.mkdir(parents=True, exist_ok=True)
         written: list[Path] = []
@@ -876,6 +893,12 @@ class RpfArchive:
                 dest.mkdir(parents=True, exist_ok=True)
                 continue
             assert entry is not None
+            if dest.is_dir():
+                if conflict_mode is RpfExtractionConflict.ERROR:
+                    raise FileExistsError(f"RPF file path collides with a directory: {dest}")
+                if conflict_mode is RpfExtractionConflict.SKIP:
+                    continue
+                dest = dest.with_name(f"{dest.name}.__file__")
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(entry._archive._read_export_bytes(entry, mode=export_mode))
             written.append(dest)
@@ -887,8 +910,9 @@ class RpfArchive:
         *,
         mode: RpfExportMode = RpfExportMode.STANDALONE,
         recurse_nested: bool = True,
+        conflict: RpfExtractionConflict = RpfExtractionConflict.SUFFIX,
     ) -> list[Path]:
-        return self.to_folder(output_dir, mode=mode, recurse_nested=recurse_nested)
+        return self.to_folder(output_dir, mode=mode, recurse_nested=recurse_nested, conflict=conflict)
 
 
 __all__ = [
@@ -905,6 +929,7 @@ __all__ = [
     "RpfBinaryFileEntry",
     "RpfDirectoryEntry",
     "RpfEntry",
+    "RpfExtractionConflict",
     "RpfExportMode",
     "RpfFileEntry",
     "RpfPlatform",
