@@ -481,7 +481,15 @@ class GameFileCacheScanMixin:
                 self.verbose,
             ):
                 if error:
-                    self.scan_errors[_normalize_key(rel)] = error
+                    try:
+                        archive = RpfArchive.from_path(root_path / rel, crypto=self.crypto)
+                        self.register_archive(archive, source_prefix=rel)
+                        processed_archives += 1
+                        if processed_archives % _SCAN_GC_INTERVAL == 0:
+                            gc.collect()
+                        continue
+                    except Exception as exc:
+                        self.scan_errors[_normalize_key(rel)] = f"{error}; fallback failed: {exc}"
                     continue
                 processed_archives += 1
                 if processed_archives % _SCAN_GC_INTERVAL == 0:

@@ -137,6 +137,18 @@ std::uint64_t read_u64_le(const std::uint8_t* data) noexcept {
            (static_cast<std::uint64_t>(read_u32_le(data + 4U)) << 32U);
 }
 
+std::uint32_t read_u32_be(const std::uint8_t* data) noexcept {
+    return (static_cast<std::uint32_t>(data[0]) << 24U) |
+           (static_cast<std::uint32_t>(data[1]) << 16U) |
+           (static_cast<std::uint32_t>(data[2]) << 8U) |
+           static_cast<std::uint32_t>(data[3]);
+}
+
+std::uint64_t read_u64_be(const std::uint8_t* data) noexcept {
+    return (static_cast<std::uint64_t>(read_u32_be(data)) << 32U) |
+           static_cast<std::uint64_t>(read_u32_be(data + 4U));
+}
+
 void write_u32_le(std::uint32_t value, std::uint8_t* out) noexcept {
     out[0] = static_cast<std::uint8_t>(value & 0xFFU);
     out[1] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
@@ -227,13 +239,16 @@ ParsedArchive parse_entries(
     const std::string& hash_lut
 ) {
     const auto header = reader.read(archive.base_offset, 16U);
-    const auto version = read_u32_le(header.data());
-    const auto entry_count = read_u32_le(header.data() + 4U);
-    const auto names_length = read_u32_le(header.data() + 8U);
-    const auto encryption = read_u32_le(header.data() + 12U);
-    if (version != RPF_MAGIC) {
+    const bool big_endian = read_u32_be(header.data()) == RPF_MAGIC;
+    if (!big_endian && read_u32_le(header.data()) != RPF_MAGIC) {
         throw std::runtime_error("invalid RPF7 magic");
     }
+    const auto read_u32 = big_endian ? read_u32_be : read_u32_le;
+    const auto entry_count = read_u32(header.data() + 4U);
+    const auto encoded_names_length = read_u32(header.data() + 8U);
+    const auto name_shift = (encoded_names_length >> 28U) & 7U;
+    const auto names_length = encoded_names_length & 0x0FFFFFFFU;
+    const auto encryption = read_u32(header.data() + 12U);
 
     const auto entries_size = static_cast<std::size_t>(entry_count) * 16U;
     auto entries_data = reader.read(archive.base_offset + 16U, entries_size);
@@ -257,13 +272,23 @@ ParsedArchive parse_entries(
             hash_lut
         );
     }
+    if (big_endian) {
+        for (std::size_t offset = 0; offset + 16U <= entries_data.size(); offset += 16U) {
+            std::reverse(entries_data.begin() + static_cast<std::ptrdiff_t>(offset),
+                         entries_data.begin() + static_cast<std::ptrdiff_t>(offset + 8U));
+            std::reverse(entries_data.begin() + static_cast<std::ptrdiff_t>(offset + 8U),
+                         entries_data.begin() + static_cast<std::ptrdiff_t>(offset + 12U));
+            std::reverse(entries_data.begin() + static_cast<std::ptrdiff_t>(offset + 12U),
+                         entries_data.begin() + static_cast<std::ptrdiff_t>(offset + 16U));
+        }
+    }
 
     std::vector<EntryDescriptor> entries(entry_count);
     for (std::uint32_t i = 0; i < entry_count; ++i) {
         const auto* blob = entries_data.data() + (static_cast<std::size_t>(i) * 16U);
+        auto& entry = entries[i];
         const auto first = read_u32_le(blob);
         const auto second = read_u32_le(blob + 4U);
-        auto& entry = entries[i];
         if (second == 0x7FFFFF00U) {
             entry.type = EntryType::Directory;
             entry.name_offset = first & 0xFFFFU;
@@ -285,7 +310,7 @@ ParsedArchive parse_entries(
             entry.system_flags = read_u32_le(blob + 8U);
             entry.graphics_flags = read_u32_le(blob + 12U);
         }
-        entry.name = read_name(names_data, entry.name_offset);
+        entry.name = read_name(names_data, entry.name_offset << name_shift);
         entry.name_lower = ascii_lower(entry.name);
         entry.is_encrypted = entry.encryption_type == 1U || ends_with(entry.name_lower, ".ysc");
     }

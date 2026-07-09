@@ -69,6 +69,10 @@ def _is_rsc7(data: bytes) -> bool:
     return data[:4] == b"RSC7"
 
 
+def _is_rpf7(data: bytes) -> bool:
+    return data[:4] in (struct.pack("<I", RPF_MAGIC), struct.pack(">I", RPF_MAGIC))
+
+
 def _resource_version_from_flags(system_flags: int, graphics_flags: int) -> int:
     return (((system_flags >> 28) & 0xF) << 4) | ((graphics_flags >> 28) & 0xF)
 
@@ -104,6 +108,7 @@ __all__ = [
     "_compress_deflate",
     "_decompress_deflate",
     "_is_rsc7",
+    "_is_rpf7",
     "_normalize_key",
     "_normalize_path",
     "_pad",
@@ -112,4 +117,3 @@ __all__ = [
     "_size_from_resource_flags",
     "_split_rsc7",
 ]
-

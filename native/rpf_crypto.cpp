@@ -24,10 +24,17 @@ namespace {
 constexpr std::uint32_t NONE_ENCRYPTION = 0;
 constexpr std::uint32_t OPEN_ENCRYPTION = 0x4E45504F;
 constexpr std::uint32_t AES_ENCRYPTION = 0x0FFFFFF9;
+constexpr std::uint32_t PS3_AES_ENCRYPTION = 0x0FFFFFF8;
 constexpr std::uint32_t NG_ENCRYPTION = 0x0FEFFFFF;
 constexpr std::size_t NG_KEYS_SIZE = 27472;
 constexpr std::size_t NG_TABLES_SIZE = 278528;
 constexpr std::size_t NG_BLOB_SIZE = NG_KEYS_SIZE + NG_TABLES_SIZE;
+constexpr std::array<std::uint8_t, 32> GTA5_PS3_AES_KEY = {
+    0x85, 0x13, 0x6E, 0x1E, 0x37, 0xFC, 0xBC, 0x45,
+    0x94, 0xE7, 0xF7, 0xBC, 0x5F, 0x18, 0x52, 0x00,
+    0xB3, 0x2A, 0x67, 0x30, 0x8C, 0xC1, 0xB8, 0x33,
+    0xB3, 0x2A, 0x67, 0x30, 0x8C, 0xC1, 0xB8, 0x33,
+};
 
 std::uint32_t read_u32_le(const std::uint8_t* data) noexcept {
     return static_cast<std::uint32_t>(data[0]) |
@@ -170,6 +177,9 @@ struct NativeCryptoContext::Impl {
         }
 #ifdef _WIN32
         aes = std::make_unique<AesEcbDecryptor>(aes_key_bytes);
+        ps3_aes = std::make_unique<AesEcbDecryptor>(
+            std::vector<std::uint8_t>(GTA5_PS3_AES_KEY.begin(), GTA5_PS3_AES_KEY.end())
+        );
 #endif
         ng_tables.resize(NG_TABLES_SIZE / sizeof(std::uint32_t));
         const auto* tables_data = ng_blob_bytes.data() + NG_KEYS_SIZE;
@@ -200,9 +210,9 @@ struct NativeCryptoContext::Impl {
         if (encryption == NONE_ENCRYPTION || encryption == OPEN_ENCRYPTION) {
             return data;
         }
-        if (encryption == AES_ENCRYPTION) {
+        if (encryption == AES_ENCRYPTION || encryption == PS3_AES_ENCRYPTION) {
 #ifdef _WIN32
-            return aes->decrypt_aligned(data);
+            return (encryption == PS3_AES_ENCRYPTION ? ps3_aes : aes)->decrypt_aligned(data);
 #else
             throw std::runtime_error("AES decryption is unavailable");
 #endif
@@ -294,6 +304,7 @@ struct NativeCryptoContext::Impl {
     std::vector<std::uint32_t> ng_subkeys;
 #ifdef _WIN32
     std::unique_ptr<AesEcbDecryptor> aes;
+    std::unique_ptr<AesEcbDecryptor> ps3_aes;
 #endif
 };
 
@@ -335,9 +346,9 @@ std::vector<std::uint8_t> NativeCryptoContext::decrypt_data(
     if (data.empty()) {
         return {};
     }
-    if (encryption == AES_ENCRYPTION) {
+    if (encryption == AES_ENCRYPTION || encryption == PS3_AES_ENCRYPTION) {
 #ifdef _WIN32
-        return impl_->aes->decrypt_aligned(data);
+        return (encryption == PS3_AES_ENCRYPTION ? impl_->ps3_aes : impl_->aes)->decrypt_aligned(data);
 #else
         throw std::runtime_error("AES decryption is unavailable");
 #endif

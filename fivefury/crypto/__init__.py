@@ -28,6 +28,7 @@ from ..hashing import jenk_hash
 NONE_ENCRYPTION: Final[int] = 0
 OPEN_ENCRYPTION: Final[int] = 0x4E45504F
 AES_ENCRYPTION: Final[int] = 0x0FFFFFF9
+PS3_AES_ENCRYPTION: Final[int] = 0x0FFFFFF8
 NG_ENCRYPTION: Final[int] = 0x0FEFFFFF
 
 _default_crypto: "GameCrypto | None" = None
@@ -304,6 +305,7 @@ __all__ = [
     "NG_ENCRYPTION",
     "NONE_ENCRYPTION",
     "OPEN_ENCRYPTION",
+    "PS3_AES_ENCRYPTION",
     "clear_game_crypto",
     "ensure_game_crypto",
     "get_game_crypto",

@@ -13,6 +13,7 @@ from ..crypto import (
     NG_ENCRYPTION,
     NONE_ENCRYPTION,
     OPEN_ENCRYPTION,
+    PS3_AES_ENCRYPTION,
     GameCrypto,
     ensure_game_crypto,
     get_game_crypto,
@@ -38,6 +39,7 @@ from .utils import (
     _compress_deflate,
     _decompress_deflate,
     _is_rsc7,
+    _is_rpf7,
     _normalize_key,
     _normalize_path,
     _pad,
@@ -53,6 +55,7 @@ from .entries import (
     RpfResourceFileEntry,
     RpfResourcePageFlags,
 )
+from .ps3 import GTA5_PS3_AES_KEY, normalize_ps3_entries
 
 class RpfExportMode(str, Enum):
     """Export mode for files read from an RPF archive."""
@@ -71,6 +74,21 @@ class RpfExportMode(str, Enum):
 
     def __str__(self) -> str:
         return self.value
+
+
+class RpfPlatform(str, Enum):
+    """Platform byte order used by an RPF archive."""
+
+    PC = "pc"
+    PS3 = "ps3"
+
+    @property
+    def byte_order(self) -> str:
+        return "big" if self is RpfPlatform.PS3 else "little"
+
+    @property
+    def struct_prefix(self) -> str:
+        return ">" if self is RpfPlatform.PS3 else "<"
 
 
 def _coerce_export_mode(mode: RpfExportMode) -> RpfExportMode:
@@ -100,6 +118,9 @@ class RpfArchive:
     prefix: str = ""
     encryption: int = OPEN_ENCRYPTION
     version: int = RPF_MAGIC
+    platform: RpfPlatform = RpfPlatform.PC
+    name_shift: int = 0
+    xcompressed: bool = False
     root: RpfDirectoryEntry = field(default_factory=RpfDirectoryEntry)
     children: list["RpfArchive"] = field(default_factory=list)
     parent: Optional["RpfArchive"] = None
@@ -199,14 +220,75 @@ class RpfArchive:
             for child in entry.files:
                 self._attach_archive(child)
 
+    def _parse_header(self, header: bytes) -> tuple[int, int, int, int]:
+        little_magic = struct.unpack_from("<I", header, 0)[0]
+        big_magic = struct.unpack_from(">I", header, 0)[0]
+        if little_magic == RPF_MAGIC:
+            self.platform = RpfPlatform.PC
+        elif big_magic == RPF_MAGIC:
+            self.platform = RpfPlatform.PS3
+        else:
+            raise ValueError("Invalid RPF7 magic")
+
+        prefix = self.platform.struct_prefix
+        version, entry_count, encoded_names_length, encryption = struct.unpack_from(f"{prefix}4I", header, 0)
+        self.name_shift = (encoded_names_length >> 28) & 0x7
+        self.xcompressed = bool(encoded_names_length & 0x80000000)
+        names_length = encoded_names_length & 0x0FFFFFFF
+        return version, entry_count, names_length, encryption
+
+    def _name_at(self, names: dict[int, str], encoded_offset: int) -> str:
+        return names.get(int(encoded_offset) << self.name_shift, "")
+
+    def _parse_little_entry(self, blob: bytes, names: dict[int, str]) -> RpfEntry:
+        first_dword, second_dword = struct.unpack_from("<II", blob, 0)
+        if second_dword == 0x7FFFFF00:
+            entry = RpfDirectoryEntry(
+                name=self._name_at(names, first_dword & 0xFFFF),
+                path="",
+                entries_index=struct.unpack_from("<I", blob, 8)[0],
+                entries_count=struct.unpack_from("<I", blob, 12)[0],
+            )
+            entry.name_offset = first_dword & 0xFFFF
+            return entry
+        if (second_dword & 0x80000000) == 0:
+            low = struct.unpack_from("<Q", blob, 0)[0]
+            entry = RpfBinaryFileEntry(
+                name=self._name_at(names, low & 0xFFFF),
+                path="",
+                file_size=(low >> 16) & 0xFFFFFF,
+                file_offset=(low >> 40) & 0xFFFFFF,
+                file_uncompressed_size=struct.unpack_from("<I", blob, 8)[0],
+                encryption_type=struct.unpack_from("<I", blob, 12)[0],
+            )
+            entry.name_offset = low & 0xFFFF
+            entry.is_encrypted = bool(entry.encryption_type & 0x1)
+            return entry
+
+        name_offset = struct.unpack_from("<H", blob, 0)[0]
+        file_size = int.from_bytes(blob[2:5], "little")
+        file_offset = int.from_bytes(blob[5:8], "little") & 0x7FFFFF
+        sys_flags, gfx_flags = struct.unpack_from("<II", blob, 8)
+        entry = RpfResourceFileEntry(
+            name=self._name_at(names, name_offset),
+            path="",
+            file_size=file_size,
+            file_offset=file_offset,
+            system_flags=RpfResourcePageFlags(sys_flags),
+            graphics_flags=RpfResourcePageFlags(gfx_flags),
+        )
+        entry.name_offset = name_offset
+        return entry
+
+    def _parse_entry(self, blob: bytes, names: dict[int, str]) -> RpfEntry:
+        return self._parse_little_entry(blob, names)
+
     def _parse(self) -> None:
         header = self._source_read(0, 16)
         if len(header) < 16:
             raise ValueError("Invalid RPF archive")
 
-        version, entry_count, names_length, encryption = struct.unpack_from("<4I", header, 0)
-        if version != RPF_MAGIC:
-            raise ValueError("Invalid RPF7 magic")
+        version, entry_count, names_length, encryption = self._parse_header(header)
         self.version = version
         self.encryption = encryption
 
@@ -231,6 +313,8 @@ class RpfArchive:
                 archive_name=self.name,
                 archive_size=self._archive_size(),
             )
+        if self.platform is RpfPlatform.PS3:
+            entries_data = normalize_ps3_entries(entries_data)
 
         names: dict[int, str] = {0: ""}
         i = 0
@@ -246,50 +330,16 @@ class RpfArchive:
             blob = entries_data[n * 16 : (n + 1) * 16]
             if len(blob) < 16:
                 raise ValueError("Truncated RPF entry table")
-            first_dword, second_dword = struct.unpack_from("<II", blob, 0)
-            if second_dword == 0x7FFFFF00:
-                entry = RpfDirectoryEntry(
-                    name=names.get(first_dword & 0xFFFF, ""),
-                    path="",
-                    entries_index=struct.unpack_from("<I", blob, 8)[0],
-                    entries_count=struct.unpack_from("<I", blob, 12)[0],
-                )
-                entry.name_offset = first_dword & 0xFFFF
-            elif (second_dword & 0x80000000) == 0:
-                low = struct.unpack_from("<Q", blob, 0)[0]
-                entry = RpfBinaryFileEntry(
-                    name=names.get(low & 0xFFFF, ""),
-                    path="",
-                    file_size=(low >> 16) & 0xFFFFFF,
-                    file_offset=(low >> 40) & 0xFFFFFF,
-                    file_uncompressed_size=struct.unpack_from("<I", blob, 8)[0],
-                    encryption_type=struct.unpack_from("<I", blob, 12)[0],
-                )
-                entry.name_offset = low & 0xFFFF
-                entry.is_encrypted = bool(entry.encryption_type & 0x1)
-            else:
-                name_offset = struct.unpack_from("<H", blob, 0)[0]
-                file_size = int.from_bytes(blob[2:5], "little")
-                file_offset = int.from_bytes(blob[5:8], "little") & 0x7FFFFF
-                sys_flags, gfx_flags = struct.unpack_from("<II", blob, 8)
-                entry = RpfResourceFileEntry(
-                    name=names.get(name_offset, ""),
-                    path="",
-                    file_size=file_size,
-                    file_offset=file_offset,
-                    system_flags=RpfResourcePageFlags(sys_flags),
-                    graphics_flags=RpfResourcePageFlags(gfx_flags),
-                )
-                entry.name_offset = name_offset
-                if entry.file_size == 0xFFFFFF:
-                    raw_header = self._source_read(entry.file_offset * RPF_BLOCK_SIZE, 16)
-                    if len(raw_header) == 16:
-                        entry.file_size = (
-                            (raw_header[7] << 0)
-                            | (raw_header[14] << 8)
-                            | (raw_header[5] << 16)
-                            | (raw_header[2] << 24)
-                        )
+            entry = self._parse_entry(blob, names)
+            if isinstance(entry, RpfResourceFileEntry) and entry.file_size == 0xFFFFFF:
+                raw_header = self._source_read(entry.file_offset * RPF_BLOCK_SIZE, 16)
+                if len(raw_header) == 16:
+                    entry.file_size = (
+                        (raw_header[7] << 0)
+                        | (raw_header[14] << 8)
+                        | (raw_header[5] << 16)
+                        | (raw_header[2] << 24)
+                    )
             entries.append(entry)
 
         root = entries[0]
@@ -320,6 +370,8 @@ class RpfArchive:
                     if child.name_lower.endswith(".rpf"):
                         try:
                             nested_bytes = child.read(logical=True)
+                            if not _is_rpf7(nested_bytes):
+                                continue
                             nested = RpfArchive.from_bytes(
                                 nested_bytes,
                                 name=child.name,
@@ -445,7 +497,12 @@ class RpfArchive:
                 entry.graphics_flags.value,
             ) + payload
         if entry.is_encrypted:
-            return self._decrypt_entry_raw(entry, raw)
+            raw = self._decrypt_entry_raw(entry, raw)
+        if isinstance(entry, RpfBinaryFileEntry) and entry.file_size > 0:
+            try:
+                return _decompress_deflate(raw)
+            except ValueError:
+                return raw
         return raw
 
     def _decrypt_entry_raw(self, entry: RpfFileEntry, raw: bytes) -> bytes:
@@ -839,15 +896,18 @@ __all__ = [
     "NG_ENCRYPTION",
     "NONE_ENCRYPTION",
     "OPEN_ENCRYPTION",
+    "PS3_AES_ENCRYPTION",
     "RPF_BLOCK_SIZE",
     "RPF_MAGIC",
     "RSC7_MAGIC",
+    "GTA5_PS3_AES_KEY",
     "RpfArchive",
     "RpfBinaryFileEntry",
     "RpfDirectoryEntry",
     "RpfEntry",
     "RpfExportMode",
     "RpfFileEntry",
+    "RpfPlatform",
     "RpfResourceFileEntry",
     "RpfResourcePageFlags",
     "create_rpf",

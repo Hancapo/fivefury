@@ -7,6 +7,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- PS3 RPF7 reading support, including PS3 AES table decryption, endian-aware headers, name-shift handling, and cache indexing.
+
+### Fixed
+- `GameFileCache` can now fall back to the Python RPF reader when the native archive scanner rejects a valid archive variant.
+
 ## [0.2.6] - 2026-07-06
 
 ### Changed
