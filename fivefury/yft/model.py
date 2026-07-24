@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .drawables import YftDrawable, YftDrawableMatch
+from .events import YftEventSet, YftPhysicsChildEvents, YftPhysicsGroupEvents
 from .fragment import Yft
 from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 from .physics import (
@@ -10,9 +11,7 @@ from .physics import (
     YftPhysicsDamping,
     YftPhysicsDampingKind,
     YftPhysicsEntity,
-    YftPhysicsEventRefs,
     YftPhysicsGroup,
-    YftPhysicsGroupEventRefs,
     YftPhysicsGroupFlag,
     YftPhysicsInertia,
     YftPhysicsJoint,
@@ -43,6 +42,7 @@ __all__ = [
     "YftArticulatedBodyType",
     "YftDrawable",
     "YftDrawableMatch",
+    "YftEventSet",
     "YftFragmentDrawable",
     "YftFragmentFlag",
     "YftFragmentMatrix",
@@ -50,13 +50,13 @@ __all__ = [
     "YftFragmentState",
     "YftGeometryStats",
     "YftPhysicsChild",
+    "YftPhysicsChildEvents",
     "YftPhysicsDampArchetype",
     "YftPhysicsDamping",
     "YftPhysicsDampingKind",
     "YftPhysicsEntity",
-    "YftPhysicsEventRefs",
     "YftPhysicsGroup",
-    "YftPhysicsGroupEventRefs",
+    "YftPhysicsGroupEvents",
     "YftPhysicsGroupFlag",
     "YftPhysicsInertia",
     "YftPhysicsJoint",

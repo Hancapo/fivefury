@@ -9,8 +9,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 - `Ydr.meshes` now returns meshes from every LOD; use `primary_meshes` for the previous first-populated-LOD behavior.
+- YFT physics event slots now expose `YftEventSet` objects through `YftPhysicsChildEvents` and `YftPhysicsGroupEvents` instead of raw pointer containers.
 
 ### Added
+- Readable and writable resource-backed YFT event sets for the empty continuous-event graphs used by legacy game assets.
 - Structured YFT 1DOF and 3DOF articulated joints with writable orientations, limits, and muscle torques.
 - PS3 CDR drawable reading, including PS3 resource pages, materials, shader mappings, QB geometry and compressed EDGE geometry.
 - PS3 RPF7 reading support, including PS3 AES table decryption, endian-aware headers, name-shift handling, and cache indexing.

@@ -30,6 +30,11 @@ from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_materials import prepare_materials
 from .constants import FRAGMENT_DRAWABLE_SIZE, FRAGMENT_ROOT_SIZE
 from .drawables import YftDrawable
+from .events_writer import (
+    event_set_pointer,
+    write_child_event_pointers,
+    write_event_sets,
+)
 from .fragment import Yft
 from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 from .physics import YftPhysicsLod
@@ -296,6 +301,7 @@ def _write_fragment_root(
     main: _PreparedFragmentDrawable | None,
     extras: Sequence[_PreparedFragmentDrawable],
     cloth: _PreparedFragmentDrawable | None,
+    event_set_offsets: dict[int, int],
 ) -> int:
     pages_info_off = system.alloc(pages_info_length(page_counts), 16)
     write_pages_info(system, pages_info_off, page_counts)
@@ -336,6 +342,13 @@ def _write_fragment_root(
             system.pack_into(
                 "H", root_child_off + 0x12, int(root_child.bone_id) & 0xFFFF
             )
+            write_child_event_pointers(
+                system,
+                root_child_off,
+                root_child.events,
+                event_set_offsets,
+                virtual_base=_DAT_VIRTUAL_BASE,
+            )
         system.pack_into("Q", root_child_off + 0xA0, _virtual(main.root_offset))
         system.pack_into(
             "Q",
@@ -354,6 +367,15 @@ def _write_fragment_root(
     system.pack_into("i", 0x4C, damaged_index if damaged is not None else -1)
     system.pack_into("Q", 0x50, _virtual(root_child_off) if root_child_off else 0)
     system.pack_into("Q", 0x58, _virtual(tune_name_off) if tune_name_off else 0)
+    system.pack_into(
+        "Q",
+        0x88,
+        event_set_pointer(
+            yft.collision_event_set,
+            event_set_offsets,
+            virtual_base=_DAT_VIRTUAL_BASE,
+        ),
+    )
     system.pack_into("Q", 0xB0, int(yft.state.estimated_cache_size))
     system.pack_into("Q", 0xB8, int(yft.state.estimated_articulated_cache_size))
     system.data[0xC0] = int(yft.state.entity_class) & 0xFF
@@ -407,6 +429,7 @@ def _build_yft_payload(
             item,
             bound_offset=bound_offset,
         )
+    event_set_offsets = write_event_sets(system, yft.iter_event_sets())
     root_child_off = _write_fragment_root(
         system,
         page_counts=page_counts,
@@ -414,6 +437,7 @@ def _build_yft_payload(
         main=main,
         extras=extras,
         cloth=cloth,
+        event_set_offsets=event_set_offsets,
     )
     fallback_bound = None
     if main is not None and getattr(main.build, "bound", None) is not None:
@@ -431,6 +455,7 @@ def _build_yft_payload(
         entity_drawable_offsets={
             item.source_id: item.root_offset for item in physics
         },
+        event_set_offsets=event_set_offsets,
         fallback_bound=fallback_bound,
     )
     if physics_group_off:

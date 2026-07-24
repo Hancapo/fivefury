@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from ..bounds import Bound, write_bound_resource
 from ..resource import ResourceWriter
 from .constants import DAT_VIRTUAL_BASE
+from .events_writer import event_set_pointer, write_child_event_pointers
 from .physics import (
     YftArticulatedBodyType,
     YftPhysicsChild,
@@ -117,10 +118,27 @@ def _group_name_offsets(writer: ResourceWriter, lod: YftPhysicsLod) -> int:
     return _write_pointer_array(writer, [_virtual(offset) for offset in offsets])
 
 
-def _write_physics_group(writer: ResourceWriter, group: YftPhysicsGroup) -> int:
+def _write_physics_group(
+    writer: ResourceWriter,
+    group: YftPhysicsGroup,
+    *,
+    event_set_offsets: dict[int, int],
+) -> int:
     offset = writer.alloc(_PHYSICS_GROUP_SIZE, 16)
-    writer.pack_into("Q", offset + 0x00, int(group.events.death_event))
-    writer.pack_into("Q", offset + 0x08, int(group.events.death_player))
+    writer.pack_into(
+        "Q",
+        offset + 0x00,
+        event_set_pointer(
+            group.events.death,
+            event_set_offsets,
+            virtual_base=DAT_VIRTUAL_BASE,
+        ),
+    )
+    writer.pack_into(
+        "Q",
+        offset + 0x08,
+        int(group.events.death_player_pointer),
+    )
     writer.pack_into(
         "13f",
         offset + 0x10,
@@ -199,6 +217,7 @@ def _write_physics_child(
     main_drawable_offset: int,
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
+    event_set_offsets: dict[int, int],
 ) -> int:
     child_offset = writer.alloc(_PHYSICS_CHILD_SIZE, 16) if offset is None else offset
     writer.pack_into("ff", child_offset + 0x08, child.undamaged_mass, child.damaged_mass)
@@ -227,13 +246,13 @@ def _write_physics_child(
             entity_drawable_offsets=entity_drawable_offsets,
         ),
     )
-    writer.pack_into("Q", child_offset + 0xB0, int(child.events.continuous))
-    writer.pack_into("Q", child_offset + 0xB8, int(child.events.collision))
-    writer.pack_into("Q", child_offset + 0xC0, int(child.events.break_event))
-    writer.pack_into("Q", child_offset + 0xC8, int(child.events.break_from_root))
-    writer.pack_into("Q", child_offset + 0xD0, int(child.events.collision_player))
-    writer.pack_into("Q", child_offset + 0xD8, int(child.events.break_player))
-    writer.pack_into("Q", child_offset + 0xE0, int(child.events.break_from_root_player))
+    write_child_event_pointers(
+        writer,
+        child_offset,
+        child.events,
+        event_set_offsets,
+        virtual_base=DAT_VIRTUAL_BASE,
+    )
     return child_offset
 
 
@@ -361,6 +380,7 @@ def _write_child_array(
     main_drawable_offset: int,
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
+    event_set_offsets: dict[int, int],
 ) -> int:
     child_offsets: list[int] = []
     for index, child in enumerate(lod.children):
@@ -372,6 +392,7 @@ def _write_child_array(
                 main_drawable_offset=main_drawable_offset,
                 damaged_drawable_offset=damaged_drawable_offset,
                 entity_drawable_offsets=entity_drawable_offsets,
+                event_set_offsets=event_set_offsets,
             )
         )
     return _write_pointer_array(writer, [_virtual(offset) for offset in child_offsets])
@@ -385,6 +406,7 @@ def _write_physics_lod(
     main_drawable_offset: int,
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
+    event_set_offsets: dict[int, int],
 ) -> int:
     if lod.composite_bound is None:
         raise ValueError(f"physics LOD '{lod.label}' requires a composite_bound")
@@ -406,7 +428,14 @@ def _write_physics_lod(
         inertia=lod.undamaged_ang_inertia,
     )
     group_names_offset = _group_name_offsets(writer, lod)
-    group_offsets = [_write_physics_group(writer, group) for group in lod.groups]
+    group_offsets = [
+        _write_physics_group(
+            writer,
+            group,
+            event_set_offsets=event_set_offsets,
+        )
+        for group in lod.groups
+    ]
     groups_offset = _write_pointer_array(writer, [_virtual(offset) for offset in group_offsets])
     children_offset = _write_child_array(
         writer,
@@ -415,6 +444,7 @@ def _write_physics_lod(
         main_drawable_offset=main_drawable_offset,
         damaged_drawable_offset=damaged_drawable_offset,
         entity_drawable_offsets=entity_drawable_offsets,
+        event_set_offsets=event_set_offsets,
     )
     min_impulses_offset = _write_float_array(writer, lod.min_breaking_impulses)
     undamaged_inertia_offset = _write_inertia_array(writer, lod.undamaged_ang_inertia)
@@ -460,6 +490,7 @@ def write_physics_lod_group(
     main_drawable_offset: int,
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
+    event_set_offsets: dict[int, int],
     fallback_bound: Bound | None = None,
 ) -> tuple[int, tuple[YftPhysicsLod, ...]]:
     if not lods:
@@ -477,6 +508,7 @@ def write_physics_lod_group(
             main_drawable_offset=main_drawable_offset,
             damaged_drawable_offset=damaged_drawable_offset,
             entity_drawable_offsets=entity_drawable_offsets,
+            event_set_offsets=event_set_offsets,
         )
     group_offset = writer.alloc(_PHYSICS_LOD_GROUP_SIZE, 16)
     writer.pack_into("Q", group_offset + 0x10, _virtual(offsets["high"]) if "high" in offsets else 0)
