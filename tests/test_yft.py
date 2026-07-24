@@ -505,3 +505,53 @@ def test_yft_corpus_scanner_reports_unreadable_paths(tmp_path):
     assert result[0].path == broken
     assert result[0].readable is False
     assert "RSC7" in result[0].error or "short" in result[0].error
+
+
+def test_yft_articulated_joints_roundtrip():
+    from fivefury.resource import ResourceWriter
+    from fivefury.yft import (
+        IDENTITY_MATRIX44,
+        YftPhysicsJoint1Dof,
+        YftPhysicsJoint3Dof,
+        YftPhysicsJointType,
+    )
+    from fivefury.yft.physics_reader import read_physics_joint
+    from fivefury.yft.physics_writer import _write_physics_joint
+
+    joints = (
+        YftPhysicsJoint1Dof(
+            parent_link_index=0,
+            child_link_index=1,
+            orientation_parent=IDENTITY_MATRIX44,
+            orientation_child=IDENTITY_MATRIX44,
+            hard_angle_min=-0.5,
+            hard_angle_max=0.75,
+        ),
+        YftPhysicsJoint3Dof(
+            parent_link_index=1,
+            child_link_index=2,
+            orientation_parent=IDENTITY_MATRIX44,
+            orientation_child=IDENTITY_MATRIX44,
+            hard_first_lean_angle_max=0.25,
+            hard_second_lean_angle_max=0.5,
+            hard_twist_angle_max=1.0,
+            use_child_for_twist_axis=True,
+        ),
+    )
+    writer = ResourceWriter(initial_size=0)
+    offsets = [_write_physics_joint(writer, joint) for joint in joints]
+    data = writer.finish()
+
+    one_dof = read_physics_joint(
+        data, 0x50000000 + offsets[0], YftPhysicsJointType.ONE_DOF
+    )
+    three_dof = read_physics_joint(
+        data, 0x50000000 + offsets[1], YftPhysicsJointType.THREE_DOF
+    )
+
+    assert one_dof.parent_link_index == 0
+    assert one_dof.hard_angle_min == -0.5
+    assert one_dof.hard_angle_max == 0.75
+    assert three_dof.parent_link_index == 1
+    assert three_dof.hard_twist_angle_max == 1.0
+    assert three_dof.use_child_for_twist_axis is True

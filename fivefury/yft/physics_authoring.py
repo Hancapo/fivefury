@@ -13,6 +13,8 @@ from .physics import (
     YftPhysicsDampingKind,
     YftPhysicsGroup,
     YftPhysicsInertia,
+    YftPhysicsJoint1Dof,
+    YftPhysicsJoint3Dof,
     YftPhysicsJointType,
     YftPhysicsLod,
     YftPhysicsLodPointers,
@@ -105,10 +107,27 @@ def default_articulated_body_type(
     joints = max(0, min(22, links - 1))
     parent_indices = [-1, *range(joints)]
     parent_indices.extend([-1] * (23 - len(parent_indices)))
+    if joint_type is YftPhysicsJointType.PRISMATIC:
+        raise ValueError("GTA V fragment resources do not construct prismatic joints")
+    joint_class = (
+        YftPhysicsJoint3Dof
+        if joint_type is YftPhysicsJointType.THREE_DOF
+        else YftPhysicsJoint1Dof
+    )
+    declared_joints = tuple(
+        joint_class(
+            parent_link_index=index,
+            child_link_index=index + 1,
+            orientation_parent=IDENTITY_MATRIX44,
+            orientation_child=IDENTITY_MATRIX44,
+        )
+        for index in range(joints)
+    )
     return YftArticulatedBodyType(
         joint_parent_indices=tuple(parent_indices[:23]),
         num_links=links,
         num_joints=joints,
+        joints=declared_joints,
         joint_types=tuple(joint_type for _ in range(joints)),
         locally_owned=True,
     )
