@@ -33,6 +33,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YTYP and YMAP writers now validate MLO graphs, synchronize portal counts, infer physics dictionaries, calculate transformed extents, and cross-check supplied YTYPs and YBNs.
 
 ### Fixed
+- YNV writing now emits the required resource base metadata and page table, and packs split arrays and sector trees into valid RSC7 blocks.
+- RSC7 layout now relocates packed 64-bit pointers aligned to 4-byte boundaries, including YNV sector-tree pointers.
+- YNV validation now accepts two-vertex zero-area DLC stitch polygons used by game assets.
 - YFT application user data is preserved as an opaque value instead of being treated as a resource pointer.
 - YFT rebuilding now rejects unsupported event-player and character-cloth graphs instead of silently discarding them.
 - Drawable writing now pads vertex channels to the component width declared by the original asset.
