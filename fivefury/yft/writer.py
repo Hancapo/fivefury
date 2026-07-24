@@ -271,6 +271,7 @@ def create_yft(
     physics_bound: Bound | None = None,
     physics_density: float = 1.0,
     bounding_sphere: tuple[float, float, float, float] | None = None,
+    user_data: int = 0,
 ) -> Yft:
     yft = Yft(version=int(version), path=name, main_drawable=drawable)
     yft.cloth_drawable = cloth_drawable
@@ -279,6 +280,7 @@ def create_yft(
     yft.vehicle_glass_windows = vehicle_glass_windows
     yft.shared_matrix_set = shared_matrix_set
     yft.lights = list(lights)
+    yft.user_data = int(user_data)
     if bounding_sphere is not None:
         yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
     for index, entry in enumerate(extra_drawables):
@@ -414,6 +416,7 @@ def _write_fragment_root(
     system.pack_into("i", 0x4C, damaged_index if damaged is not None else -1)
     system.pack_into("Q", 0x50, _virtual(root_child_off) if root_child_off else 0)
     system.pack_into("Q", 0x58, _virtual(tune_name_off) if tune_name_off else 0)
+    system.pack_into("Q", 0x80, int(yft.user_data))
     system.pack_into(
         "Q",
         0x88,

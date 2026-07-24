@@ -38,6 +38,7 @@ class Yft:
     physics_lod_details: list[YftPhysicsLod] = dataclasses.field(default_factory=list)
     root_child: YftPhysicsChild | None = None
     collision_event_set: YftEventSet | None = None
+    user_data: int = 0
     tune_name: str = ""
     raw_fields: list[YftRawField] = dataclasses.field(default_factory=list)
     main_drawable: Ydr | None = None

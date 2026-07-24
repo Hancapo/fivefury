@@ -207,6 +207,7 @@ def read_yft(
             pointers.collision_event_set,
             cache=event_set_cache,
         ),
+        user_data=pointers.user_data,
         tune_name=try_read_c_string(system_data, pointers.tune_name),
         raw_fields=read_raw_fields(system_data),
         main_drawable=main_drawable,

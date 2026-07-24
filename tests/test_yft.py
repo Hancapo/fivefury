@@ -95,6 +95,27 @@ def test_yft_light_array_roundtrip():
     assert parsed.validate() == []
 
 
+def test_yft_application_user_data_roundtrip():
+    drawable = create_ydr(
+        meshes=[],
+        materials=[],
+        name="user_data_fragment",
+    )
+    source = create_yft(
+        drawable,
+        name="user_data_fragment",
+        user_data=0x12345678,
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+
+    assert struct.unpack_from("<Q", system_data, 0x80)[0] == 0x12345678
+    assert parsed.user_data == 0x12345678
+    assert parsed.validate() == []
+
+
 def test_yft_shared_matrix_set_roundtrip():
     drawable = create_ydr(
         meshes=[
