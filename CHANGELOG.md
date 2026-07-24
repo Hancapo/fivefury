@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-07-24
+
 ### Breaking Changes
 - `Ydr.meshes` now returns meshes from every LOD; use `primary_meshes` for the previous first-populated-LOD behavior.
 - YFT physics event slots now expose `YftEventSet` objects through `YftPhysicsChildEvents` and `YftPhysicsGroupEvents` instead of raw pointer containers.
