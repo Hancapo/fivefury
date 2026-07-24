@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from .utils import _resource_flags_from_size, _size_from_resource_flags
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive
+
 
 @dataclass(slots=True)
 class RpfResourcePageFlags:
@@ -40,7 +42,11 @@ class RpfEntry:
     @property
     def full_path(self) -> str:
         if self._archive is not None and self._archive.prefix:
-            return f"{self._archive.prefix}/{self.path}" if self.path else self._archive.prefix
+            return (
+                f"{self._archive.prefix}/{self.path}"
+                if self.path
+                else self._archive.prefix
+            )
         return self.path
 
     @property
@@ -73,6 +79,7 @@ class RpfFileEntry(RpfEntry):
     file_offset: int = 0
     file_size: int = 0
     is_encrypted: bool = False
+    _source_path: Path | None = field(default=None, repr=False, compare=False)
 
     @property
     def is_file(self) -> bool:
@@ -99,7 +106,9 @@ class RpfFileEntry(RpfEntry):
 class RpfBinaryFileEntry(RpfFileEntry):
     file_uncompressed_size: int = 0
     encryption_type: int = 0
-    child_archive: Optional["RpfArchive"] = field(default=None, repr=False, compare=False)
+    child_archive: Optional["RpfArchive"] = field(
+        default=None, repr=False, compare=False
+    )
     _data: bytes | None = field(default=None, repr=False, compare=False)
 
     def get_file_size(self) -> int:
@@ -113,11 +122,17 @@ class RpfBinaryFileEntry(RpfFileEntry):
 class RpfResourceFileEntry(RpfFileEntry):
     system_flags: RpfResourcePageFlags = field(default_factory=RpfResourcePageFlags)
     graphics_flags: RpfResourcePageFlags = field(default_factory=RpfResourcePageFlags)
-    child_archive: Optional["RpfArchive"] = field(default=None, repr=False, compare=False)
+    child_archive: Optional["RpfArchive"] = field(
+        default=None, repr=False, compare=False
+    )
     _data: bytes | None = field(default=None, repr=False, compare=False)
 
     def get_file_size(self) -> int:
-        return self.file_size if self.file_size else self.system_flags.size + self.graphics_flags.size
+        return (
+            self.file_size
+            if self.file_size
+            else self.system_flags.size + self.graphics_flags.size
+        )
 
     def set_file_size(self, size: int) -> None:
         self.file_size = int(size)
@@ -129,7 +144,3 @@ class RpfResourceFileEntry(RpfFileEntry):
     @property
     def graphics_size(self) -> int:
         return self.graphics_flags.size
-
-
-
-

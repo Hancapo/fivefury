@@ -24,10 +24,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 - `GameFileCache` can now fall back to the Python RPF reader when the native archive scanner rejects a valid archive variant.
 - RPF folder extraction now handles paths used as both files and directories.
+- RPF folder creation now keeps stable absolute source paths, ignores dot-prefixed directories, and rejects offsets or name tables that cannot be represented by RPF7.
+- Native hashing and crypto bindings now use size-safe Python argument parsing.
+- YMAP box occluders now preserve their encoded orientation, rotated bounds, and minimum representable dimensions.
 - CDR materials now resolve effect and preset hashes independently, including PS3-only shader names and parameters.
 
 ### Performance
 - RPF saves now stream payloads through a seekable temporary file instead of retaining the complete archive twice in memory.
+- RPFs created from folders defer reading file payloads until the archive is written.
 - YDR collection bounds no longer flatten every mesh vertex into a temporary list.
 - YDR and YFT validation avoid repeated linear searches.
 

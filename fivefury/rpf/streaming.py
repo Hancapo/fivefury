@@ -15,12 +15,20 @@ def write_archive_stream(archive: "RpfArchive", stream: BinaryIO) -> int:
     """Write an archive without retaining all file payloads in memory."""
 
     if archive.encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
-        raise NotImplementedError("Writing AES/NG-encrypted RPF archives is not supported")
+        raise NotImplementedError(
+            "Writing AES/NG-encrypted RPF archives is not supported"
+        )
     if not stream.seekable():
         raise ValueError("RPF output stream must be seekable")
 
     entries = archive._collect_entries()
     names, _ = archive._build_names(entries)
+    for entry in entries:
+        if not 0 <= int(entry.name_offset) <= 0xFFFF:
+            raise ValueError(
+                "RPF7 name table exceeds the 16-bit entry offset limit "
+                f"at {entry.full_path!r}"
+            )
     entry_count = len(entries)
     header_size = 16 + entry_count * 16 + len(names)
     data_start = _ceil_div(header_size, RPF_BLOCK_SIZE) * RPF_BLOCK_SIZE
@@ -28,7 +36,9 @@ def write_archive_stream(archive: "RpfArchive", stream: BinaryIO) -> int:
 
     stream.seek(0)
     stream.truncate()
-    stream.write(struct.pack("<4I", RPF_MAGIC, entry_count, len(names), archive.encryption))
+    stream.write(
+        struct.pack("<4I", RPF_MAGIC, entry_count, len(names), archive.encryption)
+    )
     stream.write(b"\x00" * (entry_count * 16))
     stream.write(names)
     stream.write(b"\x00" * (data_start - stream.tell()))
@@ -47,9 +57,23 @@ def write_archive_stream(archive: "RpfArchive", stream: BinaryIO) -> int:
         current_offset = stream.tell() // RPF_BLOCK_SIZE
         payload = archive._entry_payload(entry)
         if isinstance(entry, RpfBinaryFileEntry):
-            raw_entry, stored = archive._encode_binary_entry(entry, payload, current_offset)
+            if current_offset > 0xFFFFFF:
+                raise ValueError(
+                    "RPF7 binary entry exceeds the 24-bit block offset limit: "
+                    f"{entry.full_path!r}"
+                )
+            raw_entry, stored = archive._encode_binary_entry(
+                entry, payload, current_offset
+            )
         elif isinstance(entry, RpfResourceFileEntry):
-            raw_entry, stored = archive._encode_resource_entry(entry, payload, current_offset)
+            if current_offset > 0x7FFFFF:
+                raise ValueError(
+                    "RPF7 resource entry exceeds the 23-bit block offset limit: "
+                    f"{entry.full_path!r}"
+                )
+            raw_entry, stored = archive._encode_resource_entry(
+                entry, payload, current_offset
+            )
         else:  # pragma: no cover - _collect_entries only emits known entry types.
             raise TypeError("Unsupported RPF entry type")
         encoded_entries[index] = raw_entry
@@ -61,7 +85,9 @@ def write_archive_stream(archive: "RpfArchive", stream: BinaryIO) -> int:
     total_size = stream.tell()
     stream.seek(16)
     for raw_entry in encoded_entries:
-        if raw_entry is None:  # pragma: no cover - guarded by the exhaustive loop above.
+        if (
+            raw_entry is None
+        ):  # pragma: no cover - guarded by the exhaustive loop above.
             raise RuntimeError("RPF entry table was not fully encoded")
         stream.write(raw_entry)
     stream.seek(total_size)
