@@ -7,6 +7,7 @@ from fivefury import BoundBox, YdrMaterialInput, YdrMeshInput, create_ydr
 from fivefury.resource import build_rsc7, split_rsc7_sections
 from fivefury.ydr import (
     Ydr,
+    YdrLight,
     YdrLod,
     YdrMaterial,
     YdrMesh,
@@ -45,6 +46,53 @@ from fivefury.yft import (
     scan_yft_corpus,
     validate_yft,
 )
+
+
+def test_yft_light_array_roundtrip():
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="default",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="default")],
+        name="lit_fragment",
+    )
+    light = YdrLight.spot(
+        position=(1.0, 2.0, 3.0),
+        direction=(0.0, 0.0, -1.0),
+        color="#80c0ff",
+        intensity=4.5,
+        falloff=12.0,
+        cone_inner_angle=20.0,
+        cone_outer_angle=35.0,
+        bone_id=7,
+        group_id=2,
+    )
+    source = create_yft(drawable, name="lit_fragment", lights=(light,))
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+
+    assert struct.unpack_from("<Q", system_data, 0x110)[0] != 0
+    assert struct.unpack_from("<H", system_data, 0x118)[0] == 1
+    assert struct.unpack_from("<H", system_data, 0x11A)[0] == 1
+    assert len(parsed.lights) == 1
+    parsed_light = parsed.lights[0]
+    assert parsed_light.position == (1.0, 2.0, 3.0)
+    assert parsed_light.color == (128, 192, 255)
+    assert parsed_light.intensity == 4.5
+    assert parsed_light.bone_id == 7
+    assert parsed_light.group_id == 2
+    assert parsed.validate() == []
 
 
 def test_yft_shared_matrix_set_roundtrip():

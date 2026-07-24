@@ -381,7 +381,6 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
     for field in source.raw_fields:
         if field.label in {
             "character_cloth",
-            "light_attributes",
         }:
             _issue(
                 issues,
@@ -413,6 +412,28 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                     f"shared_matrix_set.matrices[{index}]",
                     "must contain 12 finite Matrix43 values",
                 )
+    if len(source.lights) > 0xFFFF:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "lights",
+            "native light arrays support at most 65535 entries",
+        )
+    for index, light in enumerate(source.lights):
+        vectors = (
+            light.position,
+            light.culling_plane_normal,
+            light.direction,
+            light.tangent,
+            light.extent,
+        )
+        if any(len(vector) != 3 or not _finite_values(vector) for vector in vectors):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"lights[{index}]",
+                "light vectors must contain three finite values",
+            )
     if len(source.glass_panes) > 0xFF:
         _issue(
             issues,

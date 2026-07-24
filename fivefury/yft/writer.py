@@ -13,7 +13,7 @@ from ..resource import (
     get_resource_total_page_count,
     layout_resource_sections,
 )
-from ..ydr import Ydr, YdrBuild
+from ..ydr import Ydr, YdrBuild, YdrLight
 from ..ydr.builder import (
     _EMBEDDED_DRAWABLE_FILE_VFT,
     _write_drawable_payload,
@@ -27,10 +27,15 @@ from ..ydr.prepare import (
 from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
+from ..ydr.write_lights import write_lights
 from ..ydr.write_materials import prepare_materials
 from .cloth import YftEnvironmentCloth
 from .cloth_writer import write_environment_cloths
-from .constants import FRAGMENT_DRAWABLE_SIZE, FRAGMENT_ROOT_SIZE
+from .constants import (
+    FRAGMENT_DRAWABLE_SIZE,
+    FRAGMENT_ROOT_SIZE,
+    LIGHT_ATTRIBUTES_ARRAY_OFFSET,
+)
 from .drawables import YftDrawable
 from .events_writer import (
     event_set_pointer,
@@ -258,6 +263,7 @@ def create_yft(
     glass_panes: Sequence[YftGlassPane] = (),
     vehicle_glass_windows: YftVehicleGlassWindows | None = None,
     shared_matrix_set: YftSharedMatrixSet | None = None,
+    lights: Sequence[YdrLight] = (),
     extra_drawables: Sequence[
         YftDrawable | tuple[str, Ydr | YdrBuild] | Ydr | YdrBuild
     ] = (),
@@ -272,6 +278,7 @@ def create_yft(
     yft.glass_panes = list(glass_panes)
     yft.vehicle_glass_windows = vehicle_glass_windows
     yft.shared_matrix_set = shared_matrix_set
+    yft.lights = list(lights)
     if bounding_sphere is not None:
         yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
     for index, entry in enumerate(extra_drawables):
@@ -356,6 +363,7 @@ def _write_fragment_root(
             ),
         )
     shared_matrix_off = write_shared_matrix_set(system, shared_matrix_set)
+    lights_off = write_lights(system, yft.lights)
     has_single_physics_child = any(
         len(lod.children) == 1 for lod in yft.physics_lod_details
     )
@@ -435,6 +443,14 @@ def _write_fragment_root(
     system.pack_into(
         "Q", 0x120, _virtual(vehicle_glass_off) if vehicle_glass_off else 0
     )
+    if lights_off:
+        system.pack_into(
+            "Q",
+            LIGHT_ATTRIBUTES_ARRAY_OFFSET,
+            _virtual(lights_off),
+        )
+        system.pack_into("H", LIGHT_ATTRIBUTES_ARRAY_OFFSET + 8, len(yft.lights))
+        system.pack_into("H", LIGHT_ATTRIBUTES_ARRAY_OFFSET + 10, len(yft.lights))
     return root_child_off
 
 

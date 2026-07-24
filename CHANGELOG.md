@@ -12,6 +12,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YFT physics event slots now expose `YftEventSet` objects through `YftPhysicsChildEvents` and `YftPhysicsGroupEvents` instead of raw pointer containers.
 
 ### Added
+- Readable and writable native light arrays on legacy YFT fragments.
 - Readable, writable, and skeleton-derived YFT shared matrix sets.
 - Readable and writable legacy YFT breakable panes and vehicle glass distance fields.
 - Readable and writable legacy YFT environment cloth, including tuning, simulation bridges, morph maps, Verlet LODs, constraints, bounds, and user data.
@@ -28,7 +29,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YDR skeleton lookups now use indexes rebuilt with the hierarchy.
 
 ### Fixed
-- YFT rebuilding now rejects unsupported event-player, character-cloth, light, and user-data graphs instead of silently discarding them.
+- YFT rebuilding now rejects unsupported event-player, character-cloth, and user-data graphs instead of silently discarding them.
 - Drawable writing now pads vertex channels to the component width declared by the original asset.
 - YFT physics LODs now use the correct block sizes, resource-backed link transforms, root-child ownership, and relocated child drawable pointers.
 - `GameFileCache` can now fall back to the Python RPF reader when the native archive scanner rejects a valid archive variant.

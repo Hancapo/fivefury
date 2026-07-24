@@ -3,12 +3,21 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+from ..binary import f32 as _f32
+from ..binary import u16 as _u16
 from ..binary import u32 as _u32
+from ..binary import u64 as _u64
+from ..binary import vec3 as _vec3
 from ..common import ByteSource, read_source_bytes
-from ..resource import RSC7_MAGIC, split_rsc7_sections
+from ..resource import RSC7_MAGIC, split_rsc7_sections, virtual_to_offset
+from ..ydr.read_lights import parse_light_array
 from ..ydr.shaders import ShaderLibrary
 from .cloth_reader import read_environment_cloths
-from .constants import DRAWABLE_ARRAY_COUNT_OFFSET
+from .constants import (
+    DAT_VIRTUAL_BASE,
+    DRAWABLE_ARRAY_COUNT_OFFSET,
+    LIGHT_ATTRIBUTES_ARRAY_OFFSET,
+)
 from .drawable_reader import read_fragment_drawable
 from .drawables import YftDrawable
 from .events import YftEventSet
@@ -217,6 +226,19 @@ def read_yft(
         shared_matrix_set=read_shared_matrix_set(
             system_data,
             pointers.shared_matrix_set,
+        ),
+        lights=parse_light_array(
+            system_data,
+            header_offset=LIGHT_ATTRIBUTES_ARRAY_OFFSET,
+            virtual_offset=lambda pointer, _data: virtual_to_offset(
+                pointer,
+                base=DAT_VIRTUAL_BASE,
+            ),
+            u16=_u16,
+            u32=_u32,
+            u64=_u64,
+            f32=_f32,
+            vec3=_vec3,
         ),
         raw_bytes=bytes(data),
     )
