@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Readable, writable, and declarative `water.xml` surfaces, calming regions, and wave regions, including game-aligned validation and `GameFileCache` integration.
+
 ## [0.2.7] - 2026-07-24
 
 ### Breaking Changes
