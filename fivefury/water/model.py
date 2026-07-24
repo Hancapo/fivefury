@@ -2,9 +2,20 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from enum import IntEnum
 from pathlib import Path
+
+from .geometry import (
+    WaterAlpha,
+    WaterBounds,
+    WaterCornerAlphas,
+    _centered_bounds,
+    _coerce_alphas,
+    _coerce_bounds,
+    _contains_xy,
+    _grid_integer,
+)
 
 _S16_MIN = -(1 << 15)
 _S16_MAX = (1 << 15) - 1
@@ -79,6 +90,84 @@ class WaterQuad:
     def __post_init__(self) -> None:
         self.build()
 
+    @classmethod
+    def rectangle(
+        cls,
+        *,
+        center: tuple[float, float, float],
+        size: tuple[float, float],
+        alpha: WaterAlpha = 26,
+        invisible: bool = False,
+        limited_depth: bool = False,
+        no_stencil: bool = False,
+    ) -> WaterQuad:
+        return cls._from_center(
+            center=center,
+            size=size,
+            shape=WaterQuadType.RECTANGLE,
+            alpha=alpha,
+            invisible=invisible,
+            limited_depth=limited_depth,
+            no_stencil=no_stencil,
+        )
+
+    @classmethod
+    def triangle(
+        cls,
+        *,
+        center: tuple[float, float, float],
+        size: tuple[float, float],
+        shape: WaterQuadType,
+        alpha: WaterAlpha = 26,
+        invisible: bool = False,
+        limited_depth: bool = False,
+        no_stencil: bool = False,
+    ) -> WaterQuad:
+        shape = WaterQuadType(shape)
+        if shape is WaterQuadType.RECTANGLE:
+            raise ValueError("triangle shape must be TRIANGLE_A through TRIANGLE_D")
+        return cls._from_center(
+            center=center,
+            size=size,
+            shape=shape,
+            alpha=alpha,
+            invisible=invisible,
+            limited_depth=limited_depth,
+            no_stencil=no_stencil,
+        )
+
+    @classmethod
+    def _from_center(
+        cls,
+        *,
+        center: tuple[float, float, float],
+        size: tuple[float, float],
+        shape: WaterQuadType,
+        alpha: WaterAlpha,
+        invisible: bool,
+        limited_depth: bool,
+        no_stencil: bool,
+    ) -> WaterQuad:
+        if len(center) != 3:
+            raise ValueError("center must contain x, y, and z")
+        min_x, min_y, max_x, max_y = _centered_bounds(center[:2], size)
+        alpha_sw, alpha_se, alpha_ne, alpha_nw = _coerce_alphas(alpha)
+        return cls(
+            min_x=min_x,
+            min_y=min_y,
+            max_x=max_x,
+            max_y=max_y,
+            z=float(center[2]),
+            type=shape,
+            is_invisible=invisible,
+            has_limited_depth=limited_depth,
+            alpha_sw=alpha_sw,
+            alpha_se=alpha_se,
+            alpha_ne=alpha_ne,
+            alpha_nw=alpha_nw,
+            no_stencil=no_stencil,
+        )
+
     @property
     def width(self) -> int:
         return self.max_x - self.min_x
@@ -127,6 +216,9 @@ class WaterQuad:
             WaterQuadType.TRIANGLE_D: (sw, se, ne),
         }
         return points.get(self.type, ())
+
+    def contains_xy(self, x: float, y: float) -> bool:
+        return _contains_xy(self.corners(), x, y)
 
     def build(self) -> WaterQuad:
         self.min_x = int(self.min_x)
@@ -181,6 +273,23 @@ class WaterCalmingQuad:
     def __post_init__(self) -> None:
         self.build()
 
+    @classmethod
+    def rectangle(
+        cls,
+        *,
+        center: tuple[float, float],
+        size: tuple[float, float],
+        dampening: float,
+    ) -> WaterCalmingQuad:
+        min_x, min_y, max_x, max_y = _centered_bounds(center, size)
+        return cls(
+            min_x=min_x,
+            min_y=min_y,
+            max_x=max_x,
+            max_y=max_y,
+            dampening=dampening,
+        )
+
     def build(self) -> WaterCalmingQuad:
         self.min_x = int(self.min_x)
         self.min_y = int(self.min_y)
@@ -219,13 +328,11 @@ class WaterWaveQuad:
     def from_angle(
         cls,
         *,
-        min_x: int,
-        min_y: int,
-        max_x: int,
-        max_y: int,
+        bounds: WaterBounds,
         amplitude: float,
         degrees: float,
     ) -> WaterWaveQuad:
+        min_x, min_y, max_x, max_y = _coerce_bounds(bounds)
         radians = math.radians(float(degrees))
         return cls(
             min_x=min_x,
@@ -235,6 +342,21 @@ class WaterWaveQuad:
             amplitude=amplitude,
             direction_x=math.cos(radians),
             direction_y=math.sin(radians),
+        )
+
+    @classmethod
+    def from_center(
+        cls,
+        *,
+        center: tuple[float, float],
+        size: tuple[float, float],
+        amplitude: float,
+        degrees: float,
+    ) -> WaterWaveQuad:
+        return cls.from_angle(
+            bounds=_centered_bounds(center, size),
+            amplitude=amplitude,
+            degrees=degrees,
         )
 
     @property
@@ -309,6 +431,57 @@ class WaterData:
         else:
             raise TypeError(f"Unsupported water component: {type(item).__name__}")
         return item
+
+    def extend(self, items: Iterable[WaterComponent]) -> WaterData:
+        for item in items:
+            self.add(item)
+        return self
+
+    @property
+    def bounds(self) -> WaterBounds | None:
+        items = list(self.iter_components())
+        if not items:
+            return None
+        return (
+            min(item.min_x for item in items),
+            min(item.min_y for item in items),
+            max(item.max_x for item in items),
+            max(item.max_y for item in items),
+        )
+
+    def surfaces_at(
+        self,
+        x: float,
+        y: float,
+        *,
+        include_invisible: bool = True,
+    ) -> list[WaterQuad]:
+        return [
+            quad
+            for quad in self.water_quads
+            if (include_invisible or not quad.is_invisible) and quad.contains_xy(x, y)
+        ]
+
+    def translate(
+        self,
+        *,
+        x: int = 0,
+        y: int = 0,
+        z: float = 0.0,
+    ) -> WaterData:
+        x = _grid_integer(x, label="x translation")
+        y = _grid_integer(y, label="y translation")
+        z = float(z)
+        if not math.isfinite(z):
+            raise ValueError("z translation must be finite")
+        for item in self.iter_components():
+            item.min_x += x
+            item.max_x += x
+            item.min_y += y
+            item.max_y += y
+        for quad in self.water_quads:
+            quad.z += z
+        return self
 
     def build(self) -> WaterData:
         for item in self.iter_components():
@@ -386,8 +559,11 @@ def coerce_water_data(
 
 
 __all__ = [
+    "WaterAlpha",
+    "WaterBounds",
     "WaterCalmingQuad",
     "WaterComponent",
+    "WaterCornerAlphas",
     "WaterData",
     "WaterQuad",
     "WaterQuadType",
