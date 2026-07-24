@@ -41,9 +41,14 @@ class BoxOccluder:
     def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
         px, py, pz = self.position
         sx, sy, sz = self.size
+        half_x = sx * 0.5
+        half_y = sy * 0.5
+        radians = self.angle_radians
+        extent_x = abs(math.cos(radians)) * half_x + abs(math.sin(radians)) * half_y
+        extent_y = abs(math.sin(radians)) * half_x + abs(math.cos(radians)) * half_y
         return (
-            (px - sx * 0.5, py - sy * 0.5, pz - sz * 0.5),
-            (px + sx * 0.5, py + sy * 0.5, pz + sz * 0.5),
+            (px - extent_x, py - extent_y, pz - sz * 0.5),
+            (px + extent_x, py + extent_y, pz + sz * 0.5),
         )
 
     def to_meta(self) -> dict[str, Any]:
@@ -82,16 +87,21 @@ class BoxOccluder:
         angle: float = 0.0,
         angle_mode: AngleMode = AngleMode.DEGREES,
     ) -> "BoxOccluder":
-        radians = math.radians(angle) if angle_mode == AngleMode.DEGREES else float(angle)
+        radians = (
+            math.radians(angle) if angle_mode == AngleMode.DEGREES else float(angle)
+        )
         return cls(
             iCenterX=round(position[0] * 4),
             iCenterY=round(position[1] * 4),
             iCenterZ=round(position[2] * 4),
-            iLength=round(size[0] * 4),
-            iWidth=round(size[1] * 4),
-            iHeight=round(size[2] * 4),
-            iCosZ=round(math.cos(radians) * 32767),
-            iSinZ=round(math.sin(radians) * 32767),
+            iLength=max(1, round(abs(size[0]) * 4)),
+            iWidth=max(1, round(abs(size[1]) * 4)),
+            iHeight=max(1, round(abs(size[2]) * 4)),
+            # These field names are counter-intuitive. CodeWalker reconstructs
+            # the Z angle with atan2(iCosZ, iSinZ), and stores a half-length
+            # direction vector in the two signed shorts.
+            iCosZ=round(math.sin(radians) * 16384),
+            iSinZ=round(math.cos(radians) * 16384),
         )
 
 
@@ -245,13 +255,24 @@ class OccludeModel:
             (x1, y1, z1),
             (x0, y1, z1),
         ]
-        faces = [(0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1), (2, 6, 7, 3), (0, 3, 7, 4), (1, 5, 6, 2)]
+        faces = [
+            (0, 1, 2, 3),
+            (4, 7, 6, 5),
+            (0, 4, 5, 1),
+            (2, 6, 7, 3),
+            (0, 3, 7, 4),
+            (1, 5, 6, 2),
+        ]
         return cls.from_faces(vertices, faces, flags=flags)
 
     @classmethod
-    def from_quad(cls, corners: list[tuple[float, float, float]], *, flags: int = 0) -> list["OccludeModel"]:
+    def from_quad(
+        cls, corners: list[tuple[float, float, float]], *, flags: int = 0
+    ) -> list["OccludeModel"]:
         if len(corners) != 4:
-            raise ValueError(f"from_quad requires exactly 4 corners, got {len(corners)}")
+            raise ValueError(
+                f"from_quad requires exactly 4 corners, got {len(corners)}"
+            )
         return cls.from_faces(list(corners), [(0, 1, 2, 3)], flags=flags)
 
 
