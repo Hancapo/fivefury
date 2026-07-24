@@ -4,8 +4,14 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ..metahash import HashLike, MetaHash
+from ..ymap.mlo_validation import mlo_collisions_by_hash
 from .enums import ManifestFlags
-from .model import ImapDependencies, ItypDependencies, PackFileMetaData
+from .model import (
+    ImapDependencies,
+    InteriorBoundsFile,
+    ItypDependencies,
+    PackFileMetaData,
+)
 from .resource import Ymf
 
 
@@ -15,8 +21,11 @@ def create_ymf_for_ymaps(
     cache: Any | None = None,
     ytyps: Iterable[Any] = (),
     dependencies: Mapping[HashLike, Iterable[HashLike]] | None = None,
+    ybns: Any = None,
+    interior_bounds: Mapping[HashLike, Iterable[HashLike]] | None = None,
     interior_ymaps: Iterable[HashLike] = (),
     infer_interior_flags: bool = True,
+    infer_interior_bounds: bool = True,
     include_empty_imaps: bool = False,
     include_ytyp_dependencies: bool = True,
     strict: bool = False,
@@ -34,8 +43,11 @@ def create_ymf_for_ymaps(
         cache=cache,
         ytyps=ytyps,
         dependencies=dependencies,
+        ybns=ybns,
+        interior_bounds=interior_bounds,
         interior_ymaps=interior_ymaps,
         infer_interior_flags=infer_interior_flags,
+        infer_interior_bounds=infer_interior_bounds,
         include_empty_imaps=include_empty_imaps,
         include_ytyp_dependencies=include_ytyp_dependencies,
         strict=strict,
@@ -53,19 +65,26 @@ def build_ymf_manifest_for_ymaps(
     cache: Any | None = None,
     ytyps: Iterable[Any] = (),
     dependencies: Mapping[HashLike, Iterable[HashLike]] | None = None,
+    ybns: Any = None,
+    interior_bounds: Mapping[HashLike, Iterable[HashLike]] | None = None,
     interior_ymaps: Iterable[HashLike] = (),
     infer_interior_flags: bool = True,
+    infer_interior_bounds: bool = True,
     include_empty_imaps: bool = False,
     include_ytyp_dependencies: bool = True,
     strict: bool = False,
 ) -> PackFileMetaData:
-    archetype_to_ytyp, ytyp_dependency_map = _build_ytyp_dependency_index(cache=cache, ytyps=ytyps)
+    archetype_to_ytyp, ytyp_dependency_map, archetypes = _build_ytyp_dependency_index(
+        cache=cache,
+        ytyps=ytyps,
+    )
     explicit_dependencies = _normalize_dependency_map(dependencies)
     interior_hashes = {int(MetaHash.from_value(item)) for item in interior_ymaps}
     missing_archetypes: dict[int, set[int]] = {}
     imap_entries: list[ImapDependencies] = []
     used_ytyps: list[MetaHash] = []
     used_ytyp_hashes: set[int] = set()
+    used_mlo_hashes: set[int] = set()
 
     for ymap, name_hint in _iter_ymap_inputs(ymaps, cache=cache):
         ymap_name = _prefer_named_hash(getattr(ymap, "name", 0), name_hint)
@@ -78,6 +97,9 @@ def build_ymf_manifest_for_ymaps(
 
         for archetype_name in _iter_ymap_archetype_names(ymap):
             archetype_hash = int(archetype_name)
+            archetype = archetypes.get(archetype_hash)
+            if archetype is not None and hasattr(archetype, "rooms") and hasattr(archetype, "portals"):
+                used_mlo_hashes.add(archetype_hash)
             ytyp_name = archetype_to_ytyp.get(archetype_hash)
             if ytyp_name is None:
                 missing_archetypes.setdefault(ymap_hash, set()).add(archetype_hash)
@@ -101,22 +123,41 @@ def build_ymf_manifest_for_ymaps(
         raise ValueError(f"Unable to resolve YMF archetype dependencies: {details}")
 
     ityp_entries = _build_used_ytyp_dependency_entries(used_ytyps, ytyp_dependency_map) if include_ytyp_dependencies else []
-    return PackFileMetaData(imap_dependencies_2=imap_entries, ityp_dependencies_2=ityp_entries)
+    interior_entries = _build_interior_bounds(
+        interior_bounds,
+        mlo_hashes=used_mlo_hashes
+        | {
+            name_hash
+            for name_hash, archetype in archetypes.items()
+            if hasattr(archetype, "rooms") and hasattr(archetype, "portals")
+        },
+        ybns=ybns if infer_interior_bounds else None,
+    )
+    return PackFileMetaData(
+        imap_dependencies_2=imap_entries,
+        ityp_dependencies_2=ityp_entries,
+        interiors=interior_entries,
+    )
 
 
 def _build_ytyp_dependency_index(
     *,
     cache: Any | None,
     ytyps: Iterable[Any],
-) -> tuple[dict[int, MetaHash], dict[int, tuple[MetaHash, list[MetaHash]]]]:
+) -> tuple[
+    dict[int, MetaHash],
+    dict[int, tuple[MetaHash, list[MetaHash]]],
+    dict[int, Any],
+]:
     archetype_to_ytyp: dict[int, MetaHash] = {}
     ytyp_dependencies: dict[int, tuple[MetaHash, list[MetaHash]]] = {}
+    archetypes: dict[int, Any] = {}
 
     for ytyp, name_hint in _iter_ytyp_inputs(ytyps):
-        _index_ytyp(ytyp, name_hint, archetype_to_ytyp, ytyp_dependencies)
+        _index_ytyp(ytyp, name_hint, archetype_to_ytyp, ytyp_dependencies, archetypes)
 
     if cache is None or not hasattr(cache, "iter_assets"):
-        return archetype_to_ytyp, ytyp_dependencies
+        return archetype_to_ytyp, ytyp_dependencies, archetypes
 
     from ..gamefile import GameFileType
 
@@ -125,9 +166,15 @@ def _build_ytyp_dependency_index(
         ytyp = getattr(game_file, "parsed", None)
         if ytyp is None:
             continue
-        _index_ytyp(ytyp, getattr(asset, "stem", None), archetype_to_ytyp, ytyp_dependencies)
+        _index_ytyp(
+            ytyp,
+            getattr(asset, "stem", None),
+            archetype_to_ytyp,
+            ytyp_dependencies,
+            archetypes,
+        )
 
-    return archetype_to_ytyp, ytyp_dependencies
+    return archetype_to_ytyp, ytyp_dependencies, archetypes
 
 
 def _index_ytyp(
@@ -135,6 +182,7 @@ def _index_ytyp(
     name_hint: str | None,
     archetype_to_ytyp: dict[int, MetaHash],
     ytyp_dependencies: dict[int, tuple[MetaHash, list[MetaHash]]],
+    archetypes: dict[int, Any],
 ) -> None:
     if not hasattr(ytyp, "archetypes"):
         return
@@ -146,7 +194,37 @@ def _index_ytyp(
         archetype_name = getattr(archetype, "name", None)
         if archetype_name in (None, "", 0):
             continue
-        archetype_to_ytyp[int(MetaHash.from_value(archetype_name))] = ytyp_name
+        archetype_hash = int(MetaHash.from_value(archetype_name))
+        archetype_to_ytyp[archetype_hash] = ytyp_name
+        archetypes[archetype_hash] = archetype
+
+
+def _build_interior_bounds(
+    explicit: Mapping[HashLike, Iterable[HashLike]] | None,
+    *,
+    mlo_hashes: set[int],
+    ybns: Any,
+) -> list[InteriorBoundsFile]:
+    entries: dict[int, InteriorBoundsFile] = {}
+    for name, bounds in (explicit or {}).items():
+        interior_name = MetaHash.from_value(name)
+        bound_names = [MetaHash.from_value(bound) for bound in bounds]
+        _validate_interior_bounds(interior_name, bound_names)
+        entries[int(interior_name)] = InteriorBoundsFile(interior_name, bound_names)
+
+    for archetype_hash in mlo_hashes & set(mlo_collisions_by_hash(ybns)):
+        if archetype_hash in entries:
+            continue
+        name = MetaHash.from_value(archetype_hash)
+        entries[archetype_hash] = InteriorBoundsFile(name, [name])
+    return list(entries.values())
+
+
+def _validate_interior_bounds(name: MetaHash, bounds: list[MetaHash]) -> None:
+    if len(bounds) not in (1, 2):
+        raise ValueError(f"MLO interior {name} must reference one or two YBN bounds")
+    if int(name) not in {int(bound) for bound in bounds}:
+        raise ValueError(f"MLO interior {name} must include a YBN with the same name")
 
 
 def _iter_ytyp_inputs(ytyps: Iterable[Any]) -> Iterable[tuple[Any, str | None]]:
@@ -221,7 +299,7 @@ def _append_unique_hash(output: list[MetaHash], seen: set[int], value: Any) -> N
 
 def _dependency_name(value: Any) -> MetaHash:
     if hasattr(value, "name"):
-        return MetaHash.from_value(getattr(value, "name"))
+        return MetaHash.from_value(value.name)
     return MetaHash.from_value(value)
 
 

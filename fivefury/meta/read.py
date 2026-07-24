@@ -4,6 +4,7 @@ import dataclasses
 import struct
 from typing import Any
 
+from ..resource import parse_rsc7
 from . import (
     FLOAT_XYZ_NAME_HASH,
     RESOURCE_FILE_BASE_SIZE,
@@ -17,9 +18,15 @@ from . import (
     MetaStructInfo,
     RawStruct,
 )
-from .defs import GRAPHICS_BASE, META_TYPE_NAME_ARRAYINFO, STRUCTS_BY_HASH, SYSTEM_BASE, MetaDataType
+from .defs import (
+    GRAPHICS_BASE,
+    META_TYPE_NAME_ARRAYINFO,
+    STRUCTS_BY_HASH,
+    SYSTEM_BASE,
+    MetaDataType,
+)
 from .utils import array_info_for_field
-from ..resource import parse_rsc7
+
 
 @dataclasses.dataclass(slots=True)
 class ParsedMeta:
@@ -38,7 +45,7 @@ class ParsedMeta:
     graphics_flags: int | None = None
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "ParsedMeta":
+    def from_bytes(cls, data: bytes) -> ParsedMeta:
         resource_version = None
         system_flags = None
         graphics_flags = None
@@ -277,7 +284,10 @@ class ParsedMeta:
         if element_type is MetaDataType.HASH:
             return [value[0] for value in struct.iter_unpack("<I", data[: array_ref.count * 4])]
         if element_type is MetaDataType.FLOAT_XYZ:
-            return [value for value in struct.iter_unpack("<fff", data[: array_ref.count * 12])]
+            return [
+                struct.unpack_from("<fff", data, index * 16)
+                for index in range(array_ref.count)
+            ]
         return bytes(data)
 
 
@@ -382,7 +392,7 @@ def _inline_array_format(data_type: MetaDataType) -> tuple[str, int] | None:
 
 def _unpack_inline_array(data_type: MetaDataType, raw: bytes, count: int) -> Any:
     if count <= 0:
-        return tuple()
+        return ()
     if data_type is MetaDataType.UNSIGNED_BYTE:
         return tuple(raw[:count])
     fmt = _inline_array_format(data_type)

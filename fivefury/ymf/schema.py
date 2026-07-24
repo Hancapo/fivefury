@@ -6,10 +6,14 @@ from ..meta import MetaEnumEntry, MetaEnumInfo, MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo
 from ..meta.utils import meta_field_entry as _entry
-from .enums import ManifestFlags, PackFileMetaDataAssetType, PackFileMetaDataImapGroupType
+from .enums import (
+    ManifestFlags,
+    PackFileMetaDataAssetType,
+    PackFileMetaDataImapGroupType,
+)
 
 
-def _enum_info(name: str, enum_type: type[IntEnum] | type[IntFlag]) -> MetaEnumInfo:
+def _enum_info(name: str, enum_type: type[IntEnum | IntFlag]) -> MetaEnumInfo:
     return MetaEnumInfo(
         name_hash=meta_name(name),
         key=meta_name(f"{name}_key"),

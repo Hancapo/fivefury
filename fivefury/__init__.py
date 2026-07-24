@@ -707,7 +707,15 @@ from .ycd import (
     read_ycd,
     save_ycd,
 )
-from .ybn import Ybn, build_ybn_bytes, read_ybn, save_ybn
+from .ybn import (
+    Ybn,
+    build_ybn_bytes,
+    collision_room_ids,
+    read_ybn,
+    save_ybn,
+    set_collision_room,
+    validate_mlo_collision,
+)
 from .ynd import (
     YndAreaBounds,
     YndJunctionHeightmap,
@@ -1025,6 +1033,7 @@ __all__ = [
     "build_pcm_wav",
     "build_rel_bytes",
     "build_ybn_bytes",
+    "collision_room_ids",
     "build_ydd_bytes",
     "build_yed_bytes",
     "create_gtxd",
@@ -1698,6 +1707,8 @@ __all__ = [
     "save_gtxd",
     "save_ycd",
     "save_ybn",
+    "set_collision_room",
+    "validate_mlo_collision",
     "save_ydd",
     "save_yed",
     "save_ynd",

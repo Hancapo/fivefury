@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
-from ..meta import MetaBuilder, RawStruct, read_meta, Meta
+from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
+from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..resource import build_rsc7
+from ..vector import aabb_transform
 from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
 from .cargens import CarGen
+from .defs import (
+    YMAP_ENUM_INFOS,
+    YMAP_STRUCT_INFOS,
+    _ensure_base_name,
+)
 from .entities import EntityDef, MloInstanceDef
 from .enums import (
     YmapContentFlags,
@@ -25,6 +31,11 @@ from .lights import (
     LodLightsSoa,
     _coerce_lod_light,
 )
+from .mlo_validation import (
+    archetypes_by_hash,
+    build_ymap_mlo_instances,
+    validate_ymap_mlo_instances,
+)
 from .occluders import (
     AngleMode,
     BoxOccluder,
@@ -32,15 +43,9 @@ from .occluders import (
     _coerce_occlude_model,
 )
 from .timecycle import TimeCycleModifier
-from .defs import (
-    YMAP_ENUM_INFOS,
-    YMAP_STRUCT_INFOS,
-    _ensure_base_name,
-)
 from .utils import (
     coerce_container_lod,
     coerce_physics_dictionary,
-    entity_positions,
     expand_bounds,
     merge_bounds,
     positions_bounds,
@@ -49,6 +54,7 @@ from .utils import (
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..rpf import RpfArchive, RpfFileEntry
+    from ..ytyp import MloArchetypeDef
 
 
 @dataclasses.dataclass(slots=True)
@@ -110,8 +116,13 @@ class Ymap(MetaHashFieldsMixin):
     def create_entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
         return self.entity(archetype_name, **kwargs)
 
-    def mlo_instance(self, archetype_name: HashLike, **kwargs: Any) -> MloInstanceDef:
-        entity = MloInstanceDef(archetype_name=archetype_name, **kwargs)
+    def mlo_instance(
+        self,
+        archetype_name: HashLike | MloArchetypeDef,
+        **kwargs: Any,
+    ) -> MloInstanceDef:
+        name = getattr(archetype_name, "name", archetype_name)
+        entity = MloInstanceDef(archetype_name=name, **kwargs)
         self.add_entity(entity)
         return entity
 
@@ -284,7 +295,7 @@ class Ymap(MetaHashFieldsMixin):
             )
         return lights
 
-    def normalize_lod_lights(self) -> "Ymap":
+    def normalize_lod_lights(self) -> Ymap:
         lod = self.ensure_lod_lights() if self.lod_lights is not None else None
         distant = self.ensure_distant_lod_lights() if self.distant_lod_lights is not None else None
         lod_count = len(lod) if isinstance(lod, LodLightsSoa) else 0
@@ -345,11 +356,38 @@ class Ymap(MetaHashFieldsMixin):
     def suggested_path(self) -> str:
         return suggest_resource_path(self.name, self.meta_name, ".ymap", "unnamed.ymap")
 
-    def recalculate_extents(self, *, streaming_margin: float = 20.0, include_lod_distance: bool = True) -> "Ymap":
+    def recalculate_extents(
+        self,
+        *,
+        streaming_margin: float = 20.0,
+        include_lod_distance: bool = True,
+        ytyps: Any = None,
+    ) -> Ymap:
         bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
-        entity_positions_value = entity_positions(self.entities)
-        if entity_positions_value:
-            bounds = merge_bounds(bounds, positions_bounds(entity_positions_value))
+        archetypes = archetypes_by_hash(ytyps)
+        for entity in self.entities:
+            position = tuple(getattr(entity, "position", (0.0, 0.0, 0.0)))
+            archetype = archetypes.get(int(getattr(entity, "archetype_name", 0)))
+            minimum = getattr(archetype, "bb_min", None)
+            maximum = getattr(archetype, "bb_max", None)
+            if (
+                archetype is not None
+                and isinstance(minimum, tuple)
+                and len(minimum) == 3
+                and isinstance(maximum, tuple)
+                and len(maximum) == 3
+            ):
+                scale_xy = float(getattr(entity, "scale_xy", 1.0))
+                scale_z = float(getattr(entity, "scale_z", 1.0))
+                entity_bounds = aabb_transform(
+                    (minimum, maximum),
+                    translation=position,
+                    rotation=tuple(getattr(entity, "rotation", (0.0, 0.0, 0.0, 1.0))),
+                    scale=(scale_xy, scale_xy, scale_z),
+                )
+            else:
+                entity_bounds = positions_bounds([position])
+            bounds = merge_bounds(bounds, entity_bounds)
         for car_gen in self.car_generators:
             position = getattr(car_gen, "position", None)
             if isinstance(position, tuple) and len(position) == 3:
@@ -383,7 +421,7 @@ class Ymap(MetaHashFieldsMixin):
         self.streaming_extents_min, self.streaming_extents_max = expand_bounds(entities_min, entities_max, padding)
         return self
 
-    def recalculate_flags(self) -> "Ymap":
+    def recalculate_flags(self) -> Ymap:
         flags = YmapFlags.NONE
         content_flags = YmapContentFlags.NONE
 
@@ -423,16 +461,27 @@ class Ymap(MetaHashFieldsMixin):
         self.content_flags = content_flags
         return self
 
-    def build(self, *, auto_extents: bool = False, auto_flags: bool = True) -> "Ymap":
+    def build(
+        self,
+        *,
+        auto_extents: bool = False,
+        auto_flags: bool = True,
+        ytyps: Any = None,
+        ybns: Any = None,
+    ) -> Ymap:
+        build_ymap_mlo_instances(self, ytyps)
         self.normalize_lod_lights()
         if auto_extents:
-            self.recalculate_extents()
+            self.recalculate_extents(ytyps=ytyps)
         if auto_flags:
             self.recalculate_flags()
         self.name = _ensure_base_name(self.name, ".ymap")
         return self
 
-    def validate(self) -> list[str]:
+    def validate_mlos(self, *, ytyps: Any = None, ybns: Any = None) -> list[str]:
+        return validate_ymap_mlo_instances(self, ytyps, ybns)
+
+    def validate(self, *, ytyps: Any = None, ybns: Any = None) -> list[str]:
         issues: list[str] = []
         if not self.entities and not self.box_occluders and not self.occlude_models and not self.car_generators:
             issues.append("YMAP has no entities or surfaces")
@@ -444,9 +493,11 @@ class Ymap(MetaHashFieldsMixin):
             issues.append(
                 f"YMAP LOD light count mismatch: LODLightsSOA has {lod_count} entries but DistantLODLightsSOA has {distant_count}"
             )
-        if isinstance(self.distant_lod_lights, DistantLodLightsSoa):
-            if self.distant_lod_lights.num_street_lights > len(self.distant_lod_lights):
-                issues.append("YMAP DistantLODLightsSOA numStreetLights exceeds the distant light count")
+        if (
+            isinstance(self.distant_lod_lights, DistantLodLightsSoa)
+            and self.distant_lod_lights.num_street_lights > len(self.distant_lod_lights)
+        ):
+            issues.append("YMAP DistantLODLightsSOA numStreetLights exceeds the distant light count")
         if lod_count > 0 and distant_count == lod_count:
             seen_non_street = False
             for light in self.iter_lod_lights():
@@ -455,6 +506,7 @@ class Ymap(MetaHashFieldsMixin):
                     break
                 if not light.is_street_light:
                     seen_non_street = True
+        issues.extend(self.validate_mlos(ytyps=ytyps, ybns=ybns))
         return issues
 
     def to_meta_root(self) -> dict[str, Any]:
@@ -484,8 +536,19 @@ class Ymap(MetaHashFieldsMixin):
             "_meta_name_hash": meta_name("CMapData"),
         }
 
-    def to_bytes(self, *, version: int = 2) -> bytes:
-        self.build()
+    def to_bytes(
+        self,
+        *,
+        version: int = 2,
+        validate: bool = True,
+        ytyps: Any = None,
+        ybns: Any = None,
+    ) -> bytes:
+        self.build(ytyps=ytyps, ybns=ybns)
+        if validate:
+            issues = self.validate_mlos(ytyps=ytyps, ybns=ybns)
+            if issues:
+                raise ValueError("Invalid YMAP MLO:\n- " + "\n- ".join(issues))
         builder = MetaBuilder(struct_infos=YMAP_STRUCT_INFOS, enum_infos=YMAP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapData"), root_value=self.to_meta_root())
         system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)
@@ -498,13 +561,18 @@ class Ymap(MetaHashFieldsMixin):
         version: int = 2,
         auto_extents: bool = False,
         auto_flags: bool = True,
+        validate: bool = True,
+        ytyps: Any = None,
+        ybns: Any = None,
     ) -> Path:
         if auto_extents:
-            self.recalculate_extents()
+            self.recalculate_extents(ytyps=ytyps)
         if auto_flags:
             self.recalculate_flags()
         destination = Path(path) if path is not None else Path(self.suggested_path())
-        destination.write_bytes(self.to_bytes(version=version))
+        destination.write_bytes(
+            self.to_bytes(version=version, validate=validate, ytyps=ytyps, ybns=ybns)
+        )
         return destination
 
     def save_into_rpf(
@@ -515,13 +583,19 @@ class Ymap(MetaHashFieldsMixin):
         version: int = 2,
         auto_extents: bool = False,
         auto_flags: bool = True,
+        validate: bool = True,
+        ytyps: Any = None,
+        ybns: Any = None,
     ) -> RpfFileEntry:
         if auto_extents:
-            self.recalculate_extents()
+            self.recalculate_extents(ytyps=ytyps)
         if auto_flags:
             self.recalculate_flags()
         target = path if path is not None else self.suggested_path()
-        return archive.add_file(target, self.to_bytes(version=version))
+        return archive.add_file(
+            target,
+            self.to_bytes(version=version, validate=validate, ytyps=ytyps, ybns=ybns),
+        )
 
     def to_meta(self) -> Meta:
         return Meta(
@@ -533,7 +607,7 @@ class Ymap(MetaHashFieldsMixin):
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Ymap":
+    def from_bytes(cls, data: bytes) -> Ymap:
         parsed = read_meta(data)
         root = parsed.decoded_root
         if not isinstance(root, dict) or root.get("_meta_name") != "CMapData":
@@ -574,5 +648,5 @@ class Ymap(MetaHashFieldsMixin):
         )
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "Ymap":
+    def from_path(cls, path: str | Path) -> Ymap:
         return cls.from_bytes(Path(path).read_bytes())

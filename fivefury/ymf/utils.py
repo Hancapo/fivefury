@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
 import xml.etree.ElementTree as ET
+from typing import Any
 
 from ..metahash import HashLike, MetaHash, coerce_meta_hash
 from ..pso import PsoHashedString, PsoNode

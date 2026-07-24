@@ -2,27 +2,26 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from ..meta.backed import MetaBackedStruct
-from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
+from ..meta.backed import MetaBackedStruct
 from ..meta.defs import meta_name
+from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..resource import build_rsc7
-from ..ymap.defs import _ensure_base_name
+from ..ymap.defs import YMAP_ENTITY_STRUCT_INFOS, _ensure_base_name
 from ..ymap.utils import suggest_resource_path
-
 from .base_archetype import BaseArchetypeDef
-from .timed_archetype import TimeArchetypeDef
-from .defs import YTYP_STRUCT_INFOS, YTYP_ENUM_INFOS
+from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .extension_defs import YTYP_EXTENSION_STRUCT_INFOS
 from .extensions import extensions_from_meta, extensions_to_meta
 from .mlo import MloArchetypeDef
+from .timed_archetype import TimeArchetypeDef
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..rpf import RpfArchive, RpfFileEntry
 
-_ALL_STRUCT_INFOS = list(YTYP_STRUCT_INFOS) + list(YTYP_EXTENSION_STRUCT_INFOS)
+_ALL_STRUCT_INFOS = list(YTYP_STRUCT_INFOS) + list(YTYP_EXTENSION_STRUCT_INFOS) + list(YMAP_ENTITY_STRUCT_INFOS)
 
 
 @dataclasses.dataclass(slots=True)
@@ -41,7 +40,7 @@ class YtypDependency(MetaHashFieldsMixin):
         return self.name
 
     @classmethod
-    def from_meta(cls, value: MetaHash | HashLike) -> "YtypDependency":
+    def from_meta(cls, value: MetaHash | HashLike) -> YtypDependency:
         return cls(name=value)
 
     def __int__(self) -> int:
@@ -65,7 +64,7 @@ class CompositeEntityType:
         return self.value.to_meta() if hasattr(self.value, "to_meta") else self.value
 
     @classmethod
-    def from_meta(cls, value: Any) -> "CompositeEntityType":
+    def from_meta(cls, value: Any) -> CompositeEntityType:
         return cls(value=value)
 
 
@@ -156,8 +155,11 @@ class Ytyp(MetaHashFieldsMixin):
     def suggested_path(self) -> str:
         return suggest_resource_path(self.name, self.meta_name, ".ytyp", "unnamed.ytyp")
 
-    def build(self) -> "Ytyp":
+    def build(self) -> Ytyp:
         self.name = _ensure_base_name(self.name, ".ytyp")
+        for archetype in self.archetypes:
+            if isinstance(archetype, MloArchetypeDef):
+                archetype.build()
         deduped: list[Any] = []
         seen: set[int] = set()
         for dependency in self.dependencies:
@@ -170,10 +172,18 @@ class Ytyp(MetaHashFieldsMixin):
         self.dependencies = deduped
         return self
 
+    def validate_mlos(self) -> list[str]:
+        issues: list[str] = []
+        for archetype in self.archetypes:
+            if isinstance(archetype, MloArchetypeDef):
+                issues.extend(archetype.validate())
+        return issues
+
     def validate(self) -> list[str]:
         issues: list[str] = []
         if not self.archetypes:
             issues.append("YTYP has no archetypes")
+        issues.extend(self.validate_mlos())
         return issues
 
     def to_meta_root(self) -> dict[str, Any]:
@@ -188,16 +198,20 @@ class Ytyp(MetaHashFieldsMixin):
             "_meta_name_hash": meta_name("CMapTypes"),
         }
 
-    def to_bytes(self, *, version: int = 2) -> bytes:
+    def to_bytes(self, *, version: int = 2, validate: bool = True) -> bytes:
         self.build()
+        if validate:
+            issues = self.validate_mlos()
+            if issues:
+                raise ValueError("Invalid YTYP MLO:\n- " + "\n- ".join(issues))
         builder = MetaBuilder(struct_infos=_ALL_STRUCT_INFOS, enum_infos=YTYP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapTypes"), root_value=self.to_meta_root())
         system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)
         return build_rsc7(system, version=version, system_alignment=0x2000, system_flags=system_flags)
 
-    def save(self, path: str | Path | None = None, *, version: int = 2) -> Path:
+    def save(self, path: str | Path | None = None, *, version: int = 2, validate: bool = True) -> Path:
         destination = Path(path) if path is not None else Path(self.suggested_path())
-        destination.write_bytes(self.to_bytes(version=version))
+        destination.write_bytes(self.to_bytes(version=version, validate=validate))
         return destination
 
     def save_into_rpf(
@@ -206,9 +220,10 @@ class Ytyp(MetaHashFieldsMixin):
         path: str | Path | None = None,
         *,
         version: int = 2,
+        validate: bool = True,
     ) -> RpfFileEntry:
         target = path if path is not None else self.suggested_path()
-        return archive.add_file(target, self.to_bytes(version=version))
+        return archive.add_file(target, self.to_bytes(version=version, validate=validate))
 
     def to_meta(self) -> Meta:
         return Meta(
@@ -220,7 +235,7 @@ class Ytyp(MetaHashFieldsMixin):
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Ytyp":
+    def from_bytes(cls, data: bytes) -> Ytyp:
         parsed = read_meta(data)
         root = parsed.decoded_root
         if not isinstance(root, dict) or root.get("_meta_name") != "CMapTypes":
@@ -247,7 +262,7 @@ class Ytyp(MetaHashFieldsMixin):
         )
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "Ytyp":
+    def from_path(cls, path: str | Path) -> Ytyp:
         return cls.from_bytes(Path(path).read_bytes())
 
 
@@ -255,5 +270,11 @@ def read_ytyp(data: bytes) -> Ytyp:
     return Ytyp.from_bytes(data)
 
 
-def save_ytyp(ytyp: Ytyp, path: str | Path | None = None, *, version: int = 2) -> Path:
-    return ytyp.save(path, version=version)
+def save_ytyp(
+    ytyp: Ytyp,
+    path: str | Path | None = None,
+    *,
+    version: int = 2,
+    validate: bool = True,
+) -> Path:
+    return ytyp.save(path, version=version, validate=validate)

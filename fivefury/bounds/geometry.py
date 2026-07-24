@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
+
 from .. import _native as _native_backend
 from ..vector import aabb_center
 from .model import (
@@ -31,6 +33,7 @@ BoundTriangle = tuple[Vector3, Vector3, Vector3]
 class BoundTriangleChunk:
     vertices: list[Vector3]
     triangles: list[tuple[int, int, int]]
+    material_indices: list[int] = dataclasses.field(default_factory=list)
 
 
 def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
@@ -65,24 +68,70 @@ def identity_bound_transform() -> BoundTransform:
 def chunk_bound_triangles(
     triangles: list[BoundTriangle],
     *,
+    triangle_material_indices: Sequence[int] | None = None,
     max_vertices_per_child: int = MAX_BOUND_VERTICES_PER_CHILD,
     max_triangles_per_child: int = MAX_BOUND_TRIANGLES_PER_CHILD,
 ) -> list[BoundTriangleChunk]:
-    return [
-        BoundTriangleChunk(vertices=vertices, triangles=chunk_triangles)
-        for vertices, chunk_triangles in _native_backend._bounds_chunk_triangles(
-            triangles,
-            max_vertices_per_child=max_vertices_per_child,
-            max_triangles_per_child=max_triangles_per_child,
+    if triangle_material_indices is not None and len(triangle_material_indices) != len(triangles):
+        raise ValueError("triangle_material_indices length must match triangle count")
+
+    native_chunks = _native_backend._bounds_chunk_triangles(
+        triangles,
+        max_vertices_per_child=max_vertices_per_child,
+        max_triangles_per_child=max_triangles_per_child,
+    )
+    chunks: list[BoundTriangleChunk] = []
+    triangle_offset = 0
+    for vertices, chunk_triangles in native_chunks:
+        chunk_triangle_count = len(chunk_triangles)
+        material_indices = (
+            [
+                int(index)
+                for index in triangle_material_indices[
+                    triangle_offset : triangle_offset + chunk_triangle_count
+                ]
+            ]
+            if triangle_material_indices is not None
+            else []
         )
-    ]
+        chunks.append(
+            BoundTriangleChunk(
+                vertices=vertices,
+                triangles=chunk_triangles,
+                material_indices=material_indices,
+            )
+        )
+        triangle_offset += chunk_triangle_count
+    return chunks
 
 
 def build_geometry_bvh_from_chunk(
     chunk: BoundTriangleChunk,
     *,
     material: BoundMaterial | None = None,
+    materials: Sequence[BoundMaterial] | None = None,
 ) -> BoundBVH:
+    if material is not None and materials is not None:
+        raise ValueError("material and materials are mutually exclusive")
+    target_materials = (
+        list(materials)
+        if materials is not None
+        else [material or dataclasses.replace(DEFAULT_BOUND_MATERIAL)]
+    )
+    if not target_materials:
+        raise ValueError("At least one bound material is required")
+    if len(target_materials) > 0xFF:
+        raise ValueError("Bound geometry cannot contain more than 255 materials")
+    material_indices = (
+        list(chunk.material_indices)
+        if chunk.material_indices
+        else [0] * len(chunk.triangles)
+    )
+    if len(material_indices) != len(chunk.triangles):
+        raise ValueError("Chunk material index count must match triangle count")
+    if any(index < 0 or index >= len(target_materials) for index in material_indices):
+        raise ValueError("Chunk references an invalid bound material index")
+
     minimum, maximum = bounds_from_vertices(chunk.vertices)
     center = center_from_bounds(minimum, maximum)
     radius = sphere_radius_from_vertices(center, chunk.vertices)
@@ -91,7 +140,7 @@ def build_geometry_bvh_from_chunk(
         BoundPolygonTriangle(
             polygon_type=BoundPolygonType.TRIANGLE,
             raw=b"",
-            material_index=0,
+            material_index=material_index,
             tri_area=area,
             tri_index1=index0,
             tri_index2=index1,
@@ -100,7 +149,12 @@ def build_geometry_bvh_from_chunk(
             edge_index2=0xFFFF,
             edge_index3=0xFFFF,
         )
-        for (index0, index1, index2), area in zip(chunk.triangles, areas, strict=True)
+        for (index0, index1, index2), area, material_index in zip(
+            chunk.triangles,
+            areas,
+            material_indices,
+            strict=True,
+        )
     ]
     return BoundBVH(
         bound_type=BoundType.GEOMETRY_BVH,
@@ -125,8 +179,8 @@ def build_geometry_bvh_from_chunk(
         vertices=chunk.vertices,
         vertices_shrunk=[],
         polygons=polygons,
-        polygon_material_indices=[0] * len(polygons),
-        materials=[material or dataclasses.replace(DEFAULT_BOUND_MATERIAL)],
+        polygon_material_indices=material_indices,
+        materials=target_materials,
         material_colours=[],
         vertex_colours=[],
         bvh_pointer=0,
@@ -138,6 +192,7 @@ def build_composite_bound_from_chunks(
     chunks: list[BoundTriangleChunk],
     *,
     material: BoundMaterial | None = None,
+    materials: Sequence[BoundMaterial] | None = None,
     composite_flags: BoundCompositeFlags | None = None,
 ) -> BoundComposite:
     if not chunks:
@@ -146,7 +201,11 @@ def build_composite_bound_from_chunks(
     children: list[BoundChild] = []
     all_vertices: list[Vector3] = []
     for chunk in chunks:
-        geometry = build_geometry_bvh_from_chunk(chunk, material=material)
+        geometry = build_geometry_bvh_from_chunk(
+            chunk,
+            material=material,
+            materials=materials,
+        )
         minimum = tuple(float(value) for value in geometry.box_min)
         maximum = tuple(float(value) for value in geometry.box_max)
         all_vertices.extend(chunk.vertices)
@@ -189,6 +248,8 @@ def build_bound_from_triangles(
     triangles: list[BoundTriangle],
     *,
     material: BoundMaterial | None = None,
+    materials: Sequence[BoundMaterial] | None = None,
+    triangle_material_indices: Sequence[int] | None = None,
     composite_flags: BoundCompositeFlags | None = None,
     max_vertices_per_child: int = MAX_BOUND_VERTICES_PER_CHILD,
     max_triangles_per_child: int = MAX_BOUND_TRIANGLES_PER_CHILD,
@@ -197,10 +258,16 @@ def build_bound_from_triangles(
         raise ValueError("At least one triangle is required")
     chunks = chunk_bound_triangles(
         triangles,
+        triangle_material_indices=triangle_material_indices,
         max_vertices_per_child=max_vertices_per_child,
         max_triangles_per_child=max_triangles_per_child,
     )
-    bound = build_composite_bound_from_chunks(chunks, material=material, composite_flags=composite_flags)
+    bound = build_composite_bound_from_chunks(
+        chunks,
+        material=material,
+        materials=materials,
+        composite_flags=composite_flags,
+    )
     validation_errors = bound.validate()
     if validation_errors:
         raise ValueError(f"Generated bound validation failed: {validation_errors}")

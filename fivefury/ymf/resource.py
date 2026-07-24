@@ -53,20 +53,23 @@ class Ymf(MetaResource):
             return self.raw_bytes
         manifest = self.manifest
         if manifest is not None:
+            issues = manifest.validate()
+            if issues:
+                raise ValueError("Invalid YMF manifest:\n- " + "\n- ".join(issues))
             self.meta = manifest.to_meta(name=self.name)
             return build_ymf_pso(manifest)
         return self.meta.to_rsc7()
 
     @classmethod
-    def from_manifest(cls, manifest: PackFileMetaData, *, name: str = "", source: str = "") -> "Ymf":
+    def from_manifest(cls, manifest: PackFileMetaData, *, name: str = "", source: str = "") -> Ymf:
         return cls(meta=manifest.to_meta(name=name), source=source, manifest=manifest)
 
     @classmethod
-    def from_meta(cls, meta: Meta, *, source: str = "") -> "Ymf":
+    def from_meta(cls, meta: Meta, *, source: str = "") -> Ymf:
         return cls(meta=meta, source=source)
 
     @classmethod
-    def from_bytes(cls, data: bytes, *, source: str = "") -> "Ymf":
+    def from_bytes(cls, data: bytes, *, source: str = "") -> Ymf:
         if looks_like_xml(data):
             return cls.from_manifest(PackFileMetaData.from_xml(data), source=source)
         if is_pso(data):
@@ -76,7 +79,7 @@ class Ymf(MetaResource):
         return cls(meta=parsed.meta, source=source)
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "Ymf":
+    def from_path(cls, path: str | Path) -> Ymf:
         target = Path(path)
         data = target.read_bytes()
         if target.suffix.lower() == ".xml":
