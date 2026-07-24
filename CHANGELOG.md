@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- `GameFileCache` now closes RPF handles during eviction, clearing, and context-manager shutdown.
+
 ## [0.2.7] - 2026-07-24
 
 ### Breaking Changes
