@@ -6,7 +6,9 @@ from enum import IntFlag
 from pathlib import Path
 
 from ..common import FlexibleIntEnum
+from ..resource import ResourcePagesInfo
 
+YnvResourcePagesInfo = ResourcePagesInfo
 
 
 def identity_4x4() -> tuple[float, ...]:
@@ -89,7 +91,7 @@ class YnvPolyFlags1(IntFlag):
     HAS_PATH_NODE = 1 << 5
     IS_INTERIOR = 1 << 6
     INTERACTION_UNK = 1 << 7
-    UNUSED_8 = 1 << 8
+    ZERO_AREA_STITCH_POLY_DLC = 1 << 8
     IS_FLAT_GROUND = 1 << 9
     IS_ROAD = 1 << 10
     IS_CELL_EDGE = 1 << 11
@@ -171,7 +173,11 @@ class YnvEdgePart:
     @classmethod
     def from_value(cls, value: int, adjacent_area_ids: list[int]) -> "YnvEdgePart":
         area_index = int(value) & 0x1F
-        area_id = int(adjacent_area_ids[area_index]) if 0 <= area_index < len(adjacent_area_ids) else 0x3FFF
+        area_id = (
+            int(adjacent_area_ids[area_index])
+            if 0 <= area_index < len(adjacent_area_ids)
+            else 0x3FFF
+        )
         return cls(
             area_id=area_id,
             poly_id=(int(value) >> 5) & 0x3FFF,
@@ -193,7 +199,9 @@ class YnvEdgePart:
 
     @space_beyond_edge.setter
     def space_beyond_edge(self, value: int) -> None:
-        self.detail_flags = (self.detail_flags & ~(0x1F << 5)) | ((int(value) & 0x1F) << 5)
+        self.detail_flags = (self.detail_flags & ~(0x1F << 5)) | (
+            (int(value) & 0x1F) << 5
+        )
 
     @property
     def detail_reserved(self) -> int:
@@ -201,7 +209,9 @@ class YnvEdgePart:
 
     @detail_reserved.setter
     def detail_reserved(self, value: int) -> None:
-        self.detail_flags = (self.detail_flags & ~(1 << 10)) | ((int(value) & 0x1) << 10)
+        self.detail_flags = (self.detail_flags & ~(1 << 10)) | (
+            (int(value) & 0x1) << 10
+        )
 
     def build(self) -> "YnvEdgePart":
         self.area_id = int(self.area_id) & 0x3FFF
@@ -212,7 +222,9 @@ class YnvEdgePart:
 
     def to_value(self, area_lookup: dict[int, int]) -> int:
         self.build()
-        area_index = int(area_lookup.get(int(self.area_id), area_lookup.get(0x3FFF, 0))) & 0x1F
+        area_index = (
+            int(area_lookup.get(int(self.area_id), area_lookup.get(0x3FFF, 0))) & 0x1F
+        )
         return (
             area_index
             | ((int(self.poly_id) & 0x3FFF) << 5)
@@ -301,7 +313,9 @@ class YnvPoly:
 
     @slope_directions.setter
     def slope_directions(self, value: YnvPolySlopeDirectionFlags | int) -> None:
-        self.poly_flags2 = (int(self.poly_flags2) & 0xFF00FFFF) | ((int(value) & 0xFF) << 16)
+        self.poly_flags2 = (int(self.poly_flags2) & 0xFF00FFFF) | (
+            (int(value) & 0xFF) << 16
+        )
 
     @property
     def poly_flags2_low(self) -> int:
@@ -350,7 +364,11 @@ class YnvPoint:
         self.angle = _radians_to_angle_byte(value)
 
     def build(self) -> "YnvPoint":
-        self.position = (float(self.position[0]), float(self.position[1]), float(self.position[2]))
+        self.position = (
+            float(self.position[0]),
+            float(self.position[1]),
+            float(self.position[2]),
+        )
         self.angle = int(self.angle) & 0xFF
         self.type = YnvPointType(int(self.type) & 0xFF)
         return self
@@ -391,8 +409,16 @@ class YnvPortal:
         self.type = YnvPortalType(int(self.type) & 0xFF)
         self.angle = int(self.angle) & 0xFF
         self.flags_unk = int(self.flags_unk) & 0xFFFF
-        self.position_from = (float(self.position_from[0]), float(self.position_from[1]), float(self.position_from[2]))
-        self.position_to = (float(self.position_to[0]), float(self.position_to[1]), float(self.position_to[2]))
+        self.position_from = (
+            float(self.position_from[0]),
+            float(self.position_from[1]),
+            float(self.position_from[2]),
+        )
+        self.position_to = (
+            float(self.position_to[0]),
+            float(self.position_to[1]),
+            float(self.position_to[2]),
+        )
         self.poly_id_from1 = int(self.poly_id_from1) & 0xFFFF
         self.poly_id_from2 = int(self.poly_id_from2) & 0xFFFF
         self.poly_id_to1 = int(self.poly_id_to1) & 0xFFFF
@@ -437,8 +463,16 @@ class YnvSector:
     unused_5ch: int = 0
 
     def build(self) -> "YnvSector":
-        self.aabb_min = (float(self.aabb_min[0]), float(self.aabb_min[1]), float(self.aabb_min[2]))
-        self.aabb_max = (float(self.aabb_max[0]), float(self.aabb_max[1]), float(self.aabb_max[2]))
+        self.aabb_min = (
+            float(self.aabb_min[0]),
+            float(self.aabb_min[1]),
+            float(self.aabb_min[2]),
+        )
+        self.aabb_max = (
+            float(self.aabb_max[0]),
+            float(self.aabb_max[1]),
+            float(self.aabb_max[2]),
+        )
         self.aabb_min_w = float(self.aabb_min_w)
         self.aabb_max_w = float(self.aabb_max_w)
         self.cell_aabb = self.cell_aabb.build()
@@ -457,6 +491,11 @@ class YnvSector:
 class Ynv:
     version: int = 2
     path: str = ""
+    file_vft: int = 0x4061E7E8
+    file_unknown: int = 1
+    pages_info: YnvResourcePagesInfo = dataclasses.field(
+        default_factory=YnvResourcePagesInfo
+    )
     content_flags: YnvContentFlags = YnvContentFlags.NONE
     version_unk1: int = 0x00010011
     unused_018h: int = 0
@@ -472,10 +511,18 @@ class Ynv:
     portals: list[YnvPortal] = dataclasses.field(default_factory=list)
     portal_links: list[int] = dataclasses.field(default_factory=list)
     adjacent_area_ids: list[int] = dataclasses.field(default_factory=list)
-    vertices_info: YnvListInfo = dataclasses.field(default_factory=lambda: YnvListInfo(vft=1080158456))
-    indices_info: YnvListInfo = dataclasses.field(default_factory=lambda: YnvListInfo(vft=1080158424))
-    edges_info: YnvListInfo = dataclasses.field(default_factory=lambda: YnvListInfo(vft=1080158440))
-    polys_info: YnvListInfo = dataclasses.field(default_factory=lambda: YnvListInfo(vft=1080158408))
+    vertices_info: YnvListInfo = dataclasses.field(
+        default_factory=lambda: YnvListInfo(vft=1080158456)
+    )
+    indices_info: YnvListInfo = dataclasses.field(
+        default_factory=lambda: YnvListInfo(vft=1080158424)
+    )
+    edges_info: YnvListInfo = dataclasses.field(
+        default_factory=lambda: YnvListInfo(vft=1080158440)
+    )
+    polys_info: YnvListInfo = dataclasses.field(
+        default_factory=lambda: YnvListInfo(vft=1080158408)
+    )
     area_id: int = 0
     total_bytes: int = 0
     points_count: int = 0
@@ -508,7 +555,9 @@ class Ynv:
         self._collect_points(sector.subtree3, sink)
         self._collect_points(sector.subtree4, sink)
 
-    def _reindex_sector_points(self, sector: YnvSector | None, start_id: int = 0) -> int:
+    def _reindex_sector_points(
+        self, sector: YnvSector | None, start_id: int = 0
+    ) -> int:
         if sector is None:
             return start_id
         if sector.data is not None:
@@ -522,7 +571,9 @@ class Ynv:
 
     def recalculate_content_flags(self) -> YnvContentFlags:
         preserved = self.content_flags & (
-            YnvContentFlags.VEHICLE | YnvContentFlags.UNKNOWN_8 | YnvContentFlags.UNKNOWN_16
+            YnvContentFlags.VEHICLE
+            | YnvContentFlags.UNKNOWN_8
+            | YnvContentFlags.UNKNOWN_16
         )
         if self.polys:
             preserved |= YnvContentFlags.POLYGONS
@@ -550,7 +601,9 @@ class Ynv:
                 )
             for poly_id in sector_data.poly_ids:
                 if int(poly_id) >= int(poly_count):
-                    errors.append(f"{label}.data.poly_ids contains out-of-range poly id {poly_id}")
+                    errors.append(
+                        f"{label}.data.poly_ids contains out-of-range poly id {poly_id}"
+                    )
             points_cursor += len(sector_data.points)
         points_cursor = self._validate_sector(
             sector.subtree1,
@@ -590,6 +643,26 @@ class Ynv:
 
         if self.sector_tree is None:
             errors.append("YNV requires a sector_tree")
+        system_count_present = (
+            self.system_pages_count or self.pages_info.system_pages_count
+        )
+        graphics_count_present = (
+            self.graphics_pages_count or self.pages_info.graphics_pages_count
+        )
+        if (
+            system_count_present
+            and self.pages_info.system_pages_count != self.system_pages_count
+        ):
+            errors.append(
+                "YNV ResourcePagesInfo system page count does not match the RSC7 header"
+            )
+        if (
+            graphics_count_present
+            and self.pages_info.graphics_pages_count != self.graphics_pages_count
+        ):
+            errors.append(
+                "YNV ResourcePagesInfo graphics page count does not match the RSC7 header"
+            )
         if len(self.transform) != 16:
             errors.append("YNV transform must contain 16 floats")
         if len(self.adjacent_area_ids) > 32:
@@ -597,7 +670,9 @@ class Ynv:
         if vertex_count > 0xFFFF:
             errors.append(f"YNV supports at most 65535 vertices, got {vertex_count}")
         if len(self.indices) != len(self.edges):
-            errors.append(f"YNV requires len(indices) == len(edges), got {len(self.indices)} and {len(self.edges)}")
+            errors.append(
+                f"YNV requires len(indices) == len(edges), got {len(self.indices)} and {len(self.edges)}"
+            )
 
         for index, vertex in enumerate(self.vertices):
             if len(vertex) != 3:
@@ -605,11 +680,21 @@ class Ynv:
 
         for index, vertex_id in enumerate(self.indices):
             if int(vertex_id) >= int(vertex_count):
-                errors.append(f"indices[{index}]={vertex_id} is out of range for {vertex_count} vertices")
+                errors.append(
+                    f"indices[{index}]={vertex_id} is out of range for {vertex_count} vertices"
+                )
 
         for index, poly in enumerate(self.polys):
-            if not 3 <= int(poly.index_count) <= 16:
-                errors.append(f"polys[{index}].index_count={poly.index_count} is outside the supported range 3..16")
+            is_zero_area_stitch = bool(
+                poly.poly_flags1 & YnvPolyFlags1.ZERO_AREA_STITCH_POLY_DLC
+            )
+            if not 3 <= int(poly.index_count) < 16 and not (
+                int(poly.index_count) == 2 and is_zero_area_stitch
+            ):
+                errors.append(
+                    f"polys[{index}].index_count={poly.index_count} must be 3..15, "
+                    "or 2 for a zero-area DLC stitch polygon"
+                )
             if int(poly.index_id) + int(poly.index_count) > len(self.indices):
                 errors.append(
                     f"polys[{index}] index span [{poly.index_id}, {poly.index_id + poly.index_count}) exceeds indices length {len(self.indices)}"
@@ -619,30 +704,50 @@ class Ynv:
                     f"polys[{index}] edge span [{poly.index_id}, {poly.index_id + poly.index_count}) exceeds edges length {len(self.edges)}"
                 )
             if int(poly.area_id) != int(self.area_id):
-                errors.append(f"polys[{index}].area_id={poly.area_id} does not match YNV area_id={self.area_id}")
-            if int(poly.portal_link_id) + int(poly.portal_link_count) > int(portal_link_count):
+                errors.append(
+                    f"polys[{index}].area_id={poly.area_id} does not match YNV area_id={self.area_id}"
+                )
+            if int(poly.portal_link_id) + int(poly.portal_link_count) > int(
+                portal_link_count
+            ):
                 errors.append(
                     f"polys[{index}] portal link span [{poly.portal_link_id}, {poly.portal_link_id + poly.portal_link_count}) exceeds portal_links length {portal_link_count}"
                 )
 
         for index, portal in enumerate(self.portals):
-            for attr in ("poly_id_from1", "poly_id_from2", "poly_id_to1", "poly_id_to2"):
+            for attr in (
+                "poly_id_from1",
+                "poly_id_from2",
+                "poly_id_to1",
+                "poly_id_to2",
+            ):
                 value = int(getattr(portal, attr))
                 if value != 0xFFFF and value >= int(poly_count):
-                    errors.append(f"portals[{index}].{attr}={value} is out of range for {poly_count} polys")
+                    errors.append(
+                        f"portals[{index}].{attr}={value} is out of range for {poly_count} polys"
+                    )
 
         if self.sector_tree is not None:
-            collected_points = self._validate_sector(self.sector_tree, errors, poly_count=poly_count)
+            collected_points = self._validate_sector(
+                self.sector_tree, errors, poly_count=poly_count
+            )
             if collected_points != len(self.points):
-                errors.append(f"sector_tree point count {collected_points} does not match flattened points length {len(self.points)}")
+                errors.append(
+                    f"sector_tree point count {collected_points} does not match flattened points length {len(self.points)}"
+                )
             if collected_points != int(self.points_count):
-                errors.append(f"sector_tree point count {collected_points} does not match points_count={self.points_count}")
+                errors.append(
+                    f"sector_tree point count {collected_points} does not match points_count={self.points_count}"
+                )
 
         return errors
 
     def build(self) -> "Ynv":
         self.version = int(self.version)
         self.path = str(self.path)
+        self.file_vft = int(self.file_vft or 0x4061E7E8) & 0xFFFFFFFF
+        self.file_unknown = int(self.file_unknown or 1) & 0xFFFFFFFF
+        self.pages_info = dataclasses.replace(self.pages_info)
         self.content_flags = YnvContentFlags(int(self.content_flags) & 0xFFFFFFFF)
         self.version_unk1 = int(self.version_unk1) & 0xFFFFFFFF
         self.unused_018h = int(self.unused_018h) & 0xFFFFFFFF
@@ -650,16 +755,26 @@ class Ynv:
         if len(self.transform) != 16:
             raise ValueError("YNV transform must contain 16 floats")
         self.transform = tuple(float(value) for value in self.transform)
-        self.aabb_size = (float(self.aabb_size[0]), float(self.aabb_size[1]), float(self.aabb_size[2]))
+        self.aabb_size = (
+            float(self.aabb_size[0]),
+            float(self.aabb_size[1]),
+            float(self.aabb_size[2]),
+        )
         self.aabb_unk = int(self.aabb_unk) & 0xFFFFFFFF
-        self.vertices = [tuple(float(component) for component in vertex) for vertex in self.vertices]
+        self.vertices = [
+            tuple(float(component) for component in vertex) for vertex in self.vertices
+        ]
         self.indices = [int(value) & 0xFFFF for value in self.indices]
         self.edges = [edge.build() for edge in self.edges]
         self.polys = [poly.build() for poly in self.polys]
-        self.sector_tree = self.sector_tree.build() if self.sector_tree is not None else None
+        self.sector_tree = (
+            self.sector_tree.build() if self.sector_tree is not None else None
+        )
         self.portals = [portal.build() for portal in self.portals]
         self.portal_links = [int(value) & 0xFFFF for value in self.portal_links]
-        self.adjacent_area_ids = [int(value) & 0xFFFFFFFF for value in self.adjacent_area_ids[:32]]
+        self.adjacent_area_ids = [
+            int(value) & 0xFFFFFFFF for value in self.adjacent_area_ids[:32]
+        ]
         self.vertices_info = dataclasses.replace(self.vertices_info)
         self.indices_info = dataclasses.replace(self.indices_info)
         self.edges_info = dataclasses.replace(self.edges_info)
@@ -681,7 +796,9 @@ class Ynv:
         self._collect_points(self.sector_tree, flattened_points)
         self.points = flattened_points
         self.points_count = len(self.points)
-        if self.sector_tree is not None and all(abs(component) < 1e-8 for component in self.aabb_size):
+        if self.sector_tree is not None and all(
+            abs(component) < 1e-8 for component in self.aabb_size
+        ):
             self.aabb_size = (
                 float(self.sector_tree.aabb_max[0] - self.sector_tree.aabb_min[0]),
                 float(self.sector_tree.aabb_max[1] - self.sector_tree.aabb_min[1]),
@@ -718,6 +835,7 @@ __all__ = [
     "YnvPolySlopeDirectionFlags",
     "YnvPortal",
     "YnvPortalType",
+    "YnvResourcePagesInfo",
     "YnvSector",
     "YnvSectorData",
     "identity_4x4",

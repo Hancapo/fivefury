@@ -1,3 +1,4 @@
+from .assimp import assimp_to_ynvs, obj_to_nav
 from .model import (
     Ynv,
     YnvAabb,
@@ -14,13 +15,13 @@ from .model import (
     YnvPolySlopeDirectionFlags,
     YnvPortal,
     YnvPortalType,
+    YnvResourcePagesInfo,
     YnvSector,
     YnvSectorData,
     identity_4x4,
 )
-from .assimp import assimp_to_ynvs, obj_to_nav
 from .reader import read_ynv
-from .writer import build_ynv_bytes, save_ynv
+from .writer import build_ynv_bytes, build_ynv_system_layout, save_ynv
 
 __all__ = [
     "Ynv",
@@ -38,10 +39,12 @@ __all__ = [
     "YnvPolySlopeDirectionFlags",
     "YnvPortal",
     "YnvPortalType",
+    "YnvResourcePagesInfo",
     "YnvSector",
     "YnvSectorData",
     "assimp_to_ynvs",
     "build_ynv_bytes",
+    "build_ynv_system_layout",
     "identity_4x4",
     "obj_to_nav",
     "read_ynv",

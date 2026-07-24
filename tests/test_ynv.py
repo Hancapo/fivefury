@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import struct
 from pathlib import Path
 
 import pytest
@@ -11,8 +12,11 @@ from fivefury import (
     Ynv,
     YnvAdjacencyType,
     YnvContentFlags,
+    YnvEdge,
     YnvPoint,
     YnvPointType,
+    YnvPoly,
+    YnvPolyFlags1,
     YnvPortal,
     YnvPortalType,
     YnvSector,
@@ -20,7 +24,14 @@ from fivefury import (
     build_ynv_bytes,
     read_ynv,
 )
-
+from fivefury.resource import (
+    ResourceBlockSpan,
+    checked_virtual_offset,
+    get_resource_total_page_count,
+    layout_resource_sections,
+    read_resource_pages_info,
+    split_rsc7_sections,
+)
 
 _REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references" / "ynv"
 
@@ -29,7 +40,9 @@ def _reference_ynv_paths() -> list[Path]:
     return sorted(_REFERENCE_DIR.glob("*.ynv"))
 
 
-def _assert_float_tuple_close(left: tuple[float, ...], right: tuple[float, ...]) -> None:
+def _assert_float_tuple_close(
+    left: tuple[float, ...], right: tuple[float, ...]
+) -> None:
     assert len(left) == len(right)
     for lvalue, rvalue in zip(left, right, strict=True):
         if math.isnan(lvalue) and math.isnan(rvalue):
@@ -64,7 +77,9 @@ def _assert_sector_equal(left, right) -> None:
         assert left.data.poly_ids == right.data.poly_ids
         assert left.data.unused_1ch == right.data.unused_1ch
         assert len(left.data.points) == len(right.data.points)
-        for left_point, right_point in zip(left.data.points, right.data.points, strict=True):
+        for left_point, right_point in zip(
+            left.data.points, right.data.points, strict=True
+        ):
             assert left_point.position == pytest.approx(right_point.position)
             assert left_point.angle == right_point.angle
             assert left_point.type == right_point.type
@@ -92,7 +107,10 @@ def _assert_roundtrip_equivalent(original: Ynv, rebuilt: Ynv) -> None:
     assert rebuilt.indices == original.indices
     assert len(rebuilt.edges) == len(original.edges)
     for original_edge, rebuilt_edge in zip(original.edges, rebuilt.edges, strict=True):
-        for left_part, right_part in ((original_edge.poly1, rebuilt_edge.poly1), (original_edge.poly2, rebuilt_edge.poly2)):
+        for left_part, right_part in (
+            (original_edge.poly1, rebuilt_edge.poly1),
+            (original_edge.poly2, rebuilt_edge.poly2),
+        ):
             assert right_part.area_id == left_part.area_id
             assert right_part.poly_id == left_part.poly_id
             assert right_part.adjacency_type == left_part.adjacency_type
@@ -116,11 +134,15 @@ def _assert_roundtrip_equivalent(original: Ynv, rebuilt: Ynv) -> None:
         assert rebuilt_poly.portal_link_count == original_poly.portal_link_count
         assert rebuilt_poly.portal_link_id == original_poly.portal_link_id
     assert len(rebuilt.portals) == len(original.portals)
-    for original_portal, rebuilt_portal in zip(original.portals, rebuilt.portals, strict=True):
+    for original_portal, rebuilt_portal in zip(
+        original.portals, rebuilt.portals, strict=True
+    ):
         assert rebuilt_portal.type == original_portal.type
         assert rebuilt_portal.angle == original_portal.angle
         assert rebuilt_portal.flags_unk == original_portal.flags_unk
-        assert rebuilt_portal.position_from == pytest.approx(original_portal.position_from)
+        assert rebuilt_portal.position_from == pytest.approx(
+            original_portal.position_from
+        )
         assert rebuilt_portal.position_to == pytest.approx(original_portal.position_to)
         assert rebuilt_portal.poly_id_from1 == original_portal.poly_id_from1
         assert rebuilt_portal.poly_id_from2 == original_portal.poly_id_from2
@@ -229,7 +251,10 @@ def test_point_and_portal_direction_helpers_roundtrip() -> None:
     portal = YnvPortal(type=YnvPortalType.TYPE_2, angle=32).build()
     assert portal.direction == pytest.approx((32.0 / 255.0) * math.tau)
     portal.direction = math.pi / 2.0
-    assert portal.angle == int(round(((math.pi / 2.0) % math.tau) * 255.0 / math.tau)) & 0xFF
+    assert (
+        portal.angle
+        == int(round(((math.pi / 2.0) % math.tau) * 255.0 / math.tau)) & 0xFF
+    )
 
 
 def test_build_recalculates_content_flags_from_payload_presence() -> None:
@@ -258,11 +283,15 @@ def test_build_reindexes_sector_points() -> None:
         sector_tree=YnvSector(
             aabb_min=(0.0, 0.0, 0.0),
             aabb_max=(10.0, 10.0, 10.0),
-            data=YnvSectorData(points_start_id=99, points=[YnvPoint(position=(1.0, 1.0, 1.0))]),
+            data=YnvSectorData(
+                points_start_id=99, points=[YnvPoint(position=(1.0, 1.0, 1.0))]
+            ),
             subtree1=YnvSector(
                 aabb_min=(0.0, 0.0, 0.0),
                 aabb_max=(5.0, 5.0, 5.0),
-                data=YnvSectorData(points_start_id=77, points=[YnvPoint(position=(2.0, 2.0, 2.0))]),
+                data=YnvSectorData(
+                    points_start_id=77, points=[YnvPoint(position=(2.0, 2.0, 2.0))]
+                ),
             ),
         )
     ).build()
@@ -295,3 +324,69 @@ def test_writer_rejects_invalid_portal_link_span() -> None:
     sample.polys[0].portal_link_count = 1
     with pytest.raises(ValueError, match="portal link span"):
         build_ynv_bytes(sample)
+
+
+def test_writer_builds_multipage_split_arrays_with_resource_metadata() -> None:
+    vertices = [(float(index % 150), float(index // 150), 0.0) for index in range(6000)]
+    ynv = Ynv(
+        aabb_size=(150.0, 150.0, 1.0),
+        vertices=vertices,
+        sector_tree=YnvSector(
+            aabb_min=(0.0, 0.0, 0.0),
+            aabb_max=(150.0, 150.0, 1.0),
+            subtree1=_minimal_sector_tree(),
+            subtree2=_minimal_sector_tree(),
+        ),
+    )
+
+    payload = build_ynv_bytes(ynv)
+    header, system_data, _ = split_rsc7_sections(payload)
+    pages_info = read_resource_pages_info(
+        int.from_bytes(system_data[0x08:0x10], "little"), system_data
+    )
+    rebuilt = read_ynv(payload)
+
+    assert system_data[:8] == struct.pack("<II", 0x4061E7E8, 1)
+    assert get_resource_total_page_count(header.system_flags) > 1
+    assert pages_info is not None
+    assert pages_info.system_pages_count == get_resource_total_page_count(
+        header.system_flags
+    )
+    for actual, expected in zip(rebuilt.vertices, vertices, strict=True):
+        assert actual == pytest.approx(expected, abs=0.002)
+    assert rebuilt.validate() == []
+
+
+def test_resource_layout_relocates_four_byte_aligned_pointers() -> None:
+    raw = bytearray(0x5040)
+    target = b"YNV-POINTER-TARGET"
+    raw[0x20 : 0x20 + len(target)] = target
+    struct.pack_into("<Q", raw, 0x0C, 0x50000020)
+    raw[0x40:] = b"L" * 0x5000
+
+    system_data, _, _, _ = layout_resource_sections(
+        bytes(raw),
+        [
+            ResourceBlockSpan(0x00, 0x20, True),
+            ResourceBlockSpan(0x20, 0x20, False),
+            ResourceBlockSpan(0x40, 0x5000, False),
+        ],
+        version=2,
+    )
+
+    relocated_pointer = struct.unpack_from("<Q", system_data, 0x0C)[0]
+    relocated_offset = checked_virtual_offset(relocated_pointer, system_data)
+    assert system_data[relocated_offset : relocated_offset + len(target)] == target
+    assert relocated_pointer != 0x50000020
+
+
+def test_zero_area_dlc_stitch_poly_accepts_two_vertices() -> None:
+    poly = YnvPoly(index_count=2, poly_flags1=YnvPolyFlags1.ZERO_AREA_STITCH_POLY_DLC)
+    ynv = Ynv(
+        vertices=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        indices=[0, 1],
+        edges=[YnvEdge(), YnvEdge()],
+        polys=[poly],
+        sector_tree=_minimal_sector_tree(),
+    ).build()
+    assert not any("index_count" in issue for issue in ynv.validate())

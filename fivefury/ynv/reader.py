@@ -4,7 +4,14 @@ import struct
 from pathlib import Path
 
 from ..binary import i16, u16, u32, u64, vec3, vec4
-from ..resource import RSC7_MAGIC, checked_virtual_offset, get_resource_total_page_count, split_rsc7_sections
+from ..resource import (
+    RSC7_MAGIC,
+    ResourcePagesInfo,
+    checked_virtual_offset,
+    get_resource_total_page_count,
+    read_resource_pages_info,
+    split_rsc7_sections,
+)
 from .model import (
     Ynv,
     YnvAabb,
@@ -31,7 +38,12 @@ _POINT_SIZE = 0x08
 _PORTAL_SIZE = 0x1C
 
 
-def _decode_vertex(data: bytes, offset: int, posoffset: tuple[float, float, float], aabb_size: tuple[float, float, float]) -> tuple[float, float, float]:
+def _decode_vertex(
+    data: bytes,
+    offset: int,
+    posoffset: tuple[float, float, float],
+    aabb_size: tuple[float, float, float],
+) -> tuple[float, float, float]:
     scale = 65535.0
     x = posoffset[0] + ((u16(data, offset + 0x00) / scale) * aabb_size[0])
     y = posoffset[1] + ((u16(data, offset + 0x02) / scale) * aabb_size[1])
@@ -39,7 +51,12 @@ def _decode_vertex(data: bytes, offset: int, posoffset: tuple[float, float, floa
     return (x, y, z)
 
 
-def _decode_point(data: bytes, offset: int, posoffset: tuple[float, float, float], aabb_size: tuple[float, float, float]) -> YnvPoint:
+def _decode_point(
+    data: bytes,
+    offset: int,
+    posoffset: tuple[float, float, float],
+    aabb_size: tuple[float, float, float],
+) -> YnvPoint:
     return YnvPoint(
         position=_decode_vertex(data, offset, posoffset, aabb_size),
         angle=data[offset + 0x06],
@@ -47,7 +64,9 @@ def _decode_point(data: bytes, offset: int, posoffset: tuple[float, float, float
     )
 
 
-def _read_list_header(system_data: bytes, pointer: int) -> tuple[YnvListInfo, int, int, int]:
+def _read_list_header(
+    system_data: bytes, pointer: int
+) -> tuple[YnvListInfo, int, int, int]:
     offset = checked_virtual_offset(pointer, system_data)
     (
         vft,
@@ -90,7 +109,9 @@ def _read_list_items(
     items: list[object] = []
     for part_index in range(int(list_parts_count)):
         entry_offset = parts_offset + (part_index * _LIST_PART_SIZE)
-        items_pointer, count, _unknown_0ch = struct.unpack_from("<QII", system_data, entry_offset)
+        items_pointer, count, _unknown_0ch = struct.unpack_from(
+            "<QII", system_data, entry_offset
+        )
         if not items_pointer or not count:
             continue
         items_offset = checked_virtual_offset(items_pointer, system_data)
@@ -100,7 +121,12 @@ def _read_list_items(
     return items
 
 
-def _read_sector(system_data: bytes, pointer: int, posoffset: tuple[float, float, float], aabb_size: tuple[float, float, float]) -> YnvSector:
+def _read_sector(
+    system_data: bytes,
+    pointer: int,
+    posoffset: tuple[float, float, float],
+    aabb_size: tuple[float, float, float],
+) -> YnvSector:
     offset = checked_virtual_offset(pointer, system_data)
     aabb_min = vec4(system_data, offset + 0x00)
     aabb_max = vec4(system_data, offset + 0x10)
@@ -130,12 +156,22 @@ def _read_sector(system_data: bytes, pointer: int, posoffset: tuple[float, float
         poly_ids: list[int] = []
         if poly_ids_pointer and poly_ids_count:
             poly_ids_offset = checked_virtual_offset(poly_ids_pointer, system_data)
-            poly_ids = [u16(system_data, poly_ids_offset + (index * 2)) for index in range(int(poly_ids_count))]
+            poly_ids = [
+                u16(system_data, poly_ids_offset + (index * 2))
+                for index in range(int(poly_ids_count))
+            ]
         points: list[YnvPoint] = []
         if points_pointer and points_count:
             points_offset = checked_virtual_offset(points_pointer, system_data)
             for index in range(int(points_count)):
-                points.append(_decode_point(system_data, points_offset + (index * _POINT_SIZE), posoffset, aabb_size))
+                points.append(
+                    _decode_point(
+                        system_data,
+                        points_offset + (index * _POINT_SIZE),
+                        posoffset,
+                        aabb_size,
+                    )
+                )
         sector_data = YnvSectorData(
             points_start_id=points_start_id,
             unused_04h=unused_04h,
@@ -150,18 +186,30 @@ def _read_sector(system_data: bytes, pointer: int, posoffset: tuple[float, float
         aabb_max_w=float(aabb_max[3]),
         cell_aabb=cell_aabb,
         data=sector_data,
-        subtree1=_read_sector(system_data, subtree1_pointer, posoffset, aabb_size) if subtree1_pointer else None,
-        subtree2=_read_sector(system_data, subtree2_pointer, posoffset, aabb_size) if subtree2_pointer else None,
-        subtree3=_read_sector(system_data, subtree3_pointer, posoffset, aabb_size) if subtree3_pointer else None,
-        subtree4=_read_sector(system_data, subtree4_pointer, posoffset, aabb_size) if subtree4_pointer else None,
+        subtree1=_read_sector(system_data, subtree1_pointer, posoffset, aabb_size)
+        if subtree1_pointer
+        else None,
+        subtree2=_read_sector(system_data, subtree2_pointer, posoffset, aabb_size)
+        if subtree2_pointer
+        else None,
+        subtree3=_read_sector(system_data, subtree3_pointer, posoffset, aabb_size)
+        if subtree3_pointer
+        else None,
+        subtree4=_read_sector(system_data, subtree4_pointer, posoffset, aabb_size)
+        if subtree4_pointer
+        else None,
         unused_54h=u32(system_data, offset + 0x54),
         unused_58h=u32(system_data, offset + 0x58),
         unused_5ch=u32(system_data, offset + 0x5C),
     )
 
 
-def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str | Path = "") -> Ynv:
-    data = Path(source).read_bytes() if isinstance(source, (str, Path)) else bytes(source)
+def read_ynv(
+    source: bytes | bytearray | memoryview | str | Path, *, path: str | Path = ""
+) -> Ynv:
+    data = (
+        Path(source).read_bytes() if isinstance(source, (str, Path)) else bytes(source)
+    )
     if len(data) < 0x10:
         raise ValueError("YNV data is too short")
     if int.from_bytes(data[:4], "little") != RSC7_MAGIC:
@@ -171,6 +219,12 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     if len(system_data) < _ROOT_SIZE:
         raise ValueError("YNV system section is too short")
 
+    file_vft = u32(system_data, 0x00)
+    file_unknown = u32(system_data, 0x04)
+    pages_info = (
+        read_resource_pages_info(u64(system_data, 0x08), system_data)
+        or ResourcePagesInfo()
+    )
     content_flags = YnvContentFlags(u32(system_data, 0x10))
     version_unk1 = u32(system_data, 0x14)
     unused_018h = u32(system_data, 0x18)
@@ -183,7 +237,10 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     edges_pointer = u64(system_data, 0x88)
     edges_indices_count = u32(system_data, 0x90)
     adjacent_area_ids_count = u32(system_data, 0x94)
-    adjacent_area_ids = [u32(system_data, 0x98 + (index * 4)) for index in range(min(int(adjacent_area_ids_count), 32))]
+    adjacent_area_ids = [
+        u32(system_data, 0x98 + (index * 4))
+        for index in range(min(int(adjacent_area_ids_count), 32))
+    ]
     polys_pointer = u64(system_data, 0x118)
     sector_tree_pointer = u64(system_data, 0x120)
     portals_pointer = u64(system_data, 0x128)
@@ -208,18 +265,24 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
         sector_tree_offset = checked_virtual_offset(sector_tree_pointer, system_data)
         posoffset = vec3(system_data, sector_tree_offset + 0x00)
 
-    vertices_info, vertex_header_count, vertex_parts_pointer, vertex_parts_count = _read_list_header(system_data, vertices_pointer)
+    vertices_info, vertex_header_count, vertex_parts_pointer, vertex_parts_count = (
+        _read_list_header(system_data, vertices_pointer)
+    )
     vertices = _read_list_items(
         system_data,
         list_parts_pointer=vertex_parts_pointer,
         list_parts_count=vertex_parts_count,
         item_size=_VERTEX_SIZE,
-        decode_item=lambda payload, offset: _decode_vertex(payload, offset, posoffset, aabb_size),
+        decode_item=lambda payload, offset: _decode_vertex(
+            payload, offset, posoffset, aabb_size
+        ),
     )
     if vertex_header_count != int(vertices_count) and int(vertices_count):
         vertices = vertices[: int(vertices_count)]
 
-    indices_info, index_header_count, index_parts_pointer, index_parts_count = _read_list_header(system_data, indices_pointer)
+    indices_info, index_header_count, index_parts_pointer, index_parts_count = (
+        _read_list_header(system_data, indices_pointer)
+    )
     indices = _read_list_items(
         system_data,
         list_parts_pointer=index_parts_pointer,
@@ -230,21 +293,29 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     if index_header_count != int(edges_indices_count) and int(edges_indices_count):
         indices = indices[: int(edges_indices_count)]
 
-    edges_info, _edge_header_count, edge_parts_pointer, edge_parts_count = _read_list_header(system_data, edges_pointer)
+    edges_info, _edge_header_count, edge_parts_pointer, edge_parts_count = (
+        _read_list_header(system_data, edges_pointer)
+    )
     edges = _read_list_items(
         system_data,
         list_parts_pointer=edge_parts_pointer,
         list_parts_count=edge_parts_count,
         item_size=_EDGE_SIZE,
         decode_item=lambda payload, offset: YnvEdge(
-            poly1=YnvEdgePart.from_value(u32(payload, offset + 0x00), adjacent_area_ids),
-            poly2=YnvEdgePart.from_value(u32(payload, offset + 0x04), adjacent_area_ids),
+            poly1=YnvEdgePart.from_value(
+                u32(payload, offset + 0x00), adjacent_area_ids
+            ),
+            poly2=YnvEdgePart.from_value(
+                u32(payload, offset + 0x04), adjacent_area_ids
+            ),
         ),
     )
     if int(edges_indices_count):
         edges = edges[: int(edges_indices_count)]
 
-    polys_info, poly_header_count, poly_parts_pointer, poly_parts_count = _read_list_header(system_data, polys_pointer)
+    polys_info, poly_header_count, poly_parts_pointer, poly_parts_count = (
+        _read_list_header(system_data, polys_pointer)
+    )
     polys = _read_list_items(
         system_data,
         list_parts_pointer=poly_parts_pointer,
@@ -275,7 +346,11 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     if poly_header_count != int(polys_count) and int(polys_count):
         polys = polys[: int(polys_count)]
 
-    sector_tree = _read_sector(system_data, sector_tree_pointer, posoffset, aabb_size) if sector_tree_pointer else None
+    sector_tree = (
+        _read_sector(system_data, sector_tree_pointer, posoffset, aabb_size)
+        if sector_tree_pointer
+        else None
+    )
 
     portals: list[YnvPortal] = []
     if portals_pointer and portals_count:
@@ -288,8 +363,12 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
                     type=system_data[offset + 0x00],
                     angle=system_data[offset + 0x01],
                     flags_unk=u16(system_data, offset + 0x02),
-                    position_from=_decode_vertex(system_data, offset + 0x04, posoffset, aabb_size),
-                    position_to=_decode_vertex(system_data, offset + 0x0A, posoffset, aabb_size),
+                    position_from=_decode_vertex(
+                        system_data, offset + 0x04, posoffset, aabb_size
+                    ),
+                    position_to=_decode_vertex(
+                        system_data, offset + 0x0A, posoffset, aabb_size
+                    ),
                     poly_id_from1=u16(system_data, offset + 0x10),
                     poly_id_from2=u16(system_data, offset + 0x12),
                     poly_id_to1=u16(system_data, offset + 0x14),
@@ -303,11 +382,17 @@ def read_ynv(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     portal_links: list[int] = []
     if portal_links_pointer and portal_links_count:
         portal_links_offset = checked_virtual_offset(portal_links_pointer, system_data)
-        portal_links = [u16(system_data, portal_links_offset + (index * 2)) for index in range(int(portal_links_count))]
+        portal_links = [
+            u16(system_data, portal_links_offset + (index * 2))
+            for index in range(int(portal_links_count))
+        ]
 
     ynv = Ynv(
         version=int(header.version),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
+        file_vft=file_vft,
+        file_unknown=file_unknown,
+        pages_info=pages_info,
         content_flags=content_flags,
         version_unk1=version_unk1,
         unused_018h=unused_018h,

@@ -267,12 +267,13 @@ std::string rewrite_resource_pointers(
         if (!block.relocate_pointers) {
             continue;
         }
-        const auto start = align_value(block.offset, 8U);
+        // RAGE resource structs may pack 64-bit pointers on 4-byte boundaries.
+        const auto start = align_value(block.offset, 4U);
         const auto end = block.offset + block.size;
         if (end <= start + 7U) {
             continue;
         }
-        for (std::uint64_t offset = start; offset < end - 7U; offset += 8U) {
+        for (std::uint64_t offset = start; offset < end - 7U; offset += 4U) {
             const auto value = read_u64_le(data, offset);
             const auto remapped = remap_resource_pointer(value, system_base, sorted_system_map, graphics_base, sorted_graphics_map);
             if (remapped != value) {
