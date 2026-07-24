@@ -29,7 +29,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YDR skeleton lookups now use indexes rebuilt with the hierarchy.
 
 ### Fixed
-- YFT rebuilding now rejects unsupported event-player, character-cloth, and user-data graphs instead of silently discarding them.
+- YFT application user data is preserved as an opaque value instead of being treated as a resource pointer.
+- YFT rebuilding now rejects unsupported event-player and character-cloth graphs instead of silently discarding them.
 - Drawable writing now pads vertex channels to the component width declared by the original asset.
 - YFT physics LODs now use the correct block sizes, resource-backed link transforms, root-child ownership, and relocated child drawable pointers.
 - `GameFileCache` can now fall back to the Python RPF reader when the native archive scanner rejects a valid archive variant.

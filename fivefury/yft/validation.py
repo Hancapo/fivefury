@@ -343,7 +343,6 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
         )
 
     unsupported_root_sections = {
-        "user_data": source.pointers.user_data,
         "collision_event_player": source.pointers.collision_event_player,
     }
     for label, pointer in unsupported_root_sections.items():
@@ -354,6 +353,13 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                 f"pointers.{label}",
                 "section is readable but cannot yet be rebuilt safely",
             )
+    if not 0 <= int(source.user_data) <= 0xFFFFFFFFFFFFFFFF:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "user_data",
+            "application user data must fit the native 64-bit field",
+        )
     if source.pointers.collision_event_set and source.collision_event_set is None:
         _issue(
             issues,
