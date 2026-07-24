@@ -523,6 +523,7 @@ from .ydd import (
     save_ydd,
 )
 from .yft import (
+    Matrix43,
     Yft,
     YftArticulatedBodyType,
     YftClothBridge,
@@ -568,6 +569,7 @@ from .yft import (
     YftPhysicsReference,
     YftPhysicsTransforms,
     YftRawField,
+    YftSharedMatrixSet,
     YftValidationIssue,
     YftValidationSeverity,
     YftVerletCloth,
@@ -1378,6 +1380,7 @@ __all__ = [
     "YedTrackFormat",
     "YedPedExpressionBinding",
     "YedValidationIssue",
+    "Matrix43",
     "Yft",
     "YftArticulatedBodyType",
     "YftClothBridge",
@@ -1423,6 +1426,7 @@ __all__ = [
     "YftPhysicsReference",
     "YftPhysicsTransforms",
     "YftRawField",
+    "YftSharedMatrixSet",
     "YftValidationIssue",
     "YftValidationSeverity",
     "YftVerletCloth",

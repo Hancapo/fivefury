@@ -12,6 +12,7 @@ from .cloth import (
 )
 from .corpus import YftCorpusEntry, iter_yft_paths, scan_yft_corpus
 from .model import (
+    Matrix43,
     Yft,
     YftArticulatedBodyType,
     YftDrawable,
@@ -45,6 +46,7 @@ from .model import (
     YftPhysicsReference,
     YftPhysicsTransforms,
     YftRawField,
+    YftSharedMatrixSet,
     YftValidationIssue,
     YftValidationSeverity,
     YftVehicleGlassFlag,
@@ -72,6 +74,7 @@ from .writer import build_yft_bytes, create_yft, save_yft
 __all__ = [
     "DEFAULT_DAMPING_CONSTANTS",
     "IDENTITY_MATRIX44",
+    "Matrix43",
     "Yft",
     "YftArticulatedBodyType",
     "YftClothBridge",
@@ -115,6 +118,7 @@ __all__ = [
     "YftPhysicsReference",
     "YftPhysicsTransforms",
     "YftRawField",
+    "YftSharedMatrixSet",
     "YftValidationIssue",
     "YftValidationSeverity",
     "YftVehicleGlassFlag",

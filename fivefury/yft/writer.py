@@ -41,6 +41,8 @@ from .fragment import Yft
 from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 from .glass import YftGlassPane, YftVehicleGlassWindows
 from .glass_writer import write_glass_panes, write_vehicle_glass_windows
+from .matrices import YftSharedMatrixSet
+from .matrices_writer import write_shared_matrix_set
 from .physics import YftPhysicsLod
 from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
 from .physics_writer import write_physics_lod_group
@@ -255,6 +257,7 @@ def create_yft(
     environment_cloths: Sequence[YftEnvironmentCloth] = (),
     glass_panes: Sequence[YftGlassPane] = (),
     vehicle_glass_windows: YftVehicleGlassWindows | None = None,
+    shared_matrix_set: YftSharedMatrixSet | None = None,
     extra_drawables: Sequence[
         YftDrawable | tuple[str, Ydr | YdrBuild] | Ydr | YdrBuild
     ] = (),
@@ -268,6 +271,7 @@ def create_yft(
     yft.environment_cloths = list(environment_cloths)
     yft.glass_panes = list(glass_panes)
     yft.vehicle_glass_windows = vehicle_glass_windows
+    yft.shared_matrix_set = shared_matrix_set
     if bounding_sphere is not None:
         yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
     for index, entry in enumerate(extra_drawables):
@@ -336,6 +340,22 @@ def _write_fragment_root(
         system,
         yft.vehicle_glass_windows,
     )
+    shared_matrix_set = yft.shared_matrix_set
+    if (
+        shared_matrix_set is None
+        and main is not None
+        and main.build.skeleton is not None
+        and main.build.skeleton.bones
+    ):
+        shared_matrix_set = YftSharedMatrixSet.from_skeleton(
+            main.build.skeleton,
+            is_skinned=any(
+                model.skeleton_binding.is_skinned
+                for models in main.build.lods.values()
+                for model in models
+            ),
+        )
+    shared_matrix_off = write_shared_matrix_set(system, shared_matrix_set)
     has_single_physics_child = any(
         len(lod.children) == 1 for lod in yft.physics_lod_details
     )
@@ -395,6 +415,7 @@ def _write_fragment_root(
             virtual_base=_DAT_VIRTUAL_BASE,
         ),
     )
+    system.pack_into("Q", 0xA8, _virtual(shared_matrix_off) if shared_matrix_off else 0)
     system.pack_into("Q", 0xB0, int(yft.state.estimated_cache_size))
     system.pack_into("Q", 0xB8, int(yft.state.estimated_articulated_cache_size))
     system.data[0xC0] = int(yft.state.entity_class) & 0xFF
