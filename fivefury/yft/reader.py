@@ -128,7 +128,6 @@ def read_yft(
             shader_library=shader_library,
             resolve_entities=resolve_physics_entities,
         ),
-        root_child_name=try_read_c_string(system_data, pointers.root_child),
         tune_name=try_read_c_string(system_data, pointers.tune_name),
         raw_fields=read_raw_fields(system_data),
         main_drawable=_read_optional_drawable(
@@ -145,15 +144,6 @@ def read_yft(
             system_data,
             graphics_data,
             pointers=pointers,
-            path=resource_path,
-            shader_library=shader_library,
-        ),
-        damaged_drawable=_read_optional_drawable(
-            header,
-            system_data,
-            graphics_data,
-            pointers.damaged_drawable,
-            label="damaged",
             path=resource_path,
             shader_library=shader_library,
         ),

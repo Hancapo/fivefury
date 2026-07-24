@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
-from ..bounds import Bound
 from ..binary import align
+from ..bounds import Bound
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -29,6 +29,7 @@ from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_materials import prepare_materials
+from .constants import FRAGMENT_ROOT_SIZE
 from .drawables import YftDrawable
 from .fragment import Yft
 from .physics import YftPhysicsLod
@@ -38,7 +39,6 @@ from .validation import assert_valid_yft
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _FRAGMENT_TYPE_VFT = 0x40571138
-_FRAGMENT_ROOT_SIZE = 0x120
 
 
 def _virtual(offset: int) -> int:
@@ -98,7 +98,6 @@ def _prepared_drawables(
     _PreparedFragmentDrawable | None,
     list[_PreparedFragmentDrawable],
     _PreparedFragmentDrawable | None,
-    _PreparedFragmentDrawable | None,
 ]:
     version = int(yft.version)
     main = (
@@ -128,20 +127,6 @@ def _prepared_drawables(
         )
         for index, entry in enumerate(yft.drawables)
     ]
-    damaged = (
-        _prepare_drawable(
-            yft.damaged_drawable,
-            label="damaged",
-            name=f"{yft.name}_damaged",
-            version=version,
-            shader_library=shader_library,
-            generate_normals=generate_normals,
-            generate_tangents=generate_tangents,
-            fill_vertex_colours=fill_vertex_colours,
-        )
-        if yft.damaged_drawable is not None
-        else None
-    )
     cloth = (
         _prepare_drawable(
             yft.cloth_drawable,
@@ -156,7 +141,7 @@ def _prepared_drawables(
         if yft.cloth_drawable is not None
         else None
     )
-    return main, extras, damaged, cloth
+    return main, extras, cloth
 
 
 def create_yft(
@@ -166,14 +151,15 @@ def create_yft(
     version: int = 162,
     damaged_drawable: Ydr | YdrBuild | None = None,
     cloth_drawable: Ydr | YdrBuild | None = None,
-    extra_drawables: Sequence[YftDrawable | tuple[str, Ydr | YdrBuild] | Ydr | YdrBuild] = (),
+    extra_drawables: Sequence[
+        YftDrawable | tuple[str, Ydr | YdrBuild] | Ydr | YdrBuild
+    ] = (),
     physics_lods: Sequence[YftPhysicsLod] = (),
     physics_bound: Bound | None = None,
     physics_density: float = 1.0,
     bounding_sphere: tuple[float, float, float, float] | None = None,
 ) -> Yft:
     yft = Yft(version=int(version), path=name, main_drawable=drawable)
-    yft.damaged_drawable = damaged_drawable
     yft.cloth_drawable = cloth_drawable
     if bounding_sphere is not None:
         yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
@@ -186,6 +172,13 @@ def create_yft(
         else:
             label = f"extra_{index}"
             yft.drawables.append(YftDrawable(label, entry, name=label))
+    if damaged_drawable is not None:
+        yft.drawables.append(
+            YftDrawable("damaged", damaged_drawable, name=f"{yft.name}_damaged")
+        )
+        yft.state = dataclasses.replace(
+            yft.state, damaged_drawable_index=len(yft.drawables) - 1
+        )
     if physics_lods:
         yft.physics_lod_details = [
             normalize_physics_lod(
@@ -210,7 +203,6 @@ def _write_fragment_root(
     yft: Yft,
     main: _PreparedFragmentDrawable | None,
     extras: Sequence[_PreparedFragmentDrawable],
-    damaged: _PreparedFragmentDrawable | None,
     cloth: _PreparedFragmentDrawable | None,
 ) -> int:
     pages_info_off = system.alloc(pages_info_length(page_counts), 16)
@@ -224,7 +216,10 @@ def _write_fragment_root(
             "Q", extra_names_off + index * 8, _virtual(system.c_string(item.name))
         )
 
-    root_child_off = system.alloc(0xE8, 16)
+    damaged_index = int(yft.state.damaged_drawable_index)
+    damaged = extras[damaged_index] if 0 <= damaged_index < len(extras) else None
+    tune_name_off = system.c_string(yft.tune_name) if yft.tune_name else 0
+    root_child_off = system.alloc(0x100, 16)
     if main is not None:
         system.pack_into("ff", root_child_off + 0x08, 1.0, 1.0)
         system.pack_into("Q", root_child_off + 0xA0, _virtual(main.root_offset))
@@ -242,10 +237,11 @@ def _write_fragment_root(
     system.pack_into("Q", 0x38, _virtual(extra_ptrs_off) if extra_ptrs_off else 0)
     system.pack_into("Q", 0x40, _virtual(extra_names_off) if extra_names_off else 0)
     system.pack_into("I", 0x48, len(extras))
-    system.pack_into(
-        "Q", 0x50, _virtual(damaged.root_offset) if damaged is not None else 0
-    )
-    system.pack_into("Q", 0x58, _virtual(root_child_off))
+    system.pack_into("i", 0x4C, damaged_index if damaged is not None else -1)
+    system.pack_into("Q", 0x50, _virtual(root_child_off))
+    system.pack_into("Q", 0x58, _virtual(tune_name_off) if tune_name_off else 0)
+    system.pack_into("Q", 0xB0, int(yft.state.estimated_cache_size))
+    system.pack_into("Q", 0xB8, int(yft.state.estimated_articulated_cache_size))
     system.data[0xC0] = int(yft.state.entity_class) & 0xFF
     system.data[0xC1] = int(yft.state.art_asset_id).to_bytes(1, "little", signed=True)[
         0
@@ -253,11 +249,11 @@ def _write_fragment_root(
     system.data[0xC2] = 1 if yft.state.attach_bottom_end else 0
     system.pack_into("H", 0xC4, int(yft.state.flags) & 0xFFFF)
     system.pack_into("i", 0xC8, int(yft.state.client_class_id))
-    system.pack_into("f", 0xD0, float(yft.state.unbroken_elasticity))
-    system.pack_into("f", 0xD4, float(yft.state.gravity_factor))
-    system.pack_into("f", 0xD8, float(yft.state.buoyancy_factor))
-    system.data[0xDC] = int(yft.state.glass_attachment_bone) & 0xFF
-    system.data[0xDD] = int(yft.state.num_glass_pane_model_infos) & 0xFF
+    system.pack_into("f", 0xCC, float(yft.state.unbroken_elasticity))
+    system.pack_into("f", 0xD0, float(yft.state.gravity_factor))
+    system.pack_into("f", 0xD4, float(yft.state.buoyancy_factor))
+    system.data[0xD8] = int(yft.state.glass_attachment_bone) & 0xFF
+    system.data[0xD9] = int(yft.state.num_glass_pane_model_infos) & 0xFF
     system.pack_into("Q", 0xF8, _virtual(cloth.root_offset) if cloth is not None else 0)
     return root_child_off
 
@@ -268,15 +264,14 @@ def _build_yft_payload(
         _PreparedFragmentDrawable | None,
         list[_PreparedFragmentDrawable],
         _PreparedFragmentDrawable | None,
-        _PreparedFragmentDrawable | None,
     ],
     *,
     page_counts: tuple[int, int],
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
-    system = ResourceWriter(initial_size=align(_FRAGMENT_ROOT_SIZE, 16))
+    system = ResourceWriter(initial_size=align(FRAGMENT_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
-    main, extras, damaged, cloth = prepared
-    for item in [main, *extras, damaged, cloth]:
+    main, extras, cloth = prepared
+    for item in [main, *extras, cloth]:
         if item is None:
             continue
         item.root_offset = system.alloc(_ROOT_SIZE, 16)
@@ -297,7 +292,6 @@ def _build_yft_payload(
         yft=yft,
         main=main,
         extras=extras,
-        damaged=damaged,
         cloth=cloth,
     )
     fallback_bound = None
@@ -308,7 +302,11 @@ def _build_yft_payload(
         yft.physics_lod_details,
         root_child_offset=root_child_off,
         main_drawable_offset=main.root_offset if main is not None else 0,
-        damaged_drawable_offset=damaged.root_offset if damaged is not None else 0,
+        damaged_drawable_offset=(
+            extras[yft.state.damaged_drawable_index].root_offset
+            if 0 <= yft.state.damaged_drawable_index < len(extras)
+            else 0
+        ),
         fallback_bound=fallback_bound,
     )
     if physics_group_off:

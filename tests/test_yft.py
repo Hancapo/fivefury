@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import dataclasses
 import struct
 
 from fivefury import BoundBox, YdrMaterialInput, YdrMeshInput, create_ydr
-from fivefury.resource import build_rsc7
-from fivefury.ydr import Ydr, YdrMaterial, YdrMesh, YdrModel, YdrLod
+from fivefury.resource import build_rsc7, split_rsc7_sections
+from fivefury.ydr import Ydr, YdrLod, YdrMaterial, YdrMesh, YdrModel
 from fivefury.yft import (
-    YftPhysicsChildFlag,
     Yft,
     YftDrawable,
     YftFragmentFlag,
+    YftFragmentState,
     YftPhysicsChild,
-    YftPhysicsGroupFlag,
+    YftPhysicsChildFlag,
     YftPhysicsGroup,
+    YftPhysicsGroupFlag,
     YftPhysicsLod,
     YftPhysicsLodPointers,
     build_yft_bytes,
@@ -30,9 +32,9 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     struct.pack_into("<Q", system_data, 0x38, 0x50000080)
     struct.pack_into("<Q", system_data, 0x40, 0x50000090)
     struct.pack_into("<I", system_data, 0x48, 2)
-    struct.pack_into("<Q", system_data, 0x50, 0x500001C0)
-    struct.pack_into("<Q", system_data, 0x58, 0x500001E0)
-    struct.pack_into("<Q", system_data, 0x60, 0x500001F0)
+    struct.pack_into("<i", system_data, 0x4C, 0)
+    struct.pack_into("<Q", system_data, 0x50, 0x500001E0)
+    struct.pack_into("<Q", system_data, 0x58, 0x500001F0)
     struct.pack_into("<Q", system_data, 0xF0, 0x50000120)
     system_data[0xC0:0xC3] = bytes([2, 0xFF, 1])
     struct.pack_into(
@@ -45,12 +47,11 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         ),
     )
     struct.pack_into("<i", system_data, 0xC8, 123)
-    struct.pack_into("<fff", system_data, 0xD0, 1.0, 0.5, 0.25)
+    struct.pack_into("<fff", system_data, 0xCC, 1.0, 0.5, 0.25)
     struct.pack_into("<QQQ", system_data, 0x130, 0x50000200, 0, 0)
     struct.pack_into("<QQ", system_data, 0x80, 0x50000140, 0)
     struct.pack_into("<QQ", system_data, 0x90, 0x500001D0, 0)
     struct.pack_into("<Q", system_data, 0xF8, 0x50000180)
-    system_data[0x1E0:0x1ED] = b"root_child\0\0\0"
     system_data[0x1F0:0x1FA] = b"tune_name\0"
     system_data[0x1D0:0x1D8] = b"extra\0\0\0"
     struct.pack_into("<fff", system_data, 0x214, 0.25, 12.5, 500.0)
@@ -134,9 +135,9 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     assert yft.version == 162
     assert yft.bounding_sphere == (1.0, 2.0, 3.0, 4.0)
     assert yft.pointers.common_drawable == 0x50000100
-    assert yft.pointers.damaged_drawable == 0x500001C0
     assert yft.pointers.root_child == 0x500001E0
     assert yft.pointers.tune_name == 0x500001F0
+    assert yft.state.damaged_drawable_index == 0
     assert yft.pointers.physics_lod_group == 0x50000120
     assert yft.state.entity_class == 2
     assert yft.state.art_asset_id == -1
@@ -260,13 +261,12 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         is yft.physics_lod_details[0].damaged_damp_archetype
     )
     assert yft.physics_lod_details[0].child_entity_pointers == (0x50000680, 0x50000690)
-    assert yft.root_child_name == "root_child"
     assert yft.tune_name == "tune_name"
-    assert yft.drawable_count == 4
+    assert yft.damaged_drawable is yft.drawables[0].drawable
+    assert yft.drawable_count == 3
     assert [(entry.label, entry.name) for entry in yft.iter_drawables()] == [
         ("drawable", "drawable"),
         ("extra", "extra"),
-        ("damaged", "damaged"),
         ("drawable_cloth", "drawable_cloth"),
     ]
     assert calls == [
@@ -274,7 +274,6 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         (0x6A0, "example/physics_high_child_0_damaged.ydr"),
         (0x110, "example/drawable.ydr"),
         (0x150, "example/extra.ydr"),
-        (0x1D0, "example/damaged.ydr"),
         (0x190, "example/drawable_cloth.ydr"),
     ]
     assert {field.label for field in yft.raw_fields} >= {
@@ -351,6 +350,17 @@ def test_yft_declarative_physics_validation():
 
     assert any(issue.is_error and "child slice" in issue.message for issue in issues)
 
+    invalid_damage = Yft(
+        main_drawable=drawable,
+        state=YftFragmentState(damaged_drawable_index=0),
+    )
+    issues = validate_yft(invalid_damage)
+
+    assert any(
+        issue.is_error and issue.path == "state.damaged_drawable_index"
+        for issue in issues
+    )
+
 
 def test_create_yft_writes_declared_physics_lod(tmp_path):
     build = create_ydr(
@@ -379,16 +389,44 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     yft = create_yft(
         build,
         name="fragment",
+        damaged_drawable=build,
         physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
         physics_bound=bound,
     )
+    yft.tune_name = "fragment_tune"
+    yft.state = dataclasses.replace(
+        yft.state,
+        entity_class=2,
+        client_class_id=123,
+        unbroken_elasticity=0.25,
+        gravity_factor=0.5,
+        buoyancy_factor=0.75,
+        glass_attachment_bone=4,
+    )
 
     raw = build_yft_bytes(yft)
+    _, system_data, _ = split_rsc7_sections(raw)
     target = tmp_path / "fragment.yft"
     target.write_bytes(raw)
     parsed = read_yft(target, resolve_physics_entities=False)
 
     assert parsed.physics_lods.has_physics is True
+    assert parsed.state.damaged_drawable_index == 0
+    assert parsed.damaged_drawable is parsed.drawables[0].drawable
+    assert parsed.tune_name == "fragment_tune"
+    assert parsed.state == YftFragmentState(
+        damaged_drawable_index=0,
+        entity_class=2,
+        client_class_id=123,
+        unbroken_elasticity=0.25,
+        gravity_factor=0.5,
+        buoyancy_factor=0.75,
+        glass_attachment_bone=4,
+    )
+    assert struct.unpack_from("<i", system_data, 0x4C)[0] == 0
+    assert struct.unpack_from("<Q", system_data, 0x50)[0] != 0
+    assert struct.unpack_from("<Q", system_data, 0x58)[0] != 0
+    assert struct.unpack_from("<fff", system_data, 0xCC) == (0.25, 0.5, 0.75)
     assert parsed.physics_lod("high") is not None
     lod = parsed.physics_lod("high")
     assert lod.num_children == 1

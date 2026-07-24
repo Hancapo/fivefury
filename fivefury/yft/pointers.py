@@ -22,6 +22,7 @@ class YftFragmentFlag(enum.IntFlag):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftFragmentState:
+    damaged_drawable_index: int = -1
     entity_class: int = 0
     art_asset_id: int = 0
     attach_bottom_end: bool = False
@@ -32,6 +33,8 @@ class YftFragmentState:
     buoyancy_factor: float = 0.0
     glass_attachment_bone: int = 0
     num_glass_pane_model_infos: int = 0
+    estimated_cache_size: int = 0
+    estimated_articulated_cache_size: int = 0
 
 
 @dataclasses.dataclass(slots=True)
@@ -39,11 +42,16 @@ class YftFragmentPointers:
     common_drawable: int = 0
     extra_drawables: int = 0
     extra_drawable_names: int = 0
-    damaged_drawable: int = 0
     root_child: int = 0
     tune_name: int = 0
+    user_data: int = 0
+    collision_event_set: int = 0
+    collision_event_player: int = 0
+    shared_matrix_set: int = 0
+    glass_pane_model_infos: int = 0
     physics_lod_group: int = 0
     cloth_drawable: int = 0
+    vehicle_glass_windows: int = 0
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
