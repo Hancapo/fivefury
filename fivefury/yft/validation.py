@@ -115,9 +115,8 @@ def _validate_lod(
             f"{path}.damaged_ang_inertia",
             "count must match children",
         )
-    if (
-        lod.link_attachments.matrices
-        and len(lod.link_attachments.matrices) != len(lod.children)
+    if lod.link_attachments.matrices and len(lod.link_attachments.matrices) != len(
+        lod.children
     ):
         _issue(
             issues,
@@ -347,8 +346,6 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
         "user_data": source.pointers.user_data,
         "collision_event_player": source.pointers.collision_event_player,
         "shared_matrix_set": source.pointers.shared_matrix_set,
-        "glass_pane_model_infos": source.pointers.glass_pane_model_infos,
-        "vehicle_glass_windows": source.pointers.vehicle_glass_windows,
     }
     for label, pointer in unsupported_root_sections.items():
         if pointer:
@@ -400,6 +397,181 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             "character_cloths",
             "character-cloth arrays are not part of the legacy YFT corpus",
         )
+    if len(source.glass_panes) > 0xFF:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "glass_panes",
+            "legacy fragments support at most 255 glass panes",
+        )
+    for index, pane in enumerate(source.glass_panes):
+        pane_path = f"glass_panes[{index}]"
+        if any(
+            len(value) != size
+            for value, size in (
+                (pane.position_base, 3),
+                (pane.position_width, 3),
+                (pane.position_height, 3),
+                (pane.uv_min, 2),
+                (pane.uv_max, 2),
+                (pane.tangent, 3),
+            )
+        ):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                pane_path,
+                "vector dimensions do not match the native pane layout",
+            )
+        if not 0 <= int(pane.glass_type) <= 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{pane_path}.glass_type",
+                "must fit in one byte",
+            )
+        if not 0 <= int(pane.shader_index) <= 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{pane_path}.shader_index",
+                "must fit in one byte",
+            )
+        declaration = pane.vertex_declaration
+        if not 0 < declaration.stride <= 0xFFFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{pane_path}.vertex_declaration.stride",
+                "must be between 1 and 65535",
+            )
+        if declaration.count > 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{pane_path}.vertex_declaration.component_count",
+                "must fit in one byte",
+            )
+        if not _finite_values(
+            (
+                *pane.position_base,
+                *pane.position_width,
+                *pane.position_height,
+                *pane.uv_min,
+                *pane.uv_max,
+                pane.thickness,
+                pane.bounds_offset_front,
+                pane.bounds_offset_back,
+                *pane.tangent,
+            )
+        ):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                pane_path,
+                "contains NaN or infinity",
+            )
+    vehicle_glass = source.vehicle_glass_windows
+    if vehicle_glass is not None:
+        component_ids = [window.component_id for window in vehicle_glass.windows]
+        if len(component_ids) != len(set(component_ids)):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                "vehicle_glass_windows",
+                "component IDs must be unique",
+            )
+        for index, window in enumerate(vehicle_glass.windows):
+            window_path = f"vehicle_glass_windows.windows[{index}]"
+            if len(window.basis) != 16:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{window_path}.basis",
+                    "must contain 16 matrix values",
+                )
+            if not 0 <= window.component_id <= 0xFFFF:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{window_path}.component_id",
+                    "must fit in an unsigned 16-bit integer",
+                )
+            if not 0 <= window.geometry_index <= 0xFFFF:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{window_path}.geometry_index",
+                    "must fit in an unsigned 16-bit integer",
+                )
+            if window.row_count != len(window.rows) and window.rows:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{window_path}.data_rows",
+                    "must match the number of RLE rows",
+                )
+            if window.column_count > 0xFFFF or window.row_count > 0xFFFF:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    window_path,
+                    "distance-field dimensions must fit in unsigned 16-bit integers",
+                )
+            inferred_width = max((row.width for row in window.rows), default=0)
+            if window.data_columns and window.data_columns < inferred_width:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{window_path}.data_columns",
+                    "cannot be smaller than the encoded RLE rows",
+                )
+            if not _finite_values(
+                (*window.basis, window.data_min, window.data_max, window.texture_scale)
+            ):
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    window_path,
+                    "contains NaN or infinity",
+                )
+            row_data_size = 0
+            for row_index, row in enumerate(window.rows):
+                if row.first is None and row.second is not None:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{window_path}.rows[{row_index}]",
+                        "a second span requires a first span",
+                    )
+                spans = (
+                    ()
+                    if row.first is None
+                    else (
+                        (row.first,) if row.second is None else (row.first, row.second)
+                    )
+                )
+                for span_index, span in enumerate(spans):
+                    if not span.values or not 0 <= span.start <= span.end <= 0xFF:
+                        _issue(
+                            issues,
+                            YftValidationSeverity.ERROR,
+                            (f"{window_path}.rows[{row_index}].spans[{span_index}]"),
+                            "span must contain values and remain inside 0..255",
+                        )
+                if row.first is None:
+                    row_data_size += 1
+                elif row.second is None:
+                    row_data_size += 3 + len(row.first.values)
+                else:
+                    row_data_size += 4 + len(row.first.values) + len(row.second.values)
+                if row_data_size > 0xFFFF:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{window_path}.rows[{row_index}]",
+                        "RLE row offset exceeds the unsigned 16-bit limit",
+                    )
     if len(source.environment_cloths) > 1:
         _issue(
             issues,
