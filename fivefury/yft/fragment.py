@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from ..ydr import Ydr, YdrMesh, YdrModel
+from ..ydr import Ydr, YdrLight, YdrMesh, YdrModel
 from ..ydr.defs import YdrLod, coerce_lod
 from .cloth import YftEnvironmentCloth
 from .drawables import YftDrawable, YftDrawableMatch
@@ -50,6 +50,7 @@ class Yft:
     glass_panes: list[YftGlassPane] = dataclasses.field(default_factory=list)
     vehicle_glass_windows: YftVehicleGlassWindows | None = None
     shared_matrix_set: YftSharedMatrixSet | None = None
+    lights: list[YdrLight] = dataclasses.field(default_factory=list)
     raw_bytes: bytes = dataclasses.field(default=b"", repr=False, compare=False)
 
     @classmethod

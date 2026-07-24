@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import struct
-from typing import Callable
+from collections.abc import Callable
 
 from .model import YdrLight, YdrLightType
 
@@ -41,7 +41,9 @@ def parse_light(
         intensity=f32(system_data, light_off + 0x1C),
         flags=u32(system_data, light_off + 0x20),
         bone_id=u16(system_data, light_off + 0x24),
-        light_type=YdrLightType(raw_light_type) if raw_light_type in {1, 2, 4} else YdrLightType.POINT,
+        light_type=YdrLightType(raw_light_type)
+        if raw_light_type in {1, 2, 4}
+        else YdrLightType.POINT,
         group_id=system_data[light_off + 0x27],
         time_flags=u32(system_data, light_off + 0x28),
         falloff=f32(system_data, light_off + 0x2C),
@@ -87,8 +89,31 @@ def parse_lights(
     f32: Callable[[bytes, int], float],
     vec3: Callable[[bytes, int], tuple[float, float, float]],
 ) -> list[YdrLight]:
+    return parse_light_array(
+        system_data,
+        header_offset=root_offset + 0xA0,
+        virtual_offset=virtual_offset,
+        u16=u16,
+        u32=u32,
+        u64=u64,
+        f32=f32,
+        vec3=vec3,
+    )
+
+
+def parse_light_array(
+    system_data: bytes,
+    *,
+    header_offset: int,
+    virtual_offset: Callable[[int, bytes], int],
+    u16: Callable[[bytes, int], int],
+    u32: Callable[[bytes, int], int],
+    u64: Callable[[bytes, int], int],
+    f32: Callable[[bytes, int], float],
+    vec3: Callable[[bytes, int], tuple[float, float, float]],
+) -> list[YdrLight]:
     lights_off, light_count = parse_inline_simple_list(
-        root_offset + 0xA0,
+        header_offset,
         system_data,
         virtual_offset=virtual_offset,
         u16=u16,
