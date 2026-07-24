@@ -555,3 +555,15 @@ def test_yft_articulated_joints_roundtrip():
     assert three_dof.parent_link_index == 1
     assert three_dof.hard_twist_angle_max == 1.0
     assert three_dof.use_child_for_twist_axis is True
+
+
+def test_yft_validation_rejects_unwritable_resource_graphs():
+    yft = Yft()
+    yft.pointers.collision_event_set = 0x50000100
+
+    issues = validate_yft(yft)
+
+    assert any(
+        issue.is_error and issue.path == "pointers.collision_event_set"
+        for issue in issues
+    )

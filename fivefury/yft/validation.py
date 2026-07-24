@@ -343,6 +343,35 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             "must be -1 or point into the extra drawable array",
         )
 
+    unsupported_root_sections = {
+        "user_data": source.pointers.user_data,
+        "collision_event_set": source.pointers.collision_event_set,
+        "collision_event_player": source.pointers.collision_event_player,
+        "shared_matrix_set": source.pointers.shared_matrix_set,
+        "glass_pane_model_infos": source.pointers.glass_pane_model_infos,
+        "vehicle_glass_windows": source.pointers.vehicle_glass_windows,
+    }
+    for label, pointer in unsupported_root_sections.items():
+        if pointer:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"pointers.{label}",
+                "section is readable but cannot yet be rebuilt safely",
+            )
+    for field in source.raw_fields:
+        if field.label in {
+            "environment_cloth",
+            "character_cloth",
+            "light_attributes",
+        }:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"raw_fields.{field.label}",
+                "section is readable but cannot yet be rebuilt safely",
+            )
+
     for entry in source.iter_drawables():
         drawable = entry.drawable
         indices = getattr(drawable, "extra_bound_indices", ())
@@ -375,6 +404,22 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
 
     for index, lod in enumerate(source.physics_lod_details):
         _validate_lod(lod, f"physics_lod_details[{index}]", issues)
+        for child_index, child in enumerate(lod.children):
+            if child.events.has_any:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"physics_lod_details[{index}].children[{child_index}].events",
+                    "event graph is readable but cannot yet be rebuilt safely",
+                )
+        for group_index, group in enumerate(lod.groups):
+            if group.events.has_any:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"physics_lod_details[{index}].groups[{group_index}].events",
+                    "event graph is readable but cannot yet be rebuilt safely",
+                )
     return issues
 
 
