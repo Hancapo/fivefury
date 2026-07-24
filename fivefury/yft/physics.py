@@ -41,16 +41,6 @@ class YftPhysicsGroupFlag(enum.IntFlag):
     HAS_CLOTH = 1 << 5
 
 
-class YftPhysicsChildFlag(enum.IntFlag):
-    NONE = 0
-    DISABLED = 1 << 0
-    CAN_BREAK = 1 << 1
-    USES_DAMAGED_ENTITY = 1 << 2
-    VEHICLE_PART = 1 << 3
-    GLASS_PART = 1 << 4
-    CLOTH_PART = 1 << 5
-
-
 class YftPhysicsDampingKind(enum.IntEnum):
     LINEAR_CONSTANT = 0
     LINEAR_VELOCITY = 1
@@ -77,7 +67,7 @@ class YftPhysicsGroupEventRefs:
         return self.death_event != 0 or self.death_player != 0
 
     @classmethod
-    def declare(cls, *, death_event: int = 0, death_player: int = 0) -> "YftPhysicsGroupEventRefs":
+    def declare(cls, *, death_event: int = 0, death_player: int = 0) -> YftPhysicsGroupEventRefs:
         return cls(death_event=int(death_event), death_player=int(death_player))
 
 
@@ -345,7 +335,7 @@ class YftPhysicsEventRefs:
         collision_player: int = 0,
         break_player: int = 0,
         break_from_root_player: int = 0,
-    ) -> "YftPhysicsEventRefs":
+    ) -> YftPhysicsEventRefs:
         return cls(
             continuous=int(continuous),
             collision=int(collision),
@@ -372,11 +362,32 @@ class YftPhysicsEventRefs:
         )
 
 
-YftMatrix34 = tuple[
+YftMatrix44 = tuple[
+    tuple[float, float, float, float],
     tuple[float, float, float, float],
     tuple[float, float, float, float],
     tuple[float, float, float, float],
 ]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class YftPhysicsTransforms:
+    matrices: tuple[YftMatrix44, ...] = ()
+    resource_tag: int = 0x54534552
+    resource_state: int = 0
+    reserved_08: int = 0
+    reserved_14: int = 0
+    reserved_18: int = 0
+
+    @property
+    def count(self) -> int:
+        return len(self.matrices)
+
+    @classmethod
+    def declare(
+        cls, matrices: Sequence[YftMatrix44] = ()
+    ) -> YftPhysicsTransforms:
+        return cls(matrices=tuple(matrices))
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -435,23 +446,6 @@ class YftPhysicsChild:
     def has_damaged_entity(self) -> bool:
         return self.damaged_entity_pointer != 0
 
-    @property
-    def flag_names(self) -> tuple[YftPhysicsChildFlag, ...]:
-        flags = YftPhysicsChildFlag(int(self.flags))
-        return tuple(flag for flag in YftPhysicsChildFlag if flag is not YftPhysicsChildFlag.NONE and flags & flag)
-
-    @property
-    def is_vehicle_part(self) -> bool:
-        return bool(YftPhysicsChildFlag(int(self.flags)) & YftPhysicsChildFlag.VEHICLE_PART)
-
-    @property
-    def is_glass_part(self) -> bool:
-        return bool(YftPhysicsChildFlag(int(self.flags)) & YftPhysicsChildFlag.GLASS_PART)
-
-    @property
-    def is_cloth_part(self) -> bool:
-        return bool(YftPhysicsChildFlag(int(self.flags)) & YftPhysicsChildFlag.CLOTH_PART)
-
     def entities(self) -> tuple[YftPhysicsEntity, ...]:
         return tuple(
             entity
@@ -482,14 +476,14 @@ class YftPhysicsChild:
         damaged_mass: float | None = None,
         owner_group_name: str = "",
         min_breaking_impulse: float = 0.0,
-        flags: int | YftPhysicsChildFlag = 0,
+        reserved_flags: int = 0,
     ) -> YftPhysicsChild:
         return cls(
             undamaged_mass=float(undamaged_mass),
             damaged_mass=float(
                 damaged_mass if damaged_mass is not None else undamaged_mass
             ),
-            flags=int(flags),
+            flags=int(reserved_flags),
             bone_id=int(bone_id),
             owner_group_name=str(owner_group_name),
             min_breaking_impulse=float(min_breaking_impulse),
@@ -537,7 +531,9 @@ class YftPhysicsLod:
     min_breaking_impulses: tuple[float, ...] = ()
     undamaged_ang_inertia: tuple[YftPhysicsInertia, ...] = ()
     damaged_ang_inertia: tuple[YftPhysicsInertia, ...] = ()
-    link_attachments: tuple[YftMatrix34, ...] = ()
+    link_attachments: YftPhysicsTransforms = dataclasses.field(
+        default_factory=YftPhysicsTransforms
+    )
     body_type: YftPhysicsReference = dataclasses.field(
         default_factory=YftPhysicsReference
     )
@@ -785,21 +781,21 @@ class YftPhysicsLod:
 
 
 __all__ = [
-    "YftPhysicsChild",
-    "YftPhysicsChildFlag",
     "YftArticulatedBodyType",
+    "YftMatrix44",
+    "YftPhysicsChild",
     "YftPhysicsDampArchetype",
     "YftPhysicsDamping",
     "YftPhysicsDampingKind",
     "YftPhysicsEntity",
     "YftPhysicsEventRefs",
-    "YftPhysicsGroupEventRefs",
     "YftPhysicsGroup",
+    "YftPhysicsGroupEventRefs",
     "YftPhysicsGroupFlag",
     "YftPhysicsInertia",
     "YftPhysicsJointType",
     "YftPhysicsLod",
     "YftPhysicsLodPointers",
     "YftPhysicsReference",
-    "YftMatrix34",
+    "YftPhysicsTransforms",
 ]

@@ -18,7 +18,11 @@ from .io_helpers import (
     read_string_pointer_array,
     try_read_c_string,
 )
-from .physics_reader import read_physics_lod_pointers, read_physics_lods
+from .physics_reader import (
+    read_physics_child,
+    read_physics_lod_pointers,
+    read_physics_lods,
+)
 
 
 def _read_drawable_array(
@@ -112,6 +116,27 @@ def read_yft(
         system_data, pointers.physics_lod_group
     )
 
+    physics_lod_details = read_physics_lods(
+        header,
+        system_data,
+        graphics_data,
+        physics_lod_pointers,
+        path=resource_path,
+        shader_library=shader_library,
+        resolve_entities=resolve_physics_entities,
+    )
+    root_child = next(
+        (
+            child
+            for lod in physics_lod_details
+            for child in lod.children
+            if child.pointer == pointers.root_child
+        ),
+        None,
+    )
+    if root_child is None:
+        root_child = read_physics_child(system_data, pointers.root_child)
+
     return Yft(
         version=int(header.version),
         path=resource_path,
@@ -119,15 +144,8 @@ def read_yft(
         pointers=pointers,
         state=read_fragment_state(system_data),
         physics_lods=physics_lod_pointers,
-        physics_lod_details=read_physics_lods(
-            header,
-            system_data,
-            graphics_data,
-            physics_lod_pointers,
-            path=resource_path,
-            shader_library=shader_library,
-            resolve_entities=resolve_physics_entities,
-        ),
+        physics_lod_details=physics_lod_details,
+        root_child=root_child,
         tune_name=try_read_c_string(system_data, pointers.tune_name),
         raw_fields=read_raw_fields(system_data),
         main_drawable=_read_optional_drawable(

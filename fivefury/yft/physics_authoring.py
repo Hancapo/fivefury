@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from ..bounds import Bound, BoundBox
 from .physics import (
     YftArticulatedBodyType,
+    YftMatrix44,
     YftPhysicsChild,
     YftPhysicsDampArchetype,
     YftPhysicsDamping,
@@ -15,7 +16,7 @@ from .physics import (
     YftPhysicsJointType,
     YftPhysicsLod,
     YftPhysicsLodPointers,
-    YftMatrix34,
+    YftPhysicsTransforms,
 )
 
 DEFAULT_DAMPING_CONSTANTS: tuple[YftPhysicsDamping, ...] = (
@@ -27,10 +28,11 @@ DEFAULT_DAMPING_CONSTANTS: tuple[YftPhysicsDamping, ...] = (
     YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY_SQUARED, (0.01, 0.01, 0.01)),
 )
 
-IDENTITY_MATRIX34: YftMatrix34 = (
+IDENTITY_MATRIX44: YftMatrix44 = (
     (1.0, 0.0, 0.0, 0.0),
     (0.0, 1.0, 0.0, 0.0),
     (0.0, 0.0, 1.0, 0.0),
+    (0.0, 0.0, 0.0, 1.0),
 )
 
 
@@ -189,9 +191,11 @@ def normalize_physics_lod(
     damaged_inertia = tuple(lod.damaged_ang_inertia) or tuple(
         child.damaged_ang_inertia for child in resolved_children
     )
-    link_attachments = tuple(lod.link_attachments) or tuple(
-        IDENTITY_MATRIX34 for _ in resolved_children
-    )
+    link_attachments = lod.link_attachments
+    if not link_attachments.matrices:
+        link_attachments = YftPhysicsTransforms.declare(
+            IDENTITY_MATRIX44 for _ in resolved_children
+        )
     smallest = min((item.x for item in undamaged_inertia if item.x > 0.0), default=0.0)
     largest = max(
         (max(item.x, item.y, item.z) for item in undamaged_inertia),
@@ -225,7 +229,10 @@ def normalize_physics_lod(
         min_breaking_impulses=min_impulses[: len(resolved_children)],
         undamaged_ang_inertia=undamaged_inertia[: len(resolved_children)],
         damaged_ang_inertia=damaged_inertia[: len(resolved_children)],
-        link_attachments=link_attachments[: len(resolved_children)],
+        link_attachments=dataclasses.replace(
+            link_attachments,
+            matrices=link_attachments.matrices[: len(resolved_children)],
+        ),
         smallest_ang_inertia=lod.smallest_ang_inertia or smallest,
         largest_ang_inertia=lod.largest_ang_inertia or largest,
         min_move_force=lod.min_move_force or 0.0,
@@ -247,7 +254,7 @@ def physics_lod_pointers_for(lods: Sequence[YftPhysicsLod]) -> YftPhysicsLodPoin
 
 __all__ = [
     "DEFAULT_DAMPING_CONSTANTS",
-    "IDENTITY_MATRIX34",
+    "IDENTITY_MATRIX44",
     "bound_inertia",
     "bound_mass",
     "box_inertia",

@@ -32,6 +32,7 @@ class Yft:
         default_factory=YftPhysicsLodPointers
     )
     physics_lod_details: list[YftPhysicsLod] = dataclasses.field(default_factory=list)
+    root_child: YftPhysicsChild | None = None
     tune_name: str = ""
     raw_fields: list[YftRawField] = dataclasses.field(default_factory=list)
     main_drawable: Ydr | None = None
@@ -100,9 +101,10 @@ class Yft:
         seen: set[int] = set()
         for child in self.iter_physics_children():
             for entity in child.entities():
-                if entity.pointer in seen:
+                identity = entity.pointer or -id(entity)
+                if identity in seen:
                     continue
-                seen.add(entity.pointer)
+                seen.add(identity)
                 yield entity
 
     def iter_physics_drawables(self) -> Iterator[YftDrawable]:

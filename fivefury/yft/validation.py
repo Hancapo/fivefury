@@ -115,7 +115,10 @@ def _validate_lod(
             f"{path}.damaged_ang_inertia",
             "count must match children",
         )
-    if lod.link_attachments and len(lod.link_attachments) != len(lod.children):
+    if (
+        lod.link_attachments.matrices
+        and len(lod.link_attachments.matrices) != len(lod.children)
+    ):
         _issue(
             issues,
             YftValidationSeverity.ERROR,
