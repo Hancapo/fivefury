@@ -14,7 +14,7 @@ from fivefury.yft import (
     YftFragmentMatrix,
     YftFragmentState,
     YftPhysicsChild,
-    YftPhysicsChildFlag,
+    YftPhysicsEntity,
     YftPhysicsGroup,
     YftPhysicsGroupFlag,
     YftPhysicsLod,
@@ -28,7 +28,7 @@ from fivefury.yft import (
 
 
 def test_read_yft_discovers_fragment_drawables(monkeypatch):
-    system_data = bytearray(0xB00)
+    system_data = bytearray(0xC00)
     struct.pack_into("<4f", system_data, 0x20, 1.0, 2.0, 3.0, 4.0)
     struct.pack_into("<Q", system_data, 0x30, 0x50000100)
     struct.pack_into("<Q", system_data, 0x38, 0x50000080)
@@ -66,7 +66,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     struct.pack_into("<QQ", system_data, 0x2D8, 0x50000800, 0x50000900)
     struct.pack_into("<Q", system_data, 0x2F0, 0x50000620)
     struct.pack_into("<Q", system_data, 0x2F8, 0x50000660)
-    struct.pack_into("<Q", system_data, 0x300, 0x500006A0)
+    struct.pack_into("<Q", system_data, 0x300, 0x50000B00)
     struct.pack_into("<fff", system_data, 0x260, 0.1, 0.2, 0.3)
     system_data[0x318:0x31F] = bytes([0, 0, 1, 1, 2, 3, 4])
     struct.pack_into("<Q", system_data, 0x400, 0x50000420)
@@ -85,10 +85,11 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     struct.pack_into("<ffff", system_data, 0x600, 100.0, 101.0, 102.0, 103.0)
     struct.pack_into("<ffff", system_data, 0x620, 1.0, 2.0, 3.0, 4.0)
     struct.pack_into("<ffff", system_data, 0x660, 5.0, 6.0, 7.0, 8.0)
+    struct.pack_into("<IIQIIQ", system_data, 0xB00, 0x54534552, 0, 0, 1, 0, 0)
     struct.pack_into(
-        "<12f",
+        "<16f",
         system_data,
-        0x6A0,
+        0xB20,
         1.0,
         0.0,
         0.0,
@@ -101,6 +102,10 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         0.0,
         1.0,
         30.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     )
     struct.pack_into("<ii", system_data, 0x6F0, -1, 0)
     struct.pack_into("<ff", system_data, 0x74C, 1.0, 0.25)
@@ -218,7 +223,12 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         0.800000011920929,
         0.8999999761581421,
     )
-    assert yft.physics_lod_details[0].link_attachments[0][0] == (1.0, 0.0, 0.0, 10.0)
+    assert yft.physics_lod_details[0].link_attachments.matrices[0][0] == (
+        1.0,
+        0.0,
+        0.0,
+        10.0,
+    )
     assert yft.physics_lod_details[0].children[0].undamaged_ang_inertia.as_tuple() == (
         1.0,
         2.0,
@@ -394,9 +404,14 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0)).build()
     build.bound = bound
     child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity(
+            pointer=0x5000DEAD,
+            label="body_fragment",
+            drawable=build,
+        ),
         undamaged_mass=10.0,
         min_breaking_impulse=100.0,
-        flags=YftPhysicsChildFlag.CAN_BREAK,
+        reserved_flags=0,
     )
     group = YftPhysicsGroup.declare(
         "body",
@@ -426,8 +441,10 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     target = tmp_path / "fragment.yft"
     target.write_bytes(raw)
     parsed = read_yft(target, resolve_physics_entities=False)
+    parsed_with_entities = read_yft(target)
 
     assert parsed.physics_lods.has_physics is True
+    assert parsed.root_child is not None
     assert isinstance(parsed.main_drawable, YftFragmentDrawable)
     assert parsed.main_drawable.bound is not None
     assert parsed.main_drawable.skeleton_type_name == "fragment_drawable"
@@ -453,9 +470,16 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert lod.num_children == 1
     assert lod.groups[0].name == "body"
     assert lod.groups[0].damages_when_broken is True
-    assert lod.children[0].flag_names == (YftPhysicsChildFlag.CAN_BREAK,)
+    assert lod.children[0].flags == 0
+    assert lod.children[0].undamaged_entity_pointer != 0x5000DEAD
+    assert (
+        parsed_with_entities.physics_lod("high").children[0].undamaged_entity.drawable
+        is not None
+    )
     assert lod.children[0].min_breaking_impulse == 100.0
     assert lod.composite_bound is not None
+    assert lod.link_attachments.count == 1
+    assert lod.link_attachments.matrices[0][3] == (0.0, 0.0, 0.0, 1.0)
     assert lod.undamaged_damp_archetype is not None
     assert parsed.validate() == []
 

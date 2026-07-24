@@ -22,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YDR skeleton lookups now use indexes rebuilt with the hierarchy.
 
 ### Fixed
+- YFT physics LODs now use the correct block sizes, resource-backed link transforms, root-child ownership, and relocated child drawable pointers.
 - `GameFileCache` can now fall back to the Python RPF reader when the native archive scanner rejects a valid archive variant.
 - RPF folder extraction now handles paths used as both files and directories.
 - RPF folder creation now keeps stable absolute source paths, ignores dot-prefixed directories, and rejects offsets or name tables that cannot be represented by RPF7.

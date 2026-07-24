@@ -6,7 +6,6 @@ from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 from .physics import (
     YftArticulatedBodyType,
     YftPhysicsChild,
-    YftPhysicsChildFlag,
     YftPhysicsDampArchetype,
     YftPhysicsDamping,
     YftPhysicsDampingKind,
@@ -20,6 +19,7 @@ from .physics import (
     YftPhysicsLod,
     YftPhysicsLodPointers,
     YftPhysicsReference,
+    YftPhysicsTransforms,
 )
 from .pointers import (
     YftFragmentFlag,
@@ -47,7 +47,6 @@ __all__ = [
     "YftFragmentState",
     "YftGeometryStats",
     "YftPhysicsChild",
-    "YftPhysicsChildFlag",
     "YftPhysicsDampArchetype",
     "YftPhysicsDamping",
     "YftPhysicsDampingKind",
@@ -61,6 +60,7 @@ __all__ = [
     "YftPhysicsLod",
     "YftPhysicsLodPointers",
     "YftPhysicsReference",
+    "YftPhysicsTransforms",
     "YftRawField",
     "YftValidationIssue",
     "YftValidationSeverity",

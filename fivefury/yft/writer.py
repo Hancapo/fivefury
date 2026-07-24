@@ -53,6 +53,7 @@ class _PreparedFragmentDrawable:
     materials: list[PreparedMaterial]
     lods: PreparedLods
     fragment: YftFragmentDrawable | None = None
+    source_id: int = 0
     root_offset: int = 0
 
 
@@ -71,9 +72,10 @@ def _prepare_drawable(
     generate_normals: bool,
     generate_tangents: bool,
     fill_vertex_colours: bool,
+    allow_empty: bool = False,
 ) -> _PreparedFragmentDrawable:
     build = _drawable_build(drawable, name=name, version=version)
-    if build.model_count == 0:
+    if build.model_count == 0 and not allow_empty:
         raise ValueError(f"YFT drawable '{name}' has no models")
     materials, lods = prepare_build(
         build,
@@ -90,6 +92,7 @@ def _prepare_drawable(
         materials=materials,
         lods=lods,
         fragment=drawable if isinstance(drawable, YftFragmentDrawable) else None,
+        source_id=id(drawable),
     )
 
 
@@ -166,6 +169,7 @@ def _prepared_drawables(
     _PreparedFragmentDrawable | None,
     list[_PreparedFragmentDrawable],
     _PreparedFragmentDrawable | None,
+    list[_PreparedFragmentDrawable],
 ]:
     version = int(yft.version)
     main = (
@@ -209,7 +213,27 @@ def _prepared_drawables(
         if yft.cloth_drawable is not None
         else None
     )
-    return main, extras, cloth
+    physics: list[_PreparedFragmentDrawable] = []
+    seen: set[int] = set()
+    for index, entity in enumerate(yft.iter_physics_entities()):
+        drawable = entity.drawable
+        if drawable is None or id(drawable) in seen:
+            continue
+        seen.add(id(drawable))
+        physics.append(
+            _prepare_drawable(
+                drawable,
+                label=entity.label or f"physics_entity_{index}",
+                name=entity.label or f"{yft.name}_physics_{index}",
+                version=version,
+                shader_library=shader_library,
+                generate_normals=generate_normals,
+                generate_tangents=generate_tangents,
+                fill_vertex_colours=fill_vertex_colours,
+                allow_empty=True,
+            )
+        )
+    return main, extras, cloth, physics
 
 
 def create_yft(
@@ -287,9 +311,31 @@ def _write_fragment_root(
     damaged_index = int(yft.state.damaged_drawable_index)
     damaged = extras[damaged_index] if 0 <= damaged_index < len(extras) else None
     tune_name_off = system.c_string(yft.tune_name) if yft.tune_name else 0
-    root_child_off = system.alloc(0x100, 16)
-    if main is not None:
-        system.pack_into("ff", root_child_off + 0x08, 1.0, 1.0)
+    has_single_physics_child = any(
+        len(lod.children) == 1 for lod in yft.physics_lod_details
+    )
+    needs_root_child = (
+        yft.root_child is not None
+        or has_single_physics_child
+        or not yft.physics_lod_details
+    )
+    root_child_off = system.alloc(0x100, 16) if needs_root_child else 0
+    root_child = yft.root_child
+    if root_child_off and main is not None:
+        system.pack_into(
+            "ff",
+            root_child_off + 0x08,
+            float(root_child.undamaged_mass) if root_child is not None else 1.0,
+            float(root_child.damaged_mass) if root_child is not None else 1.0,
+        )
+        if root_child is not None:
+            system.data[root_child_off + 0x10] = (
+                int(root_child.owner_group_pointer_index) & 0xFF
+            )
+            system.data[root_child_off + 0x11] = int(root_child.flags) & 0xFF
+            system.pack_into(
+                "H", root_child_off + 0x12, int(root_child.bone_id) & 0xFFFF
+            )
         system.pack_into("Q", root_child_off + 0xA0, _virtual(main.root_offset))
         system.pack_into(
             "Q",
@@ -306,7 +352,7 @@ def _write_fragment_root(
     system.pack_into("Q", 0x40, _virtual(extra_names_off) if extra_names_off else 0)
     system.pack_into("I", 0x48, len(extras))
     system.pack_into("i", 0x4C, damaged_index if damaged is not None else -1)
-    system.pack_into("Q", 0x50, _virtual(root_child_off))
+    system.pack_into("Q", 0x50, _virtual(root_child_off) if root_child_off else 0)
     system.pack_into("Q", 0x58, _virtual(tune_name_off) if tune_name_off else 0)
     system.pack_into("Q", 0xB0, int(yft.state.estimated_cache_size))
     system.pack_into("Q", 0xB8, int(yft.state.estimated_articulated_cache_size))
@@ -332,14 +378,15 @@ def _build_yft_payload(
         _PreparedFragmentDrawable | None,
         list[_PreparedFragmentDrawable],
         _PreparedFragmentDrawable | None,
+        list[_PreparedFragmentDrawable],
     ],
     *,
     page_counts: tuple[int, int],
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(FRAGMENT_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
-    main, extras, cloth = prepared
-    for item in [main, *extras, cloth]:
+    main, extras, cloth, physics = prepared
+    for item in [main, *extras, cloth, *physics]:
         if item is None:
             continue
         item.root_offset = system.alloc(FRAGMENT_DRAWABLE_SIZE, 16)
@@ -381,6 +428,9 @@ def _build_yft_payload(
             if 0 <= yft.state.damaged_drawable_index < len(extras)
             else 0
         ),
+        entity_drawable_offsets={
+            item.source_id: item.root_offset for item in physics
+        },
         fallback_bound=fallback_bound,
     )
     if physics_group_off:

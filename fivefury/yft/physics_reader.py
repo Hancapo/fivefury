@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 
-from ..binary import f32 as _f32, i32 as _i32, u16 as _u16, u32 as _u32, u64 as _u64
+from ..binary import f32 as _f32
+from ..binary import i32 as _i32
+from ..binary import u16 as _u16
+from ..binary import u32 as _u32
+from ..binary import u64 as _u64
 from ..bounds import Bound, read_bound_from_pointer
 from ..ydr.shaders import ShaderLibrary
 from .constants import PHYSICS_LOD_GROUP_FIELDS_OFFSET, PHYSICS_LOD_MIN_SIZE
@@ -30,10 +34,11 @@ from .physics import (
     YftPhysicsLod,
     YftPhysicsLodPointers,
     YftPhysicsReference,
+    YftPhysicsTransforms,
 )
 
 _PHYSICS_GROUP_MIN_SIZE = 0xAC
-_PHYSICS_CHILD_MIN_SIZE = 0xB0
+_PHYSICS_CHILD_MIN_SIZE = 0x100
 _DAMPING_CONSTANT_COUNT = 6
 _ARCHETYPE_DAMP_MIN_SIZE = 0xE0
 _ARCHETYPE_DAMPING_OFFSET = 0x80
@@ -87,25 +92,35 @@ def read_inertia_array(
     )
 
 
-def read_matrix34_array(system_data: bytes, pointer: int, count: int):
+def read_physics_transforms(
+    system_data: bytes, pointer: int
+) -> YftPhysicsTransforms:
     offset = try_virtual_offset(system_data, pointer)
-    if offset is None or count <= 0 or offset + (count * 48) > len(system_data):
-        return ()
+    if offset is None or offset + 0x20 > len(system_data):
+        return YftPhysicsTransforms()
+    count = _u32(system_data, offset + 0x10)
+    if count > 0x10000 or offset + 0x20 + (count * 64) > len(system_data):
+        return YftPhysicsTransforms()
     matrices = []
     for index in range(count):
-        base = offset + index * 48
+        base = offset + 0x20 + index * 64
         matrices.append(
-            (
-                tuple(float(_f32(system_data, base + col * 4)) for col in range(4)),
+            tuple(
                 tuple(
-                    float(_f32(system_data, base + 16 + col * 4)) for col in range(4)
-                ),
-                tuple(
-                    float(_f32(system_data, base + 32 + col * 4)) for col in range(4)
-                ),
+                    float(_f32(system_data, base + row * 16 + col * 4))
+                    for col in range(4)
+                )
+                for row in range(4)
             )
         )
-    return tuple(matrices)
+    return YftPhysicsTransforms(
+        matrices=tuple(matrices),
+        resource_tag=_u32(system_data, offset),
+        resource_state=_u32(system_data, offset + 4),
+        reserved_08=_u64(system_data, offset + 8),
+        reserved_14=_u32(system_data, offset + 0x14),
+        reserved_18=_u64(system_data, offset + 0x18),
+    )
 
 
 def read_damping_constants(
@@ -222,7 +237,7 @@ def read_bound_or_none(system_data: bytes, pointer: int) -> Bound | None:
         return None
     try:
         return read_bound_from_pointer(pointer, system_data)
-    except Exception:
+    except (IndexError, ValueError):
         return None
 
 
@@ -290,18 +305,15 @@ def read_physics_entity(
         return None
     if pointer in cache:
         return cache[pointer]
-    try:
-        drawable = read_fragment_drawable(
-            header,
-            system_data,
-            graphics_data,
-            pointer,
-            label=label,
-            path=path,
-            shader_library=shader_library,
-        )
-    except Exception:
-        drawable = None
+    drawable = read_fragment_drawable(
+        header,
+        system_data,
+        graphics_data,
+        pointer,
+        label=label,
+        path=path,
+        shader_library=shader_library,
+    )
     entity = YftPhysicsEntity(pointer=pointer, label=label, drawable=drawable)
     cache[pointer] = entity
     return entity
@@ -598,8 +610,8 @@ def read_physics_lod(
         min_breaking_impulses=min_breaking_impulses,
         undamaged_ang_inertia=undamaged_ang_inertia,
         damaged_ang_inertia=damaged_ang_inertia,
-        link_attachments=read_matrix34_array(
-            system_data, link_attachments_pointer, num_children
+        link_attachments=read_physics_transforms(
+            system_data, link_attachments_pointer
         ),
         body_type=YftPhysicsReference(
             _u64(system_data, offset + 0x20), "phArticulatedBodyType"
@@ -659,15 +671,14 @@ def read_physics_lods(
 
 
 __all__ = [
+    "read_articulated_body_type",
     "read_bound_or_none",
+    "read_damp_archetype",
     "read_damping_constants",
     "read_damping_constants_at",
-    "read_articulated_body_type",
-    "read_damp_archetype",
     "read_float_array",
     "read_group_names",
     "read_inertia_array",
-    "read_matrix34_array",
     "read_physics_child",
     "read_physics_children",
     "read_physics_entity",
@@ -676,5 +687,6 @@ __all__ = [
     "read_physics_lod",
     "read_physics_lod_pointers",
     "read_physics_lods",
+    "read_physics_transforms",
     "read_self_collision_pairs",
 ]

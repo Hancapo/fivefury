@@ -11,7 +11,6 @@ from .model import (
     YftFragmentState,
     YftGeometryStats,
     YftPhysicsChild,
-    YftPhysicsChildFlag,
     YftPhysicsDampArchetype,
     YftPhysicsDamping,
     YftPhysicsDampingKind,
@@ -25,6 +24,7 @@ from .model import (
     YftPhysicsLod,
     YftPhysicsLodPointers,
     YftPhysicsReference,
+    YftPhysicsTransforms,
     YftRawField,
     YftValidationIssue,
     YftValidationSeverity,
@@ -33,7 +33,7 @@ from .model import (
 )
 from .physics_authoring import (
     DEFAULT_DAMPING_CONSTANTS,
-    IDENTITY_MATRIX34,
+    IDENTITY_MATRIX44,
     bound_inertia,
     bound_mass,
     box_inertia,
@@ -47,7 +47,7 @@ from .writer import build_yft_bytes, create_yft, save_yft
 
 __all__ = [
     "DEFAULT_DAMPING_CONSTANTS",
-    "IDENTITY_MATRIX34",
+    "IDENTITY_MATRIX44",
     "Yft",
     "YftArticulatedBodyType",
     "YftCorpusEntry",
@@ -60,7 +60,6 @@ __all__ = [
     "YftFragmentState",
     "YftGeometryStats",
     "YftPhysicsChild",
-    "YftPhysicsChildFlag",
     "YftPhysicsDampArchetype",
     "YftPhysicsDamping",
     "YftPhysicsDampingKind",
@@ -74,6 +73,7 @@ __all__ = [
     "YftPhysicsLod",
     "YftPhysicsLodPointers",
     "YftPhysicsReference",
+    "YftPhysicsTransforms",
     "YftRawField",
     "YftValidationIssue",
     "YftValidationSeverity",
