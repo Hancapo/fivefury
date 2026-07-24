@@ -294,6 +294,15 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             f"duplicate extra drawable label '{label}'",
         )
 
+    damaged_index = source.state.damaged_drawable_index
+    if damaged_index < -1 or damaged_index >= len(source.drawables):
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "state.damaged_drawable_index",
+            "must be -1 or point into the extra drawable array",
+        )
+
     if source.physics_lods.has_physics and not source.physics_lod_details:
         _issue(
             issues,

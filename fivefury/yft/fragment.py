@@ -32,19 +32,15 @@ class Yft:
         default_factory=YftPhysicsLodPointers
     )
     physics_lod_details: list[YftPhysicsLod] = dataclasses.field(default_factory=list)
-    root_child_name: str = ""
     tune_name: str = ""
     raw_fields: list[YftRawField] = dataclasses.field(default_factory=list)
     main_drawable: Ydr | None = None
     drawables: list[YftDrawable] = dataclasses.field(default_factory=list)
-    damaged_drawable: Ydr | None = None
     cloth_drawable: Ydr | None = None
     raw_bytes: bytes = dataclasses.field(default=b"", repr=False, compare=False)
 
     @classmethod
-    def from_bytes(
-        cls, data: bytes | bytearray | memoryview, *, path: str = ""
-    ) -> "Yft":
+    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> Yft:
         from .reader import read_yft
 
         return read_yft(data, path=path)
@@ -66,13 +62,6 @@ class Yft:
                 name="drawable",
             )
         yield from self.drawables
-        if self.damaged_drawable is not None:
-            yield YftDrawable(
-                "damaged",
-                self.damaged_drawable,
-                pointer=self.pointers.damaged_drawable,
-                name="damaged",
-            )
         if self.cloth_drawable is not None:
             yield YftDrawable(
                 "drawable_cloth",
@@ -80,6 +69,16 @@ class Yft:
                 pointer=self.pointers.cloth_drawable,
                 name="drawable_cloth",
             )
+
+    @property
+    def damaged_drawable_entry(self) -> YftDrawable | None:
+        index = self.state.damaged_drawable_index
+        return self.drawables[index] if 0 <= index < len(self.drawables) else None
+
+    @property
+    def damaged_drawable(self) -> Ydr | None:
+        entry = self.damaged_drawable_entry
+        return entry.drawable if entry is not None else None
 
     def iter_models(self, lod: YdrLod | str | None = None) -> Iterator[YdrModel]:
         for entry in self.iter_drawables():
@@ -171,7 +170,7 @@ class Yft:
         *,
         composite_bound=None,
         density: float = 1.0,
-    ) -> "Yft":
+    ) -> Yft:
         from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
 
         normalized = normalize_physics_lod(
@@ -196,12 +195,14 @@ class Yft:
         mass: float | None = None,
         density: float = 1.0,
         lod: str = "high",
-    ) -> "Yft":
+    ) -> Yft:
         from .physics import YftPhysicsChild, YftPhysicsGroup, YftPhysicsLod
         from .physics_authoring import bound_mass
 
         child = YftPhysicsChild.declare(
-            undamaged_mass=bound_mass(bound, density=density) if mass is None else float(mass),
+            undamaged_mass=bound_mass(bound, density=density)
+            if mass is None
+            else float(mass),
             owner_group_name=group_name,
         )
         group = YftPhysicsGroup.declare(group_name, children=(child,))
@@ -267,7 +268,7 @@ class Yft:
             "name": self.name,
             "version": self.version,
             "bounding_sphere": self.bounding_sphere,
-            "root_child_name": self.root_child_name,
+            "root_child_pointer": self.pointers.root_child,
             "tune_name": self.tune_name,
             "has_physics": self.physics_lods.has_physics,
             "physics_lod_count": self.physics_lods.active_count,
