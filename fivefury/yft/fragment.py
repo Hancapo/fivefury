@@ -7,6 +7,7 @@ from typing import Any
 
 from ..ydr import Ydr, YdrMesh, YdrModel
 from ..ydr.defs import YdrLod, coerce_lod
+from .cloth import YftEnvironmentCloth
 from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet
 from .physics import (
@@ -40,6 +41,10 @@ class Yft:
     main_drawable: Ydr | None = None
     drawables: list[YftDrawable] = dataclasses.field(default_factory=list)
     cloth_drawable: Ydr | None = None
+    environment_cloths: list[YftEnvironmentCloth] = dataclasses.field(
+        default_factory=list
+    )
+    character_cloth_count: int = 0
     raw_bytes: bytes = dataclasses.field(default=b"", repr=False, compare=False)
 
     @classmethod
@@ -309,6 +314,7 @@ class Yft:
                 }
             ),
             "drawables": [entry.label for entry in self.iter_drawables()],
+            "environment_cloths": len(self.environment_cloths),
             "model_count": stats.model_count,
             "mesh_count": stats.mesh_count,
             "vertex_count": stats.vertex_count,

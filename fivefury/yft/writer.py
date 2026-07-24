@@ -28,6 +28,8 @@ from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_materials import prepare_materials
+from .cloth import YftEnvironmentCloth
+from .cloth_writer import write_environment_cloths
 from .constants import FRAGMENT_DRAWABLE_SIZE, FRAGMENT_ROOT_SIZE
 from .drawables import YftDrawable
 from .events_writer import (
@@ -248,6 +250,7 @@ def create_yft(
     version: int = 162,
     damaged_drawable: Ydr | YdrBuild | None = None,
     cloth_drawable: Ydr | YdrBuild | None = None,
+    environment_cloths: Sequence[YftEnvironmentCloth] = (),
     extra_drawables: Sequence[
         YftDrawable | tuple[str, Ydr | YdrBuild] | Ydr | YdrBuild
     ] = (),
@@ -258,6 +261,7 @@ def create_yft(
 ) -> Yft:
     yft = Yft(version=int(version), path=name, main_drawable=drawable)
     yft.cloth_drawable = cloth_drawable
+    yft.environment_cloths = list(environment_cloths)
     if bounding_sphere is not None:
         yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
     for index, entry in enumerate(extra_drawables):
@@ -430,6 +434,23 @@ def _build_yft_payload(
             bound_offset=bound_offset,
         )
     event_set_offsets = write_event_sets(system, yft.iter_event_sets())
+    drawable_offsets: dict[str, int] = {}
+    if main is not None:
+        drawable_offsets["drawable"] = main.root_offset
+        drawable_offsets[main.label] = main.root_offset
+        drawable_offsets[main.name] = main.root_offset
+    for item in extras:
+        drawable_offsets[item.label] = item.root_offset
+        drawable_offsets[item.name] = item.root_offset
+    if cloth is not None:
+        drawable_offsets["drawable_cloth"] = cloth.root_offset
+        drawable_offsets[cloth.label] = cloth.root_offset
+        drawable_offsets[cloth.name] = cloth.root_offset
+    write_environment_cloths(
+        system,
+        yft.environment_cloths,
+        drawable_offsets=drawable_offsets,
+    )
     root_child_off = _write_fragment_root(
         system,
         page_counts=page_counts,

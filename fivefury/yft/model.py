@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+from .cloth import (
+    YftClothBridge,
+    YftClothConstraint,
+    YftClothController,
+    YftClothMorphController,
+    YftClothMorphMap,
+    YftClothTuning,
+    YftClothTuningFlag,
+    YftEnvironmentCloth,
+    YftEnvironmentClothFlag,
+    YftVerletCloth,
+)
 from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet, YftPhysicsChildEvents, YftPhysicsGroupEvents
 from .fragment import Yft
@@ -40,8 +52,17 @@ from .validation import (
 __all__ = [
     "Yft",
     "YftArticulatedBodyType",
+    "YftClothBridge",
+    "YftClothConstraint",
+    "YftClothController",
+    "YftClothMorphController",
+    "YftClothMorphMap",
+    "YftClothTuning",
+    "YftClothTuningFlag",
     "YftDrawable",
     "YftDrawableMatch",
+    "YftEnvironmentCloth",
+    "YftEnvironmentClothFlag",
     "YftEventSet",
     "YftFragmentDrawable",
     "YftFragmentFlag",
@@ -70,6 +91,7 @@ __all__ = [
     "YftRawField",
     "YftValidationIssue",
     "YftValidationSeverity",
+    "YftVerletCloth",
     "assert_valid_yft",
     "validate_yft",
 ]
