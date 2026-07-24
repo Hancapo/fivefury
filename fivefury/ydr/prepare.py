@@ -2,16 +2,39 @@ from __future__ import annotations
 
 import dataclasses
 import struct
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Sequence, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
-from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, _copy_model_input
-from .defs import COMPONENT_SIZES, LOD_ORDER, VertexComponentType, VertexSemantic, YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_skeleton_binding
-from .gen9_shader_enums import YdrGen9Shader
-from .shader_enums import YdrShader
-from .shaders import ShaderDefinition, ShaderLayoutDefinition, ShaderLibrary, ShaderParameterDefinition, resolve_shader_reference
 from .. import _native as _native_backend
 from ..vector import vec_cross, vec_dot, vec_normalize, vec_sub
+from .build_types import (
+    YdrBuild,
+    YdrMaterialInput,
+    YdrMeshInput,
+    YdrModelInput,
+    YdrTextureInput,
+    _copy_model_input,
+)
+from .defs import (
+    COMPONENT_SIZES,
+    LOD_ORDER,
+    VertexComponentType,
+    VertexSemantic,
+    YdrLod,
+    YdrRenderMask,
+    YdrSkeletonBinding,
+    coerce_skeleton_binding,
+)
+from .gen9_shader_enums import YdrGen9Shader
+from .shader_enums import YdrShader
+from .shaders import (
+    ShaderDefinition,
+    ShaderLayoutDefinition,
+    ShaderLibrary,
+    ShaderParameterDefinition,
+    resolve_shader_reference,
+)
 
 if TYPE_CHECKING:
     from .gen9 import ShaderGen9Definition
@@ -304,6 +327,40 @@ def _encode_vertex_bytes(
         shift = int(semantic) * 4
         types_value = (types_value & ~(0xF << shift)) | (int(component_type) << shift)
     stride = _stride_from_flags_types(flags, types_value)
+    component_types = dict(semantics)
+
+    def expand(values, semantic: VertexSemantic, *, fill: float = 0.0):
+        component_type = component_types.get(semantic)
+        if component_type is None:
+            return values
+        if component_type is VertexComponentType.FLOAT:
+            arity = 1
+        elif component_type in {
+            VertexComponentType.FLOAT2,
+            VertexComponentType.HALF2,
+        }:
+            arity = 2
+        elif component_type is VertexComponentType.FLOAT3:
+            arity = 3
+        else:
+            arity = 4
+        return [
+            tuple(value[:arity]) + (fill,) * max(0, arity - len(value))
+            for value in values
+        ]
+
+    positions = expand(positions, VertexSemantic.POSITION, fill=1.0)
+    normals = expand(normals, VertexSemantic.NORMAL)
+    tangents = expand(tangents, VertexSemantic.TANGENT)
+    colours0 = expand(colours0, VertexSemantic.COLOUR0, fill=1.0)
+    colours1 = expand(colours1, VertexSemantic.COLOUR1, fill=1.0)
+    texcoords = [
+        expand(
+            channel,
+            VertexSemantic(int(VertexSemantic.TEXCOORD0) + channel_index),
+        )
+        for channel_index, channel in enumerate(texcoords)
+    ]
 
     packed = _native_backend._ydr_pack_vertex_buffer(
         [(int(semantic), int(component_type)) for semantic, component_type in semantics],

@@ -7,6 +7,7 @@ from ..binary import u32 as _u32
 from ..common import ByteSource, read_source_bytes
 from ..resource import RSC7_MAGIC, split_rsc7_sections
 from ..ydr.shaders import ShaderLibrary
+from .cloth_reader import read_environment_cloths
 from .constants import DRAWABLE_ARRAY_COUNT_OFFSET
 from .drawable_reader import read_fragment_drawable
 from .drawables import YftDrawable
@@ -145,6 +146,41 @@ def read_yft(
             event_set_cache=event_set_cache,
         )
 
+    main_drawable = _read_optional_drawable(
+        header,
+        system_data,
+        graphics_data,
+        pointers.common_drawable,
+        label="drawable",
+        path=resource_path,
+        shader_library=shader_library,
+    )
+    drawables = _read_drawable_array(
+        header,
+        system_data,
+        graphics_data,
+        pointers=pointers,
+        path=resource_path,
+        shader_library=shader_library,
+    )
+    cloth_drawable = _read_optional_drawable(
+        header,
+        system_data,
+        graphics_data,
+        pointers.cloth_drawable,
+        label="drawable_cloth",
+        path=resource_path,
+        shader_library=shader_library,
+    )
+    drawable_labels = {pointers.common_drawable: "drawable"}
+    drawable_labels.update({entry.pointer: entry.label for entry in drawables})
+    if pointers.cloth_drawable:
+        drawable_labels[pointers.cloth_drawable] = "drawable_cloth"
+    environment_cloths, character_cloth_count = read_environment_cloths(
+        system_data,
+        drawable_labels=drawable_labels,
+    )
+
     return Yft(
         version=int(header.version),
         path=resource_path,
@@ -161,32 +197,11 @@ def read_yft(
         ),
         tune_name=try_read_c_string(system_data, pointers.tune_name),
         raw_fields=read_raw_fields(system_data),
-        main_drawable=_read_optional_drawable(
-            header,
-            system_data,
-            graphics_data,
-            pointers.common_drawable,
-            label="drawable",
-            path=resource_path,
-            shader_library=shader_library,
-        ),
-        drawables=_read_drawable_array(
-            header,
-            system_data,
-            graphics_data,
-            pointers=pointers,
-            path=resource_path,
-            shader_library=shader_library,
-        ),
-        cloth_drawable=_read_optional_drawable(
-            header,
-            system_data,
-            graphics_data,
-            pointers.cloth_drawable,
-            label="drawable_cloth",
-            path=resource_path,
-            shader_library=shader_library,
-        ),
+        main_drawable=main_drawable,
+        drawables=drawables,
+        cloth_drawable=cloth_drawable,
+        environment_cloths=environment_cloths,
+        character_cloth_count=character_cloth_count,
         raw_bytes=bytes(data),
     )
 

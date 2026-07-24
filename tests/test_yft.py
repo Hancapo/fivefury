@@ -8,7 +8,12 @@ from fivefury.resource import build_rsc7, split_rsc7_sections
 from fivefury.ydr import Ydr, YdrLod, YdrMaterial, YdrMesh, YdrModel
 from fivefury.yft import (
     Yft,
+    YftClothBridge,
+    YftClothController,
+    YftClothMorphController,
+    YftClothTuning,
     YftDrawable,
+    YftEnvironmentCloth,
     YftEventSet,
     YftFragmentDrawable,
     YftFragmentFlag,
@@ -20,12 +25,74 @@ from fivefury.yft import (
     YftPhysicsGroupFlag,
     YftPhysicsLod,
     YftPhysicsLodPointers,
+    YftVerletCloth,
     build_yft_bytes,
     create_yft,
     read_yft,
     scan_yft_corpus,
     validate_yft,
 )
+
+
+def test_yft_environment_cloth_roundtrip():
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="cloth",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="cloth")],
+        name="cloth_fragment",
+    )
+    vertices = [
+        (0.0, 0.0, 0.0, 1.0),
+        (1.0, 0.0, 0.0, 1.0),
+        (0.0, 1.0, 0.0, 1.0),
+    ]
+    cloth = YftEnvironmentCloth(
+        controller=YftClothController(
+            name="cloth_fragment",
+            bridge=YftClothBridge(
+                mesh_vertex_counts=(3, 0, 0, 0),
+                pin_radii=([0.0, 0.0, 0.0], [], [], []),
+                vertex_weights=([1.0, 1.0, 1.0], [], [], []),
+                display_maps=([0, 1, 2], [], [], []),
+            ),
+            morph=YftClothMorphController(),
+            verlet_lods=(
+                YftVerletCloth(
+                    bounds_min=(0.0, 0.0, 0.0),
+                    bounds_max=(1.0, 1.0, 0.0),
+                    vertices=vertices,
+                    previous_vertices=list(vertices),
+                ),
+                None,
+                None,
+            ),
+        ),
+        tuning=YftClothTuning(weight=0.75),
+    )
+    source = create_yft(drawable, name="cloth_fragment")
+    source.environment_cloths.append(cloth)
+
+    parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
+
+    assert len(parsed.environment_cloths) == 1
+    parsed_cloth = parsed.environment_cloths[0]
+    assert parsed_cloth.drawable_label == "drawable"
+    assert parsed_cloth.controller.name == "cloth_fragment"
+    assert parsed_cloth.controller.bridge.mesh_vertex_counts == (3, 0, 0, 0)
+    assert parsed_cloth.controller.bridge.display_maps[0] == [0, 1, 2]
+    assert parsed_cloth.controller.verlet_lods[0].vertices == vertices
+    assert parsed_cloth.tuning.weight == 0.75
+    assert parsed_cloth.tuning.vft != 0
 
 
 def test_read_yft_discovers_fragment_drawables(monkeypatch):

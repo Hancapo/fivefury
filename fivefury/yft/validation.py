@@ -384,7 +384,6 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
         )
     for field in source.raw_fields:
         if field.label in {
-            "environment_cloth",
             "character_cloth",
             "light_attributes",
         }:
@@ -394,6 +393,93 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                 f"raw_fields.{field.label}",
                 "section is readable but cannot yet be rebuilt safely",
             )
+    if source.character_cloth_count:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "character_cloths",
+            "character-cloth arrays are not part of the legacy YFT corpus",
+        )
+    if len(source.environment_cloths) > 1:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "environment_cloths",
+            "legacy fragments support at most one environment cloth",
+        )
+    for index, cloth in enumerate(source.environment_cloths):
+        cloth_path = f"environment_cloths[{index}]"
+        if cloth.controller.bridge is None:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{cloth_path}.controller.bridge",
+                "simulation-to-graphics bridge is required",
+            )
+        if cloth.controller.morph is None:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{cloth_path}.controller.morph",
+                "morph controller is required",
+            )
+        if cloth.controller.verlet_lods[0] is None:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{cloth_path}.controller.verlet_lods",
+                "highest-detail Verlet cloth is required",
+            )
+        bridge = cloth.controller.bridge
+        if not cloth.controller.name:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{cloth_path}.controller.name",
+                "controller name is required",
+            )
+        for lod_index, verlet in enumerate(cloth.controller.verlet_lods):
+            if verlet is None:
+                continue
+            if verlet.previous_vertices and (
+                len(verlet.previous_vertices) != verlet.vertex_count
+            ):
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{cloth_path}.controller.verlet_lods[{lod_index}]",
+                    "previous-vertex count must match vertex count",
+                )
+            if bridge is None:
+                continue
+            mesh_vertex_count = bridge.mesh_vertex_counts[lod_index]
+            display_map = bridge.display_maps[lod_index]
+            if display_map and len(display_map) != mesh_vertex_count:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{cloth_path}.controller.bridge.display_maps[{lod_index}]",
+                    "display-map count must match the mesh vertex count",
+                )
+            for field_name, values in (
+                ("pin_radii", bridge.pin_radii[lod_index]),
+                ("vertex_weights", bridge.vertex_weights[lod_index]),
+                ("inflation_scales", bridge.inflation_scales[lod_index]),
+            ):
+                if values and len(values) != mesh_vertex_count:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{cloth_path}.controller.bridge.{field_name}[{lod_index}]",
+                        "array count must match the mesh vertex count",
+                    )
+            if display_map and max(display_map) >= verlet.vertex_count:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{cloth_path}.controller.bridge.display_maps[{lod_index}]",
+                    "display map references a vertex outside the Verlet cloth",
+                )
 
     for entry in source.iter_drawables():
         drawable = entry.drawable
