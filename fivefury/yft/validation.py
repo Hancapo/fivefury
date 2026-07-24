@@ -303,6 +303,18 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             "must be -1 or point into the extra drawable array",
         )
 
+    for entry in source.iter_drawables():
+        drawable = entry.drawable
+        indices = getattr(drawable, "extra_bound_indices", ())
+        matrices = getattr(drawable, "extra_bound_matrices", ())
+        if len(indices) != len(matrices):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"drawables.{entry.label}.extra_bounds",
+                "index and matrix counts must match",
+            )
+
     if source.physics_lods.has_physics and not source.physics_lod_details:
         _issue(
             issues,

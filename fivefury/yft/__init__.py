@@ -1,9 +1,12 @@
+from .corpus import YftCorpusEntry, iter_yft_paths, scan_yft_corpus
 from .model import (
     Yft,
     YftArticulatedBodyType,
     YftDrawable,
     YftDrawableMatch,
+    YftFragmentDrawable,
     YftFragmentFlag,
+    YftFragmentMatrix,
     YftFragmentPointers,
     YftFragmentState,
     YftGeometryStats,
@@ -28,7 +31,6 @@ from .model import (
     assert_valid_yft,
     validate_yft,
 )
-from .corpus import YftCorpusEntry, iter_yft_paths, scan_yft_corpus
 from .physics_authoring import (
     DEFAULT_DAMPING_CONSTANTS,
     IDENTITY_MATRIX34,
@@ -44,11 +46,16 @@ from .reader import read_yft
 from .writer import build_yft_bytes, create_yft, save_yft
 
 __all__ = [
+    "DEFAULT_DAMPING_CONSTANTS",
+    "IDENTITY_MATRIX34",
     "Yft",
     "YftArticulatedBodyType",
+    "YftCorpusEntry",
     "YftDrawable",
     "YftDrawableMatch",
+    "YftFragmentDrawable",
     "YftFragmentFlag",
+    "YftFragmentMatrix",
     "YftFragmentPointers",
     "YftFragmentState",
     "YftGeometryStats",
@@ -70,9 +77,6 @@ __all__ = [
     "YftRawField",
     "YftValidationIssue",
     "YftValidationSeverity",
-    "YftCorpusEntry",
-    "DEFAULT_DAMPING_CONSTANTS",
-    "IDENTITY_MATRIX34",
     "assert_valid_yft",
     "bound_inertia",
     "bound_mass",

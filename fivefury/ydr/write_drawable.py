@@ -123,6 +123,7 @@ def write_drawable_root(
     unknown_98: int,
     unknown_9c: int,
     virtual: Callable[[int], int],
+    write_extensions: bool = True,
 ) -> None:
     root = int(root_offset)
     system.pack_into("I", root + 0x00, int(drawable_file_vft))
@@ -156,6 +157,8 @@ def write_drawable_root(
     system.pack_into("H", root + 0x9A, drawable_models_layout.total_units)
     system.pack_into("I", root + 0x9C, int(unknown_9c))
     system.pack_into("Q", root + 0xA0, virtual(drawable_models_layout.block_start) if drawable_models_layout.block_start else 0)
+    if not write_extensions:
+        return
     system.pack_into("Q", root + 0xA8, virtual(drawable_name_off))
     if lights_block_off:
         system.pack_into("Q", root + 0xB0, virtual(lights_block_off))

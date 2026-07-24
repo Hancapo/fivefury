@@ -9,7 +9,9 @@ from fivefury.ydr import Ydr, YdrLod, YdrMaterial, YdrMesh, YdrModel
 from fivefury.yft import (
     Yft,
     YftDrawable,
+    YftFragmentDrawable,
     YftFragmentFlag,
+    YftFragmentMatrix,
     YftFragmentState,
     YftPhysicsChild,
     YftPhysicsChildFlag,
@@ -121,13 +123,27 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     calls: list[tuple[int, str]] = []
 
     def fake_read_drawable(
-        _header, _system_data, _graphics_data, *, root_offset, path, shader_library
+        _header,
+        _system_data,
+        _graphics_data,
+        pointer,
+        *,
+        label,
+        path,
+        shader_library,
     ):
-        calls.append((root_offset, path))
-        return Ydr(version=162, path=path)
+        root_offset = pointer - 0x50000000 + 0x10
+        internal_path = (
+            f"{path.rsplit('.', 1)[0]}/{label}.ydr" if path else f"{label}.ydr"
+        )
+        calls.append((root_offset, internal_path))
+        return YftFragmentDrawable(version=162, path=internal_path)
 
     monkeypatch.setattr(
-        "fivefury.yft.drawable_reader._read_ydr_from_sections", fake_read_drawable
+        "fivefury.yft.reader.read_fragment_drawable", fake_read_drawable
+    )
+    monkeypatch.setattr(
+        "fivefury.yft.physics_reader.read_fragment_drawable", fake_read_drawable
     )
 
     yft = read_yft(build_rsc7(bytes(system_data), version=162), path="example.yft")
@@ -376,6 +392,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         name="fragment_drawable",
     )
     bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0)).build()
+    build.bound = bound
     child = YftPhysicsChild.declare(
         undamaged_mass=10.0,
         min_breaking_impulse=100.0,
@@ -411,6 +428,10 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     parsed = read_yft(target, resolve_physics_entities=False)
 
     assert parsed.physics_lods.has_physics is True
+    assert isinstance(parsed.main_drawable, YftFragmentDrawable)
+    assert parsed.main_drawable.bound is not None
+    assert parsed.main_drawable.skeleton_type_name == "fragment_drawable"
+    assert parsed.main_drawable.fragment_matrix == YftFragmentMatrix.identity()
     assert parsed.state.damaged_drawable_index == 0
     assert parsed.damaged_drawable is parsed.drawables[0].drawable
     assert parsed.tune_name == "fragment_tune"
@@ -437,6 +458,18 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert lod.composite_bound is not None
     assert lod.undamaged_damp_archetype is not None
     assert parsed.validate() == []
+
+    parsed.main_drawable.extra_bound_indices = (7,)
+    parsed.main_drawable.extra_bound_matrices = (YftFragmentMatrix.identity(),)
+    reparsed = read_yft(
+        build_yft_bytes(parsed),
+        resolve_physics_entities=False,
+    )
+
+    assert reparsed.main_drawable.extra_bound_indices == (7,)
+    assert reparsed.main_drawable.extra_bound_matrices == (
+        YftFragmentMatrix.identity(),
+    )
 
 
 def test_yft_corpus_scanner_reports_unreadable_paths(tmp_path):

@@ -407,6 +407,7 @@ def _read_ydr_from_sections(
     root_offset: int = _ROOT_OFFSET,
     path: str | Path = "",
     shader_library: ShaderLibrary | None = None,
+    read_extensions: bool = True,
 ) -> Ydr:
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
     enhanced = int(header.version) in _ENHANCED_YDR_VERSIONS
@@ -447,21 +448,27 @@ def _read_ydr_from_sections(
         f32=_f32,
         vec3=_vec3,
     )
-    lights = parse_lights(
-        system_data,
-        root_offset=root_offset,
-        virtual_offset=_virtual_offset,
-        u16=_u16,
-        u32=_u32,
-        u64=_u64,
-        f32=_f32,
-        vec3=_vec3,
+    lights = (
+        parse_lights(
+            system_data,
+            root_offset=root_offset,
+            virtual_offset=_virtual_offset,
+            u16=_u16,
+            u32=_u32,
+            u64=_u64,
+            f32=_f32,
+            vec3=_vec3,
+        )
+        if read_extensions
+        else []
     )
-    bound_pointer = _u64(system_data, root_offset + 0xB8)
-    try:
-        bound = read_bound_from_pointer(bound_pointer, system_data) if bound_pointer else None
-    except Exception:
-        bound = None
+    bound = None
+    if read_extensions:
+        bound_pointer = _u64(system_data, root_offset + 0xB8)
+        try:
+            bound = read_bound_from_pointer(bound_pointer, system_data) if bound_pointer else None
+        except Exception:
+            bound = None
     embedded_textures = _parse_embedded_textures(system_data, graphics_data, int(header.version), texture_dictionary_pointer)
 
     return Ydr(

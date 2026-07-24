@@ -133,8 +133,9 @@ def _write_drawable_payload(
     root_off: int,
     drawable_file_vft: int = _DRAWABLE_FILE_VFT,
     write_pages: bool = True,
+    write_extensions: bool = True,
     recalculate_skeleton_hashes: bool = True,
-) -> None:
+) -> int:
     enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
     if enhanced:
         shader_group_off, _shader_group_blocks_size = write_shader_blocks_gen9(
@@ -159,7 +160,7 @@ def _write_drawable_payload(
         recalculate_hashes=recalculate_skeleton_hashes,
     )
     joints_off = write_joints(system, source.joints, virtual=_virtual)
-    lights_block_off = write_lights(system, source.lights)
+    lights_block_off = write_lights(system, source.lights) if write_extensions else 0
     bound_off = write_bound_resource(system, source.bound) if source.bound is not None else 0
     texture_dictionary_off = _write_embedded_texture_dictionary(system, graphics, source)
 
@@ -217,7 +218,7 @@ def _write_drawable_payload(
         skeleton_off=skeleton_off,
         joints_off=joints_off,
         drawable_models_layout=drawable_models_layout,
-        drawable_name_off=system.c_string(drawable_name(source.name)),
+        drawable_name_off=system.c_string(drawable_name(source.name)) if write_extensions else 0,
         lights_block_off=lights_block_off,
         lights_count=len(source.lights),
         bound_off=bound_off,
@@ -233,7 +234,9 @@ def _write_drawable_payload(
         unknown_98=source.unknown_98,
         unknown_9c=source.unknown_9c,
         virtual=_virtual,
+        write_extensions=write_extensions,
     )
+    return bound_off
 
 
 def _build_system_payload(
