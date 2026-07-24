@@ -5,6 +5,8 @@ import enum
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from .events import YftPhysicsChildEvents, YftPhysicsGroupEvents
+
 if TYPE_CHECKING:
     from ..bounds import Bound
     from ..ydr import Ydr
@@ -109,20 +111,6 @@ class YftPhysicsJoint3Dof(YftPhysicsJoint):
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class YftPhysicsGroupEventRefs:
-    death_event: int = 0
-    death_player: int = 0
-
-    @property
-    def has_any(self) -> bool:
-        return self.death_event != 0 or self.death_player != 0
-
-    @classmethod
-    def declare(cls, *, death_event: int = 0, death_player: int = 0) -> YftPhysicsGroupEventRefs:
-        return cls(death_event=int(death_event), death_player=int(death_player))
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
 class YftPhysicsGroup:
     name: str = ""
     pointer: int = 0
@@ -167,8 +155,8 @@ class YftPhysicsGroup:
     )
     child_group_indices: tuple[int, ...] = ()
     child_group_names: tuple[str, ...] = ()
-    events: YftPhysicsGroupEventRefs = dataclasses.field(
-        default_factory=YftPhysicsGroupEventRefs
+    events: YftPhysicsGroupEvents = dataclasses.field(
+        default_factory=YftPhysicsGroupEvents
     )
 
     @property
@@ -362,58 +350,6 @@ class YftPhysicsReference:
         return self.pointer != 0
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
-class YftPhysicsEventRefs:
-    continuous: int = 0
-    collision: int = 0
-    break_event: int = 0
-    break_from_root: int = 0
-    collision_player: int = 0
-    break_player: int = 0
-    break_from_root_player: int = 0
-
-    @property
-    def has_any(self) -> bool:
-        return any(dataclasses.astuple(self))
-
-    @classmethod
-    def declare(
-        cls,
-        *,
-        continuous: int = 0,
-        collision: int = 0,
-        break_event: int = 0,
-        break_from_root: int = 0,
-        collision_player: int = 0,
-        break_player: int = 0,
-        break_from_root_player: int = 0,
-    ) -> YftPhysicsEventRefs:
-        return cls(
-            continuous=int(continuous),
-            collision=int(collision),
-            break_event=int(break_event),
-            break_from_root=int(break_from_root),
-            collision_player=int(collision_player),
-            break_player=int(break_player),
-            break_from_root_player=int(break_from_root_player),
-        )
-
-    def items(self) -> tuple[tuple[str, int], ...]:
-        return tuple(
-            (name, int(value))
-            for name, value in (
-                ("continuous", self.continuous),
-                ("collision", self.collision),
-                ("break", self.break_event),
-                ("break_from_root", self.break_from_root),
-                ("collision_player", self.collision_player),
-                ("break_player", self.break_player),
-                ("break_from_root_player", self.break_from_root_player),
-            )
-            if value
-        )
-
-
 YftMatrix44 = tuple[
     tuple[float, float, float, float],
     tuple[float, float, float, float],
@@ -466,7 +402,9 @@ class YftPhysicsChild:
     damaged_entity: YftPhysicsEntity | None = dataclasses.field(
         default=None, repr=False, compare=False
     )
-    events: YftPhysicsEventRefs = dataclasses.field(default_factory=YftPhysicsEventRefs)
+    events: YftPhysicsChildEvents = dataclasses.field(
+        default_factory=YftPhysicsChildEvents
+    )
 
     @property
     def uses_bone(self) -> bool:
@@ -695,8 +633,10 @@ class YftPhysicsLod:
         )
 
     @property
-    def event_references(self) -> dict[str, tuple[tuple[str, int], ...]]:
-        refs: dict[str, tuple[tuple[str, int], ...]] = {}
+    def event_references(
+        self,
+    ) -> dict[str, tuple[tuple[str, object], ...]]:
+        refs: dict[str, tuple[tuple[str, object], ...]] = {}
         for index, child in enumerate(self.children):
             items = child.events.items()
             if items:
@@ -704,8 +644,8 @@ class YftPhysicsLod:
         for index, group in enumerate(self.groups):
             if group.events.has_any:
                 refs[f"group_{index}"] = (
-                    ("death_event", group.events.death_event),
-                    ("death_player", group.events.death_player),
+                    ("death_event", group.events.death),
+                    ("death_player", group.events.death_player_pointer),
                 )
         return refs
 
@@ -840,9 +780,7 @@ __all__ = [
     "YftPhysicsDamping",
     "YftPhysicsDampingKind",
     "YftPhysicsEntity",
-    "YftPhysicsEventRefs",
     "YftPhysicsGroup",
-    "YftPhysicsGroupEventRefs",
     "YftPhysicsGroupFlag",
     "YftPhysicsInertia",
     "YftPhysicsJoint",

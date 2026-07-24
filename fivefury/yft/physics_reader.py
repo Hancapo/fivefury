@@ -11,6 +11,8 @@ from ..bounds import Bound, read_bound_from_pointer
 from ..ydr.shaders import ShaderLibrary
 from .constants import PHYSICS_LOD_GROUP_FIELDS_OFFSET, PHYSICS_LOD_MIN_SIZE
 from .drawable_reader import read_fragment_drawable
+from .events import YftEventSet, YftPhysicsChildEvents, YftPhysicsGroupEvents
+from .events_reader import read_event_set
 from .io_helpers import (
     read_fixed_ascii,
     read_pointer_tuple,
@@ -25,9 +27,7 @@ from .physics import (
     YftPhysicsDampArchetype,
     YftPhysicsDamping,
     YftPhysicsEntity,
-    YftPhysicsEventRefs,
     YftPhysicsGroup,
-    YftPhysicsGroupEventRefs,
     YftPhysicsGroupFlag,
     YftPhysicsInertia,
     YftPhysicsJoint1Dof,
@@ -311,15 +311,24 @@ def read_bound_or_none(system_data: bytes, pointer: int) -> Bound | None:
         return None
 
 
-def read_physics_group(system_data: bytes, pointer: int) -> YftPhysicsGroup | None:
+def read_physics_group(
+    system_data: bytes,
+    pointer: int,
+    *,
+    event_set_cache: dict[int, YftEventSet] | None = None,
+) -> YftPhysicsGroup | None:
     offset = try_virtual_offset(system_data, pointer)
     if offset is None or offset + _PHYSICS_GROUP_MIN_SIZE > len(system_data):
         return None
     return YftPhysicsGroup(
         pointer=pointer,
-        events=YftPhysicsGroupEventRefs(
-            death_event=_u64(system_data, offset),
-            death_player=_u64(system_data, offset + 8),
+        events=YftPhysicsGroupEvents(
+            death=read_event_set(
+                system_data,
+                _u64(system_data, offset),
+                cache=event_set_cache,
+            ),
+            death_player_pointer=_u64(system_data, offset + 8),
         ),
         strength=float(_f32(system_data, offset + 0x10)),
         force_transmission_scale_up=float(_f32(system_data, offset + 0x14)),
@@ -399,6 +408,7 @@ def read_physics_child(
     damaged_ang_inertia: YftPhysicsInertia | None = None,
     undamaged_entity: YftPhysicsEntity | None = None,
     damaged_entity: YftPhysicsEntity | None = None,
+    event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> YftPhysicsChild | None:
     offset = try_virtual_offset(system_data, pointer)
     if offset is None or offset + _PHYSICS_CHILD_MIN_SIZE > len(system_data):
@@ -418,26 +428,42 @@ def read_physics_child(
         damaged_ang_inertia=damaged_ang_inertia or YftPhysicsInertia(),
         undamaged_entity=undamaged_entity,
         damaged_entity=damaged_entity,
-        events=YftPhysicsEventRefs(
-            continuous=_u64(system_data, offset + 0xB0)
+        events=YftPhysicsChildEvents(
+            continuous=read_event_set(
+                system_data,
+                _u64(system_data, offset + 0xB0),
+                cache=event_set_cache,
+            )
             if offset + 0xB8 <= len(system_data)
-            else 0,
-            collision=_u64(system_data, offset + 0xB8)
+            else None,
+            collision=read_event_set(
+                system_data,
+                _u64(system_data, offset + 0xB8),
+                cache=event_set_cache,
+            )
             if offset + 0xC0 <= len(system_data)
-            else 0,
-            break_event=_u64(system_data, offset + 0xC0)
+            else None,
+            break_event=read_event_set(
+                system_data,
+                _u64(system_data, offset + 0xC0),
+                cache=event_set_cache,
+            )
             if offset + 0xC8 <= len(system_data)
-            else 0,
-            break_from_root=_u64(system_data, offset + 0xC8)
+            else None,
+            break_from_root=read_event_set(
+                system_data,
+                _u64(system_data, offset + 0xC8),
+                cache=event_set_cache,
+            )
             if offset + 0xD0 <= len(system_data)
-            else 0,
-            collision_player=_u64(system_data, offset + 0xD0)
+            else None,
+            collision_player_pointer=_u64(system_data, offset + 0xD0)
             if offset + 0xD8 <= len(system_data)
             else 0,
-            break_player=_u64(system_data, offset + 0xD8)
+            break_player_pointer=_u64(system_data, offset + 0xD8)
             if offset + 0xE0 <= len(system_data)
             else 0,
-            break_from_root_player=_u64(system_data, offset + 0xE0)
+            break_from_root_player_pointer=_u64(system_data, offset + 0xE0)
             if offset + 0xE8 <= len(system_data)
             else 0,
         ),
@@ -445,11 +471,18 @@ def read_physics_child(
 
 
 def read_physics_groups(
-    system_data: bytes, pointers: tuple[int, ...]
+    system_data: bytes,
+    pointers: tuple[int, ...],
+    *,
+    event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> tuple[YftPhysicsGroup, ...]:
     groups: list[YftPhysicsGroup] = []
     for pointer in pointers:
-        group = read_physics_group(system_data, pointer)
+        group = read_physics_group(
+            system_data,
+            pointer,
+            event_set_cache=event_set_cache,
+        )
         if group is not None:
             groups.append(group)
     return tuple(groups)
@@ -469,11 +502,16 @@ def read_physics_children(
     min_breaking_impulses: tuple[float, ...] = (),
     undamaged_ang_inertia: tuple[YftPhysicsInertia, ...] = (),
     damaged_ang_inertia: tuple[YftPhysicsInertia, ...] = (),
+    event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> tuple[YftPhysicsChild, ...]:
     children: list[YftPhysicsChild] = []
     entity_cache: dict[int, YftPhysicsEntity] = {}
     for index, pointer in enumerate(pointers):
-        raw_child = read_physics_child(system_data, pointer)
+        raw_child = read_physics_child(
+            system_data,
+            pointer,
+            event_set_cache=event_set_cache,
+        )
         if raw_child is None:
             continue
         owner_name = (
@@ -594,6 +632,7 @@ def read_physics_lod(
     path: str,
     shader_library: ShaderLibrary | None,
     resolve_entities: bool,
+    event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> YftPhysicsLod | None:
     offset = try_virtual_offset(system_data, pointer)
     if offset is None or offset + PHYSICS_LOD_MIN_SIZE > len(system_data):
@@ -638,9 +677,16 @@ def read_physics_lod(
         min_breaking_impulses=min_breaking_impulses,
         undamaged_ang_inertia=undamaged_ang_inertia,
         damaged_ang_inertia=damaged_ang_inertia,
+        event_set_cache=event_set_cache,
     )
     groups = resolve_physics_groups(
-        read_physics_groups(system_data, group_pointers), children, group_names
+        read_physics_groups(
+            system_data,
+            group_pointers,
+            event_set_cache=event_set_cache,
+        ),
+        children,
+        group_names,
     )
     return YftPhysicsLod(
         label=label,
@@ -720,6 +766,7 @@ def read_physics_lods(
     path: str,
     shader_library: ShaderLibrary | None,
     resolve_entities: bool = True,
+    event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> list[YftPhysicsLod]:
     lods: list[YftPhysicsLod] = []
     for label, pointer in pointers.items():
@@ -734,6 +781,7 @@ def read_physics_lods(
             path=path,
             shader_library=shader_library,
             resolve_entities=resolve_entities,
+            event_set_cache=event_set_cache,
         )
         if lod is not None:
             lods.append(lod)

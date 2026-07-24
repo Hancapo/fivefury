@@ -8,6 +8,7 @@ from typing import Any
 from ..ydr import Ydr, YdrMesh, YdrModel
 from ..ydr.defs import YdrLod, coerce_lod
 from .drawables import YftDrawable, YftDrawableMatch
+from .events import YftEventSet
 from .physics import (
     YftPhysicsChild,
     YftPhysicsEntity,
@@ -33,6 +34,7 @@ class Yft:
     )
     physics_lod_details: list[YftPhysicsLod] = dataclasses.field(default_factory=list)
     root_child: YftPhysicsChild | None = None
+    collision_event_set: YftEventSet | None = None
     tune_name: str = ""
     raw_fields: list[YftRawField] = dataclasses.field(default_factory=list)
     main_drawable: Ydr | None = None
@@ -116,6 +118,27 @@ class Yft:
                     pointer=entity.pointer,
                     name=entity.label,
                 )
+
+    def iter_event_sets(self) -> Iterator[YftEventSet]:
+        seen: set[int] = set()
+
+        def emit(event_set: YftEventSet | None) -> Iterator[YftEventSet]:
+            if event_set is None or id(event_set) in seen:
+                return
+            seen.add(id(event_set))
+            yield event_set
+
+        yield from emit(self.collision_event_set)
+        if self.root_child is not None:
+            for event_set in self.root_child.events.event_sets():
+                yield from emit(event_set)
+        for lod in self.physics_lod_details:
+            for group in lod.groups:
+                for event_set in group.events.event_sets():
+                    yield from emit(event_set)
+            for child in lod.children:
+                for event_set in child.events.event_sets():
+                    yield from emit(event_set)
 
     def models(self, lod: YdrLod | str | None = None) -> list[YdrModel]:
         return list(self.iter_models(lod=lod))

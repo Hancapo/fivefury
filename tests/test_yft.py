@@ -9,6 +9,7 @@ from fivefury.ydr import Ydr, YdrLod, YdrMaterial, YdrMesh, YdrModel
 from fivefury.yft import (
     Yft,
     YftDrawable,
+    YftEventSet,
     YftFragmentDrawable,
     YftFragmentFlag,
     YftFragmentMatrix,
@@ -73,7 +74,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     system_data[0x420:0x427] = b"GroupA\0"
     struct.pack_into("<Q", system_data, 0x440, 0x50000480)
     struct.pack_into("<QQQQ", system_data, 0x450, 0x50000540, 0x500005F0, 0, 0)
-    struct.pack_into("<QQ", system_data, 0x480, 0x50000A90, 0x50000A98)
+    struct.pack_into("<QQ", system_data, 0x480, 0x50000A90, 0)
     struct.pack_into("<f", system_data, 0x490, 1000.0)
     struct.pack_into("<f", system_data, 0x4C4, 550.0)
     system_data[0x4CC:0x4D4] = bytes([0xFF, 0xFF, 0, 4, 0, 0xFF, 0, 4])
@@ -125,6 +126,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     struct.pack_into("<i", system_data, 0x910, 2)
     struct.pack_into("<ffffff", system_data, 0x940, 20.0, 0.05, 1.0, 500.0, 6.28, 0.25)
     struct.pack_into("<fff", system_data, 0x980, 0.4, 0.5, 0.6)
+    struct.pack_into("<I", system_data, 0xA90, 0x74536353)
     calls: list[tuple[int, str]] = []
 
     def fake_read_drawable(
@@ -189,7 +191,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     )
     assert yft.physics_lod_details[0].groups[0].debug_name == "GroupA"
     assert yft.physics_lod_details[0].groups[0].name == "GroupA"
-    assert yft.physics_lod_details[0].groups[0].events.death_event == 0x50000A90
+    assert yft.physics_lod_details[0].groups[0].events.death.pointer == 0x50000A90
     assert yft.physics_lod_details[0].groups[0].events.has_any is True
     assert yft.physics_lod_details[0].groups[0].damages_when_broken is True
     assert yft.physics_lod_details[0].groups[0].is_legacy_glass is False
@@ -564,6 +566,42 @@ def test_yft_validation_rejects_unwritable_resource_graphs():
     issues = validate_yft(yft)
 
     assert any(
-        issue.is_error and issue.path == "pointers.collision_event_set"
+        issue.is_error and issue.path == "collision_event_set"
         for issue in issues
     )
+
+
+def test_yft_empty_event_sets_roundtrip():
+    event_set = YftEventSet.declare()
+    child = YftPhysicsChild.declare()
+    child = dataclasses.replace(
+        child,
+        events=child.events.declare(continuous=event_set),
+    )
+    group = YftPhysicsGroup.declare("body", children=(child,))
+    drawable = Ydr(
+        version=162,
+        lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]},
+    )
+    bound = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (1.0, 1.0, 1.0),
+    ).build()
+    drawable.bound = bound
+    yft = create_yft(
+        drawable,
+        name="event_fragment",
+        physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
+        physics_bound=bound,
+    )
+
+    parsed = read_yft(
+        build_yft_bytes(yft),
+        resolve_physics_entities=False,
+    )
+    parsed_event = parsed.physics_lod("high").children[0].events.continuous
+
+    assert parsed_event is not None
+    assert parsed_event.resource_tag == 0x74536353
+    assert parsed_event.is_empty is True
+    assert parsed.validate() == []

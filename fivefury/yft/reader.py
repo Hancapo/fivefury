@@ -10,6 +10,8 @@ from ..ydr.shaders import ShaderLibrary
 from .constants import DRAWABLE_ARRAY_COUNT_OFFSET
 from .drawable_reader import read_fragment_drawable
 from .drawables import YftDrawable
+from .events import YftEventSet
+from .events_reader import read_event_set
 from .fields_reader import read_fragment_pointers, read_fragment_state, read_raw_fields
 from .fragment import Yft
 from .io_helpers import (
@@ -112,6 +114,7 @@ def read_yft(
         str(path or source) if isinstance(source, (str, Path)) or path else ""
     )
     pointers = read_fragment_pointers(system_data)
+    event_set_cache: dict[int, YftEventSet] = {}
     physics_lod_pointers = read_physics_lod_pointers(
         system_data, pointers.physics_lod_group
     )
@@ -124,6 +127,7 @@ def read_yft(
         path=resource_path,
         shader_library=shader_library,
         resolve_entities=resolve_physics_entities,
+        event_set_cache=event_set_cache,
     )
     root_child = next(
         (
@@ -135,7 +139,11 @@ def read_yft(
         None,
     )
     if root_child is None:
-        root_child = read_physics_child(system_data, pointers.root_child)
+        root_child = read_physics_child(
+            system_data,
+            pointers.root_child,
+            event_set_cache=event_set_cache,
+        )
 
     return Yft(
         version=int(header.version),
@@ -146,6 +154,11 @@ def read_yft(
         physics_lods=physics_lod_pointers,
         physics_lod_details=physics_lod_details,
         root_child=root_child,
+        collision_event_set=read_event_set(
+            system_data,
+            pointers.collision_event_set,
+            cache=event_set_cache,
+        ),
         tune_name=try_read_c_string(system_data, pointers.tune_name),
         raw_fields=read_raw_fields(system_data),
         main_drawable=_read_optional_drawable(

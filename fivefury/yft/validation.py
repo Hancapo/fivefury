@@ -345,7 +345,6 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
 
     unsupported_root_sections = {
         "user_data": source.pointers.user_data,
-        "collision_event_set": source.pointers.collision_event_set,
         "collision_event_player": source.pointers.collision_event_player,
         "shared_matrix_set": source.pointers.shared_matrix_set,
         "glass_pane_model_infos": source.pointers.glass_pane_model_infos,
@@ -359,6 +358,30 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                 f"pointers.{label}",
                 "section is readable but cannot yet be rebuilt safely",
             )
+    if source.pointers.collision_event_set and source.collision_event_set is None:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "collision_event_set",
+            "event-set pointer could not be decoded",
+        )
+    if (
+        source.collision_event_set is not None
+        and not source.collision_event_set.can_rebuild
+    ):
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "collision_event_set",
+            "event instances and editor pointers cannot yet be rebuilt safely",
+        )
+    if source.root_child is not None and not source.root_child.events.can_rebuild:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            "root_child.events",
+            "event players or populated event sets cannot yet be rebuilt safely",
+        )
     for field in source.raw_fields:
         if field.label in {
             "environment_cloth",
@@ -405,20 +428,20 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
     for index, lod in enumerate(source.physics_lod_details):
         _validate_lod(lod, f"physics_lod_details[{index}]", issues)
         for child_index, child in enumerate(lod.children):
-            if child.events.has_any:
+            if not child.events.can_rebuild:
                 _issue(
                     issues,
                     YftValidationSeverity.ERROR,
                     f"physics_lod_details[{index}].children[{child_index}].events",
-                    "event graph is readable but cannot yet be rebuilt safely",
+                    "event players or populated event sets cannot yet be rebuilt safely",
                 )
         for group_index, group in enumerate(lod.groups):
-            if group.events.has_any:
+            if not group.events.can_rebuild:
                 _issue(
                     issues,
                     YftValidationSeverity.ERROR,
                     f"physics_lod_details[{index}].groups[{group_index}].events",
-                    "event graph is readable but cannot yet be rebuilt safely",
+                    "event players or populated event sets cannot yet be rebuilt safely",
                 )
     return issues
 
