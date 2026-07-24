@@ -1,3 +1,4 @@
+from .geometry import WaterAlpha, WaterBounds, WaterCornerAlphas
 from .io import build_water_xml, create_water, read_water, save_water
 from .model import (
     WaterCalmingQuad,
@@ -11,8 +12,11 @@ from .model import (
 )
 
 __all__ = [
+    "WaterAlpha",
+    "WaterBounds",
     "WaterCalmingQuad",
     "WaterComponent",
+    "WaterCornerAlphas",
     "WaterData",
     "WaterQuad",
     "WaterQuadType",

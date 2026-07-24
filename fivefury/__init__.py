@@ -460,8 +460,11 @@ from .rpf import (
 )
 from .texture import BCFormat
 from .water import (
+    WaterAlpha,
+    WaterBounds,
     WaterCalmingQuad,
     WaterComponent,
+    WaterCornerAlphas,
     WaterData,
     WaterQuad,
     WaterQuadType,
@@ -1324,8 +1327,11 @@ __all__ = [
     "VehicleVariation",
     "VehicleWheelType",
     "VehicleWindow",
+    "WaterAlpha",
+    "WaterBounds",
     "WaterCalmingQuad",
     "WaterComponent",
+    "WaterCornerAlphas",
     "WaterData",
     "WaterQuad",
     "WaterQuadType",

@@ -103,6 +103,30 @@ save_ybn(bound, "floor_collision.ybn")
 
 Generated geometry is chunked as needed and gets BVH and octant data. The same bounds model backs standalone `YBN` files, embedded `YDR` collisions, and `YFT` physics — a drawable's render mesh can also be converted directly with `ydr.ensure_bound_from_render_geometry()`.
 
+### Author water
+
+```python
+from fivefury import WaterData, WaterQuad, WaterWaveQuad
+
+water = WaterData()
+water.add(
+    WaterQuad.rectangle(
+        center=(100.0, 200.0, 12.5),
+        size=(80.0, 40.0),
+        alpha=26,
+        limited_depth=True,
+    )
+)
+water.add(
+    WaterWaveQuad.from_angle(
+        bounds=(60, 180, 140, 220),
+        amplitude=1.2,
+        degrees=90.0,
+    )
+)
+water.translate(x=500, y=-200, z=20.0).save("water.xml")
+```
+
 ### Convert audio to AWC
 
 ```python

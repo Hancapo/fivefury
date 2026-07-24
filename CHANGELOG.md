@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 - Readable, writable, and declarative `water.xml` surfaces, calming regions, and wave regions, including game-aligned validation and `GameFileCache` integration.
+- Geometry-oriented water constructors, named corner alphas, translation, aggregate bounds, bulk insertion, and point queries.
 
 ## [0.2.7] - 2026-07-24
 
