@@ -3,9 +3,8 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
-from .extensions import extensions_from_meta, extensions_to_meta
+from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .enums import (
     YmapEntityFlags,
     YmapLodLevel,
@@ -16,6 +15,7 @@ from .enums import (
     coerce_ymap_mlo_instance_flags,
     coerce_ymap_priority_level,
 )
+from .extensions import extensions_from_meta, extensions_to_meta
 
 
 @dataclasses.dataclass(slots=True)
@@ -72,7 +72,7 @@ class EntityDef(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "EntityDef":
+    def from_meta(cls, value: Any) -> EntityDef:
         return cls(
             archetype_name=value.get("archetypeName", 0),
             flags=coerce_ymap_entity_flags(int(value.get("flags", 0))),
@@ -108,6 +108,16 @@ class MloInstanceDef(EntityDef):
         super().__post_init__()
         self.mlo_inst_flags = coerce_ymap_mlo_instance_flags(self.mlo_inst_flags)
 
+    def build(self, archetype: Any | None = None) -> MloInstanceDef:
+        from .mlo_validation import build_mlo_instance
+
+        return build_mlo_instance(self, archetype)
+
+    def validate(self, archetype: Any | None = None) -> list[str]:
+        from .mlo_validation import validate_mlo_instance
+
+        return validate_mlo_instance(self, archetype)
+
     def to_meta(self) -> dict[str, Any]:
         data = super().to_meta()
         data.update(
@@ -123,7 +133,7 @@ class MloInstanceDef(EntityDef):
         return data
 
     @classmethod
-    def from_meta(cls, value: Any) -> "MloInstanceDef":
+    def from_meta(cls, value: Any) -> MloInstanceDef:
         base = EntityDef.from_meta(value)
         return cls(
             archetype_name=base.archetype_name,

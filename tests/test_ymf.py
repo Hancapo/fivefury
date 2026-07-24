@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from fivefury.gamefile import GameFileType
+from fivefury.pso import is_pso
+from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
 from fivefury.ymf import (
     HdTxdAssetBinding,
     ImapDependencies,
@@ -12,17 +15,14 @@ from fivefury.ymf import (
     PackFileMetaDataAssetType,
     PackFileMetaDataImapGroupType,
     YmfRelationshipType,
-    build_ymf_manifest_for_ymaps,
     build_ymf,
+    build_ymf_manifest_for_ymaps,
     create_ymf_for_ymaps,
     iter_ymf_relationships,
     read_ymf,
     read_ymf_xml,
 )
-from fivefury.gamefile import GameFileType
-from fivefury.pso import is_pso
-from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
-from fivefury.ytyp import Archetype, Ytyp, YtypDependency
+from fivefury.ytyp import Archetype, MloArchetypeDef, MloRoomDef, Ytyp, YtypDependency
 
 
 class _FakeAsset:
@@ -173,3 +173,39 @@ def test_build_ymf_manifest_for_ymaps_accepts_explicit_custom_dependencies_witho
 
     assert str(manifest.imap_dependencies_2[0].imap_name) == "custom_imap"
     assert [str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies] == ["custom_ityp"]
+
+
+def test_build_ymf_manifest_registers_mlo_static_bounds_when_ybn_is_packaged() -> None:
+    mlo = MloArchetypeDef(
+        name="custom_mlo",
+        physics_dictionary="custom_collision_group",
+        rooms=[MloRoomDef(name="limbo")],
+    )
+    ytyp = Ytyp(name="custom_ityp", archetypes=[mlo])
+    ymap = Ymap(name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")])
+
+    manifest = build_ymf_manifest_for_ymaps(
+        [ymap],
+        ytyps=[ytyp],
+        ybns={"custom_mlo": object()},
+    )
+
+    assert len(manifest.interiors) == 1
+    assert int(manifest.interiors[0].name) == int(mlo.name)
+    assert [int(bound) for bound in manifest.interiors[0].bounds] == [int(mlo.name)]
+    assert manifest.validate() == []
+
+
+def test_build_ymf_manifest_registers_standalone_mlo_rpf_without_ymap() -> None:
+    mlo = MloArchetypeDef(name="custom_mlo", rooms=[MloRoomDef(name="limbo")])
+    ytyp = Ytyp(name="custom_ityp", archetypes=[mlo])
+
+    manifest = build_ymf_manifest_for_ymaps(
+        [],
+        ytyps=[ytyp],
+        ybns={"custom_mlo": object()},
+    )
+
+    assert [(int(item.name), [int(bound) for bound in item.bounds]) for item in manifest.interiors] == [
+        (int(mlo.name), [int(mlo.name)])
+    ]

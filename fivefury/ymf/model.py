@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import dataclasses
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET
 
 from ..meta import Meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
-from ..xml import add_element_items, child_int, child_text, flag_text, parse_flag_names, parse_xml_root, xml_bytes
+from ..xml import (
+    add_element_items,
+    child_int,
+    child_text,
+    flag_text,
+    parse_flag_names,
+    parse_xml_root,
+    xml_bytes,
+)
 from .enums import (
     ManifestFlags,
     PackFileMetaDataAssetType,
@@ -16,7 +24,15 @@ from .enums import (
     YmfRelationship,
     YmfRelationshipType,
 )
-from .utils import _append_hash_items, _get, _get_hash, _get_hash_list, _get_list, _hash_items, _hash_text
+from .utils import (
+    _append_hash_items,
+    _get,
+    _get_hash,
+    _get_hash_list,
+    _get_list,
+    _hash_items,
+    _hash_text,
+)
 
 
 def _ymf_struct_infos():
@@ -51,7 +67,7 @@ class HdTxdAssetBinding(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "HdTxdAssetBinding":
+    def from_meta(cls, value: Any) -> HdTxdAssetBinding:
         return cls(
             asset_type=_get(value, "assetType", "m_assetType", default=0),
             target_asset=_get_hash(value, "targetAsset", "m_targetAsset"),
@@ -66,7 +82,7 @@ class HdTxdAssetBinding(MetaHashFieldsMixin):
         return element
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "HdTxdAssetBinding":
+    def from_xml_element(cls, element: ET.Element) -> HdTxdAssetBinding:
         asset_type = child_text(element, "assetType")
         return cls(
             asset_type=PackFileMetaDataAssetType[asset_type] if asset_type else PackFileMetaDataAssetType.AT_TXD,
@@ -100,7 +116,7 @@ class MapDataGroup(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "MapDataGroup":
+    def from_meta(cls, value: Any) -> MapDataGroup:
         return cls(
             name=_get_hash(value, "Name", "m_Name"),
             bounds=_get_hash_list(value, "Bounds", "m_Bounds"),
@@ -121,7 +137,7 @@ class MapDataGroup(MetaHashFieldsMixin):
         return element
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "MapDataGroup":
+    def from_xml_element(cls, element: ET.Element) -> MapDataGroup:
         return cls(
             name=child_text(element, "Name"),
             bounds=_hash_items(element, "Bounds"),
@@ -148,7 +164,7 @@ class ImapDependency(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "ImapDependency":
+    def from_meta(cls, value: Any) -> ImapDependency:
         return cls(
             imap_name=_get_hash(value, "imapName", "m_imapName"),
             ityp_name=_get_hash(value, "itypName", "m_itypName"),
@@ -164,7 +180,7 @@ class ImapDependency(MetaHashFieldsMixin):
         return element
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "ImapDependency":
+    def from_xml_element(cls, element: ET.Element) -> ImapDependency:
         return cls(
             imap_name=child_text(element, "imapName"),
             ityp_name=child_text(element, "itypName"),
@@ -193,7 +209,7 @@ class ImapDependencies(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "ImapDependencies":
+    def from_meta(cls, value: Any) -> ImapDependencies:
         return cls(
             imap_name=_get_hash(value, "imapName", "m_imapName"),
             flags=_get(value, "manifestFlags", "m_manifestFlags", default=0),
@@ -208,7 +224,7 @@ class ImapDependencies(MetaHashFieldsMixin):
         return element
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "ImapDependencies":
+    def from_xml_element(cls, element: ET.Element) -> ImapDependencies:
         return cls(
             imap_name=child_text(element, "imapName"),
             flags=parse_flag_names(ManifestFlags, child_text(element, "manifestFlags")),
@@ -237,7 +253,7 @@ class ItypDependencies(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "ItypDependencies":
+    def from_meta(cls, value: Any) -> ItypDependencies:
         return cls(
             ityp_name=_get_hash(value, "itypName", "m_itypName"),
             flags=_get(value, "manifestFlags", "m_manifestFlags", default=0),
@@ -252,7 +268,7 @@ class ItypDependencies(MetaHashFieldsMixin):
         return element
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "ItypDependencies":
+    def from_xml_element(cls, element: ET.Element) -> ItypDependencies:
         return cls(
             ityp_name=child_text(element, "itypName"),
             flags=parse_flag_names(ManifestFlags, child_text(element, "manifestFlags")),
@@ -275,8 +291,20 @@ class InteriorBoundsFile(MetaHashFieldsMixin):
             "_meta_name_hash": meta_name("CInteriorBoundsFiles"),
         }
 
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if int(self.name) == 0:
+            issues.append("interior bounds entry has no name")
+        if len(self.bounds) not in (1, 2):
+            issues.append(f"interior {self.name} must reference one or two YBN bounds")
+        elif int(self.name) not in {int(bound) for bound in self.bounds}:
+            issues.append(f"interior {self.name} must include a YBN with the same name")
+        if len({int(bound) for bound in self.bounds}) != len(self.bounds):
+            issues.append(f"interior {self.name} repeats a YBN bound")
+        return issues
+
     @classmethod
-    def from_meta(cls, value: Any) -> "InteriorBoundsFile":
+    def from_meta(cls, value: Any) -> InteriorBoundsFile:
         return cls(
             name=_get_hash(value, "Name", "m_Name"),
             bounds=_get_hash_list(value, "Bounds", "m_Bounds"),
@@ -289,7 +317,7 @@ class InteriorBoundsFile(MetaHashFieldsMixin):
         return element
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "InteriorBoundsFile":
+    def from_xml_element(cls, element: ET.Element) -> InteriorBoundsFile:
         return cls(name=child_text(element, "Name"), bounds=_hash_items(element, "Bounds"))
 
 
@@ -301,6 +329,17 @@ class PackFileMetaData:
     imap_dependencies_2: list[ImapDependencies] = dataclasses.field(default_factory=list)
     ityp_dependencies_2: list[ItypDependencies] = dataclasses.field(default_factory=list)
     interiors: list[InteriorBoundsFile] = dataclasses.field(default_factory=list)
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        seen_interiors: set[int] = set()
+        for interior in self.interiors:
+            interior_hash = int(interior.name)
+            if interior_hash in seen_interiors:
+                issues.append(f"manifest repeats interior {interior.name}")
+            seen_interiors.add(interior_hash)
+            issues.extend(interior.validate())
+        return issues
 
     def to_meta_root(self) -> dict[str, Any]:
         return {
@@ -407,7 +446,7 @@ class PackFileMetaData:
         return relationships
 
     @classmethod
-    def from_meta_root(cls, root: Any) -> "PackFileMetaData":
+    def from_meta_root(cls, root: Any) -> PackFileMetaData:
         return cls(
             map_data_groups=[MapDataGroup.from_meta(item) for item in _get_list(root, "MapDataGroups", "m_MapDataGroups")],
             hd_txd_bindings=[
@@ -426,7 +465,7 @@ class PackFileMetaData:
         )
 
     @classmethod
-    def from_xml(cls, source: bytes | str | Path) -> "PackFileMetaData":
+    def from_xml(cls, source: bytes | str | Path) -> PackFileMetaData:
         root = parse_xml_root(source)
         if root.tag != "CPackFileMetaData":
             raise ValueError(f"Unsupported YMF XML root: {root.tag}")

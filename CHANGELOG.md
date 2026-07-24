@@ -23,11 +23,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - PS3 RPF7 reading support, including PS3 AES table decryption, endian-aware headers, name-shift handling, and cache indexing.
 - RPF extraction conflict policies and explicit primary-LOD mesh accessors.
 - Batched YDR skeleton bone insertion.
+- Declarative MLO room, portal, entity, entity-set, and timecycle construction.
+- MLO collision-room helpers and automatic YMF interior-bound entries.
 
 ### Changed
 - YDR and CDR now share a format-neutral drawable model, LOD handling, material queries, parameter definitions, and shader catalog.
 - Nested RPF archives are loaded on demand instead of during the initial archive parse.
 - YDR skeleton lookups now use indexes rebuilt with the hierarchy.
+- YTYP and YMAP writers now validate MLO graphs, synchronize portal counts, infer physics dictionaries, calculate transformed extents, and cross-check supplied YTYPs and YBNs.
 
 ### Fixed
 - YFT application user data is preserved as an opaque value instead of being treated as a resource pointer.
@@ -38,6 +41,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - RPF folder extraction now handles paths used as both files and directories.
 - RPF folder creation now keeps stable absolute source paths, ignores dot-prefixed directories, and rejects offsets or name tables that cannot be represented by RPF7.
 - Native hashing and crypto bindings now use size-safe Python argument parsing.
+- MLO YTYP writing now includes nested entity structures, and META Vector3 arrays use their native 16-byte slots.
 - YMAP box occluders now preserve their encoded orientation, rotated bounds, and minimum representable dimensions.
 - CDR materials now resolve effect and preset hashes independently, including PS3-only shader names and parameters.
 

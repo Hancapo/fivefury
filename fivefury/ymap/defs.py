@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from ..metahash import HashLike, MetaHash
 from ..meta import MetaEnumEntry, MetaEnumInfo, MetaStructInfo
 from ..meta.defs import KNOWN_ENUMS, MetaDataType, meta_name
-from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
+from ..meta.utils import meta_array_info as _arrayinfo
+from ..meta.utils import meta_field_entry as _entry
+from ..metahash import HashLike, MetaHash
 from .extension_defs import YMAP_EXTENSION_STRUCT_INFOS
 from .grass import YMAP_GRASS_STRUCT_INFOS
 
@@ -277,6 +278,7 @@ YMAP_STRUCT_INFOS = [
     ),
 ]
 
+YMAP_ENTITY_STRUCT_INFOS = YMAP_STRUCT_INFOS[:2]
 YMAP_STRUCT_INFOS.extend(YMAP_GRASS_STRUCT_INFOS)
 YMAP_STRUCT_INFOS.extend(YMAP_EXTENSION_STRUCT_INFOS)
 

@@ -17,10 +17,22 @@ from ..pso.model import (
     PsoStruct,
 )
 from ..pso.schema import serialize_psch
-from ..pso.writer import PsoBlockBuilder, build_pmap_section, build_psin_section, encode_pointer_word
-from .model import HdTxdAssetBinding, ImapDependencies, ImapDependency, InteriorBoundsFile, ItypDependencies, MapDataGroup, PackFileMetaData
+from ..pso.writer import (
+    PsoBlockBuilder,
+    build_pmap_section,
+    build_psin_section,
+    encode_pointer_word,
+)
+from .model import (
+    HdTxdAssetBinding,
+    ImapDependencies,
+    ImapDependency,
+    InteriorBoundsFile,
+    ItypDependencies,
+    MapDataGroup,
+    PackFileMetaData,
+)
 from .utils import _hash_text
-
 
 YMF_PSO_ROOT = 0x93A68A2F
 YMF_PSO_MAP_DATA_GROUP = 0xC25B3923

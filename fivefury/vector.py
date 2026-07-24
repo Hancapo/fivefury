@@ -4,6 +4,7 @@ import math
 from collections.abc import Iterable
 
 Vector3 = tuple[float, float, float]
+Quaternion = tuple[float, float, float, float]
 Aabb3 = tuple[Vector3, Vector3]
 
 
@@ -49,6 +50,18 @@ def vec_normalize(value: Vector3, fallback: Vector3 = (0.0, 0.0, 1.0), *, epsilo
     if length <= epsilon:
         return fallback
     return vec_scale(value, 1.0 / length)
+
+
+def quat_rotate_vector(rotation: Quaternion, value: Vector3) -> Vector3:
+    x, y, z, w = (float(component) for component in rotation)
+    length_sq = (x * x) + (y * y) + (z * z) + (w * w)
+    if length_sq <= 1e-16:
+        return value
+    inverse_length = 1.0 / math.sqrt(length_sq)
+    q = (x * inverse_length, y * inverse_length, z * inverse_length)
+    uv = vec_cross(q, value)
+    uuv = vec_cross(q, uv)
+    return vec_add(value, vec_add(vec_scale(uv, 2.0 * w * inverse_length), vec_scale(uuv, 2.0)))
 
 
 def vec_min(values: Iterable[Vector3]) -> Vector3:
@@ -126,8 +139,26 @@ def aabb_merge(left: Aabb3 | None, right: Aabb3 | None) -> Aabb3 | None:
     )
 
 
+def aabb_transform(
+    bounds: Aabb3,
+    *,
+    translation: Vector3 = (0.0, 0.0, 0.0),
+    rotation: Quaternion = (0.0, 0.0, 0.0, 1.0),
+    scale: Vector3 = (1.0, 1.0, 1.0),
+) -> Aabb3:
+    minimum, maximum = bounds
+    points: list[Vector3] = []
+    for x in (minimum[0], maximum[0]):
+        for y in (minimum[1], maximum[1]):
+            for z in (minimum[2], maximum[2]):
+                scaled = (x * scale[0], y * scale[1], z * scale[2])
+                points.append(vec_add(quat_rotate_vector(rotation, scaled), translation))
+    return aabb_from_points(points)
+
+
 __all__ = [
     "Aabb3",
+    "Quaternion",
     "Vector3",
     "aabb_center",
     "aabb_expand",
@@ -136,6 +167,8 @@ __all__ = [
     "aabb_merge",
     "aabb_radius",
     "aabb_size",
+    "aabb_transform",
+    "quat_rotate_vector",
     "vec3",
     "vec_add",
     "vec_cross",

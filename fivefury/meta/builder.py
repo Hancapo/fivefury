@@ -6,8 +6,9 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ..binary import align, pad_bytes
-from ..resource import get_resource_flags_from_blocks, get_resource_total_page_count
+from ..hashing import jenk_hash
 from ..metahash import MetaHash
+from ..resource import get_resource_flags_from_blocks, get_resource_total_page_count
 from . import (
     FLOAT_XYZ_NAME_HASH,
     META_FILE_VFT,
@@ -35,7 +36,7 @@ from .defs import (
     MetaDataType,
 )
 from .utils import array_info_for_field
-from ..hashing import jenk_hash
+
 
 @dataclasses.dataclass(slots=True)
 class _WritableBlock:
@@ -492,9 +493,10 @@ def _pack_primitive_array(data_type: MetaDataType, items: list[Any]) -> bytes:
     if data_type is MetaDataType.UNSIGNED_BYTE:
         return bytes(int(item) & 0xFF for item in items)
     if data_type is MetaDataType.FLOAT_XYZ:
-        flat = []
+        flat: list[float] = []
         for item in items:
             flat.extend(_coerce_vector(item, 3))
+            flat.append(0.0)
         return struct.pack(f"<{len(flat)}f", *flat)
     raise NotImplementedError(f"Unsupported array element type {data_type}")
 

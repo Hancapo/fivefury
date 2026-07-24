@@ -30,6 +30,7 @@ tests/*
 !tests/test_yft.py
 !tests/test_yld.py
 !tests/test_vehiclemeta.py
+!tests/test_mlo.py
 .claude/
 fivefury-*/
 AGENT_HANDOFF.md

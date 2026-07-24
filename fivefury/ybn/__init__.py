@@ -3,7 +3,12 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from ..bounds import Bound, BoundResourcePagesInfo, build_bound_system_layout, read_bound_at
+from ..bounds import (
+    Bound,
+    BoundResourcePagesInfo,
+    build_bound_system_layout,
+    read_bound_at,
+)
 from ..resource import (
     RSC7_MAGIC,
     build_rsc7,
@@ -11,6 +16,7 @@ from ..resource import (
     layout_resource_sections,
     split_rsc7_sections,
 )
+from .mlo import collision_room_ids, set_collision_room, validate_mlo_collision
 
 _ROOT_OFFSET = 0x00
 _DEFAULT_YBN_VERSION = 43
@@ -35,7 +41,7 @@ class Ybn:
         self.bound = bound
         return bound
 
-    def build(self) -> "Ybn":
+    def build(self) -> Ybn:
         self.bound = self.bound.build()
         return self
 
@@ -54,6 +60,17 @@ class Ybn:
             if graphics_count_present and pages_info.graphics_pages_count != self.graphics_pages_count:
                 issues.append("YBN ResourcePagesInfo graphics page count does not match the RSC7 header")
         return issues
+
+    @property
+    def room_ids(self) -> frozenset[int]:
+        return collision_room_ids(self)
+
+    def set_room(self, room_id: int) -> Ybn:
+        set_collision_room(self, room_id)
+        return self
+
+    def validate_mlo(self, archetype: object) -> list[str]:
+        return validate_mlo_collision(self, archetype)
 
     def save(self, destination: str | Path) -> Path:
         target = Path(destination)
@@ -127,6 +144,9 @@ def read_ybn(source: bytes | bytearray | memoryview | str | Path, *, path: str |
 __all__ = [
     "Ybn",
     "build_ybn_bytes",
+    "collision_room_ids",
     "read_ybn",
     "save_ybn",
+    "set_collision_room",
+    "validate_mlo_collision",
 ]

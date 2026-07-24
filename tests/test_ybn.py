@@ -34,6 +34,7 @@ from fivefury import (
     GameFileType,
     Ybn,
     bounds_from_vertices,
+    build_bound_from_triangles,
     build_ybn_bytes,
     build_rsc7,
     chunk_bound_triangles,
@@ -969,3 +970,42 @@ def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits()
         ],
         triangles=[(0, 1, 2)],
     )
+
+
+def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chunks() -> None:
+    triangles = [
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ((1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
+        ((2.0, 0.0, 0.0), (3.0, 0.0, 0.0), (2.0, 1.0, 0.0)),
+    ]
+    materials = [
+        BoundMaterial(type=BoundMaterialType.TARMAC),
+        BoundMaterial(type=BoundMaterialType.TARMAC_PAINTED),
+    ]
+
+    chunks = chunk_bound_triangles(
+        triangles,
+        triangle_material_indices=[0, 1, 0],
+        max_triangles_per_child=2,
+    )
+    bound = build_bound_from_triangles(
+        triangles,
+        materials=materials,
+        triangle_material_indices=[0, 1, 0],
+        max_triangles_per_child=2,
+    )
+    roundtrip = read_ybn(build_ybn_bytes(bound), path="multi_material.ybn")
+
+    assert [chunk.material_indices for chunk in chunks] == [[0, 1], [0]]
+    assert len(bound.children) == 2
+    assert [
+        child.bound.polygon_material_indices
+        for child in bound.children
+    ] == [[0, 1], [0]]
+    assert all(child.bound.materials == materials for child in bound.children)
+    assert roundtrip.validate() == []
+    assert {
+        polygon.material_index
+        for geometry in roundtrip.bound.geometries
+        for polygon in geometry.polygons
+    } == {0, 1}
