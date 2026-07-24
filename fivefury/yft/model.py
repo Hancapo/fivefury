@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .drawables import YftDrawable, YftDrawableMatch
 from .fragment import Yft
+from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 from .physics import (
     YftArticulatedBodyType,
     YftPhysicsChild,
@@ -39,7 +40,9 @@ __all__ = [
     "YftArticulatedBodyType",
     "YftDrawable",
     "YftDrawableMatch",
+    "YftFragmentDrawable",
     "YftFragmentFlag",
+    "YftFragmentMatrix",
     "YftFragmentPointers",
     "YftFragmentState",
     "YftGeometryStats",
@@ -58,9 +61,9 @@ __all__ = [
     "YftPhysicsLod",
     "YftPhysicsLodPointers",
     "YftPhysicsReference",
+    "YftRawField",
     "YftValidationIssue",
     "YftValidationSeverity",
-    "YftRawField",
     "assert_valid_yft",
     "validate_yft",
 ]

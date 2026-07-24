@@ -16,7 +16,6 @@ from ..resource import (
 from ..ydr import Ydr, YdrBuild
 from ..ydr.builder import (
     _EMBEDDED_DRAWABLE_FILE_VFT,
-    _ROOT_SIZE,
     _write_drawable_payload,
 )
 from ..ydr.prepare import (
@@ -29,9 +28,10 @@ from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_materials import prepare_materials
-from .constants import FRAGMENT_ROOT_SIZE
+from .constants import FRAGMENT_DRAWABLE_SIZE, FRAGMENT_ROOT_SIZE
 from .drawables import YftDrawable
 from .fragment import Yft
+from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 from .physics import YftPhysicsLod
 from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
 from .physics_writer import write_physics_lod_group
@@ -52,6 +52,7 @@ class _PreparedFragmentDrawable:
     build: YdrBuild
     materials: list[PreparedMaterial]
     lods: PreparedLods
+    fragment: YftFragmentDrawable | None = None
     root_offset: int = 0
 
 
@@ -83,8 +84,75 @@ def _prepare_drawable(
         fill_vertex_colours=fill_vertex_colours,
     )
     return _PreparedFragmentDrawable(
-        label=label, name=name, build=build, materials=materials, lods=lods
+        label=label,
+        name=name,
+        build=build,
+        materials=materials,
+        lods=lods,
+        fragment=drawable if isinstance(drawable, YftFragmentDrawable) else None,
     )
+
+
+def _write_fragment_matrix(
+    system: ResourceWriter, offset: int, matrix: YftFragmentMatrix
+) -> None:
+    for index, (column, flags) in enumerate(zip(matrix.columns, matrix.flags)):
+        column_offset = offset + (index * 16)
+        system.pack_into("3f", column_offset, *column)
+        system.pack_into("I", column_offset + 12, int(flags))
+
+
+def _write_fragment_drawable_tail(
+    system: ResourceWriter,
+    item: _PreparedFragmentDrawable,
+    *,
+    bound_offset: int,
+) -> None:
+    fragment = item.fragment
+    matrix = (
+        fragment.fragment_matrix
+        if fragment is not None
+        else YftFragmentMatrix.identity()
+    )
+    indices = fragment.extra_bound_indices if fragment is not None else ()
+    matrices = fragment.extra_bound_matrices if fragment is not None else ()
+    if indices and len(indices) != len(matrices):
+        raise ValueError(
+            f"YFT drawable '{item.name}' must have one matrix per extra bound index"
+        )
+
+    indices_offset = system.alloc(len(indices) * 8, 8) if indices else 0
+    for index, value in enumerate(indices):
+        system.pack_into("Q", indices_offset + (index * 8), int(value))
+
+    matrices_offset = system.alloc(len(matrices) * 64, 16) if matrices else 0
+    for index, extra_matrix in enumerate(matrices):
+        _write_fragment_matrix(system, matrices_offset + (index * 64), extra_matrix)
+
+    name = (
+        fragment.skeleton_type_name
+        if fragment is not None and fragment.skeleton_type_name
+        else item.name
+    )
+    name_offset = system.c_string(name) if name else 0
+    root = item.root_offset
+    _write_fragment_matrix(system, root + 0xB0, matrix)
+    system.pack_into("Q", root + 0xF0, _virtual(bound_offset) if bound_offset else 0)
+    system.pack_into(
+        "Q", root + 0xF8, _virtual(indices_offset) if indices_offset else 0
+    )
+    system.pack_into("H", root + 0x100, len(indices))
+    system.pack_into("H", root + 0x102, len(matrices))
+    system.pack_into(
+        "Q", root + 0x108, _virtual(matrices_offset) if matrices_offset else 0
+    )
+    system.pack_into("H", root + 0x110, len(matrices))
+    system.pack_into(
+        "H",
+        root + 0x112,
+        1 if fragment is None or fragment.load_skeleton else 0,
+    )
+    system.pack_into("Q", root + 0x130, _virtual(name_offset) if name_offset else 0)
 
 
 def _prepared_drawables(
@@ -274,8 +342,8 @@ def _build_yft_payload(
     for item in [main, *extras, cloth]:
         if item is None:
             continue
-        item.root_offset = system.alloc(_ROOT_SIZE, 16)
-        _write_drawable_payload(
+        item.root_offset = system.alloc(FRAGMENT_DRAWABLE_SIZE, 16)
+        bound_offset = _write_drawable_payload(
             system,
             graphics,
             item.build,
@@ -285,6 +353,12 @@ def _build_yft_payload(
             root_off=item.root_offset,
             drawable_file_vft=_EMBEDDED_DRAWABLE_FILE_VFT,
             write_pages=False,
+            write_extensions=False,
+        )
+        _write_fragment_drawable_tail(
+            system,
+            item,
+            bound_offset=bound_offset,
         )
     root_child_off = _write_fragment_root(
         system,
