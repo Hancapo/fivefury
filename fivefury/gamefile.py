@@ -40,6 +40,7 @@ class GameFileType(IntEnum):
     YED = 25
     YFD = 27
     HEIGHTMAP = 28
+    WATER = 29
     WATERMAP = 29
     MRF = 30
     DISTANT_LIGHTS = 31
@@ -88,6 +89,7 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
         "carvariations.meta": GameFileType.CAR_VARIATIONS,
         "vehiclelayouts.meta": GameFileType.VEHICLE_LAYOUTS,
         "peds.meta": GameFileType.PEDS,
+        "water.xml": GameFileType.WATER,
     }
     named_type = named_meta_types.get(parsed.name.lower())
     if named_type is not None:

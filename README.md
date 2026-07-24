@@ -29,6 +29,7 @@ The Assimp-backed import helpers (`assimp_to_ydr`, `obj_to_ydr`, `fbx_to_ydr`, `
 | `YTD` | Full | Texture dictionaries: read/write, extraction, embedded-asset helpers |
 | `YND` | Full | Path nodes, links, area partitioning, junction heightmaps |
 | `YNV` | Full | Navmeshes: sectors, polys, portals, validation, basic OBJ partitioning |
+| `water.xml` | Full | Water surfaces, triangle corners, calming regions, wave amplitude and direction |
 | `CUT` | Full | Cutscenes, plus the readable `.cuts` script format for round-trip authoring |
 | `GXT2` | Full | Hashed text tables with binary read/write and text import/export |
 | `AWC` | Full | Audio containers: PCM/WAV extraction, authoring from WAV/MP3/OGG/FLAC |
