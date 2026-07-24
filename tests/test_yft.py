@@ -5,7 +5,14 @@ import struct
 
 from fivefury import BoundBox, YdrMaterialInput, YdrMeshInput, create_ydr
 from fivefury.resource import build_rsc7, split_rsc7_sections
-from fivefury.ydr import Ydr, YdrLod, YdrMaterial, YdrMesh, YdrModel
+from fivefury.ydr import (
+    Ydr,
+    YdrLod,
+    YdrMaterial,
+    YdrMesh,
+    YdrModel,
+    YdrSkeleton,
+)
 from fivefury.yft import (
     Yft,
     YftClothBridge,
@@ -26,6 +33,7 @@ from fivefury.yft import (
     YftPhysicsGroupFlag,
     YftPhysicsLod,
     YftPhysicsLodPointers,
+    YftSharedMatrixSet,
     YftVehicleGlassFlag,
     YftVehicleGlassRow,
     YftVehicleGlassWindow,
@@ -37,6 +45,68 @@ from fivefury.yft import (
     scan_yft_corpus,
     validate_yft,
 )
+
+
+def test_yft_shared_matrix_set_roundtrip():
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="default",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="default")],
+        name="matrix_fragment",
+    )
+    skeleton = YdrSkeleton.create()
+    skeleton.add_bone("root")
+    skeleton.add_bone("child", parent="root", translation=(0.0, 0.0, 1.0))
+    drawable.skeleton = skeleton
+    source = create_yft(drawable, name="matrix_fragment")
+
+    parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
+
+    assert parsed.shared_matrix_set is not None
+    assert parsed.shared_matrix_set.matrix_count == 2
+    assert parsed.shared_matrix_set.is_skinned is False
+    assert parsed.shared_matrix_set.matrices[0] == (
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+    )
+
+    explicit = create_yft(
+        drawable,
+        name="explicit_matrix_fragment",
+        shared_matrix_set=YftSharedMatrixSet.declare(
+            [tuple(float(value) for value in range(12))],
+            is_skinned=True,
+        ),
+    )
+    explicit_parsed = read_yft(
+        build_yft_bytes(explicit),
+        resolve_physics_entities=False,
+    )
+    assert explicit_parsed.shared_matrix_set is not None
+    assert explicit_parsed.shared_matrix_set.is_skinned is True
+    assert explicit_parsed.shared_matrix_set.matrices[0] == tuple(
+        float(value) for value in range(12)
+    )
 
 
 def test_yft_glass_roundtrip():

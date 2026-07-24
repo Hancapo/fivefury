@@ -345,7 +345,6 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
     unsupported_root_sections = {
         "user_data": source.pointers.user_data,
         "collision_event_player": source.pointers.collision_event_player,
-        "shared_matrix_set": source.pointers.shared_matrix_set,
     }
     for label, pointer in unsupported_root_sections.items():
         if pointer:
@@ -397,6 +396,23 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             "character_cloths",
             "character-cloth arrays are not part of the legacy YFT corpus",
         )
+    if source.shared_matrix_set is not None:
+        matrix_set = source.shared_matrix_set
+        if matrix_set.matrix_count > 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                "shared_matrix_set",
+                "legacy matrix sets support at most 255 matrices",
+            )
+        for index, matrix in enumerate(matrix_set.matrices):
+            if len(matrix) != 12 or not _finite_values(matrix):
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"shared_matrix_set.matrices[{index}]",
+                    "must contain 12 finite Matrix43 values",
+                )
     if len(source.glass_panes) > 0xFF:
         _issue(
             issues,

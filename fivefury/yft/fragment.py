@@ -11,6 +11,7 @@ from .cloth import YftEnvironmentCloth
 from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet
 from .glass import YftGlassPane, YftVehicleGlassWindows
+from .matrices import YftSharedMatrixSet
 from .physics import (
     YftPhysicsChild,
     YftPhysicsEntity,
@@ -48,6 +49,7 @@ class Yft:
     character_cloth_count: int = 0
     glass_panes: list[YftGlassPane] = dataclasses.field(default_factory=list)
     vehicle_glass_windows: YftVehicleGlassWindows | None = None
+    shared_matrix_set: YftSharedMatrixSet | None = None
     raw_bytes: bytes = dataclasses.field(default=b"", repr=False, compare=False)
 
     @classmethod

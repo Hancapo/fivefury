@@ -22,6 +22,7 @@ from .io_helpers import (
     read_string_pointer_array,
     try_read_c_string,
 )
+from .matrices_reader import read_shared_matrix_set
 from .physics_reader import (
     read_physics_child,
     read_physics_lod_pointers,
@@ -212,6 +213,10 @@ def read_yft(
         vehicle_glass_windows=read_vehicle_glass_windows(
             system_data,
             pointers.vehicle_glass_windows,
+        ),
+        shared_matrix_set=read_shared_matrix_set(
+            system_data,
+            pointers.shared_matrix_set,
         ),
         raw_bytes=bytes(data),
     )

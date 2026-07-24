@@ -26,6 +26,7 @@ from .glass import (
     YftVehicleGlassWindow,
     YftVehicleGlassWindows,
 )
+from .matrices import Matrix43, YftSharedMatrixSet
 from .physics import (
     YftArticulatedBodyType,
     YftPhysicsChild,
@@ -60,6 +61,7 @@ from .validation import (
 )
 
 __all__ = [
+    "Matrix43",
     "Yft",
     "YftArticulatedBodyType",
     "YftClothBridge",
@@ -102,6 +104,7 @@ __all__ = [
     "YftPhysicsReference",
     "YftPhysicsTransforms",
     "YftRawField",
+    "YftSharedMatrixSet",
     "YftValidationIssue",
     "YftValidationSeverity",
     "YftVehicleGlassFlag",
