@@ -15,6 +15,7 @@ from .events import YftEventSet
 from .events_reader import read_event_set
 from .fields_reader import read_fragment_pointers, read_fragment_state, read_raw_fields
 from .fragment import Yft
+from .glass_reader import read_glass_panes, read_vehicle_glass_windows
 from .io_helpers import (
     read_bounding_sphere,
     read_pointer_array,
@@ -180,6 +181,7 @@ def read_yft(
         system_data,
         drawable_labels=drawable_labels,
     )
+    glass_pane_count = system_data[0xD9] if len(system_data) > 0xD9 else 0
 
     return Yft(
         version=int(header.version),
@@ -202,6 +204,15 @@ def read_yft(
         cloth_drawable=cloth_drawable,
         environment_cloths=environment_cloths,
         character_cloth_count=character_cloth_count,
+        glass_panes=read_glass_panes(
+            system_data,
+            pointers.glass_pane_model_infos,
+            glass_pane_count,
+        ),
+        vehicle_glass_windows=read_vehicle_glass_windows(
+            system_data,
+            pointers.vehicle_glass_windows,
+        ),
         raw_bytes=bytes(data),
     )
 

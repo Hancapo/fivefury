@@ -39,6 +39,8 @@ from .events_writer import (
 )
 from .fragment import Yft
 from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
+from .glass import YftGlassPane, YftVehicleGlassWindows
+from .glass_writer import write_glass_panes, write_vehicle_glass_windows
 from .physics import YftPhysicsLod
 from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
 from .physics_writer import write_physics_lod_group
@@ -251,6 +253,8 @@ def create_yft(
     damaged_drawable: Ydr | YdrBuild | None = None,
     cloth_drawable: Ydr | YdrBuild | None = None,
     environment_cloths: Sequence[YftEnvironmentCloth] = (),
+    glass_panes: Sequence[YftGlassPane] = (),
+    vehicle_glass_windows: YftVehicleGlassWindows | None = None,
     extra_drawables: Sequence[
         YftDrawable | tuple[str, Ydr | YdrBuild] | Ydr | YdrBuild
     ] = (),
@@ -262,6 +266,8 @@ def create_yft(
     yft = Yft(version=int(version), path=name, main_drawable=drawable)
     yft.cloth_drawable = cloth_drawable
     yft.environment_cloths = list(environment_cloths)
+    yft.glass_panes = list(glass_panes)
+    yft.vehicle_glass_windows = vehicle_glass_windows
     if bounding_sphere is not None:
         yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
     for index, entry in enumerate(extra_drawables):
@@ -321,6 +327,15 @@ def _write_fragment_root(
     damaged_index = int(yft.state.damaged_drawable_index)
     damaged = extras[damaged_index] if 0 <= damaged_index < len(extras) else None
     tune_name_off = system.c_string(yft.tune_name) if yft.tune_name else 0
+    glass_panes_off = write_glass_panes(
+        system,
+        yft.glass_panes,
+        virtual_base=_DAT_VIRTUAL_BASE,
+    )
+    vehicle_glass_off = write_vehicle_glass_windows(
+        system,
+        yft.vehicle_glass_windows,
+    )
     has_single_physics_child = any(
         len(lod.children) == 1 for lod in yft.physics_lod_details
     )
@@ -393,8 +408,12 @@ def _write_fragment_root(
     system.pack_into("f", 0xD0, float(yft.state.gravity_factor))
     system.pack_into("f", 0xD4, float(yft.state.buoyancy_factor))
     system.data[0xD8] = int(yft.state.glass_attachment_bone) & 0xFF
-    system.data[0xD9] = int(yft.state.num_glass_pane_model_infos) & 0xFF
+    system.data[0xD9] = len(yft.glass_panes) & 0xFF
+    system.pack_into("Q", 0xE0, _virtual(glass_panes_off) if glass_panes_off else 0)
     system.pack_into("Q", 0xF8, _virtual(cloth.root_offset) if cloth is not None else 0)
+    system.pack_into(
+        "Q", 0x120, _virtual(vehicle_glass_off) if vehicle_glass_off else 0
+    )
     return root_child_off
 
 
@@ -473,9 +492,7 @@ def _build_yft_payload(
             if 0 <= yft.state.damaged_drawable_index < len(extras)
             else 0
         ),
-        entity_drawable_offsets={
-            item.source_id: item.root_offset for item in physics
-        },
+        entity_drawable_offsets={item.source_id: item.root_offset for item in physics},
         event_set_offsets=event_set_offsets,
         fallback_bound=fallback_bound,
     )

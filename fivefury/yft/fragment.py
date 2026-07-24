@@ -10,6 +10,7 @@ from ..ydr.defs import YdrLod, coerce_lod
 from .cloth import YftEnvironmentCloth
 from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet
+from .glass import YftGlassPane, YftVehicleGlassWindows
 from .physics import (
     YftPhysicsChild,
     YftPhysicsEntity,
@@ -45,6 +46,8 @@ class Yft:
         default_factory=list
     )
     character_cloth_count: int = 0
+    glass_panes: list[YftGlassPane] = dataclasses.field(default_factory=list)
+    vehicle_glass_windows: YftVehicleGlassWindows | None = None
     raw_bytes: bytes = dataclasses.field(default=b"", repr=False, compare=False)
 
     @classmethod
@@ -60,6 +63,10 @@ class Yft:
     @property
     def drawable_count(self) -> int:
         return sum(1 for _entry in self.iter_drawables())
+
+    @property
+    def glass_pane_count(self) -> int:
+        return len(self.glass_panes)
 
     def iter_drawables(self) -> Iterator[YftDrawable]:
         if self.main_drawable is not None:

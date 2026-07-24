@@ -32,7 +32,6 @@ class YftFragmentState:
     gravity_factor: float = 0.0
     buoyancy_factor: float = 0.0
     glass_attachment_bone: int = 0
-    num_glass_pane_model_infos: int = 0
     estimated_cache_size: int = 0
     estimated_articulated_cache_size: int = 0
 

@@ -92,7 +92,6 @@ def read_fragment_state(system_data: bytes) -> YftFragmentState:
         if len(system_data) >= 0xD8
         else 0.0,
         glass_attachment_bone=system_data[0xD8] if len(system_data) > 0xD8 else 0,
-        num_glass_pane_model_infos=system_data[0xD9] if len(system_data) > 0xD9 else 0,
         estimated_cache_size=_u64(system_data, ESTIMATED_CACHE_SIZE_OFFSET)
         if len(system_data) >= ESTIMATED_CACHE_SIZE_OFFSET + 8
         else 0,

@@ -19,12 +19,17 @@ from fivefury.yft import (
     YftFragmentFlag,
     YftFragmentMatrix,
     YftFragmentState,
+    YftGlassPane,
     YftPhysicsChild,
     YftPhysicsEntity,
     YftPhysicsGroup,
     YftPhysicsGroupFlag,
     YftPhysicsLod,
     YftPhysicsLodPointers,
+    YftVehicleGlassFlag,
+    YftVehicleGlassRow,
+    YftVehicleGlassWindow,
+    YftVehicleGlassWindows,
     YftVerletCloth,
     build_yft_bytes,
     create_yft,
@@ -32,6 +37,89 @@ from fivefury.yft import (
     scan_yft_corpus,
     validate_yft,
 )
+
+
+def test_yft_glass_roundtrip():
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="glass",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="glass")],
+        name="glass_fragment",
+    )
+    pane = YftGlassPane(
+        position_base=(-1.0, 0.0, 0.0),
+        position_width=(2.0, 0.0, 0.0),
+        position_height=(0.0, 1.5, 0.0),
+        shader_index=3,
+        glass_type=1,
+        bounds_offset_front=0.125,
+        bounds_offset_back=-0.25,
+    )
+    vehicle_glass = YftVehicleGlassWindows(
+        [
+            YftVehicleGlassWindow.declare(
+                7,
+                2,
+                (
+                    YftVehicleGlassRow.declare(1, (10, 20, 30)),
+                    YftVehicleGlassRow.declare(
+                        0,
+                        (1, 2),
+                        second_start=5,
+                        second_values=(3, 4),
+                    ),
+                    YftVehicleGlassRow.empty(),
+                ),
+                data_min=-0.5,
+                data_max=0.75,
+                flags=(
+                    YftVehicleGlassFlag.VERSION_2
+                    | YftVehicleGlassFlag.HAS_EXPOSED_EDGES
+                ),
+                texture_scale=1.25,
+            )
+        ]
+    )
+    source = create_yft(
+        drawable,
+        name="glass_fragment",
+        glass_panes=(pane,),
+        vehicle_glass_windows=vehicle_glass,
+    )
+    source.state = dataclasses.replace(source.state, glass_attachment_bone=4)
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+
+    assert system_data[0xD9] == 1
+    assert struct.unpack_from("<Q", system_data, 0xE0)[0] != 0
+    assert struct.unpack_from("<Q", system_data, 0x120)[0] != 0
+    assert parsed.state.glass_attachment_bone == 4
+    assert parsed.glass_pane_count == 1
+    assert parsed.glass_panes[0].shader_index == 3
+    assert parsed.glass_panes[0].bounds_offset_front == 0.125
+    assert parsed.vehicle_glass_windows is not None
+    window = parsed.vehicle_glass_windows.windows[0]
+    assert window.component_id == 7
+    assert window.geometry_index == 2
+    assert window.column_count == 7
+    assert window.row_count == 3
+    assert window.rows[0].first.values == bytes((10, 20, 30))
+    assert window.rows[1].second.values == bytes((3, 4))
+    assert window.rows[2] == YftVehicleGlassRow.empty()
+    assert window.flags & YftVehicleGlassFlag.HAS_EXPOSED_EDGES
+    assert parsed.validate() == []
 
 
 def test_yft_environment_cloth_roundtrip():
@@ -633,8 +721,7 @@ def test_yft_validation_rejects_unwritable_resource_graphs():
     issues = validate_yft(yft)
 
     assert any(
-        issue.is_error and issue.path == "collision_event_set"
-        for issue in issues
+        issue.is_error and issue.path == "collision_event_set" for issue in issues
     )
 
 

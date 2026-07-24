@@ -16,6 +16,16 @@ from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet, YftPhysicsChildEvents, YftPhysicsGroupEvents
 from .fragment import Yft
 from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
+from .glass import (
+    YftGlassPane,
+    YftGlassPaneFlag,
+    YftGlassVertexDeclaration,
+    YftVehicleGlassFlag,
+    YftVehicleGlassRow,
+    YftVehicleGlassSpan,
+    YftVehicleGlassWindow,
+    YftVehicleGlassWindows,
+)
 from .physics import (
     YftArticulatedBodyType,
     YftPhysicsChild,
@@ -70,6 +80,9 @@ __all__ = [
     "YftFragmentPointers",
     "YftFragmentState",
     "YftGeometryStats",
+    "YftGlassPane",
+    "YftGlassPaneFlag",
+    "YftGlassVertexDeclaration",
     "YftPhysicsChild",
     "YftPhysicsChildEvents",
     "YftPhysicsDampArchetype",
@@ -91,6 +104,11 @@ __all__ = [
     "YftRawField",
     "YftValidationIssue",
     "YftValidationSeverity",
+    "YftVehicleGlassFlag",
+    "YftVehicleGlassRow",
+    "YftVehicleGlassSpan",
+    "YftVehicleGlassWindow",
+    "YftVehicleGlassWindows",
     "YftVerletCloth",
     "assert_valid_yft",
     "validate_yft",
