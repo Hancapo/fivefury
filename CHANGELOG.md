@@ -12,6 +12,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YFT physics event slots now expose `YftEventSet` objects through `YftPhysicsChildEvents` and `YftPhysicsGroupEvents` instead of raw pointer containers.
 
 ### Added
+- Structured binary models for `vehicles.meta`, `handling.meta`, `carcols.meta`, `carmodcols.meta`, and `carvariations.meta`.
 - Readable and writable native light arrays on legacy YFT fragments.
 - Readable, writable, and skeleton-derived YFT shared matrix sets.
 - Readable and writable legacy YFT breakable panes and vehicle glass distance fields.

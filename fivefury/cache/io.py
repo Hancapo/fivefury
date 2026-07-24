@@ -4,8 +4,6 @@ import importlib
 from pathlib import Path
 from typing import Any, Optional
 
-from .paths import split_archive_asset_path as _split_archive_asset_path
-from .views import AssetRecord
 from ..awc import read_awc
 from ..cdr import read_cdr
 from ..cut import read_cut
@@ -16,16 +14,25 @@ from ..hashing import _get_lut
 from ..metahash import MetaHash
 from ..rel import read_rel
 from ..resource import parse_rsc7
-from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, _decompress_deflate, _normalize_key
-from ..ycd import read_ycd
+from ..rpf import (
+    RpfArchive,
+    RpfEntry,
+    RpfFileEntry,
+    _decompress_deflate,
+    _normalize_key,
+)
+from ..vehiclemeta import read_vehicle_meta
 from ..ybn import read_ybn
+from ..ycd import read_ycd
 from ..ydd import read_ydd
-from ..yed import read_yed
 from ..ydr import read_ydr
+from ..yed import read_yed
 from ..yft import read_yft
 from ..ynd import read_ynd
 from ..ynv import read_ynv
 from ..ytd import read_ytd
+from .paths import split_archive_asset_path as _split_archive_asset_path
+from .views import AssetRecord
 
 try:
     from .._native import read_rpf_entry, read_rpf_entry_variants
@@ -57,8 +64,23 @@ def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: Game
 
 def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
-    if Path(path).name.lower() == "gtxd.meta":
+    name = Path(path).name.lower()
+    if name == "gtxd.meta":
         return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
+    vehicle_meta_type = guess_game_file_type(path)
+    if vehicle_meta_type in {
+        GameFileType.VEHICLES,
+        GameFileType.HANDLING,
+        GameFileType.CAR_COLS,
+        GameFileType.CAR_MOD_COLS,
+        GameFileType.CAR_VARIATIONS,
+    }:
+        return _decode_or_fallback(
+            vehicle_meta_type,
+            data,
+            data,
+            lambda payload: read_vehicle_meta(payload, source=path),
+        )
     if ext == ".ymap":
         return _decode_dynamic(data, module_name="fivefury.ymap", attribute="read_ymap", kind=GameFileType.YMAP)
     if ext == ".ymf":

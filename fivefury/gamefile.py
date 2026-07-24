@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive, RpfFileEntry
@@ -46,6 +46,7 @@ class GameFileType(IntEnum):
     YPDB = 32
     CUT = 33
     CDR = 34
+    HANDLING = 35
     RPF = 100
     BINARY = 101
 
@@ -78,8 +79,19 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
 
 def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.UNKNOWN) -> GameFileType:
     parsed = Path(str(path))
-    if parsed.name.lower() == "gtxd.meta":
-        return GameFileType.GTXD
+    named_meta_types = {
+        "gtxd.meta": GameFileType.GTXD,
+        "vehicles.meta": GameFileType.VEHICLES,
+        "handling.meta": GameFileType.HANDLING,
+        "carcols.meta": GameFileType.CAR_COLS,
+        "carmodcols.meta": GameFileType.CAR_MOD_COLS,
+        "carvariations.meta": GameFileType.CAR_VARIATIONS,
+        "vehiclelayouts.meta": GameFileType.VEHICLE_LAYOUTS,
+        "peds.meta": GameFileType.PEDS,
+    }
+    named_type = named_meta_types.get(parsed.name.lower())
+    if named_type is not None:
+        return named_type
     return _FILE_TYPE_MAP.get(parsed.suffix.lower(), default)
 
 
