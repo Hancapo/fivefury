@@ -13,6 +13,8 @@ from .physics import (
     YftPhysicsDamping,
     YftPhysicsGroup,
     YftPhysicsInertia,
+    YftPhysicsJoint1Dof,
+    YftPhysicsJoint3Dof,
     YftPhysicsLod,
     YftPhysicsTransforms,
 )
@@ -24,6 +26,8 @@ _PHYSICS_GROUP_SIZE = 0xB0
 _PHYSICS_CHILD_SIZE = 0x100
 _ARCHETYPE_DAMP_SIZE = 0xE0
 _ARTICULATED_BODY_SIZE = 0xA4
+_JOINT_1DOF_SIZE = 0xB0
+_JOINT_3DOF_SIZE = 0xF0
 
 
 def _virtual(offset: int) -> int:
@@ -274,15 +278,78 @@ def _write_articulated_body_type(
         value = parent_indices[index] if index < len(parent_indices) else -1
         writer.pack_into("i", offset + 0x10 + index * 4, int(value))
     writer.pack_into("ff", offset + 0x6C, body.replace_upon_reresource, body.angular_decay_rate)
-    joint_pointer_offset = _write_pointer_array(writer, body.joint_type_pointers)
+    joint_offsets = [_write_physics_joint(writer, joint) for joint in body.joints]
+    joint_pointer_offset = _write_pointer_array(
+        writer, [_virtual(joint_offset) for joint_offset in joint_offsets]
+    )
     inertia_offset = _write_inertia_array(writer, body.resourced_ang_inertia or tuple(inertia))
     writer.pack_into("Q", offset + 0x78, _virtual(joint_pointer_offset) if joint_pointer_offset else 0)
     writer.pack_into("Q", offset + 0x80, _virtual(inertia_offset) if inertia_offset else 0)
     writer.data[offset + 0x88] = int(body.num_links) & 0xFF
-    writer.data[offset + 0x89] = int(body.num_joints) & 0xFF
-    for index, joint_type in enumerate(body.joint_types[:22]):
+    num_joints = len(body.joints) if body.joints else int(body.num_joints)
+    writer.data[offset + 0x89] = num_joints & 0xFF
+    joint_types = (
+        tuple(joint.joint_type for joint in body.joints)
+        if body.joints
+        else body.joint_types
+    )
+    for index, joint_type in enumerate(joint_types[:22]):
         writer.data[offset + 0x8A + index] = int(joint_type) & 0xFF
     writer.data[offset + 0xA0] = 1 if body.locally_owned else 0
+    return offset
+
+
+def _write_matrix44(writer: ResourceWriter, offset: int, matrix) -> None:
+    for row in range(4):
+        writer.pack_into("4f", offset + row * 16, *matrix[row])
+
+
+def _write_physics_joint(
+    writer: ResourceWriter,
+    joint: YftPhysicsJoint1Dof | YftPhysicsJoint3Dof,
+) -> int:
+    if isinstance(joint, YftPhysicsJoint1Dof):
+        size = _JOINT_1DOF_SIZE
+    elif isinstance(joint, YftPhysicsJoint3Dof):
+        size = _JOINT_3DOF_SIZE
+    else:
+        raise TypeError("YFT resources only support 1DOF and 3DOF joint types")
+    offset = writer.alloc(size, 16)
+    writer.pack_into("IIQf", offset, joint.vft, joint.resource_state, 0, joint.default_stiffness)
+    writer.data[offset + 0x14] = 1 if joint.enforce_exceeded_limits else 0
+    writer.data[offset + 0x15] = int(joint.joint_type)
+    writer.data[offset + 0x16] = int(joint.parent_link_index) & 0xFF
+    writer.data[offset + 0x17] = int(joint.child_link_index) & 0xFF
+    _write_matrix44(writer, offset + 0x20, joint.orientation_parent)
+    _write_matrix44(writer, offset + 0x60, joint.orientation_child)
+    if isinstance(joint, YftPhysicsJoint1Dof):
+        writer.pack_into(
+            "4f",
+            offset + 0xA0,
+            joint.hard_angle_min,
+            joint.hard_angle_max,
+            joint.max_muscle_torque,
+            joint.min_muscle_torque,
+        )
+    else:
+        writer.pack_into(
+            "4f",
+            offset + 0xA0,
+            joint.hard_first_lean_angle_max,
+            joint.hard_second_lean_angle_max,
+            joint.hard_twist_angle_max,
+            joint.soft_limit_ratio,
+        )
+        writer.pack_into("f", offset + 0xB0, joint.twist_offset)
+        writer.data[offset + 0xB4] = 1 if joint.use_child_for_twist_axis else 0
+        writer.pack_into("3f", offset + 0xC0, *joint.max_muscle_torque)
+        writer.pack_into("3f", offset + 0xD0, *joint.min_muscle_torque)
+        writer.pack_into(
+            "2f",
+            offset + 0xE0,
+            joint.soft_limit_lean_strength,
+            joint.soft_limit_twist_strength,
+        )
     return offset
 
 

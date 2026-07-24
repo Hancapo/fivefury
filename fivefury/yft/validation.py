@@ -261,6 +261,43 @@ def _validate_lod(
                 f"{path}.body_type",
                 "articulated body exceeds GTA V link/joint limits",
             )
+        if body.joints and len(body.joints) != body.num_joints:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.body_type.joints",
+                "joint count differs from articulated body metadata",
+            )
+        if body.num_joints and not body.joints:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.body_type.joints",
+                "articulated joints must be decoded or declared before writing",
+            )
+        for joint_index, joint in enumerate(body.joints):
+            joint_path = f"{path}.body_type.joints[{joint_index}]"
+            if joint.parent_link_index >= body.num_links:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    joint_path,
+                    "parent link index points outside the articulated body",
+                )
+            if joint.child_link_index >= body.num_links:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    joint_path,
+                    "child link index points outside the articulated body",
+                )
+            if joint.parent_link_index == joint.child_link_index:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    joint_path,
+                    "parent and child links must be different",
+                )
         if body.num_joints and body.num_joints != max(0, body.num_links - 1):
             _issue(
                 issues,

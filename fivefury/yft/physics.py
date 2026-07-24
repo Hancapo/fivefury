@@ -58,6 +58,57 @@ class YftPhysicsJointType(enum.IntEnum):
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class YftPhysicsJoint:
+    joint_type: YftPhysicsJointType
+    parent_link_index: int
+    child_link_index: int
+    orientation_parent: YftMatrix44
+    orientation_child: YftMatrix44
+    default_stiffness: float = 0.825
+    enforce_exceeded_limits: bool = False
+    vft: int = 0
+    resource_state: int = 1
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class YftPhysicsJoint1Dof(YftPhysicsJoint):
+    joint_type: YftPhysicsJointType = dataclasses.field(
+        default=YftPhysicsJointType.ONE_DOF, init=False
+    )
+    hard_angle_min: float = 0.0
+    hard_angle_max: float = 0.0
+    max_muscle_torque: float = 100_000_000.0
+    min_muscle_torque: float = -100_000_000.0
+    vft: int = 0x4062BCB0
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class YftPhysicsJoint3Dof(YftPhysicsJoint):
+    joint_type: YftPhysicsJointType = dataclasses.field(
+        default=YftPhysicsJointType.THREE_DOF, init=False
+    )
+    hard_first_lean_angle_max: float = 0.0
+    hard_second_lean_angle_max: float = 0.0
+    hard_twist_angle_max: float = 0.0
+    soft_limit_ratio: float = 1.0
+    twist_offset: float = 0.0
+    use_child_for_twist_axis: bool = False
+    max_muscle_torque: tuple[float, float, float] = (
+        100_000_000.0,
+        100_000_000.0,
+        100_000_000.0,
+    )
+    min_muscle_torque: tuple[float, float, float] = (
+        -100_000_000.0,
+        -100_000_000.0,
+        -100_000_000.0,
+    )
+    soft_limit_lean_strength: float = 1.0
+    soft_limit_twist_strength: float = 1.0
+    vft: int = 0x4062BC40
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class YftPhysicsGroupEventRefs:
     death_event: int = 0
     death_player: int = 0
@@ -293,6 +344,7 @@ class YftArticulatedBodyType:
     replace_upon_reresource: float = 0.0
     angular_decay_rate: float = 0.0
     joint_type_pointers: tuple[int, ...] = ()
+    joints: tuple[YftPhysicsJoint1Dof | YftPhysicsJoint3Dof, ...] = ()
     resourced_ang_inertia: tuple[YftPhysicsInertia, ...] = ()
     num_links: int = 0
     num_joints: int = 0
@@ -793,6 +845,9 @@ __all__ = [
     "YftPhysicsGroupEventRefs",
     "YftPhysicsGroupFlag",
     "YftPhysicsInertia",
+    "YftPhysicsJoint",
+    "YftPhysicsJoint1Dof",
+    "YftPhysicsJoint3Dof",
     "YftPhysicsJointType",
     "YftPhysicsLod",
     "YftPhysicsLodPointers",

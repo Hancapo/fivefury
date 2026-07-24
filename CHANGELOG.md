@@ -11,6 +11,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - `Ydr.meshes` now returns meshes from every LOD; use `primary_meshes` for the previous first-populated-LOD behavior.
 
 ### Added
+- Structured YFT 1DOF and 3DOF articulated joints with writable orientations, limits, and muscle torques.
 - PS3 CDR drawable reading, including PS3 resource pages, materials, shader mappings, QB geometry and compressed EDGE geometry.
 - PS3 RPF7 reading support, including PS3 AES table decryption, endian-aware headers, name-shift handling, and cache indexing.
 - RPF extraction conflict policies and explicit primary-LOD mesh accessors.

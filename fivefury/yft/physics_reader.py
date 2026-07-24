@@ -30,6 +30,8 @@ from .physics import (
     YftPhysicsGroupEventRefs,
     YftPhysicsGroupFlag,
     YftPhysicsInertia,
+    YftPhysicsJoint1Dof,
+    YftPhysicsJoint3Dof,
     YftPhysicsJointType,
     YftPhysicsLod,
     YftPhysicsLodPointers,
@@ -45,6 +47,8 @@ _ARCHETYPE_DAMPING_OFFSET = 0x80
 _ARTICULATED_BODY_TYPE_MIN_SIZE = 0xA4
 _ARTICULATED_BODY_MAX_LINKS = 23
 _ARTICULATED_BODY_MAX_JOINTS = _ARTICULATED_BODY_MAX_LINKS - 1
+_JOINT_1DOF_SIZE = 0xB0
+_JOINT_3DOF_SIZE = 0xF0
 
 
 def read_group_names(
@@ -166,6 +170,61 @@ def _read_joint_types(
     return tuple(values)
 
 
+def _read_matrix44(system_data: bytes, offset: int):
+    return tuple(
+        tuple(float(_f32(system_data, offset + row * 16 + col * 4)) for col in range(4))
+        for row in range(4)
+    )
+
+
+def read_physics_joint(
+    system_data: bytes, pointer: int, joint_type: YftPhysicsJointType | int
+) -> YftPhysicsJoint1Dof | YftPhysicsJoint3Dof | None:
+    offset = try_virtual_offset(system_data, pointer)
+    if offset is None:
+        return None
+    try:
+        kind = YftPhysicsJointType(joint_type)
+    except ValueError:
+        return None
+    size = _JOINT_1DOF_SIZE if kind is YftPhysicsJointType.ONE_DOF else _JOINT_3DOF_SIZE
+    if kind not in (YftPhysicsJointType.ONE_DOF, YftPhysicsJointType.THREE_DOF):
+        return None
+    if offset + size > len(system_data):
+        return None
+    common = {
+        "parent_link_index": system_data[offset + 0x16],
+        "child_link_index": system_data[offset + 0x17],
+        "orientation_parent": _read_matrix44(system_data, offset + 0x20),
+        "orientation_child": _read_matrix44(system_data, offset + 0x60),
+        "default_stiffness": float(_f32(system_data, offset + 0x10)),
+        "enforce_exceeded_limits": bool(system_data[offset + 0x14]),
+        "vft": _u32(system_data, offset),
+        "resource_state": _u32(system_data, offset + 4),
+    }
+    if kind is YftPhysicsJointType.ONE_DOF:
+        return YftPhysicsJoint1Dof(
+            **common,
+            hard_angle_min=float(_f32(system_data, offset + 0xA0)),
+            hard_angle_max=float(_f32(system_data, offset + 0xA4)),
+            max_muscle_torque=float(_f32(system_data, offset + 0xA8)),
+            min_muscle_torque=float(_f32(system_data, offset + 0xAC)),
+        )
+    return YftPhysicsJoint3Dof(
+        **common,
+        hard_first_lean_angle_max=float(_f32(system_data, offset + 0xA0)),
+        hard_second_lean_angle_max=float(_f32(system_data, offset + 0xA4)),
+        hard_twist_angle_max=float(_f32(system_data, offset + 0xA8)),
+        soft_limit_ratio=float(_f32(system_data, offset + 0xAC)),
+        twist_offset=float(_f32(system_data, offset + 0xB0)),
+        use_child_for_twist_axis=bool(system_data[offset + 0xB4]),
+        max_muscle_torque=read_vec3(system_data, offset + 0xC0),
+        min_muscle_torque=read_vec3(system_data, offset + 0xD0),
+        soft_limit_lean_strength=float(_f32(system_data, offset + 0xE0)),
+        soft_limit_twist_strength=float(_f32(system_data, offset + 0xE4)),
+    )
+
+
 def read_articulated_body_type(
     system_data: bytes, pointer: int
 ) -> YftArticulatedBodyType | None:
@@ -182,6 +241,7 @@ def read_articulated_body_type(
     joint_type_pointers = read_pointer_tuple(
         system_data, _u64(system_data, offset + 0x78), num_joints
     )
+    joint_types = _read_joint_types(system_data, offset + 0x8A, num_joints)
     return YftArticulatedBodyType(
         pointer=pointer,
         joint_parent_indices=tuple(
@@ -191,12 +251,22 @@ def read_articulated_body_type(
         replace_upon_reresource=float(_f32(system_data, offset + 0x6C)),
         angular_decay_rate=float(_f32(system_data, offset + 0x70)),
         joint_type_pointers=joint_type_pointers,
+        joints=tuple(
+            joint
+            for joint in (
+                read_physics_joint(system_data, joint_pointer, joint_type)
+                for joint_pointer, joint_type in zip(
+                    joint_type_pointers, joint_types, strict=True
+                )
+            )
+            if joint is not None
+        ),
         resourced_ang_inertia=read_inertia_array(
             system_data, _u64(system_data, offset + 0x80), num_links
         ),
         num_links=num_links,
         num_joints=num_joints,
-        joint_types=_read_joint_types(system_data, offset + 0x8A, num_joints),
+        joint_types=joint_types,
         locally_owned=bool(system_data[offset + 0xA0]),
     )
 
@@ -684,6 +754,7 @@ __all__ = [
     "read_physics_entity",
     "read_physics_group",
     "read_physics_groups",
+    "read_physics_joint",
     "read_physics_lod",
     "read_physics_lod_pointers",
     "read_physics_lods",
