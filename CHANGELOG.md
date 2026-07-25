@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-07-25
+
 ### Fixed
 - Rebuilt YND links now clamp their distance to the valid 1..255 range.
 - Single-child YFT physics fragments no longer alias their Physics LOD child as the fragment root child, preventing duplicate runtime construction and invalid fixups.
