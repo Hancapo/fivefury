@@ -6,12 +6,32 @@ from pathlib import Path
 
 import pytest
 
-from fivefury import BoundComposite, BoundPolygonTriangle, BoundSphere, GameFileCache, GameFileType, YcdUvClipBinding, Ydr, YdrCollisionStats, build_bound_from_render_geometry, load_shader_library, jenk_hash, read_ydr
-from fivefury.resource import ResourceBlockSpan, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
-from fivefury.ydr import build_ydr_bytes
-from fivefury.ydr import YdrMaterialDescriptor
+from fivefury import (
+    BoundComposite,
+    BoundPolygonTriangle,
+    BoundSphere,
+    GameFileCache,
+    GameFileType,
+    YcdUvClipBinding,
+    Ydr,
+    YdrCollisionStats,
+    build_bound_from_render_geometry,
+    create_ydr,
+    jenk_hash,
+    load_shader_library,
+    read_ydr,
+)
+from fivefury.resource import (
+    ResourceBlockSpan,
+    build_rsc7,
+    get_resource_total_page_count,
+    layout_resource_sections,
+    split_rsc7_sections,
+)
+from fivefury.ydr import YdrMaterialDescriptor, build_ydr_bytes
 from fivefury.ydr.defs import VertexComponentType, VertexSemantic
 from fivefury.ydr.reader import _decode_vertices
+from fivefury.ytd import Texture, TextureFormat, Ytd
 from tests.helpers import require_reference, write_bytes
 
 _DAT_VIRTUAL_BASE = 0x50000000
@@ -45,6 +65,28 @@ def test_resource_section_layout_reorders_blocks_and_remaps_resource_pointers() 
     assert struct.unpack_from("<Q", system_data, 0x08)[0] == _DAT_VIRTUAL_BASE + 0x3020
     assert struct.unpack_from("<Q", system_data, 0x3020)[0] == _DAT_VIRTUAL_BASE + 0x20
     assert struct.unpack_from("<Q", system_data, 0x20)[0] == _DAT_VIRTUAL_BASE + 0x20
+
+
+def test_embedded_textures_require_a_shader_group() -> None:
+    texture = Texture.from_raw(
+        b"\0" * 8,
+        4,
+        4,
+        TextureFormat.BC1,
+        1,
+        name="embedded",
+    )
+    drawable = create_ydr(
+        meshes=[],
+        materials=[],
+        embedded_textures=Ytd([texture]),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="embedded texture dictionary requires a drawable shader group",
+    ):
+        build_ydr_bytes(drawable)
 
 
 def _align(value: int, alignment: int) -> int:

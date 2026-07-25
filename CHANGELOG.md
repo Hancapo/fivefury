@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Material-less drawables now use a null shader-group pointer instead of emitting an empty runtime structure.
+
 ## [0.2.10] - 2026-07-25
 
 ### Added

@@ -108,7 +108,7 @@ def _audit_model(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
-) -> None:
+) -> bool:
     offset = validator.class_header(
         pointer,
         path,
@@ -116,7 +116,7 @@ def _audit_model(
         expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.model,
     )
     if offset is None:
-        return
+        return False
     geometry_count = validator.u16(offset + 0x10)
     geometries_pointer = validator.u64(offset + 0x08)
     geometries_offset = validator.pointer(
@@ -139,23 +139,24 @@ def _audit_model(
         nullable=geometry_count == 0,
     )
     if geometries_offset is None:
-        return
+        return bool(geometry_count)
     for index in range(geometry_count):
         _audit_geometry(
             validator,
             validator.u64(geometries_offset + index * 8),
             f"{path}.geometries[{index}]",
         )
+    return bool(geometry_count)
 
 
 def audit_lod(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
-) -> None:
+) -> bool:
     offset = validator.pointer(pointer, path, size=0x10, nullable=False)
     if offset is None:
-        return
+        return False
     model_count = validator.u16(offset + 0x08)
     models_pointer = validator.u64(offset)
     models_offset = validator.pointer(
@@ -165,13 +166,15 @@ def audit_lod(
         nullable=model_count == 0,
     )
     if models_offset is None:
-        return
+        return False
+    has_geometry = False
     for index in range(model_count):
-        _audit_model(
+        has_geometry |= _audit_model(
             validator,
             validator.u64(models_offset + index * 8),
             f"{path}.models[{index}]",
         )
+    return has_geometry
 
 
 __all__ = ["audit_lod"]
