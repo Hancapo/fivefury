@@ -29,6 +29,7 @@ The Assimp-backed import helpers (`assimp_to_ydr`, `obj_to_ydr`, `fbx_to_ydr`, `
 | `YTD` | Full | Texture dictionaries: read/write, extraction, embedded-asset helpers |
 | `YND` | Full | Path nodes, links, area partitioning, junction heightmaps |
 | `YNV` | Full | Navmeshes: sectors, polys, portals, validation, basic OBJ partitioning |
+| `water.xml` | Full | Water surfaces, triangle corners, calming regions, wave amplitude and direction |
 | `CUT` | Full | Cutscenes, plus the readable `.cuts` script format for round-trip authoring |
 | `GXT2` | Full | Hashed text tables with binary read/write and text import/export |
 | `AWC` | Full | Audio containers: PCM/WAV extraction, authoring from WAV/MP3/OGG/FLAC |
@@ -101,6 +102,30 @@ save_ybn(bound, "floor_collision.ybn")
 ```
 
 Generated geometry is chunked as needed and gets BVH and octant data. The same bounds model backs standalone `YBN` files, embedded `YDR` collisions, and `YFT` physics — a drawable's render mesh can also be converted directly with `ydr.ensure_bound_from_render_geometry()`.
+
+### Author water
+
+```python
+from fivefury import WaterData, WaterQuad, WaterWaveQuad
+
+water = WaterData()
+water.add(
+    WaterQuad.rectangle(
+        center=(100.0, 200.0, 12.5),
+        size=(80.0, 40.0),
+        alpha=26,
+        limited_depth=True,
+    )
+)
+water.add(
+    WaterWaveQuad.from_angle(
+        bounds=(60, 180, 140, 220),
+        amplitude=1.2,
+        degrees=90.0,
+    )
+)
+water.translate(x=500, y=-200, z=20.0).save("water.xml")
+```
 
 ### Convert audio to AWC
 

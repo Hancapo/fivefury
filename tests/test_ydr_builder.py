@@ -669,6 +669,8 @@ def test_read_assimp_scene_can_convert_material_colours_to_embedded_textures(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("PIL")
+    pytest.importorskip("texfury")
     from fivefury.ydr import assimp as assimp_module
 
     material = _FakeMaterial(
@@ -768,6 +770,8 @@ def test_assimp_scene_to_ydr_accepts_enhanced_game_alias(monkeypatch: pytest.Mon
 
 
 def test_assimp_to_ydr_persists_embedded_colour_textures(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    pytest.importorskip("PIL")
+    pytest.importorskip("texfury")
     from fivefury.ydr import assimp as assimp_module
 
     material = _FakeMaterial(

@@ -4,7 +4,7 @@ from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Self
 
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
@@ -100,7 +100,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     def __iter__(self) -> Iterator[AssetRecord]:
         return self.iter_assets()
 
-    def __enter__(self) -> GameFileCache:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -554,6 +554,8 @@ _KIND_DICT_TYPES: dict[str, GameFileType] = {
     "GtxdDict": GameFileType.GTXD,
     "AwcDict": GameFileType.AWC,
     "YedDict": GameFileType.YED,
+    "WaterDict": GameFileType.WATER,
+    "WaterMapDict": GameFileType.WATER,
 }
 
 

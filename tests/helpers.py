@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import importlib
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Sequence
+
+import pytest
 
 
 @dataclass(frozen=True)
@@ -52,3 +56,19 @@ def touch(path, text: str) -> None:
 def write_bytes(path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
+
+
+def require_reference(*parts: str) -> Path:
+    configured = os.environ.get("FIVEFURY_REFERENCE_DIR")
+    root = (
+        Path(configured).expanduser()
+        if configured
+        else Path(__file__).resolve().parents[1] / "references"
+    )
+    path = root.joinpath(*parts)
+    if not path.exists():
+        pytest.skip(
+            f"external reference not available: {path}; "
+            "set FIVEFURY_REFERENCE_DIR to the corpus directory"
+        )
+    return path

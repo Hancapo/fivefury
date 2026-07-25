@@ -22,6 +22,7 @@ from ..rpf import (
     _normalize_key,
 )
 from ..vehiclemeta import read_vehicle_meta
+from ..water import read_water
 from ..ybn import read_ybn
 from ..ycd import read_ycd
 from ..ydd import read_ydd
@@ -65,6 +66,8 @@ def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: Game
 def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
     name = Path(path).name.lower()
+    if name == "water.xml":
+        return _decode_or_fallback(GameFileType.WATER, data, data, read_water)
     if name == "gtxd.meta":
         return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
     vehicle_meta_type = guess_game_file_type(path)

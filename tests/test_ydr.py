@@ -12,7 +12,7 @@ from fivefury.ydr import build_ydr_bytes
 from fivefury.ydr import YdrMaterialDescriptor
 from fivefury.ydr.defs import VertexComponentType, VertexSemantic
 from fivefury.ydr.reader import _decode_vertices
-from tests.helpers import write_bytes
+from tests.helpers import require_reference, write_bytes
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _DAT_PHYSICAL_BASE = 0x60000000
@@ -377,7 +377,7 @@ def test_ydr_can_build_collision_bound_from_render_geometry() -> None:
 
 
 def test_read_real_reference_ydr_embedded_bound() -> None:
-    ydr = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
+    ydr = read_ydr(require_reference("prop_fire_hosereel.ydr"))
 
     assert ydr.bound is not None
     assert ydr.bound.bound_type.name in {"GEOMETRY", "GEOMETRY_BVH", "COMPOSITE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "DISC"}
@@ -400,7 +400,7 @@ def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_av
 
 
 def test_build_ydr_bytes_writes_legacy_mesh_buffers_to_system_pages() -> None:
-    source = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
+    source = read_ydr(require_reference("prop_fire_hosereel.ydr"))
     raw = build_ydr_bytes(source)
     _header, _system_data, _graphics_data = split_rsc7_sections(raw)
     geometry_vertex_data_ptr, vertex_data_ptr1, vertex_data_ptr2, index_data_ptr = _read_first_mesh_buffer_pointers(raw)
@@ -412,7 +412,7 @@ def test_build_ydr_bytes_writes_legacy_mesh_buffers_to_system_pages() -> None:
 
 
 def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -> None:
-    source = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr")
+    source = require_reference("prop_fire_hosereel.ydr")
     _header, system_data, _graphics_data = split_rsc7_sections(source.read_bytes())
 
     assert int.from_bytes(system_data[0x90:0x98], "little") == 0
@@ -423,7 +423,7 @@ def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -
 
 
 def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
-    ydr = read_ydr(Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr"))
+    ydr = read_ydr(require_reference("prop_fire_hosereel.ydr"))
 
     assert isinstance(ydr.bound, BoundComposite)
     geometry = ydr.bound.geometries[0]
@@ -444,7 +444,7 @@ def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
 
 
 def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\prop_fire_hosereel.ydr")
+    source_path = require_reference("prop_fire_hosereel.ydr")
     source = read_ydr(source_path)
 
     out_path = tmp_path / "prop_fire_hosereel_roundtrip.ydr"
@@ -464,7 +464,7 @@ def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) 
 
 
 def test_real_reference_ydr_directory_roundtrips_preserving_declarations(tmp_path: Path) -> None:
-    reference_dir = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\ydrs")
+    reference_dir = require_reference("ydrs")
     paths = sorted(reference_dir.glob("*.ydr"))
     if not paths:
         pytest.skip("real YDR reference directory not available")
@@ -493,9 +493,7 @@ def test_real_reference_ydr_directory_roundtrips_preserving_declarations(tmp_pat
 
 
 def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\ydrs\lux_prop_lighter_luxe.ydr")
-    if not source_path.exists():
-        pytest.skip("real skinned YDR reference not available")
+    source_path = require_reference("ydrs", "lux_prop_lighter_luxe.ydr")
 
     source = read_ydr(source_path)
     mesh = source.meshes[0]
@@ -515,9 +513,7 @@ def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -
 
 
 def test_real_reference_rigid_bone_bound_ydr_preserves_model_bindings(tmp_path: Path) -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\ydrs\prop_windmill_01_l1.ydr")
-    if not source_path.exists():
-        pytest.skip("real rigid bone-bound YDR reference not available")
+    source_path = require_reference("ydrs", "prop_windmill_01_l1.ydr")
 
     source = read_ydr(source_path)
 
