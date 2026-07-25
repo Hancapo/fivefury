@@ -17,7 +17,7 @@ class TimeArchetypeDef(BaseArchetypeDef):
     time_flags: TimeArchetypeFlags | int = TimeArchetypeFlags.NONE
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        BaseArchetypeDef.__post_init__(self)
         self.time_flags = coerce_time_archetype_flags(self.time_flags)
 
     @property
@@ -36,7 +36,7 @@ class TimeArchetypeDef(BaseArchetypeDef):
         return self.time_flags & TimeArchetypeFlags.ALL_HOURS
 
     def to_meta(self) -> dict[str, Any]:
-        data = super().to_meta()
+        data = BaseArchetypeDef.to_meta(self)
         data.update({"timeFlags": int(self.time_flags), "_meta_name_hash": meta_name("CTimeArchetypeDef")})
         return data
 

@@ -1,7 +1,11 @@
 #pragma once
 
+#ifndef PY_SSIZE_T_CLEAN
 #define PY_SSIZE_T_CLEAN
+#endif
+#ifndef Py_LIMITED_API
 #define Py_LIMITED_API 0x030B0000
+#endif
 #include <Python.h>
 
 #include <cstddef>

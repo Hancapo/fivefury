@@ -531,7 +531,7 @@ class Dat54StreamingSound(Dat54ChildListSound):
         self.child_offset = 4
 
     def sound_payload_bytes(self) -> bytes:
-        return struct.pack("<i", int(self.duration)) + super().sound_payload_bytes()
+        return struct.pack("<i", int(self.duration)) + Dat54ChildListSound.sound_payload_bytes(self)
 
 
 @dataclass(slots=True)
@@ -1146,14 +1146,14 @@ class Dat54ExternalStreamSound(Dat54ChildListSound):
         self.child_offset = 0
 
     def sound_payload_bytes(self) -> bytes:
-        data = bytearray(super().sound_payload_bytes())
+        data = bytearray(Dat54ChildListSound.sound_payload_bytes(self))
         data += struct.pack("<II", rel_hash(self.environment_sound_1), rel_hash(self.environment_sound_2))
         if not self.child_sounds:
             data += struct.pack("<II", rel_hash(self.environment_sound_3), rel_hash(self.environment_sound_4))
         return bytes(data)
 
     def hash_table_offsets(self) -> list[int]:
-        offsets = super().hash_table_offsets()
+        offsets = Dat54ChildListSound.hash_table_offsets(self)
         env_offset = 1 + len(self.child_sounds) * 4
         offsets.extend([env_offset, env_offset + 4])
         if not self.child_sounds:
@@ -1161,7 +1161,7 @@ class Dat54ExternalStreamSound(Dat54ChildListSound):
         return offsets
 
     def sound_hashes(self) -> list[int]:
-        hashes = super().sound_hashes()
+        hashes = Dat54ChildListSound.sound_hashes(self)
         hashes.extend([rel_hash(self.environment_sound_1), rel_hash(self.environment_sound_2)])
         if not self.child_sounds:
             hashes.extend([rel_hash(self.environment_sound_3), rel_hash(self.environment_sound_4)])

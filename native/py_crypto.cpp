@@ -69,13 +69,16 @@ PyObject* mod_crypto_decrypt_archive_table(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     PyObject* data_object = nullptr;
     unsigned int encryption = 0;
-    const char* archive_name = nullptr;
-    Py_ssize_t archive_name_len = 0;
+    PyObject* archive_name_object = nullptr;
     unsigned int archive_size = 0;
     PyObject* lut_object = nullptr;
-    if (!PyArg_ParseTuple(args, "OOIs#IO:crypto_decrypt_archive_table",
+    if (!PyArg_ParseTuple(args, "OOIOIO:crypto_decrypt_archive_table",
             &capsule, &data_object, &encryption,
-            &archive_name, &archive_name_len, &archive_size, &lut_object)) {
+            &archive_name_object, &archive_size, &lut_object)) {
+        return nullptr;
+    }
+    std::string name;
+    if (!unicode_to_utf8(archive_name_object, name, "archive_name")) {
         return nullptr;
     }
     auto* crypto = require_crypto(capsule);
@@ -96,7 +99,6 @@ PyObject* mod_crypto_decrypt_archive_table(PyObject*, PyObject* args) {
             static_cast<const std::uint8_t*>(data_buf.buf),
             static_cast<const std::uint8_t*>(data_buf.buf) + data_buf.len
         );
-        std::string name(archive_name, static_cast<std::size_t>(archive_name_len));
         std::string lut(static_cast<const char*>(lut_buf.buf),
                         std::min(static_cast<std::size_t>(lut_buf.len), std::size_t{256}));
         PyBuffer_Release(&lut_buf);
@@ -117,13 +119,16 @@ PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     PyObject* data_object = nullptr;
     unsigned int encryption = 0;
-    const char* entry_name = nullptr;
-    Py_ssize_t entry_name_len = 0;
+    PyObject* entry_name_object = nullptr;
     unsigned int entry_length = 0;
     PyObject* lut_object = nullptr;
-    if (!PyArg_ParseTuple(args, "OOIs#IO:crypto_decrypt_data",
+    if (!PyArg_ParseTuple(args, "OOIOIO:crypto_decrypt_data",
             &capsule, &data_object, &encryption,
-            &entry_name, &entry_name_len, &entry_length, &lut_object)) {
+            &entry_name_object, &entry_length, &lut_object)) {
+        return nullptr;
+    }
+    std::string name;
+    if (!unicode_to_utf8(entry_name_object, name, "entry_name")) {
         return nullptr;
     }
     auto* crypto = require_crypto(capsule);
@@ -144,7 +149,6 @@ PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args) {
             static_cast<const std::uint8_t*>(data_buf.buf),
             static_cast<const std::uint8_t*>(data_buf.buf) + data_buf.len
         );
-        std::string name(entry_name, static_cast<std::size_t>(entry_name_len));
         std::string lut(static_cast<const char*>(lut_buf.buf),
                         std::min(static_cast<std::size_t>(lut_buf.len), std::size_t{256}));
         PyBuffer_Release(&lut_buf);
