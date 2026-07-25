@@ -8,6 +8,7 @@ from ..binary import u16 as _u16
 from ..binary import u32 as _u32
 from ..binary import u64 as _u64
 from ..bounds import Bound, read_bound_from_pointer
+from ..ydr.model import YdrMaterial
 from ..ydr.shaders import ShaderLibrary
 from .constants import PHYSICS_LOD_GROUP_FIELDS_OFFSET, PHYSICS_LOD_MIN_SIZE
 from .drawable_reader import read_fragment_drawable
@@ -382,12 +383,16 @@ def read_physics_entity(
     label: str,
     path: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None,
     cache: dict[int, YftPhysicsEntity],
 ) -> YftPhysicsEntity | None:
     if not pointer:
         return None
     if pointer in cache:
         return cache[pointer]
+    read_kwargs = {}
+    if inherited_materials is not None:
+        read_kwargs["inherited_materials"] = inherited_materials
     drawable = read_fragment_drawable(
         header,
         system_data,
@@ -396,6 +401,7 @@ def read_physics_entity(
         label=label,
         path=path,
         shader_library=shader_library,
+        **read_kwargs,
     )
     entity = YftPhysicsEntity(pointer=pointer, label=label, drawable=drawable)
     cache[pointer] = entity
@@ -504,6 +510,7 @@ def read_physics_children(
     path: str,
     lod_label: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None,
     resolve_entities: bool,
     min_breaking_impulses: tuple[float, ...] = (),
     undamaged_ang_inertia: tuple[YftPhysicsInertia, ...] = (),
@@ -536,6 +543,7 @@ def read_physics_children(
                 label=f"physics_{lod_label}_child_{index}_undamaged",
                 path=path,
                 shader_library=shader_library,
+                inherited_materials=inherited_materials,
                 cache=entity_cache,
             )
             damaged_entity = read_physics_entity(
@@ -546,6 +554,7 @@ def read_physics_children(
                 label=f"physics_{lod_label}_child_{index}_damaged",
                 path=path,
                 shader_library=shader_library,
+                inherited_materials=inherited_materials,
                 cache=entity_cache,
             )
         child = dataclasses.replace(
@@ -637,6 +646,7 @@ def read_physics_lod(
     *,
     path: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None,
     resolve_entities: bool,
     event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> YftPhysicsLod | None:
@@ -679,6 +689,7 @@ def read_physics_lod(
         path=path,
         lod_label=label,
         shader_library=shader_library,
+        inherited_materials=inherited_materials,
         resolve_entities=resolve_entities,
         min_breaking_impulses=min_breaking_impulses,
         undamaged_ang_inertia=undamaged_ang_inertia,
@@ -773,6 +784,7 @@ def read_physics_lods(
     *,
     path: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None = None,
     resolve_entities: bool = True,
     event_set_cache: dict[int, YftEventSet] | None = None,
 ) -> list[YftPhysicsLod]:
@@ -788,6 +800,7 @@ def read_physics_lods(
             label,
             path=path,
             shader_library=shader_library,
+            inherited_materials=inherited_materials,
             resolve_entities=resolve_entities,
             event_set_cache=event_set_cache,
         )

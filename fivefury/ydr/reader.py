@@ -408,6 +408,7 @@ def _read_ydr_from_sections(
     path: str | Path = "",
     shader_library: ShaderLibrary | None = None,
     read_extensions: bool = True,
+    inherited_materials: list[YdrMaterial] | None = None,
 ) -> Ydr:
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
     enhanced = int(header.version) in _ENHANCED_YDR_VERSIONS
@@ -428,7 +429,20 @@ def _read_ydr_from_sections(
         enhanced=enhanced,
         gen9_library=gen9_library,
     )
-    lods = _parse_lods(system_data, graphics_data, materials, root_offset=root_offset, enhanced=enhanced)
+    model_materials = materials or inherited_materials or []
+    lods = _parse_lods(
+        system_data,
+        graphics_data,
+        model_materials,
+        root_offset=root_offset,
+        enhanced=enhanced,
+    )
+    has_geometry = any(
+        model.meshes
+        for models in lods.values()
+        for model in models
+    )
+    exposed_materials = model_materials if has_geometry else materials
     skeleton = parse_skeleton(
         system_data,
         _u64(system_data, root_offset + 0x08),
@@ -475,7 +489,7 @@ def _read_ydr_from_sections(
         version=int(header.version),
         path=str(path),
         shader_group_pointer=_u64(system_data, root_offset + 0x00),
-        materials=materials,
+        materials=exposed_materials,
         lods=lods,
         bounding_center=_vec3(system_data, root_offset + 0x10),
         bounding_sphere_radius=_f32(system_data, root_offset + 0x1C),
