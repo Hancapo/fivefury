@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Python 3.11 wheel imports no longer fail in native hash initialization.
+- Slotted dataclass inheritance no longer relies on version-specific zero-argument `super()` behavior.
+
 ## [0.2.8] - 2026-07-24
 
 ### Added

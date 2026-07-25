@@ -268,7 +268,7 @@ class Ymt(MetaResource):
     def to_bytes(self) -> bytes:
         if self.raw_bytes is not None and self.format in {YmtFormat.RBF, YmtFormat.PSO}:
             return bytes(self.raw_bytes)
-        return super().to_bytes()
+        return MetaResource.to_bytes(self)
 
     @classmethod
     def from_bytes(cls, data: bytes, *, source: str = "") -> "Ymt":

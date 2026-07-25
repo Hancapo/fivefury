@@ -182,7 +182,7 @@ class MloArchetypeDef(BaseArchetypeDef):
     time_cycle_modifiers: list[MloTimeCycleModifier | dict[str, Any]] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        BaseArchetypeDef.__post_init__(self)
         self.mlo_flags = MloInteriorFlags(int(self.mlo_flags))
         self.entities = [_entity_from_meta(item) for item in self.entities]
         self.rooms = [MloRoomDef.from_meta(item) if isinstance(item, dict) else item for item in self.rooms]
@@ -279,7 +279,7 @@ class MloArchetypeDef(BaseArchetypeDef):
         return validate_mlo_archetype(self)
 
     def to_meta(self) -> dict[str, Any]:
-        data = super().to_meta()
+        data = BaseArchetypeDef.to_meta(self)
         data.update(
             {
                 "mloFlags": int(self.mlo_flags),

@@ -404,10 +404,13 @@ PyObject* mod_index_import_state(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args) {
-    const char* value = nullptr;
-    Py_ssize_t value_len = 0;
+    PyObject* value_object = nullptr;
     PyObject* lut_object = nullptr;
-    if (!PyArg_ParseTuple(args, "s#O:jenk_partial_hash", &value, &value_len, &lut_object)) {
+    if (!PyArg_ParseTuple(args, "OO:jenk_partial_hash", &value_object, &lut_object)) {
+        return nullptr;
+    }
+    std::string value;
+    if (!unicode_to_utf8(value_object, value, "value")) {
         return nullptr;
     }
     Py_buffer lut_buffer{};
@@ -420,7 +423,7 @@ PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args) {
         return nullptr;
     }
     const auto result = jenk_partial_hash(
-        std::string_view(value, static_cast<std::size_t>(value_len)),
+        value,
         std::string_view(static_cast<const char*>(lut_buffer.buf), 256)
     );
     PyBuffer_Release(&lut_buffer);
@@ -436,10 +439,13 @@ PyObject* mod_jenk_finalize_hash(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_jenk_hash(PyObject*, PyObject* args) {
-    const char* value = nullptr;
-    Py_ssize_t value_len = 0;
+    PyObject* value_object = nullptr;
     PyObject* lut_object = nullptr;
-    if (!PyArg_ParseTuple(args, "s#O:jenk_hash", &value, &value_len, &lut_object)) {
+    if (!PyArg_ParseTuple(args, "OO:jenk_hash", &value_object, &lut_object)) {
+        return nullptr;
+    }
+    std::string value;
+    if (!unicode_to_utf8(value_object, value, "value")) {
         return nullptr;
     }
     Py_buffer lut_buffer{};
@@ -452,7 +458,7 @@ PyObject* mod_jenk_hash(PyObject*, PyObject* args) {
         return nullptr;
     }
     const auto result = jenk_hash(
-        std::string_view(value, static_cast<std::size_t>(value_len)),
+        value,
         std::string_view(static_cast<const char*>(lut_buffer.buf), 256)
     );
     PyBuffer_Release(&lut_buffer);

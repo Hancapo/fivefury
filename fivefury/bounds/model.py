@@ -1054,7 +1054,7 @@ class BoundGeometry(Bound):
         return material
 
     def build(self) -> "BoundGeometry":
-        super().build()
+        Bound.build(self)
         for index, polygon in enumerate(self.polygons):
             polygon.index = index
             if isinstance(polygon, BoundPolygonTriangle):
@@ -1079,7 +1079,7 @@ class BoundGeometry(Bound):
         return self
 
     def validate(self) -> list[str]:
-        issues = super().validate()
+        issues = Bound.validate(self)
         if len(self.polygon_material_indices) != len(self.polygons):
             issues.append("polygon_material_indices length does not match polygon count")
         for polygon_index, polygon in enumerate(self.polygons):
@@ -1164,7 +1164,7 @@ class BoundComposite(Bound):
     def compute_volume(self) -> float:
         if self.children:
             return sum(child.bound.compute_volume() for child in self.children)
-        return super().compute_volume()
+        return Bound.compute_volume(self)
 
     def compute_center_of_gravity(
         self,
@@ -1226,7 +1226,7 @@ class BoundComposite(Bound):
         return self.compute_composite_angular_inertia(mass)
 
     def build(self) -> "BoundComposite":
-        super().build()
+        Bound.build(self)
         for child in self.children:
             child.bound.build()
             if child.bounds is None or not _aabb_is_valid(child.bounds):
@@ -1252,7 +1252,7 @@ class BoundComposite(Bound):
         return self
 
     def validate(self) -> list[str]:
-        issues = super().validate()
+        issues = Bound.validate(self)
         if not self.children:
             issues.append("Composite bound has no children")
         for index, child in enumerate(self.children):
