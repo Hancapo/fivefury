@@ -5,10 +5,17 @@ from pathlib import Path
 from typing import Sequence
 
 from ..binary import align
-from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections
+from ..resource import (
+    ResourceBlockSpan,
+    ResourceWriter,
+    build_rsc7,
+    get_resource_total_page_count,
+    layout_resource_sections,
+)
 from ..ydr import YdrBuild
-from ..ydr.builder import _EMBEDDED_DRAWABLE_FILE_VFT, _ROOT_SIZE, _write_drawable_payload
+from ..ydr.builder import _ROOT_SIZE, _write_drawable_payload
 from ..ydr.prepare import PreparedLods, PreparedMaterial, prepare_build
+from ..ydr.resource_headers import EMBEDDED_DRAWABLE_FILE_VFT
 from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
@@ -131,7 +138,7 @@ def _build_ydd_payload(
             item.lods,
             page_counts,
             root_off=root_off,
-            drawable_file_vft=_EMBEDDED_DRAWABLE_FILE_VFT,
+            drawable_file_vft=EMBEDDED_DRAWABLE_FILE_VFT,
             write_pages=False,
         )
 

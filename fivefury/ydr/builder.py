@@ -3,10 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..bounds import write_bound_resource
 from ..binary import align
-from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections, split_rsc7_sections
-from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
+from ..bounds import write_bound_resource
+from ..resource import (
+    ResourceBlockSpan,
+    ResourceWriter,
+    build_rsc7,
+    get_resource_total_page_count,
+    layout_resource_sections,
+    split_rsc7_sections,
+)
+from .build_types import (
+    YdrBuild,
+    YdrMaterialInput,
+    YdrMeshInput,
+    YdrModelInput,
+    YdrTextureInput,
+    create_ydr,
+)
 from .defs import DAT_VIRTUAL_BASE, LOD_ORDER, YdrLod
 from .gen9 import load_gen9_shader_library
 from .prepare import (
@@ -19,26 +33,31 @@ from .prepare import (
     prepare_build,
     select_layout,
 )
+from .resource_headers import (
+    LEGACY_DRAWABLE_HEADERS,
+    DrawableRuntimeHeaders,
+)
 from .shaders import ShaderLibrary, load_shader_library
 from .write_buffers import GraphicsWriter
-from .write_drawable import pages_info_length, write_drawable_models_block, write_drawable_root, write_pages_info
-from .write_lights import write_lights
-from .write_materials import prepare_materials, write_shader_blocks, write_shader_blocks_gen9
+from .write_drawable import (
+    pages_info_length,
+    write_drawable_models_block,
+    write_drawable_root,
+    write_pages_info,
+)
 from .write_joints import write_joints
+from .write_lights import write_lights
+from .write_materials import (
+    prepare_materials,
+    write_shader_blocks,
+    write_shader_blocks_gen9,
+)
 from .write_models import PreparedModelBlock, prepare_model_block, write_model_block
 from .write_skeleton import write_skeleton
 
 if TYPE_CHECKING:  # pragma: no cover
     from .model import Ydr
 
-_DRAWABLE_FILE_VFT = 0x40573178
-_EMBEDDED_DRAWABLE_FILE_VFT = 0x40570C38
-_SHADER_GROUP_VFT = 0x406137F0
-_TEXTURE_BASE_VFT = 0x40617568
-_DRAWABLE_MODEL_VFT = 0x40610A98
-_DRAWABLE_GEOMETRY_VFT = 0x40618798
-_VERTEX_BUFFER_VFT = 0x4061D3F8
-_INDEX_BUFFER_VFT = 0x4061D158
 _UNKNOWN_FLOAT_SENTINEL = 0x7F800001
 _ROOT_SIZE = 0xD0
 _ENHANCED_YDR_VERSIONS = frozenset({154, 159})
@@ -131,17 +150,18 @@ def _write_drawable_payload(
     page_counts: tuple[int, int],
     *,
     root_off: int,
-    drawable_file_vft: int = _DRAWABLE_FILE_VFT,
+    drawable_file_vft: int | None = None,
     write_pages: bool = True,
     write_extensions: bool = True,
     recalculate_skeleton_hashes: bool = True,
+    runtime_headers: DrawableRuntimeHeaders = LEGACY_DRAWABLE_HEADERS,
 ) -> int:
     enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
     if enhanced:
         shader_group_off, _shader_group_blocks_size = write_shader_blocks_gen9(
             system,
             prepared_materials,
-            shader_group_vft=_SHADER_GROUP_VFT,
+            shader_group_vft=runtime_headers.shader_group,
             virtual=_virtual,
         )
     else:
@@ -149,8 +169,8 @@ def _write_drawable_payload(
             system,
             prepared_materials,
             shader_parameter_entry_cls=ShaderParameterEntry,
-            texture_base_vft=_TEXTURE_BASE_VFT,
-            shader_group_vft=_SHADER_GROUP_VFT,
+            texture_base_vft=runtime_headers.texture_base,
+            shader_group_vft=runtime_headers.shader_group,
             virtual=_virtual,
         )
     skeleton_off = write_skeleton(
@@ -158,8 +178,14 @@ def _write_drawable_payload(
         source.skeleton,
         virtual=_virtual,
         recalculate_hashes=recalculate_skeleton_hashes,
+        vft=runtime_headers.skeleton,
     )
-    joints_off = write_joints(system, source.joints, virtual=_virtual)
+    joints_off = write_joints(
+        system,
+        source.joints,
+        virtual=_virtual,
+        vft=runtime_headers.joints,
+    )
     lights_block_off = write_lights(system, source.lights) if write_extensions else 0
     bound_off = write_bound_resource(system, source.bound) if source.bound is not None else 0
     texture_dictionary_off = _write_embedded_texture_dictionary(system, graphics, source)
@@ -176,9 +202,9 @@ def _write_drawable_payload(
                 graphics,
                 prepared_model,
                 virtual=_virtual,
-                vertex_buffer_vft=_VERTEX_BUFFER_VFT,
-                index_buffer_vft=_INDEX_BUFFER_VFT,
-                drawable_geometry_vft=_DRAWABLE_GEOMETRY_VFT,
+                vertex_buffer_vft=runtime_headers.vertex_buffer,
+                index_buffer_vft=runtime_headers.index_buffer,
+                drawable_geometry_vft=runtime_headers.geometry,
                 gen9=enhanced,
             )
             prepared_model_blocks_by_lod[lod_name].append(prepared_block)
@@ -188,7 +214,7 @@ def _write_drawable_payload(
             system,
             model_off,
             prepared_model_blocks_by_lod[lod_name][model_index],
-            drawable_model_vft=_DRAWABLE_MODEL_VFT,
+            drawable_model_vft=runtime_headers.model,
             virtual=_virtual,
         )
 
@@ -211,7 +237,11 @@ def _write_drawable_payload(
     write_drawable_root(
         system,
         root_offset=root_off,
-        drawable_file_vft=drawable_file_vft,
+        drawable_file_vft=(
+            runtime_headers.drawable
+            if drawable_file_vft is None
+            else int(drawable_file_vft)
+        ),
         unknown_float_sentinel=_UNKNOWN_FLOAT_SENTINEL,
         pages_info_off=pages_info_off,
         shader_group_off=shader_group_off,

@@ -21,6 +21,7 @@ from fivefury.ydr import (
     YdrModel,
     YdrSkeleton,
 )
+from fivefury.ydr.resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
 from fivefury.yft import (
     Yft,
     YftClothBridge,
@@ -155,8 +156,20 @@ def test_yft_shared_matrix_set_roundtrip():
     drawable.skeleton = skeleton
     source = create_yft(drawable, name="matrix_fragment")
 
-    parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    drawable_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, 0x30)[0]
+    )
+    skeleton_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, drawable_offset + 0x18)[0]
+    )
+    parsed = read_yft(raw, resolve_physics_entities=False)
 
+    assert struct.unpack_from("<II", system_data, skeleton_offset) == (
+        LEGACY_FRAGMENT_DRAWABLE_HEADERS.skeleton,
+        RESOURCE_STATE,
+    )
     assert parsed.shared_matrix_set is not None
     assert parsed.shared_matrix_set.matrix_count == 2
     assert parsed.shared_matrix_set.is_skinned is False
@@ -738,6 +751,48 @@ def test_yft_binary_validation_rejects_pointer_outside_resource_chunks():
         for issue in issues
     )
 
+    drawable_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, 0x30)[0]
+    )
+    lod_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, drawable_offset + 0x50)[0]
+    )
+    models_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, lod_offset)[0]
+    )
+    model_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, models_offset)[0]
+    )
+    geometries_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, model_offset + 0x08)[0]
+    )
+    geometry_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, geometries_offset)[0]
+    )
+    broken_system = bytearray(system_data)
+    struct.pack_into(
+        "<Q",
+        broken_system,
+        geometry_offset + 0x18,
+        0x50000000 + header.system_size,
+    )
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    issues = validate_yft_bytes(broken)
+
+    assert any(
+        issue.is_error
+        and issue.path.endswith(".geometries[0].vertex_buffer")
+        and "outside" in issue.message
+        for issue in issues
+    )
+
 
 def test_yft_without_physics_writes_runtime_root_child_header():
     drawable = create_ydr(
@@ -929,6 +984,45 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert struct.unpack_from("<Q", system_data, 0x50)[0] != 0
     assert struct.unpack_from("<Q", system_data, 0x58)[0] != 0
     assert struct.unpack_from("<fff", system_data, 0xCC) == (0.25, 0.5, 0.75)
+    drawable_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, 0x30)[0]
+    )
+    shader_group_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, drawable_offset + 0x10)[0]
+    )
+    lod_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, drawable_offset + 0x50)[0]
+    )
+    model_array_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, lod_offset)[0]
+    )
+    model_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, model_array_offset)[0]
+    )
+    geometry_array_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, model_offset + 0x08)[0]
+    )
+    geometry_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, geometry_array_offset)[0]
+    )
+    vertex_buffer_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, geometry_offset + 0x18)[0]
+    )
+    index_buffer_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, geometry_offset + 0x38)[0]
+    )
+    for offset, expected_vft in (
+        (drawable_offset, LEGACY_FRAGMENT_DRAWABLE_HEADERS.drawable),
+        (shader_group_offset, LEGACY_FRAGMENT_DRAWABLE_HEADERS.shader_group),
+        (model_offset, LEGACY_FRAGMENT_DRAWABLE_HEADERS.model),
+        (geometry_offset, LEGACY_FRAGMENT_DRAWABLE_HEADERS.geometry),
+        (vertex_buffer_offset, LEGACY_FRAGMENT_DRAWABLE_HEADERS.vertex_buffer),
+        (index_buffer_offset, LEGACY_FRAGMENT_DRAWABLE_HEADERS.index_buffer),
+    ):
+        assert struct.unpack_from("<II", system_data, offset) == (
+            expected_vft,
+            RESOURCE_STATE,
+        )
     assert parsed.physics_lod("high") is not None
     lod = parsed.physics_lod("high")
     assert lod.num_children == 1

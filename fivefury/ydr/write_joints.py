@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from ..resource import ResourceWriter
 from .model import YdrJoints
+from .resource_headers import JOINTS_VFT
 
-_JOINTS_VFT = 0x40617800
 _ROTATION_LIMIT_SIZE = 0xC0
 _TRANSLATION_LIMIT_SIZE = 0x40
 
@@ -83,14 +83,21 @@ def _write_translation_limits(system: ResourceWriter, joints: YdrJoints) -> int:
     return base_off
 
 
-def write_joints(system: ResourceWriter, joints: YdrJoints | None, *, virtual) -> int:
+def write_joints(
+    system: ResourceWriter,
+    joints: YdrJoints | None,
+    *,
+    virtual,
+    vft: int = JOINTS_VFT,
+) -> int:
     if joints is None or not joints.has_limits:
         return 0
     joints = joints.build()
     rotation_limits_off = _write_rotation_limits(system, joints)
     translation_limits_off = _write_translation_limits(system, joints)
     joints_off = system.alloc(0x40, 16)
-    system.pack_into("I", joints_off + 0x00, int(joints.vft or _JOINTS_VFT))
+    output_vft = vft if int(joints.vft) in (0, JOINTS_VFT) else joints.vft
+    system.pack_into("I", joints_off + 0x00, int(output_vft))
     system.pack_into("I", joints_off + 0x04, int(joints.unknown_4h))
     system.pack_into("Q", joints_off + 0x08, int(joints.unknown_8h))
     system.pack_into("Q", joints_off + 0x10, virtual(rotation_limits_off) if rotation_limits_off else 0)

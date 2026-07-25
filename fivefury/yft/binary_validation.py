@@ -9,9 +9,9 @@ from ..resource import (
     ResourceHeader,
     parse_rsc7,
 )
+from ..ydr.fixups import audit_legacy_fragment_drawable_fixups
 from .constants import (
     DRAWABLE_ARRAY_COUNT_OFFSET,
-    FRAGMENT_DRAWABLE_SIZE,
     FRAGMENT_ROOT_SIZE,
 )
 from .resource_headers import (
@@ -50,6 +50,7 @@ class _YftBinaryValidator:
         self.system_data = system_data
         self.graphics_data = graphics_data
         self.issues: list[YftValidationIssue] = []
+        self._validated_drawables: set[int] = set()
 
     def error(self, path: str, message: str) -> None:
         self.issues.append(
@@ -98,6 +99,9 @@ class _YftBinaryValidator:
     def u32(self, offset: int) -> int:
         return struct.unpack_from("<I", self.system_data, offset)[0]
 
+    def u16(self, offset: int) -> int:
+        return struct.unpack_from("<H", self.system_data, offset)[0]
+
     def u64(self, offset: int) -> int:
         return struct.unpack_from("<Q", self.system_data, offset)[0]
 
@@ -107,7 +111,7 @@ class _YftBinaryValidator:
         path: str,
         *,
         size: int,
-        expected_vft: int | None,
+        expected_vft: int | tuple[int, ...] | None,
         nullable: bool = False,
     ) -> int | None:
         offset = self.pointer(pointer, path, size=size, nullable=nullable)
@@ -116,11 +120,18 @@ class _YftBinaryValidator:
         vft, state = struct.unpack_from("<II", self.system_data, offset)
         if not vft:
             self.error(f"{path}.vft", "runtime VFT is zero")
-        elif expected_vft is not None and vft != expected_vft:
-            self.error(
-                f"{path}.vft",
-                f"expected 0x{expected_vft:08X}, found 0x{vft:08X}",
+        elif expected_vft is not None:
+            expected = (
+                expected_vft
+                if isinstance(expected_vft, tuple)
+                else (expected_vft,)
             )
+            if vft not in expected:
+                choices = " or ".join(f"0x{value:08X}" for value in expected)
+                self.error(
+                    f"{path}.vft",
+                    f"expected {choices}, found 0x{vft:08X}",
+                )
         if state != RESOURCE_STATE:
             self.error(
                 f"{path}.resource_state",
@@ -155,15 +166,22 @@ class _YftBinaryValidator:
         if self.system_data.find(b"\0", offset) < 0:
             self.error(path, "string is not null terminated")
 
-    def validate_drawable(self, pointer: int, path: str) -> None:
-        offset = self.class_header(
+    def validate_drawable(
+        self,
+        pointer: int,
+        path: str,
+        *,
+        require_shader_group: bool = True,
+    ) -> None:
+        if pointer in self._validated_drawables:
+            return
+        self._validated_drawables.add(pointer)
+        audit_legacy_fragment_drawable_fixups(
+            self,
             pointer,
             path,
-            size=FRAGMENT_DRAWABLE_SIZE,
-            expected_vft=None,
+            require_shader_group=require_shader_group,
         )
-        if offset is None:
-            return
 
     def validate_child(self, pointer: int, path: str) -> None:
         offset = self.class_header(
@@ -180,7 +198,11 @@ class _YftBinaryValidator:
         ):
             entity = self.u64(offset + field_offset)
             if entity:
-                self.validate_drawable(entity, f"{path}.{label}")
+                self.validate_drawable(
+                    entity,
+                    f"{path}.{label}",
+                    require_shader_group=False,
+                )
         for field_offset, label in (
             (0xB0, "continuous_event_set"),
             (0xB8, "collision_event_set"),
