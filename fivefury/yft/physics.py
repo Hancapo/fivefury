@@ -6,6 +6,15 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from .events import YftPhysicsChildEvents, YftPhysicsGroupEvents
+from .resource_headers import (
+    FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+    FRAG_PHYS_TRANSFORMS_VFT,
+    FRAG_PHYSICS_LOD_VFT,
+    FRAG_TYPE_CHILD_VFT,
+    PH_JOINT_1DOF_TYPE_VFT,
+    PH_JOINT_3DOF_TYPE_VFT,
+    RESOURCE_STATE,
+)
 
 if TYPE_CHECKING:
     from ..bounds import Bound
@@ -81,7 +90,7 @@ class YftPhysicsJoint1Dof(YftPhysicsJoint):
     hard_angle_max: float = 0.0
     max_muscle_torque: float = 100_000_000.0
     min_muscle_torque: float = -100_000_000.0
-    vft: int = 0x4062BCB0
+    vft: int = PH_JOINT_1DOF_TYPE_VFT
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -107,7 +116,7 @@ class YftPhysicsJoint3Dof(YftPhysicsJoint):
     )
     soft_limit_lean_strength: float = 1.0
     soft_limit_twist_strength: float = 1.0
-    vft: int = 0x4062BC40
+    vft: int = PH_JOINT_3DOF_TYPE_VFT
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -307,6 +316,8 @@ class YftPhysicsDamping:
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftPhysicsDampArchetype:
     pointer: int = 0
+    vft: int = FRAG_PHYS_ARCHETYPE_DAMP_VFT
+    resource_state: int = RESOURCE_STATE
     resource_type: int = 0
     filename_pointer: int = 0
     bound_pointer: int = 0
@@ -328,6 +339,8 @@ class YftPhysicsDampArchetype:
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftArticulatedBodyType:
     pointer: int = 0
+    vft: int = 0
+    resource_state: int = RESOURCE_STATE
     joint_parent_indices: tuple[int, ...] = ()
     replace_upon_reresource: float = 0.0
     angular_decay_rate: float = 0.0
@@ -361,8 +374,8 @@ YftMatrix44 = tuple[
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftPhysicsTransforms:
     matrices: tuple[YftMatrix44, ...] = ()
-    resource_tag: int = 0x54534552
-    resource_state: int = 0
+    vft: int = FRAG_PHYS_TRANSFORMS_VFT
+    resource_state: int = RESOURCE_STATE
     reserved_08: int = 0
     reserved_14: int = 0
     reserved_18: int = 0
@@ -381,6 +394,8 @@ class YftPhysicsTransforms:
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftPhysicsChild:
     pointer: int = 0
+    vft: int = FRAG_TYPE_CHILD_VFT
+    resource_state: int = RESOURCE_STATE
     undamaged_mass: float = 0.0
     damaged_mass: float = 0.0
     owner_group_pointer_index: int = 0
@@ -486,6 +501,8 @@ class YftPhysicsChild:
 class YftPhysicsLod:
     label: str
     pointer: int = 0
+    vft: int = FRAG_PHYSICS_LOD_VFT
+    resource_state: int = RESOURCE_STATE
     smallest_ang_inertia: float = 0.0
     largest_ang_inertia: float = 0.0
     min_move_force: float = 0.0

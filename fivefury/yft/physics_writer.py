@@ -20,6 +20,15 @@ from .physics import (
     YftPhysicsTransforms,
 )
 from .physics_authoring import normalize_physics_lod
+from .resource_headers import (
+    FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+    FRAG_PHYS_TRANSFORMS_VFT,
+    FRAG_PHYSICS_LOD_VFT,
+    FRAG_TYPE_CHILD_VFT,
+    PH_JOINT_1DOF_TYPE_VFT,
+    PH_JOINT_3DOF_TYPE_VFT,
+    RESOURCE_STATE,
+)
 
 _PHYSICS_LOD_GROUP_SIZE = 0x30
 _PHYSICS_LOD_SIZE = 0x130
@@ -29,6 +38,30 @@ _ARCHETYPE_DAMP_SIZE = 0xE0
 _ARTICULATED_BODY_SIZE = 0xA4
 _JOINT_1DOF_SIZE = 0xB0
 _JOINT_3DOF_SIZE = 0xF0
+
+
+def _write_resource_header(
+    writer: ResourceWriter,
+    offset: int,
+    *,
+    vft: int,
+    resource_state: int,
+    expected_vft: int | None,
+    label: str,
+) -> None:
+    if not int(vft):
+        raise ValueError(f"{label} requires an explicit non-zero runtime VFT")
+    if expected_vft is not None and int(vft) != expected_vft:
+        raise ValueError(
+            f"{label} uses unsupported VFT 0x{int(vft):08X}; "
+            f"expected 0x{expected_vft:08X}"
+        )
+    if int(resource_state) != RESOURCE_STATE:
+        raise ValueError(
+            f"{label} uses unsupported resource state {int(resource_state)}; "
+            f"expected {RESOURCE_STATE}"
+        )
+    writer.pack_into("II", offset, int(vft), RESOURCE_STATE)
 
 
 def _virtual(offset: int) -> int:
@@ -97,8 +130,14 @@ def _write_physics_transforms(
     if not transforms.matrices:
         return 0
     offset = writer.alloc(0x20 + len(transforms.matrices) * 64, 16)
-    writer.pack_into("I", offset, int(transforms.resource_tag))
-    writer.pack_into("I", offset + 4, int(transforms.resource_state))
+    _write_resource_header(
+        writer,
+        offset,
+        vft=transforms.vft,
+        resource_state=transforms.resource_state,
+        expected_vft=FRAG_PHYS_TRANSFORMS_VFT,
+        label="fragPhysTransforms",
+    )
     writer.pack_into("Q", offset + 8, int(transforms.reserved_08))
     writer.pack_into("I", offset + 0x10, len(transforms.matrices))
     writer.pack_into("I", offset + 0x14, int(transforms.reserved_14))
@@ -111,11 +150,21 @@ def _write_physics_transforms(
 
 
 def _group_name_offsets(writer: ResourceWriter, lod: YftPhysicsLod) -> int:
-    names = lod.group_names or tuple(group.name or group.debug_name for group in lod.groups)
-    if not names:
-        return 0
-    offsets = [writer.c_string(name or f"group_{index}") for index, name in enumerate(names)]
-    return _write_pointer_array(writer, [_virtual(offset) for offset in offsets])
+    declared_names = tuple(lod.group_names)
+    names = tuple(
+        (
+            declared_names[index]
+            if index < len(declared_names) and declared_names[index]
+            else group.name or group.debug_name or f"group_{index}"
+        )
+        for index, group in enumerate(lod.groups)
+    )
+    offsets = [writer.c_string(name) for name in names]
+    # The resource constructor writes a static sentinel into slot N.
+    return _write_pointer_array(
+        writer,
+        [*(_virtual(offset) for offset in offsets), 0],
+    )
 
 
 def _write_physics_group(
@@ -220,6 +269,14 @@ def _write_physics_child(
     event_set_offsets: dict[int, int],
 ) -> int:
     child_offset = writer.alloc(_PHYSICS_CHILD_SIZE, 16) if offset is None else offset
+    _write_resource_header(
+        writer,
+        child_offset,
+        vft=child.vft,
+        resource_state=child.resource_state,
+        expected_vft=FRAG_TYPE_CHILD_VFT,
+        label="fragTypeChild",
+    )
     writer.pack_into("ff", child_offset + 0x08, child.undamaged_mass, child.damaged_mass)
     writer.data[child_offset + 0x10] = int(child.owner_group_pointer_index) & 0xFF
     writer.data[child_offset + 0x11] = int(child.flags) & 0xFF
@@ -263,6 +320,14 @@ def _write_damp_archetype(
     bound_pointer: int,
 ) -> int:
     offset = writer.alloc(_ARCHETYPE_DAMP_SIZE, 16)
+    _write_resource_header(
+        writer,
+        offset,
+        vft=archetype.vft,
+        resource_state=archetype.resource_state,
+        expected_vft=FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+        label="phArchetypeDamp",
+    )
     writer.pack_into("i", offset + 0x10, int(archetype.resource_type or 2))
     writer.pack_into("Q", offset + 0x18, int(archetype.filename_pointer))
     writer.pack_into("Q", offset + 0x20, int(bound_pointer))
@@ -292,6 +357,14 @@ def _write_articulated_body_type(
     if body is None:
         return 0
     offset = writer.alloc(_ARTICULATED_BODY_SIZE, 16)
+    _write_resource_header(
+        writer,
+        offset,
+        vft=body.vft,
+        resource_state=body.resource_state,
+        expected_vft=None,
+        label="phArticulatedBodyType",
+    )
     parent_indices = tuple(body.joint_parent_indices) or (-1,) * 23
     for index in range(23):
         value = parent_indices[index] if index < len(parent_indices) else -1
@@ -334,7 +407,20 @@ def _write_physics_joint(
     else:
         raise TypeError("YFT resources only support 1DOF and 3DOF joint types")
     offset = writer.alloc(size, 16)
-    writer.pack_into("IIQf", offset, joint.vft, joint.resource_state, 0, joint.default_stiffness)
+    expected_vft = (
+        PH_JOINT_1DOF_TYPE_VFT
+        if isinstance(joint, YftPhysicsJoint1Dof)
+        else PH_JOINT_3DOF_TYPE_VFT
+    )
+    _write_resource_header(
+        writer,
+        offset,
+        vft=joint.vft,
+        resource_state=joint.resource_state,
+        expected_vft=expected_vft,
+        label=type(joint).__name__,
+    )
+    writer.pack_into("Qf", offset + 0x08, 0, joint.default_stiffness)
     writer.data[offset + 0x14] = 1 if joint.enforce_exceeded_limits else 0
     writer.data[offset + 0x15] = int(joint.joint_type)
     writer.data[offset + 0x16] = int(joint.parent_link_index) & 0xFF
@@ -454,6 +540,14 @@ def _write_physics_lod(
     self_collision_b_offset = _write_u8_array(writer, [second for _first, second in lod.self_collision_pairs])
 
     offset = writer.alloc(_PHYSICS_LOD_SIZE, 16)
+    _write_resource_header(
+        writer,
+        offset,
+        vft=lod.vft,
+        resource_state=lod.resource_state,
+        expected_vft=FRAG_PHYSICS_LOD_VFT,
+        label="fragPhysicsLOD",
+    )
     writer.pack_into("fff", offset + 0x14, lod.smallest_ang_inertia, lod.largest_ang_inertia, lod.min_move_force)
     writer.pack_into("Q", offset + 0x20, _virtual(body_offset) if body_offset else 0)
     writer.pack_into("Q", offset + 0x28, _virtual(min_impulses_offset) if min_impulses_offset else 0)
