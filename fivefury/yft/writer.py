@@ -14,16 +14,14 @@ from ..resource import (
     layout_resource_sections,
 )
 from ..ydr import Ydr, YdrBuild, YdrLight
-from ..ydr.builder import (
-    _EMBEDDED_DRAWABLE_FILE_VFT,
-    _write_drawable_payload,
-)
+from ..ydr.builder import _write_drawable_payload
 from ..ydr.prepare import (
     PreparedLods,
     PreparedMaterial,
     compute_model_collection_bounds,
     prepare_build,
 )
+from ..ydr.resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
 from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
@@ -485,7 +483,7 @@ def _build_yft_payload(
             item.lods,
             page_counts,
             root_off=item.root_offset,
-            drawable_file_vft=_EMBEDDED_DRAWABLE_FILE_VFT,
+            runtime_headers=LEGACY_FRAGMENT_DRAWABLE_HEADERS,
             write_pages=False,
             write_extensions=False,
         )

@@ -5,9 +5,14 @@ import struct
 
 from ..buckets import at_hash_bucket_capacity
 from ..resource import ResourceWriter
-from .model import Matrix4, YdrBone, YdrBoneFlags, YdrSkeleton, calculate_skeleton_unknown_hashes
-
-_SKELETON_VFT = 0x40613CA0
+from .model import (
+    Matrix4,
+    YdrBone,
+    YdrBoneFlags,
+    YdrSkeleton,
+    calculate_skeleton_unknown_hashes,
+)
+from .resource_headers import SKELETON_VFT
 
 
 def _identity_matrix() -> Matrix4:
@@ -179,6 +184,7 @@ def write_skeleton(
     *,
     virtual,
     recalculate_hashes: bool = False,
+    vft: int = SKELETON_VFT,
 ) -> int:
     if skeleton is None or not skeleton.bones:
         return 0
@@ -250,7 +256,7 @@ def write_skeleton(
     )
 
     skeleton_off = system.alloc(112, 16)
-    system.pack_into("I", skeleton_off + 0x00, _SKELETON_VFT)
+    system.pack_into("I", skeleton_off + 0x00, int(vft))
     system.pack_into("I", skeleton_off + 0x04, 1)
     system.pack_into("Q", skeleton_off + 0x08, 0)
     system.pack_into("Q", skeleton_off + 0x10, virtual(bone_tags_off) if bone_tags_off else 0)

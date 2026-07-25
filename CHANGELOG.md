@@ -9,12 +9,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 - Binary YFT validation reports invalid resource pointers, class headers, page maps, and physics-array dimensions before files are saved.
+- Fragment drawable fixup validation covers shaders, skeletons, joints, models, geometries, buffers, and fragment-specific arrays.
 
 ### Fixed
 - YFT physics structures now use runtime-compatible class headers and resource states.
 - YFT group-name arrays reserve the sentinel slot required by the resource constructor.
 - Multi-child props no longer receive an unrelated Euphoria articulated body automatically.
 - Root fragment children now receive their required runtime header even when no physics LOD is present.
+- Embedded YFT drawables now use the runtime class headers present in legacy breakable props without changing standalone YDR output.
 
 ## [0.2.9] - 2026-07-24
 
