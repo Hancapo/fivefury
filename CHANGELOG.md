@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-07-25
+
 ### Added
 - Public `YnvEdgeFlags` names expose adjacency-disabled, cover, high-drop, and external-edge semantics without requiring callers to edit packed bits.
 
