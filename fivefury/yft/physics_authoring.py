@@ -20,6 +20,7 @@ from .physics import (
     YftPhysicsLodPointers,
     YftPhysicsTransforms,
 )
+from .resource_headers import PH_ARTICULATED_BODY_TYPE_EUPHORIA_VFT
 
 DEFAULT_DAMPING_CONSTANTS: tuple[YftPhysicsDamping, ...] = (
     YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_CONSTANT, (0.02, 0.02, 0.02)),
@@ -124,6 +125,7 @@ def default_articulated_body_type(
         for index in range(joints)
     )
     return YftArticulatedBodyType(
+        vft=PH_ARTICULATED_BODY_TYPE_EUPHORIA_VFT,
         joint_parent_indices=tuple(parent_indices[:23]),
         num_links=links,
         num_joints=joints,
@@ -231,9 +233,6 @@ def normalize_physics_lod(
         mass=sum(child.damaged_mass for child in resolved_children) or total_mass,
         damping_constants=damping_constants,
     )
-    articulated = lod.articulated_body_type
-    if articulated is None and len(resolved_children) > 1:
-        articulated = default_articulated_body_type(link_count=len(resolved_children))
     return dataclasses.replace(
         lod,
         num_groups=len(resolved_groups),
@@ -258,7 +257,7 @@ def normalize_physics_lod(
         composite_bound=bound,
         undamaged_damp_archetype=damp_undamaged,
         damaged_damp_archetype=damp_damaged,
-        articulated_body_type=articulated,
+        articulated_body_type=lod.articulated_body_type,
     )
 
 

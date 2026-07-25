@@ -119,7 +119,7 @@ def read_physics_transforms(
         )
     return YftPhysicsTransforms(
         matrices=tuple(matrices),
-        resource_tag=_u32(system_data, offset),
+        vft=_u32(system_data, offset),
         resource_state=_u32(system_data, offset + 4),
         reserved_08=_u64(system_data, offset + 8),
         reserved_14=_u32(system_data, offset + 0x14),
@@ -244,6 +244,8 @@ def read_articulated_body_type(
     joint_types = _read_joint_types(system_data, offset + 0x8A, num_joints)
     return YftArticulatedBodyType(
         pointer=pointer,
+        vft=_u32(system_data, offset),
+        resource_state=_u32(system_data, offset + 4),
         joint_parent_indices=tuple(
             _i32(system_data, offset + 0x10 + index * 4)
             for index in range(_ARTICULATED_BODY_MAX_LINKS)
@@ -283,6 +285,8 @@ def read_damp_archetype(
         return None
     return YftPhysicsDampArchetype(
         pointer=pointer,
+        vft=_u32(system_data, offset),
+        resource_state=_u32(system_data, offset + 4),
         resource_type=_i32(system_data, offset + 0x10),
         filename_pointer=_u64(system_data, offset + 0x18),
         bound_pointer=_u64(system_data, offset + 0x20),
@@ -415,6 +419,8 @@ def read_physics_child(
         return None
     return YftPhysicsChild(
         pointer=pointer,
+        vft=_u32(system_data, offset),
+        resource_state=_u32(system_data, offset + 4),
         undamaged_mass=float(_f32(system_data, offset + 0x08)),
         damaged_mass=float(_f32(system_data, offset + 0x0C)),
         owner_group_pointer_index=system_data[offset + 0x10],
@@ -691,6 +697,8 @@ def read_physics_lod(
     return YftPhysicsLod(
         label=label,
         pointer=pointer,
+        vft=_u32(system_data, offset),
+        resource_state=_u32(system_data, offset + 4),
         smallest_ang_inertia=float(_f32(system_data, offset + 0x14)),
         largest_ang_inertia=float(_f32(system_data, offset + 0x18)),
         min_move_force=float(_f32(system_data, offset + 0x1C)),

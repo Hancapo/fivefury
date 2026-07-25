@@ -4,7 +4,7 @@ import dataclasses
 import struct
 
 from fivefury import BoundBox, YdrMaterialInput, YdrMeshInput, create_ydr
-from fivefury.resource import build_rsc7, split_rsc7_sections
+from fivefury.resource import build_rsc7, split_rsc7_sections, virtual_to_offset
 from fivefury.ydr import (
     Ydr,
     YdrLight,
@@ -45,6 +45,14 @@ from fivefury.yft import (
     read_yft,
     scan_yft_corpus,
     validate_yft,
+)
+from fivefury.yft.resource_headers import (
+    FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+    FRAG_PHYS_TRANSFORMS_VFT,
+    FRAG_PHYSICS_LOD_VFT,
+    FRAG_TYPE_CHILD_VFT,
+    PH_JOINT_3DOF_TYPE_VFT,
+    RESOURCE_STATE,
 )
 
 
@@ -352,6 +360,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     system_data[0x1F0:0x1FA] = b"tune_name\0"
     system_data[0x1D0:0x1D8] = b"extra\0\0\0"
     struct.pack_into("<fff", system_data, 0x214, 0.25, 12.5, 500.0)
+    struct.pack_into("<II", system_data, 0x200, FRAG_PHYSICS_LOD_VFT, RESOURCE_STATE)
     struct.pack_into("<Q", system_data, 0x220, 0x500006E0)
     struct.pack_into("<Q", system_data, 0x228, 0x50000600)
     struct.pack_into("<fff", system_data, 0x230, 1.0, 2.0, 3.0)
@@ -375,12 +384,24 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     struct.pack_into("<f", system_data, 0x4D8, 1.0)
     system_data[0x500:0x507] = b"GroupA\0"
     struct.pack_into("<ff", system_data, 0x548, 10.0, 11.0)
+    struct.pack_into("<II", system_data, 0x540, FRAG_TYPE_CHILD_VFT, RESOURCE_STATE)
     system_data[0x550:0x554] = bytes([0, 0, 7, 0])
+    struct.pack_into("<II", system_data, 0x5F0, FRAG_TYPE_CHILD_VFT, RESOURCE_STATE)
     struct.pack_into("<QQ", system_data, 0x5E0, 0x50000680, 0x50000690)
     struct.pack_into("<ffff", system_data, 0x600, 100.0, 101.0, 102.0, 103.0)
     struct.pack_into("<ffff", system_data, 0x620, 1.0, 2.0, 3.0, 4.0)
     struct.pack_into("<ffff", system_data, 0x660, 5.0, 6.0, 7.0, 8.0)
-    struct.pack_into("<IIQIIQ", system_data, 0xB00, 0x54534552, 0, 0, 1, 0, 0)
+    struct.pack_into(
+        "<IIQIIQ",
+        system_data,
+        0xB00,
+        FRAG_PHYS_TRANSFORMS_VFT,
+        RESOURCE_STATE,
+        0,
+        1,
+        0,
+        0,
+    )
     struct.pack_into(
         "<16f",
         system_data,
@@ -409,15 +430,24 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     system_data[0x780] = 1
     struct.pack_into("<Q", system_data, 0xA00, 0x50000A50)
     struct.pack_into(
+        "<II", system_data, 0xA50, PH_JOINT_3DOF_TYPE_VFT, RESOURCE_STATE
+    )
+    struct.pack_into(
         "<ffffffff", system_data, 0xA10, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
     )
     struct.pack_into("<i", system_data, 0x810, 2)
+    struct.pack_into(
+        "<II", system_data, 0x800, FRAG_PHYS_ARCHETYPE_DAMP_VFT, RESOURCE_STATE
+    )
     struct.pack_into("<QQ", system_data, 0x818, 0x50000A70, 0x50000A80)
     struct.pack_into("<IIH", system_data, 0x828, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFF)
     struct.pack_into("<ffffff", system_data, 0x840, 10.0, 0.1, 1.0, 500.0, 6.28, 0.5)
     struct.pack_into("<ffffff", system_data, 0x860, 11.0, 12.0, 13.0, 0.01, 0.02, 0.03)
     struct.pack_into("<fff", system_data, 0x880, 0.7, 0.8, 0.9)
     struct.pack_into("<i", system_data, 0x910, 2)
+    struct.pack_into(
+        "<II", system_data, 0x900, FRAG_PHYS_ARCHETYPE_DAMP_VFT, RESOURCE_STATE
+    )
     struct.pack_into("<ffffff", system_data, 0x940, 20.0, 0.05, 1.0, 500.0, 6.28, 0.25)
     struct.pack_into("<fff", system_data, 0x980, 0.4, 0.5, 0.6)
     struct.pack_into("<I", system_data, 0xA90, 0x74536353)
@@ -469,6 +499,8 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     assert yft.physics_lods.active_count == 1
     assert len(yft.physics_lod_details) == 1
     assert yft.physics_lod_details[0].label == "high"
+    assert yft.physics_lod_details[0].vft == FRAG_PHYSICS_LOD_VFT
+    assert yft.physics_lod_details[0].resource_state == RESOURCE_STATE
     assert yft.physics_lod_details[0].smallest_ang_inertia == 0.25
     assert yft.physics_lod_details[0].root_cg_offset == (1.0, 2.0, 3.0)
     assert yft.physics_lod_details[0].num_groups == 1
@@ -494,6 +526,8 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     assert len(yft.physics_groups()) == 1
     assert len(yft.physics_children()) == 2
     assert yft.physics_lod_details[0].children[0].undamaged_mass == 10.0
+    assert yft.physics_lod_details[0].children[0].vft == FRAG_TYPE_CHILD_VFT
+    assert yft.physics_lod_details[0].children[0].resource_state == RESOURCE_STATE
     assert yft.physics_lod_details[0].children[0].damaged_mass == 11.0
     assert yft.physics_lod_details[0].children[0].bone_id == 7
     assert yft.physics_lod_details[0].children[0].owner_group_name == "GroupA"
@@ -511,6 +545,10 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     assert yft.physics_lod_details[0].articulated_body_type.num_joints == 1
     assert yft.physics_lod_details[0].articulated_body_type.locally_owned is True
     assert yft.physics_lod_details[0].undamaged_damp_archetype is not None
+    assert (
+        yft.physics_lod_details[0].undamaged_damp_archetype.vft
+        == FRAG_PHYS_ARCHETYPE_DAMP_VFT
+    )
     assert yft.physics_lod_details[0].undamaged_damp_archetype.mass == 10.0
     assert yft.physics_lod_details[0].undamaged_damp_archetype.damping_constants[
         0
@@ -525,6 +563,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         0.0,
         10.0,
     )
+    assert yft.physics_lod_details[0].link_attachments.vft == FRAG_PHYS_TRANSFORMS_VFT
     assert yft.physics_lod_details[0].children[0].undamaged_ang_inertia.as_tuple() == (
         1.0,
         2.0,
@@ -684,6 +723,53 @@ def test_yft_declarative_physics_validation():
     )
 
 
+def test_multichild_prop_does_not_invent_euphoria_body():
+    from fivefury.yft import normalize_physics_lod, simple_physics_bound
+
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="default",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="default")],
+        name="breakable_prop",
+    )
+    bound = simple_physics_bound()
+    drawable.bound = bound
+    children = (
+        YftPhysicsChild.declare(undamaged_mass=1.0),
+        YftPhysicsChild.declare(undamaged_mass=1.0),
+    )
+    group = YftPhysicsGroup.declare("breakable_prop", children=children)
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare("high", groups=(group,)),
+        composite_bound=simple_physics_bound(),
+    )
+    source = create_yft(
+        drawable,
+        name="breakable_prop",
+        physics_lods=(lod,),
+        physics_bound=bound,
+    )
+    parsed = read_yft(
+        build_yft_bytes(source),
+        resolve_physics_entities=False,
+    )
+
+    assert len(lod.children) == 2
+    assert lod.articulated_body_type is None
+    assert parsed.physics_lod("high").body_type_pointer == 0
+    assert parsed.physics_lod("high").articulated_body_type is None
+
+
 def test_create_yft_writes_declared_physics_lod(tmp_path):
     build = create_ydr(
         meshes=[
@@ -777,6 +863,30 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert lod.link_attachments.count == 1
     assert lod.link_attachments.matrices[0][3] == (0.0, 0.0, 0.0, 1.0)
     assert lod.undamaged_damp_archetype is not None
+    lod_offset = virtual_to_offset(lod.pointer)
+    child_offset = virtual_to_offset(lod.child_pointers[0])
+    transforms_offset = virtual_to_offset(lod.link_attachments_pointer)
+    damp_offset = virtual_to_offset(lod.phys_damp_undamaged_pointer)
+    group_names_offset = virtual_to_offset(lod.group_names_pointer)
+    assert struct.unpack_from("<II", system_data, lod_offset) == (
+        FRAG_PHYSICS_LOD_VFT,
+        RESOURCE_STATE,
+    )
+    assert struct.unpack_from("<II", system_data, child_offset) == (
+        FRAG_TYPE_CHILD_VFT,
+        RESOURCE_STATE,
+    )
+    assert struct.unpack_from("<II", system_data, transforms_offset) == (
+        FRAG_PHYS_TRANSFORMS_VFT,
+        RESOURCE_STATE,
+    )
+    assert struct.unpack_from("<II", system_data, damp_offset) == (
+        FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+        RESOURCE_STATE,
+    )
+    assert struct.unpack_from(
+        "<Q", system_data, group_names_offset + lod.num_groups * 8
+    )[0] == 0
     assert parsed.validate() == []
 
     parsed.main_drawable.extra_bound_indices = (7,)
