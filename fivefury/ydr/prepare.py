@@ -38,6 +38,7 @@ from .shaders import (
 
 if TYPE_CHECKING:
     from .gen9 import ShaderGen9Definition
+    from .model import Matrix4, YdrSkeleton
 
 T = TypeVar("T")
 
@@ -459,8 +460,35 @@ def compute_bounds(positions: Sequence[tuple[float, float, float]]) -> tuple[tup
     return centre, bb_min, bb_max, radius
 
 
-def compute_model_collection_bounds(models: Sequence[PreparedModel]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
-    position_groups = [mesh.positions for model in models for mesh in model.meshes if mesh.positions]
+def compute_model_collection_bounds(
+    models: Sequence[PreparedModel],
+    *,
+    skeleton: YdrSkeleton | None = None,
+) -> tuple[
+    tuple[float, float, float],
+    tuple[float, float, float],
+    tuple[float, float, float],
+    float,
+]:
+    absolute_transforms = _skeleton_absolute_transforms(skeleton)
+    position_groups = []
+    for model in models:
+        transform = None
+        binding = model.skeleton_binding
+        if (
+            absolute_transforms
+            and not binding.is_skinned
+            and 0 <= int(binding.bone_index) < len(absolute_transforms)
+        ):
+            transform = absolute_transforms[int(binding.bone_index)]
+        for mesh in model.meshes:
+            if not mesh.positions:
+                continue
+            position_groups.append(
+                mesh.positions
+                if transform is None
+                else [_transform_position(position, transform) for position in mesh.positions]
+            )
     if not position_groups:
         return compute_bounds(())
     mesh_bounds = [_native_backend._bounds_from_vertices(positions) for positions in position_groups]
@@ -472,6 +500,67 @@ def compute_model_collection_bounds(models: Sequence[PreparedModel]) -> tuple[tu
         for positions in position_groups
     )
     return centre, bb_min, bb_max, radius
+
+
+def _skeleton_absolute_transforms(
+    skeleton: YdrSkeleton | None,
+) -> list[Matrix4]:
+    if skeleton is None or not skeleton.bones:
+        return []
+    from .write_skeleton import _compose_local_transform
+
+    local = (
+        list(skeleton.transformations)
+        if len(skeleton.transformations) == len(skeleton.bones)
+        else [_compose_local_transform(bone) for bone in skeleton.bones]
+    )
+    absolute: list[Matrix4 | None] = [None] * len(skeleton.bones)
+
+    def resolve(index: int) -> Matrix4:
+        cached = absolute[index]
+        if cached is not None:
+            return cached
+        matrix = _as_affine(local[index])
+        parent = int(skeleton.bones[index].parent_index)
+        if 0 <= parent < len(skeleton.bones) and parent != index:
+            matrix = _multiply_matrix(matrix, resolve(parent))
+        absolute[index] = matrix
+        return matrix
+
+    return [resolve(index) for index in range(len(skeleton.bones))]
+
+
+def _as_affine(matrix: Matrix4) -> Matrix4:
+    return (
+        (float(matrix[0][0]), float(matrix[0][1]), float(matrix[0][2]), 0.0),
+        (float(matrix[1][0]), float(matrix[1][1]), float(matrix[1][2]), 0.0),
+        (float(matrix[2][0]), float(matrix[2][1]), float(matrix[2][2]), 0.0),
+        (float(matrix[3][0]), float(matrix[3][1]), float(matrix[3][2]), 1.0),
+    )
+
+
+def _multiply_matrix(left: Matrix4, right: Matrix4) -> Matrix4:
+    return tuple(
+        tuple(
+            sum(left[row][inner] * right[inner][column] for inner in range(4))
+            for column in range(4)
+        )
+        for row in range(4)
+    )
+
+
+def _transform_position(
+    position: tuple[float, float, float],
+    matrix: Matrix4,
+) -> tuple[float, float, float]:
+    x, y, z = (float(value) for value in position)
+    return tuple(
+        x * matrix[0][axis]
+        + y * matrix[1][axis]
+        + z * matrix[2][axis]
+        + matrix[3][axis]
+        for axis in range(3)
+    )
 
 
 def _copy_vertex_channel(channel: Sequence[T] | None, vertex_indices: Sequence[int]) -> list[T] | None:

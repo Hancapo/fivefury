@@ -554,6 +554,7 @@ _KIND_DICT_TYPES: dict[str, GameFileType] = {
     "GtxdDict": GameFileType.GTXD,
     "AwcDict": GameFileType.AWC,
     "YedDict": GameFileType.YED,
+    "HeightMapDict": GameFileType.HEIGHTMAP,
     "WaterDict": GameFileType.WATER,
     "WaterMapDict": GameFileType.WATER,
 }

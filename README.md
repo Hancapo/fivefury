@@ -29,6 +29,7 @@ The Assimp-backed import helpers (`assimp_to_ydr`, `obj_to_ydr`, `fbx_to_ydr`, `
 | `YTD` | Full | Texture dictionaries: read/write, extraction, embedded-asset helpers |
 | `YND` | Full | Path nodes, links, area partitioning, junction heightmaps |
 | `YNV` | Full | Navmeshes: sectors, polys, portals, validation, basic OBJ partitioning |
+| `heightmap.dat` | Full | World-height grids, native quantization, row RLE, water masks, spatial queries |
 | `water.xml` | Full | Water surfaces, triangle corners, calming regions, wave amplitude and direction |
 | `CUT` | Full | Cutscenes, plus the readable `.cuts` script format for round-trip authoring |
 | `GXT2` | Full | Hashed text tables with binary read/write and text import/export |
@@ -125,6 +126,21 @@ water.add(
     )
 )
 water.translate(x=500, y=-200, z=20.0).save("water.xml")
+```
+
+### Author a world height map
+
+```python
+from fivefury import HeightMap, HeightMapBounds
+
+heightmap = HeightMap.empty(
+    columns=10,
+    rows=10,
+    bounds=HeightMapBounds(0.0, 0.0, 0.0, 500.0, 500.0, 800.0),
+)
+heightmap.set_height(4, 6, minimum=32.0, maximum=78.0)
+heightmap.set_water(4, 6)
+heightmap.save("heightmap.dat")
 ```
 
 ### Convert audio to AWC

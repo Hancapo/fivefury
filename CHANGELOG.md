@@ -7,9 +7,15 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-07-24
+
+### Added
+- Readable and writable `heightmap.dat` world-height grids with native quantization, row RLE, water masks, spatial queries, validation, and cache integration.
+
 ### Fixed
 - Python 3.11 wheel imports no longer fail in native hash initialization.
 - Slotted dataclass inheritance no longer relies on version-specific zero-argument `super()` behavior.
+- YDR and YFT bounds now include rigid bone transformations.
 
 ## [0.2.8] - 2026-07-24
 

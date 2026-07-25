@@ -572,7 +572,8 @@ def build_yft_bytes(
         raise ValueError("YFT writer requires a common drawable")
     if source.bounding_sphere == (0.0, 0.0, 0.0, 0.0):
         _center, _bounds_min, _bounds_max, radius = compute_model_collection_bounds(
-            [model for lods in prepared[0].lods.values() for model in lods]
+            [model for lods in prepared[0].lods.values() for model in lods],
+            skeleton=prepared[0].build.skeleton,
         )
         source = dataclasses.replace(source, bounding_sphere=(*_center, float(radius)))
 

@@ -170,6 +170,26 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
 
 
+def test_rigid_bone_binding_is_applied_to_drawable_bounds(tmp_path: Path) -> None:
+    skeleton = YdrSkeleton.create()
+    root = skeleton.add_bone("root")
+    skeleton.add_bone("piece", parent=root, translation=(10.0, 2.0, 3.0))
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        skeleton=skeleton,
+        skeleton_binding=YdrSkeletonBinding.rigid(bone_index=1),
+        name="rigid_piece_bounds",
+    )
+
+    ydr_path = tmp_path / "rigid_piece_bounds.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    assert ydr.bounding_box_min == pytest.approx((10.0, 2.0, 3.0))
+    assert ydr.bounding_box_max == pytest.approx((11.0, 3.0, 3.0))
+    assert ydr.bounding_center == pytest.approx((10.5, 2.5, 3.0))
+
+
 def test_create_ydr_writes_legacy_texture_base_contract(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],

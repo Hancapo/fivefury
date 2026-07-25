@@ -10,6 +10,7 @@ from ..cut import read_cut
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..gtxd import read_gtxd
 from ..gxt2 import read_gxt2
+from ..heightmap import read_heightmap
 from ..hashing import _get_lut
 from ..metahash import MetaHash
 from ..rel import read_rel
@@ -66,6 +67,8 @@ def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: Game
 def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
     name = Path(path).name.lower()
+    if name.startswith("heightmap") and name.endswith(".dat"):
+        return _decode_or_fallback(GameFileType.HEIGHTMAP, data, data, read_heightmap)
     if name == "water.xml":
         return _decode_or_fallback(GameFileType.WATER, data, data, read_water)
     if name == "gtxd.meta":
