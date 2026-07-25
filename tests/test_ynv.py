@@ -13,6 +13,8 @@ from fivefury import (
     YnvAdjacencyType,
     YnvContentFlags,
     YnvEdge,
+    YnvEdgeFlags,
+    YnvEdgePart,
     YnvPoint,
     YnvPointType,
     YnvPoly,
@@ -231,6 +233,41 @@ def test_edge_adjacency_type_roundtrips_from_detail_bits() -> None:
     assert isinstance(edge_part.adjacency_type, YnvAdjacencyType)
 
 
+def test_edge_part_uses_gta_v_15_bit_polygon_layout() -> None:
+    part = YnvEdgePart(
+        area_id=42,
+        poly_id=0x4567,
+        adjacency_type=YnvAdjacencyType.CLIMB_HIGH,
+    )
+    part.space_around_vertex = 17
+    part.space_beyond_edge = 7
+
+    value = part.to_value({42: 3})
+
+    assert value == (3 | (0x4567 << 5) | (2 << 20) | (17 << 22) | (7 << 27))
+    rebuilt = YnvEdgePart.from_value(value, [0, 0, 0, 42])
+    assert rebuilt.area_id == 42
+    assert rebuilt.poly_id == 0x4567
+    assert rebuilt.adjacency_type == YnvAdjacencyType.CLIMB_HIGH
+    assert rebuilt.space_around_vertex == 17
+    assert rebuilt.space_beyond_edge == 7
+
+
+def test_empty_edge_part_uses_7fff_polygon_sentinel() -> None:
+    part = YnvEdgePart()
+
+    assert part.poly_id == 0x7FFF
+    assert (part.to_value({0x3FFF: 0}) >> 5) & 0x7FFF == 0x7FFF
+
+
+def test_edge_secondary_word_exposes_named_flags() -> None:
+    edge = YnvEdge()
+    edge.flags = YnvEdgeFlags.HIGH_DROP_OVER_EDGE | YnvEdgeFlags.EXTERNAL_EDGE
+
+    assert edge.flags == (YnvEdgeFlags.HIGH_DROP_OVER_EDGE | YnvEdgeFlags.EXTERNAL_EDGE)
+    assert (edge.poly2.to_value({0x3FFF: 0}) >> 20) == 0xC
+
+
 def test_reference_point_and_portal_types_are_typed() -> None:
     paths = _reference_ynv_paths()
     if not paths:
@@ -313,6 +350,89 @@ def test_writer_rejects_invalid_poly_index_span() -> None:
     sample.polys[0].index_id = len(sample.indices)
     with pytest.raises(ValueError, match="index span"):
         build_ynv_bytes(sample)
+
+
+def test_writer_rejects_more_than_15_bit_polygon_capacity() -> None:
+    poly = YnvPoly(index_count=3, area_id=0)
+    ynv = Ynv(
+        vertices=[
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ],
+        indices=[0, 1, 2],
+        edges=[YnvEdge(), YnvEdge(), YnvEdge()],
+        polys=[poly] * 0x8000,
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    with pytest.raises(ValueError, match="at most 32767 polygons"):
+        build_ynv_bytes(ynv)
+
+
+def test_writer_rejects_more_than_16_bit_polygon_index_capacity() -> None:
+    ynv = Ynv(
+        vertices=[(0.0, 0.0, 0.0)],
+        indices=[0] * 0x10001,
+        edges=[YnvEdge()] * 0x10001,
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    with pytest.raises(ValueError, match="at most 65536 polygon indices"):
+        build_ynv_bytes(ynv)
+
+
+def test_writer_rejects_explicit_adjacent_area_overflow_before_build() -> None:
+    ynv = Ynv(
+        adjacent_area_ids=list(range(33)),
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    with pytest.raises(ValueError, match="at most 32 adjacent area ids"):
+        build_ynv_bytes(ynv)
+    assert len(ynv.adjacent_area_ids) == 33
+
+
+def test_writer_rejects_unrepresentable_poly_index_before_build() -> None:
+    ynv = Ynv(
+        polys=[YnvPoly(index_id=0x10000, area_id=0)],
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    with pytest.raises(ValueError, match=r"polys\[0\]\.index_id=65536"):
+        build_ynv_bytes(ynv)
+    assert ynv.polys[0].index_id == 0x10000
+
+
+def test_validation_rejects_out_of_range_local_edge_polygon() -> None:
+    ynv = Ynv(
+        area_id=42,
+        edges=[
+            YnvEdge(
+                poly1=YnvEdgePart(area_id=42, poly_id=7),
+            )
+        ],
+        indices=[0],
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    assert any("poly1.poly_id=7 is out of range" in issue for issue in ynv.validate())
+
+
+def test_validation_accepts_vanilla_area_ids_above_9999() -> None:
+    ynv = Ynv(
+        area_id=10000,
+        edges=[
+            YnvEdge(
+                poly1=YnvEdgePart(area_id=10000, poly_id=0),
+            )
+        ],
+        indices=[0],
+        polys=[YnvPoly(area_id=10000)],
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    assert not any("area_id=10000" in issue for issue in ynv.validate())
 
 
 def test_writer_rejects_invalid_portal_link_span() -> None:

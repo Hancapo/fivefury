@@ -48,6 +48,14 @@ class YnvAdjacencyType(FlexibleIntEnum):
     DROPDOWN = 3
 
 
+class YnvEdgeFlags(IntFlag):
+    NONE = 0
+    ADJACENCY_DISABLED = 1 << 0
+    EDGE_PROVIDES_COVER = 1 << 1
+    HIGH_DROP_OVER_EDGE = 1 << 2
+    EXTERNAL_EDGE = 1 << 3
+
+
 class YnvPointType(FlexibleIntEnum):
     TYPE_0 = 0
     TYPE_1 = 1
@@ -166,7 +174,7 @@ class YnvAabb:
 @dataclasses.dataclass(slots=True)
 class YnvEdgePart:
     area_id: int = 0x3FFF
-    poly_id: int = 0x3FFF
+    poly_id: int = 0x7FFF
     adjacency_type: YnvAdjacencyType = YnvAdjacencyType.NORMAL
     detail_flags: int = 0
 
@@ -180,9 +188,9 @@ class YnvEdgePart:
         )
         return cls(
             area_id=area_id,
-            poly_id=(int(value) >> 5) & 0x3FFF,
-            adjacency_type=YnvAdjacencyType((int(value) >> 19) & 0x3),
-            detail_flags=(int(value) >> 21) & 0x7FF,
+            poly_id=(int(value) >> 5) & 0x7FFF,
+            adjacency_type=YnvAdjacencyType((int(value) >> 20) & 0x3),
+            detail_flags=(int(value) >> 22) & 0x3FF,
         )
 
     @property
@@ -203,21 +211,11 @@ class YnvEdgePart:
             (int(value) & 0x1F) << 5
         )
 
-    @property
-    def detail_reserved(self) -> int:
-        return (self.detail_flags >> 10) & 0x1
-
-    @detail_reserved.setter
-    def detail_reserved(self, value: int) -> None:
-        self.detail_flags = (self.detail_flags & ~(1 << 10)) | (
-            (int(value) & 0x1) << 10
-        )
-
     def build(self) -> "YnvEdgePart":
         self.area_id = int(self.area_id) & 0x3FFF
-        self.poly_id = int(self.poly_id) & 0x3FFF
+        self.poly_id = int(self.poly_id) & 0x7FFF
         self.adjacency_type = YnvAdjacencyType(int(self.adjacency_type) & 0x3)
-        self.detail_flags = int(self.detail_flags) & 0x7FF
+        self.detail_flags = int(self.detail_flags) & 0x3FF
         return self
 
     def to_value(self, area_lookup: dict[int, int]) -> int:
@@ -227,9 +225,9 @@ class YnvEdgePart:
         )
         return (
             area_index
-            | ((int(self.poly_id) & 0x3FFF) << 5)
-            | ((int(self.adjacency_type) & 0x3) << 19)
-            | ((int(self.detail_flags) & 0x7FF) << 21)
+            | ((int(self.poly_id) & 0x7FFF) << 5)
+            | ((int(self.adjacency_type) & 0x3) << 20)
+            | ((int(self.detail_flags) & 0x3FF) << 22)
         )
 
 
@@ -237,6 +235,19 @@ class YnvEdgePart:
 class YnvEdge:
     poly1: YnvEdgePart = dataclasses.field(default_factory=YnvEdgePart)
     poly2: YnvEdgePart = dataclasses.field(default_factory=YnvEdgePart)
+
+    @property
+    def flags(self) -> YnvEdgeFlags:
+        value = (int(self.poly2.adjacency_type) & 0x3) | (
+            (int(self.poly2.detail_flags) & 0x3FF) << 2
+        )
+        return YnvEdgeFlags(value)
+
+    @flags.setter
+    def flags(self, value: YnvEdgeFlags | int) -> None:
+        packed = int(value) & 0xFFF
+        self.poly2.adjacency_type = YnvAdjacencyType(packed & 0x3)
+        self.poly2.detail_flags = (packed >> 2) & 0x3FF
 
     def build(self) -> "YnvEdge":
         self.poly1 = self.poly1.build()
@@ -635,8 +646,59 @@ class Ynv:
         )
         return points_cursor
 
-    def validate(self) -> list[str]:
+    def _validate_storage_limits(self) -> list[str]:
         errors: list[str] = []
+        vertex_count = len(self.vertices)
+        poly_count = len(self.polys)
+        index_count = len(self.indices)
+
+        if len(self.adjacent_area_ids) > 32:
+            errors.append("YNV supports at most 32 adjacent area ids")
+        if vertex_count > 0xFFFF:
+            errors.append(f"YNV supports at most 65535 vertices, got {vertex_count}")
+        if poly_count > 0x7FFF:
+            errors.append(
+                "YNV supports at most 32767 polygons because edge polygon ids are "
+                f"15-bit and 0x7FFF is the null sentinel, got {poly_count}"
+            )
+        if index_count > 0x10000:
+            errors.append(
+                "YNV supports at most 65536 polygon indices because polygon index "
+                f"offsets are 16-bit, got {index_count}"
+            )
+
+        for index, vertex_id in enumerate(self.indices):
+            if not 0 <= int(vertex_id) <= 0xFFFF:
+                errors.append(
+                    f"indices[{index}]={vertex_id} does not fit the 16-bit YNV field"
+                )
+        for index, poly in enumerate(self.polys):
+            if not 0 <= int(poly.index_id) <= 0xFFFF:
+                errors.append(
+                    f"polys[{index}].index_id={poly.index_id} does not fit the "
+                    "16-bit YNV field"
+                )
+        for index, edge in enumerate(self.edges):
+            for label, part in (("poly1", edge.poly1), ("poly2", edge.poly2)):
+                if not 0 <= int(part.poly_id) <= 0x7FFF:
+                    errors.append(
+                        f"edges[{index}].{label}.poly_id={part.poly_id} does not fit "
+                        "the 15-bit YNV field"
+                    )
+                if not 0 <= int(part.area_id) <= 0x3FFF:
+                    errors.append(
+                        f"edges[{index}].{label}.area_id={part.area_id} does not fit "
+                        "the 14-bit YNV field"
+                    )
+                if not 0 <= int(part.detail_flags) <= 0x3FF:
+                    errors.append(
+                        f"edges[{index}].{label}.detail_flags={part.detail_flags} "
+                        "does not fit the 10-bit YNV field"
+                    )
+        return errors
+
+    def validate(self) -> list[str]:
+        errors = self._validate_storage_limits()
         vertex_count = len(self.vertices)
         poly_count = len(self.polys)
         portal_link_count = len(self.portal_links)
@@ -665,10 +727,6 @@ class Ynv:
             )
         if len(self.transform) != 16:
             errors.append("YNV transform must contain 16 floats")
-        if len(self.adjacent_area_ids) > 32:
-            errors.append("YNV supports at most 32 adjacent area ids")
-        if vertex_count > 0xFFFF:
-            errors.append(f"YNV supports at most 65535 vertices, got {vertex_count}")
         if len(self.indices) != len(self.edges):
             errors.append(
                 f"YNV requires len(indices) == len(edges), got {len(self.indices)} and {len(self.edges)}"
@@ -713,6 +771,17 @@ class Ynv:
                 errors.append(
                     f"polys[{index}] portal link span [{poly.portal_link_id}, {poly.portal_link_id + poly.portal_link_count}) exceeds portal_links length {portal_link_count}"
                 )
+
+        for index, edge in enumerate(self.edges):
+            for label, part in (("poly1", edge.poly1), ("poly2", edge.poly2)):
+                area_id = int(part.area_id)
+                poly_id = int(part.poly_id)
+                if area_id == 0x3FFF:
+                    continue
+                if area_id == int(self.area_id) and poly_id >= poly_count:
+                    errors.append(
+                        f"edges[{index}].{label}.poly_id={poly_id} is out of range for {poly_count} local polys"
+                    )
 
         for index, portal in enumerate(self.portals):
             for attr in (
