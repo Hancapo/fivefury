@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from fivefury import RpfArchive
+from fivefury import GameFileCache, RpfArchive
 from fivefury.rpf.entries import RpfBinaryFileEntry, RpfResourceFileEntry
 from fivefury.rpf.utils import _build_rsc7
 
@@ -120,3 +120,65 @@ def test_rpf_writer_rejects_name_offsets_that_would_be_truncated() -> None:
 
     with pytest.raises(ValueError, match="name offset exceeds 16 bits"):
         archive._encode_resource_entry(entry, b"", 0)
+
+
+def _write_test_archive(path: Path, payload: bytes) -> None:
+    source = path.parent / f"{path.stem}_source"
+    source.mkdir()
+    (source / "asset.bin").write_bytes(payload)
+    RpfArchive.from_folder(source, name=path.name).save(path)
+
+
+def test_game_file_cache_clear_closes_registered_archive_handles(
+    tmp_path: Path,
+) -> None:
+    archive_path = tmp_path / "registered.rpf"
+    _write_test_archive(archive_path, b"registered")
+    archive = RpfArchive.from_path(archive_path)
+    cache = GameFileCache(tmp_path, use_index_cache=False)
+    cache.register_archive(archive, source_prefix=archive_path.name)
+
+    entry = archive.find_entry("asset.bin")
+    assert entry is not None
+    assert entry.read() == b"registered"
+    assert archive._source_handle is not None
+
+    cache.clear()
+
+    assert archive._source_handle is None
+    archive_path.unlink()
+
+
+def test_game_file_cache_context_closes_lru_archive_handles(
+    tmp_path: Path,
+) -> None:
+    first_path = tmp_path / "first.rpf"
+    second_path = tmp_path / "second.rpf"
+    _write_test_archive(first_path, b"first")
+    _write_test_archive(second_path, b"second")
+
+    with GameFileCache(
+        tmp_path,
+        max_open_archives=1,
+        use_index_cache=False,
+    ) as cache:
+        cache.scan(use_index_cache=False)
+        first_entry = cache.get_entry("first.rpf/asset.bin")
+        assert first_entry is not None
+        assert first_entry.read() == b"first"
+        first_archive = first_entry._archive
+        assert first_archive is not None
+        assert first_archive._source_handle is not None
+
+        second_entry = cache.get_entry("second.rpf/asset.bin")
+        assert second_entry is not None
+        assert second_entry.read() == b"second"
+        second_archive = second_entry._archive
+        assert second_archive is not None
+
+        assert first_archive._source_handle is None
+        assert second_archive._source_handle is not None
+
+    assert second_archive._source_handle is None
+    first_path.unlink()
+    second_path.unlink()

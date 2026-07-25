@@ -4,7 +4,7 @@ from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Self
 
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
@@ -100,6 +100,12 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     def __iter__(self) -> Iterator[AssetRecord]:
         return self.iter_assets()
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
     @property
     def scan_complete(self) -> bool:
         return self.last_scan is not None
@@ -139,7 +145,30 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._texture_parent_view = None
         self._kind_counts_view = None
 
+    def _close_runtime_archives(self) -> None:
+        seen: set[int] = set()
+        candidates = [
+            *self.archives,
+            *self._archive_lookup.values(),
+            *self._live_archives.values(),
+        ]
+        for game_file in self.files.values():
+            if game_file.archive is not None:
+                candidates.append(game_file.archive)
+            if isinstance(game_file.parsed, RpfArchive):
+                candidates.append(game_file.parsed)
+        for archive in candidates:
+            identity = id(archive)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            archive.close()
+
+    def close(self) -> None:
+        self.clear_runtime_cache(loaded_files=True)
+
     def clear(self) -> None:
+        self._close_runtime_archives()
         self.archives.clear()
         self.files.clear()
         self.entries.clear()
@@ -155,6 +184,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._invalidate_views()
 
     def clear_runtime_cache(self, *, loaded_files: bool = False) -> None:
+        self._close_runtime_archives()
         self.archives.clear()
         self.entries.clear()
         self._archive_lookup.clear()
@@ -300,12 +330,18 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         normalized = _normalize_key(key)
         limit = max(0, int(self.max_open_archives))
         if limit <= 0:
+            for cached in self._archive_lookup.values():
+                cached.close()
             self._archive_lookup.clear()
             return
-        self._archive_lookup.pop(normalized, None)
+        previous = self._archive_lookup.pop(normalized, None)
+        if previous is not None and previous is not archive:
+            previous.close()
         self._archive_lookup[normalized] = archive
         while len(self._archive_lookup) > limit:
-            self._archive_lookup.popitem(last=False)
+            _, evicted = self._archive_lookup.popitem(last=False)
+            if all(cached is not evicted for cached in self._archive_lookup.values()):
+                evicted.close()
 
     def _register_asset(
         self,
