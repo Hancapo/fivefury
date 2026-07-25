@@ -211,3 +211,14 @@ def test_network_partitions_nodes_into_multiple_ynds() -> None:
     assert area_ids == sorted(area_ids)
     assert area_ids[0] != area_ids[1]
     assert {node.area_id for ynd in ynds for node in ynd.nodes} == set(area_ids)
+
+
+def test_network_clamps_coincident_link_distance_to_one() -> None:
+    node_a = YndNode(node_id=10, key="a", position=(0.0, 0.0, 0.0))
+    node_b = YndNode(node_id=11, key="b", position=(0.0, 0.0, 0.0))
+    node_a.links.append(YndLink(target_key="b"))
+
+    ynd = YndNetwork.from_nodes([node_a, node_b]).build_ynds()[0]
+    rebuilt_a = next(node for node in ynd.nodes if node.key == "a")
+
+    assert rebuilt_a.links[0].distance == 1

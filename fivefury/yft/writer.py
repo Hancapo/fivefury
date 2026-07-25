@@ -480,12 +480,8 @@ def _write_fragment_root(
         )
     shared_matrix_off = write_shared_matrix_set(system, shared_matrix_set)
     lights_off = write_lights(system, yft.lights)
-    has_single_physics_child = any(
-        len(lod.children) == 1 for lod in yft.physics_lod_details
-    )
     needs_root_child = (
         yft.root_child is not None
-        or has_single_physics_child
         or not yft.physics_lod_details
     )
     root_child_off = system.alloc(0x100, 16) if needs_root_child else 0

@@ -1140,7 +1140,10 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     parsed_with_entities = read_yft(target)
 
     assert parsed.physics_lods.has_physics is True
-    assert parsed.root_child is not None
+    # A physics child with its own drawable must not also be installed as the
+    # fragment root child. GTA V would resource-construct the same child and
+    # drawable twice, then try to fix up an already-relocated pointer.
+    assert parsed.root_child is None
     assert isinstance(parsed.main_drawable, YftFragmentDrawable)
     assert parsed.main_drawable.bound is not None
     assert parsed.main_drawable.skeleton_type_name == "fragment_drawable"
@@ -1158,7 +1161,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         glass_attachment_bone=4,
     )
     assert struct.unpack_from("<i", system_data, 0x4C)[0] == 0
-    assert struct.unpack_from("<Q", system_data, 0x50)[0] != 0
+    assert struct.unpack_from("<Q", system_data, 0x50)[0] == 0
     assert struct.unpack_from("<Q", system_data, 0x58)[0] != 0
     assert struct.unpack_from("<fff", system_data, 0xCC) == (0.25, 0.5, 0.75)
     drawable_offset = virtual_to_offset(
