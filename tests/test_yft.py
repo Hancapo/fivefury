@@ -187,6 +187,21 @@ def test_yft_shared_matrix_set_roundtrip():
         1.0,
         0.0,
     )
+    assert parsed.shared_matrix_set.matrices[1] == (
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+    )
+    assert validate_yft_bytes(raw) == []
 
     explicit = create_yft(
         drawable,

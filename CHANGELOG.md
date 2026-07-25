@@ -7,8 +7,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Public YDR bone-transform helpers provide consistent local composition, matrix multiplication, and absolute skeleton transforms.
+
 ### Fixed
 - Material-less drawables now use a null shader-group pointer instead of emitting an empty runtime structure.
+- YFT shared rest-pose matrices now preserve absolute bone transforms instead of writing identities.
 
 ## [0.2.10] - 2026-07-25
 

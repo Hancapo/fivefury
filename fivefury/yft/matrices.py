@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Sequence
 
-from ..ydr import YdrSkeleton
+from ..ydr import YdrSkeleton, skeleton_absolute_transforms
 
 Matrix43 = tuple[
     float,
@@ -33,22 +33,27 @@ class YftSharedMatrixSet:
         *,
         is_skinned: bool = False,
     ) -> YftSharedMatrixSet:
-        identity: Matrix43 = (
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-        )
+        absolute_transforms = skeleton_absolute_transforms(skeleton)
+        matrices: list[Matrix43] = []
+        for matrix in absolute_transforms:
+            matrices.append(
+                (
+                    float(matrix[0][0]),
+                    float(matrix[0][1]),
+                    float(matrix[0][2]),
+                    float(matrix[3][0]),
+                    float(matrix[1][0]),
+                    float(matrix[1][1]),
+                    float(matrix[1][2]),
+                    float(matrix[3][1]),
+                    float(matrix[2][0]),
+                    float(matrix[2][1]),
+                    float(matrix[2][2]),
+                    float(matrix[3][2]),
+                )
+            )
         return cls(
-            matrices=[identity for _bone in skeleton.bones],
+            matrices=matrices,
             is_skinned=bool(is_skinned),
         )
 

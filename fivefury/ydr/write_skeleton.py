@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import struct
 
 from ..buckets import at_hash_bucket_capacity
@@ -13,6 +12,7 @@ from .model import (
     calculate_skeleton_unknown_hashes,
 )
 from .resource_headers import SKELETON_VFT
+from .transforms import compose_bone_local_transform
 
 
 def _identity_matrix() -> Matrix4:
@@ -22,51 +22,6 @@ def _identity_matrix() -> Matrix4:
         (0.0, 0.0, 1.0, 0.0),
         (0.0, 0.0, 0.0, 1.0),
     )
-
-
-def _matrix_with_column4(matrix: Matrix4, column4: tuple[float, float, float, float]) -> Matrix4:
-    return (
-        (matrix[0][0], matrix[0][1], matrix[0][2], column4[0]),
-        (matrix[1][0], matrix[1][1], matrix[1][2], column4[1]),
-        (matrix[2][0], matrix[2][1], matrix[2][2], column4[2]),
-        (matrix[3][0], matrix[3][1], matrix[3][2], column4[3]),
-    )
-
-
-def _quat_to_matrix3(rotation: tuple[float, float, float, float]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
-    x, y, z, w = (float(component) for component in rotation)
-    length = math.sqrt((x * x) + (y * y) + (z * z) + (w * w))
-    if length > 1e-8:
-        x /= length
-        y /= length
-        z /= length
-        w /= length
-    xx = x * x
-    yy = y * y
-    zz = z * z
-    xy = x * y
-    xz = x * z
-    yz = y * z
-    wx = w * x
-    wy = w * y
-    wz = w * z
-    return (
-        (1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy)),
-        (2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx)),
-        (2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy)),
-    )
-
-
-def _compose_local_transform(bone: YdrBone) -> Matrix4:
-    rotation = _quat_to_matrix3(bone.rotation)
-    sx, sy, sz = (float(component) for component in bone.scale)
-    matrix = (
-        (rotation[0][0] * sx, rotation[0][1] * sy, rotation[0][2] * sz, 0.0),
-        (rotation[1][0] * sx, rotation[1][1] * sy, rotation[1][2] * sz, 0.0),
-        (rotation[2][0] * sx, rotation[2][1] * sy, rotation[2][2] * sz, 0.0),
-        (float(bone.translation[0]), float(bone.translation[1]), float(bone.translation[2]), 1.0),
-    )
-    return _matrix_with_column4(matrix, bone.transform_unk)
 
 
 def _pack_matrix_array(matrices: list[Matrix4]) -> bytes:
@@ -166,7 +121,7 @@ def _skeleton_uses_bone_id_table(skeleton: YdrSkeleton) -> bool:
 def _build_transformations(skeleton: YdrSkeleton) -> list[Matrix4]:
     if len(skeleton.transformations) == skeleton.bone_count:
         return list(skeleton.transformations)
-    return [_compose_local_transform(bone) for bone in skeleton.bones]
+    return [compose_bone_local_transform(bone) for bone in skeleton.bones]
 
 
 def _build_inverse_transformations(skeleton: YdrSkeleton) -> list[Matrix4]:

@@ -35,6 +35,7 @@ from .shaders import (
     ShaderParameterDefinition,
     resolve_shader_reference,
 )
+from .transforms import skeleton_absolute_transforms
 
 if TYPE_CHECKING:
     from .gen9 import ShaderGen9Definition
@@ -470,7 +471,7 @@ def compute_model_collection_bounds(
     tuple[float, float, float],
     float,
 ]:
-    absolute_transforms = _skeleton_absolute_transforms(skeleton)
+    absolute_transforms = skeleton_absolute_transforms(skeleton)
     position_groups = []
     for model in models:
         transform = None
@@ -500,53 +501,6 @@ def compute_model_collection_bounds(
         for positions in position_groups
     )
     return centre, bb_min, bb_max, radius
-
-
-def _skeleton_absolute_transforms(
-    skeleton: YdrSkeleton | None,
-) -> list[Matrix4]:
-    if skeleton is None or not skeleton.bones:
-        return []
-    from .write_skeleton import _compose_local_transform
-
-    local = (
-        list(skeleton.transformations)
-        if len(skeleton.transformations) == len(skeleton.bones)
-        else [_compose_local_transform(bone) for bone in skeleton.bones]
-    )
-    absolute: list[Matrix4 | None] = [None] * len(skeleton.bones)
-
-    def resolve(index: int) -> Matrix4:
-        cached = absolute[index]
-        if cached is not None:
-            return cached
-        matrix = _as_affine(local[index])
-        parent = int(skeleton.bones[index].parent_index)
-        if 0 <= parent < len(skeleton.bones) and parent != index:
-            matrix = _multiply_matrix(matrix, resolve(parent))
-        absolute[index] = matrix
-        return matrix
-
-    return [resolve(index) for index in range(len(skeleton.bones))]
-
-
-def _as_affine(matrix: Matrix4) -> Matrix4:
-    return (
-        (float(matrix[0][0]), float(matrix[0][1]), float(matrix[0][2]), 0.0),
-        (float(matrix[1][0]), float(matrix[1][1]), float(matrix[1][2]), 0.0),
-        (float(matrix[2][0]), float(matrix[2][1]), float(matrix[2][2]), 0.0),
-        (float(matrix[3][0]), float(matrix[3][1]), float(matrix[3][2]), 1.0),
-    )
-
-
-def _multiply_matrix(left: Matrix4, right: Matrix4) -> Matrix4:
-    return tuple(
-        tuple(
-            sum(left[row][inner] * right[inner][column] for inner in range(4))
-            for column in range(4)
-        )
-        for row in range(4)
-    )
 
 
 def _transform_position(

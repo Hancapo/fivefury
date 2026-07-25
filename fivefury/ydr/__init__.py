@@ -72,6 +72,11 @@ from .shaders import (
     read_shader_library,
     resolve_shader_reference,
 )
+from .transforms import (
+    compose_bone_local_transform,
+    multiply_matrix4,
+    skeleton_absolute_transforms,
+)
 
 __all__ = [
     "AssimpMaterial",
@@ -131,6 +136,7 @@ __all__ = [
     "assimp_to_ydr",
     "coerce_gen9_shader_name",
     "coerce_shader_name",
+    "compose_bone_local_transform",
     "create_ydr",
     "format_ydr_gen9_shader_info",
     "format_ydr_shader_info",
@@ -138,10 +144,12 @@ __all__ = [
     "get_ydr_shader_info",
     "load_gen9_shader_library",
     "load_shader_library",
+    "multiply_matrix4",
     "ColorChannel",
     "paint_mesh",
     "paint_vertices",
     "skeleton_bone_flag_names",
+    "skeleton_absolute_transforms",
     "read_gen9_shader_library",
     "read_shader_library",
     "read_ydr",
