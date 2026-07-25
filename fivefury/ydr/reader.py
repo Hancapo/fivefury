@@ -474,6 +474,7 @@ def _read_ydr_from_sections(
     return Ydr(
         version=int(header.version),
         path=str(path),
+        shader_group_pointer=_u64(system_data, root_offset + 0x00),
         materials=materials,
         lods=lods,
         bounding_center=_vec3(system_data, root_offset + 0x10),

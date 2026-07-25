@@ -1110,6 +1110,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
     render_mask_flags: dict[YdrLod, int] = dataclasses.field(default_factory=dict)
     unknown_98: int = 0
     unknown_9c: int = 0
+    shader_group_pointer: int = 0
 
     def __post_init__(self) -> None:
         DrawableAsset.__post_init__(self)

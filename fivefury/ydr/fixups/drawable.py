@@ -29,12 +29,11 @@ def audit_legacy_fragment_drawable_fixups(
             shader_group,
             f"{path}.shader_group",
         )
-    elif require_shader_group:
-        validator.error(f"{path}.shader_group", "required resource pointer is null")
 
     skeleton = validator.u64(root + 0x18)
     if skeleton:
         audit_skeleton(validator, skeleton, f"{path}.skeleton")
+    has_models = False
     for field_offset, label in (
         (0x50, "high"),
         (0x58, "medium"),
@@ -43,7 +42,9 @@ def audit_legacy_fragment_drawable_fixups(
     ):
         lod = validator.u64(root + field_offset)
         if lod:
-            audit_lod(validator, lod, f"{path}.lods.{label}")
+            has_models |= audit_lod(validator, lod, f"{path}.lods.{label}")
+    if not shader_group and require_shader_group and has_models:
+        validator.error(f"{path}.shader_group", "required resource pointer is null")
     joints = validator.u64(root + 0x90)
     if joints:
         audit_joints(validator, joints, f"{path}.joints")

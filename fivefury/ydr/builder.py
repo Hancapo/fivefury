@@ -157,7 +157,9 @@ def _write_drawable_payload(
     runtime_headers: DrawableRuntimeHeaders = LEGACY_DRAWABLE_HEADERS,
 ) -> int:
     enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
-    if enhanced:
+    if not prepared_materials:
+        shader_group_off = 0
+    elif enhanced:
         shader_group_off, _shader_group_blocks_size = write_shader_blocks_gen9(
             system,
             prepared_materials,

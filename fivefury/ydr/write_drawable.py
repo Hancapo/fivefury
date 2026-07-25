@@ -130,8 +130,16 @@ def write_drawable_root(
     system.pack_into("I", root + 0x04, 1)
     system.pack_into("Q", root + 0x08, virtual(pages_info_off) if pages_info_off else 0)
 
-    system.pack_into("Q", root + 0x10, virtual(shader_group_off))
+    system.pack_into(
+        "Q",
+        root + 0x10,
+        virtual(shader_group_off) if shader_group_off else 0,
+    )
     if texture_dictionary_off:
+        if not shader_group_off:
+            raise ValueError(
+                "An embedded texture dictionary requires a drawable shader group"
+            )
         system.pack_into("Q", shader_group_off + 0x08, virtual(texture_dictionary_off))
     system.pack_into("Q", root + 0x18, virtual(skeleton_off) if skeleton_off else 0)
     system.pack_into("3f", root + 0x20, *center)

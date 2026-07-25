@@ -907,6 +907,61 @@ def test_multichild_prop_does_not_invent_euphoria_body():
     assert parsed.physics_lod("high").articulated_body_type is None
 
 
+def test_materialless_physics_drawable_uses_null_shader_group():
+    main_drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name="breakable_prop",
+    )
+    child_bound = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (2.0, 2.0, 2.0),
+    ).build()
+    child_drawable = create_ydr(
+        meshes=[],
+        materials=[],
+        bound=child_bound,
+        name="collision_piece",
+    )
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(
+            child_drawable,
+            label="collision_piece",
+        ),
+        undamaged_mass=1.0,
+    )
+    group = YftPhysicsGroup.declare("collision_piece", children=(child,))
+    source = create_yft(
+        main_drawable,
+        name="breakable_prop",
+        physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
+        physics_bound=child_bound,
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw)
+    parsed_child = parsed.physics_lod("high").children[0]
+    parsed_drawable = parsed_child.undamaged_entity.drawable
+    drawable_offset = virtual_to_offset(parsed_child.undamaged_entity.pointer)
+
+    assert parsed_drawable.shader_group_pointer == 0
+    assert parsed_drawable.materials == []
+    assert struct.unpack_from("<Q", system_data, drawable_offset + 0x10)[0] == 0
+    assert validate_yft_bytes(raw) == []
+
+
 def test_create_yft_writes_declared_physics_lod(tmp_path):
     build = create_ydr(
         meshes=[
