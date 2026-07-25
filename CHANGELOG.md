@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-07-25
+
 ### Added
 - Binary YFT validation reports invalid resource pointers, class headers, page maps, and physics-array dimensions before files are saved.
 - Fragment drawable fixup validation covers shaders, skeletons, joints, models, geometries, buffers, and fragment-specific arrays.
