@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-07-25
+
 ### Fixed
 - YFT secondary visual and physics drawables now share the common drawable shader group, with remapped material indices and inherited reader materials.
 
