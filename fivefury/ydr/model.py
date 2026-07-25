@@ -1112,7 +1112,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
     unknown_9c: int = 0
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        DrawableAsset.__post_init__(self)
         self.render_mask_flags = {coerce_lod(lod): int(flags) for lod, flags in self.render_mask_flags.items()}
 
     def build(self) -> "Ydr":

@@ -7,10 +7,29 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-07-24
+
+### Added
+- Readable and writable `heightmap.dat` world-height grids with native quantization, row RLE, water masks, spatial queries, validation, and cache integration.
+
+### Fixed
+- Python 3.11 wheel imports no longer fail in native hash initialization.
+- Slotted dataclass inheritance no longer relies on version-specific zero-argument `super()` behavior.
+- YDR and YFT bounds now include rigid bone transformations.
+
+## [0.2.8] - 2026-07-24
+
 ### Added
 - Readable, writable, and declarative `water.xml` surfaces, calming regions, and wave regions, including game-aligned validation and `GameFileCache` integration.
 - Geometry-oriented water constructors, named corner alphas, translation, aggregate bounds, bulk insertion, and point queries.
-- Readable and writable `heightmap.dat` world-height grids with native quantization, row RLE, water masks, spatial queries, validation, and cache integration.
+
+### Changed
+- External corpus tests now resolve fixtures from the repository or `FIVEFURY_REFERENCE_DIR`.
+- Optional Assimp colour-texture tests now skip cleanly when their optional image dependencies are unavailable.
+
+### Fixed
+- `GameFileCache` now closes RPF handles during eviction, clearing, and context-manager shutdown.
+- Package metadata now declares the required NumPy runtime dependency.
 
 ## [0.2.7] - 2026-07-24
 

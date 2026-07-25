@@ -284,7 +284,7 @@ class Cdr(DrawableAsset[CdrMaterial, CdrModel, CdrMesh]):
     graphics_data: bytes = dataclasses.field(default=b"", repr=False)
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        DrawableAsset.__post_init__(self)
         self.render_bucket_masks = {
             DrawableLod(lod): int(mask)
             for lod, mask in self.render_bucket_masks.items()

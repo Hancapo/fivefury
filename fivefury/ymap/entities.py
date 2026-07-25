@@ -105,7 +105,7 @@ class MloInstanceDef(EntityDef):
     mlo_inst_flags: YmapMloInstanceFlags | int = YmapMloInstanceFlags.NONE
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        EntityDef.__post_init__(self)
         self.mlo_inst_flags = coerce_ymap_mlo_instance_flags(self.mlo_inst_flags)
 
     def build(self, archetype: Any | None = None) -> MloInstanceDef:
@@ -119,7 +119,7 @@ class MloInstanceDef(EntityDef):
         return validate_mlo_instance(self, archetype)
 
     def to_meta(self) -> dict[str, Any]:
-        data = super().to_meta()
+        data = EntityDef.to_meta(self)
         data.update(
             {
                 "groupId": self.group_id,

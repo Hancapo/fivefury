@@ -46,6 +46,7 @@ from fivefury import (
     triangle_area,
 )
 from fivefury.resource import get_resource_flags_from_block_sizes, get_resource_total_page_count, split_rsc7_sections
+from tests.helpers import require_reference
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
 
@@ -642,7 +643,7 @@ def test_build_ybn_bytes_rebuilds_trivial_large_bvh() -> None:
 
 
 def test_read_real_reference_ybn() -> None:
-    path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\apa_ch2_04_12.ybn")
+    path = require_reference("apa_ch2_04_12.ybn")
 
     ybn = read_ybn(path)
 
@@ -653,7 +654,7 @@ def test_read_real_reference_ybn() -> None:
 
 
 def test_roundtrip_real_reference_ybn_preserves_page_count_metadata() -> None:
-    path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\apa_ch2_04_12.ybn")
+    path = require_reference("apa_ch2_04_12.ybn")
 
     source = read_ybn(path)
     raw = source.to_bytes()
@@ -667,7 +668,7 @@ def test_roundtrip_real_reference_ybn_preserves_page_count_metadata() -> None:
 
 
 def test_read_real_reference_ybn_decodes_geometry_polygons_and_bvh() -> None:
-    path = Path(r"C:\Users\vicho\OneDrive\Documents\WalkerPy\references\apa_ch2_04_12.ybn")
+    path = require_reference("apa_ch2_04_12.ybn")
 
     ybn = read_ybn(path)
     geometry = ybn.bound.geometries[0]

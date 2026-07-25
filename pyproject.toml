@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fivefury"
-version = "0.2.8+fragmentbounds"
+version = "0.2.9"
 description = "Python library for GTA V asset workflows including YMAP, YTYP, RPF, YTD and GameFileCache utilities."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,10 @@ authors = [
 ]
 license = "CC0-1.0"
 license-files = ["LICENSE"]
-dependencies = ["miniaudio>=1.71"]
+dependencies = [
+  "miniaudio>=1.71",
+  "numpy>=1.26",
+]
 
 [tool.setuptools]
 include-package-data = true

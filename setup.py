@@ -27,7 +27,10 @@ ext_modules = [
             "native/rpf_scan.cpp",
         ],
         include_dirs=["native"],
-        define_macros=[("Py_LIMITED_API", "0x030B0000")],
+        define_macros=[
+            ("PY_SSIZE_T_CLEAN", None),
+            ("Py_LIMITED_API", "0x030B0000"),
+        ],
         py_limited_api=True,
         language="c++",
         extra_compile_args=["/std:c++20"] if os.name == "nt" else ["-std=c++20"],
