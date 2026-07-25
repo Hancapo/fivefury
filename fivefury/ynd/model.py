@@ -512,7 +512,9 @@ class YndNode:
 
 
 def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> int:
-    return min(255, int(vec_distance(b, a)))
+    # Rockstar's path builder clamps every serialized link distance to the
+    # representable 1..255 range; zero is reserved for a degenerate link.
+    return max(1, min(255, int(vec_distance(b, a))))
 
 
 @dataclasses.dataclass(slots=True)
