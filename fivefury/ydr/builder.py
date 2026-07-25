@@ -205,7 +205,8 @@ def _write_drawable_payload(
         write_pages_info(system, pages_info_off, page_counts)
 
     center, bounds_min, bounds_max, radius = compute_model_collection_bounds(
-        [model for lod_models in prepared_lods.values() for model in lod_models]
+        [model for lod_models in prepared_lods.values() for model in lod_models],
+        skeleton=source.skeleton,
     )
     write_drawable_root(
         system,

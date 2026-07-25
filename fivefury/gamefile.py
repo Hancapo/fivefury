@@ -80,6 +80,9 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
 
 def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.UNKNOWN) -> GameFileType:
     parsed = Path(str(path))
+    normalized_name = parsed.name.lower()
+    if normalized_name.startswith("heightmap") and normalized_name.endswith(".dat"):
+        return GameFileType.HEIGHTMAP
     named_meta_types = {
         "gtxd.meta": GameFileType.GTXD,
         "vehicles.meta": GameFileType.VEHICLES,
@@ -91,7 +94,7 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
         "peds.meta": GameFileType.PEDS,
         "water.xml": GameFileType.WATER,
     }
-    named_type = named_meta_types.get(parsed.name.lower())
+    named_type = named_meta_types.get(normalized_name)
     if named_type is not None:
         return named_type
     return _FILE_TYPE_MAP.get(parsed.suffix.lower(), default)

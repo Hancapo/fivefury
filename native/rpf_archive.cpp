@@ -173,7 +173,11 @@ std::uint32_t get_resource_size_from_flags(std::uint32_t flags) noexcept {
 
 std::int32_t guess_kind(std::string_view path) {
     constexpr std::int32_t UNKNOWN = -1;
-    if (path_name(path) == "water.xml") {
+    const auto name = path_name(path);
+    if (starts_with(name, "heightmap") && ends_with(name, ".dat")) {
+        return 28;
+    }
+    if (name == "water.xml") {
         return 29;
     }
     static const std::unordered_map<std::string_view, std::int32_t> kind_by_extension = {
