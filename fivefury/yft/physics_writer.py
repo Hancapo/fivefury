@@ -64,6 +64,23 @@ def _write_resource_header(
     writer.pack_into("II", offset, int(vft), RESOURCE_STATE)
 
 
+def write_physics_child_header(
+    writer: ResourceWriter,
+    offset: int,
+    child: YftPhysicsChild | None = None,
+) -> None:
+    _write_resource_header(
+        writer,
+        offset,
+        vft=child.vft if child is not None else FRAG_TYPE_CHILD_VFT,
+        resource_state=(
+            child.resource_state if child is not None else RESOURCE_STATE
+        ),
+        expected_vft=FRAG_TYPE_CHILD_VFT,
+        label="fragTypeChild",
+    )
+
+
 def _virtual(offset: int) -> int:
     return DAT_VIRTUAL_BASE + int(offset)
 
@@ -269,14 +286,7 @@ def _write_physics_child(
     event_set_offsets: dict[int, int],
 ) -> int:
     child_offset = writer.alloc(_PHYSICS_CHILD_SIZE, 16) if offset is None else offset
-    _write_resource_header(
-        writer,
-        child_offset,
-        vft=child.vft,
-        resource_state=child.resource_state,
-        expected_vft=FRAG_TYPE_CHILD_VFT,
-        label="fragTypeChild",
-    )
+    write_physics_child_header(writer, child_offset, child)
     writer.pack_into("ff", child_offset + 0x08, child.undamaged_mass, child.damaged_mass)
     writer.data[child_offset + 0x10] = int(child.owner_group_pointer_index) & 0xFF
     writer.data[child_offset + 0x11] = int(child.flags) & 0xFF
@@ -615,5 +625,6 @@ def write_physics_lod_group(
 
 
 __all__ = [
+    "write_physics_child_header",
     "write_physics_lod_group",
 ]

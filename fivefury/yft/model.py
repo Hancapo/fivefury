@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .binary_validation import assert_valid_yft_bytes, validate_yft_bytes
 from .cloth import (
     YftClothBridge,
     YftClothConstraint,
@@ -114,5 +115,7 @@ __all__ = [
     "YftVehicleGlassWindows",
     "YftVerletCloth",
     "assert_valid_yft",
+    "assert_valid_yft_bytes",
     "validate_yft",
+    "validate_yft_bytes",
 ]

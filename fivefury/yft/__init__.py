@@ -1,3 +1,4 @@
+from .binary_validation import assert_valid_yft_bytes, validate_yft_bytes
 from .cloth import (
     YftClothBridge,
     YftClothConstraint,
@@ -128,6 +129,7 @@ __all__ = [
     "YftVehicleGlassWindows",
     "YftVerletCloth",
     "assert_valid_yft",
+    "assert_valid_yft_bytes",
     "bound_inertia",
     "bound_mass",
     "box_inertia",
@@ -142,4 +144,5 @@ __all__ = [
     "scan_yft_corpus",
     "simple_physics_bound",
     "validate_yft",
+    "validate_yft_bytes",
 ]

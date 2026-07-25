@@ -29,6 +29,7 @@ from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_lights import write_lights
 from ..ydr.write_materials import prepare_materials
+from .binary_validation import assert_valid_yft_bytes
 from .cloth import YftEnvironmentCloth
 from .cloth_writer import write_environment_cloths
 from .constants import (
@@ -50,11 +51,11 @@ from .matrices import YftSharedMatrixSet
 from .matrices_writer import write_shared_matrix_set
 from .physics import YftPhysicsLod
 from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
-from .physics_writer import write_physics_lod_group
+from .physics_writer import write_physics_child_header, write_physics_lod_group
+from .resource_headers import FRAGMENT_TYPE_VFT
 from .validation import assert_valid_yft
 
 _DAT_VIRTUAL_BASE = 0x50000000
-_FRAGMENT_TYPE_VFT = 0x40571138
 
 
 def _virtual(offset: int) -> int:
@@ -377,6 +378,7 @@ def _write_fragment_root(
     root_child_off = system.alloc(0x100, 16) if needs_root_child else 0
     root_child = yft.root_child
     if root_child_off and main is not None:
+        write_physics_child_header(system, root_child_off, root_child)
         system.pack_into(
             "ff",
             root_child_off + 0x08,
@@ -405,7 +407,7 @@ def _write_fragment_root(
             _virtual(damaged.root_offset) if damaged is not None else 0,
         )
 
-    system.pack_into("I", 0x00, _FRAGMENT_TYPE_VFT)
+    system.pack_into("I", 0x00, FRAGMENT_TYPE_VFT)
     system.pack_into("I", 0x04, 1)
     system.pack_into("Q", 0x08, _virtual(pages_info_off))
     system.pack_into("4f", 0x20, *yft.bounding_sphere)
@@ -607,7 +609,7 @@ def build_yft_bytes(
 
     assert system_flags is not None
     assert graphics_flags is not None
-    return build_rsc7(
+    result = build_rsc7(
         system_data,
         version=int(source.version),
         graphics_data=graphics_data,
@@ -616,6 +618,8 @@ def build_yft_bytes(
         system_flags=system_flags,
         graphics_flags=graphics_flags,
     )
+    assert_valid_yft_bytes(result)
+    return result
 
 
 def save_yft(source: Yft, destination: str | Path, **kwargs) -> Path:

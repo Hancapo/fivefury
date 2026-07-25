@@ -4,7 +4,14 @@ import dataclasses
 import struct
 
 from fivefury import BoundBox, YdrMaterialInput, YdrMeshInput, create_ydr
-from fivefury.resource import build_rsc7, split_rsc7_sections, virtual_to_offset
+from fivefury.resource import (
+    build_rsc7,
+    get_resource_chunk_sizes,
+    get_resource_flags_from_page_counts,
+    get_resource_size_from_flags,
+    split_rsc7_sections,
+    virtual_to_offset,
+)
 from fivefury.ydr import (
     Ydr,
     YdrLight,
@@ -45,6 +52,7 @@ from fivefury.yft import (
     read_yft,
     scan_yft_corpus,
     validate_yft,
+    validate_yft_bytes,
 )
 from fivefury.yft.resource_headers import (
     FRAG_PHYS_ARCHETYPE_DAMP_VFT,
@@ -679,6 +687,80 @@ def test_create_yft_declares_simple_fragment():
     assert yft.name == "example_fragment"
     assert yft.main_drawable is drawable
     assert yft.bounding_sphere == (1.0, 2.0, 3.0, 4.0)
+
+
+def test_resource_chunks_match_runtime_page_map():
+    flags = get_resource_flags_from_page_counts(
+        [1, 2, 3, 4, 5, 1, 1, 1, 1],
+        version=10,
+        base_shift=4,
+    )
+
+    chunks = get_resource_chunk_sizes(flags)
+
+    assert chunks[:3] == (0x200000, 0x100000, 0x100000)
+    assert chunks[-4:] == (0x10000, 0x8000, 0x4000, 0x2000)
+    assert len(chunks) == 19
+    assert sum(chunks) == get_resource_size_from_flags(flags)
+
+
+def test_yft_binary_validation_rejects_pointer_outside_resource_chunks():
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                indices=[0, 1, 2],
+                material="default",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="default")],
+        name="pointer_test",
+    )
+    raw = build_yft_bytes(create_yft(drawable, name="pointer_test"))
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    broken_system = bytearray(system_data)
+    struct.pack_into("<Q", broken_system, 0x30, 0x50000000 + header.system_size)
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    issues = validate_yft_bytes(broken)
+
+    assert any(
+        issue.is_error
+        and issue.path == "root.common_drawable"
+        and "outside" in issue.message
+        for issue in issues
+    )
+
+
+def test_yft_without_physics_writes_runtime_root_child_header():
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                indices=[0, 1, 2],
+                material="default",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="default")],
+        name="static_fragment",
+    )
+
+    raw = build_yft_bytes(create_yft(drawable, name="static_fragment"))
+    _, system_data, _ = split_rsc7_sections(raw)
+    child_pointer = struct.unpack_from("<Q", system_data, 0x50)[0]
+
+    assert struct.unpack_from(
+        "<II", system_data, virtual_to_offset(child_pointer)
+    ) == (FRAG_TYPE_CHILD_VFT, RESOURCE_STATE)
+    assert validate_yft_bytes(raw) == []
 
 
 def test_yft_declarative_physics_validation():

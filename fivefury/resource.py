@@ -8,6 +8,8 @@ from . import _native as _native_backend
 from .binary import align
 
 RSC7_MAGIC = 0x37435352
+RSC7_VIRTUAL_BASE = 0x50000000
+RSC7_PHYSICAL_BASE = 0x60000000
 
 
 @dataclasses.dataclass(slots=True)
@@ -37,6 +39,27 @@ def get_resource_size_from_flags(flags: int) -> int:
     base_shift = flags & 0xF
     base_size = 0x200 << base_shift
     return base_size * (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8)
+
+
+def get_resource_chunk_sizes(flags: int, *, leaf_size: int = 0x2000) -> tuple[int, ...]:
+    """Return the source chunks produced by datResourceInfo::GenerateMap."""
+    largest_chunk = int(leaf_size) << (4 + (int(flags) & 0xF))
+    counts = (
+        (flags >> 4) & 0x1,
+        (flags >> 5) & 0x3,
+        (flags >> 7) & 0xF,
+        (flags >> 11) & 0x3F,
+        (flags >> 17) & 0x7F,
+        (flags >> 24) & 0x1,
+        (flags >> 25) & 0x1,
+        (flags >> 26) & 0x1,
+        (flags >> 27) & 0x1,
+    )
+    return tuple(
+        largest_chunk >> index
+        for index, count in enumerate(counts)
+        for _ in range(int(count))
+    )
 
 
 def get_resource_page_descriptor_count(flags: int) -> int:
@@ -283,7 +306,7 @@ def get_resource_flags_from_size_with_page_count(size: int, version: int, page_c
         candidates = states.get(page_count)
         if not candidates:
             continue
-        valid_unit_counts = [units for units in candidates.keys() if units >= target_units]
+        valid_unit_counts = [units for units in candidates if units >= target_units]
         if not valid_unit_counts:
             continue
         best_units_for_shift = min(valid_unit_counts)
@@ -328,6 +351,63 @@ class ResourceHeader:
 
     def pack(self) -> bytes:
         return struct.pack("<IIII", RSC7_MAGIC, self.version, self.system_flags, self.graphics_flags)
+
+    @property
+    def chunks(self) -> tuple[ResourceChunk, ...]:
+        return get_resource_chunks(self)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ResourceChunk:
+    address: int
+    size: int
+    section: str
+    section_offset: int
+
+    @property
+    def end_address(self) -> int:
+        return self.address + self.size
+
+    def contains(self, address: int, size: int = 1) -> bool:
+        if size < 0:
+            return False
+        return self.address <= address and address + size <= self.end_address
+
+
+def get_resource_chunks(
+    header: ResourceHeader,
+    *,
+    virtual_base: int = RSC7_VIRTUAL_BASE,
+    physical_base: int = RSC7_PHYSICAL_BASE,
+) -> tuple[ResourceChunk, ...]:
+    chunks: list[ResourceChunk] = []
+    for section, base, flags in (
+        ("system", virtual_base, header.system_flags),
+        ("graphics", physical_base, header.graphics_flags),
+    ):
+        section_offset = 0
+        for size in get_resource_chunk_sizes(flags):
+            chunks.append(
+                ResourceChunk(
+                    address=base + section_offset,
+                    size=size,
+                    section=section,
+                    section_offset=section_offset,
+                )
+            )
+            section_offset += size
+    return tuple(chunks)
+
+
+def find_resource_chunk(
+    header: ResourceHeader,
+    address: int,
+    size: int = 1,
+) -> ResourceChunk | None:
+    return next(
+        (chunk for chunk in header.chunks if chunk.contains(int(address), int(size))),
+        None,
+    )
 
 
 def parse_rsc7(data: bytes) -> tuple[ResourceHeader, bytes]:
