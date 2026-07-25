@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-07-25
+
 ### Added
 - Public YDR bone-transform helpers provide consistent local composition, matrix multiplication, and absolute skeleton transforms.
 
