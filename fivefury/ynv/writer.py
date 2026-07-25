@@ -103,7 +103,6 @@ def _ensure_adjacent_area_ids(ynv: Ynv) -> list[int]:
             adjacent_area_ids.append(int(portal.area_id_from))
         if int(portal.area_id_to) not in adjacent_area_ids:
             adjacent_area_ids.append(int(portal.area_id_to))
-    adjacent_area_ids = adjacent_area_ids[:32]
     if len(adjacent_area_ids) > 32:
         raise ValueError("YNV supports at most 32 adjacent area ids")
     return adjacent_area_ids
@@ -450,6 +449,9 @@ def build_ynv_system_layout(
 
 
 def build_ynv_bytes(source: Ynv) -> bytes:
+    storage_errors = source._validate_storage_limits()
+    if storage_errors:
+        raise ValueError("Invalid YNV:\n- " + "\n- ".join(storage_errors))
     ynv = source.build()
     if ynv.sector_tree is None:
         raise ValueError("YNV requires a sector tree")

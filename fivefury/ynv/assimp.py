@@ -11,6 +11,7 @@ from .model import (
     YnvAdjacencyType,
     YnvContentFlags,
     YnvEdge,
+    YnvEdgeFlags,
     YnvEdgePart,
     YnvPoly,
     YnvPolyFlags0,
@@ -168,7 +169,9 @@ def _iter_scene_triangles(scene: AssimpScene) -> list[list[tuple[float, float, f
             triangle_indices = mesh.indices[index : index + 3]
             if len(triangle_indices) != 3:
                 continue
-            triangles.append([mesh.positions[int(vertex_index)] for vertex_index in triangle_indices])
+            triangles.append(
+                [mesh.positions[int(vertex_index)] for vertex_index in triangle_indices]
+            )
     return triangles
 
 
@@ -209,10 +212,24 @@ def _build_sector(
     cen_x = (min_corner[0] + max_corner[0]) * 0.5
     cen_y = (min_corner[1] + max_corner[1]) * 0.5
     cen_z = (min_corner[2] + max_corner[2]) * 0.5
-    sector.subtree1 = _build_sector((cen_x, cen_y, cen_z), (max_corner[0], max_corner[1], max_corner[2]), polys, depth - 1)
-    sector.subtree2 = _build_sector((cen_x, min_corner[1], 0.0), (max_corner[0], cen_y, 0.0), polys, depth - 1)
-    sector.subtree3 = _build_sector((min_corner[0], min_corner[1], min_corner[2]), (cen_x, cen_y, cen_z), polys, depth - 1)
-    sector.subtree4 = _build_sector((min_corner[0], cen_y, 0.0), (cen_x, max_corner[1], 0.0), polys, depth - 1)
+    sector.subtree1 = _build_sector(
+        (cen_x, cen_y, cen_z),
+        (max_corner[0], max_corner[1], max_corner[2]),
+        polys,
+        depth - 1,
+    )
+    sector.subtree2 = _build_sector(
+        (cen_x, min_corner[1], 0.0), (max_corner[0], cen_y, 0.0), polys, depth - 1
+    )
+    sector.subtree3 = _build_sector(
+        (min_corner[0], min_corner[1], min_corner[2]),
+        (cen_x, cen_y, cen_z),
+        polys,
+        depth - 1,
+    )
+    sector.subtree4 = _build_sector(
+        (min_corner[0], cen_y, 0.0), (cen_x, max_corner[1], 0.0), polys, depth - 1
+    )
     return sector
 
 
@@ -230,7 +247,9 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
     for index, polygon in enumerate(polygons):
         polygon.local_index = index
 
-    edge_map: dict[tuple[tuple[int, int, int], tuple[int, int, int]], list[tuple[_NavPolygon, int]]] = {}
+    edge_map: dict[
+        tuple[tuple[int, int, int], tuple[int, int, int]], list[tuple[_NavPolygon, int]]
+    ] = {}
     for polygon in polygons:
         for edge_index, start in enumerate(polygon.vertices):
             end = polygon.vertices[(edge_index + 1) % len(polygon.vertices)]
@@ -246,7 +265,9 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
         index_id = len(indices)
         has_cross_area_edge = False
         for edge_index, vertex in enumerate(polygon.vertices):
-            vertex_key = tuple(int(round(component * _EDGE_QUANTIZE)) for component in vertex)
+            vertex_key = tuple(
+                int(round(component * _EDGE_QUANTIZE)) for component in vertex
+            )
             vertex_id = vertex_lookup.get(vertex_key)
             if vertex_id is None:
                 vertex_id = len(vertices)
@@ -256,8 +277,19 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
 
             next_vertex = polygon.vertices[(edge_index + 1) % len(polygon.vertices)]
             candidates = edge_map.get(_edge_key(vertex, next_vertex), [])
-            neighbour = next(((poly, idx) for poly, idx in candidates if poly is not polygon or idx != edge_index), None)
-            poly1 = YnvEdgePart(area_id=polygon.area_id, poly_id=polygon.local_index, adjacency_type=YnvAdjacencyType.NORMAL)
+            neighbour = next(
+                (
+                    (poly, idx)
+                    for poly, idx in candidates
+                    if poly is not polygon or idx != edge_index
+                ),
+                None,
+            )
+            poly1 = YnvEdgePart(
+                area_id=polygon.area_id,
+                poly_id=polygon.local_index,
+                adjacency_type=YnvAdjacencyType.NORMAL,
+            )
             poly2 = YnvEdgePart()
             if neighbour is not None:
                 neighbour_poly, _ = neighbour
@@ -265,11 +297,13 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
                     area_id=neighbour_poly.area_id,
                     poly_id=neighbour_poly.local_index,
                     adjacency_type=YnvAdjacencyType.NORMAL,
-                    detail_flags=4 if neighbour_poly.area_id != polygon.area_id else 0,
                 )
                 if neighbour_poly.area_id != polygon.area_id:
                     has_cross_area_edge = True
-            edges.append(YnvEdge(poly1=poly1, poly2=poly2))
+            edge = YnvEdge(poly1=poly1, poly2=poly2)
+            if neighbour is not None and neighbour_poly.area_id != polygon.area_id:
+                edge.flags |= YnvEdgeFlags.EXTERNAL_EDGE
+            edges.append(edge)
 
         poly_min = (
             min(vertex[0] for vertex in polygon.vertices),
@@ -281,8 +315,12 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
             max(vertex[1] for vertex in polygon.vertices),
             max(vertex[2] for vertex in polygon.vertices),
         )
-        poly_flags0 = YnvPolyFlags0.SMALL if len(polygon.vertices) <= 4 else YnvPolyFlags0.LARGE
-        poly_flags1 = YnvPolyFlags1.IS_CELL_EDGE if has_cross_area_edge else YnvPolyFlags1.NONE
+        poly_flags0 = (
+            YnvPolyFlags0.SMALL if len(polygon.vertices) <= 4 else YnvPolyFlags0.LARGE
+        )
+        poly_flags1 = (
+            YnvPolyFlags1.IS_CELL_EDGE if has_cross_area_edge else YnvPolyFlags1.NONE
+        )
         polys.append(
             YnvPoly(
                 poly_flags0=poly_flags0,
@@ -294,7 +332,9 @@ def _build_cell_ynv(polygons: list[_NavPolygon], *, source_path: str = "") -> Yn
             )
         )
 
-    sector_tree = _build_sector((min_x, min_y, z_min), (max_x, max_y, z_max), polys, _SECTOR_DEPTH)
+    sector_tree = _build_sector(
+        (min_x, min_y, z_min), (max_x, max_y, z_max), polys, _SECTOR_DEPTH
+    )
     return Ynv(
         path=source_path,
         content_flags=YnvContentFlags.POLYGONS,
@@ -350,7 +390,10 @@ def assimp_to_ynvs(
     output_dir.mkdir(parents=True, exist_ok=True)
     saved_paths: list[Path] = []
     for ynv in ynvs:
-        path = output_dir / f"navmesh[{(ynv.area_id % 100) * 3}][{(ynv.area_id // 100) * 3}].ynv"
+        path = (
+            output_dir
+            / f"navmesh[{(ynv.area_id % 100) * 3}][{(ynv.area_id // 100) * 3}].ynv"
+        )
         ynv.save(path)
         saved_paths.append(path)
     return saved_paths

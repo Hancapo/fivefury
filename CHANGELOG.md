@@ -7,6 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Public `YnvEdgeFlags` names expose adjacency-disabled, cover, high-drop, and external-edge semantics without requiring callers to edit packed bits.
+
+### Fixed
+- YNV edge polygon references now use GTA V's native 15-bit layout, reserve `0x7FFF` as the null polygon sentinel, and place adjacency and free-space fields at their correct bit offsets.
+- Assimp navmesh generation now marks cross-cell links with the native external-edge flag.
+- YNV validation now rejects polygon and index counts that cannot be represented by the runtime format, invalid local polygon references, and more than 32 adjacent-area lookups before serialization can truncate them.
+
 ## [0.2.12] - 2026-07-25
 
 ### Fixed
