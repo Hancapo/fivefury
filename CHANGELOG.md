@@ -7,10 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Binary YFT validation reports invalid resource pointers, class headers, page maps, and physics-array dimensions before files are saved.
+
 ### Fixed
 - YFT physics structures now use runtime-compatible class headers and resource states.
 - YFT group-name arrays reserve the sentinel slot required by the resource constructor.
 - Multi-child props no longer receive an unrelated Euphoria articulated body automatically.
+- Root fragment children now receive their required runtime header even when no physics LOD is present.
 
 ## [0.2.9] - 2026-07-24
 

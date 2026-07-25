@@ -637,6 +637,7 @@ from .yft import (
     YftVehicleGlassWindow,
     YftVehicleGlassWindows,
     assert_valid_yft,
+    assert_valid_yft_bytes,
     bound_inertia,
     bound_mass,
     box_inertia,
@@ -651,6 +652,7 @@ from .yft import (
     scan_yft_corpus,
     simple_physics_bound,
     validate_yft,
+    validate_yft_bytes,
 )
 from .ymap import (
     AngleMode,
@@ -1548,6 +1550,7 @@ __all__ = [
     "YftVehicleGlassWindow",
     "YftVehicleGlassWindows",
     "assert_valid_yft",
+    "assert_valid_yft_bytes",
     "bound_inertia",
     "bound_mass",
     "box_inertia",
@@ -1562,6 +1565,7 @@ __all__ = [
     "scan_yft_corpus",
     "simple_physics_bound",
     "validate_yft",
+    "validate_yft_bytes",
     "assimp_to_ynvs",
     "build_junction_heightmap",
     "get_ynd_area_bounds",
