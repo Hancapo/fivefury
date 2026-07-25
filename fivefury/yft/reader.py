@@ -10,6 +10,7 @@ from ..binary import u64 as _u64
 from ..binary import vec3 as _vec3
 from ..common import ByteSource, read_source_bytes
 from ..resource import RSC7_MAGIC, split_rsc7_sections, virtual_to_offset
+from ..ydr.model import YdrMaterial
 from ..ydr.read_lights import parse_light_array
 from ..ydr.shaders import ShaderLibrary
 from .cloth_reader import read_environment_cloths
@@ -47,6 +48,7 @@ def _read_drawable_array(
     pointers,
     path: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None = None,
 ) -> list[YftDrawable]:
     drawable_count = _u32(system_data, DRAWABLE_ARRAY_COUNT_OFFSET)
     drawable_pointers = read_pointer_array(
@@ -65,6 +67,9 @@ def _read_drawable_array(
             else ""
         )
         label = name or f"drawable_array_{index}"
+        read_kwargs = {}
+        if inherited_materials is not None:
+            read_kwargs["inherited_materials"] = inherited_materials
         drawables.append(
             YftDrawable(
                 label=label,
@@ -78,6 +83,7 @@ def _read_drawable_array(
                     label=label,
                     path=path,
                     shader_library=shader_library,
+                    **read_kwargs,
                 ),
             )
         )
@@ -93,9 +99,13 @@ def _read_optional_drawable(
     label: str,
     path: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None = None,
 ):
     if not pointer:
         return None
+    read_kwargs = {}
+    if inherited_materials is not None:
+        read_kwargs["inherited_materials"] = inherited_materials
     return read_fragment_drawable(
         header,
         system_data,
@@ -104,6 +114,7 @@ def _read_optional_drawable(
         label=label,
         path=path,
         shader_library=shader_library,
+        **read_kwargs,
     )
 
 
@@ -131,6 +142,20 @@ def read_yft(
         system_data, pointers.physics_lod_group
     )
 
+    main_drawable = _read_optional_drawable(
+        header,
+        system_data,
+        graphics_data,
+        pointers.common_drawable,
+        label="drawable",
+        path=resource_path,
+        shader_library=shader_library,
+    )
+    shared_materials = (
+        main_drawable.materials
+        if main_drawable is not None and main_drawable.materials
+        else None
+    )
     physics_lod_details = read_physics_lods(
         header,
         system_data,
@@ -138,6 +163,7 @@ def read_yft(
         physics_lod_pointers,
         path=resource_path,
         shader_library=shader_library,
+        inherited_materials=shared_materials,
         resolve_entities=resolve_physics_entities,
         event_set_cache=event_set_cache,
     )
@@ -157,15 +183,6 @@ def read_yft(
             event_set_cache=event_set_cache,
         )
 
-    main_drawable = _read_optional_drawable(
-        header,
-        system_data,
-        graphics_data,
-        pointers.common_drawable,
-        label="drawable",
-        path=resource_path,
-        shader_library=shader_library,
-    )
     drawables = _read_drawable_array(
         header,
         system_data,
@@ -173,6 +190,7 @@ def read_yft(
         pointers=pointers,
         path=resource_path,
         shader_library=shader_library,
+        inherited_materials=shared_materials,
     )
     cloth_drawable = _read_optional_drawable(
         header,

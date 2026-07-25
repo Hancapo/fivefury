@@ -111,6 +111,119 @@ def _prepare_drawable(
     )
 
 
+def _freeze_material_value(value: object) -> object:
+    if dataclasses.is_dataclass(value):
+        return tuple(
+            (field.name, _freeze_material_value(getattr(value, field.name)))
+            for field in dataclasses.fields(value)
+        )
+    if isinstance(value, dict):
+        return tuple(
+            sorted(
+                (
+                    str(key).casefold(),
+                    _freeze_material_value(item),
+                )
+                for key, item in value.items()
+            )
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_material_value(item) for item in value)
+    if isinstance(value, Path):
+        return value.as_posix().casefold()
+    if isinstance(value, str):
+        return value.casefold()
+    return value
+
+
+def _prepared_material_key(material: PreparedMaterial) -> tuple[object, ...]:
+    gen9_name = (
+        getattr(material.gen9_definition, "name", "")
+        if material.gen9_definition is not None
+        else ""
+    )
+    return (
+        material.shader_file_name.casefold(),
+        int(material.render_bucket),
+        _freeze_material_value(material.textures),
+        _freeze_material_value(material.parameters),
+        str(gen9_name).casefold(),
+    )
+
+
+def _merge_embedded_textures(
+    main: _PreparedFragmentDrawable,
+    shared_drawables: Sequence[_PreparedFragmentDrawable],
+) -> None:
+    from ..ytd import Ytd
+
+    dictionaries = [
+        item.build.embedded_textures
+        for item in (main, *shared_drawables)
+        if item.build.embedded_textures is not None
+        and item.build.embedded_textures.textures
+    ]
+    if not dictionaries:
+        return
+
+    merged = Ytd(game=dictionaries[0].game)
+    by_name = {}
+    for dictionary in dictionaries:
+        for texture in dictionary.textures:
+            key = texture.name.casefold()
+            previous = by_name.get(key)
+            if previous is not None and previous != texture:
+                raise ValueError(
+                    "Fragment drawables cannot share two different embedded "
+                    f"textures named '{texture.name}'"
+                )
+            if previous is None:
+                by_name[key] = texture
+                merged.textures.append(texture)
+    main.build = dataclasses.replace(main.build, embedded_textures=merged)
+    for item in shared_drawables:
+        item.build = dataclasses.replace(item.build, embedded_textures=None)
+
+
+def _share_fragment_shader_group(
+    main: _PreparedFragmentDrawable,
+    shared_drawables: Sequence[_PreparedFragmentDrawable],
+) -> None:
+    """Remap secondary fragment geometry to the common drawable shader group."""
+
+    _merge_embedded_textures(main, shared_drawables)
+    shared_materials = list(main.materials)
+    shared_indices: dict[tuple[object, ...], int] = {}
+    for material in shared_materials:
+        shared_indices.setdefault(_prepared_material_key(material), material.index)
+
+    for item in shared_drawables:
+        local_to_shared: dict[int, int] = {}
+        for material in item.materials:
+            key = _prepared_material_key(material)
+            shared_index = shared_indices.get(key)
+            if shared_index is None:
+                shared_index = len(shared_materials)
+                shared_materials.append(
+                    dataclasses.replace(material, index=shared_index)
+                )
+                shared_indices[key] = shared_index
+            local_to_shared[int(material.index)] = shared_index
+
+        for models in item.lods.values():
+            for model in models:
+                for mesh in model.meshes:
+                    local_index = int(mesh.material_index)
+                    if local_index not in local_to_shared:
+                        raise ValueError(
+                            f"YFT drawable '{item.name}' geometry references "
+                            f"missing local material {local_index}"
+                        )
+                    mesh.material_index = local_to_shared[local_index]
+
+    main.materials = shared_materials
+
+
 def _write_fragment_matrix(
     system: ResourceWriter, offset: int, matrix: YftFragmentMatrix
 ) -> None:
@@ -248,6 +361,8 @@ def _prepared_drawables(
                 allow_empty=True,
             )
         )
+    if main is not None:
+        _share_fragment_shader_group(main, [*extras, *physics])
     return main, extras, cloth, physics
 
 
@@ -471,6 +586,10 @@ def _build_yft_payload(
     system = ResourceWriter(initial_size=align(FRAGMENT_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
     main, extras, cloth, physics = prepared
+    shared_shader_group_ids = {
+        id(item)
+        for item in (*extras, *physics)
+    }
     for item in [main, *extras, cloth, *physics]:
         if item is None:
             continue
@@ -479,7 +598,7 @@ def _build_yft_payload(
             system,
             graphics,
             item.build,
-            item.materials,
+            [] if id(item) in shared_shader_group_ids else item.materials,
             item.lods,
             page_counts,
             root_off=item.root_offset,

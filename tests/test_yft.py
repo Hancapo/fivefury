@@ -667,9 +667,9 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
         ("drawable_cloth", "drawable_cloth"),
     ]
     assert calls == [
+        (0x110, "example/drawable.ydr"),
         (0x690, "example/physics_high_child_0_undamaged.ydr"),
         (0x6A0, "example/physics_high_child_0_damaged.ydr"),
-        (0x110, "example/drawable.ydr"),
         (0x150, "example/extra.ydr"),
         (0x190, "example/drawable_cloth.ydr"),
     ]
@@ -975,6 +975,113 @@ def test_materialless_physics_drawable_uses_null_shader_group():
     assert parsed_drawable.materials == []
     assert struct.unpack_from("<Q", system_data, drawable_offset + 0x10)[0] == 0
     assert validate_yft_bytes(raw) == []
+
+
+def test_damaged_drawable_inherits_common_shader_group_and_remaps_materials():
+    triangle = [
+        (0.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+    ]
+    texcoords = [[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]]
+    main = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=triangle,
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=texcoords,
+            )
+        ],
+        materials=[YdrMaterialInput(name="body", render_bucket=0)],
+        name="shared_shader_fragment",
+    )
+    damaged = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=triangle,
+                indices=[0, 1, 2],
+                material="damage_only",
+                texcoords=texcoords,
+            ),
+            YdrMeshInput(
+                positions=triangle,
+                indices=[0, 1, 2],
+                material="body_alias",
+                texcoords=texcoords,
+            ),
+        ],
+        materials=[
+            YdrMaterialInput(name="damage_only", shader="emissive.sps"),
+            YdrMaterialInput(name="body_alias"),
+        ],
+        name="shared_shader_fragment_damaged",
+    )
+
+    raw = build_yft_bytes(
+        create_yft(
+            main,
+            damaged_drawable=damaged,
+            name="shared_shader_fragment",
+        )
+    )
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    main_offset = virtual_to_offset(struct.unpack_from("<Q", system_data, 0x30)[0])
+    main_shader_group = struct.unpack_from("<Q", system_data, main_offset + 0x10)[0]
+    main_shader_group_offset = virtual_to_offset(main_shader_group)
+    extra_array_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, 0x38)[0]
+    )
+    damaged_pointer = struct.unpack_from("<Q", system_data, extra_array_offset)[0]
+    damaged_offset = virtual_to_offset(damaged_pointer)
+    damaged_lod_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_offset + 0x50)[0]
+    )
+    damaged_models_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_lod_offset)[0]
+    )
+    damaged_model_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_models_offset)[0]
+    )
+    damaged_mapping_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_model_offset + 0x20)[0]
+    )
+
+    assert struct.unpack_from("<H", system_data, main_shader_group_offset + 0x18)[0] == 2
+    assert struct.unpack_from("<Q", system_data, damaged_offset + 0x10)[0] == 0
+    assert struct.unpack_from("<2H", system_data, damaged_mapping_offset) == (1, 0)
+    assert validate_yft_bytes(raw) == []
+
+    parsed = read_yft(raw)
+    parsed_damaged = parsed.damaged_drawable
+    assert parsed_damaged is not None
+    assert parsed_damaged.materials == parsed.main_drawable.materials
+    assert [
+        mesh.material_index
+        for model in parsed_damaged.lods[YdrLod.HIGH]
+        for mesh in model.meshes
+    ] == [1, 0]
+    assert all(
+        mesh.material is parsed.main_drawable.materials[mesh.material_index]
+        for model in parsed_damaged.lods[YdrLod.HIGH]
+        for mesh in model.meshes
+    )
+
+    broken_system = bytearray(system_data)
+    struct.pack_into("<Q", broken_system, damaged_offset + 0x10, main_shader_group)
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path == "root.extra_drawables[0].shader_group"
+        and "must inherit" in issue.message
+        for issue in validate_yft_bytes(broken)
+    )
 
 
 def test_create_yft_writes_declared_physics_lod(tmp_path):

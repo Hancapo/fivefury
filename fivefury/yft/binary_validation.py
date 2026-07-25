@@ -51,6 +51,7 @@ class _YftBinaryValidator:
         self.graphics_data = graphics_data
         self.issues: list[YftValidationIssue] = []
         self._validated_drawables: set[int] = set()
+        self._common_drawable: int = 0
 
     def error(self, path: str, message: str) -> None:
         self.issues.append(
@@ -172,7 +173,27 @@ class _YftBinaryValidator:
         path: str,
         *,
         require_shader_group: bool = True,
+        inherited_shader_count: int | None = None,
     ) -> None:
+        if (
+            inherited_shader_count is not None
+            and pointer != self._common_drawable
+        ):
+            root = self.pointer(pointer, path, size=0x150, nullable=False)
+            if root is not None:
+                shader_group = self.u64(root + 0x10)
+                if shader_group:
+                    self.error(
+                        f"{path}.shader_group",
+                        "secondary fragment drawables must inherit the common "
+                        "drawable shader group; the private pointer must be null",
+                    )
+                self.validate_inherited_shader_mappings(
+                    root,
+                    path,
+                    inherited_shader_count,
+                )
+            require_shader_group = False
         if pointer in self._validated_drawables:
             return
         self._validated_drawables.add(pointer)
@@ -183,7 +204,85 @@ class _YftBinaryValidator:
             require_shader_group=require_shader_group,
         )
 
-    def validate_child(self, pointer: int, path: str) -> None:
+    def drawable_shader_count(self, pointer: int, path: str) -> int:
+        root = self.pointer(pointer, path, size=0x20, nullable=False)
+        if root is None:
+            return 0
+        shader_group = self.u64(root + 0x10)
+        shader_group_offset = self.pointer(
+            shader_group,
+            f"{path}.shader_group",
+            size=0x1A,
+            nullable=True,
+        )
+        if shader_group_offset is None:
+            return 0
+        return self.u16(shader_group_offset + 0x18)
+
+    def validate_inherited_shader_mappings(
+        self,
+        root: int,
+        path: str,
+        shader_count: int,
+    ) -> None:
+        for field_offset, label in (
+            (0x50, "high"),
+            (0x58, "medium"),
+            (0x60, "low"),
+            (0x68, "very_low"),
+        ):
+            lod_pointer = self.u64(root + field_offset)
+            if not lod_pointer:
+                continue
+            lod = self.pointer(
+                lod_pointer,
+                f"{path}.lods.{label}",
+                size=0x10,
+                nullable=False,
+            )
+            if lod is None:
+                continue
+            model_count = self.u16(lod + 0x08)
+            models = self.pointer_array(
+                self.u64(lod),
+                model_count,
+                f"{path}.lods.{label}.models",
+            )
+            for model_index, model_pointer in enumerate(models):
+                model_path = f"{path}.lods.{label}.models[{model_index}]"
+                model = self.pointer(
+                    model_pointer,
+                    model_path,
+                    size=0x30,
+                    nullable=False,
+                )
+                if model is None:
+                    continue
+                geometry_count = self.u16(model + 0x10)
+                mapping = self.pointer(
+                    self.u64(model + 0x20),
+                    f"{model_path}.shader_mapping",
+                    size=geometry_count * 2,
+                    nullable=geometry_count == 0,
+                )
+                if mapping is None:
+                    continue
+                for geometry_index in range(geometry_count):
+                    shader_index = self.u16(mapping + geometry_index * 2)
+                    if shader_index >= shader_count:
+                        self.error(
+                            f"{model_path}.shader_mapping[{geometry_index}]",
+                            f"shader index {shader_index} is outside the common "
+                            f"shader group with {shader_count} entries",
+                        )
+
+    def validate_child(
+        self,
+        pointer: int,
+        path: str,
+        *,
+        inherited_shader_count: int,
+    ) -> None:
         offset = self.class_header(
             pointer,
             path,
@@ -202,6 +301,7 @@ class _YftBinaryValidator:
                     entity,
                     f"{path}.{label}",
                     require_shader_group=False,
+                    inherited_shader_count=inherited_shader_count,
                 )
         for field_offset, label in (
             (0xB0, "continuous_event_set"),
@@ -302,7 +402,13 @@ class _YftBinaryValidator:
                 f"{count} transforms do not match {num_children} physics children",
             )
 
-    def validate_lod(self, pointer: int, path: str) -> None:
+    def validate_lod(
+        self,
+        pointer: int,
+        path: str,
+        *,
+        inherited_shader_count: int,
+    ) -> None:
         offset = self.class_header(
             pointer,
             path,
@@ -358,7 +464,11 @@ class _YftBinaryValidator:
             f"{path}.children",
         )
         for index, child in enumerate(children):
-            self.validate_child(child, f"{path}.children[{index}]")
+            self.validate_child(
+                child,
+                f"{path}.children[{index}]",
+                inherited_shader_count=inherited_shader_count,
+            )
 
         for field_offset, label in (
             (0xD8, "undamaged_damp_archetype"),
@@ -430,7 +540,12 @@ class _YftBinaryValidator:
                 )
 
         common_drawable = self.u64(root_offset + 0x30)
+        self._common_drawable = common_drawable
         self.validate_drawable(common_drawable, "root.common_drawable")
+        common_shader_count = self.drawable_shader_count(
+            common_drawable,
+            "root.common_drawable",
+        )
         drawable_count = self.u32(root_offset + DRAWABLE_ARRAY_COUNT_OFFSET)
         drawables = self.pointer_array(
             self.u64(root_offset + 0x38),
@@ -443,13 +558,21 @@ class _YftBinaryValidator:
             "root.extra_drawable_names",
         )
         for index, drawable in enumerate(drawables):
-            self.validate_drawable(drawable, f"root.extra_drawables[{index}]")
+            self.validate_drawable(
+                drawable,
+                f"root.extra_drawables[{index}]",
+                inherited_shader_count=common_shader_count,
+            )
         for index, name in enumerate(names):
             self.string(name, f"root.extra_drawable_names[{index}]")
 
         root_child = self.u64(root_offset + 0x50)
         if root_child:
-            self.validate_child(root_child, "root.child")
+            self.validate_child(
+                root_child,
+                "root.child",
+                inherited_shader_count=common_shader_count,
+            )
         tune_name = self.u64(root_offset + 0x58)
         if tune_name:
             self.string(tune_name, "root.tune_name")
@@ -466,7 +589,11 @@ class _YftBinaryValidator:
                 for index, label in enumerate(("high", "medium", "low")):
                     lod = self.u64(group_offset + 0x10 + index * 8)
                     if lod:
-                        self.validate_lod(lod, f"physics_lods.{label}")
+                        self.validate_lod(
+                            lod,
+                            f"physics_lods.{label}",
+                            inherited_shader_count=common_shader_count,
+                        )
 
         cloth_drawable = self.u64(root_offset + 0xF8)
         if cloth_drawable:

@@ -8,6 +8,7 @@ from ..binary import read_c_string
 from ..bounds import read_bound_from_pointer
 from ..resource import virtual_to_offset
 from ..ydr import Ydr
+from ..ydr.model import YdrMaterial
 from ..ydr.reader import _read_ydr_from_sections
 from ..ydr.shaders import ShaderLibrary
 from .constants import (
@@ -89,6 +90,7 @@ def read_fragment_drawable(
     label: str,
     path: str,
     shader_library: ShaderLibrary | None,
+    inherited_materials: list[YdrMaterial] | None = None,
 ):
     root_offset = drawable_root_offset(system_data, pointer)
     drawable_base = _read_ydr_from_sections(
@@ -99,6 +101,7 @@ def read_fragment_drawable(
         path=internal_drawable_path(path, label),
         shader_library=shader_library,
         read_extensions=False,
+        inherited_materials=inherited_materials,
     )
     bound_pointer = struct.unpack_from("<Q", system_data, root_offset + 0xF0)[0]
     bound = (
