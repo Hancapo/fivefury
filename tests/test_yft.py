@@ -3,7 +3,15 @@ from __future__ import annotations
 import dataclasses
 import struct
 
-from fivefury import BoundBox, YdrMaterialInput, YdrMeshInput, create_ydr
+from fivefury import (
+    BoundAabb,
+    BoundBox,
+    BoundChild,
+    BoundComposite,
+    YdrMaterialInput,
+    YdrMeshInput,
+    create_ydr,
+)
 from fivefury.resource import (
     build_rsc7,
     get_resource_chunk_sizes,
@@ -37,6 +45,7 @@ from fivefury.yft import (
     YftFragmentState,
     YftGlassPane,
     YftPhysicsChild,
+    YftPhysicsDampArchetype,
     YftPhysicsEntity,
     YftPhysicsGroup,
     YftPhysicsGroupFlag,
@@ -922,6 +931,453 @@ def test_multichild_prop_does_not_invent_euphoria_body():
     assert parsed.physics_lod("high").articulated_body_type is None
 
 
+def test_physics_lod_without_damaged_entities_omits_damaged_archetype():
+    from fivefury.yft import normalize_physics_lod, simple_physics_bound
+
+    child = YftPhysicsChild.declare(undamaged_mass=1.0)
+    group = YftPhysicsGroup.declare("intact_only", children=(child,))
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare("high", groups=(group,)),
+        composite_bound=simple_physics_bound(),
+    )
+
+    assert lod.undamaged_damp_archetype is not None
+    assert lod.undamaged_damp_archetype.type_flags == 1
+    assert lod.undamaged_damp_archetype.include_flags == 0xFFFFFFFF
+    assert lod.num_root_damage_regions == 1
+    assert lod.damaged_damp_archetype is None
+
+    invalid = Yft(
+        physics_lod_details=[
+            dataclasses.replace(
+                lod,
+                damaged_damp_archetype=YftPhysicsDampArchetype(),
+            )
+        ]
+    )
+    assert any(
+        issue.is_error
+        and issue.path
+        == "physics_lod_details[0].damaged_damp_archetype"
+        for issue in validate_yft(invalid)
+    )
+
+
+def test_physics_authoring_preserves_root_bone_in_bony_child_prefix():
+    from fivefury.yft import normalize_physics_lod, simple_physics_bound
+
+    root_child = YftPhysicsChild.declare(bone_id=0)
+    child = YftPhysicsChild.declare(bone_id=17)
+    group = YftPhysicsGroup.declare("root", children=(root_child, child))
+    declared = YftPhysicsLod.declare("high", groups=(group,))
+
+    normalized = normalize_physics_lod(
+        declared,
+        composite_bound=simple_physics_bound(),
+    )
+
+    assert normalized.num_bony_children == 2
+    assert normalized.children[0].follows_root
+
+
+def test_physics_lods_own_distinct_child_drawable_bound_links():
+    from fivefury.yft import simple_physics_bound
+
+    def drawable(name: str):
+        return create_ydr(
+            meshes=[
+                YdrMeshInput(
+                    positions=[
+                        (0.0, 0.0, 0.0),
+                        (1.0, 0.0, 0.0),
+                        (0.0, 1.0, 0.0),
+                    ],
+                    indices=[0, 1, 2],
+                    material="body",
+                    texcoords=[
+                        [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
+                    ],
+                )
+            ],
+            materials=[YdrMaterialInput(name="body")],
+            name=name,
+        )
+
+    high_child = YftPhysicsChild.declare()
+    medium_child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(
+            drawable("medium_physics"),
+            label="medium_physics",
+        )
+    )
+    source = create_yft(
+        drawable("multi_lod"),
+        name="multi_lod",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("high", children=(high_child,)),),
+            ),
+            YftPhysicsLod.declare(
+                "medium",
+                groups=(
+                    YftPhysicsGroup.declare(
+                        "medium",
+                        children=(medium_child,),
+                    ),
+                ),
+            ),
+        ),
+        physics_bound=simple_physics_bound(),
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+    high = parsed.physics_lod("high")
+    medium = parsed.physics_lod("medium")
+    high_entity = high.children[0].undamaged_entity_pointer
+    medium_entity = medium.children[0].undamaged_entity_pointer
+
+    assert high_entity != medium_entity
+    assert struct.unpack_from(
+        "<Q",
+        system_data,
+        virtual_to_offset(high_entity) + 0xF0,
+    )[0] == high.composite_bounds_pointer
+    assert struct.unpack_from(
+        "<Q",
+        system_data,
+        virtual_to_offset(medium_entity) + 0xF0,
+    )[0] == medium.composite_bounds_pointer
+    assert validate_yft_bytes(raw) == []
+
+
+def test_composite_bound_may_preserve_only_null_native_slots():
+    composite = BoundComposite(
+        bound_type=10,
+        sphere_radius=0.0,
+        box_max=(0.0, 0.0, 0.0),
+        margin=0.0,
+        box_min=(0.0, 0.0, 0.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[
+            BoundChild(None),
+            BoundChild(None),
+        ]
+    )
+
+    assert "Composite bound has no non-null children" not in composite.validate()
+
+
+def test_physics_lod_with_damaged_entity_synthesizes_damaged_archetype():
+    from fivefury.yft import normalize_physics_lod, simple_physics_bound
+
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="damaged",
+            )
+        ],
+        materials=[YdrMaterialInput(name="damaged")],
+        name="damaged_piece",
+    )
+    child = YftPhysicsChild.declare(
+        damaged_entity=YftPhysicsEntity.declare(drawable),
+        damaged_mass=1.0,
+    )
+    group = YftPhysicsGroup.declare("two_state", children=(child,))
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare("high", groups=(group,)),
+        composite_bound=simple_physics_bound(),
+    )
+
+    assert lod.damaged_damp_archetype is not None
+
+
+def test_damaged_archetype_owns_a_distinct_bound_resource():
+    from fivefury.yft import simple_physics_bound
+
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name="two_state_prop",
+    )
+    bound = simple_physics_bound()
+    child = YftPhysicsChild.declare(undamaged_mass=1.0, damaged_mass=1.0)
+    group = YftPhysicsGroup.declare("body", children=(child,))
+    source = create_yft(
+        drawable,
+        name="two_state_prop",
+        damaged_drawable=drawable,
+        physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
+        physics_bound=bound,
+    )
+    lod = source.physics_lod_details[0]
+    source.physics_lod_details[0] = dataclasses.replace(
+        lod,
+        damaged_damp_archetype=YftPhysicsDampArchetype(
+            resource_type=2,
+            mass=1.0,
+            inv_mass=1.0,
+            gravity_factor=1.0,
+        ),
+    )
+
+    raw = build_yft_bytes(source)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+    parsed_lod = parsed.physics_lod("high")
+    undamaged_bound = parsed_lod.undamaged_damp_archetype.bound_pointer
+    damaged_bound = parsed_lod.damaged_damp_archetype.bound_pointer
+
+    assert undamaged_bound == parsed_lod.composite_bounds_pointer
+    assert damaged_bound != undamaged_bound
+    assert validate_yft_bytes(raw) == []
+
+    broken_system = bytearray(system_data)
+    damaged_damp_offset = virtual_to_offset(
+        parsed_lod.phys_damp_damaged_pointer
+    )
+    struct.pack_into(
+        "<Q",
+        broken_system,
+        damaged_damp_offset + 0x20,
+        undamaged_bound,
+    )
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    assert any(
+        issue.is_error
+        and issue.path
+        == "physics_lods.high.damaged_damp_archetype.bound"
+        and "must not share" in issue.message
+        for issue in validate_yft_bytes(broken)
+    )
+
+
+def test_partial_damage_uses_sparse_damaged_composite_children():
+    from fivefury.yft import simple_physics_bound
+
+    def drawable(name: str):
+        result = create_ydr(
+            meshes=[
+                YdrMeshInput(
+                    positions=[
+                        (0.0, 0.0, 0.0),
+                        (1.0, 0.0, 0.0),
+                        (0.0, 1.0, 0.0),
+                    ],
+                    indices=[0, 1, 2],
+                    material="body",
+                    texcoords=[
+                        [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+                    ],
+                )
+            ],
+            materials=[YdrMaterialInput(name="body")],
+            name=name,
+        )
+        result.bound = simple_physics_bound()
+        return result
+
+    main = drawable("partial_damage")
+    damaged_main = drawable("partial_damage_damaged")
+    intact_only = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(
+            drawable("intact_only"),
+        ),
+    )
+    damageable = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(
+            drawable("damageable"),
+        ),
+        damaged_entity=YftPhysicsEntity.declare(
+            drawable("damageable_damaged"),
+        ),
+    )
+    damaged_only = YftPhysicsChild.declare(
+        damaged_entity=YftPhysicsEntity.declare(
+            drawable("damaged_only"),
+        ),
+    )
+    group = YftPhysicsGroup.declare(
+        "root",
+        children=(intact_only, damageable, damaged_only),
+    )
+    composite = BoundComposite(
+        bound_type=10,
+        sphere_radius=2.0,
+        box_max=(2.0, 2.0, 2.0),
+        margin=0.0,
+        box_min=(-2.0, -2.0, -2.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[
+            BoundChild(
+                simple_physics_bound(center=(-0.5, 0.0, 0.0)),
+            ),
+            BoundChild(
+                simple_physics_bound(center=(0.5, 0.0, 0.0)),
+            ),
+            BoundChild(
+                None,
+                bounds=BoundAabb(
+                    minimum=(0.0, 0.0, 0.0),
+                    maximum=(0.0, 0.0, 0.0),
+                ),
+            ),
+        ]
+    ).build()
+    source = create_yft(
+        main,
+        name="partial_damage",
+        damaged_drawable=damaged_main,
+        physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
+        physics_bound=composite,
+    )
+
+    raw = build_yft_bytes(source)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+    lod = parsed.physics_lod("high")
+    damaged_bound_offset = virtual_to_offset(
+        lod.damaged_damp_archetype.bound_pointer
+    )
+    damaged_children_pointer = struct.unpack_from(
+        "<Q",
+        system_data,
+        damaged_bound_offset + 0x70,
+    )[0]
+    damaged_children_offset = virtual_to_offset(damaged_children_pointer)
+    damaged_bound_children = struct.unpack_from(
+        "<QQQ",
+        system_data,
+        damaged_children_offset,
+    )
+    damaged_child_bounds_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_bound_offset + 0x88)[0]
+    )
+    damaged_flags1_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_bound_offset + 0x90)[0]
+    )
+    damaged_flags2_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, damaged_bound_offset + 0x98)[0]
+    )
+
+    assert damaged_bound_children[0] == 0
+    assert damaged_bound_children[1] != 0
+    assert damaged_bound_children[2] != 0
+    null_bounds = struct.unpack_from(
+        "<8f",
+        system_data,
+        damaged_child_bounds_offset,
+    )
+    assert null_bounds[0:3] == (0.0, 0.0, 0.0)
+    assert null_bounds[4:8] == (0.0, 0.0, 0.0, 0.0)
+    assert struct.unpack_from(
+        "<II",
+        system_data,
+        damaged_flags1_offset,
+    ) == (0, 0)
+    assert struct.unpack_from(
+        "<II",
+        system_data,
+        damaged_flags2_offset,
+    ) == (0, 0)
+    assert lod.composite_bound.children[2].bound is None
+    assert validate_yft_bytes(raw) == []
+
+    invalid_null_metadata_system = bytearray(system_data)
+    struct.pack_into(
+        "<f",
+        invalid_null_metadata_system,
+        damaged_child_bounds_offset,
+        float("nan"),
+    )
+    invalid_null_metadata = build_rsc7(
+        invalid_null_metadata_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path
+        == (
+            "physics_lods.high.damaged_damp_archetype.bound"
+            ".children[0].bounds"
+        )
+        for issue in validate_yft_bytes(invalid_null_metadata)
+    )
+
+    undamaged_bound_offset = virtual_to_offset(
+        lod.undamaged_damp_archetype.bound_pointer
+    )
+    undamaged_children_pointer = struct.unpack_from(
+        "<Q",
+        system_data,
+        undamaged_bound_offset + 0x70,
+    )[0]
+    undamaged_children_offset = virtual_to_offset(
+        undamaged_children_pointer
+    )
+    invalid_child_pointer = struct.unpack_from(
+        "<Q",
+        system_data,
+        undamaged_children_offset,
+    )[0]
+    broken_system = bytearray(system_data)
+    struct.pack_into(
+        "<Q",
+        broken_system,
+        damaged_children_offset,
+        invalid_child_pointer,
+    )
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    assert any(
+        issue.is_error
+        and issue.path
+        == (
+            "physics_lods.high.damaged_damp_archetype.bound"
+            ".children[0]"
+        )
+        for issue in validate_yft_bytes(broken)
+    )
+
+
 def test_materialless_physics_drawable_uses_null_shader_group():
     main_drawable = create_ydr(
         meshes=[
@@ -1133,7 +1589,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     )
 
     raw = build_yft_bytes(yft)
-    _, system_data, _ = split_rsc7_sections(raw)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
     target = tmp_path / "fragment.yft"
     target.write_bytes(raw)
     parsed = read_yft(target, resolve_physics_entities=False)
@@ -1219,6 +1675,40 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert lod.link_attachments.count == 1
     assert lod.link_attachments.matrices[0][3] == (0.0, 0.0, 0.0, 1.0)
     assert lod.undamaged_damp_archetype is not None
+    assert lod.damaged_damp_archetype is not None
+    undamaged_entity_offset = virtual_to_offset(
+        lod.children[0].undamaged_entity_pointer
+    )
+    damaged_entity_offset = virtual_to_offset(
+        lod.children[0].damaged_entity_pointer
+    )
+    assert struct.unpack_from(
+        "<Q",
+        system_data,
+        undamaged_entity_offset + 0xF0,
+    )[0] == lod.undamaged_damp_archetype.bound_pointer
+    assert struct.unpack_from(
+        "<Q",
+        system_data,
+        damaged_entity_offset + 0xF0,
+    )[0] == lod.damaged_damp_archetype.bound_pointer
+
+    broken_system = bytearray(system_data)
+    struct.pack_into("<Q", broken_system, undamaged_entity_offset + 0xF0, 0)
+    broken_bound_link = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path
+        == "physics_lods.high.children[0].undamaged_entity.bound"
+        and "matching archetype bound child" in issue.message
+        for issue in validate_yft_bytes(broken_bound_link)
+    )
     lod_offset = virtual_to_offset(lod.pointer)
     child_offset = virtual_to_offset(lod.child_pointers[0])
     transforms_offset = virtual_to_offset(lod.link_attachments_pointer)

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    YNV_POLY_ARRAY_BLOCK_SIZE,
     GameFileCache,
     GameFileType,
     Ynv,
@@ -283,14 +284,14 @@ def test_point_and_portal_direction_helpers_roundtrip() -> None:
     point = YnvPoint(angle=64, type=YnvPointType.TYPE_3).build()
     assert point.direction == pytest.approx((64.0 / 255.0) * math.tau)
     point.direction = math.pi
-    assert point.angle == int(round((math.pi % math.tau) * 255.0 / math.tau)) & 0xFF
+    assert point.angle == round((math.pi % math.tau) * 255.0 / math.tau) & 0xFF
 
     portal = YnvPortal(type=YnvPortalType.TYPE_2, angle=32).build()
     assert portal.direction == pytest.approx((32.0 / 255.0) * math.tau)
     portal.direction = math.pi / 2.0
     assert (
         portal.angle
-        == int(round(((math.pi / 2.0) % math.tau) * 255.0 / math.tau)) & 0xFF
+        == round(((math.pi / 2.0) % math.tau) * 255.0 / math.tau) & 0xFF
     )
 
 
@@ -382,6 +383,43 @@ def test_writer_rejects_more_than_16_bit_polygon_index_capacity() -> None:
         build_ynv_bytes(ynv)
 
 
+def test_writer_assigns_native_polygon_split_array_indices() -> None:
+    polygon_count = YNV_POLY_ARRAY_BLOCK_SIZE + 2
+    ynv = Ynv(
+        vertices=[
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ],
+        indices=[value for _ in range(polygon_count) for value in (0, 1, 2)],
+        edges=[YnvEdge() for _ in range(polygon_count * 3)],
+        polys=[
+            YnvPoly(
+                index_id=index * 3,
+                index_count=3,
+                area_id=0,
+                part_id=0xFF,
+            )
+            for index in range(polygon_count)
+        ],
+        sector_tree=_minimal_sector_tree(),
+    )
+
+    assert any(
+        "poly_array_index" in issue
+        for issue in ynv.validate()
+    )
+
+    rebuilt = read_ynv(build_ynv_bytes(ynv))
+
+    assert all(
+        poly.poly_array_index == index // YNV_POLY_ARRAY_BLOCK_SIZE
+        for index, poly in enumerate(rebuilt.polys)
+    )
+    assert rebuilt.polys[YNV_POLY_ARRAY_BLOCK_SIZE - 1].poly_array_index == 0
+    assert rebuilt.polys[YNV_POLY_ARRAY_BLOCK_SIZE].poly_array_index == 1
+
+
 def test_writer_rejects_explicit_adjacent_area_overflow_before_build() -> None:
     ynv = Ynv(
         adjacent_area_ids=list(range(33)),
@@ -433,6 +471,31 @@ def test_validation_accepts_vanilla_area_ids_above_9999() -> None:
     )
 
     assert not any("area_id=10000" in issue for issue in ynv.validate())
+
+
+def test_validation_checks_only_local_special_link_polygon_ids() -> None:
+    ynv = Ynv(
+        area_id=42,
+        polys=[YnvPoly(area_id=42)],
+        portals=[
+            YnvPortal(
+                area_id_from=42,
+                poly_id_from1=0,
+                poly_id_from2=0,
+                area_id_to=43,
+                poly_id_to1=500,
+                poly_id_to2=500,
+            )
+        ],
+        sector_tree=_minimal_sector_tree(),
+    ).build()
+
+    assert not any("poly_id_to" in issue for issue in ynv.validate())
+
+    ynv.portals[0].poly_id_from1 = 500
+    assert any(
+        "poly_id_from1=500 is out of range" in issue for issue in ynv.validate()
+    )
 
 
 def test_writer_rejects_invalid_portal_link_span() -> None:

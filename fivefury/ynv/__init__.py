@@ -1,5 +1,6 @@
 from .assimp import assimp_to_ynvs, obj_to_nav
 from .model import (
+    YNV_POLY_ARRAY_BLOCK_SIZE,
     Ynv,
     YnvAabb,
     YnvAdjacencyType,
@@ -25,6 +26,7 @@ from .reader import read_ynv
 from .writer import build_ynv_bytes, build_ynv_system_layout, save_ynv
 
 __all__ = [
+    "YNV_POLY_ARRAY_BLOCK_SIZE",
     "Ynv",
     "YnvAabb",
     "YnvAdjacencyType",

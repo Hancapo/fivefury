@@ -1,31 +1,30 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-import math
 
 from ..buckets import at_hash_bucket_capacity
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from .sequences import (
-    YcdAnimSequence,
     YcdAnimationTrack,
+    YcdAnimSequence,
     YcdCachedQuaternionChannel,
     YcdChannelType,
     YcdSequenceRootChannelRef,
     YcdTrackFormat,
     get_ycd_track_format,
+    get_ycd_track_name,
     is_ycd_camera_track,
     is_ycd_facial_track,
-    get_ycd_track_name,
     is_ycd_object_track,
     is_ycd_position_track,
-    is_ycd_rotation_track,
     is_ycd_root_motion_track,
+    is_ycd_rotation_track,
     is_ycd_uv_track,
 )
-
 
 YCD_UV_CLIP_MARKER = "_uv_"
 YCD_UV_UNKNOWN1C = 0x6B002400
@@ -449,9 +448,9 @@ class YcdAnimation:
         limit = max(int(self.sequence_frame_limit), 1)
         return frame_value % limit
 
-    def get_frame_position(self, frame: int | float) -> YcdFramePosition:
+    def get_frame_position(self, frame: float) -> YcdFramePosition:
         frame_value = max(float(frame), 0.0)
-        frame0 = int(math.floor(frame_value))
+        frame0 = math.floor(frame_value)
         if self.frames > 0:
             frame0 = min(frame0, max(self.frames - 1, 0))
         frame1 = frame0 + 1
@@ -461,7 +460,7 @@ class YcdAnimation:
         alpha0 = 1.0 - alpha1
         return YcdFramePosition(frame0=frame0, frame1=frame1, alpha0=alpha0, alpha1=alpha1)
 
-    def evaluate_tracks(self, frame: int | float, *, track: int | YcdAnimationTrack | None = None, interpolate: bool = True) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    def evaluate_tracks(self, frame: float, *, track: int | YcdAnimationTrack | None = None, interpolate: bool = True) -> dict[tuple[int, int], tuple[float, float, float, float]]:
         if not interpolate or isinstance(frame, int):
             return self._evaluate_integer_tracks(int(frame), track=track)
         pos = self.get_frame_position(frame)
@@ -505,14 +504,14 @@ class YcdAnimation:
             if is_ycd_uv_track(key[1])
         }
 
-    def evaluate_object_animation(self, frame: int | float) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    def evaluate_object_animation(self, frame: float) -> dict[tuple[int, int], tuple[float, float, float, float]]:
         return {
             key: value
             for key, value in self.evaluate_tracks(frame).items()
             if is_ycd_object_track(key[1])
         }
 
-    def evaluate_root_motion(self, frame: int | float) -> YcdTransformSample:
+    def evaluate_root_motion(self, frame: float) -> YcdTransformSample:
         tracks = {
             key: value
             for key, value in self.evaluate_tracks(frame).items()
@@ -522,7 +521,7 @@ class YcdAnimation:
         rotation = next((value for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.MOVER_ROTATION)), None)
         return YcdTransformSample(position=position, rotation=rotation)
 
-    def evaluate_camera_animation(self, frame: int | float) -> YcdCameraAnimationSample:
+    def evaluate_camera_animation(self, frame: float) -> YcdCameraAnimationSample:
         tracks = {
             key: value
             for key, value in self.evaluate_tracks(frame).items()
@@ -547,7 +546,7 @@ class YcdAnimation:
             tracks={int(track): value for (_, track), value in tracks.items()},
         )
 
-    def evaluate_facial_animation(self, frame: int | float) -> dict[int, YcdFacialAnimationSample]:
+    def evaluate_facial_animation(self, frame: float) -> dict[int, YcdFacialAnimationSample]:
         result: dict[int, YcdFacialAnimationSample] = {}
         tracks = {
             key: value
@@ -564,7 +563,7 @@ class YcdAnimation:
                 sample.rotation = value
         return result
 
-    def evaluate_uv_transform(self, frame: int | float) -> YcdUvTransformSample:
+    def evaluate_uv_transform(self, frame: float) -> YcdUvTransformSample:
         tracks = self.evaluate_uv_animation(frame)
         uv0 = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_U)), None)
         uv1 = next((value[:3] for (_, track), value in tracks.items() if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_V)), None)
@@ -668,13 +667,18 @@ class YcdClip:
     vft: int = 0
     tags: list[YcdClipTag] = field(default_factory=list)
     properties: list[YcdClipProperty] = field(default_factory=list)
-    unknown_04h: int = 0
+    # pgBase/resource ownership metadata. Stock PC clips consistently carry
+    # one here; zero-valued generated clips can outlive placement with the
+    # wrong runtime lifetime state.
+    unknown_04h: int = 1
     unknown_08h: int = 0
     unknown_0ch: int = 0
     unknown_14h: int = 0
     unknown_24h: int = 0
     reserved_34h: int = 0
-    unknown_48h: int = 0
+    # crClip initializes this field to one, including clips serialized by the
+    # stock game. It is not optional padding.
+    unknown_48h: int = 1
     unknown_4ch: int = 0
     has_block_tag: bool = False
     tag_list_reserved_0ch: int = 0
@@ -866,10 +870,8 @@ class Ycd:
         result: dict[int, YcdClip] = {}
         for clip in self.clips:
             short_name = clip.short_name
-            if short_name.endswith(suffix):
-                short_name = short_name[: -len(suffix)]
-            if short_name.endswith("_dual"):
-                short_name = short_name[:-5]
+            short_name = short_name.removesuffix(suffix)
+            short_name = short_name.removesuffix("_dual")
             result[MetaHash(short_name).uint] = clip
         return result
 
@@ -964,10 +966,10 @@ class Ycd:
 
 __all__ = [
     "Ycd",
+    "YcdAnimSequence",
     "YcdAnimation",
     "YcdAnimationBoneId",
     "YcdAnimationTrack",
-    "YcdAnimSequence",
     "YcdCameraAnimationSample",
     "YcdChannelType",
     "YcdClip",
@@ -984,8 +986,8 @@ __all__ = [
     "YcdSequence",
     "YcdSequenceRootChannelRef",
     "YcdTransformSample",
-    "YcdUvClipBinding",
     "YcdUvAnimationSample",
+    "YcdUvClipBinding",
     "YcdUvTransformSample",
     "build_ycd_uv_clip_hash",
     "build_ycd_uv_clip_name",

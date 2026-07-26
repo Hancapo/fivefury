@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import dataclasses
+import struct
 from collections.abc import Sequence
 
-from ..bounds import Bound, write_bound_resource
+from ..bounds import (
+    Bound,
+    BoundAabb,
+    BoundChild,
+    BoundComposite,
+    write_bound_resource,
+)
 from ..resource import ResourceWriter
 from .constants import DAT_VIRTUAL_BASE
 from .events_writer import event_set_pointer, write_child_event_pointers
@@ -140,6 +147,230 @@ def _write_pointer_array(writer: ResourceWriter, pointers: Sequence[int]) -> int
     return offset
 
 
+def _physics_bound_child_offsets(
+    writer: ResourceWriter,
+    bound: Bound,
+    bound_offset: int,
+    *,
+    child_count: int,
+    label: str,
+) -> tuple[int, ...]:
+    """Return the native bound owned by every fragment physics child.
+
+    GTA V does not resource-construct the bound referenced by a
+    ``fragDrawable``.  Vanilla fragments instead point every physics entity
+    drawable at the corresponding child owned by the archetype's
+    ``phBoundComposite``.  A one-child archetype may own the bound directly.
+    """
+
+    if isinstance(bound, BoundComposite):
+        pointer = struct.unpack_from("<Q", writer.data, bound_offset + 0x70)[0]
+        count = struct.unpack_from("<H", writer.data, bound_offset + 0xA0)[0]
+        if count < child_count:
+            raise ValueError(
+                f"{label} composite has {count} bound children for "
+                f"{child_count} fragment physics children"
+            )
+        if count == 0:
+            return ()
+        if not pointer:
+            raise ValueError(f"{label} composite child pointer array is null")
+        pointer_offset = pointer - DAT_VIRTUAL_BASE
+        offsets: list[int] = []
+        for index in range(child_count):
+            child_pointer = struct.unpack_from(
+                "<Q",
+                writer.data,
+                pointer_offset + index * 8,
+            )[0]
+            offsets.append(
+                child_pointer - DAT_VIRTUAL_BASE if child_pointer else 0
+            )
+        return tuple(offsets)
+    if child_count == 1:
+        return (bound_offset,)
+    raise ValueError(
+        f"{label} must be a phBoundComposite for {child_count} "
+        "fragment physics children"
+    )
+
+
+def _build_damaged_physics_bound(
+    lod: YftPhysicsLod,
+    *,
+    damaged_drawable_offset: int,
+) -> Bound:
+    source = lod.composite_bound
+    if source is None:
+        raise ValueError(f"physics LOD '{lod.label}' requires a composite_bound")
+    if not isinstance(source, BoundComposite):
+        if len(lod.children) == 1:
+            child = lod.children[0]
+            if (
+                child.damaged_entity is not None
+                and child.damaged_entity.drawable is not None
+                and child.damaged_entity.drawable.bound is not None
+            ):
+                return child.damaged_entity.drawable.bound
+        return source
+
+    slots: list[BoundChild] = []
+    for index, child in enumerate(lod.children):
+        base_slot = (
+            source.children[index]
+            if index < len(source.children)
+            else BoundChild(bound=None)
+        )
+        damaged_bound = None
+        if (
+            child.damaged_entity is not None
+            and child.damaged_entity.drawable is not None
+        ):
+            damaged_bound = child.damaged_entity.drawable.bound
+        elif len(lod.children) == 1 and damaged_drawable_offset:
+            damaged_bound = base_slot.bound
+        slots.append(
+            dataclasses.replace(
+                base_slot,
+                bound=damaged_bound,
+                bounds=(
+                    BoundAabb(damaged_bound.box_min, damaged_bound.box_max)
+                    if damaged_bound is not None
+                    else None
+                ),
+                flags1=base_slot.flags1 if damaged_bound is not None else None,
+                flags2=base_slot.flags2 if damaged_bound is not None else None,
+            )
+        )
+    return dataclasses.replace(
+        source,
+        children=slots,
+        bvh=None,
+    ).build()
+
+
+def _sparsify_damaged_bound_children(
+    writer: ResourceWriter,
+    lod: YftPhysicsLod,
+    damaged_bound: Bound | None,
+    damaged_bound_offset: int,
+    *,
+    damaged_drawable_offset: int,
+) -> None:
+    """Null damaged composite children that have no damaged entity.
+
+    Vanilla fragments keep the damaged composite's slot count aligned with
+    ``fragPhysicsLOD::m_Children`` but leave the corresponding bound pointer
+    null whenever that physics child has no damaged drawable.  Copying the
+    intact bound into every slot makes importers and the runtime pair a
+    damaged collision with a null damaged entity.
+    """
+
+    if not damaged_bound_offset or not isinstance(
+        damaged_bound,
+        BoundComposite,
+    ):
+        return
+    children_pointer = struct.unpack_from(
+        "<Q",
+        writer.data,
+        damaged_bound_offset + 0x70,
+    )[0]
+    child_count = struct.unpack_from(
+        "<H",
+        writer.data,
+        damaged_bound_offset + 0xA0,
+    )[0]
+    if child_count != len(lod.children):
+        raise ValueError(
+            f"physics LOD '{lod.label}' damaged composite has {child_count} "
+            f"bound children for {len(lod.children)} physics children"
+        )
+    if not children_pointer and child_count:
+        raise ValueError(
+            f"physics LOD '{lod.label}' damaged composite child pointer "
+            "array is null"
+        )
+    pointer_offset = children_pointer - DAT_VIRTUAL_BASE
+    for index, child in enumerate(lod.children):
+        has_damaged_drawable = bool(
+            child.damaged_entity is not None
+            and child.damaged_entity.drawable is not None
+        )
+        if len(lod.children) == 1 and damaged_drawable_offset:
+            has_damaged_drawable = True
+        if not has_damaged_drawable:
+            writer.pack_into("Q", pointer_offset + index * 8, 0)
+
+
+def _link_physics_entity_bounds(
+    writer: ResourceWriter,
+    lod: YftPhysicsLod,
+    *,
+    main_drawable_offset: int,
+    damaged_drawable_offset: int,
+    entity_drawable_offsets: dict[int, int],
+    undamaged_bound_offsets: Sequence[int],
+    damaged_bound_offsets: Sequence[int],
+) -> None:
+    linked: dict[int, int] = {}
+    for index, child in enumerate(lod.children):
+        for state, entity, bound_offsets in (
+            ("undamaged", child.undamaged_entity, undamaged_bound_offsets),
+            ("damaged", child.damaged_entity, damaged_bound_offsets),
+        ):
+            drawable_offset = 0
+            if entity is not None and entity.drawable is not None:
+                drawable_offset = entity_drawable_offsets.get(
+                    id(entity.drawable),
+                    0,
+                )
+                if not drawable_offset:
+                    raise ValueError(
+                        f"physics child entity '{entity.label}' was not "
+                        "prepared for writing"
+                    )
+            elif len(lod.children) == 1:
+                drawable_offset = (
+                    damaged_drawable_offset
+                    if state == "damaged"
+                    else main_drawable_offset
+                )
+            if not drawable_offset:
+                continue
+            if index >= len(bound_offsets):
+                raise ValueError(
+                    f"physics child {index} has a {state} drawable but the "
+                    f"{state} archetype has no matching bound child"
+                )
+            bound_offset = int(bound_offsets[index])
+            if not bound_offset:
+                # Vanilla fragments retain an empty fragDrawable for visual
+                # or bone bookkeeping even when this state has no collision.
+                # Its non-owning bound pointer must remain null.
+                writer.pack_into(
+                    "Q",
+                    drawable_offset + 0xF0,
+                    0,
+                )
+                continue
+            previous = linked.get(drawable_offset)
+            if previous is not None and previous != bound_offset:
+                raise ValueError(
+                    f"physics drawable '{entity.label if entity else state}' "
+                    "is shared by children "
+                    "that require different native bounds"
+                )
+            linked[drawable_offset] = bound_offset
+            # fragDrawable::m_Bound is a non-owning reference.  The matching
+            # phArchetype/phBoundComposite owns and resource-constructs it.
+            writer.pack_into(
+                "Q",
+                drawable_offset + 0xF0,
+                _virtual(bound_offset),
+            )
+
+
 def _write_physics_transforms(
     writer: ResourceWriter,
     transforms: YftPhysicsTransforms,
@@ -259,6 +490,7 @@ def _child_entity_pointer(
     main_drawable_offset: int,
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
+    allow_fragment_fallback: bool,
 ) -> int:
     entity = child.damaged_entity if damaged else child.undamaged_entity
     if entity is not None and entity.drawable is not None:
@@ -268,9 +500,9 @@ def _child_entity_pointer(
                 f"physics child entity '{entity.label}' was not prepared for writing"
             )
         return _virtual(offset)
-    if damaged and damaged_drawable_offset:
+    if allow_fragment_fallback and damaged and damaged_drawable_offset:
         return _virtual(damaged_drawable_offset)
-    if not damaged and main_drawable_offset:
+    if allow_fragment_fallback and not damaged and main_drawable_offset:
         return _virtual(main_drawable_offset)
     return 0
 
@@ -284,6 +516,7 @@ def _write_physics_child(
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
+    allow_fragment_fallback: bool,
 ) -> int:
     child_offset = writer.alloc(_PHYSICS_CHILD_SIZE, 16) if offset is None else offset
     write_physics_child_header(writer, child_offset, child)
@@ -300,6 +533,7 @@ def _write_physics_child(
             main_drawable_offset=main_drawable_offset,
             damaged_drawable_offset=damaged_drawable_offset,
             entity_drawable_offsets=entity_drawable_offsets,
+            allow_fragment_fallback=allow_fragment_fallback,
         ),
     )
     writer.pack_into(
@@ -311,6 +545,7 @@ def _write_physics_child(
             main_drawable_offset=main_drawable_offset,
             damaged_drawable_offset=damaged_drawable_offset,
             entity_drawable_offsets=entity_drawable_offsets,
+            allow_fragment_fallback=allow_fragment_fallback,
         ),
     )
     write_child_event_pointers(
@@ -489,6 +724,7 @@ def _write_child_array(
                 damaged_drawable_offset=damaged_drawable_offset,
                 entity_drawable_offsets=entity_drawable_offsets,
                 event_set_offsets=event_set_offsets,
+                allow_fragment_fallback=len(lod.children) == 1,
             )
         )
     return _write_pointer_array(writer, [_virtual(offset) for offset in child_offsets])
@@ -508,6 +744,81 @@ def _write_physics_lod(
         raise ValueError(f"physics LOD '{lod.label}' requires a composite_bound")
     bound_offset = write_bound_resource(writer, lod.composite_bound)
     bound_pointer = _virtual(bound_offset)
+    # A phArchetype owns and resource-constructs its bound. GTA V fragments
+    # with both undamaged and damaged archetypes therefore store two distinct
+    # bound objects, even when their serialized geometry is identical. Sharing
+    # this pointer makes the second archetype construct an already-relocated
+    # bound and the streamer aborts with "Invalid fixup".
+    damaged_bound = (
+        _build_damaged_physics_bound(
+            lod,
+            damaged_drawable_offset=damaged_drawable_offset,
+        )
+        if lod.damaged_damp_archetype is not None
+        else None
+    )
+    damaged_bound_offset = (
+        write_bound_resource(writer, damaged_bound)
+        if damaged_bound is not None
+        else 0
+    )
+    damaged_bound_pointer = (
+        _virtual(damaged_bound_offset) if damaged_bound_offset else 0
+    )
+    _sparsify_damaged_bound_children(
+        writer,
+        lod,
+        damaged_bound,
+        damaged_bound_offset,
+        damaged_drawable_offset=damaged_drawable_offset,
+    )
+    needs_undamaged_child_bounds = bool(
+        (len(lod.children) == 1 and main_drawable_offset)
+        or any(
+            child.undamaged_entity is not None
+            and child.undamaged_entity.drawable is not None
+            for child in lod.children
+        )
+    )
+    needs_damaged_child_bounds = bool(
+        (len(lod.children) == 1 and damaged_drawable_offset)
+        or any(
+            child.damaged_entity is not None
+            and child.damaged_entity.drawable is not None
+            for child in lod.children
+        )
+    )
+    undamaged_child_bound_offsets = (
+        _physics_bound_child_offsets(
+            writer,
+            lod.composite_bound,
+            bound_offset,
+            child_count=len(lod.children),
+            label=f"physics LOD '{lod.label}' undamaged",
+        )
+        if needs_undamaged_child_bounds
+        else ()
+    )
+    damaged_child_bound_offsets = (
+        _physics_bound_child_offsets(
+            writer,
+            damaged_bound,
+            damaged_bound_offset,
+            child_count=len(lod.children),
+            label=f"physics LOD '{lod.label}' damaged",
+        )
+        if damaged_bound_offset and needs_damaged_child_bounds
+        else ()
+    )
+    _link_physics_entity_bounds(
+        writer,
+        lod,
+        main_drawable_offset=main_drawable_offset,
+        damaged_drawable_offset=damaged_drawable_offset,
+        entity_drawable_offsets=entity_drawable_offsets,
+        undamaged_bound_offsets=undamaged_child_bound_offsets,
+        damaged_bound_offsets=damaged_child_bound_offsets,
+    )
     undamaged_damp_offset = _write_damp_archetype(
         writer,
         lod.undamaged_damp_archetype,
@@ -516,7 +827,7 @@ def _write_physics_lod(
     damaged_damp_offset = _write_damp_archetype(
         writer,
         lod.damaged_damp_archetype,
-        bound_pointer=bound_pointer,
+        bound_pointer=damaged_bound_pointer,
     ) if lod.damaged_damp_archetype is not None else 0
     body_offset = _write_articulated_body_type(
         writer,
@@ -600,17 +911,24 @@ def write_physics_lod_group(
     if not lods:
         return 0, ()
     normalized = tuple(
-        normalize_physics_lod(lod, composite_bound=lod.composite_bound or fallback_bound)
+        normalize_physics_lod(
+            lod,
+            composite_bound=lod.composite_bound or fallback_bound,
+            has_damaged_drawable=bool(damaged_drawable_offset),
+        )
         for lod in lods
     )
     offsets: dict[str, int] = {}
-    for lod in normalized:
+    for lod_index, lod in enumerate(normalized):
+        owns_fragment_root = lod_index == 0 and lod.label.lower() == "high"
         offsets[lod.label.lower()] = _write_physics_lod(
             writer,
             lod,
-            root_child_offset=root_child_offset,
-            main_drawable_offset=main_drawable_offset,
-            damaged_drawable_offset=damaged_drawable_offset,
+            root_child_offset=root_child_offset if owns_fragment_root else 0,
+            main_drawable_offset=main_drawable_offset if owns_fragment_root else 0,
+            damaged_drawable_offset=(
+                damaged_drawable_offset if owns_fragment_root else 0
+            ),
             entity_drawable_offsets=entity_drawable_offsets,
             event_set_offsets=event_set_offsets,
         )

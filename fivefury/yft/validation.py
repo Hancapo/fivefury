@@ -89,6 +89,17 @@ def _validate_lod(
             f"{path}.num_bony_children",
             "bony-child count is larger than child count",
         )
+    for index, child in enumerate(lod.children):
+        if (
+            child.bone_controlled is not None
+            and child.bone_controlled != (index < lod.num_bony_children)
+        ):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.children[{index}].bone_controlled",
+                "must agree with the leading bony-child range",
+            )
 
     if lod.min_breaking_impulses and len(lod.min_breaking_impulses) != len(
         lod.children
@@ -726,8 +737,60 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             "decoded physics LOD count differs from active pointer count",
         )
 
+    physics_drawable_owners: dict[int, str] = {}
     for index, lod in enumerate(source.physics_lod_details):
         _validate_lod(lod, f"physics_lod_details[{index}]", issues)
+        is_root_lod = index == 0 and lod.label.lower() == "high"
+        for child_index, child in enumerate(lod.children):
+            for state, entity in (
+                ("undamaged", child.undamaged_entity),
+                ("damaged", child.damaged_entity),
+            ):
+                if entity is None or entity.drawable is None:
+                    if not is_root_lod and state == "undamaged":
+                        _issue(
+                            issues,
+                            YftValidationSeverity.ERROR,
+                            (
+                                f"physics_lod_details[{index}].children"
+                                f"[{child_index}].{state}_entity"
+                            ),
+                            "non-high physics LODs require their own drawable",
+                        )
+                    continue
+                drawable_id = id(entity.drawable)
+                owner = (
+                    f"physics_lod_details[{index}].children[{child_index}]"
+                    f".{state}_entity"
+                )
+                previous_owner = physics_drawable_owners.get(drawable_id)
+                if previous_owner is not None and previous_owner != owner:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        owner,
+                        (
+                            "physics drawable is shared with "
+                            f"{previous_owner}; each state and LOD must own "
+                            "its drawable-bound link"
+                        ),
+                    )
+                else:
+                    physics_drawable_owners[drawable_id] = owner
+        if (
+            lod.damaged_damp_archetype is not None
+            and damaged_index < 0
+            and not any(child.has_damage_state for child in lod.children)
+        ):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"physics_lod_details[{index}].damaged_damp_archetype",
+                (
+                    "damaged archetype requires a damaged fragment drawable "
+                    "or at least one damaged physics-child entity"
+                ),
+            )
         for child_index, child in enumerate(lod.children):
             if not child.events.can_rebuild:
                 _issue(

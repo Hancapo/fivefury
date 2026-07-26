@@ -12,7 +12,15 @@ from ..resource import (
     layout_resource_sections,
     write_resource_pages_info,
 )
-from .model import Ynv, YnvEdge, YnvPoint, YnvPortal, YnvSector, YnvSectorData
+from .model import (
+    YNV_POLY_ARRAY_BLOCK_SIZE,
+    Ynv,
+    YnvEdge,
+    YnvPoint,
+    YnvPortal,
+    YnvSector,
+    YnvSectorData,
+)
 
 _ROOT_SIZE = 0x170
 _LIST_PART_SIZE = 0x10
@@ -43,7 +51,7 @@ def _pack_vertex(
         else:
             normalized = (float(component) - float(base)) / float(size)
         normalized = max(0.0, min(1.0, normalized))
-        values.append(int(round(normalized * 65535.0)) & 0xFFFF)
+        values.append(round(normalized * 65535.0) & 0xFFFF)
     return struct.pack("<HHH", values[0], values[1], values[2])
 
 
@@ -328,8 +336,11 @@ def build_ynv_system_layout(
     )
 
     poly_items: list[bytes] = []
-    for poly in ynv.polys:
+    for poly_index, poly in enumerate(ynv.polys):
         poly = poly.build()
+        # CNavMesh::GetPolyIndex trusts this embedded block index when turning
+        # a TNavMeshPoly pointer back into a global polygon index.
+        poly.poly_array_index = poly_index // YNV_POLY_ARRAY_BLOCK_SIZE
         packed_aabb = poly.cell_aabb.to_packed()
         poly_items.append(
             struct.pack(

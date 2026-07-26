@@ -3,16 +3,19 @@ from __future__ import annotations
 import struct
 
 from ..binary import f32, u16, u32, u64, vec3, vec4
-from ..resource import checked_virtual_offset, read_resource_pages_info, read_virtual_pointer_array
+from ..resource import (
+    checked_virtual_offset,
+    read_resource_pages_info,
+    read_virtual_pointer_array,
+)
 from .model import (
     Bound,
     BoundAabb,
-    BoundFlag,
+    BoundBox,
+    BoundBVH,
     BoundBvh,
     BoundBvhNode,
     BoundBvhTree,
-    BoundBox,
-    BoundBVH,
     BoundCapsule,
     BoundChild,
     BoundCloth,
@@ -20,6 +23,7 @@ from .model import (
     BoundCompositeFlags,
     BoundCylinder,
     BoundDisc,
+    BoundFlag,
     BoundGeometry,
     BoundGeometryOctants,
     BoundMaterial,
@@ -439,7 +443,11 @@ def _read_composite(offset: int, system_data: bytes) -> BoundComposite:
 
     children: list[BoundChild] = []
     for index, child_pointer in enumerate(child_pointers):
-        child = read_bound_from_pointer(child_pointer, system_data)
+        child = (
+            read_bound_from_pointer(child_pointer, system_data)
+            if child_pointer
+            else None
+        )
         children.append(
             BoundChild(
                 bound=child,

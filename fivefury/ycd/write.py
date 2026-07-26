@@ -6,7 +6,13 @@ from typing import Any
 from ..buckets import at_hash_bucket_capacity
 from ..common import clip_short_name
 from ..metahash import MetaHash
-from ..resource import ResourceBlockSpan, ResourceWriter, build_rsc7, get_resource_total_page_count, layout_resource_sections
+from ..resource import (
+    ResourceBlockSpan,
+    ResourceWriter,
+    build_rsc7,
+    get_resource_total_page_count,
+    layout_resource_sections,
+)
 from .model import (
     Ycd,
     YcdAnimation,
@@ -22,12 +28,22 @@ from .model import (
     YcdSequence,
     _resolve_ycd_clip_hash,
 )
-from .sequences import build_sequence_data
 from .sequence_tracks import get_ycd_track_format
+from .sequences import build_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
 _RESOURCE_FILE_VFT = 1079444200
 _ANIMATION_MAP_VFT = 1079671816
+# These are the serialized class markers used by stock PC YCD resources.
+# Resource placement replaces them with the executable's live vtables, so
+# they are not tied to the runtime build.  Leaving either marker at zero
+# prevents some streaming paths (notably AUTOSTART_ANIM map archetypes) from
+# materializing a usable crAnimation/crClip object.
+_ANIMATION_VFT = 0x405A58F0
+_CLIP_ANIMATION_VFT = 0x405A4088
+_CLIP_ANIMATION_LIST_VFT = 0x405A3FF8
+_DEFAULT_CLIP_UNKNOWN_04H = 1
+_DEFAULT_CLIP_UNKNOWN_48H = 1
 _DEFAULT_ROOT_UNKNOWN_20H = 0x00000101
 _DEFAULT_ROOT_UNKNOWN_34H = 0x01000000
 _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH = 0x01000000
@@ -221,7 +237,7 @@ class _YcdWriter:
         self.writer.pack_into(
             "IIIIBBHHHfIIIIIIIII",
             offset,
-            int(animation.vft),
+            int(animation.vft) or _ANIMATION_VFT,
             1,
             0,
             0,
@@ -337,8 +353,6 @@ class _YcdWriter:
         return offset
 
     def write_clip_property_map(self, properties: list[YcdClipProperty], *, reserved_0ch: int = _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH) -> int:
-        if not properties:
-            return 0
         property_offsets = {self._identity(prop): self.write_clip_property(prop) for prop in properties}
         capacity = at_hash_bucket_capacity(len(properties))
         buckets: list[list[YcdClipProperty]] = [[] for _ in range(capacity)]
@@ -371,7 +385,7 @@ class _YcdWriter:
             self.vptr(buckets_array_offset) if buckets_array_offset else 0,
             capacity,
             len(properties),
-            int(reserved_0ch),
+            int(reserved_0ch) or _DEFAULT_PROPERTY_MAP_UNKNOWN_0CH,
         )
         return offset
 
@@ -427,8 +441,6 @@ class _YcdWriter:
         reserved_18h: int = 0,
         reserved_1ch: int = 0,
     ) -> int:
-        if not tags:
-            return 0
         tag_offsets = [self.write_clip_tag(tag) for tag in tags]
         tags_array_offset = self.write_pointer_array(tag_offsets)
         if has_block_tag is None:
@@ -485,11 +497,17 @@ class _YcdWriter:
         name_offset = self.write_string(name) if name else 0
 
         offset = self.writer.alloc(0x70, 16)
+        if isinstance(clip, YcdClipAnimation):
+            clip_vft = int(clip.vft) or _CLIP_ANIMATION_VFT
+        elif isinstance(clip, YcdClipAnimationList):
+            clip_vft = int(clip.vft) or _CLIP_ANIMATION_LIST_VFT
+        else:
+            clip_vft = int(clip.vft)
         self.writer.pack_into(
             "IIIIIIQHHIQIIQQII",
             offset,
-            int(clip.vft),
-            int(clip.unknown_04h),
+            clip_vft,
+            int(clip.unknown_04h) or _DEFAULT_CLIP_UNKNOWN_04H,
             int(clip.unknown_08h),
             int(clip.unknown_0ch),
             int(clip.clip_type),
@@ -503,7 +521,7 @@ class _YcdWriter:
             int(clip.reserved_34h),
             self.vptr(tag_list_offset) if tag_list_offset else 0,
             self.vptr(property_map_offset) if property_map_offset else 0,
-            int(clip.unknown_48h),
+            int(clip.unknown_48h) or _DEFAULT_CLIP_UNKNOWN_48H,
             int(clip.unknown_4ch),
         )
 

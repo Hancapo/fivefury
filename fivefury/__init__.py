@@ -781,6 +781,7 @@ from .ynd import (
     save_ynd,
 )
 from .ynv import (
+    YNV_POLY_ARRAY_BLOCK_SIZE,
     Ynv,
     YnvAabb,
     YnvAdjacencyType,
@@ -1465,6 +1466,7 @@ __all__ = [
     "YndNodeTopographyFlags",
     "YndNetwork",
     "YndResourcePagesInfo",
+    "YNV_POLY_ARRAY_BLOCK_SIZE",
     "Ynv",
     "YnvAabb",
     "YnvAdjacencyType",

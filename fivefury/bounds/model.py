@@ -4,12 +4,16 @@ import dataclasses
 import enum
 import math
 from collections import Counter
-from typing import Iterator
+from collections.abc import Iterator
 
 from .. import _native as _native_backend
 from ..resource import ResourcePagesInfo
 from ..vector import aabb_center, aabb_from_center_size, vec_add, vec_scale, vec_sub
-from .materials import BoundMaterialType, coerce_bound_material_index, get_bound_material_type
+from .materials import (
+    BoundMaterialType,
+    coerce_bound_material_index,
+    get_bound_material_type,
+)
 
 
 class BoundType(enum.IntEnum):
@@ -288,7 +292,7 @@ class BoundGeometryOctants:
     def from_vertices(
         cls,
         vertices: list[tuple[float, float, float]],
-    ) -> "BoundGeometryOctants":
+    ) -> BoundGeometryOctants:
         return cls(items=_native_backend._bounds_build_octants(vertices))
 
     @property
@@ -608,7 +612,8 @@ class Bound:
         yield self
         if isinstance(self, BoundComposite):
             for child in self.children:
-                yield from child.bound.walk()
+                if child.bound is not None:
+                    yield from child.bound.walk()
 
     def iter_geometries(self) -> Iterator[BoundGeometry]:
         for bound in self.walk():
@@ -641,7 +646,7 @@ class Bound:
         distribution = self.compute_volume_distribution()
         return tuple(float(value) * float(mass) for value in distribution)
 
-    def build(self) -> "Bound":
+    def build(self) -> Bound:
         normalized = _normalize_aabb(self.bounds)
         self.box_min = normalized.minimum
         self.box_max = normalized.maximum
@@ -666,7 +671,7 @@ class Bound:
 
 
 def _build_primitive_bound(
-    cls: type["Bound"],
+    cls: type[Bound],
     bound_type: BoundType,
     minimum: tuple[float, float, float],
     maximum: tuple[float, float, float],
@@ -676,7 +681,7 @@ def _build_primitive_bound(
     ref_count: int = 1,
     angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
     volume: float | None = None,
-) -> "Bound":
+) -> Bound:
     bounds = _normalize_aabb(BoundAabb(minimum, maximum))
     dimensions = tuple(bounds.maximum[axis] - bounds.minimum[axis] for axis in range(3))
     center = tuple((bounds.minimum[axis] + bounds.maximum[axis]) * 0.5 for axis in range(3))
@@ -734,7 +739,7 @@ class BoundBox(Bound):
         ref_count: int = 1,
         angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
         volume: float | None = None,
-    ) -> "BoundBox":
+    ) -> BoundBox:
         return _build_primitive_bound(
             cls,
             BoundType.BOX,
@@ -758,7 +763,7 @@ class BoundBox(Bound):
         ref_count: int = 1,
         angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
         volume: float | None = None,
-    ) -> "BoundBox":
+    ) -> BoundBox:
         half_size = tuple(float(value) * 0.5 for value in size)
         minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
         maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
@@ -824,7 +829,7 @@ class BoundDisc(Bound):
         ref_count: int = 1,
         angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
         volume: float | None = None,
-    ) -> "BoundDisc":
+    ) -> BoundDisc:
         return _build_primitive_bound(
             cls,
             BoundType.DISC,
@@ -842,8 +847,8 @@ class BoundDisc(Bound):
         cls,
         center: tuple[float, float, float],
         size: tuple[float, float, float],
-        **kwargs: float | int | tuple[float, float, float],
-    ) -> "BoundDisc":
+        **kwargs: float | tuple[float, float, float],
+    ) -> BoundDisc:
         bounds = _aabb_from_center_size(center, size)
         return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
 
@@ -854,8 +859,8 @@ class BoundDisc(Bound):
         radius: float,
         *,
         thickness: float = 0.0,
-        **kwargs: float | int | tuple[float, float, float],
-    ) -> "BoundDisc":
+        **kwargs: float | tuple[float, float, float],
+    ) -> BoundDisc:
         return cls.from_center_size(center, (radius * 2.0, thickness, radius * 2.0), **kwargs)
 
     @property
@@ -899,7 +904,7 @@ class BoundCylinder(Bound):
         ref_count: int = 1,
         angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
         volume: float | None = None,
-    ) -> "BoundCylinder":
+    ) -> BoundCylinder:
         return _build_primitive_bound(
             cls,
             BoundType.CYLINDER,
@@ -917,8 +922,8 @@ class BoundCylinder(Bound):
         cls,
         center: tuple[float, float, float],
         size: tuple[float, float, float],
-        **kwargs: float | int | tuple[float, float, float],
-    ) -> "BoundCylinder":
+        **kwargs: float | tuple[float, float, float],
+    ) -> BoundCylinder:
         bounds = _aabb_from_center_size(center, size)
         return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
 
@@ -928,8 +933,8 @@ class BoundCylinder(Bound):
         center: tuple[float, float, float],
         radius: float,
         height: float,
-        **kwargs: float | int | tuple[float, float, float],
-    ) -> "BoundCylinder":
+        **kwargs: float | tuple[float, float, float],
+    ) -> BoundCylinder:
         return cls.from_center_size(center, (radius * 2.0, height, radius * 2.0), **kwargs)
 
     @property
@@ -969,7 +974,7 @@ class BoundCloth(Bound):
         ref_count: int = 1,
         angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
         volume: float | None = None,
-    ) -> "BoundCloth":
+    ) -> BoundCloth:
         return _build_primitive_bound(
             cls,
             BoundType.CLOTH,
@@ -987,8 +992,8 @@ class BoundCloth(Bound):
         cls,
         center: tuple[float, float, float],
         size: tuple[float, float, float],
-        **kwargs: float | int | tuple[float, float, float],
-    ) -> "BoundCloth":
+        **kwargs: float | tuple[float, float, float],
+    ) -> BoundCloth:
         bounds = _aabb_from_center_size(center, size)
         return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
 
@@ -1053,7 +1058,7 @@ class BoundGeometry(Bound):
         self.materials.append(material)
         return material
 
-    def build(self) -> "BoundGeometry":
+    def build(self) -> BoundGeometry:
         Bound.build(self)
         for index, polygon in enumerate(self.polygons):
             polygon.index = index
@@ -1124,7 +1129,7 @@ class BoundBVH(BoundGeometry):
 
 @dataclasses.dataclass(slots=True)
 class BoundChild:
-    bound: Bound
+    bound: Bound | None
     transform: BoundTransform | None = None
     bounds: BoundAabb | None = None
     flags1: BoundCompositeFlags | None = None
@@ -1163,7 +1168,11 @@ class BoundComposite(Bound):
 
     def compute_volume(self) -> float:
         if self.children:
-            return sum(child.bound.compute_volume() for child in self.children)
+            return sum(
+                child.bound.compute_volume()
+                for child in self.children
+                if child.bound is not None
+            )
         return Bound.compute_volume(self)
 
     def compute_center_of_gravity(
@@ -1173,6 +1182,8 @@ class BoundComposite(Bound):
         weighted = (0.0, 0.0, 0.0)
         total_weight = 0.0
         for index, child in enumerate(self.children):
+            if child.bound is None:
+                continue
             weight = (
                 float(masses[index])
                 if masses is not None and index < len(masses)
@@ -1198,6 +1209,8 @@ class BoundComposite(Bound):
         center_of_gravity = self.compute_center_of_gravity(masses)
         total = (0.0, 0.0, 0.0)
         for index, child in enumerate(self.children):
+            if child.bound is None:
+                continue
             part_mass = (
                 float(masses[index])
                 if masses is not None and index < len(masses)
@@ -1225,16 +1238,21 @@ class BoundComposite(Bound):
     def compute_angular_inertia(self, mass: float) -> tuple[float, float, float]:
         return self.compute_composite_angular_inertia(mass)
 
-    def build(self) -> "BoundComposite":
+    def build(self) -> BoundComposite:
         Bound.build(self)
         for child in self.children:
+            if child.bound is None:
+                continue
             child.bound.build()
             if child.bounds is None or not _aabb_is_valid(child.bounds):
                 child.bounds = child.bound.bounds
-        if self.children:
+        active_children = [
+            child for child in self.children if child.bound is not None
+        ]
+        if active_children:
             transformed_bounds = [
                 _transform_bounds(child.bounds if child.bounds is not None else child.bound.bounds, child.transform)
-                for child in self.children
+                for child in active_children
             ]
             overall = _merge_bounds(transformed_bounds, self.bounds)
             center = aabb_center(overall.minimum, overall.maximum)
@@ -1258,18 +1276,19 @@ class BoundComposite(Bound):
         for index, child in enumerate(self.children):
             if child.bounds is not None and not _aabb_is_valid(child.bounds):
                 issues.append(f"child {index} has inverted local bounds")
-            issues.extend(child.bound.validate())
+            if child.bound is not None:
+                issues.extend(child.bound.validate())
         return issues
 
 
 __all__ = [
     'Bound',
     'BoundAabb',
+    'BoundBVH',
+    'BoundBox',
     'BoundBvh',
     'BoundBvhNode',
     'BoundBvhTree',
-    'BoundBox',
-    'BoundBVH',
     'BoundCapsule',
     'BoundChild',
     'BoundCloth',

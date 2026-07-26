@@ -401,6 +401,7 @@ class YftPhysicsChild:
     owner_group_pointer_index: int = 0
     flags: int = 0
     bone_id: int = 0
+    bone_controlled: bool | None = None
     undamaged_entity_pointer: int = 0
     damaged_entity_pointer: int = 0
     owner_group_name: str = ""
@@ -423,6 +424,8 @@ class YftPhysicsChild:
 
     @property
     def uses_bone(self) -> bool:
+        if self.bone_controlled is not None:
+            return self.bone_controlled
         return self.bone_id != 0
 
     @property
@@ -477,6 +480,7 @@ class YftPhysicsChild:
         undamaged_entity: YftPhysicsEntity | None = None,
         damaged_entity: YftPhysicsEntity | None = None,
         bone_id: int = 0,
+        bone_controlled: bool | None = None,
         undamaged_mass: float = 1.0,
         damaged_mass: float | None = None,
         owner_group_name: str = "",
@@ -490,6 +494,7 @@ class YftPhysicsChild:
             ),
             flags=int(reserved_flags),
             bone_id=int(bone_id),
+            bone_controlled=bone_controlled,
             owner_group_name=str(owner_group_name),
             min_breaking_impulse=float(min_breaking_impulse),
             undamaged_entity=undamaged_entity,
@@ -687,6 +692,7 @@ class YftPhysicsLod:
         children: Sequence[YftPhysicsChild] = (),
         damping_constants: Sequence[YftPhysicsDamping] = (),
         root_cg_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        num_bony_children: int | None = None,
     ) -> YftPhysicsLod:
         declared_groups = tuple(groups)
         group_names = tuple(group.name or group.debug_name for group in declared_groups)
@@ -723,6 +729,23 @@ class YftPhysicsLod:
                     )
                 ]
                 group_names = ("default",)
+        inferred_bony_children = max(
+            (
+                index + 1
+                for index, child in enumerate(declared_children)
+                if child.uses_bone
+            ),
+            default=0,
+        )
+        bony_children = (
+            inferred_bony_children
+            if num_bony_children is None
+            else int(num_bony_children)
+        )
+        if not 0 <= bony_children <= len(declared_children):
+            raise ValueError(
+                "num_bony_children must be between zero and the child count"
+            )
         return cls(
             label=str(label),
             root_cg_offset=tuple(float(value) for value in root_cg_offset),
@@ -730,7 +753,7 @@ class YftPhysicsLod:
             unbroken_cg_offset=tuple(float(value) for value in root_cg_offset),
             num_groups=len(resolved_groups),
             root_group_count=sum(1 for group in resolved_groups if group.is_root_group),
-            num_bony_children=sum(1 for child in declared_children if child.uses_bone),
+            num_bony_children=bony_children,
             num_children=len(declared_children),
             group_names=group_names,
             groups=tuple(resolved_groups),

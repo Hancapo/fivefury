@@ -9,6 +9,9 @@ from ..common import FlexibleIntEnum
 from ..resource import ResourcePagesInfo
 
 YnvResourcePagesInfo = ResourcePagesInfo
+# aiSplitArray<TNavMeshPoly> keeps each allocation below 0x4000 bytes.
+# A 0x30-byte runtime polygon therefore yields 341 polygons per sub-array.
+YNV_POLY_ARRAY_BLOCK_SIZE = 0x4000 // 0x30
 
 
 def identity_4x4() -> tuple[float, ...]:
@@ -146,13 +149,13 @@ class YnvAabb:
         max_y: int,
         min_z: int,
         max_z: int,
-    ) -> "YnvAabb":
+    ) -> YnvAabb:
         return cls(
             min=(float(min_x) / 4.0, float(min_y) / 4.0, float(min_z) / 4.0),
             max=(float(max_x) / 4.0, float(max_y) / 4.0, float(max_z) / 4.0),
         )
 
-    def build(self) -> "YnvAabb":
+    def build(self) -> YnvAabb:
         self.min = (float(self.min[0]), float(self.min[1]), float(self.min[2]))
         self.max = (float(self.max[0]), float(self.max[1]), float(self.max[2]))
         return self
@@ -179,7 +182,7 @@ class YnvEdgePart:
     detail_flags: int = 0
 
     @classmethod
-    def from_value(cls, value: int, adjacent_area_ids: list[int]) -> "YnvEdgePart":
+    def from_value(cls, value: int, adjacent_area_ids: list[int]) -> YnvEdgePart:
         area_index = int(value) & 0x1F
         area_id = (
             int(adjacent_area_ids[area_index])
@@ -211,7 +214,7 @@ class YnvEdgePart:
             (int(value) & 0x1F) << 5
         )
 
-    def build(self) -> "YnvEdgePart":
+    def build(self) -> YnvEdgePart:
         self.area_id = int(self.area_id) & 0x3FFF
         self.poly_id = int(self.poly_id) & 0x7FFF
         self.adjacency_type = YnvAdjacencyType(int(self.adjacency_type) & 0x3)
@@ -249,7 +252,7 @@ class YnvEdge:
         self.poly2.adjacency_type = YnvAdjacencyType(packed & 0x3)
         self.poly2.detail_flags = (packed >> 2) & 0x3FF
 
-    def build(self) -> "YnvEdge":
+    def build(self) -> YnvEdge:
         self.poly1 = self.poly1.build()
         self.poly2 = self.poly2.build()
         return self
@@ -272,6 +275,16 @@ class YnvPoly:
     portal_link_count: int = 0
     portal_link_id: int = 0
 
+    @property
+    def poly_array_index(self) -> int:
+        """Index of the native aiSplitArray block that owns this polygon."""
+
+        return int(self.part_id)
+
+    @poly_array_index.setter
+    def poly_array_index(self, value: int) -> None:
+        self.part_id = int(value)
+
     @classmethod
     def from_packed(
         cls,
@@ -288,7 +301,7 @@ class YnvPoly:
         poly_flags1: int,
         poly_flags2: int,
         part_flags: int,
-    ) -> "YnvPoly":
+    ) -> YnvPoly:
         return cls(
             poly_flags0=YnvPolyFlags0(int(poly_flags0)),
             index_id=int(index_id) & 0xFFFF,
@@ -332,7 +345,7 @@ class YnvPoly:
     def poly_flags2_low(self) -> int:
         return int(self.poly_flags2) & 0xFFFF
 
-    def build(self) -> "YnvPoly":
+    def build(self) -> YnvPoly:
         self.poly_flags0 = YnvPolyFlags0(int(self.poly_flags0) & 0xFFFF)
         self.index_id = int(self.index_id) & 0xFFFF
         self.index_count = int(self.index_count) & 0x7FF
@@ -357,7 +370,7 @@ def _angle_byte_to_radians(value: int) -> float:
 def _radians_to_angle_byte(value: float) -> int:
     if not math.isfinite(value):
         raise ValueError("YNV direction must be finite")
-    return int(round((float(value) % math.tau) * 255.0 / math.tau)) & 0xFF
+    return round((float(value) % math.tau) * 255.0 / math.tau) & 0xFF
 
 
 @dataclasses.dataclass(slots=True)
@@ -374,7 +387,7 @@ class YnvPoint:
     def direction(self, value: float) -> None:
         self.angle = _radians_to_angle_byte(value)
 
-    def build(self) -> "YnvPoint":
+    def build(self) -> YnvPoint:
         self.position = (
             float(self.position[0]),
             float(self.position[1]),
@@ -416,7 +429,7 @@ class YnvPortal:
             | ((int(self.area_unk) & 0xF) << 28)
         )
 
-    def build(self) -> "YnvPortal":
+    def build(self) -> YnvPortal:
         self.type = YnvPortalType(int(self.type) & 0xFF)
         self.angle = int(self.angle) & 0xFF
         self.flags_unk = int(self.flags_unk) & 0xFFFF
@@ -448,7 +461,7 @@ class YnvSectorData:
     points: list[YnvPoint] = dataclasses.field(default_factory=list)
     unused_1ch: int = 0
 
-    def build(self) -> "YnvSectorData":
+    def build(self) -> YnvSectorData:
         self.points_start_id = int(self.points_start_id) & 0xFFFFFFFF
         self.unused_04h = int(self.unused_04h) & 0xFFFFFFFF
         self.poly_ids = [int(value) & 0xFFFF for value in self.poly_ids]
@@ -473,7 +486,7 @@ class YnvSector:
     unused_58h: int = 0
     unused_5ch: int = 0
 
-    def build(self) -> "YnvSector":
+    def build(self) -> YnvSector:
         self.aabb_min = (
             float(self.aabb_min[0]),
             float(self.aabb_min[1]),
@@ -743,6 +756,13 @@ class Ynv:
                 )
 
         for index, poly in enumerate(self.polys):
+            expected_array_index = index // YNV_POLY_ARRAY_BLOCK_SIZE
+            if int(poly.poly_array_index) != expected_array_index:
+                errors.append(
+                    f"polys[{index}].poly_array_index={poly.poly_array_index} "
+                    f"does not match native split-array block "
+                    f"{expected_array_index}"
+                )
             is_zero_area_stitch = bool(
                 poly.poly_flags1 & YnvPolyFlags1.ZERO_AREA_STITCH_POLY_DLC
             )
@@ -784,17 +804,21 @@ class Ynv:
                     )
 
         for index, portal in enumerate(self.portals):
-            for attr in (
-                "poly_id_from1",
-                "poly_id_from2",
-                "poly_id_to1",
-                "poly_id_to2",
+            for area_attr, polygon_attrs in (
+                ("area_id_from", ("poly_id_from1", "poly_id_from2")),
+                ("area_id_to", ("poly_id_to1", "poly_id_to2")),
             ):
-                value = int(getattr(portal, attr))
-                if value != 0xFFFF and value >= int(poly_count):
-                    errors.append(
-                        f"portals[{index}].{attr}={value} is out of range for {poly_count} polys"
-                    )
+                # Cross-area special links store polygon IDs in the addressed
+                # YNV, not in this file.  Only local endpoint references can
+                # be range-checked without loading the neighbouring mesh.
+                if int(getattr(portal, area_attr)) != int(self.area_id):
+                    continue
+                for attr in polygon_attrs:
+                    value = int(getattr(portal, attr))
+                    if value != 0xFFFF and value >= int(poly_count):
+                        errors.append(
+                            f"portals[{index}].{attr}={value} is out of range for {poly_count} local polys"
+                        )
 
         if self.sector_tree is not None:
             collected_points = self._validate_sector(
@@ -811,7 +835,7 @@ class Ynv:
 
         return errors
 
-    def build(self) -> "Ynv":
+    def build(self) -> Ynv:
         self.version = int(self.version)
         self.path = str(self.path)
         self.file_vft = int(self.file_vft or 0x4061E7E8) & 0xFFFFFFFF
@@ -836,6 +860,8 @@ class Ynv:
         self.indices = [int(value) & 0xFFFF for value in self.indices]
         self.edges = [edge.build() for edge in self.edges]
         self.polys = [poly.build() for poly in self.polys]
+        for index, poly in enumerate(self.polys):
+            poly.poly_array_index = index // YNV_POLY_ARRAY_BLOCK_SIZE
         self.sector_tree = (
             self.sector_tree.build() if self.sector_tree is not None else None
         )
@@ -889,6 +915,7 @@ class Ynv:
 
 
 __all__ = [
+    "YNV_POLY_ARRAY_BLOCK_SIZE",
     "Ynv",
     "YnvAabb",
     "YnvAdjacencyType",

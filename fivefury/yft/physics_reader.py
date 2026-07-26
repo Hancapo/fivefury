@@ -655,6 +655,7 @@ def read_physics_lod(
         return None
     num_groups = system_data[offset + 0x11A]
     num_self_collisions = system_data[offset + 0x118]
+    num_bony_children = system_data[offset + 0x11D]
     num_children = system_data[offset + 0x11E]
     group_names_pointer = _u64(system_data, offset + 0xC0)
     groups_pointer = _u64(system_data, offset + 0xC8)
@@ -680,21 +681,26 @@ def read_physics_lod(
         system_data, damaged_ang_inertia_pointer, num_children
     )
     link_attachments_pointer = _u64(system_data, offset + 0x100)
-    children = read_physics_children(
-        header,
-        system_data,
-        graphics_data,
-        child_pointers,
-        group_names=group_names,
-        path=path,
-        lod_label=label,
-        shader_library=shader_library,
-        inherited_materials=inherited_materials,
-        resolve_entities=resolve_entities,
-        min_breaking_impulses=min_breaking_impulses,
-        undamaged_ang_inertia=undamaged_ang_inertia,
-        damaged_ang_inertia=damaged_ang_inertia,
-        event_set_cache=event_set_cache,
+    children = tuple(
+        dataclasses.replace(child, bone_controlled=index < num_bony_children)
+        for index, child in enumerate(
+            read_physics_children(
+                header,
+                system_data,
+                graphics_data,
+                child_pointers,
+                group_names=group_names,
+                path=path,
+                lod_label=label,
+                shader_library=shader_library,
+                inherited_materials=inherited_materials,
+                resolve_entities=resolve_entities,
+                min_breaking_impulses=min_breaking_impulses,
+                undamaged_ang_inertia=undamaged_ang_inertia,
+                damaged_ang_inertia=damaged_ang_inertia,
+                event_set_cache=event_set_cache,
+            )
+        )
     )
     groups = resolve_physics_groups(
         read_physics_groups(
@@ -734,7 +740,7 @@ def read_physics_lod(
         num_groups=num_groups,
         root_group_count=system_data[offset + 0x11B],
         num_root_damage_regions=system_data[offset + 0x11C],
-        num_bony_children=system_data[offset + 0x11D],
+        num_bony_children=num_bony_children,
         num_children=num_children,
         group_names=group_names,
         group_pointers=group_pointers,

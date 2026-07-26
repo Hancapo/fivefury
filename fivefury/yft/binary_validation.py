@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import struct
 
 from ..common import ByteSource, read_source_bytes
@@ -36,6 +37,7 @@ _ARCHETYPE_DAMP_SIZE = 0xE0
 _ARTICULATED_BODY_SIZE = 0xA4
 _JOINT_SIZES = {0: 0xB0, 1: 0xF0}
 _JOINT_VFTS = {0: PH_JOINT_1DOF_TYPE_VFT, 1: PH_JOINT_3DOF_TYPE_VFT}
+_BOUND_COMPOSITE_TYPE = 10
 
 
 class _YftBinaryValidator:
@@ -316,7 +318,7 @@ class _YftBinaryValidator:
             if event_pointer:
                 self.pointer(event_pointer, f"{path}.{label}")
 
-    def validate_damp(self, pointer: int, path: str) -> None:
+    def validate_damp(self, pointer: int, path: str) -> int:
         offset = self.class_header(
             pointer,
             path,
@@ -324,15 +326,149 @@ class _YftBinaryValidator:
             expected_vft=FRAG_PHYS_ARCHETYPE_DAMP_VFT,
         )
         if offset is None:
-            return
+            return 0
         filename = self.u64(offset + 0x18)
         if filename:
             self.string(filename, f"{path}.filename")
+        bound = self.u64(offset + 0x20)
         self.pointer(
-            self.u64(offset + 0x20),
+            bound,
             f"{path}.bound",
             nullable=False,
         )
+        return bound
+
+    def physics_bound_children(
+        self,
+        pointer: int,
+        path: str,
+        *,
+        child_count: int,
+    ) -> list[int]:
+        offset = self.pointer(pointer, path, size=0x70, nullable=False)
+        if offset is None:
+            return []
+        bound_type = self.u8(offset + 0x10)
+        if bound_type != _BOUND_COMPOSITE_TYPE:
+            if child_count == 1:
+                return [pointer]
+            self.error(
+                path,
+                f"bound type {bound_type} cannot own {child_count} "
+                "fragment physics children",
+            )
+            return []
+        if self.pointer(pointer, path, size=0xB0, nullable=False) is None:
+            return []
+        count = self.u16(offset + 0xA0)
+        if count < child_count:
+            self.error(
+                f"{path}.children",
+                f"composite has {count} slots for {child_count} fragment "
+                "physics children",
+            )
+        children = self.pointer_array(
+            self.u64(offset + 0x70),
+            min(count, child_count),
+            f"{path}.children",
+        )
+        child_bounds = self.pointer(
+            self.u64(offset + 0x88),
+            f"{path}.child_bounds",
+            size=count * 0x20,
+            nullable=True,
+        )
+        flags1 = self.pointer(
+            self.u64(offset + 0x90),
+            f"{path}.flags1",
+            size=count * 0x08,
+            nullable=True,
+        )
+        flags2 = self.pointer(
+            self.u64(offset + 0x98),
+            f"{path}.flags2",
+            size=count * 0x08,
+            nullable=True,
+        )
+        for index, child in enumerate(children):
+            if child:
+                continue
+            child_path = f"{path}.children[{index}]"
+            if child_bounds is not None:
+                packed = struct.unpack_from(
+                    "<8f",
+                    self.system_data,
+                    child_bounds + index * 0x20,
+                )
+                xyz = packed[0:3] + packed[4:7]
+                if any(not math.isfinite(value) or value != 0.0 for value in xyz):
+                    self.error(
+                        f"{child_path}.bounds",
+                        "null composite child must have a zero finite AABB",
+                    )
+            for flags_offset, label in (
+                (flags1, "flags1"),
+                (flags2, "flags2"),
+            ):
+                if (
+                    flags_offset is not None
+                    and struct.unpack_from(
+                        "<II",
+                        self.system_data,
+                        flags_offset + index * 0x08,
+                    )
+                    != (0, 0)
+                ):
+                    self.error(
+                        f"{child_path}.{label}",
+                        "null composite child must have zero flags",
+                    )
+        return children
+
+    def validate_child_bound_link(
+        self,
+        child_pointer: int,
+        path: str,
+        *,
+        entity_field: int,
+        entity_label: str,
+        expected_bound: int,
+    ) -> None:
+        child = self.pointer(
+            child_pointer,
+            path,
+            size=_PHYSICS_CHILD_SIZE,
+            nullable=False,
+        )
+        if child is None:
+            return
+        entity_pointer = self.u64(child + entity_field)
+        if not entity_pointer:
+            return
+        entity_path = f"{path}.{entity_label}"
+        entity = self.pointer(
+            entity_pointer,
+            entity_path,
+            size=0xF8,
+            nullable=False,
+        )
+        if entity is None:
+            return
+        actual_bound = self.u64(entity + 0xF0)
+        if not expected_bound:
+            if actual_bound:
+                self.error(
+                    f"{entity_path}.bound",
+                    "must be null because the matching archetype bound child "
+                    "is null",
+                )
+        elif actual_bound != expected_bound:
+            self.error(
+                f"{entity_path}.bound",
+                f"must reference the matching archetype bound child "
+                f"0x{expected_bound:08X}, got 0x{actual_bound:08X}; "
+                "standalone fragDrawable bounds are not resource-constructed",
+            )
 
     def validate_body(self, pointer: int, path: str, num_children: int) -> None:
         offset = self.class_header(
@@ -470,13 +606,104 @@ class _YftBinaryValidator:
                 inherited_shader_count=inherited_shader_count,
             )
 
+        damp_bounds: dict[str, int] = {}
         for field_offset, label in (
             (0xD8, "undamaged_damp_archetype"),
             (0xE0, "damaged_damp_archetype"),
         ):
             damp = self.u64(offset + field_offset)
             if damp:
-                self.validate_damp(damp, f"{path}.{label}")
+                damp_bounds[label] = self.validate_damp(
+                    damp,
+                    f"{path}.{label}",
+                )
+        undamaged_bound = damp_bounds.get("undamaged_damp_archetype", 0)
+        damaged_bound = damp_bounds.get("damaged_damp_archetype", 0)
+        if undamaged_bound and damaged_bound == undamaged_bound:
+            self.error(
+                f"{path}.damaged_damp_archetype.bound",
+                "damaged and undamaged archetypes must not share a bound "
+                "resource; the second construction would fix up the same "
+                "pointers twice",
+            )
+        child_offsets = [
+            self.pointer(
+                child,
+                f"{path}.children[{index}]",
+                size=_PHYSICS_CHILD_SIZE,
+                nullable=False,
+            )
+            for index, child in enumerate(children)
+        ]
+        needs_undamaged_child_bounds = any(
+            child is not None and self.u64(child + 0xA0)
+            for child in child_offsets
+        )
+        needs_damaged_child_bounds = any(
+            child is not None and self.u64(child + 0xA8)
+            for child in child_offsets
+        )
+        undamaged_child_bounds = (
+            self.physics_bound_children(
+                undamaged_bound,
+                f"{path}.undamaged_damp_archetype.bound",
+                child_count=num_children,
+            )
+            if undamaged_bound and needs_undamaged_child_bounds
+            else []
+        )
+        damaged_child_bounds = (
+            self.physics_bound_children(
+                damaged_bound,
+                f"{path}.damaged_damp_archetype.bound",
+                child_count=num_children,
+            )
+            if damaged_bound and needs_damaged_child_bounds
+            else []
+        )
+        if damaged_bound:
+            for index, child in enumerate(child_offsets):
+                if child is None:
+                    continue
+                damaged_entity = self.u64(child + 0xA8)
+                damaged_child_bound = (
+                    damaged_child_bounds[index]
+                    if index < len(damaged_child_bounds)
+                    else 0
+                )
+                if not damaged_entity and damaged_child_bound:
+                    self.error(
+                        (
+                            f"{path}.damaged_damp_archetype.bound"
+                            f".children[{index}]"
+                        ),
+                        "must be null when the matching physics child has "
+                        "no damaged entity",
+                    )
+        for index, child in enumerate(children):
+            child_path = f"{path}.children[{index}]"
+            self.validate_child_bound_link(
+                child,
+                child_path,
+                entity_field=0xA0,
+                entity_label="undamaged_entity",
+                expected_bound=(
+                    undamaged_child_bounds[index]
+                    if index < len(undamaged_child_bounds)
+                    else 0
+                ),
+            )
+            self.validate_child_bound_link(
+                child,
+                child_path,
+                entity_field=0xA8,
+                entity_label="damaged_entity",
+                expected_bound=(
+                    damaged_child_bounds[index]
+                    if index < len(damaged_child_bounds)
+                    else 0
+                ),
+            )
         self.pointer(
             self.u64(offset + 0xE8),
             f"{path}.composite_bound",

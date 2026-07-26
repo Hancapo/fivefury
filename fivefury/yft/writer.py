@@ -419,6 +419,7 @@ def create_yft(
                 lod,
                 composite_bound=lod.composite_bound or physics_bound,
                 density=physics_density,
+                has_damaged_drawable=damaged_drawable is not None,
             )
             for lod in physics_lods
         ]

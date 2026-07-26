@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 import pytest
 
 from fivefury import (
-    YcdCutsceneBuilder,
-    YcdCutsceneBoneAnimation,
-    YcdAnimationTrack,
     YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+    YcdAnimationTrack,
     YcdChannelType,
+    YcdCutsceneBoneAnimation,
+    YcdCutsceneBuilder,
     build_cutscene_sections,
     build_ycd_bytes,
     read_cut,
     read_ycd,
 )
-
+from fivefury.resource import split_rsc7_sections, virtual_to_offset
 
 TESTS_DIR = Path(__file__).resolve().parent
 CUT_SAMPLE_PATH = TESTS_DIR.parent / "references" / "lamar_1_int.cut"
@@ -55,8 +56,48 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     assert [clip.short_name for clip in ycds[0].clips] == ["exportcamera-0", "prop_box-0"]
     assert [clip.short_name for clip in ycds[1].clips] == ["exportcamera-1", "prop_box-1"]
 
-    section0 = read_ycd(build_ycd_bytes(ycds[0]))
+    section0_raw = build_ycd_bytes(ycds[0])
+    section0 = read_ycd(section0_raw)
     section1 = read_ycd(build_ycd_bytes(ycds[1]))
+    assert all(animation.vft == 0x405A58F0 for animation in section0.animations)
+    assert all(clip.vft == 0x405A4088 for clip in section0.clips)
+    assert all(clip.unknown_04h == 1 for clip in section0.clips)
+    assert all(clip.unknown_48h == 1 for clip in section0.clips)
+    assert all(
+        clip.property_map_reserved_0ch == 0x01000000
+        for clip in section0.clips
+    )
+
+    _, system_data, _ = split_rsc7_sections(section0_raw)
+    buckets_pointer = struct.unpack_from("<Q", system_data, 0x28)[0]
+    bucket_capacity = struct.unpack_from("<H", system_data, 0x30)[0]
+    buckets_offset = virtual_to_offset(buckets_pointer)
+    clip_offsets: list[int] = []
+    for bucket_index in range(bucket_capacity):
+        entry_pointer = struct.unpack_from(
+            "<Q",
+            system_data,
+            buckets_offset + (bucket_index * 8),
+        )[0]
+        while entry_pointer:
+            entry_offset = virtual_to_offset(entry_pointer)
+            clip_pointer = struct.unpack_from(
+                "<Q",
+                system_data,
+                entry_offset + 0x08,
+            )[0]
+            clip_offsets.append(virtual_to_offset(clip_pointer))
+            entry_pointer = struct.unpack_from(
+                "<Q",
+                system_data,
+                entry_offset + 0x10,
+            )[0]
+
+    assert len(clip_offsets) == len(section0.clips)
+    for clip_offset in clip_offsets:
+        assert struct.unpack_from("<I", system_data, clip_offset)[0] == 0x405A4088
+        assert struct.unpack_from("<Q", system_data, clip_offset + 0x38)[0]
+        assert struct.unpack_from("<Q", system_data, clip_offset + 0x40)[0]
 
     cam0 = section0.get_clip("exportcamera-0")
     cam1 = section1.get_clip("exportcamera-1")

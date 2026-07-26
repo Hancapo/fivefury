@@ -86,6 +86,12 @@ def default_damp_archetype(
     inv_inertia = tuple(1.0 / value if value > 0.0 else 0.0 for value in (inertia.x, inertia.y, inertia.z))
     return YftPhysicsDampArchetype(
         resource_type=2,
+        # RAGE's phArchetype defaults are DEFAULT_TYPE (bit 0) and
+        # INCLUDE_FLAGS_ALL.  Vanilla GTA V fragments serialize these values
+        # explicitly before fragManager applies its game-specific defaults at
+        # page-in time.
+        type_flags=1,
+        include_flags=0xFFFFFFFF,
         mass=float(mass),
         inv_mass=inv_mass,
         gravity_factor=1.0,
@@ -140,6 +146,7 @@ def normalize_physics_lod(
     *,
     composite_bound: Bound | None = None,
     density: float = 1.0,
+    has_damaged_drawable: bool = False,
 ) -> YftPhysicsLod:
     bound = composite_bound or lod.composite_bound
     groups = tuple(lod.groups)
@@ -151,7 +158,12 @@ def normalize_physics_lod(
         )
         groups = (YftPhysicsGroup.declare("default", children=(child,)),)
         declared = YftPhysicsLod.declare(lod.label, groups=groups, root_cg_offset=lod.root_cg_offset)
-        return normalize_physics_lod(declared, composite_bound=bound, density=density)
+        return normalize_physics_lod(
+            declared,
+            composite_bound=bound,
+            density=density,
+            has_damaged_drawable=has_damaged_drawable,
+        )
 
     resolved_groups = []
     resolved_children: list[YftPhysicsChild] = []
@@ -228,17 +240,35 @@ def normalize_physics_lod(
         mass=total_mass,
         damping_constants=damping_constants,
     )
-    damp_damaged = lod.damaged_damp_archetype or default_damp_archetype(
-        bound=bound,
-        mass=sum(child.damaged_mass for child in resolved_children) or total_mass,
-        damping_constants=damping_constants,
+    has_damage_state = has_damaged_drawable or any(
+        child.has_damage_state for child in resolved_children
     )
+    damp_damaged = lod.damaged_damp_archetype
+    if damp_damaged is None and has_damage_state:
+        damp_damaged = default_damp_archetype(
+            bound=bound,
+            mass=(
+                sum(child.damaged_mass for child in resolved_children)
+                or total_mass
+            ),
+            damping_constants=damping_constants,
+        )
     return dataclasses.replace(
         lod,
         num_groups=len(resolved_groups),
         root_group_count=sum(1 for group in resolved_groups if group.is_root_group),
-        num_root_damage_regions=max(1, sum(1 for group in resolved_groups if group.is_damageable)),
-        num_bony_children=sum(1 for child in resolved_children if child.uses_bone),
+        # This is the number of damage regions on the root child, not the
+        # number of damageable groups in the hierarchy.  The generic fragment
+        # authoring path does not create multiple root-child damage regions.
+        num_root_damage_regions=1,
+        # ``numBonyChildren`` is the length of the leading bone-driven child
+        # range. Bone id 0 is the skeleton root and is therefore a valid bony
+        # child. Preserve the count supplied by the format-specific authoring
+        # path instead of deriving it from ``bone_id != 0``.
+        num_bony_children=max(
+            0,
+            min(int(lod.num_bony_children), len(resolved_children)),
+        ),
         num_children=len(resolved_children),
         group_names=tuple(group.name or group.debug_name for group in resolved_groups),
         groups=tuple(resolved_groups),

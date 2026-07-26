@@ -8,11 +8,11 @@ from ..resource import ResourceBlockSpan, ResourceWriter, write_resource_pages_i
 from .model import (
     Bound,
     BoundAabb,
+    BoundBox,
+    BoundBVH,
     BoundBvh,
     BoundBvhNode,
     BoundBvhTree,
-    BoundBox,
-    BoundBVH,
     BoundCapsule,
     BoundChild,
     BoundCloth,
@@ -194,11 +194,18 @@ def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = N
 
 
 def _child_bounds(child: BoundChild) -> BoundAabb:
-    return child.bounds if child.bounds is not None else child.bound.bounds
+    if child.bounds is not None:
+        return child.bounds
+    if child.bound is not None:
+        return child.bound.bounds
+    return BoundAabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
 
 
 def _write_composite(writer: ResourceWriter, offset: int, bound: BoundComposite) -> None:
-    child_offsets = [_write_bound(writer, child.bound) for child in bound.children]
+    child_offsets = [
+        _write_bound(writer, child.bound) if child.bound is not None else 0
+        for child in bound.children
+    ]
     child_count = len(bound.children)
 
     child_ptrs_offset = 0
@@ -212,7 +219,11 @@ def _write_composite(writer: ResourceWriter, offset: int, bound: BoundComposite)
     if child_count:
         child_ptrs_offset = writer.alloc(child_count * 8, 8)
         for index, child_offset in enumerate(child_offsets):
-            writer.pack_into("Q", child_ptrs_offset + (index * 8), _virtual(child_offset))
+            writer.pack_into(
+                "Q",
+                child_ptrs_offset + (index * 8),
+                _virtual(child_offset) if child_offset else 0,
+            )
 
         transforms1_offset = writer.alloc(child_count * 0x40, 16, relocate_pointers=False)
         transforms2_offset = writer.alloc(child_count * 0x40, 16, relocate_pointers=False)
@@ -227,7 +238,11 @@ def _write_composite(writer: ResourceWriter, offset: int, bound: BoundComposite)
                 child_bounds_offset + (index * 0x20),
                 _child_bounds(child),
                 minimum_w=_FLOAT_EPSILON,
-                maximum_w=float(child.bound.margin),
+                maximum_w=(
+                    float(child.bound.margin)
+                    if child.bound is not None
+                    else 0.0
+                ),
             )
 
         flags1_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
@@ -618,6 +633,8 @@ def _build_composite_bvh(bound: BoundComposite) -> BoundBvh | None:
         return None
     items: list[_BvhBuildItem] = []
     for index, child in enumerate(bound.children):
+        if child.bound is None:
+            continue
         transformed_bounds = _transform_aabb(_child_bounds(child), child.transform)
         items.append(
             _BvhBuildItem(
@@ -630,10 +647,16 @@ def _build_composite_bvh(bound: BoundComposite) -> BoundBvh | None:
 
 
 def _refresh_composite_metrics(bound: BoundComposite) -> None:
-    if not bound.children:
+    active_children = [
+        child for child in bound.children if child.bound is not None
+    ]
+    if not active_children:
         bound.bvh = None
         return
-    transformed_bounds = [_transform_aabb(_child_bounds(child), child.transform) for child in bound.children]
+    transformed_bounds = [
+        _transform_aabb(_child_bounds(child), child.transform)
+        for child in active_children
+    ]
     overall = _merge_bounds(transformed_bounds, BoundAabb(bound.box_min, bound.box_max))
     center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
     bound.box_min = overall.minimum
