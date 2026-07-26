@@ -7,6 +7,23 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-07-26
+
+### Fixed
+- YCD writers now emit runtime class markers, clip lifetime fields, and empty
+  tag and property containers required by animated map objects.
+- YNV special links now validate polygon IDs against the endpoint area.
+- YNV polygon split-array block indices are recalculated during writing.
+- YFT damaged archetypes now own independent bounds and physics entity
+  drawables reference their matching archetype child bounds.
+- YFT authoring no longer creates damaged physics data without a damaged state.
+- YFT damping masks, root damage regions, and root-inclusive bony-child ranges
+  now use their native values.
+- YFT physics LODs no longer overwrite the high LOD's drawable-bound links.
+- YFT readers and writers preserve sparse and nullable composite child slots.
+- YFT binary validation now accepts auxiliary vanilla composite slots and
+  rejects invalid data retained by null slots.
+
 ## [0.2.14] - 2026-07-25
 
 ### Fixed
