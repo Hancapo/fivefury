@@ -5,7 +5,7 @@ import struct
 from pathlib import Path
 
 from ..binary import read_c_string
-from ..bounds import read_bound_from_pointer
+from ..bounds import Bound, read_bound_from_pointer
 from ..resource import virtual_to_offset
 from ..ydr import Ydr
 from ..ydr.model import YdrMaterial
@@ -45,16 +45,30 @@ def _read_fragment_matrix(system_data: bytes, offset: int) -> YftFragmentMatrix:
     )
 
 
-def _read_virtual_u64_array(
-    system_data: bytes, pointer: int, count: int
-) -> tuple[int, ...]:
-    if not pointer or count <= 0:
+def _read_extra_bounds(
+    system_data: bytes,
+    pointer: int,
+    array_count: int,
+    active_count: int,
+) -> tuple[Bound | None, ...]:
+    if active_count > array_count:
+        raise ValueError("YFT fragment drawable extra-bound count exceeds array count")
+    if array_count <= 0:
         return ()
+    if not pointer:
+        raise ValueError("YFT fragment drawable extra-bound array is null")
     offset = virtual_to_offset(pointer, base=DAT_VIRTUAL_BASE)
-    end = offset + (count * 8)
+    end = offset + (array_count * 8)
     if offset < 0 or end > len(system_data):
-        raise ValueError("YFT fragment drawable index array is truncated")
-    return struct.unpack_from(f"<{count}Q", system_data, offset)
+        raise ValueError("YFT fragment drawable extra-bound array is truncated")
+    pointers = struct.unpack_from(f"<{array_count}Q", system_data, offset)
+    bounds = tuple(
+        read_bound_from_pointer(bound_pointer, system_data)
+        if bound_pointer
+        else None
+        for bound_pointer in pointers
+    )
+    return bounds[:active_count]
 
 
 def _read_fragment_matrices(
@@ -107,13 +121,15 @@ def read_fragment_drawable(
     bound = (
         read_bound_from_pointer(bound_pointer, system_data) if bound_pointer else None
     )
-    indices_pointer = struct.unpack_from("<Q", system_data, root_offset + 0xF8)[0]
-    indices_count = struct.unpack_from("<H", system_data, root_offset + 0x100)[0]
-    matrices_capacity = struct.unpack_from("<H", system_data, root_offset + 0x102)[0]
+    bounds_pointer = struct.unpack_from("<Q", system_data, root_offset + 0xF8)[0]
+    bounds_count = struct.unpack_from("<H", system_data, root_offset + 0x100)[0]
+    bounds_capacity = struct.unpack_from("<H", system_data, root_offset + 0x102)[0]
     matrices_pointer = struct.unpack_from("<Q", system_data, root_offset + 0x108)[0]
-    matrix_count = struct.unpack_from("<H", system_data, root_offset + 0x110)[0]
-    if matrix_count > matrices_capacity:
-        raise ValueError("YFT fragment drawable matrix count exceeds capacity")
+    active_bound_count = struct.unpack_from("<H", system_data, root_offset + 0x110)[0]
+    if bounds_count > bounds_capacity:
+        raise ValueError("YFT fragment drawable extra-bound array exceeds capacity")
+    if active_bound_count > bounds_count:
+        raise ValueError("YFT fragment drawable extra-bound count exceeds array count")
     name_pointer = struct.unpack_from("<Q", system_data, root_offset + 0x130)[0]
     base_values = {
         field.name: getattr(drawable_base, field.name)
@@ -124,11 +140,16 @@ def read_fragment_drawable(
     return YftFragmentDrawable(
         **base_values,
         fragment_matrix=_read_fragment_matrix(system_data, root_offset + 0xB0),
-        extra_bound_indices=_read_virtual_u64_array(
-            system_data, indices_pointer, indices_count
+        extra_bounds=_read_extra_bounds(
+            system_data,
+            bounds_pointer,
+            bounds_count,
+            active_bound_count,
         ),
         extra_bound_matrices=_read_fragment_matrices(
-            system_data, matrices_pointer, matrices_capacity
+            system_data,
+            matrices_pointer,
+            active_bound_count,
         ),
         skeleton_type_name=_read_optional_string(system_data, name_pointer),
         load_skeleton=bool(

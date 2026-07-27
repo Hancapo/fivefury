@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ..binary import align
-from ..bounds import Bound
+from ..bounds import Bound, calculate_bound_ref_counts, write_bound_resource
 from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
@@ -247,16 +247,36 @@ def _write_fragment_drawable_tail(
         if fragment is not None
         else YftFragmentMatrix.identity()
     )
-    indices = fragment.extra_bound_indices if fragment is not None else ()
+    extra_bounds = fragment.extra_bounds if fragment is not None else ()
     matrices = fragment.extra_bound_matrices if fragment is not None else ()
-    if indices and len(indices) != len(matrices):
+    if len(extra_bounds) != len(matrices):
         raise ValueError(
-            f"YFT drawable '{item.name}' must have one matrix per extra bound index"
+            f"YFT drawable '{item.name}' must have one matrix per extra bound"
         )
 
-    indices_offset = system.alloc(len(indices) * 8, 8) if indices else 0
-    for index, value in enumerate(indices):
-        system.pack_into("Q", indices_offset + (index * 8), int(value))
+    extra_bound_offsets = [
+        (
+            write_bound_resource(
+                system,
+                extra_bound,
+                ref_counts=calculate_bound_ref_counts((extra_bound,)),
+            )
+            if extra_bound is not None
+            else 0
+        )
+        for extra_bound in extra_bounds
+    ]
+    bounds_array_offset = (
+        system.alloc(len(extra_bound_offsets) * 8, 8)
+        if extra_bound_offsets
+        else 0
+    )
+    for index, extra_bound_offset in enumerate(extra_bound_offsets):
+        system.pack_into(
+            "Q",
+            bounds_array_offset + (index * 8),
+            _virtual(extra_bound_offset) if extra_bound_offset else 0,
+        )
 
     matrices_offset = system.alloc(len(matrices) * 64, 16) if matrices else 0
     for index, extra_matrix in enumerate(matrices):
@@ -272,10 +292,12 @@ def _write_fragment_drawable_tail(
     _write_fragment_matrix(system, root + 0xB0, matrix)
     system.pack_into("Q", root + 0xF0, _virtual(bound_offset) if bound_offset else 0)
     system.pack_into(
-        "Q", root + 0xF8, _virtual(indices_offset) if indices_offset else 0
+        "Q",
+        root + 0xF8,
+        _virtual(bounds_array_offset) if bounds_array_offset else 0,
     )
-    system.pack_into("H", root + 0x100, len(indices))
-    system.pack_into("H", root + 0x102, len(matrices))
+    system.pack_into("H", root + 0x100, len(extra_bounds))
+    system.pack_into("H", root + 0x102, len(extra_bounds))
     system.pack_into(
         "Q", root + 0x108, _virtual(matrices_offset) if matrices_offset else 0
     )

@@ -7,6 +7,8 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from .constants import MAX_EXTRA_BOUNDS
+
 if TYPE_CHECKING:
     from .fragment import Yft
     from .physics import YftPhysicsLod
@@ -719,8 +721,13 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                     "display map references a vertex outside the Verlet cloth",
                 )
 
-    for entry in source.iter_drawables():
+    drawable_entries = [*source.iter_drawables(), *source.iter_physics_drawables()]
+    seen_drawables: set[int] = set()
+    for entry in drawable_entries:
         drawable = entry.drawable
+        if id(drawable) in seen_drawables:
+            continue
+        seen_drawables.add(id(drawable))
         validate_drawable = getattr(drawable, "validate", None)
         drawable_issues = validate_drawable() if validate_drawable is not None else ()
         for drawable_issue in drawable_issues:
@@ -732,15 +739,32 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                 f"drawables.{entry.label}.{drawable_issue.context or drawable_issue.code}",
                 drawable_issue.message,
             )
-        indices = getattr(drawable, "extra_bound_indices", ())
+        extra_bounds = getattr(drawable, "extra_bounds", ())
         matrices = getattr(drawable, "extra_bound_matrices", ())
-        if len(indices) != len(matrices):
+        if len(extra_bounds) > MAX_EXTRA_BOUNDS:
             _issue(
                 issues,
                 YftValidationSeverity.ERROR,
                 f"drawables.{entry.label}.extra_bounds",
-                "index and matrix counts must match",
+                f"cannot contain more than {MAX_EXTRA_BOUNDS} bounds",
             )
+        if len(extra_bounds) != len(matrices):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"drawables.{entry.label}.extra_bounds",
+                "bound and matrix counts must match",
+            )
+        for index, bound in enumerate(extra_bounds):
+            if bound is None:
+                continue
+            for message in bound.validate():
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"drawables.{entry.label}.extra_bounds[{index}]",
+                    message,
+                )
 
     if source.physics_lods.has_physics and not source.physics_lod_details:
         _issue(

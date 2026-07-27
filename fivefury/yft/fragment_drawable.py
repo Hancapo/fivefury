@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from ..bounds import Bound
 from ..ydr import Ydr
 
 _MATRIX_FLAG = 0x7F800001
@@ -37,7 +38,7 @@ class YftFragmentDrawable(Ydr):
     fragment_matrix: YftFragmentMatrix = dataclasses.field(
         default_factory=YftFragmentMatrix.identity
     )
-    extra_bound_indices: tuple[int, ...] = ()
+    extra_bounds: tuple[Bound | None, ...] = ()
     extra_bound_matrices: tuple[YftFragmentMatrix, ...] = ()
     skeleton_type_name: str = ""
     load_skeleton: bool = True

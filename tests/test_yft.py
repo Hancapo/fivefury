@@ -1972,17 +1972,93 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     )[0] == 0
     assert parsed.validate() == []
 
-    parsed.main_drawable.extra_bound_indices = (7,)
+    physics_drawable = next(parsed_with_entities.iter_physics_drawables()).drawable
+    physics_drawable.extra_bounds = (None,) * 65
+    physics_drawable.extra_bound_matrices = (
+        YftFragmentMatrix.identity(),
+    ) * 65
+    assert any(
+        issue.is_error
+        and issue.path.endswith(".extra_bounds")
+        and "more than 64 bounds" in issue.message
+        for issue in parsed_with_entities.validate()
+    )
+
+    parsed.main_drawable.extra_bounds = (
+        BoundBox.from_bounds(
+            (-0.5, -0.5, -0.5),
+            (0.5, 0.5, 0.5),
+        ).build(),
+    )
     parsed.main_drawable.extra_bound_matrices = (YftFragmentMatrix.identity(),)
+    rebuilt = build_yft_bytes(parsed)
     reparsed = read_yft(
-        build_yft_bytes(parsed),
+        rebuilt,
         resolve_physics_entities=False,
     )
 
-    assert reparsed.main_drawable.extra_bound_indices == (7,)
+    assert len(reparsed.main_drawable.extra_bounds) == 1
+    assert isinstance(reparsed.main_drawable.extra_bounds[0], BoundBox)
     assert reparsed.main_drawable.extra_bound_matrices == (
         YftFragmentMatrix.identity(),
     )
+    assert validate_yft_bytes(rebuilt) == []
+
+    rebuilt_header, rebuilt_system, rebuilt_graphics = split_rsc7_sections(rebuilt)
+    rebuilt_drawable = virtual_to_offset(
+        struct.unpack_from("<Q", rebuilt_system, 0x30)[0]
+    )
+    extra_bounds_array = virtual_to_offset(
+        struct.unpack_from("<Q", rebuilt_system, rebuilt_drawable + 0xF8)[0]
+    )
+    broken_system = bytearray(rebuilt_system)
+    struct.pack_into("<Q", broken_system, extra_bounds_array, 7)
+    broken_extra_bound = build_rsc7(
+        broken_system,
+        version=rebuilt_header.version,
+        graphics_data=rebuilt_graphics,
+        system_flags=rebuilt_header.system_flags,
+        graphics_flags=rebuilt_header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path == "root.common_drawable.extra_bounds[0]"
+        and "outside the system and graphics virtual spaces" in issue.message
+        for issue in validate_yft_bytes(broken_extra_bound)
+    )
+
+    spare_capacity_system = bytearray(rebuilt_system)
+    struct.pack_into("<Q", spare_capacity_system, extra_bounds_array + 8, 0)
+    struct.pack_into("<HH", spare_capacity_system, rebuilt_drawable + 0x100, 2, 2)
+    spare_capacity = build_rsc7(
+        spare_capacity_system,
+        version=rebuilt_header.version,
+        graphics_data=rebuilt_graphics,
+        system_flags=rebuilt_header.system_flags,
+        graphics_flags=rebuilt_header.graphics_flags,
+    )
+    spare_capacity_parsed = read_yft(spare_capacity)
+    assert len(spare_capacity_parsed.main_drawable.extra_bounds) == 1
+    assert len(spare_capacity_parsed.main_drawable.extra_bound_matrices) == 1
+    assert validate_yft_bytes(spare_capacity) == []
+
+    invalid_active_count_system = bytearray(spare_capacity_system)
+    struct.pack_into("<H", invalid_active_count_system, rebuilt_drawable + 0x110, 3)
+    invalid_active_count = build_rsc7(
+        invalid_active_count_system,
+        version=rebuilt_header.version,
+        graphics_data=rebuilt_graphics,
+        system_flags=rebuilt_header.system_flags,
+        graphics_flags=rebuilt_header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path == "root.common_drawable.extra_bounds"
+        and "active count 3 exceeds array count 2" in issue.message
+        for issue in validate_yft_bytes(invalid_active_count)
+    )
+    with pytest.raises(ValueError, match="extra-bound count exceeds array count"):
+        read_yft(invalid_active_count)
 
 
 def test_yft_corpus_scanner_reports_unreadable_paths(tmp_path):

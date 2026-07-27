@@ -56,25 +56,36 @@ def audit_legacy_fragment_drawable_fixups(
         validator.u64(root + 0xF0),
         f"{path}.bound",
     )
-    indices_count = validator.u16(root + 0x100)
-    matrices_capacity = validator.u16(root + 0x102)
-    matrix_count = validator.u16(root + 0x110)
-    if matrix_count > matrices_capacity:
+    bounds_count = validator.u16(root + 0x100)
+    bounds_capacity = validator.u16(root + 0x102)
+    active_bound_count = validator.u16(root + 0x110)
+    if bounds_count > bounds_capacity:
         validator.error(
-            f"{path}.extra_bound_matrices",
-            f"count {matrix_count} exceeds capacity {matrices_capacity}",
+            f"{path}.extra_bounds",
+            f"count {bounds_count} exceeds capacity {bounds_capacity}",
         )
-    validator.pointer(
+    if active_bound_count > bounds_count:
+        validator.error(
+            f"{path}.extra_bounds",
+            f"active count {active_bound_count} exceeds array count {bounds_count}",
+        )
+    bounds_array = validator.pointer(
         validator.u64(root + 0xF8),
-        f"{path}.extra_bound_indices",
-        size=indices_count * 8,
-        nullable=indices_count == 0,
+        f"{path}.extra_bounds",
+        size=bounds_count * 8,
+        nullable=bounds_count == 0,
     )
+    if bounds_array is not None:
+        for index in range(bounds_count):
+            validator.pointer(
+                validator.u64(bounds_array + index * 8),
+                f"{path}.extra_bounds[{index}]",
+            )
     validator.pointer(
         validator.u64(root + 0x108),
         f"{path}.extra_bound_matrices",
-        size=matrices_capacity * 64,
-        nullable=matrices_capacity == 0,
+        size=active_bound_count * 64,
+        nullable=active_bound_count == 0,
     )
     for field_offset, label in (
         (0x118, "locators"),

@@ -7,6 +7,15 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-07-27
+
+### Breaking Changes
+- `YftFragmentDrawable.extra_bound_indices` is replaced by
+  `extra_bounds`, which exposes owned bounds instead of numeric indices.
+
+### Fixed
+- Corrected YFT fragment drawable extra-bound serialization and validation.
+
 ## [0.2.16] - 2026-07-26
 
 ### Added
