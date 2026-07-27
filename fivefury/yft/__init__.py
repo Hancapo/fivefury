@@ -1,4 +1,8 @@
 from .binary_validation import assert_valid_yft_bytes, validate_yft_bytes
+from .bound_profiles import (
+    YftPhysicsBoundProfile,
+    coerce_yft_physics_bound_profile,
+)
 from .cloth import (
     YftClothBridge,
     YftClothConstraint,
@@ -12,6 +16,12 @@ from .cloth import (
     YftVerletCloth,
 )
 from .corpus import YftCorpusEntry, iter_yft_paths, scan_yft_corpus
+from .geometry import (
+    MAX_FRAGMENT_BOUND_MATERIALS,
+    MAX_FRAGMENT_BOUND_POLYGONS,
+    MAX_FRAGMENT_BOUND_VERTICES,
+    build_fragment_geometry_bound,
+)
 from .model import (
     Matrix43,
     Yft,
@@ -67,6 +77,7 @@ from .physics_authoring import (
     default_articulated_body_type,
     default_damp_archetype,
     normalize_physics_lod,
+    prepare_physics_bound,
     simple_physics_bound,
 )
 from .reader import read_yft
@@ -75,6 +86,9 @@ from .writer import build_yft_bytes, create_yft, save_yft
 __all__ = [
     "DEFAULT_DAMPING_CONSTANTS",
     "IDENTITY_MATRIX44",
+    "MAX_FRAGMENT_BOUND_MATERIALS",
+    "MAX_FRAGMENT_BOUND_POLYGONS",
+    "MAX_FRAGMENT_BOUND_VERTICES",
     "Matrix43",
     "Yft",
     "YftArticulatedBodyType",
@@ -100,6 +114,7 @@ __all__ = [
     "YftGlassPane",
     "YftGlassPaneFlag",
     "YftGlassVertexDeclaration",
+    "YftPhysicsBoundProfile",
     "YftPhysicsChild",
     "YftPhysicsChildEvents",
     "YftPhysicsDampArchetype",
@@ -133,12 +148,15 @@ __all__ = [
     "bound_inertia",
     "bound_mass",
     "box_inertia",
+    "build_fragment_geometry_bound",
     "build_yft_bytes",
+    "coerce_yft_physics_bound_profile",
     "create_yft",
     "default_articulated_body_type",
     "default_damp_archetype",
     "iter_yft_paths",
     "normalize_physics_lod",
+    "prepare_physics_bound",
     "read_yft",
     "save_yft",
     "scan_yft_corpus",

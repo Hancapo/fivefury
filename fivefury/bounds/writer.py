@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import struct
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from .. import _native as _native_backend
 from ..resource import ResourceBlockSpan, ResourceWriter, write_resource_pages_info
@@ -60,6 +60,8 @@ _DEFAULT_BOUND_FILE_VFT = {
     BoundGeometry: 1080226408,
     BoundComposite: 1080212136,
 }
+
+BoundFileVftResolver = Callable[[Bound], int]
 
 
 def _virtual(offset: int) -> int:
@@ -136,8 +138,16 @@ def _write_resource_file_base(
     bound: Bound,
     *,
     pages_info_offset: int = 0,
+    file_vft_resolver: BoundFileVftResolver | None = None,
 ) -> None:
-    writer.pack_into("I", offset + 0x00, int(bound.file_vft or _default_file_vft(bound)))
+    file_vft = (
+        int(bound.file_vft)
+        if bound.file_vft
+        else int(file_vft_resolver(bound))
+        if file_vft_resolver is not None
+        else _default_file_vft(bound)
+    )
+    writer.pack_into("I", offset + 0x00, file_vft)
     writer.pack_into("I", offset + 0x04, int(bound.file_unknown))
     writer.pack_into("Q", offset + 0x08, _virtual(pages_info_offset) if pages_info_offset else 0)
 
@@ -148,9 +158,15 @@ def _write_bound_common(
     bound: Bound,
     *,
     ref_counts: Mapping[int, int] | None = None,
+    file_vft_resolver: BoundFileVftResolver | None = None,
 ) -> None:
     material_word1, material_word2 = _pack_bound_material_words(bound)
-    _write_resource_file_base(writer, offset, bound)
+    _write_resource_file_base(
+        writer,
+        offset,
+        bound,
+        file_vft_resolver=file_vft_resolver,
+    )
     writer.pack_into("B", offset + 0x10, int(bound.bound_type))
     writer.pack_into("B", offset + 0x11, int(bound.flags) & 0xFF)
     writer.pack_into("H", offset + 0x12, bound.part_index & 0xFFFF)
@@ -179,6 +195,7 @@ def _write_bound(
     *,
     offset: int | None = None,
     ref_counts: Mapping[int, int] | None = None,
+    file_vft_resolver: BoundFileVftResolver | None = None,
 ) -> int:
     prepared_bvh = None
     if isinstance(bound, BoundComposite):
@@ -188,9 +205,21 @@ def _write_bound(
     bound_offset = 0 if offset is None else offset
     if offset is None:
         bound_offset = writer.alloc(_bound_size(bound), 16)
-    _write_bound_common(writer, bound_offset, bound, ref_counts=ref_counts)
+    _write_bound_common(
+        writer,
+        bound_offset,
+        bound,
+        ref_counts=ref_counts,
+        file_vft_resolver=file_vft_resolver,
+    )
     if isinstance(bound, BoundComposite):
-        _write_composite(writer, bound_offset, bound, ref_counts=ref_counts)
+        _write_composite(
+            writer,
+            bound_offset,
+            bound,
+            ref_counts=ref_counts,
+            file_vft_resolver=file_vft_resolver,
+        )
     elif isinstance(bound, BoundBVH):
         _write_geometry(writer, bound_offset, bound, with_bvh=True, prepared=prepared_bvh)
     elif isinstance(bound, BoundGeometry):
@@ -224,9 +253,15 @@ def _write_composite(
     bound: BoundComposite,
     *,
     ref_counts: Mapping[int, int] | None = None,
+    file_vft_resolver: BoundFileVftResolver | None = None,
 ) -> None:
     child_offsets = [
-        _write_bound(writer, child.bound, ref_counts=ref_counts)
+        _write_bound(
+            writer,
+            child.bound,
+            ref_counts=ref_counts,
+            file_vft_resolver=file_vft_resolver,
+        )
         if child.bound is not None
         else 0
         for child in bound.children
@@ -880,11 +915,18 @@ def write_bound_resource(
     bound: Bound,
     *,
     ref_counts: Mapping[int, int] | None = None,
+    file_vft_resolver: BoundFileVftResolver | None = None,
 ) -> int:
-    return _write_bound(writer, bound, ref_counts=ref_counts)
+    return _write_bound(
+        writer,
+        bound,
+        ref_counts=ref_counts,
+        file_vft_resolver=file_vft_resolver,
+    )
 
 
 __all__ = [
+    "BoundFileVftResolver",
     "build_bound_system_data",
     "build_bound_system_layout",
     "write_bound_resource",

@@ -7,6 +7,7 @@ from typing import Any
 
 from ..ydr import Ydr, YdrLight, YdrMesh, YdrModel
 from ..ydr.defs import YdrLod, coerce_lod
+from .bound_profiles import YftPhysicsBoundProfile
 from .cloth import YftEnvironmentCloth
 from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet
@@ -34,6 +35,9 @@ class Yft:
     state: YftFragmentState = dataclasses.field(default_factory=YftFragmentState)
     physics_lods: YftPhysicsLodPointers = dataclasses.field(
         default_factory=YftPhysicsLodPointers
+    )
+    physics_bound_profile: YftPhysicsBoundProfile = (
+        YftPhysicsBoundProfile.PROP
     )
     physics_lod_details: list[YftPhysicsLod] = dataclasses.field(default_factory=list)
     root_child: YftPhysicsChild | None = None
@@ -218,6 +222,7 @@ class Yft:
             lod,
             composite_bound=composite_bound or lod.composite_bound,
             density=density,
+            profile=self.physics_bound_profile,
         )
         self.physics_lod_details = [
             existing

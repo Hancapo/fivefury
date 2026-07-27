@@ -7,7 +7,14 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from ..bounds import BoundGeometry
+from .bound_profiles import YftPhysicsBoundProfile, validate_bound_profile
 from .constants import MAX_EXTRA_BOUNDS
+from .geometry import (
+    MAX_FRAGMENT_BOUND_MATERIALS,
+    MAX_FRAGMENT_BOUND_POLYGONS,
+    MAX_FRAGMENT_BOUND_VERTICES,
+)
 
 if TYPE_CHECKING:
     from .fragment import Yft
@@ -53,9 +60,96 @@ def _finite_values(values: Iterable[float]) -> bool:
     return all(math.isfinite(float(value)) for value in values)
 
 
-def _validate_lod(
-    lod: YftPhysicsLod, path: str, issues: list[YftValidationIssue]
+def _validate_fragment_geometry_limits(
+    root: object,
+    path: str,
+    issues: list[YftValidationIssue],
 ) -> None:
+    walk = getattr(root, "walk", None)
+    if walk is None:
+        return
+    for bound_index, bound in enumerate(walk()):
+        if not isinstance(bound, BoundGeometry):
+            continue
+        bound_path = f"{path}[{bound_index}]"
+        for field, count, limit in (
+            ("vertices", len(bound.vertices), MAX_FRAGMENT_BOUND_VERTICES),
+            ("polygons", len(bound.polygons), MAX_FRAGMENT_BOUND_POLYGONS),
+            ("materials", len(bound.materials), MAX_FRAGMENT_BOUND_MATERIALS),
+        ):
+            if count > limit:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{bound_path}.{field}",
+                    f"count {count} exceeds the fragment bound limit of {limit}",
+                )
+        if not _finite_values(
+            value
+            for vertex in (*bound.vertices, *bound.vertices_shrunk)
+            for value in vertex
+        ):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{bound_path}.vertices",
+                "coordinates must be finite",
+            )
+        for material_index, material in enumerate(bound.materials):
+            material_path = f"{bound_path}.materials[{material_index}]"
+            if material.data1 or material.data2:
+                if not (
+                    0 <= int(material.data1) <= 0xFFFFFFFF
+                    and 0 <= int(material.data2) <= 0xFFFFFFFF
+                ):
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        material_path,
+                        "raw material data must fit in unsigned 32-bit fields",
+                    )
+                continue
+            for field, value, maximum in (
+                ("type", material.type, 0xFF),
+                ("procedural_id", material.procedural_id, 0xFF),
+                ("room_id", material.room_id, 0x1F),
+                ("ped_density", material.ped_density, 0x07),
+                ("flags", material.flags, 0xFFFF),
+                ("material_color_index", material.material_color_index, 0xFF),
+                ("reserved", material.reserved, 0xFFFF),
+            ):
+                if not 0 <= int(value) <= maximum:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{material_path}.{field}",
+                        f"value must be between 0 and {maximum}",
+                    )
+
+
+def _validate_lod(
+    lod: YftPhysicsLod,
+    path: str,
+    issues: list[YftValidationIssue],
+    *,
+    bound_profile: YftPhysicsBoundProfile,
+) -> None:
+    for field, value in (
+        ("num_groups", len(lod.groups)),
+        ("root_group_count", lod.root_group_count),
+        ("num_root_damage_regions", lod.num_root_damage_regions),
+        ("num_bony_children", lod.num_bony_children),
+        ("num_children", len(lod.children)),
+        ("num_self_collisions", len(lod.self_collision_pairs)),
+        ("max_num_self_collisions", lod.max_num_self_collisions),
+    ):
+        if not 0 <= int(value) <= 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.{field}",
+                "must fit in an unsigned 8-bit field",
+            )
     if lod.num_groups != len(lod.groups):
         _issue(
             issues,
@@ -92,6 +186,27 @@ def _validate_lod(
             "bony-child count is larger than child count",
         )
     for index, child in enumerate(lod.children):
+        if not 0 <= int(child.owner_group_pointer_index) <= 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.children[{index}].owner_group_pointer_index",
+                "must fit in an unsigned 8-bit field",
+            )
+        if not 0 <= int(child.flags) <= 0xFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.children[{index}].flags",
+                "must fit in an unsigned 8-bit field",
+            )
+        if not 0 <= int(child.bone_id) <= 0xFFFF:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.children[{index}].bone_id",
+                "must fit in an unsigned 16-bit field",
+            )
         if (
             child.bone_controlled is not None
             and child.bone_controlled != (index < lod.num_bony_children)
@@ -140,6 +255,26 @@ def _validate_lod(
 
     for index, group in enumerate(lod.groups):
         group_path = f"{path}.groups[{index}]"
+        for field, value in (
+            ("child_groups_pointers_index", group.child_groups_pointers_index),
+            ("parent_group_pointer_index", group.parent_group_pointer_index),
+            ("child_index", group.child_index),
+            ("num_children", group.num_children),
+            ("num_child_groups", group.num_child_groups),
+            ("glass_model_and_type", group.glass_model_and_type or 0xFF),
+            (
+                "glass_pane_model_info_index",
+                group.glass_pane_model_info_index,
+            ),
+            ("flags", group.flags),
+        ):
+            if not 0 <= int(value) <= 0xFF:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{group_path}.{field}",
+                    "must fit in an unsigned 8-bit field",
+                )
         if group.child_index != 0xFF and group.child_index + group.num_children > len(
             lod.children
         ):
@@ -174,6 +309,86 @@ def _validate_lod(
                 group_path,
                 "group mass cannot be negative",
             )
+
+    claimed_children: set[int] = set()
+    for group_index, group in enumerate(lod.groups):
+        if group.child_index == 0xFF:
+            continue
+        for child_index in range(
+            group.child_index,
+            group.child_index + group.num_children,
+        ):
+            if child_index >= len(lod.children):
+                continue
+            if child_index in claimed_children:
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{path}.groups[{group_index}]",
+                    f"physics child {child_index} belongs to multiple groups",
+                )
+            claimed_children.add(child_index)
+            if (
+                lod.children[child_index].owner_group_pointer_index
+                != group_index
+            ):
+                _issue(
+                    issues,
+                    YftValidationSeverity.ERROR,
+                    f"{path}.children[{child_index}]",
+                    "owner group does not match the ordered group slice",
+                )
+    if lod.children and claimed_children != set(range(len(lod.children))):
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.groups",
+            "group slices must cover every physics child exactly once",
+        )
+
+    actual_root_groups = sum(1 for group in lod.groups if group.is_root_group)
+    if lod.root_group_count != actual_root_groups:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.root_group_count",
+            f"declares {lod.root_group_count} root groups but has "
+            f"{actual_root_groups}",
+        )
+    if lod.composite_bound is None:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.composite_bound",
+            "physics LOD requires a bound",
+        )
+    else:
+        for message in validate_bound_profile(
+            lod.composite_bound,
+            bound_profile,
+            expected_slots=len(lod.children),
+        ):
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.composite_bound",
+                message,
+            )
+        _validate_fragment_geometry_limits(
+            lod.composite_bound,
+            f"{path}.composite_bound",
+            issues,
+        )
+    if (
+        bound_profile is not YftPhysicsBoundProfile.PRESERVE
+        and lod.undamaged_damp_archetype is None
+    ):
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.undamaged_damp_archetype",
+            "authored physics LOD requires an undamaged archetype",
+        )
 
     for index, child in enumerate(lod.children):
         child_path = f"{path}.children[{index}]"
@@ -787,7 +1002,12 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
     physics_drawable_owners: dict[int, str] = {}
     for index, lod in enumerate(source.physics_lod_details):
         lod_path = f"physics_lod_details[{index}]"
-        _validate_lod(lod, lod_path, issues)
+        _validate_lod(
+            lod,
+            lod_path,
+            issues,
+            bound_profile=source.physics_bound_profile,
+        )
         if lod.composite_bound is not None:
             from .bound_ownership import (
                 calculate_physics_lod_bound_ref_counts,

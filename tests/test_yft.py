@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import struct
 from pathlib import Path
 
@@ -11,8 +12,11 @@ from fivefury import (
     BoundBox,
     BoundChild,
     BoundComposite,
+    BoundGeometry,
+    BoundMaterial,
     YdrMaterialInput,
     YdrMeshInput,
+    build_bound_from_triangles,
     calculate_bound_ref_counts,
     create_ydr,
 )
@@ -38,6 +42,7 @@ from fivefury.ydr import (
 )
 from fivefury.ydr.resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
 from fivefury.yft import (
+    MAX_FRAGMENT_BOUND_VERTICES,
     Yft,
     YftClothBridge,
     YftClothController,
@@ -51,6 +56,7 @@ from fivefury.yft import (
     YftFragmentMatrix,
     YftFragmentState,
     YftGlassPane,
+    YftPhysicsBoundProfile,
     YftPhysicsChild,
     YftPhysicsDampArchetype,
     YftPhysicsEntity,
@@ -64,8 +70,10 @@ from fivefury.yft import (
     YftVehicleGlassWindow,
     YftVehicleGlassWindows,
     YftVerletCloth,
+    build_fragment_geometry_bound,
     build_yft_bytes,
     create_yft,
+    normalize_physics_lod,
     read_yft,
     scan_yft_corpus,
     validate_yft,
@@ -79,6 +87,56 @@ from fivefury.yft.resource_headers import (
     PH_JOINT_3DOF_TYPE_VFT,
     RESOURCE_STATE,
 )
+
+
+def _composite(*bounds):
+    return BoundComposite(
+        bound_type=10,
+        sphere_radius=0.0,
+        box_max=(0.0, 0.0, 0.0),
+        margin=0.0,
+        box_min=(0.0, 0.0, 0.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[BoundChild(bound) for bound in bounds],
+    ).build()
+
+
+def _bound_child_pointer(
+    system_data: bytes,
+    root_pointer: int,
+    index: int = 0,
+) -> int:
+    root_offset = virtual_to_offset(root_pointer)
+    children_pointer = struct.unpack_from(
+        "<Q",
+        system_data,
+        root_offset + 0x70,
+    )[0]
+    return struct.unpack_from(
+        "<Q",
+        system_data,
+        virtual_to_offset(children_pointer) + index * 8,
+    )[0]
+
+
+def _simple_fragment_drawable(name: str):
+    return create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                ],
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name=name,
+    )
 
 
 def test_yft_light_array_roundtrip():
@@ -850,6 +908,8 @@ def test_yft_without_physics_writes_runtime_root_child_header():
 
 
 def test_yft_declarative_physics_validation():
+    from fivefury.yft import simple_physics_bound
+
     drawable = Ydr(version=162, lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]})
     child = YftPhysicsChild.declare(
         bone_id=4, undamaged_mass=2.5, min_breaking_impulse=120.0
@@ -857,11 +917,14 @@ def test_yft_declarative_physics_validation():
     group = YftPhysicsGroup.declare(
         "chassis", children=(child,), flags=YftPhysicsGroupFlag.DAMAGE_WHEN_BROKEN
     )
-    lod = YftPhysicsLod.declare(groups=(group,))
-    yft = Yft(
-        main_drawable=drawable,
-        physics_lods=YftPhysicsLodPointers(high=0x50000100),
-        physics_lod_details=[lod],
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare(groups=(group,)),
+        composite_bound=simple_physics_bound(),
+    )
+    yft = create_yft(
+        drawable,
+        physics_lods=(lod,),
+        physics_bound=lod.composite_bound,
     )
 
     assert yft.validate() == []
@@ -919,7 +982,10 @@ def test_multichild_prop_does_not_invent_euphoria_body():
     group = YftPhysicsGroup.declare("breakable_prop", children=children)
     lod = normalize_physics_lod(
         YftPhysicsLod.declare("high", groups=(group,)),
-        composite_bound=simple_physics_bound(),
+        composite_bound=_composite(
+            simple_physics_bound(center=(-0.5, 0.0, 0.0)),
+            simple_physics_bound(center=(0.5, 0.0, 0.0)),
+        ),
     )
     source = create_yft(
         drawable,
@@ -980,7 +1046,10 @@ def test_physics_authoring_preserves_root_bone_in_bony_child_prefix():
 
     normalized = normalize_physics_lod(
         declared,
-        composite_bound=simple_physics_bound(),
+        composite_bound=_composite(
+            simple_physics_bound(center=(-0.5, 0.0, 0.0)),
+            simple_physics_bound(center=(0.5, 0.0, 0.0)),
+        ),
     )
 
     assert normalized.num_bony_children == 2
@@ -1051,12 +1120,18 @@ def test_physics_lods_own_distinct_child_drawable_bound_links():
         "<Q",
         system_data,
         virtual_to_offset(high_entity) + 0xF0,
-    )[0] == high.composite_bounds_pointer
+    )[0] == _bound_child_pointer(
+        system_data,
+        high.composite_bounds_pointer,
+    )
     assert struct.unpack_from(
         "<Q",
         system_data,
         virtual_to_offset(medium_entity) + 0xF0,
-    )[0] == medium.composite_bounds_pointer
+    )[0] == _bound_child_pointer(
+        system_data,
+        medium.composite_bounds_pointer,
+    )
     assert validate_yft_bytes(raw) == []
 
 
@@ -1137,9 +1212,11 @@ def test_yft_writer_derives_direct_bound_ownership_and_roundtrips_it():
         physics_bound=bound,
     )
 
-    assert bound.ref_count == 3
+    assert source.physics_lod("high").composite_bound.ref_count == 2
+    assert bound.ref_count == 2
     parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
-    assert parsed.physics_lod("high").composite_bound.ref_count == 3
+    assert parsed.physics_lod("high").composite_bound.ref_count == 2
+    assert parsed.physics_lod("high").composite_bound.children[0].bound.ref_count == 2
 
 
 def test_yft_validation_rejects_bound_ref_count_mismatch():
@@ -1300,12 +1377,12 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         "<I",
         system_data,
         virtual_to_offset(undamaged_bound) + 0x3C,
-    )[0] == 3
+    )[0] == 2
     assert struct.unpack_from(
         "<I",
         system_data,
         virtual_to_offset(damaged_bound) + 0x3C,
-    )[0] == 2
+    )[0] == 1
     assert validate_yft_bytes(raw) == []
 
     broken_system = bytearray(system_data)
@@ -1393,6 +1470,7 @@ def test_composite_bound_ownership_covers_nested_null_and_damage_states():
             ),
         ),
         physics_bound=composite,
+        physics_bound_profile=YftPhysicsBoundProfile.SET_PIECE,
     )
 
     raw = build_yft_bytes(source)
@@ -1496,6 +1574,7 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
         damaged_drawable=damaged_main,
         physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
         physics_bound=composite,
+        physics_bound_profile=YftPhysicsBoundProfile.SET_PIECE,
     )
 
     raw = build_yft_bytes(source)
@@ -1923,12 +2002,18 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         "<Q",
         system_data,
         undamaged_entity_offset + 0xF0,
-    )[0] == lod.undamaged_damp_archetype.bound_pointer
+    )[0] == _bound_child_pointer(
+        system_data,
+        lod.undamaged_damp_archetype.bound_pointer,
+    )
     assert struct.unpack_from(
         "<Q",
         system_data,
         damaged_entity_offset + 0xF0,
-    )[0] == lod.damaged_damp_archetype.bound_pointer
+    )[0] == _bound_child_pointer(
+        system_data,
+        lod.damaged_damp_archetype.bound_pointer,
+    )
 
     broken_system = bytearray(system_data)
     struct.pack_into("<Q", broken_system, undamaged_entity_offset + 0xF0, 0)
@@ -2167,3 +2252,404 @@ def test_yft_empty_event_sets_roundtrip():
     assert parsed_event.resource_tag == 0x74536353
     assert parsed_event.is_empty is True
     assert parsed.validate() == []
+
+
+def test_fragment_geometry_bound_builder_creates_direct_prop_leaf():
+    geometry = build_fragment_geometry_bound(
+        [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ],
+        [
+            (0, 2, 1),
+            (0, 1, 3),
+            (1, 2, 3),
+            (2, 0, 3),
+        ],
+        materials=[BoundMaterial(type=0)],
+    )
+
+    assert type(geometry) is BoundGeometry
+    assert geometry.file_vft == 0x4062D258
+    assert geometry.vertices_shrunk == geometry.vertices
+    assert geometry.octants is not None
+    assert geometry.volume == pytest.approx(1.0 / 6.0)
+    assert geometry.box_center == pytest.approx((0.5, 0.5, 0.5))
+    assert geometry.sphere_center == pytest.approx((0.25, 0.25, 0.25))
+    assert geometry.sphere_radius == pytest.approx(
+        math.sqrt((0.75**2) + (0.25**2) + (0.25**2))
+    )
+    assert all(math.isfinite(value) and value > 0.0 for value in geometry.angular_inertia)
+
+
+def test_fragment_geometry_bound_builder_rejects_packed_material_overflow():
+    with pytest.raises(ValueError, match="room_id"):
+        build_fragment_geometry_bound(
+            [
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+            ],
+            [(0, 1, 2)],
+            materials=[BoundMaterial(room_id=0x20)],
+        )
+
+
+def test_prop_profile_writes_native_composite_and_geometry_vfts():
+    geometry = build_fragment_geometry_bound(
+        [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+        ],
+        [(0, 2, 1), (0, 1, 3), (1, 2, 3), (2, 0, 3)],
+    )
+    drawable = _simple_fragment_drawable("prop_profile")
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(
+            drawable,
+            label="prop_profile",
+        )
+    )
+    source = create_yft(
+        drawable,
+        name="prop_profile",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+            ),
+        ),
+        physics_bound=geometry,
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw)
+    root_pointer = parsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    leaf_pointer = _bound_child_pointer(system_data, root_pointer)
+
+    assert struct.unpack_from("<I", system_data, virtual_to_offset(root_pointer))[0] == (
+        0x40629AA8
+    )
+    assert struct.unpack_from("<I", system_data, virtual_to_offset(leaf_pointer))[0] == (
+        0x4062D258
+    )
+    assert parsed.physics_bound_profile is YftPhysicsBoundProfile.PRESERVE
+    assert validate_yft_bytes(raw, profile=YftPhysicsBoundProfile.PROP) == []
+
+    rebuilt = build_yft_bytes(parsed)
+    _, rebuilt_system, _ = split_rsc7_sections(rebuilt)
+    reparsed = read_yft(rebuilt)
+    rebuilt_root = reparsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    rebuilt_leaf = _bound_child_pointer(rebuilt_system, rebuilt_root)
+    assert struct.unpack_from(
+        "<I", rebuilt_system, virtual_to_offset(rebuilt_root)
+    )[0] == 0x40629AA8
+    assert struct.unpack_from(
+        "<I", rebuilt_system, virtual_to_offset(rebuilt_leaf)
+    )[0] == 0x4062D258
+    assert validate_yft_bytes(
+        rebuilt,
+        profile=YftPhysicsBoundProfile.PROP,
+    ) == []
+
+
+def test_prop_profile_rejects_ybn_style_bvh():
+    triangle = (
+        (0.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+    )
+    bvh = build_bound_from_triangles([triangle])
+    drawable = _simple_fragment_drawable("prop_bvh")
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(drawable, label="prop_bvh")
+    )
+
+    with pytest.raises(ValueError, match="BoundBVH"):
+        create_yft(
+            drawable,
+            name="prop_bvh",
+            physics_lods=(
+                YftPhysicsLod.declare(
+                    "high",
+                    groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+                ),
+            ),
+            physics_bound=bvh,
+        )
+
+
+def test_vehicle_profile_accepts_bvh_and_writes_native_vfts():
+    triangle = (
+        (0.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+    )
+    bvh = build_bound_from_triangles([triangle])
+    drawable = _simple_fragment_drawable("vehicle_bvh")
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(drawable, label="vehicle_bvh")
+    )
+    source = create_yft(
+        drawable,
+        name="vehicle_bvh",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+            ),
+        ),
+        physics_bound=bvh,
+        physics_bound_profile=YftPhysicsBoundProfile.VEHICLE,
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw)
+    root_pointer = parsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    leaf_pointer = _bound_child_pointer(system_data, root_pointer)
+
+    assert struct.unpack_from("<I", system_data, virtual_to_offset(root_pointer))[0] == (
+        0x4062B5D8
+    )
+    assert struct.unpack_from("<I", system_data, virtual_to_offset(leaf_pointer))[0] == (
+        0x4062FAB8
+    )
+    assert validate_yft_bytes(raw, profile=YftPhysicsBoundProfile.VEHICLE) == []
+
+    rebuilt = build_yft_bytes(parsed)
+    _, rebuilt_system, _ = split_rsc7_sections(rebuilt)
+    reparsed = read_yft(rebuilt)
+    rebuilt_root = reparsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    rebuilt_leaf = _bound_child_pointer(rebuilt_system, rebuilt_root)
+    assert struct.unpack_from(
+        "<I", rebuilt_system, virtual_to_offset(rebuilt_root)
+    )[0] == 0x4062B5D8
+    assert struct.unpack_from(
+        "<I", rebuilt_system, virtual_to_offset(rebuilt_leaf)
+    )[0] == 0x4062FAB8
+    assert validate_yft_bytes(
+        rebuilt,
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    ) == []
+
+
+def test_set_piece_profile_roundtrip_preserves_native_vfts():
+    bound = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (2.0, 2.0, 2.0),
+    ).build()
+    drawable = _simple_fragment_drawable("set_piece")
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(drawable, label="set_piece")
+    )
+    raw = build_yft_bytes(
+        create_yft(
+            drawable,
+            name="set_piece",
+            physics_lods=(
+                YftPhysicsLod.declare(
+                    "high",
+                    groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+                ),
+            ),
+            physics_bound=bound,
+            physics_bound_profile=YftPhysicsBoundProfile.SET_PIECE,
+        )
+    )
+    parsed = read_yft(raw)
+    rebuilt = build_yft_bytes(parsed)
+    _, rebuilt_system, _ = split_rsc7_sections(rebuilt)
+    reparsed = read_yft(rebuilt)
+    root_pointer = reparsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    leaf_pointer = _bound_child_pointer(rebuilt_system, root_pointer)
+
+    assert struct.unpack_from(
+        "<I", rebuilt_system, virtual_to_offset(root_pointer)
+    )[0] == 0x4062BAA8
+    assert struct.unpack_from(
+        "<I", rebuilt_system, virtual_to_offset(leaf_pointer)
+    )[0] == 0x4062DD58
+    assert validate_yft_bytes(
+        rebuilt,
+        profile=YftPhysicsBoundProfile.SET_PIECE,
+    ) == []
+
+
+def test_binary_validation_rejects_swapped_prop_bound_slots():
+    bounds = (
+        BoundBox.from_center_size((-2.0, 0.0, 0.0), (1.0, 1.0, 1.0)).build(),
+        BoundBox.from_center_size((2.0, 0.0, 0.0), (2.0, 2.0, 2.0)).build(),
+    )
+    composite = _composite(*bounds)
+    drawable = _simple_fragment_drawable("ordered_prop")
+    children = tuple(
+        YftPhysicsChild.declare(
+            undamaged_entity=YftPhysicsEntity.declare(
+                _simple_fragment_drawable(f"ordered_prop_{index}"),
+                label=f"ordered_prop_{index}",
+            )
+        )
+        for index in range(2)
+    )
+    raw = build_yft_bytes(
+        create_yft(
+            drawable,
+            name="ordered_prop",
+            physics_lods=(
+                YftPhysicsLod.declare(
+                    "high",
+                    groups=(
+                        YftPhysicsGroup.declare("root", children=children),
+                    ),
+                ),
+            ),
+            physics_bound=composite,
+        )
+    )
+    parsed = read_yft(raw)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    root_pointer = parsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    root_offset = virtual_to_offset(root_pointer)
+    slots_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, root_offset + 0x70)[0]
+    )
+    first, second = struct.unpack_from("<2Q", system_data, slots_offset)
+    broken_system = bytearray(system_data)
+    struct.pack_into("<2Q", broken_system, slots_offset, second, first)
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    assert any(
+        issue.is_error
+        and "matching archetype bound child" in issue.message
+        for issue in validate_yft_bytes(
+            broken,
+            profile=YftPhysicsBoundProfile.PROP,
+        )
+    )
+
+
+def test_binary_validation_rejects_fragment_geometry_vertex_overflow():
+    geometry = build_fragment_geometry_bound(
+        [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ],
+        [(0, 1, 2)],
+    )
+    drawable = _simple_fragment_drawable("overflow_prop")
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(drawable, label="overflow_prop")
+    )
+    raw = build_yft_bytes(
+        create_yft(
+            drawable,
+            name="overflow_prop",
+            physics_lods=(
+                YftPhysicsLod.declare(
+                    "high",
+                    groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+                ),
+            ),
+            physics_bound=geometry,
+        )
+    )
+    parsed = read_yft(raw)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    root_pointer = parsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    geometry_pointer = _bound_child_pointer(system_data, root_pointer)
+    broken_system = bytearray(system_data)
+    struct.pack_into(
+        "<I",
+        broken_system,
+        virtual_to_offset(geometry_pointer) + 0xD0,
+        0x8000,
+    )
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    assert any(
+        issue.is_error
+        and issue.path.endswith(".vertices")
+        and "32768 exceeds" in issue.message
+        for issue in validate_yft_bytes(
+            broken,
+            profile=YftPhysicsBoundProfile.PROP,
+        )
+    )
+
+
+def test_yft_authoring_rejects_fragment_geometry_limits_before_writing():
+    geometry = build_fragment_geometry_bound(
+        [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ],
+        [(0, 1, 2)],
+    )
+    drawable = _simple_fragment_drawable("source_overflow")
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(drawable, label="source_overflow")
+    )
+    source = create_yft(
+        drawable,
+        name="source_overflow",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+            ),
+        ),
+        physics_bound=geometry,
+    )
+    geometry.vertices.extend(
+        [(0.0, 0.0, 0.0)]
+        * (MAX_FRAGMENT_BOUND_VERTICES + 1 - len(geometry.vertices))
+    )
+
+    with pytest.raises(ValueError, match="fragment bound limit"):
+        build_yft_bytes(source)
+
+
+def test_yft_authoring_rejects_bone_ids_that_would_be_truncated():
+    bound = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (1.0, 1.0, 1.0),
+    ).build()
+    drawable = _simple_fragment_drawable("invalid_bone")
+    child = YftPhysicsChild.declare(
+        bone_id=0x10000,
+        undamaged_entity=YftPhysicsEntity.declare(drawable, label="invalid_bone"),
+    )
+    source = create_yft(
+        drawable,
+        name="invalid_bone",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+            ),
+        ),
+        physics_bound=bound,
+    )
+
+    with pytest.raises(ValueError, match="bone_id"):
+        build_yft_bytes(source)

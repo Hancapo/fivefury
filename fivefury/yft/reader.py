@@ -13,6 +13,7 @@ from ..resource import RSC7_MAGIC, split_rsc7_sections, virtual_to_offset
 from ..ydr.model import YdrMaterial
 from ..ydr.read_lights import parse_light_array
 from ..ydr.shaders import ShaderLibrary
+from .bound_profiles import YftPhysicsBoundProfile
 from .cloth_reader import read_environment_cloths
 from .constants import (
     DAT_VIRTUAL_BASE,
@@ -214,6 +215,7 @@ def read_yft(
     return Yft(
         version=int(header.version),
         path=resource_path,
+        physics_bound_profile=YftPhysicsBoundProfile.PRESERVE,
         bounding_sphere=read_bounding_sphere(system_data),
         pointers=pointers,
         state=read_fragment_state(system_data),

@@ -3,8 +3,22 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Sequence
 
-from ..bounds import Bound, BoundBox
+from ..bounds import (
+    Bound,
+    BoundAabb,
+    BoundBox,
+    BoundChild,
+    BoundComposite,
+    BoundType,
+)
+from ..bounds.geometry import identity_bound_transform
 from .bound_ownership import apply_physics_lod_bound_ref_counts
+from .bound_profiles import (
+    YftPhysicsBoundProfile,
+    coerce_yft_physics_bound_profile,
+    profile_file_vft,
+    validate_bound_profile,
+)
 from .physics import (
     YftArticulatedBodyType,
     YftMatrix44,
@@ -142,14 +156,66 @@ def default_articulated_body_type(
     )
 
 
+def _composite_for_leaf(
+    bound: Bound,
+    profile: YftPhysicsBoundProfile,
+) -> BoundComposite:
+    composite = BoundComposite(
+        bound_type=BoundType.COMPOSITE,
+        sphere_radius=float(bound.sphere_radius),
+        box_max=tuple(bound.box_max),
+        margin=float(bound.margin),
+        box_min=tuple(bound.box_min),
+        box_center=tuple(bound.box_center),
+        sphere_center=tuple(bound.sphere_center),
+        file_vft=0,
+        ref_count=1,
+        angular_inertia=tuple(bound.angular_inertia),
+        volume=float(bound.compute_volume()),
+        children=[
+            BoundChild(
+                bound=bound,
+                transform=identity_bound_transform(),
+                bounds=BoundAabb(
+                    minimum=tuple(bound.box_min),
+                    maximum=tuple(bound.box_max),
+                ),
+            )
+        ],
+    )
+    composite.file_vft = profile_file_vft(composite, profile)
+    return composite
+
+
+def prepare_physics_bound(
+    bound: Bound,
+    *,
+    profile: YftPhysicsBoundProfile | str = YftPhysicsBoundProfile.PROP,
+) -> Bound:
+    resolved = coerce_yft_physics_bound_profile(profile)
+    if (
+        resolved is not YftPhysicsBoundProfile.PRESERVE
+        and not isinstance(bound, BoundComposite)
+    ):
+        return _composite_for_leaf(bound, resolved)
+    return bound
+
+
 def normalize_physics_lod(
     lod: YftPhysicsLod,
     *,
     composite_bound: Bound | None = None,
     density: float = 1.0,
     has_damaged_drawable: bool = False,
+    profile: YftPhysicsBoundProfile | str = YftPhysicsBoundProfile.PROP,
 ) -> YftPhysicsLod:
-    bound = composite_bound or lod.composite_bound
+    resolved_profile = coerce_yft_physics_bound_profile(profile)
+    source_bound = composite_bound or lod.composite_bound
+    bound = (
+        prepare_physics_bound(source_bound, profile=resolved_profile)
+        if source_bound is not None
+        else None
+    )
     groups = tuple(lod.groups)
     children = tuple(lod.children)
     if not groups:
@@ -164,6 +230,7 @@ def normalize_physics_lod(
             composite_bound=bound,
             density=density,
             has_damaged_drawable=has_damaged_drawable,
+            profile=resolved_profile,
         )
 
     resolved_groups = []
@@ -230,6 +297,10 @@ def normalize_physics_lod(
         link_attachments = YftPhysicsTransforms.declare(
             IDENTITY_MATRIX44 for _ in resolved_children
         )
+    elif len(link_attachments.matrices) != len(resolved_children):
+        raise ValueError(
+            "link attachment count must match the physics child count"
+        )
     smallest = min((item.x for item in undamaged_inertia if item.x > 0.0), default=0.0)
     largest = max(
         (max(item.x, item.y, item.z) for item in undamaged_inertia),
@@ -290,6 +361,18 @@ def normalize_physics_lod(
         damaged_damp_archetype=damp_damaged,
         articulated_body_type=lod.articulated_body_type,
     )
+    if normalized.composite_bound is None:
+        raise ValueError(f"physics LOD '{lod.label}' requires a composite bound")
+    profile_issues = validate_bound_profile(
+        normalized.composite_bound,
+        resolved_profile,
+        expected_slots=len(normalized.children),
+    )
+    if profile_issues:
+        raise ValueError(
+            f"physics LOD '{lod.label}' is invalid for "
+            f"{resolved_profile.value}: {profile_issues}"
+        )
     apply_physics_lod_bound_ref_counts(normalized)
     return normalized
 
@@ -313,5 +396,6 @@ __all__ = [
     "default_damp_archetype",
     "normalize_physics_lod",
     "physics_lod_pointers_for",
+    "prepare_physics_bound",
     "simple_physics_bound",
 ]

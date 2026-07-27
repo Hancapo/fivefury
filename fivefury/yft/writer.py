@@ -30,6 +30,10 @@ from ..ydr.write_lights import write_lights
 from ..ydr.write_materials import prepare_materials
 from .binary_validation import assert_valid_yft_bytes
 from .bound_ownership import apply_physics_lod_bound_ref_counts
+from .bound_profiles import (
+    YftPhysicsBoundProfile,
+    coerce_yft_physics_bound_profile,
+)
 from .cloth import YftEnvironmentCloth
 from .cloth_writer import write_environment_cloths
 from .constants import (
@@ -407,11 +411,22 @@ def create_yft(
     ] = (),
     physics_lods: Sequence[YftPhysicsLod] = (),
     physics_bound: Bound | None = None,
+    physics_bound_profile: YftPhysicsBoundProfile | str = (
+        YftPhysicsBoundProfile.PROP
+    ),
     physics_density: float = 1.0,
     bounding_sphere: tuple[float, float, float, float] | None = None,
     user_data: int = 0,
 ) -> Yft:
-    yft = Yft(version=int(version), path=name, main_drawable=drawable)
+    bound_profile = coerce_yft_physics_bound_profile(
+        physics_bound_profile
+    )
+    yft = Yft(
+        version=int(version),
+        path=name,
+        main_drawable=drawable,
+        physics_bound_profile=bound_profile,
+    )
     yft.cloth_drawable = cloth_drawable
     yft.environment_cloths = list(environment_cloths)
     yft.glass_panes = list(glass_panes)
@@ -444,6 +459,7 @@ def create_yft(
                 composite_bound=lod.composite_bound or physics_bound,
                 density=physics_density,
                 has_damaged_drawable=damaged_drawable is not None,
+                profile=bound_profile,
             )
             for lod in physics_lods
         ]
@@ -680,6 +696,7 @@ def _build_yft_payload(
         entity_drawable_offsets={item.source_id: item.root_offset for item in physics},
         event_set_offsets=event_set_offsets,
         fallback_bound=fallback_bound,
+        bound_profile=yft.physics_bound_profile,
     )
     if physics_group_off:
         system.pack_into("Q", 0xF0, _virtual(physics_group_off))
@@ -766,7 +783,10 @@ def build_yft_bytes(
         system_flags=system_flags,
         graphics_flags=graphics_flags,
     )
-    assert_valid_yft_bytes(result)
+    assert_valid_yft_bytes(
+        result,
+        profile=source.physics_bound_profile,
+    )
     return result
 
 

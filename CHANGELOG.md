@@ -7,6 +7,19 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-07-27
+
+### Breaking Changes
+- YFT authoring now defaults to the prop collision profile and rejects
+  incompatible bound topology.
+
+### Added
+- Public YFT physics-bound profiles and fragment collision geometry authoring.
+
+### Changed
+- YFT binary validation now covers physics-bound topology, ownership, and
+  packed geometry limits.
+
 ## [0.2.17] - 2026-07-27
 
 ### Breaking Changes

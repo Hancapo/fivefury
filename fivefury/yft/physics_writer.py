@@ -14,6 +14,11 @@ from ..bounds import (
 )
 from ..resource import ResourceWriter
 from .bound_ownership import physics_bound_owner_roots
+from .bound_profiles import (
+    YftPhysicsBoundProfile,
+    coerce_yft_physics_bound_profile,
+    profile_file_vft,
+)
 from .constants import DAT_VIRTUAL_BASE
 from .events_writer import event_set_pointer, write_child_event_pointers
 from .physics import (
@@ -741,6 +746,7 @@ def _write_physics_lod(
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
+    bound_profile: YftPhysicsBoundProfile,
 ) -> int:
     if lod.composite_bound is None:
         raise ValueError(f"physics LOD '{lod.label}' requires a composite_bound")
@@ -752,6 +758,10 @@ def _write_physics_lod(
                 lod,
                 fragment_drawable_fallback=bool(main_drawable_offset),
             )
+        ),
+        file_vft_resolver=lambda bound: profile_file_vft(
+            bound,
+            bound_profile,
         ),
     )
     bound_pointer = _virtual(bound_offset)
@@ -779,6 +789,10 @@ def _write_physics_lod(
                     damaged=True,
                     fragment_drawable_fallback=bool(damaged_drawable_offset),
                 )
+            ),
+            file_vft_resolver=lambda bound: profile_file_vft(
+                bound,
+                bound_profile,
             ),
         )
         if damaged_bound is not None
@@ -929,14 +943,19 @@ def write_physics_lod_group(
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
     fallback_bound: Bound | None = None,
+    bound_profile: YftPhysicsBoundProfile | str = (
+        YftPhysicsBoundProfile.PROP
+    ),
 ) -> tuple[int, tuple[YftPhysicsLod, ...]]:
     if not lods:
         return 0, ()
+    resolved_profile = coerce_yft_physics_bound_profile(bound_profile)
     normalized = tuple(
         normalize_physics_lod(
             lod,
             composite_bound=lod.composite_bound or fallback_bound,
             has_damaged_drawable=bool(damaged_drawable_offset),
+            profile=resolved_profile,
         )
         for lod in lods
     )
@@ -953,6 +972,7 @@ def write_physics_lod_group(
             ),
             entity_drawable_offsets=entity_drawable_offsets,
             event_set_offsets=event_set_offsets,
+            bound_profile=resolved_profile,
         )
     group_offset = writer.alloc(_PHYSICS_LOD_GROUP_SIZE, 16)
     writer.pack_into("Q", group_offset + 0x10, _virtual(offsets["high"]) if "high" in offsets else 0)
