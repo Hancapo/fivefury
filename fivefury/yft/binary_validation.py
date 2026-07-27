@@ -508,7 +508,6 @@ class _YftBinaryValidator:
         path: str,
         *,
         expected_slots: int | None = None,
-        allow_null_slots: bool = False,
     ) -> list[int]:
         offset = self.pointer(
             pointer,
@@ -651,11 +650,6 @@ class _YftBinaryValidator:
                         "slot AABB contains NaN or infinity",
                     )
             if not child:
-                if (
-                    self.profile is YftPhysicsBoundProfile.PROP
-                    and not allow_null_slots
-                ):
-                    self.error(child_path, "prop collision slot is null")
                 for label in ("flags1", "flags2"):
                     flags = array_offsets[label]
                     if (
@@ -1039,7 +1033,6 @@ class _YftBinaryValidator:
                 damaged_bound,
                 f"{path}.damaged_damp_archetype.bound",
                 expected_slots=num_children,
-                allow_null_slots=True,
             )
             if damaged_bound
             else []
@@ -1072,6 +1065,23 @@ class _YftBinaryValidator:
                         ),
                         "must be null when the matching physics child has "
                         "no damaged entity",
+                    )
+        if self.profile is YftPhysicsBoundProfile.PROP:
+            for index in range(num_children):
+                undamaged_child_bound = (
+                    undamaged_child_bounds[index]
+                    if index < len(undamaged_child_bounds)
+                    else 0
+                )
+                damaged_child_bound = (
+                    damaged_child_bounds[index]
+                    if index < len(damaged_child_bounds)
+                    else 0
+                )
+                if not undamaged_child_bound and not damaged_child_bound:
+                    self.error(
+                        f"{path}.children[{index}]",
+                        "physical child has no collision in either state",
                     )
         for index, child in enumerate(children):
             child_path = f"{path}.children[{index}]"

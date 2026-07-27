@@ -1694,6 +1694,170 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
     )
 
 
+def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
+    damaged_bound = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (1.0, 1.0, 1.0),
+    ).build()
+    intact_drawable = _simple_fragment_drawable("intact_visual")
+    damaged_drawable = _simple_fragment_drawable("damaged_collision")
+    damaged_drawable.bound = damaged_bound
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(intact_drawable),
+        damaged_entity=YftPhysicsEntity.declare(damaged_drawable),
+    )
+    composite = BoundComposite(
+        bound_type=10,
+        sphere_radius=0.0,
+        box_max=(0.0, 0.0, 0.0),
+        margin=0.0,
+        box_min=(0.0, 0.0, 0.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[BoundChild(None)],
+    ).build()
+    source = create_yft(
+        _simple_fragment_drawable("null_intact_prop"),
+        name="null_intact_prop",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+            ),
+        ),
+        physics_bound=composite,
+    )
+
+    raw = build_yft_bytes(source)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    parsed = read_yft(raw)
+    lod = parsed.physics_lod("high")
+    intact_root = lod.undamaged_damp_archetype.bound_pointer
+    damaged_root = lod.damaged_damp_archetype.bound_pointer
+    intact_slot = _bound_child_pointer(system_data, intact_root)
+    damaged_slot = _bound_child_pointer(system_data, damaged_root)
+
+    assert intact_slot == 0
+    assert damaged_slot != 0
+    assert lod.children[0].undamaged_entity.drawable.bound is None
+    assert lod.children[0].damaged_entity.drawable.bound is not None
+    assert validate_yft_bytes(
+        raw,
+        profile=YftPhysicsBoundProfile.PROP,
+    ) == []
+
+    intact_root_offset = virtual_to_offset(intact_root)
+    flags1_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, intact_root_offset + 0x90)[0]
+    )
+    broken_system = bytearray(system_data)
+    struct.pack_into("<II", broken_system, flags1_offset, 1, 0)
+    broken = build_rsc7(
+        broken_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+
+    assert any(
+        issue.is_error
+        and issue.path.endswith(
+            "undamaged_damp_archetype.bound.children[0].flags1"
+        )
+        for issue in validate_yft_bytes(
+            broken,
+            profile=YftPhysicsBoundProfile.PROP,
+        )
+    )
+
+    damaged_root_offset = virtual_to_offset(damaged_root)
+    damaged_slots_offset = virtual_to_offset(
+        struct.unpack_from(
+            "<Q",
+            system_data,
+            damaged_root_offset + 0x70,
+        )[0]
+    )
+    collisionless_system = bytearray(system_data)
+    struct.pack_into("<Q", collisionless_system, damaged_slots_offset, 0)
+    collisionless = build_rsc7(
+        collisionless_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path == "physics_lods.high.children[0]"
+        and "no collision in either state" in issue.message
+        for issue in validate_yft_bytes(
+            collisionless,
+            profile=YftPhysicsBoundProfile.PROP,
+        )
+    )
+
+    missing_root_system = bytearray(system_data)
+    undamaged_damp_offset = virtual_to_offset(
+        lod.phys_damp_undamaged_pointer
+    )
+    struct.pack_into(
+        "<Q",
+        missing_root_system,
+        undamaged_damp_offset + 0x20,
+        0,
+    )
+    missing_root = build_rsc7(
+        missing_root_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path
+        == "physics_lods.high.undamaged_damp_archetype.bound"
+        for issue in validate_yft_bytes(
+            missing_root,
+            profile=YftPhysicsBoundProfile.PROP,
+        )
+    )
+
+
+def test_prop_profile_rejects_child_without_collision_in_any_state():
+    child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(
+            _simple_fragment_drawable("visual_only")
+        )
+    )
+    composite = BoundComposite(
+        bound_type=10,
+        sphere_radius=0.0,
+        box_max=(0.0, 0.0, 0.0),
+        margin=0.0,
+        box_min=(0.0, 0.0, 0.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[BoundChild(None)],
+    ).build()
+    source = create_yft(
+        _simple_fragment_drawable("collisionless_prop"),
+        name="collisionless_prop",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(YftPhysicsGroup.declare("root", children=(child,)),),
+            ),
+        ),
+        physics_bound=composite,
+    )
+
+    with pytest.raises(ValueError, match="no collision in either state"):
+        build_yft_bytes(source)
+
+
 def test_materialless_physics_drawable_uses_null_shader_group():
     main_drawable = create_ydr(
         meshes=[

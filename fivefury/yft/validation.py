@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from ..bounds import BoundGeometry
+from ..bounds import BoundComposite, BoundGeometry
 from .bound_profiles import YftPhysicsBoundProfile, validate_bound_profile
 from .constants import MAX_EXTRA_BOUNDS
 from .geometry import (
@@ -379,6 +379,34 @@ def _validate_lod(
             f"{path}.composite_bound",
             issues,
         )
+        if (
+            bound_profile is YftPhysicsBoundProfile.PROP
+            and isinstance(lod.composite_bound, BoundComposite)
+        ):
+            for index, (slot, child) in enumerate(
+                zip(
+                    lod.composite_bound.children,
+                    lod.children,
+                    strict=False,
+                )
+            ):
+                if slot.bound is not None:
+                    continue
+                if child.undamaged_bound is not None:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{path}.composite_bound.children[{index}]",
+                        "null intact slot conflicts with the intact "
+                        "drawable bound",
+                    )
+                if child.damaged_bound is None:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{path}.children[{index}]",
+                        "physical child has no collision in either state",
+                    )
     if (
         bound_profile is not YftPhysicsBoundProfile.PRESERVE
         and lod.undamaged_damp_archetype is None

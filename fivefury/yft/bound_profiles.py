@@ -144,8 +144,6 @@ def validate_bound_profile(
     for index, child in enumerate(root.children):
         bound = child.bound
         if bound is None:
-            if resolved is YftPhysicsBoundProfile.PROP:
-                issues.append(f"prop slot {index} cannot be null")
             continue
         if isinstance(bound, BoundComposite):
             issues.append(f"slot {index} contains a nested BoundComposite")
