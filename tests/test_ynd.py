@@ -18,7 +18,6 @@ from fivefury import (
     read_ynd,
 )
 
-
 _REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references" / "ynd"
 
 
@@ -222,3 +221,20 @@ def test_network_clamps_coincident_link_distance_to_one() -> None:
     rebuilt_a = next(node for node in ynd.nodes if node.key == "a")
 
     assert rebuilt_a.links[0].distance == 1
+
+
+def test_ynd_writer_rejects_position_overflow_before_normalization() -> None:
+    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
+    ynd = Ynd(
+        area_id=area_id,
+        nodes=[
+            YndNode(
+                area_id=area_id,
+                node_id=0,
+                position=(0.0, 0.0, 2000.0),
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="signed 16-bit"):
+        build_ynd_bytes(ynd)

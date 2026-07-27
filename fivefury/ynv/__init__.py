@@ -1,4 +1,21 @@
 from .assimp import assimp_to_ynvs, obj_to_nav
+from .authoring import (
+    YNV_CELL_COUNT,
+    YNV_CELL_SIZE,
+    YNV_GRID_MIN,
+    YNV_MAX_ADJACENT_AREAS,
+    YNV_MAX_INDICES,
+    YNV_MAX_POLYGON_VERTICES,
+    YNV_MAX_POLYGONS,
+    YNV_MAX_VERTICES,
+    YnvSourcePolygon,
+    build_ynv_cell,
+    build_ynv_cells,
+    clip_ynv_polygon_to_cell,
+    get_ynv_area_id,
+    get_ynv_cell_span,
+    get_ynv_file_coords,
+)
 from .model import (
     YNV_POLY_ARRAY_BLOCK_SIZE,
     Ynv,
@@ -26,6 +43,14 @@ from .reader import read_ynv
 from .writer import build_ynv_bytes, build_ynv_system_layout, save_ynv
 
 __all__ = [
+    "YNV_CELL_COUNT",
+    "YNV_CELL_SIZE",
+    "YNV_GRID_MIN",
+    "YNV_MAX_ADJACENT_AREAS",
+    "YNV_MAX_INDICES",
+    "YNV_MAX_POLYGON_VERTICES",
+    "YNV_MAX_POLYGONS",
+    "YNV_MAX_VERTICES",
     "YNV_POLY_ARRAY_BLOCK_SIZE",
     "Ynv",
     "YnvAabb",
@@ -46,9 +71,16 @@ __all__ = [
     "YnvResourcePagesInfo",
     "YnvSector",
     "YnvSectorData",
+    "YnvSourcePolygon",
     "assimp_to_ynvs",
     "build_ynv_bytes",
+    "build_ynv_cell",
+    "build_ynv_cells",
     "build_ynv_system_layout",
+    "clip_ynv_polygon_to_cell",
+    "get_ynv_area_id",
+    "get_ynv_cell_span",
+    "get_ynv_file_coords",
     "identity_4x4",
     "obj_to_nav",
     "read_ynv",

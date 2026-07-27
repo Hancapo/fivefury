@@ -4,6 +4,7 @@ import dataclasses
 import struct
 from pathlib import Path
 
+from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -507,9 +508,7 @@ def build_ynv_bytes(source: Ynv) -> bytes:
 
 
 def save_ynv(source: Ynv, destination: str | Path) -> Path:
-    target = Path(destination)
-    target.write_bytes(build_ynv_bytes(source))
-    return target
+    return atomic_write_bytes(destination, build_ynv_bytes(source))
 
 
 __all__ = ["build_ynv_bytes", "build_ynv_system_layout", "save_ynv"]

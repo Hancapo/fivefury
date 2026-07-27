@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from ..binary import align
+from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -222,10 +223,10 @@ def build_ydd_bytes(
 
 
 def save_ydd(source: Ydd | YddDrawableCollection, destination: str | Path, *, shader_library: ShaderLibrary | None = None) -> Path:
-    target = Path(destination)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(build_ydd_bytes(source, shader_library=shader_library))
-    return target
+    return atomic_write_bytes(
+        destination,
+        build_ydd_bytes(source, shader_library=shader_library),
+    )
 
 
 __all__ = [

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Hashable, Iterable
 from enum import IntFlag
 from pathlib import Path
@@ -606,8 +607,64 @@ class Ynd:
         self.nodes = sorted_nodes
         return self
 
-    def validate(self) -> list[str]:
+    def validate_storage_limits(self) -> list[str]:
         issues: list[str] = []
+        if len(self.nodes) > 0x10000:
+            issues.append("YND exceeds the 65536-node identifier range")
+        if self.link_count > 0xFFFF:
+            issues.append("YND exceeds the 65535-link offset range")
+        if self.junction_count > 0xFFFF:
+            issues.append("YND exceeds the 65535-junction index range")
+
+        heightmap_cursor = 0
+        for index, node in enumerate(self.nodes):
+            path = f"nodes[{index}]"
+            if node.area_id is not None and not 0 <= int(node.area_id) <= 0xFFFF:
+                issues.append(f"{path}.area_id does not fit the 16-bit field")
+            if not 0 <= int(node.node_id) <= 0xFFFF:
+                issues.append(f"{path}.node_id does not fit the 16-bit field")
+            if len(node.links) > 31:
+                issues.append(f"{path} exceeds the 31-link packed count")
+            if len(node.position) != 3 or not all(
+                math.isfinite(float(value)) for value in node.position
+            ):
+                issues.append(f"{path}.position must contain three finite values")
+            else:
+                quantized = (
+                    round(node.position[0] * 4.0),
+                    round(node.position[1] * 4.0),
+                    round(node.position[2] * 32.0),
+                )
+                if any(not -0x8000 <= value <= 0x7FFF for value in quantized):
+                    issues.append(f"{path}.position exceeds the signed 16-bit storage range")
+            for link_index, link in enumerate(node.links):
+                link_path = f"{path}.links[{link_index}]"
+                if link.area_id is not None and not 0 <= int(link.area_id) <= 0xFFFF:
+                    issues.append(f"{link_path}.area_id does not fit the 16-bit field")
+                if not 0 <= int(link.node_id) <= 0xFFFF:
+                    issues.append(f"{link_path}.node_id does not fit the 16-bit field")
+            if node.junction is None:
+                continue
+            junction = node.junction
+            if heightmap_cursor > 0xFFFF:
+                issues.append(f"{path}.junction heightmap offset exceeds 16 bits")
+            if not 0 <= int(junction.heightmap_dim_x) <= 0xFF:
+                issues.append(f"{path}.junction.heightmap_dim_x exceeds 8 bits")
+            if not 0 <= int(junction.heightmap_dim_y) <= 0xFF:
+                issues.append(f"{path}.junction.heightmap_dim_y exceeds 8 bits")
+            junction_values = (
+                round(junction.max_z * 32.0),
+                round(junction.position[0] * 4.0),
+                round(junction.position[1] * 4.0),
+                round(junction.min_z * 32.0),
+            )
+            if any(not -0x8000 <= value <= 0x7FFF for value in junction_values):
+                issues.append(f"{path}.junction coordinates exceed signed 16-bit storage")
+            heightmap_cursor += len(junction.heightmap)
+        return issues
+
+    def validate(self) -> list[str]:
+        issues = self.validate_storage_limits()
         if self.version != 1:
             issues.append("YND version must be 1")
         for node in self.nodes:

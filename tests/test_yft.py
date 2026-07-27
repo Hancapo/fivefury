@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import struct
+from pathlib import Path
+
+import pytest
 
 from fivefury import (
     BoundAabb,
@@ -10,14 +13,18 @@ from fivefury import (
     BoundComposite,
     YdrMaterialInput,
     YdrMeshInput,
+    calculate_bound_ref_counts,
     create_ydr,
 )
+from fivefury.common import atomic_write_bytes
 from fivefury.resource import (
+    ResourceHeader,
     build_rsc7,
     get_resource_chunk_sizes,
     get_resource_flags_from_page_counts,
     get_resource_size_from_flags,
     split_rsc7_sections,
+    validate_resource_pointer,
     virtual_to_offset,
 )
 from fivefury.ydr import (
@@ -252,7 +259,7 @@ def test_yft_glass_roundtrip():
         position_base=(-1.0, 0.0, 0.0),
         position_width=(2.0, 0.0, 0.0),
         position_height=(0.0, 1.5, 0.0),
-        shader_index=3,
+        shader_index=0,
         glass_type=1,
         bounds_offset_front=0.125,
         bounds_offset_back=-0.25,
@@ -299,7 +306,7 @@ def test_yft_glass_roundtrip():
     assert struct.unpack_from("<Q", system_data, 0x120)[0] != 0
     assert parsed.state.glass_attachment_bone == 4
     assert parsed.glass_pane_count == 1
-    assert parsed.glass_panes[0].shader_index == 3
+    assert parsed.glass_panes[0].shader_index == 0
     assert parsed.glass_panes[0].bounds_offset_front == 0.125
     assert parsed.vehicle_glass_windows is not None
     window = parsed.vehicle_glass_windows.windows[0]
@@ -1071,6 +1078,144 @@ def test_composite_bound_may_preserve_only_null_native_slots():
     assert "Composite bound has no non-null children" not in composite.validate()
 
 
+def test_bound_ownership_counts_external_roots_and_composite_edges_once():
+    def composite(children):
+        return BoundComposite(
+            bound_type=10,
+            sphere_radius=0.0,
+            box_max=(0.0, 0.0, 0.0),
+            margin=0.0,
+            box_min=(0.0, 0.0, 0.0),
+            box_center=(0.0, 0.0, 0.0),
+            sphere_center=(0.0, 0.0, 0.0),
+            children=children,
+        )
+
+    nested_leaf = BoundBox.from_bounds((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0))
+    nested = composite([BoundChild(nested_leaf), BoundChild(None)])
+    sibling = BoundBox.from_bounds((-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
+    root = composite([BoundChild(nested), BoundChild(sibling)])
+
+    counts = calculate_bound_ref_counts((root, root, nested))
+
+    assert counts[id(root)] == 2
+    assert counts[id(nested)] == 2
+    assert counts[id(nested_leaf)] == 1
+    assert counts[id(sibling)] == 1
+
+
+def test_yft_writer_derives_direct_bound_ownership_and_roundtrips_it():
+    from fivefury.yft import simple_physics_bound
+
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name="owned_bound",
+    )
+    bound = simple_physics_bound()
+    source = create_yft(
+        drawable,
+        name="owned_bound",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(
+                    YftPhysicsGroup.declare(
+                        "root",
+                        children=(YftPhysicsChild.declare(),),
+                    ),
+                ),
+            ),
+        ),
+        physics_bound=bound,
+    )
+
+    assert bound.ref_count == 3
+    parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
+    assert parsed.physics_lod("high").composite_bound.ref_count == 3
+
+
+def test_yft_validation_rejects_bound_ref_count_mismatch():
+    from fivefury.yft import normalize_physics_lod, simple_physics_bound
+
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name="bad_ownership",
+    )
+    bound = simple_physics_bound()
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare(
+            "high",
+            groups=(
+                YftPhysicsGroup.declare(
+                    "root",
+                    children=(YftPhysicsChild.declare(),),
+                ),
+            ),
+        ),
+        composite_bound=bound,
+    )
+    bound.ref_count = 1
+
+    issues = validate_yft(Yft(main_drawable=drawable, physics_lod_details=[lod]))
+
+    assert any(
+        issue.is_error and issue.path.endswith("ref_count") for issue in issues
+    )
+
+
+def test_atomic_write_preserves_existing_file_when_replace_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "asset.bin"
+    target.write_bytes(b"stable")
+
+    def fail_replace(_source, _destination) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr("fivefury.common.os.replace", fail_replace)
+    with pytest.raises(OSError, match="replace failed"):
+        atomic_write_bytes(target, b"partial")
+
+    assert target.read_bytes() == b"stable"
+    assert not list(tmp_path.glob(".asset.bin.*.tmp"))
+
+
+def test_resource_pointer_validation_checks_section_and_extent():
+    system_flags = get_resource_flags_from_page_counts(
+        [1, 0, 0, 0, 0, 0, 0, 0, 0],
+        1,
+    )
+    graphics_flags = get_resource_flags_from_page_counts(
+        [1, 0, 0, 0, 0, 0, 0, 0, 0],
+        1,
+    )
+    header = ResourceHeader(1, system_flags, graphics_flags)
+
+    assert validate_resource_pointer(header, 0x50000000, section="system") is not None
+    assert validate_resource_pointer(header, 0, nullable=True) is None
+    with pytest.raises(ValueError, match="outside"):
+        validate_resource_pointer(header, 0x4057C038)
+    with pytest.raises(ValueError, match="instead of system"):
+        validate_resource_pointer(header, 0x60000000, section="system")
+
+
 def test_physics_lod_with_damaged_entity_synthesizes_damaged_archetype():
     from fivefury.yft import normalize_physics_lod, simple_physics_bound
 
@@ -1151,6 +1296,16 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
 
     assert undamaged_bound == parsed_lod.composite_bounds_pointer
     assert damaged_bound != undamaged_bound
+    assert struct.unpack_from(
+        "<I",
+        system_data,
+        virtual_to_offset(undamaged_bound) + 0x3C,
+    )[0] == 3
+    assert struct.unpack_from(
+        "<I",
+        system_data,
+        virtual_to_offset(damaged_bound) + 0x3C,
+    )[0] == 2
     assert validate_yft_bytes(raw) == []
 
     broken_system = bytearray(system_data)
@@ -1178,6 +1333,88 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         and "must not share" in issue.message
         for issue in validate_yft_bytes(broken)
     )
+
+
+def test_composite_bound_ownership_covers_nested_null_and_damage_states():
+    def drawable(name: str):
+        return create_ydr(
+            meshes=[
+                YdrMeshInput(
+                    positions=[
+                        (0.0, 0.0, 0.0),
+                        (1.0, 0.0, 0.0),
+                        (0.0, 1.0, 0.0),
+                    ],
+                    indices=[0, 1, 2],
+                    material="body",
+                    texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                )
+            ],
+            materials=[YdrMaterialInput(name="body")],
+            name=name,
+        )
+
+    intact_piece = BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    unlinked_piece = BoundBox.from_center_size((2.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    composite = BoundComposite(
+        bound_type=10,
+        sphere_radius=0.0,
+        box_max=(0.0, 0.0, 0.0),
+        margin=0.0,
+        box_min=(0.0, 0.0, 0.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[
+            BoundChild(intact_piece),
+            BoundChild(unlinked_piece),
+            BoundChild(None),
+        ],
+    ).build()
+    linked_child = YftPhysicsChild.declare(
+        undamaged_entity=YftPhysicsEntity.declare(drawable("intact_physics")),
+        damaged_entity=YftPhysicsEntity.declare(drawable("damaged_physics")),
+    )
+    source = create_yft(
+        drawable("composite_owner"),
+        name="composite_owner",
+        physics_lods=(
+            YftPhysicsLod.declare(
+                "high",
+                groups=(
+                    YftPhysicsGroup.declare(
+                        "parts",
+                        children=(
+                            linked_child,
+                            YftPhysicsChild.declare(),
+                            YftPhysicsChild.declare(),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        physics_bound=composite,
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+    lod = parsed.physics_lod("high")
+    root_offset = virtual_to_offset(lod.composite_bounds_pointer)
+    child_array = virtual_to_offset(struct.unpack_from("<Q", system_data, root_offset + 0x70)[0])
+    child_pointers = struct.unpack_from("<3Q", system_data, child_array)
+
+    assert struct.unpack_from("<I", system_data, root_offset + 0x3C)[0] == 2
+    assert struct.unpack_from(
+        "<I",
+        system_data,
+        virtual_to_offset(child_pointers[0]) + 0x3C,
+    )[0] == 2
+    assert struct.unpack_from(
+        "<I",
+        system_data,
+        virtual_to_offset(child_pointers[1]) + 0x3C,
+    )[0] == 1
+    assert child_pointers[2] == 0
 
 
 def test_partial_damage_uses_sparse_damaged_composite_children():

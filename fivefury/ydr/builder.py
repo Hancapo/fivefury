@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from ..binary import align
 from ..bounds import write_bound_resource
+from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -333,6 +334,17 @@ def build_ydr_bytes(
     from .model import Ydr
 
     if isinstance(source, Ydr):
+        invalid_shader_references = [
+            issue
+            for issue in source.validate()
+            if issue.code == "invalid_material_index"
+        ]
+        if invalid_shader_references:
+            details = "\n".join(
+                f"- {issue.context}: {issue.message}"
+                for issue in invalid_shader_references
+            )
+            raise ValueError(f"YDR contains invalid shader references:\n{details}")
         source = source.to_build()
     _remap_root_bone_id_in_build(source)
     if source.model_count == 0:
@@ -406,16 +418,14 @@ def save_ydr(
     shader_library: ShaderLibrary | None = None,
     recalculate_skeleton_hashes: bool = True,
 ) -> Path:
-    target = Path(destination)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(
+    return atomic_write_bytes(
+        destination,
         build_ydr_bytes(
             source,
             shader_library=shader_library,
             recalculate_skeleton_hashes=recalculate_skeleton_hashes,
-        )
+        ),
     )
-    return target
 
 
 _normalize_materials = normalize_materials

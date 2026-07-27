@@ -9,6 +9,7 @@ from ..resource import (
     ResourceChunk,
     ResourceHeader,
     parse_rsc7,
+    validate_resource_pointer,
 )
 from ..ydr.fixups import audit_legacy_fragment_drawable_fixups
 from .constants import (
@@ -76,19 +77,18 @@ class _YftBinaryValidator:
             if not nullable:
                 self.error(path, "required resource pointer is null")
             return None
-        chunk = next(
-            (candidate for candidate in self.chunks if candidate.contains(pointer)),
-            None,
-        )
-        if chunk is None:
-            self.error(
-                path,
-                f"0x{pointer:08X} is outside the virtual and physical resource chunks",
+        try:
+            chunk = validate_resource_pointer(
+                self.header,
+                pointer,
+                size=size,
+                section=section,
+                nullable=nullable,
             )
+        except ValueError as exc:
+            self.error(path, str(exc))
             return None
-        if section is not None and chunk.section != section:
-            self.error(path, f"points into {chunk.section} data instead of {section} data")
-            return None
+        assert chunk is not None
         offset = chunk.section_offset + pointer - chunk.address
         data = self._section_data(chunk)
         if offset < 0 or offset + size > len(data):

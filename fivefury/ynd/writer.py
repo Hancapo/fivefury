@@ -4,6 +4,7 @@ import dataclasses
 from pathlib import Path
 
 from ..binary import pack_struct
+from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -170,6 +171,9 @@ def build_ynd_system_layout(source: Ynd, *, page_count: int = 1) -> tuple[bytes,
 
 
 def build_ynd_bytes(source: Ynd) -> bytes:
+    storage_issues = source.validate_storage_limits()
+    if storage_issues:
+        raise ValueError("cannot build invalid YND:\n- " + "\n- ".join(storage_issues))
     ynd = source.build()
     page_count = 1
     system_flags = None
@@ -196,7 +200,6 @@ def build_ynd_bytes(source: Ynd) -> bytes:
 
 
 def save_ynd(source: Ynd, destination: str | Path) -> Path:
-    target = Path(destination)
-    target.write_bytes(build_ynd_bytes(source))
+    target = atomic_write_bytes(destination, build_ynd_bytes(source))
     source.path = str(target)
     return target

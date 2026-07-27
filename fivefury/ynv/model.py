@@ -908,8 +908,9 @@ class Ynv:
         return build_ynv_bytes(self)
 
     def save(self, destination: str | Path) -> Path:
-        target = Path(destination)
-        target.write_bytes(self.to_bytes())
+        from ..common import atomic_write_bytes
+
+        target = atomic_write_bytes(destination, self.to_bytes())
         self.path = str(target)
         return target
 

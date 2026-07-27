@@ -5,17 +5,19 @@ import struct
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from fivefury import (
     DEFAULT_BOUND_MATERIAL_LIBRARY,
     BoundAabb,
+    BoundBox,
+    BoundBVH,
     BoundBvh,
     BoundBvhNode,
     BoundBvhTree,
-    BoundBVH,
-    BoundBox,
     BoundCapsule,
-    BoundCloth,
     BoundChild,
+    BoundCloth,
     BoundComposite,
     BoundCompositeFlag,
     BoundCompositeFlags,
@@ -35,8 +37,8 @@ from fivefury import (
     Ybn,
     bounds_from_vertices,
     build_bound_from_triangles,
-    build_ybn_bytes,
     build_rsc7,
+    build_ybn_bytes,
     chunk_bound_triangles,
     get_bound_material_color,
     parse_bound_material_names,
@@ -45,7 +47,11 @@ from fivefury import (
     sphere_radius_from_vertices,
     triangle_area,
 )
-from fivefury.resource import get_resource_flags_from_block_sizes, get_resource_total_page_count, split_rsc7_sections
+from fivefury.resource import (
+    get_resource_flags_from_block_sizes,
+    get_resource_total_page_count,
+    split_rsc7_sections,
+)
 from tests.helpers import require_reference
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
@@ -1010,3 +1016,30 @@ def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chun
         for geometry in roundtrip.bound.geometries
         for polygon in geometry.polygons
     } == {0, 1}
+
+
+def test_ybn_rejects_active_flags_on_a_null_composite_child(tmp_path: Path) -> None:
+    root = BoundComposite(
+        bound_type=BoundType.COMPOSITE,
+        sphere_radius=0.0,
+        box_max=(0.0, 0.0, 0.0),
+        margin=0.0,
+        box_min=(0.0, 0.0, 0.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        children=[
+            BoundChild(
+                None,
+                flags1=BoundCompositeFlags(
+                    flags1=BoundCompositeFlag.MAP_WEAPON,
+                ),
+            )
+        ],
+    )
+    target = tmp_path / "invalid.ybn"
+    target.write_bytes(b"existing")
+
+    with pytest.raises(ValueError, match="active composite flags"):
+        save_ybn(root, target)
+
+    assert target.read_bytes() == b"existing"

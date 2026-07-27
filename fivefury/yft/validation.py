@@ -491,6 +491,18 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
                 f"{pane_path}.shader_index",
                 "must fit in one byte",
             )
+        material_count = (
+            len(source.main_drawable.materials)
+            if source.main_drawable is not None
+            else 0
+        )
+        if material_count and int(pane.shader_index) >= material_count:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{pane_path}.shader_index",
+                f"references shader {pane.shader_index} outside the {material_count}-entry shader group",
+            )
         declaration = pane.vertex_declaration
         if not 0 < declaration.stride <= 0xFFFF:
             _issue(
@@ -709,6 +721,17 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
 
     for entry in source.iter_drawables():
         drawable = entry.drawable
+        validate_drawable = getattr(drawable, "validate", None)
+        drawable_issues = validate_drawable() if validate_drawable is not None else ()
+        for drawable_issue in drawable_issues:
+            if drawable_issue.code != "invalid_material_index":
+                continue
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"drawables.{entry.label}.{drawable_issue.context or drawable_issue.code}",
+                drawable_issue.message,
+            )
         indices = getattr(drawable, "extra_bound_indices", ())
         matrices = getattr(drawable, "extra_bound_matrices", ())
         if len(indices) != len(matrices):
@@ -739,7 +762,30 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
 
     physics_drawable_owners: dict[int, str] = {}
     for index, lod in enumerate(source.physics_lod_details):
-        _validate_lod(lod, f"physics_lod_details[{index}]", issues)
+        lod_path = f"physics_lod_details[{index}]"
+        _validate_lod(lod, lod_path, issues)
+        if lod.composite_bound is not None:
+            from .bound_ownership import (
+                calculate_physics_lod_bound_ref_counts,
+                iter_bound_graph,
+            )
+
+            expected_ref_counts = calculate_physics_lod_bound_ref_counts(
+                lod,
+                fragment_drawable_fallback=source.main_drawable is not None,
+            )
+            for bound_index, bound in enumerate(iter_bound_graph(lod.composite_bound)):
+                expected = expected_ref_counts.get(id(bound), 0)
+                if bound.ref_count != expected:
+                    _issue(
+                        issues,
+                        YftValidationSeverity.ERROR,
+                        f"{lod_path}.composite_bound[{bound_index}].ref_count",
+                        (
+                            f"declares {bound.ref_count} owners but the serialized "
+                            f"graph contains {expected}"
+                        ),
+                    )
         is_root_lod = index == 0 and lod.label.lower() == "high"
         for child_index, child in enumerate(lod.children):
             for state, entity in (

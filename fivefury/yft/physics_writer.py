@@ -9,9 +9,11 @@ from ..bounds import (
     BoundAabb,
     BoundChild,
     BoundComposite,
+    calculate_bound_ref_counts,
     write_bound_resource,
 )
 from ..resource import ResourceWriter
+from .bound_ownership import physics_bound_owner_roots
 from .constants import DAT_VIRTUAL_BASE
 from .events_writer import event_set_pointer, write_child_event_pointers
 from .physics import (
@@ -742,7 +744,16 @@ def _write_physics_lod(
 ) -> int:
     if lod.composite_bound is None:
         raise ValueError(f"physics LOD '{lod.label}' requires a composite_bound")
-    bound_offset = write_bound_resource(writer, lod.composite_bound)
+    bound_offset = write_bound_resource(
+        writer,
+        lod.composite_bound,
+        ref_counts=calculate_bound_ref_counts(
+            physics_bound_owner_roots(
+                lod,
+                fragment_drawable_fallback=bool(main_drawable_offset),
+            )
+        ),
+    )
     bound_pointer = _virtual(bound_offset)
     # A phArchetype owns and resource-constructs its bound. GTA V fragments
     # with both undamaged and damaged archetypes therefore store two distinct
@@ -758,7 +769,18 @@ def _write_physics_lod(
         else None
     )
     damaged_bound_offset = (
-        write_bound_resource(writer, damaged_bound)
+        write_bound_resource(
+            writer,
+            damaged_bound,
+            ref_counts=calculate_bound_ref_counts(
+                physics_bound_owner_roots(
+                    lod,
+                    root=damaged_bound,
+                    damaged=True,
+                    fragment_drawable_fallback=bool(damaged_drawable_offset),
+                )
+            ),
+        )
         if damaged_bound is not None
         else 0
     )

@@ -4,6 +4,7 @@ import dataclasses
 from collections.abc import Sequence
 
 from ..bounds import Bound, BoundBox
+from .bound_ownership import apply_physics_lod_bound_ref_counts
 from .physics import (
     YftArticulatedBodyType,
     YftMatrix44,
@@ -253,7 +254,7 @@ def normalize_physics_lod(
             ),
             damping_constants=damping_constants,
         )
-    return dataclasses.replace(
+    normalized = dataclasses.replace(
         lod,
         num_groups=len(resolved_groups),
         root_group_count=sum(1 for group in resolved_groups if group.is_root_group),
@@ -289,6 +290,8 @@ def normalize_physics_lod(
         damaged_damp_archetype=damp_damaged,
         articulated_body_type=lod.articulated_body_type,
     )
+    apply_physics_lod_bound_ref_counts(normalized)
+    return normalized
 
 
 def physics_lod_pointers_for(lods: Sequence[YftPhysicsLod]) -> YftPhysicsLodPointers:

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ..buckets import at_hash_bucket_capacity
-from ..common import clip_short_name
+from ..common import atomic_write_bytes, clip_short_name
 from ..metahash import MetaHash
 from ..resource import (
     ResourceBlockSpan,
@@ -686,10 +686,7 @@ def build_ycd_bytes(ycd: Ycd) -> bytes:
 
 
 def save_ycd(ycd: Ycd, path: str | Path) -> Path:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(build_ycd_bytes(ycd))
-    return target
+    return atomic_write_bytes(path, build_ycd_bytes(ycd))
 
 
 __all__ = ["build_ycd_bytes", "save_ycd"]

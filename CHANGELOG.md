@@ -7,6 +7,28 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-07-26
+
+### Added
+- Public YNV authoring APIs build cells directly from in-memory polygons,
+  expose grid conversions and binary limits, and return source-polygon
+  provenance.
+- Common bound ownership and RSC7 pointer validation utilities.
+
+### Changed
+- Assimp navmesh conversion now uses the public YNV polygon authoring path.
+- Core binary asset writers replace destination files atomically.
+
+### Fixed
+- Cross-cell YNV polygons now retain external-edge adjacency between generated
+  cells, and polygons above the native vertex limit are triangulated.
+- YFT bound reference counts now reflect their serialized LOD, archetype,
+  composite, and drawable ownership.
+- YFT validation rejects invalid drawable shader references and glass shader
+  indices before writing.
+- YBN, YFT, YND, and YNV writers reject invalid null-bound metadata, resource
+  pointers, and packed field ranges before serialization.
+
 ## [0.2.15] - 2026-07-26
 
 ### Fixed

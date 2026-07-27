@@ -61,6 +61,7 @@ from .model import (
     BoundType,
 )
 from .reader import read_bound_at, read_bound_from_pointer
+from .ownership import apply_bound_ref_counts, calculate_bound_ref_counts
 from .writer import build_bound_system_data, build_bound_system_layout, write_bound_resource
 
 __all__ = [
@@ -106,6 +107,7 @@ __all__ = [
     "MAX_BOUND_TRIANGLES_PER_CHILD",
     "MAX_BOUND_VERTICES_PER_CHILD",
     "bounds_from_vertices",
+    "apply_bound_ref_counts",
     "build_bound_from_triangles",
     "coerce_bound_material_index",
     "get_bound_material_color",
@@ -114,6 +116,7 @@ __all__ = [
     "build_composite_bound_from_chunks",
     "build_geometry_bvh_from_chunk",
     "center_from_bounds",
+    "calculate_bound_ref_counts",
     "chunk_bound_triangles",
     "identity_bound_transform",
     "parse_bound_material_names",

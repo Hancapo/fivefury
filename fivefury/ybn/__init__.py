@@ -9,6 +9,7 @@ from ..bounds import (
     build_bound_system_layout,
     read_bound_at,
 )
+from ..common import atomic_write_bytes
 from ..resource import (
     RSC7_MAGIC,
     build_rsc7,
@@ -73,8 +74,7 @@ class Ybn:
         return validate_mlo_collision(self, archetype)
 
     def save(self, destination: str | Path) -> Path:
-        target = Path(destination)
-        target.write_bytes(self.to_bytes())
+        target = atomic_write_bytes(destination, self.to_bytes())
         self.path = str(target)
         return target
 
@@ -116,9 +116,7 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int | None = None) -> bytes
 
 
 def save_ybn(source: Ybn | Bound, destination: str | Path, *, version: int | None = None) -> Path:
-    target = Path(destination)
-    target.write_bytes(build_ybn_bytes(source, version=version))
-    return target
+    return atomic_write_bytes(destination, build_ybn_bytes(source, version=version))
 
 
 def read_ybn(source: bytes | bytearray | memoryview | str | Path, *, path: str | Path = "") -> Ybn:

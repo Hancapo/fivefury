@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..binary import align
 from ..bounds import Bound
+from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -28,6 +29,7 @@ from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_lights import write_lights
 from ..ydr.write_materials import prepare_materials
 from .binary_validation import assert_valid_yft_bytes
+from .bound_ownership import apply_physics_lod_bound_ref_counts
 from .cloth import YftEnvironmentCloth
 from .cloth_writer import write_environment_cloths
 from .constants import (
@@ -424,6 +426,11 @@ def create_yft(
             for lod in physics_lods
         ]
         yft.physics_lods = physics_lod_pointers_for(yft.physics_lod_details)
+        for lod in yft.physics_lod_details:
+            apply_physics_lod_bound_ref_counts(
+                lod,
+                fragment_drawable_fallback=yft.main_drawable is not None,
+            )
     return yft
 
 
@@ -673,6 +680,11 @@ def build_yft_bytes(
             raise ValueError("lossless YFT writing requires a YFT read from bytes")
         return bytes(source.raw_bytes)
 
+    for lod in source.physics_lod_details:
+        apply_physics_lod_bound_ref_counts(
+            lod,
+            fragment_drawable_fallback=source.main_drawable is not None,
+        )
     _validate_authoring_yft(source)
     active_shader_library = (
         shader_library if shader_library is not None else load_shader_library()
@@ -737,10 +749,7 @@ def build_yft_bytes(
 
 
 def save_yft(source: Yft, destination: str | Path, **kwargs) -> Path:
-    target = Path(destination)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(build_yft_bytes(source, **kwargs))
-    return target
+    return atomic_write_bytes(destination, build_yft_bytes(source, **kwargs))
 
 
 __all__ = [

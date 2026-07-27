@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import struct
+from collections.abc import Mapping
 
 from .. import _native as _native_backend
 from ..resource import ResourceBlockSpan, ResourceWriter, write_resource_pages_info
@@ -141,7 +142,13 @@ def _write_resource_file_base(
     writer.pack_into("Q", offset + 0x08, _virtual(pages_info_offset) if pages_info_offset else 0)
 
 
-def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> None:
+def _write_bound_common(
+    writer: ResourceWriter,
+    offset: int,
+    bound: Bound,
+    *,
+    ref_counts: Mapping[int, int] | None = None,
+) -> None:
     material_word1, material_word2 = _pack_bound_material_words(bound)
     _write_resource_file_base(writer, offset, bound)
     writer.pack_into("B", offset + 0x10, int(bound.bound_type))
@@ -153,7 +160,11 @@ def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> No
     _write_vec3(writer, offset + 0x20, bound.box_max)
     writer.pack_into("f", offset + 0x2C, bound.margin)
     _write_vec3(writer, offset + 0x30, bound.box_min)
-    writer.pack_into("I", offset + 0x3C, bound.ref_count)
+    writer.pack_into(
+        "I",
+        offset + 0x3C,
+        ref_counts.get(id(bound), bound.ref_count) if ref_counts else bound.ref_count,
+    )
     _write_vec3(writer, offset + 0x40, bound.box_center)
     writer.pack_into("I", offset + 0x4C, material_word1)
     _write_vec3(writer, offset + 0x50, bound.sphere_center)
@@ -162,7 +173,13 @@ def _write_bound_common(writer: ResourceWriter, offset: int, bound: Bound) -> No
     writer.pack_into("f", offset + 0x6C, bound.volume)
 
 
-def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = None) -> int:
+def _write_bound(
+    writer: ResourceWriter,
+    bound: Bound,
+    *,
+    offset: int | None = None,
+    ref_counts: Mapping[int, int] | None = None,
+) -> int:
     prepared_bvh = None
     if isinstance(bound, BoundComposite):
         _refresh_composite_metrics(bound)
@@ -171,9 +188,9 @@ def _write_bound(writer: ResourceWriter, bound: Bound, *, offset: int | None = N
     bound_offset = 0 if offset is None else offset
     if offset is None:
         bound_offset = writer.alloc(_bound_size(bound), 16)
-    _write_bound_common(writer, bound_offset, bound)
+    _write_bound_common(writer, bound_offset, bound, ref_counts=ref_counts)
     if isinstance(bound, BoundComposite):
-        _write_composite(writer, bound_offset, bound)
+        _write_composite(writer, bound_offset, bound, ref_counts=ref_counts)
     elif isinstance(bound, BoundBVH):
         _write_geometry(writer, bound_offset, bound, with_bvh=True, prepared=prepared_bvh)
     elif isinstance(bound, BoundGeometry):
@@ -201,9 +218,17 @@ def _child_bounds(child: BoundChild) -> BoundAabb:
     return BoundAabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
 
 
-def _write_composite(writer: ResourceWriter, offset: int, bound: BoundComposite) -> None:
+def _write_composite(
+    writer: ResourceWriter,
+    offset: int,
+    bound: BoundComposite,
+    *,
+    ref_counts: Mapping[int, int] | None = None,
+) -> None:
     child_offsets = [
-        _write_bound(writer, child.bound) if child.bound is not None else 0
+        _write_bound(writer, child.bound, ref_counts=ref_counts)
+        if child.bound is not None
+        else 0
         for child in bound.children
     ]
     child_count = len(bound.children)
@@ -850,8 +875,13 @@ def build_bound_system_layout(bound: Bound, *, root_pages_info: BoundResourcePag
     return (writer.finish(), writer.block_spans)
 
 
-def write_bound_resource(writer: ResourceWriter, bound: Bound) -> int:
-    return _write_bound(writer, bound)
+def write_bound_resource(
+    writer: ResourceWriter,
+    bound: Bound,
+    *,
+    ref_counts: Mapping[int, int] | None = None,
+) -> int:
+    return _write_bound(writer, bound, ref_counts=ref_counts)
 
 
 __all__ = [

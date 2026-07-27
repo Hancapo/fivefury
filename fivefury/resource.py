@@ -410,6 +410,31 @@ def find_resource_chunk(
     )
 
 
+def validate_resource_pointer(
+    header: ResourceHeader,
+    address: int,
+    *,
+    size: int = 1,
+    section: str | None = None,
+    nullable: bool = True,
+) -> ResourceChunk | None:
+    pointer = int(address)
+    if pointer == 0:
+        if nullable:
+            return None
+        raise ValueError("required resource pointer is null")
+    chunk = find_resource_chunk(header, pointer, size)
+    if chunk is None:
+        raise ValueError(
+            f"0x{pointer:08X} is outside the system and graphics virtual spaces"
+        )
+    if section is not None and chunk.section != section:
+        raise ValueError(
+            f"0x{pointer:08X} points into {chunk.section} data instead of {section} data"
+        )
+    return chunk
+
+
 def parse_rsc7(data: bytes) -> tuple[ResourceHeader, bytes]:
     if len(data) < 16:
         raise ValueError("RSC7 data is too short")

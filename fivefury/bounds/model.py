@@ -50,7 +50,12 @@ def _normalize_aabb(bounds: BoundAabb) -> BoundAabb:
 
 
 def _aabb_is_valid(bounds: BoundAabb) -> bool:
-    return all(bounds.minimum[axis] <= bounds.maximum[axis] for axis in range(3))
+    return all(
+        math.isfinite(bounds.minimum[axis])
+        and math.isfinite(bounds.maximum[axis])
+        and bounds.minimum[axis] <= bounds.maximum[axis]
+        for axis in range(3)
+    )
 
 
 def _merge_bounds(bounds: list[BoundAabb], fallback: BoundAabb) -> BoundAabb:
@@ -1275,7 +1280,15 @@ class BoundComposite(Bound):
             issues.append("Composite bound has no children")
         for index, child in enumerate(self.children):
             if child.bounds is not None and not _aabb_is_valid(child.bounds):
-                issues.append(f"child {index} has inverted local bounds")
+                issues.append(f"child {index} has non-finite or inverted local bounds")
+            if child.bound is None:
+                flags = (child.flags1, child.flags2)
+                if any(
+                    value is not None
+                    and (int(value.flags1) != 0 or int(value.flags2) != 0)
+                    for value in flags
+                ):
+                    issues.append(f"null child {index} has active composite flags")
             if child.bound is not None:
                 issues.extend(child.bound.validate())
         return issues
