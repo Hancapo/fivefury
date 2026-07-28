@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Corrected YFT physics-archetype ownership.
+
 ## [0.2.20] - 2026-07-28
 
 ### Fixed

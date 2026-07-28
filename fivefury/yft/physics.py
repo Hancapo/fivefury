@@ -324,6 +324,7 @@ class YftPhysicsDampArchetype:
     type_flags: int = 0
     include_flags: int = 0
     property_flags: int = 0
+    ref_count: int = 1
     mass: float = 0.0
     inv_mass: float = 0.0
     gravity_factor: float = 0.0

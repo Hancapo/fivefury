@@ -1370,9 +1370,27 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
     parsed_lod = parsed.physics_lod("high")
     undamaged_bound = parsed_lod.undamaged_damp_archetype.bound_pointer
     damaged_bound = parsed_lod.damaged_damp_archetype.bound_pointer
+    undamaged_damp_offset = virtual_to_offset(
+        parsed_lod.phys_damp_undamaged_pointer
+    )
+    damaged_damp_offset = virtual_to_offset(
+        parsed_lod.phys_damp_damaged_pointer
+    )
 
     assert undamaged_bound == parsed_lod.composite_bounds_pointer
     assert damaged_bound != undamaged_bound
+    assert parsed_lod.undamaged_damp_archetype.ref_count == 1
+    assert parsed_lod.damaged_damp_archetype.ref_count == 1
+    assert struct.unpack_from(
+        "<H",
+        system_data,
+        undamaged_damp_offset + 0x32,
+    )[0] == 1
+    assert struct.unpack_from(
+        "<H",
+        system_data,
+        damaged_damp_offset + 0x32,
+    )[0] == 1
     assert struct.unpack_from(
         "<I",
         system_data,
@@ -1406,10 +1424,28 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         for issue in validate_yft_bytes(bad_ref_count)
     )
 
-    broken_system = bytearray(system_data)
-    damaged_damp_offset = virtual_to_offset(
-        parsed_lod.phys_damp_damaged_pointer
+    bad_archetype_system = bytearray(system_data)
+    struct.pack_into(
+        "<H",
+        bad_archetype_system,
+        damaged_damp_offset + 0x32,
+        0,
     )
+    bad_archetype = build_rsc7(
+        bad_archetype_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path
+        == "physics_lods.high.damaged_damp_archetype.ref_count"
+        for issue in validate_yft_bytes(bad_archetype)
+    )
+
+    broken_system = bytearray(system_data)
     struct.pack_into(
         "<Q",
         broken_system,

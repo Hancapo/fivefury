@@ -583,7 +583,14 @@ def _write_damp_archetype(
     writer.pack_into("i", offset + 0x10, int(archetype.resource_type or 2))
     writer.pack_into("Q", offset + 0x18, int(archetype.filename_pointer))
     writer.pack_into("Q", offset + 0x20, int(bound_pointer))
-    writer.pack_into("IIH", offset + 0x28, int(archetype.type_flags), int(archetype.include_flags), int(archetype.property_flags))
+    writer.pack_into(
+        "IIHH",
+        offset + 0x28,
+        int(archetype.type_flags),
+        int(archetype.include_flags),
+        int(archetype.property_flags),
+        int(archetype.ref_count),
+    )
     writer.pack_into(
         "6f",
         offset + 0x40,

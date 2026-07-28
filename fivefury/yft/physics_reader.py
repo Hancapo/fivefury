@@ -294,6 +294,7 @@ def read_damp_archetype(
         type_flags=_u32(system_data, offset + 0x28),
         include_flags=_u32(system_data, offset + 0x2C),
         property_flags=_u16(system_data, offset + 0x30),
+        ref_count=_u16(system_data, offset + 0x32),
         mass=float(_f32(system_data, offset + 0x40)),
         inv_mass=float(_f32(system_data, offset + 0x44)),
         gravity_factor=float(_f32(system_data, offset + 0x48)),

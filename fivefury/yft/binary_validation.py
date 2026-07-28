@@ -343,6 +343,12 @@ class _YftBinaryValidator:
             f"{path}.bound",
             nullable=False,
         )
+        ref_count = self.u16(offset + 0x32)
+        if ref_count != 1:
+            self.error(
+                f"{path}.ref_count",
+                f"expected 1 owner, found {ref_count}",
+            )
         return bound
 
     def _validate_geometry_bound(
