@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-07-28
+
 ### Fixed
 - Corrected damaged YFT collision-bound ownership.
 
