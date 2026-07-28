@@ -1382,8 +1382,29 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         "<I",
         system_data,
         virtual_to_offset(damaged_bound) + 0x3C,
-    )[0] == 1
+    )[0] == 2
     assert validate_yft_bytes(raw) == []
+
+    bad_ref_count_system = bytearray(system_data)
+    struct.pack_into(
+        "<I",
+        bad_ref_count_system,
+        virtual_to_offset(damaged_bound) + 0x3C,
+        1,
+    )
+    bad_ref_count = build_rsc7(
+        bad_ref_count_system,
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+        graphics_flags=header.graphics_flags,
+    )
+    assert any(
+        issue.is_error
+        and issue.path
+        == "physics_lods.high.damaged_damp_archetype.bound.ref_count"
+        for issue in validate_yft_bytes(bad_ref_count)
+    )
 
     broken_system = bytearray(system_data)
     damaged_damp_offset = virtual_to_offset(

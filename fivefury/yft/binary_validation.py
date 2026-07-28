@@ -730,6 +730,27 @@ class _YftBinaryValidator:
                     "bound owner slot does not match the composite order",
                 )
 
+    def validate_bound_ref_count(
+        self,
+        pointer: int,
+        path: str,
+        expected: int,
+    ) -> None:
+        offset = self.pointer(
+            pointer,
+            path,
+            size=_BOUND_BASE_SIZE,
+            nullable=False,
+        )
+        if offset is None:
+            return
+        actual = self.u32(offset + 0x3C)
+        if actual != expected:
+            self.error(
+                f"{path}.ref_count",
+                f"expected {expected} owners, found {actual}",
+            )
+
     def validate_child_bound_link(
         self,
         child_pointer: int,
@@ -1013,6 +1034,24 @@ class _YftBinaryValidator:
                 "damaged and undamaged archetypes must not share a bound "
                 "resource; the second construction would fix up the same "
                 "pointers twice",
+            )
+        if composite_bound:
+            self.validate_bound_ref_count(
+                composite_bound,
+                f"{path}.composite_bound",
+                1 + int(composite_bound == undamaged_bound),
+            )
+        if undamaged_bound and undamaged_bound != composite_bound:
+            self.validate_bound_ref_count(
+                undamaged_bound,
+                f"{path}.undamaged_damp_archetype.bound",
+                1,
+            )
+        if damaged_bound:
+            self.validate_bound_ref_count(
+                damaged_bound,
+                f"{path}.damaged_damp_archetype.bound",
+                2,
             )
         composite_child_bounds = self.validate_profile_bound_tree(
             composite_bound,

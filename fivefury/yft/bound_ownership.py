@@ -27,14 +27,18 @@ def physics_bound_owner_roots(
     bound = root or lod.composite_bound
     if bound is None:
         return ()
-    roots: list[Bound] = []
-    if damaged:
-        if lod.damaged_damp_archetype is not None:
-            roots.append(bound)
-    else:
+    # fragPhysicsLOD releases both composite states directly. Their
+    # archetypes hold the second reference through phArchetype::SetBound.
+    archetype = (
+        lod.damaged_damp_archetype
+        if damaged
+        else lod.undamaged_damp_archetype
+    )
+    if damaged and archetype is None:
+        return ()
+    roots: list[Bound] = [bound]
+    if archetype is not None:
         roots.append(bound)
-        if lod.undamaged_damp_archetype is not None:
-            roots.append(bound)
 
     for index, child in enumerate(lod.children):
         entity = child.damaged_entity if damaged else child.undamaged_entity
