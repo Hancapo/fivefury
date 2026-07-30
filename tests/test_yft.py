@@ -1655,12 +1655,12 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
     damaged_child_bounds_offset = virtual_to_offset(
         struct.unpack_from("<Q", system_data, damaged_bound_offset + 0x88)[0]
     )
-    damaged_flags1_offset = virtual_to_offset(
-        struct.unpack_from("<Q", system_data, damaged_bound_offset + 0x90)[0]
-    )
-    damaged_flags2_offset = virtual_to_offset(
-        struct.unpack_from("<Q", system_data, damaged_bound_offset + 0x98)[0]
-    )
+    damaged_flags1_pointer = struct.unpack_from(
+        "<Q", system_data, damaged_bound_offset + 0x90
+    )[0]
+    damaged_flags2_pointer = struct.unpack_from(
+        "<Q", system_data, damaged_bound_offset + 0x98
+    )[0]
 
     assert damaged_bound_children[0] == 0
     assert damaged_bound_children[1] != 0
@@ -1672,16 +1672,10 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
     )
     assert null_bounds[0:3] == (0.0, 0.0, 0.0)
     assert null_bounds[4:8] == (0.0, 0.0, 0.0, 0.0)
-    assert struct.unpack_from(
-        "<II",
-        system_data,
-        damaged_flags1_offset,
-    ) == (0, 0)
-    assert struct.unpack_from(
-        "<II",
-        system_data,
-        damaged_flags2_offset,
-    ) == (0, 0)
+    # Children authored without flags serialize no flag arrays at all,
+    # matching vanilla fragment composites.
+    assert damaged_flags1_pointer == 0
+    assert damaged_flags2_pointer == 0
     assert lod.composite_bound.children[2].bound is None
     assert validate_yft_bytes(raw) == []
 
@@ -1804,11 +1798,20 @@ def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
     ) == []
 
     intact_root_offset = virtual_to_offset(intact_root)
-    flags1_offset = virtual_to_offset(
-        struct.unpack_from("<Q", system_data, intact_root_offset + 0x90)[0]
-    )
+    # Prop fragments serialize no per-slot flag arrays, like vanilla.
+    assert struct.unpack_from(
+        "<Q", system_data, intact_root_offset + 0x90
+    )[0] == 0
+    assert struct.unpack_from(
+        "<Q", system_data, intact_root_offset + 0x98
+    )[0] == 0
+
     broken_system = bytearray(system_data)
-    struct.pack_into("<II", broken_system, flags1_offset, 1, 0)
+    # Point flags1 at the composite header itself: its vft makes the null
+    # slot's flag entry nonzero, which the validator must reject.
+    struct.pack_into(
+        "<Q", broken_system, intact_root_offset + 0x90, intact_root
+    )
     broken = build_rsc7(
         broken_system,
         version=header.version,

@@ -305,11 +305,21 @@ def _write_composite(
                 ),
             )
 
-        flags1_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
-        flags2_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
-        for index, child in enumerate(bound.children):
-            _write_composite_flags(writer, flags1_offset + (index * 0x08), child.flags1)
-            _write_composite_flags(writer, flags2_offset + (index * 0x08), child.flags2)
+        # Vanilla composites either carry per-child flag arrays for every
+        # populated slot (standalone YBN map collision) or omit both arrays
+        # entirely (fragment props, whose type/include flags are assigned by
+        # fragManager at instance time).  Serializing zeroed arrays for a
+        # fragment leaves its instances typed as nothing, so only allocate
+        # the arrays when the graph actually authored flags.
+        if any(
+            child.flags1 is not None or child.flags2 is not None
+            for child in bound.children
+        ):
+            flags1_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
+            flags2_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
+            for index, child in enumerate(bound.children):
+                _write_composite_flags(writer, flags1_offset + (index * 0x08), child.flags1)
+                _write_composite_flags(writer, flags2_offset + (index * 0x08), child.flags2)
 
         if bound.bvh is not None:
             bvh_offset = _write_bvh(writer, bound, bvh=bound.bvh)
