@@ -6,9 +6,15 @@ from typing import Any
 from .flags import PortalFlags
 
 INVALID_ENTITY_INDEX = 0xFFFFFFFF
+# Room and portal indexes are packed into 5 and 8 bits respectively, so these
+# two are real runtime ceilings.  Room 0 previously carried an 11-attachment
+# cap as well, but that was the largest value observed in a 174-archetype
+# vanilla sample rather than a structural limit: attached_objects is a plain
+# list with identical storage for every room, non-limbo vanilla rooms reach
+# 345 attachments in that same field, and the vanilla room-0 histogram decays
+# smoothly (…8:2, 10:3, 11:1) with no pile-up at the supposed cap.
 MAX_MLO_PORTALS = 255
 MAX_MLO_ROOMS = 31
-MAX_ROOM_ZERO_ATTACHMENTS = 11
 PORTAL_LOCATION_BIT = 1 << 31
 UINT32_MAX = (1 << 32) - 1
 
@@ -81,11 +87,6 @@ def validate_mlo_archetype(archetype: Any) -> list[str]:
 
         if not _is_finite_vector(room.bb_min, 3) or not _is_finite_vector(room.bb_max, 3):
             issues.append(f"{path} bounds must contain three finite coordinates")
-        if room_index == 0 and len(room.attached_objects) > MAX_ROOM_ZERO_ATTACHMENTS:
-            issues.append(
-                f"{path} has {len(room.attached_objects)} attached objects; room 0 supports at most "
-                f"{MAX_ROOM_ZERO_ATTACHMENTS}"
-            )
 
         seen_here: set[int] = set()
         for entity_index in room.attached_objects:
@@ -200,7 +201,6 @@ __all__ = [
     "INVALID_ENTITY_INDEX",
     "MAX_MLO_PORTALS",
     "MAX_MLO_ROOMS",
-    "MAX_ROOM_ZERO_ATTACHMENTS",
     "PORTAL_LOCATION_BIT",
     "build_mlo_archetype",
     "exit_portal_count",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from fivefury.bounds import BoundMaterialType, build_bound_from_triangles
@@ -34,7 +36,7 @@ def _valid_mlo_ytyp() -> tuple[Ytyp, MloArchetypeDef]:
     mlo.room("main", bb_min=(0.0, 0.0, 0.0), bb_max=(10.0, 10.0, 4.0))
     mlo.entity("shell_prop", room=0)
     mlo.entity("interior_prop", room=1)
-    mlo.portal(0, 1, PORTAL_CORNERS, flags=PortalFlags.ALLOW_CLOSING)
+    mlo.portal(0, 1, list(PORTAL_CORNERS), flags=PortalFlags.ALLOW_CLOSING)
     mlo.entity_set(
         "optional_props",
         locations=[1, PORTAL_LOCATION_BIT],
@@ -77,7 +79,7 @@ def test_mlo_build_synchronizes_room_portal_counts() -> None:
 
 def test_mlo_link_portals_are_not_exit_portals() -> None:
     _, mlo = _valid_mlo_ytyp()
-    mlo.portal(0, 1, PORTAL_CORNERS, flags=PortalFlags.LINK)
+    mlo.portal(0, 1, list(PORTAL_CORNERS), flags=PortalFlags.LINK)
 
     assert exit_portal_count(mlo) == 1
 
@@ -145,12 +147,31 @@ def test_mlo_declarative_objects_resolve_rooms_portals_and_instances() -> None:
     assert ymap.validate(ytyps=ytyp) == []
 
 
-def test_mlo_writer_rejects_room_zero_capacity_overflow() -> None:
+def test_room_zero_accepts_more_attachments_than_the_vanilla_maximum() -> None:
+    """Room 0 has no structural attachment cap.
+
+    attached_objects is a plain list shared by every room, and non-limbo
+    vanilla rooms reach 345 entries in that same field, so the 11 seen as the
+    largest vanilla room-0 value is a corpus maximum rather than a limit.
+    """
+
     ytyp, mlo = _valid_mlo_ytyp()
     mlo.rooms[0].attached_objects = list(range(12))
     mlo.entities = [EntityDef(f"prop_{index}") for index in range(12)]
 
-    with pytest.raises(ValueError, match="supports at most 11"):
+    # to_bytes builds the archetype and then validates it.
+    assert ytyp.to_bytes()
+    assert ytyp.validate_mlos() == []
+
+
+def test_mlo_writer_still_rejects_the_structural_room_and_portal_limits() -> None:
+    ytyp, mlo = _valid_mlo_ytyp()
+    template = mlo.rooms[1]
+    mlo.rooms = [mlo.rooms[0]] + [
+        dataclasses.replace(template, name=f"room_{index}") for index in range(31)
+    ]
+
+    with pytest.raises(ValueError, match="supports at most 31"):
         ytyp.to_bytes()
 
 

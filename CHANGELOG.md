@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Removed an incorrect MLO room attachment limit.
+
 ## [0.2.22] - 2026-07-30
 
 ### Fixed
