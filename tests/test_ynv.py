@@ -573,3 +573,55 @@ def test_zero_area_dlc_stitch_poly_accepts_two_vertices() -> None:
         sector_tree=_minimal_sector_tree(),
     ).build()
     assert not any("index_count" in issue for issue in ynv.validate())
+
+
+def test_ped_density_packs_into_poly_flags1_bits_14_to_16() -> None:
+    poly = YnvPoly()
+
+    poly.ped_density = 5
+
+    assert poly.ped_density == 5
+    assert int(poly.poly_flags1) == 5 << 14
+    assert poly.poly_flags1 & YnvPolyFlags1.PED_DENSITY_MASK
+
+
+def test_ped_density_and_audio_properties_do_not_overlap() -> None:
+    poly = YnvPoly()
+
+    poly.ped_density = 7
+    poly.audio_properties = 9
+
+    assert poly.ped_density == 7
+    assert poly.audio_properties == 9
+
+    poly.ped_density = 0
+
+    assert poly.audio_properties == 9
+    assert poly.ped_density == 0
+
+
+def test_ped_density_rejects_values_the_field_cannot_hold() -> None:
+    poly = YnvPoly()
+
+    with pytest.raises(ValueError):
+        poly.ped_density = 8
+    with pytest.raises(ValueError):
+        poly.ped_density = -1
+
+
+def test_ped_density_survives_a_flag_edit() -> None:
+    poly = YnvPoly()
+    poly.ped_density = 3
+
+    poly.poly_flags1 |= YnvPolyFlags1.IS_ROAD
+
+    assert poly.ped_density == 3
+    assert poly.poly_flags1 & YnvPolyFlags1.IS_ROAD
+
+
+def test_codewalker_flag_names_alias_the_engine_names() -> None:
+    assert YnvPolyFlags1.IS_FLAT_GROUND is YnvPolyFlags1.NETWORK_SPAWN_CANDIDATE
+    assert YnvPolyFlags1.INTERACTION_UNK is YnvPolyFlags1.IS_ISOLATED
+    assert YnvPolyFlags1.HAS_PATH_NODE is YnvPolyFlags1.NEAR_CAR_NODE
+    assert YnvPolyFlags1.IS_CELL_EDGE is YnvPolyFlags1.LIES_ALONG_EDGE_OF_MESH
+    assert YnvPolyFlags1(1 << 9).name == "NETWORK_SPAWN_CANDIDATE"
