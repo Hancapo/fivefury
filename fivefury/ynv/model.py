@@ -93,24 +93,52 @@ class YnvPolyFlags0(IntFlag):
 
 
 class YnvPolyFlags1(IntFlag):
+    """Bits 0-3 and 14-16 hold packed values rather than independent flags.
+
+    Read them through :attr:`YnvPoly.audio_properties` and
+    :attr:`YnvPoly.ped_density`; the per-bit members exist so the bitfield
+    still round-trips, not because a single bit means anything on its own.
+    """
+
     NONE = 0
+    AUDIO_PROPERTIES_0 = 1 << 0
+    AUDIO_PROPERTIES_1 = 1 << 1
+    AUDIO_PROPERTIES_2 = 1 << 2
+    AUDIO_PROPERTIES_3 = 1 << 3
+    DEBUG_MARKED = 1 << 4
+    NEAR_CAR_NODE = 1 << 5
+    IS_INTERIOR = 1 << 6
+    IS_ISOLATED = 1 << 7
+    ZERO_AREA_STITCH_POLY_DLC = 1 << 8
+    NETWORK_SPAWN_CANDIDATE = 1 << 9
+    IS_ROAD = 1 << 10
+    LIES_ALONG_EDGE_OF_MESH = 1 << 11
+    IS_TRAIN_TRACK = 1 << 12
+    IS_SHALLOW_WATER = 1 << 13
+    PED_DENSITY_0 = 1 << 14
+    PED_DENSITY_1 = 1 << 15
+    PED_DENSITY_2 = 1 << 16
+
+    AUDIO_PROPERTIES_MASK = 0xF
+    PED_DENSITY_MASK = 0x7 << 14
+
+    # Legacy aliases kept for compatibility.
     UNDERGROUND_UNK0 = 1 << 0
     UNDERGROUND_UNK1 = 1 << 1
     UNDERGROUND_UNK2 = 1 << 2
     UNDERGROUND_UNK3 = 1 << 3
     UNUSED_4 = 1 << 4
     HAS_PATH_NODE = 1 << 5
-    IS_INTERIOR = 1 << 6
     INTERACTION_UNK = 1 << 7
-    ZERO_AREA_STITCH_POLY_DLC = 1 << 8
     IS_FLAT_GROUND = 1 << 9
-    IS_ROAD = 1 << 10
     IS_CELL_EDGE = 1 << 11
-    IS_TRAIN_TRACK = 1 << 12
-    IS_SHALLOW_WATER = 1 << 13
     FOOTPATH_UNK1 = 1 << 14
     FOOTPATH_UNK2 = 1 << 15
     FOOTPATH_MALL = 1 << 16
+
+
+PED_DENSITY_SHIFT = 14
+MAX_PED_DENSITY = 7
 
 
 class YnvPolySlopeDirectionFlags(IntFlag):
@@ -274,6 +302,34 @@ class YnvPoly:
     part_id: int = 0
     portal_link_count: int = 0
     portal_link_id: int = 0
+
+    @property
+    def ped_density(self) -> int:
+        """Packed pedestrian density for this polygon, 0 to 7."""
+
+        return (int(self.poly_flags1) >> PED_DENSITY_SHIFT) & MAX_PED_DENSITY
+
+    @ped_density.setter
+    def ped_density(self, value: int) -> None:
+        density = int(value)
+        if not 0 <= density <= MAX_PED_DENSITY:
+            raise ValueError(f"ped density must be between 0 and {MAX_PED_DENSITY}")
+        cleared = int(self.poly_flags1) & ~int(YnvPolyFlags1.PED_DENSITY_MASK)
+        self.poly_flags1 = YnvPolyFlags1(cleared | (density << PED_DENSITY_SHIFT))
+
+    @property
+    def audio_properties(self) -> int:
+        """Packed audio material value, 0 to 15."""
+
+        return int(self.poly_flags1) & int(YnvPolyFlags1.AUDIO_PROPERTIES_MASK)
+
+    @audio_properties.setter
+    def audio_properties(self, value: int) -> None:
+        properties = int(value)
+        if not 0 <= properties <= 0xF:
+            raise ValueError("audio properties must be between 0 and 15")
+        cleared = int(self.poly_flags1) & ~int(YnvPolyFlags1.AUDIO_PROPERTIES_MASK)
+        self.poly_flags1 = YnvPolyFlags1(cleared | properties)
 
     @property
     def poly_array_index(self) -> int:
