@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.2.25] - 2026-07-31
+
 ### Fixed
 - YMF interior dependency generation.
 
