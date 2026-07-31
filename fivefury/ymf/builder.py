@@ -122,15 +122,28 @@ def build_ymf_manifest_for_ymaps(
         )
         raise ValueError(f"Unable to resolve YMF archetype dependencies: {details}")
 
-    ityp_entries = _build_used_ytyp_dependency_entries(used_ytyps, ytyp_dependency_map) if include_ytyp_dependencies else []
+    mlo_hashes = used_mlo_hashes | {
+        name_hash
+        for name_hash, archetype in archetypes.items()
+        if hasattr(archetype, "rooms") and hasattr(archetype, "portals")
+    }
+    mlo_ytyps = frozenset(
+        int(archetype_to_ytyp[name_hash])
+        for name_hash in mlo_hashes
+        if name_hash in archetype_to_ytyp
+    )
+    ityp_entries = (
+        _build_used_ytyp_dependency_entries(
+            used_ytyps,
+            ytyp_dependency_map,
+            mlo_ytyps=mlo_ytyps if infer_interior_flags else frozenset(),
+        )
+        if include_ytyp_dependencies
+        else []
+    )
     interior_entries = _build_interior_bounds(
         interior_bounds,
-        mlo_hashes=used_mlo_hashes
-        | {
-            name_hash
-            for name_hash, archetype in archetypes.items()
-            if hasattr(archetype, "rooms") and hasattr(archetype, "portals")
-        },
+        mlo_hashes=mlo_hashes,
         ybns=ybns if infer_interior_bounds else None,
     )
     return PackFileMetaData(
@@ -336,6 +349,8 @@ def _normalize_dependency_map(dependencies: Mapping[HashLike, Iterable[HashLike]
 def _build_used_ytyp_dependency_entries(
     used_ytyps: list[MetaHash],
     ytyp_dependency_map: dict[int, tuple[MetaHash, list[MetaHash]]],
+    *,
+    mlo_ytyps: frozenset[int] = frozenset(),
 ) -> list[ItypDependencies]:
     entries: list[ItypDependencies] = []
     queued = list(used_ytyps)
@@ -351,8 +366,15 @@ def _build_used_ytyp_dependency_entries(
         if indexed is None:
             continue
         source_name, dependencies = indexed
-        if dependencies:
-            entries.append(ItypDependencies(ityp_name=source_name, ityp_dependencies=dependencies))
+        flags = ManifestFlags.INTERIOR_DATA if ytyp_hash in mlo_ytyps else ManifestFlags(0)
+        if dependencies or flags:
+            entries.append(
+                ItypDependencies(
+                    ityp_name=source_name,
+                    ityp_dependencies=dependencies,
+                    flags=flags,
+                )
+            )
         for dependency in dependencies:
             dependency_hash = int(dependency)
             if dependency_hash in seen_ytyps:

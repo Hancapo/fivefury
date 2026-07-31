@@ -175,6 +175,35 @@ def test_build_ymf_manifest_for_ymaps_accepts_explicit_custom_dependencies_witho
     assert [str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies] == ["custom_ityp"]
 
 
+def test_build_ymf_manifest_marks_the_ytyp_holding_an_mlo_as_an_interior_type() -> None:
+    mlo = MloArchetypeDef(name="custom_mlo", rooms=[MloRoomDef(name="limbo")])
+    ytyp = Ytyp(name="custom_ityp", archetypes=[mlo])
+    ymap = Ymap(name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")])
+
+    manifest = build_ymf_manifest_for_ymaps([ymap], ytyps=[ytyp])
+
+    interior_types = [
+        entry
+        for entry in manifest.ityp_dependencies_2
+        if entry.flags is ManifestFlags.INTERIOR_DATA
+    ]
+    assert [str(entry.ityp_name) for entry in interior_types] == ["custom_ityp"]
+    assert list(interior_types[0].ityp_dependencies) == []
+    assert manifest.validate() == []
+
+
+def test_build_ymf_manifest_leaves_plain_ytyps_unflagged() -> None:
+    ytyp = Ytyp(name="plain_ityp", archetypes=[Archetype(name="prop")])
+    ymap = Ymap(name="plain_imap", entities=[EntityDef(archetype_name="prop")])
+
+    manifest = build_ymf_manifest_for_ymaps([ymap], ytyps=[ytyp])
+
+    assert all(
+        entry.flags is not ManifestFlags.INTERIOR_DATA
+        for entry in manifest.ityp_dependencies_2
+    )
+
+
 def test_build_ymf_manifest_registers_mlo_static_bounds_when_ybn_is_packaged() -> None:
     mlo = MloArchetypeDef(
         name="custom_mlo",
