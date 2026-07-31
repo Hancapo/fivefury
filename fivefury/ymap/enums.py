@@ -7,8 +7,9 @@ from ..common import FlexibleIntEnum
 
 class YmapFlags(enum.IntFlag):
     NONE = 0
-    SCRIPTED = 1 << 0
-    HAS_LODS = 1 << 1
+    MANUAL_STREAM_ONLY = 1 << 0
+    IS_PARENT = 1 << 1
+    SCRIPTED = MANUAL_STREAM_ONLY
 
 
 class YmapContentFlags(enum.IntFlag):

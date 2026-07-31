@@ -8,6 +8,7 @@ from ..awc import read_awc
 from ..cdr import read_cdr
 from ..cut import read_cut
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
+from ..gta5_cache import read_gta5_cache_y
 from ..gtxd import read_gtxd
 from ..gxt2 import read_gxt2
 from ..heightmap import read_heightmap
@@ -67,6 +68,8 @@ def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: Game
 def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
     name = Path(path).name.lower()
+    if name == "gta5_cache_y.dat":
+        return _decode_or_fallback(GameFileType.GTA5_CACHE, data, data, read_gta5_cache_y)
     if name.startswith("heightmap") and name.endswith(".dat"):
         return _decode_or_fallback(GameFileType.HEIGHTMAP, data, data, read_heightmap)
     if name == "water.xml":
