@@ -98,6 +98,38 @@ def test_mlo_ytyp_binary_roundtrip_preserves_explicit_structures() -> None:
     assert parsed.validate() == []
 
 
+def test_vector_arrays_are_written_as_pod_blocks_not_named_structs() -> None:
+    """A POD block must be identified by its type id, never by a name hash.
+
+    rage::psoFile::DirectFixupMatchingPsoContents treats any map-table entry
+    above 0xFF as a structure: it resolves the id through
+    parManager::FindStructure and hands the result to
+    psoObjectFixup::FindObjectFixup without a null check. "FloatXYZ" is a
+    primitive with no registered parStructure, so writing its name hash made
+    the game dereference null while streaming the file in.
+    """
+
+    from fivefury.meta import read_meta
+    from fivefury.meta.defs import META_TYPE_NAME_VECTOR4, STRUCTS_BY_HASH
+
+    ytyp, mlo = _valid_mlo_ytyp()
+    # portal corners are the vector array that triggered this
+    assert len(mlo.portals[0].corners) == 4
+
+    meta = read_meta(ytyp.to_bytes())
+    block_ids = {
+        int(getattr(block, "struct_name_hash", 0) or 0)
+        for block in (meta.data_blocks or [])
+    }
+
+    assert META_TYPE_NAME_VECTOR4 in block_ids
+    assert 3805007828 not in block_ids, "FloatXYZ name hash must not be a block id"
+    for block_id in block_ids:
+        assert block_id <= 0xFF or block_id in STRUCTS_BY_HASH, (
+            f"block id 0x{block_id:08X} is neither a POD type nor a known struct"
+        )
+
+
 def test_mlo_validation_rejects_runtime_unsafe_graphs() -> None:
     _, mlo = _valid_mlo_ytyp()
     mlo.portals[0].room_to = 5

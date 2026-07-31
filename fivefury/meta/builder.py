@@ -31,6 +31,7 @@ from .defs import (
     META_TYPE_NAME_STRING,
     META_TYPE_NAME_UINT,
     META_TYPE_NAME_USHORT,
+    META_TYPE_NAME_VECTOR4,
     STRUCTS_BY_HASH,
     SYSTEM_BASE,
     MetaDataType,
@@ -511,9 +512,16 @@ def _primitive_block_hash(data_type: MetaDataType) -> int:
     if data_type is MetaDataType.UNSIGNED_SHORT:
         return META_TYPE_NAME_USHORT
     if data_type is MetaDataType.UNSIGNED_BYTE:
-        return 0x11
+        return META_TYPE_NAME_BYTE
     if data_type is MetaDataType.FLOAT_XYZ:
-        return 3805007828
+        # A POD block is identified by its type id, never by a name hash.
+        # rage::psoFile::DirectFixupMatchingPsoContents treats a map entry
+        # above 0xFF as a structure: it resolves the id through
+        # parManager::FindStructure and passes the result straight to
+        # psoObjectFixup::FindObjectFixup without a null check. "FloatXYZ" is
+        # a primitive, so no parStructure is registered for it and the game
+        # dereferences null. Vanilla writes 0x33 here.
+        return META_TYPE_NAME_VECTOR4
     raise NotImplementedError(f"No primitive block hash for {data_type}")
 
 

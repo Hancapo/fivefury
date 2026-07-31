@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- YTYP and MLO streaming compatibility.
+
 ## [0.2.23] - 2026-07-30
 
 ### Fixed
