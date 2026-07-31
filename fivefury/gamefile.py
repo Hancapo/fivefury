@@ -48,6 +48,7 @@ class GameFileType(IntEnum):
     CUT = 33
     CDR = 34
     HANDLING = 35
+    GTA5_CACHE = 36
     RPF = 100
     BINARY = 101
 
@@ -83,6 +84,8 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
     normalized_name = parsed.name.lower()
     if normalized_name.startswith("heightmap") and normalized_name.endswith(".dat"):
         return GameFileType.HEIGHTMAP
+    if normalized_name == "gta5_cache_y.dat":
+        return GameFileType.GTA5_CACHE
     named_meta_types = {
         "gtxd.meta": GameFileType.GTXD,
         "vehicles.meta": GameFileType.VEHICLES,

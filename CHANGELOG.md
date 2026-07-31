@@ -7,6 +7,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- GTA V streaming cache reading, writing, and authoring from YMAP, YTYP, and YBN assets.
+
+### Fixed
+- YMAP parent and manual-streaming flag semantics.
+
 ## [0.2.25] - 2026-07-31
 
 ### Fixed

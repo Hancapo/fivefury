@@ -422,7 +422,7 @@ class Ymap(MetaHashFieldsMixin):
         return self
 
     def recalculate_flags(self) -> Ymap:
-        flags = YmapFlags.NONE
+        flags = self.flags & (YmapFlags.MANUAL_STREAM_ONLY | YmapFlags.IS_PARENT)
         content_flags = YmapContentFlags.NONE
 
         for entity in self.entities:
@@ -431,13 +431,10 @@ class Ymap(MetaHashFieldsMixin):
                 content_flags |= YmapContentFlags.ENTITIES_HD
             elif lod_level == YmapLodLevel.DEPTH_LOD:
                 content_flags |= YmapContentFlags.ENTITIES_LOD
-                flags |= YmapFlags.HAS_LODS
             elif lod_level == YmapLodLevel.DEPTH_SLOD1:
                 content_flags |= YmapContentFlags.ENTITIES_CRITICAL
-                flags |= YmapFlags.HAS_LODS
             elif lod_level in (YmapLodLevel.DEPTH_SLOD2, YmapLodLevel.DEPTH_SLOD3, YmapLodLevel.DEPTH_SLOD4):
                 content_flags |= YmapContentFlags.ENTITIES_CONTAINER_LOD | YmapContentFlags.ENTITIES_CRITICAL
-                flags |= YmapFlags.HAS_LODS
 
             if isinstance(entity, MloInstanceDef) or getattr(entity, "_meta_name", "") == "CMloInstanceDef":
                 content_flags |= YmapContentFlags.MLO
@@ -452,7 +449,6 @@ class Ymap(MetaHashFieldsMixin):
         if isinstance(self.lod_lights, LodLightsSoa) and len(self.lod_lights) > 0:
             content_flags |= YmapContentFlags.LOD_LIGHTS
         if isinstance(self.distant_lod_lights, DistantLodLightsSoa) and len(self.distant_lod_lights) > 0:
-            flags |= YmapFlags.HAS_LODS
             content_flags |= YmapContentFlags.DISTANT_LOD_LIGHTS
         if self.box_occluders or self.occlude_models:
             content_flags |= YmapContentFlags.OCCLUDER
