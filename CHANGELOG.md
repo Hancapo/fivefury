@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 - YFT mass calculation now derives density from collision materials by default.
+- Project license changed to The Unlicense.
 
 ### Fixed
 - Enhanced YFT drawable layout detection and lossless reading.

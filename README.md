@@ -196,6 +196,6 @@ High-level objects follow a consistent shape: `add_*` for collections, `set_*` f
 
 ## License
 
-FiveFury is released under the `CC0-1.0` public domain dedication. See [LICENSE](LICENSE).
+FiveFury is released under The Unlicense. See [LICENSE](LICENSE).
 
 Release notes live in [CHANGELOG.md](CHANGELOG.md).
