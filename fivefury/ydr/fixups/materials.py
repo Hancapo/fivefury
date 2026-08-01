@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from ..resource_headers import (
-    LEGACY_FRAGMENT_DRAWABLE_HEADERS,
     LEGACY_FRAGMENT_TEXTURE_VFTS,
+    DrawableRuntimeHeaders,
 )
 from .context import DrawableFixupValidator
 
@@ -68,12 +68,15 @@ def audit_shader_group(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> None:
     offset = validator.class_header(
         pointer,
         path,
         size=0x40,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.shader_group,
+        expected_vft=runtime_headers.shader_group,
     )
     if offset is None:
         return
@@ -95,11 +98,30 @@ def audit_shader_group(
     if array_offset is None:
         return
     for index in range(shader_count):
-        _audit_shader(
-            validator,
-            validator.u64(array_offset + index * 8),
-            f"{path}.shaders[{index}]",
-        )
+        shader_pointer = validator.u64(array_offset + index * 8)
+        if enhanced:
+            shader_offset = validator.pointer(
+                shader_pointer,
+                f"{path}.shaders[{index}]",
+                size=0x40,
+                nullable=False,
+            )
+            if shader_offset is not None:
+                for field_offset, label in (
+                    (0x08, "parameters"),
+                    (0x20, "parameter_infos"),
+                ):
+                    validator.pointer(
+                        validator.u64(shader_offset + field_offset),
+                        f"{path}.shaders[{index}].{label}",
+                        nullable=False,
+                    )
+        else:
+            _audit_shader(
+                validator,
+                shader_pointer,
+                f"{path}.shaders[{index}]",
+            )
 
 
 __all__ = ["audit_shader_group"]

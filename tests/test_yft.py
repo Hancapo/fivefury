@@ -40,7 +40,10 @@ from fivefury.ydr import (
     YdrModel,
     YdrSkeleton,
 )
-from fivefury.ydr.resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
+from fivefury.ydr.resource_headers import (
+    GEN9_FRAGMENT_DRAWABLE_HEADERS,
+    LEGACY_FRAGMENT_DRAWABLE_HEADERS,
+)
 from fivefury.yft import (
     MAX_FRAGMENT_BOUND_VERTICES,
     Yft,
@@ -85,6 +88,7 @@ from fivefury.yft.resource_headers import (
     FRAG_PHYS_TRANSFORMS_VFT,
     FRAG_PHYSICS_LOD_VFT,
     FRAG_TYPE_CHILD_VFT,
+    GEN9_YFT_RUNTIME_HEADERS,
     PH_JOINT_3DOF_TYPE_VFT,
     RESOURCE_STATE,
 )
@@ -128,12 +132,28 @@ def test_gen9_yft_drawable_uses_gen9_embedded_layout(monkeypatch: pytest.MonkeyP
     assert calls == [True]
 
 
-def test_gen9_yft_rebuild_is_rejected_but_lossless_write_is_allowed() -> None:
-    yft = Yft(version=171, raw_bytes=b"enhanced-yft")
+def test_gen9_yft_rebuild_uses_enhanced_runtime_headers() -> None:
+    yft = create_yft(
+        _simple_fragment_drawable("enhanced_fragment"),
+        name="enhanced_fragment",
+        version=171,
+    )
 
-    assert build_yft_bytes(yft, lossless=True) == b"enhanced-yft"
-    with pytest.raises(NotImplementedError, match="Gen9 YFT rebuilding"):
-        build_yft_bytes(yft)
+    raw = build_yft_bytes(yft)
+    header, system_data, graphics_data = split_rsc7_sections(raw)
+    drawable_pointer = struct.unpack_from("<Q", system_data, 0x30)[0]
+    drawable_offset = virtual_to_offset(drawable_pointer)
+
+    assert header.version == 171
+    assert graphics_data == b""
+    assert struct.unpack_from("<I", system_data, 0)[0] == (
+        GEN9_YFT_RUNTIME_HEADERS.fragment_type
+    )
+    assert struct.unpack_from("<I", system_data, drawable_offset)[0] == (
+        GEN9_FRAGMENT_DRAWABLE_HEADERS.drawable
+    )
+    assert validate_yft_bytes(raw) == []
+    assert read_yft(raw).version == 171
 
 
 def _bound_child_pointer(
@@ -171,6 +191,39 @@ def _simple_fragment_drawable(name: str):
         materials=[YdrMaterialInput(name="body")],
         name=name,
     )
+
+
+def test_gen9_yft_physics_uses_enhanced_runtime_headers():
+    from fivefury.yft import simple_physics_bound
+
+    child = YftPhysicsChild.declare(undamaged_mass=1.0)
+    group = YftPhysicsGroup.declare("root", children=(child,))
+    source = create_yft(
+        _simple_fragment_drawable("enhanced_physics"),
+        name="enhanced_physics",
+        version=171,
+        physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
+        physics_bound=simple_physics_bound(),
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    group_offset = virtual_to_offset(struct.unpack_from("<Q", system_data, 0xF0)[0])
+    lod_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, group_offset + 0x10)[0]
+    )
+    bound_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, lod_offset + 0xE8)[0]
+    )
+
+    assert struct.unpack_from("<I", system_data, group_offset)[0] == (
+        GEN9_YFT_RUNTIME_HEADERS.physics_lod_group
+    )
+    assert struct.unpack_from("<I", system_data, lod_offset)[0] == (
+        GEN9_YFT_RUNTIME_HEADERS.physics_lod
+    )
+    assert struct.unpack_from("<I", system_data, bound_offset)[0] == 0x406B1940
+    assert validate_yft_bytes(raw, profile="prop") == []
 
 
 def test_yft_light_array_roundtrip():

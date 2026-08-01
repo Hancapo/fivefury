@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
+from ..resource_headers import DrawableRuntimeHeaders
 from .context import DrawableFixupValidator
 
 
@@ -46,12 +46,14 @@ def audit_skeleton(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
 ) -> None:
     offset = validator.class_header(
         pointer,
         path,
         size=0x70,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.skeleton,
+        expected_vft=runtime_headers.skeleton,
     )
     if offset is None:
         return
@@ -97,12 +99,14 @@ def audit_joints(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
 ) -> None:
     offset = validator.class_header(
         pointer,
         path,
         size=0x40,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.joints,
+        expected_vft=runtime_headers.joints,
     )
     if offset is None:
         return

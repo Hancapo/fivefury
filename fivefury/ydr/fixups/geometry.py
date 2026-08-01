@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
+from ..resource_headers import DrawableRuntimeHeaders
 from .context import DrawableFixupValidator
 
 
@@ -8,19 +8,23 @@ def _audit_vertex_buffer(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> None:
     offset = validator.class_header(
         pointer,
         path,
-        size=0x80,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.vertex_buffer,
+        size=0x40 if enhanced else 0x80,
+        expected_vft=runtime_headers.vertex_buffer,
     )
     if offset is None:
         return
-    stride = validator.u16(offset + 0x08)
-    count = validator.u32(offset + 0x18)
+    stride = validator.u16(offset + (0x0C if enhanced else 0x08))
+    count = validator.u32(offset + (0x08 if enhanced else 0x18))
     data_size = stride * count
-    for field_offset, label in ((0x10, "data"), (0x20, "lock_data")):
+    data_fields = ((0x18, "data"),) if enhanced else ((0x10, "data"), (0x20, "lock_data"))
+    for field_offset, label in data_fields:
         data_pointer = validator.u64(offset + field_offset)
         if data_pointer:
             validator.pointer(
@@ -31,9 +35,9 @@ def _audit_vertex_buffer(
                 nullable=False,
             )
     validator.pointer(
-        validator.u64(offset + 0x30),
+        validator.u64(offset + (0x38 if enhanced else 0x30)),
         f"{path}.declaration",
-        size=0x10,
+        size=0x140 if enhanced else 0x10,
         nullable=False,
     )
 
@@ -42,18 +46,21 @@ def _audit_index_buffer(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> None:
     offset = validator.class_header(
         pointer,
         path,
-        size=0x60,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.index_buffer,
+        size=0x40 if enhanced else 0x60,
+        expected_vft=runtime_headers.index_buffer,
     )
     if offset is None:
         return
     count = validator.u32(offset + 0x08)
     validator.pointer(
-        validator.u64(offset + 0x10),
+        validator.u64(offset + (0x18 if enhanced else 0x10)),
         f"{path}.data",
         size=count * 2,
         section=None,
@@ -65,12 +72,15 @@ def _audit_geometry(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> None:
     offset = validator.class_header(
         pointer,
         path,
         size=0x98,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.geometry,
+        expected_vft=runtime_headers.geometry,
     )
     if offset is None:
         return
@@ -78,11 +88,15 @@ def _audit_geometry(
         validator,
         validator.u64(offset + 0x18),
         f"{path}.vertex_buffer",
+        runtime_headers=runtime_headers,
+        enhanced=enhanced,
     )
     _audit_index_buffer(
         validator,
         validator.u64(offset + 0x38),
         f"{path}.index_buffer",
+        runtime_headers=runtime_headers,
+        enhanced=enhanced,
     )
     bone_count = validator.u16(offset + 0x72)
     validator.pointer(
@@ -108,12 +122,15 @@ def _audit_model(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> bool:
     offset = validator.class_header(
         pointer,
         path,
         size=0x30,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.model,
+        expected_vft=runtime_headers.model,
     )
     if offset is None:
         return False
@@ -145,6 +162,8 @@ def _audit_model(
             validator,
             validator.u64(geometries_offset + index * 8),
             f"{path}.geometries[{index}]",
+            runtime_headers=runtime_headers,
+            enhanced=enhanced,
         )
     return bool(geometry_count)
 
@@ -153,6 +172,9 @@ def audit_lod(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
+    *,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> bool:
     offset = validator.pointer(pointer, path, size=0x10, nullable=False)
     if offset is None:
@@ -173,6 +195,8 @@ def audit_lod(
             validator,
             validator.u64(models_offset + index * 8),
             f"{path}.models[{index}]",
+            runtime_headers=runtime_headers,
+            enhanced=enhanced,
         )
     return has_geometry
 

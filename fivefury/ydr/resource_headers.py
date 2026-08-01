@@ -1,4 +1,4 @@
-"""Runtime class headers used by legacy GTA V drawable resources."""
+"""Runtime class headers used by GTA V drawable resources."""
 
 import dataclasses
 
@@ -54,6 +54,23 @@ LEGACY_FRAGMENT_DRAWABLE_HEADERS = DrawableRuntimeHeaders(
     joints=0x40615C60,
 )
 
+GEN9_DRAWABLE_HEADERS = DrawableRuntimeHeaders(
+    drawable=0x4068C7F0,
+    shader_group=0x406BB978,
+    texture_base=0,
+    model=0x406BB948,
+    geometry=0x406BB7E8,
+    vertex_buffer=0x406B9108,
+    index_buffer=0x406B90B8,
+    skeleton=0x406BE318,
+    joints=0x406BE4D8,
+)
+
+GEN9_FRAGMENT_DRAWABLE_HEADERS = dataclasses.replace(
+    GEN9_DRAWABLE_HEADERS,
+    drawable=0x406E5710,
+)
+
 # Both texture implementations occur in the legacy prop corpus.
 LEGACY_FRAGMENT_TEXTURE_VFTS = (0x40617568, 0x406187F8)
 
@@ -62,6 +79,8 @@ __all__ = [
     "DRAWABLE_GEOMETRY_VFT",
     "DRAWABLE_MODEL_VFT",
     "EMBEDDED_DRAWABLE_FILE_VFT",
+    "GEN9_DRAWABLE_HEADERS",
+    "GEN9_FRAGMENT_DRAWABLE_HEADERS",
     "INDEX_BUFFER_VFT",
     "JOINTS_VFT",
     "LEGACY_DRAWABLE_HEADERS",

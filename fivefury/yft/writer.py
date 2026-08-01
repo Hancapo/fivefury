@@ -5,7 +5,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ..binary import align
-from ..bounds import Bound, calculate_bound_ref_counts, write_bound_resource
+from ..bounds import (
+    Bound,
+    calculate_bound_ref_counts,
+    gen9_bound_file_vft,
+    write_bound_resource,
+)
 from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
@@ -16,13 +21,13 @@ from ..resource import (
 )
 from ..ydr import Ydr, YdrBuild, YdrLight
 from ..ydr.builder import _write_drawable_payload
+from ..ydr.gen9 import load_gen9_shader_library
 from ..ydr.prepare import (
     PreparedLods,
     PreparedMaterial,
     compute_model_collection_bounds,
     prepare_build,
 )
-from ..ydr.resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
 from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
@@ -57,7 +62,7 @@ from .matrices_writer import write_shared_matrix_set
 from .physics import YftPhysicsLod
 from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
 from .physics_writer import write_physics_child_header, write_physics_lod_group
-from .resource_headers import FRAGMENT_TYPE_VFT
+from .resource_headers import YftRuntimeHeaders, yft_runtime_headers
 from .validation import assert_valid_yft
 
 _DAT_VIRTUAL_BASE = 0x50000000
@@ -95,14 +100,23 @@ def _prepare_drawable(
     generate_tangents: bool,
     fill_vertex_colours: bool,
     allow_empty: bool = False,
+    enhanced: bool = False,
 ) -> _PreparedFragmentDrawable:
     build = _drawable_build(drawable, name=name, version=version)
     if build.model_count == 0 and not allow_empty:
         raise ValueError(f"YFT drawable '{name}' has no models")
+    gen9_library = load_gen9_shader_library() if enhanced else None
     materials, lods = prepare_build(
         build,
         shader_library,
-        prepare_materials=prepare_materials,
+        prepare_materials=(
+            lambda *args, **kwargs: prepare_materials(
+                *args,
+                enhanced=enhanced,
+                gen9_library=gen9_library,
+                **kwargs,
+            )
+        ),
         generate_normals=generate_normals,
         generate_tangents=generate_tangents,
         fill_vertex_colours=fill_vertex_colours,
@@ -245,6 +259,7 @@ def _write_fragment_drawable_tail(
     item: _PreparedFragmentDrawable,
     *,
     bound_offset: int,
+    runtime_headers: YftRuntimeHeaders,
 ) -> None:
     fragment = item.fragment
     matrix = (
@@ -265,6 +280,9 @@ def _write_fragment_drawable_tail(
                 system,
                 extra_bound,
                 ref_counts=calculate_bound_ref_counts((extra_bound,)),
+                file_vft_resolver=(
+                    gen9_bound_file_vft if runtime_headers.enhanced else None
+                ),
             )
             if extra_bound is not None
             else 0
@@ -329,6 +347,7 @@ def _prepared_drawables(
     list[_PreparedFragmentDrawable],
 ]:
     version = int(yft.version)
+    enhanced = version in GEN9_YFT_VERSIONS
     main = (
         _prepare_drawable(
             yft.main_drawable,
@@ -339,6 +358,7 @@ def _prepared_drawables(
             generate_normals=generate_normals,
             generate_tangents=generate_tangents,
             fill_vertex_colours=fill_vertex_colours,
+            enhanced=enhanced,
         )
         if yft.main_drawable is not None
         else None
@@ -353,6 +373,7 @@ def _prepared_drawables(
             generate_normals=generate_normals,
             generate_tangents=generate_tangents,
             fill_vertex_colours=fill_vertex_colours,
+            enhanced=enhanced,
         )
         for index, entry in enumerate(yft.drawables)
     ]
@@ -366,6 +387,7 @@ def _prepared_drawables(
             generate_normals=generate_normals,
             generate_tangents=generate_tangents,
             fill_vertex_colours=fill_vertex_colours,
+            enhanced=enhanced,
         )
         if yft.cloth_drawable is not None
         else None
@@ -388,6 +410,7 @@ def _prepared_drawables(
                 generate_tangents=generate_tangents,
                 fill_vertex_colours=fill_vertex_colours,
                 allow_empty=True,
+                enhanced=enhanced,
             )
         )
     if main is not None:
@@ -486,6 +509,7 @@ def _write_fragment_root(
     extras: Sequence[_PreparedFragmentDrawable],
     cloth: _PreparedFragmentDrawable | None,
     event_set_offsets: dict[int, int],
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     pages_info_off = system.alloc(pages_info_length(page_counts), 16)
     write_pages_info(system, pages_info_off, page_counts)
@@ -534,7 +558,12 @@ def _write_fragment_root(
     root_child_off = system.alloc(0x100, 16) if needs_root_child else 0
     root_child = yft.root_child
     if root_child_off and main is not None:
-        write_physics_child_header(system, root_child_off, root_child)
+        write_physics_child_header(
+            system,
+            root_child_off,
+            root_child,
+            runtime_headers=runtime_headers,
+        )
         system.pack_into(
             "ff",
             root_child_off + 0x08,
@@ -563,7 +592,7 @@ def _write_fragment_root(
             _virtual(damaged.root_offset) if damaged is not None else 0,
         )
 
-    system.pack_into("I", 0x00, FRAGMENT_TYPE_VFT)
+    system.pack_into("I", 0x00, runtime_headers.fragment_type)
     system.pack_into("I", 0x04, 1)
     system.pack_into("Q", 0x08, _virtual(pages_info_off))
     system.pack_into("4f", 0x20, *yft.bounding_sphere)
@@ -629,6 +658,7 @@ def _build_yft_payload(
     system = ResourceWriter(initial_size=align(FRAGMENT_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
     main, extras, cloth, physics = prepared
+    runtime_headers = yft_runtime_headers(yft.version)
     shared_shader_group_ids = {
         id(item)
         for item in (*extras, *physics)
@@ -645,7 +675,8 @@ def _build_yft_payload(
             item.lods,
             page_counts,
             root_off=item.root_offset,
-            runtime_headers=LEGACY_FRAGMENT_DRAWABLE_HEADERS,
+            runtime_headers=runtime_headers.drawable,
+            enhanced=runtime_headers.enhanced,
             write_pages=False,
             write_extensions=False,
         )
@@ -653,6 +684,7 @@ def _build_yft_payload(
             system,
             item,
             bound_offset=bound_offset,
+            runtime_headers=runtime_headers,
         )
     event_set_offsets = write_event_sets(system, yft.iter_event_sets())
     drawable_offsets: dict[str, int] = {}
@@ -680,6 +712,7 @@ def _build_yft_payload(
         extras=extras,
         cloth=cloth,
         event_set_offsets=event_set_offsets,
+        runtime_headers=runtime_headers,
     )
     fallback_bound = None
     if main is not None and getattr(main.build, "bound", None) is not None:
@@ -698,6 +731,7 @@ def _build_yft_payload(
         event_set_offsets=event_set_offsets,
         fallback_bound=fallback_bound,
         bound_profile=yft.physics_bound_profile,
+        runtime_headers=runtime_headers,
     )
     if physics_group_off:
         system.pack_into("Q", 0xF0, _virtual(physics_group_off))
@@ -719,11 +753,6 @@ def build_yft_bytes(
         if not source.raw_bytes:
             raise ValueError("lossless YFT writing requires a YFT read from bytes")
         return bytes(source.raw_bytes)
-    if int(source.version) in GEN9_YFT_VERSIONS:
-        raise NotImplementedError(
-            "Gen9 YFT rebuilding is not supported until its runtime class headers are mapped"
-        )
-
     for lod in source.physics_lod_details:
         apply_physics_lod_bound_ref_counts(
             lod,

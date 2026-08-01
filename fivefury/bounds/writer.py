@@ -141,10 +141,10 @@ def _write_resource_file_base(
     file_vft_resolver: BoundFileVftResolver | None = None,
 ) -> None:
     file_vft = (
-        int(bound.file_vft)
-        if bound.file_vft
-        else int(file_vft_resolver(bound))
+        int(file_vft_resolver(bound))
         if file_vft_resolver is not None
+        else int(bound.file_vft)
+        if bound.file_vft
         else _default_file_vft(bound)
     )
     writer.pack_into("I", offset + 0x00, file_vft)

@@ -3,19 +3,42 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import read_c_string, u16 as _u16, u32 as _u32, u64 as _u64, f32 as _f32, vec3 as _vec3
+from ..binary import f32 as _f32
+from ..binary import read_c_string
+from ..binary import u16 as _u16
+from ..binary import u32 as _u32
+from ..binary import u64 as _u64
+from ..binary import vec3 as _vec3
 from ..bounds import read_bound_from_pointer
 from ..common import ByteSource, read_source_bytes
 from ..hashing import jenk_hash
 from ..resolver import resolve_hash
-from ..resource import RSC7_MAGIC, ResourceHeader, checked_virtual_offset, physical_to_offset, read_virtual_pointer_array, split_rsc7_sections, virtual_to_offset
+from ..resource import (
+    RSC7_MAGIC,
+    ResourceHeader,
+    checked_virtual_offset,
+    physical_to_offset,
+    read_virtual_pointer_array,
+    split_rsc7_sections,
+    virtual_to_offset,
+)
 from ..ytd import Ytd, read_embedded_texture_dictionary
-from .defs import COMPONENT_SIZES, DAT_PHYSICAL_BASE, DAT_VIRTUAL_BASE, LOD_ORDER, LOD_POINTER_OFFSETS, VertexComponentType, VertexSemantic, YdrLod, YdrSkeletonBinding
-from .gen9 import decode_gen9_vertex_declaration, load_gen9_shader_library
+from .defs import (
+    COMPONENT_SIZES,
+    DAT_PHYSICAL_BASE,
+    DAT_VIRTUAL_BASE,
+    LOD_ORDER,
+    LOD_POINTER_OFFSETS,
+    VertexComponentType,
+    VertexSemantic,
+    YdrLod,
+    YdrSkeletonBinding,
+)
+from .gen9 import decode_gen9_vertex_declaration_layout, load_gen9_shader_library
 from .model import Ydr, YdrMaterial, YdrMesh, YdrModel
+from .read_joints import parse_joints
 from .read_lights import parse_lights
 from .read_materials import parameter_component_count, parse_materials
-from .read_joints import parse_joints
 from .read_skeleton import parse_skeleton
 from .shaders import ShaderLibrary, load_shader_library
 
@@ -166,7 +189,15 @@ def _decode_parameter_value(data_type: int, data_pointer: int, system_data: byte
     return tuple(values)
 
 
-def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags: int, types_value: int) -> dict[str, object]:
+def _decode_vertices(
+    vertex_bytes: bytes,
+    vertex_count: int,
+    stride: int,
+    flags: int,
+    types_value: int,
+    *,
+    component_offsets: tuple[int, ...] | None = None,
+) -> dict[str, object]:
     if stride <= 0:
         raise ValueError("vertex stride must be positive")
     available = len(vertex_bytes) // stride
@@ -188,7 +219,11 @@ def _decode_vertices(vertex_bytes: bytes, vertex_count: int, stride: int, flags:
             if ((flags >> semantic_index) & 0x1) == 0:
                 continue
             component_type = _component_type(types_value, semantic_index)
-            component_offset = _component_offset(flags, types_value, semantic_index)
+            component_offset = (
+                component_offsets[semantic_index]
+                if component_offsets is not None
+                else _component_offset(flags, types_value, semantic_index)
+            )
             semantic = VertexSemantic(semantic_index)
             if semantic is VertexSemantic.BLEND_INDICES and COMPONENT_SIZES.get(component_type) == 4:
                 blend_indices.append(tuple(int(component) for component in _decode_skin_ubyte4(vertex_bytes, base + component_offset)))
@@ -271,7 +306,13 @@ def _parse_mesh(
         vertex_data_pointer = _u64(system_data, vertex_buffer_off + 0x18)
         info_pointer = _u64(system_data, vertex_buffer_off + 0x38)
         declaration_data = _read_buffer(info_pointer, 320, system_data, b"")
-        declaration_flags, declaration_types, declaration_stride, declaration_vertex_count = decode_gen9_vertex_declaration(declaration_data)
+        (
+            declaration_flags,
+            declaration_types,
+            declaration_stride,
+            declaration_vertex_count,
+            declaration_offsets,
+        ) = decode_gen9_vertex_declaration_layout(declaration_data)
     else:
         vb_stride = _u16(system_data, vertex_buffer_off + 0x08)
         vb_flags = _u16(system_data, vertex_buffer_off + 0x0A)
@@ -284,11 +325,19 @@ def _parse_mesh(
         declaration_stride = _u16(system_data, declaration_off + 0x04)
         declaration_types = _u64(system_data, declaration_off + 0x08)
         declaration_vertex_count = 0
+        declaration_offsets = None
 
     stride = int(declaration_stride or vb_stride or vertex_stride)
     count = int(vertices_count or vertex_count or declaration_vertex_count)
     vertex_bytes = _read_buffer(vertex_data_pointer, stride * count, system_data, graphics_data)
-    decoded = _decode_vertices(vertex_bytes, count, stride, declaration_flags, declaration_types)
+    decoded = _decode_vertices(
+        vertex_bytes,
+        count,
+        stride,
+        declaration_flags,
+        declaration_types,
+        component_offsets=declaration_offsets,
+    )
 
     index_buffer_off = _virtual_offset(index_buffer_pointer, system_data)
     indices_pointer = _u64(system_data, index_buffer_off + 0x18) if enhanced else _u64(system_data, index_buffer_off + 0x10)

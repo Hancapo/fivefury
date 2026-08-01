@@ -9,9 +9,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 - GTA V streaming cache reading, writing, and authoring from YMAP, YTYP, and YBN assets.
+- Enhanced YFT authoring with drawable, physics, and collision-bound support.
 
 ### Fixed
 - Enhanced YFT drawable layout detection and lossless reading.
+- Enhanced skinned vertex layouts and resource decompression.
 - YMAP parent and manual-streaming flag semantics.
 - YNV polygon flag names and packed pedestrian density and audio fields.
 - YMF runtime limit validation for map dependencies, interior bounds, and managed groups.

@@ -1,24 +1,26 @@
 from __future__ import annotations
 
-from ..resource_headers import LEGACY_FRAGMENT_DRAWABLE_HEADERS
+from ..resource_headers import DrawableRuntimeHeaders
 from .context import DrawableFixupValidator
 from .geometry import audit_lod
 from .materials import audit_shader_group
 from .skeleton import audit_joints, audit_skeleton
 
 
-def audit_legacy_fragment_drawable_fixups(
+def audit_fragment_drawable_fixups(
     validator: DrawableFixupValidator,
     pointer: int,
     path: str,
     *,
     require_shader_group: bool = True,
+    runtime_headers: DrawableRuntimeHeaders,
+    enhanced: bool,
 ) -> None:
     root = validator.class_header(
         pointer,
         path,
         size=0x150,
-        expected_vft=LEGACY_FRAGMENT_DRAWABLE_HEADERS.drawable,
+        expected_vft=runtime_headers.drawable,
     )
     if root is None:
         return
@@ -28,11 +30,18 @@ def audit_legacy_fragment_drawable_fixups(
             validator,
             shader_group,
             f"{path}.shader_group",
+            runtime_headers=runtime_headers,
+            enhanced=enhanced,
         )
 
     skeleton = validator.u64(root + 0x18)
     if skeleton:
-        audit_skeleton(validator, skeleton, f"{path}.skeleton")
+        audit_skeleton(
+            validator,
+            skeleton,
+            f"{path}.skeleton",
+            runtime_headers=runtime_headers,
+        )
     has_models = False
     for field_offset, label in (
         (0x50, "high"),
@@ -42,12 +51,23 @@ def audit_legacy_fragment_drawable_fixups(
     ):
         lod = validator.u64(root + field_offset)
         if lod:
-            has_models |= audit_lod(validator, lod, f"{path}.lods.{label}")
+            has_models |= audit_lod(
+                validator,
+                lod,
+                f"{path}.lods.{label}",
+                runtime_headers=runtime_headers,
+                enhanced=enhanced,
+            )
     if not shader_group and require_shader_group and has_models:
         validator.error(f"{path}.shader_group", "required resource pointer is null")
     joints = validator.u64(root + 0x90)
     if joints:
-        audit_joints(validator, joints, f"{path}.joints")
+        audit_joints(
+            validator,
+            joints,
+            f"{path}.joints",
+            runtime_headers=runtime_headers,
+        )
     model_block = validator.u64(root + 0xA0)
     if model_block:
         validator.pointer(model_block, f"{path}.model_block", nullable=False)
@@ -100,4 +120,4 @@ def audit_legacy_fragment_drawable_fixups(
         validator.string(name, f"{path}.skeleton_type_name")
 
 
-__all__ = ["audit_legacy_fragment_drawable_fixups"]
+__all__ = ["audit_fragment_drawable_fixups"]
