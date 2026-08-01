@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import struct
-from typing import Callable
+from collections.abc import Callable
 
 from ..drawable import parameter_component_count
 from .gen9 import (
@@ -313,6 +313,7 @@ def parse_material_gen9(
                 infos,
                 buffer_sizes=buffer_sizes,
                 sampler_values=samplers,
+                shader_library=gen9_library,
             )
             if gen9_definition is not None
             else None

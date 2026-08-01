@@ -701,9 +701,6 @@
    <Item type="CBuffer" name="globalAnimUV0" old="globalAnimUV0" buffer="1" length="12" offset="0" />
    <Item type="CBuffer" name="globalAnimUV1" old="globalAnimUV1" buffer="1" length="12" offset="16" />
   </Parameters>
-  <Aliases>
-   <Item hash="BABE4DBA" name="diffusesampler" />
-  </Aliases>
  </Item>
  <Item>
   <Name>default_detail</Name>
@@ -1002,10 +999,10 @@
    <Item type="Texture" name="BumpTex" old="BumpSampler" index="2" />
    <Item type="Texture" name="SpecularTex" old="SpecSampler" index="3" />
    <Item type="Sampler" name="trilinearclamp" index="0" sampler="0" />
-   <Item type="Sampler" name="specsampler" hash="E44690BB" index="1" sampler="5" />
+   <Item type="Sampler" name="trilinearwrap" index="1" sampler="5" />
    <Item type="Sampler" name="diffusesampler" index="2" sampler="1" />
    <Item type="Sampler" name="gcsmshadowtexturesamp" index="3" sampler="2" />
-   <Item type="Sampler" name="bumpsampler" hash="49C32B64" index="4" sampler="4" />
+   <Item type="Sampler" name="anisotropic4xwrap" index="4" sampler="4" />
    <Item type="CBuffer" name="Fresnel" old="specularFresnel" buffer="0" length="4" offset="0" />
    <Item type="CBuffer" name="Specular" old="specularFalloffMult" buffer="0" length="4" offset="4" />
    <Item type="CBuffer" name="SpecularColor" old="specularIntensityMult" buffer="0" length="4" offset="8" />
@@ -1960,10 +1957,6 @@
    <Item type="CBuffer" name="UseTessellation" old="useTessellation" buffer="0" length="4" offset="36" />
    <Item type="CBuffer" name="HardAlphaBlend" old="HardAlphaBlend" buffer="0" length="4" offset="40" />
   </Parameters>
-  <Aliases>
-   <Item hash="E44690BB" name="specsampler" />
-   <Item hash="49C32B64" name="bumpsampler" />
-  </Aliases>
  </Item>
  <Item>
   <Name>normal_spec_batch</Name>
@@ -2044,7 +2037,7 @@
   </Parameters>
  </Item>
  <Item>
- <Name>normal_spec_decal</Name>
+  <Name>normal_spec_decal</Name>
   <FileName>normal_spec_decal.sps</FileName>
   <BufferSizes>32 48</BufferSizes>
   <Parameters>
@@ -2533,7 +2526,7 @@
   </Parameters>
  </Item>
  <Item>
- <Name>normal_spec_tnt</Name>
+  <Name>normal_spec_tnt</Name>
   <FileName>normal_spec_tnt.sps</FileName>
   <BufferSizes>16 48</BufferSizes>
   <Parameters>
@@ -2559,10 +2552,6 @@
    <Item type="CBuffer" name="UseTessellation" old="useTessellation" buffer="1" length="4" offset="36" />
    <Item type="CBuffer" name="HardAlphaBlend" old="HardAlphaBlend" buffer="1" length="4" offset="40" />
   </Parameters>
-  <Aliases>
-   <Item hash="E44690BB" name="specsampler" />
-   <Item hash="49C32B64" name="bumpsampler" />
-  </Aliases>
  </Item>
  <Item>
   <Name>normal_spec_um</Name>
