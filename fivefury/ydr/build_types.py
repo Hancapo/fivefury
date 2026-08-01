@@ -31,6 +31,7 @@ TextureInputValue = str | Path | YdrTextureInput
 class YdrMaterialInput:
     name: str = "default"
     shader: str | YdrShader | YdrGen9Shader = YdrShader.DEFAULT
+    layout_shader: str | YdrShader | None = None
     textures: Mapping[str, TextureInputValue] = dataclasses.field(default_factory=dict)
     parameters: Mapping[str, MaterialParameterValue] = dataclasses.field(default_factory=dict)
     render_bucket: int = 0

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from ..binary import align
 from ..common import atomic_write_bytes
+from ..game_target import GameTarget
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -15,16 +16,20 @@ from ..resource import (
 )
 from ..ydr import YdrBuild
 from ..ydr.builder import _ROOT_SIZE, _write_drawable_payload
+from ..ydr.gen9 import ShaderGen9Library, load_gen9_shader_library
 from ..ydr.prepare import PreparedLods, PreparedMaterial, prepare_build
-from ..ydr.resource_headers import EMBEDDED_DRAWABLE_FILE_VFT
 from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_materials import prepare_materials
 from .model import Ydd, YddDrawable, YddDrawableCollection, _coerce_drawable_input
+from .runtime_headers import (
+    YddRuntimeProfile,
+    get_ydd_runtime_profile_for_version,
+    resolve_ydd_version,
+)
 
 _DAT_VIRTUAL_BASE = 0x50000000
-_DRAWABLE_DICTIONARY_FILE_VFT = 0x40571048
 _DRAWABLE_DICTIONARY_ROOT_SIZE = 0x40
 
 
@@ -57,6 +62,8 @@ def _prepare_ydd_drawables(
     *,
     version: int,
     shader_library: ShaderLibrary,
+    enhanced: bool,
+    gen9_library: ShaderGen9Library | None,
     generate_normals: bool,
     generate_tangents: bool,
     fill_vertex_colours: bool,
@@ -69,7 +76,14 @@ def _prepare_ydd_drawables(
         materials, lods = prepare_build(
             build,
             shader_library,
-            prepare_materials=prepare_materials,
+            prepare_materials=(
+                lambda *args, **kwargs: prepare_materials(
+                    *args,
+                    enhanced=enhanced,
+                    gen9_library=gen9_library,
+                    **kwargs,
+                )
+            ),
             generate_normals=generate_normals,
             generate_tangents=generate_tangents,
             fill_vertex_colours=fill_vertex_colours,
@@ -91,6 +105,7 @@ def _write_drawable_dictionary_root(
     page_counts: tuple[int, int],
     hashes: Sequence[int],
     drawable_root_offsets: Sequence[int],
+    dictionary_vft: int,
 ) -> None:
     count = len(drawable_root_offsets)
     pages_info_off = system.alloc(pages_info_length(page_counts), 16)
@@ -104,7 +119,7 @@ def _write_drawable_dictionary_root(
     for index, root_off in enumerate(drawable_root_offsets):
         system.pack_into("Q", drawable_ptrs_off + index * 8, _virtual(root_off))
 
-    system.pack_into("I", 0x00, _DRAWABLE_DICTIONARY_FILE_VFT)
+    system.pack_into("I", 0x00, int(dictionary_vft))
     system.pack_into("I", 0x04, 1)
     system.pack_into("Q", 0x08, _virtual(pages_info_off))
     system.pack_into("Q", 0x10, 0)
@@ -123,6 +138,7 @@ def _build_ydd_payload(
     prepared: Sequence[_PreparedYddDrawable],
     *,
     page_counts: tuple[int, int],
+    profile: YddRuntimeProfile,
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(_DRAWABLE_DICTIONARY_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
@@ -139,8 +155,10 @@ def _build_ydd_payload(
             item.lods,
             page_counts,
             root_off=root_off,
-            drawable_file_vft=EMBEDDED_DRAWABLE_FILE_VFT,
+            drawable_file_vft=profile.drawable_headers.drawable,
             write_pages=False,
+            runtime_headers=profile.drawable_headers,
+            enhanced=profile.game is GameTarget.GTA5_ENHANCED,
         )
 
     _write_drawable_dictionary_root(
@@ -148,6 +166,7 @@ def _build_ydd_payload(
         page_counts=page_counts,
         hashes=[item.name_hash for item in prepared],
         drawable_root_offsets=root_offsets,
+        dictionary_vft=profile.dictionary_vft,
     )
     return system.finish(), graphics.finish(), system.block_spans, graphics.block_spans
 
@@ -156,9 +175,10 @@ def create_ydd(
     drawables: YddDrawableCollection,
     *,
     name: str = "",
-    version: int = 165,
+    game: str | GameTarget | None = None,
+    version: int | None = None,
 ) -> Ydd:
-    ydd = Ydd(version=int(version), path=name)
+    ydd = Ydd(version=resolve_ydd_version(game=game, version=version), path=name)
     ydd.with_drawables(drawables)
     return ydd
 
@@ -175,11 +195,16 @@ def build_ydd_bytes(
     if not ydd.drawables:
         raise ValueError("YDD writer requires at least one drawable")
 
+    profile = get_ydd_runtime_profile_for_version(ydd.version)
+    enhanced = profile.game is GameTarget.GTA5_ENHANCED
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
+    gen9_library = load_gen9_shader_library() if enhanced else None
     prepared = _prepare_ydd_drawables(
         [_coerce_drawable_input(entry, index) for index, entry in enumerate(ydd.drawables)],
         version=int(ydd.version),
         shader_library=active_shader_library,
+        enhanced=enhanced,
+        gen9_library=gen9_library,
         generate_normals=generate_normals,
         generate_tangents=generate_tangents,
         fill_vertex_colours=fill_vertex_colours,
@@ -194,6 +219,7 @@ def build_ydd_bytes(
         system_data, graphics_data, system_blocks, graphics_blocks = _build_ydd_payload(
             prepared,
             page_counts=page_counts,
+            profile=profile,
         )
         system_data, graphics_data, system_flags, graphics_flags = layout_resource_sections(
             system_data,
