@@ -75,7 +75,8 @@ def test_gen9_literal_parameter_hashes_and_glass_sampler_layout() -> None:
 
 
 def test_gen9_runtime_layout_preserves_native_hashes_and_resolves_aliases() -> None:
-    base = read_gen9_shader_library().require_shader("normal_spec")
+    library = read_gen9_shader_library()
+    base = library.require_shader("normal_spec")
     runtime = build_runtime_gen9_shader_definition(
         base,
         (
@@ -91,3 +92,9 @@ def test_gen9_runtime_layout_preserves_native_hashes_and_resolves_aliases() -> N
     assert (specular.name_hash, specular.index, specular.sampler_value) == (0xE44690BB, 1, 5)
     assert (bump.name_hash, bump.index, bump.sampler_value) == (0x49C32B64, 5, 4)
     assert specular.pack_info() == bytes.fromhex("BB9046E406000000")
+    assert library.require_shader("default").require_parameter(
+        0xBABE4DBA
+    ).name == "diffusesampler"
+    assert library.require_shader("normal_spec_tnt").require_parameter(
+        0xE44690BB
+    ).name == "specsampler"
