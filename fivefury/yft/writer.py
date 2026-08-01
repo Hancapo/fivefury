@@ -161,17 +161,12 @@ def _freeze_material_value(value: object) -> object:
 
 
 def _prepared_material_key(material: PreparedMaterial) -> tuple[object, ...]:
-    gen9_name = (
-        getattr(material.gen9_definition, "name", "")
-        if material.gen9_definition is not None
-        else ""
-    )
     return (
         material.shader_file_name.casefold(),
         int(material.render_bucket),
         _freeze_material_value(material.textures),
         _freeze_material_value(material.parameters),
-        str(gen9_name).casefold(),
+        _freeze_material_value(material.gen9_definition),
     )
 
 

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ..ycd import YcdUvClipBinding
     from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
     from .collision import YdrCollisionStats
+    from .gen9 import ShaderGen9Definition
     from .materials import YdrMaterialDescriptor
     from .shaders import ShaderLibrary
 
@@ -734,6 +735,7 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
     textures: list[YdrTextureRef] = dataclasses.field(default_factory=list)
     parameters: list[YdrMaterialParameterRef] = dataclasses.field(default_factory=list)
     shader_definition: ShaderDefinition | None = None
+    gen9_definition: ShaderGen9Definition | None = None
 
     @property
     def resolved_shader_file_name(self) -> str | None:
@@ -820,6 +822,7 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
             )
 
         self.shader_definition = shader_definition
+        self.gen9_definition = None
         self.shader_name = shader_definition.name
         self.shader_name_hash = int(shader_definition.name_hash)
         self.shader_file_name = shader_file_name
@@ -915,6 +918,7 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
             textures=textures,
             parameters=numeric_parameters,
             render_bucket=int(self.render_bucket),
+            gen9_definition=self.gen9_definition,
         )
 
 

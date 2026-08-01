@@ -185,7 +185,7 @@ def prepare_materials(
         if enhanced:
             if gen9_library is None:
                 raise ValueError('Gen9 YDR writing requires a Gen9 shader library')
-            gen9_definition = gen9_library.require_shader(material.shader)
+            gen9_definition = material.gen9_definition or gen9_library.require_shader(material.shader)
             shader_definition, _legacy_shader_file_name, resolved_render_bucket = _resolve_legacy_shader_for_gen9(
                 material,
                 shader_library,

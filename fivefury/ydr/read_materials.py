@@ -4,7 +4,11 @@ import struct
 from typing import Callable
 
 from ..drawable import parameter_component_count
-from .gen9 import ShaderGen9Library, ShaderParamTypeG9
+from .gen9 import (
+    ShaderGen9Library,
+    ShaderParamTypeG9,
+    build_runtime_gen9_shader_definition,
+)
 from .model import YdrMaterial, YdrMaterialParameterRef, YdrTextureRef
 from .shaders import ShaderLibrary
 
@@ -49,6 +53,44 @@ def _parse_gen9_param_info(data_value: int) -> tuple[int, int, int, int]:
     param_offset = int((data_value >> 8) & 0xFFF)
     param_length = int((data_value >> 20) & 0xFFF)
     return kind, index, param_offset, param_length
+
+
+def _derive_gen9_buffer_sizes(
+    infos: list[tuple[int, int, int, int, int]],
+    first_buffer_pointers: list[int],
+    *,
+    parameter_data_size: int,
+    num_textures: int,
+    num_unknowns: int,
+    num_samplers: int,
+    multiplier: int,
+    fallback: list[int],
+) -> list[int]:
+    num_buffers = len(first_buffer_pointers)
+    if not num_buffers:
+        return []
+    fixed_size = (
+        num_buffers * 8 * multiplier
+        + num_textures * 8 * multiplier
+        + num_unknowns * 8 * multiplier
+        + num_samplers
+    )
+    buffers_size = parameter_data_size - fixed_size
+    if buffers_size < 0 or buffers_size % multiplier:
+        return fallback
+    single_buffers_size = buffers_size // multiplier
+    sizes = [
+        int(first_buffer_pointers[index + 1] - first_buffer_pointers[index])
+        for index in range(num_buffers - 1)
+    ]
+    sizes.append(single_buffers_size - sum(sizes))
+    minimum_sizes = [0] * num_buffers
+    for _name_hash, kind, index, offset, length in infos:
+        if kind == int(ShaderParamTypeG9.CBUFFER) and index < num_buffers:
+            minimum_sizes[index] = max(minimum_sizes[index], offset + length)
+    if any(size < minimum or size < 0 for size, minimum in zip(sizes, minimum_sizes)):
+        return fallback
+    return sizes
 
 
 def parse_material(
@@ -234,25 +276,26 @@ def parse_material_gen9(
             packed = u32(system_data, entry_off + 0x04)
             infos.append((parameter_hash, *_parse_gen9_param_info(packed)))
 
-        if gen9_definition is not None:
-            buffer_sizes = [int(size) for size in gen9_definition.buffer_sizes]
-        else:
-            buffer_sizes = [0] * int(num_buffers)
         ptrs_length = int(num_buffers) * 8 * int(multiplier)
         if num_buffers:
             first_buffer_ptrs = list(struct.unpack_from(f'<{num_buffers}Q', system_data, params_off))
-            if not any(buffer_sizes):
-                single_buffers_length = max(0, virtual_offset(texture_refs_pointer, system_data) - params_off - ptrs_length) if texture_refs_pointer else 0
-                running = 0
-                for buffer_index in range(num_buffers):
-                    if buffer_index + 1 < num_buffers:
-                        next_size = int(first_buffer_ptrs[buffer_index + 1]) - int(first_buffer_ptrs[buffer_index])
-                    else:
-                        next_size = max(0, single_buffers_length - running)
-                    buffer_sizes[buffer_index] = next_size
-                    running += next_size
         else:
             first_buffer_ptrs = []
+        fallback_buffer_sizes = (
+            [int(size) for size in gen9_definition.buffer_sizes]
+            if gen9_definition is not None
+            else [0] * int(num_buffers)
+        )
+        buffer_sizes = _derive_gen9_buffer_sizes(
+            infos,
+            first_buffer_ptrs,
+            parameter_data_size=parameter_data_size,
+            num_textures=int(num_textures),
+            num_unknowns=int(num_unknowns),
+            num_samplers=int(num_samplers),
+            multiplier=int(multiplier),
+            fallback=fallback_buffer_sizes,
+        )
         single_buffers_length = sum(buffer_sizes)
         textures_length = int(num_textures) * 8 * int(multiplier)
         unknowns_length = int(num_unknowns) * 8 * int(multiplier)
@@ -264,9 +307,23 @@ def parse_material_gen9(
         texture_ptrs = texture_ptrs_all[:num_textures]
         samplers_off = textures_off + textures_length + unknowns_length
         samplers = system_data[samplers_off : samplers_off + int(num_samplers)] if num_samplers else b''
+        runtime_gen9_definition = (
+            build_runtime_gen9_shader_definition(
+                gen9_definition,
+                infos,
+                buffer_sizes=buffer_sizes,
+                sampler_values=samplers,
+            )
+            if gen9_definition is not None
+            else None
+        )
 
         for param_index, (parameter_hash, kind, raw_index, param_offset, param_length) in enumerate(infos):
-            parameter_definition = gen9_definition.get_parameter(parameter_hash) if gen9_definition is not None else None
+            parameter_definition = (
+                runtime_gen9_definition.get_parameter(parameter_hash)
+                if runtime_gen9_definition is not None
+                else None
+            )
             parameter_name = None
             if parameter_definition is not None:
                 parameter_name = parameter_definition.legacy_name or parameter_definition.name
@@ -340,6 +397,7 @@ def parse_material_gen9(
         textures=textures,
         parameters=parameters,
         shader_definition=shader_definition,
+        gen9_definition=runtime_gen9_definition if parameters_pointer and param_infos_pointer and parameter_data_size > 0 else gen9_definition,
     )
 
 
