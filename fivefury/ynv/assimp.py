@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..game_target import GameTarget
 from ..ydr.assimp import AssimpScene, read_assimp_scene
 from .authoring import YnvSourcePolygon, build_ynv_cells, get_ynv_file_coords
 from .model import Ynv
@@ -30,6 +31,7 @@ def assimp_to_ynvs(
     source: str | Path,
     destination: str | Path | None = None,
     *,
+    game: str | GameTarget = GameTarget.GTA5,
     processing: int | None = None,
 ) -> list[Ynv] | list[Path]:
     scene = read_assimp_scene(source, processing=processing)
@@ -38,6 +40,7 @@ def assimp_to_ynvs(
         for ynv, _ in build_ynv_cells(
             _iter_scene_triangles(scene),
             source_path=str(source),
+            game=game,
         )
     ]
     if destination is None:
@@ -61,9 +64,10 @@ def obj_to_nav(
     source: str | Path,
     destination: str | Path | None = None,
     *,
+    game: str | GameTarget = GameTarget.GTA5,
     processing: int | None = None,
 ) -> list[Ynv] | list[Path]:
-    return assimp_to_ynvs(source, destination, processing=processing)
+    return assimp_to_ynvs(source, destination, game=game, processing=processing)
 
 
 __all__ = ["assimp_to_ynvs", "obj_to_nav"]

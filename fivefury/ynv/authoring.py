@@ -4,6 +4,7 @@ import dataclasses
 import math
 from collections.abc import Hashable, Mapping, Sequence
 
+from ..game_target import GameTarget, coerce_game_target
 from ..vector import Vector3, vec3
 from .model import (
     Ynv,
@@ -346,6 +347,7 @@ def _build_cell(
     ],
     *,
     source_path: str,
+    game: str | GameTarget,
 ) -> tuple[Ynv, Mapping[Hashable, Sequence[int]]]:
     if not polygons:
         raise ValueError("Cannot build a YNV without polygons")
@@ -436,6 +438,7 @@ def _build_cell(
 
     ynv = Ynv(
         path=source_path,
+        game=coerce_game_target(game),
         content_flags=YnvContentFlags.POLYGONS,
         aabb_size=(max_x - min_x, max_y - min_y, z_max - z_min),
         vertices=vertices,
@@ -515,11 +518,12 @@ def build_ynv_cells(
     polygons: Sequence[YnvSourcePolygon],
     *,
     source_path: str = "",
+    game: str | GameTarget = GameTarget.GTA5,
 ) -> list[tuple[Ynv, Mapping[Hashable, Sequence[int]]]]:
     groups = _prepare_groups(polygons, clip_to_grid=True)
     edge_map = _build_edge_map(groups)
     return [
-        _build_cell(groups[key], edge_map, source_path=source_path)
+        _build_cell(groups[key], edge_map, source_path=source_path, game=game)
         for key in sorted(groups)
     ]
 
@@ -528,12 +532,18 @@ def build_ynv_cell(
     polygons: Sequence[YnvSourcePolygon],
     *,
     source_path: str = "",
+    game: str | GameTarget = GameTarget.GTA5,
 ) -> tuple[Ynv, Mapping[Hashable, Sequence[int]]]:
     groups = _prepare_groups(polygons, clip_to_grid=False)
     if len(groups) != 1:
         raise ValueError("build_ynv_cell requires polygons from exactly one YNV cell")
     edge_map = _build_edge_map(groups)
-    return _build_cell(next(iter(groups.values())), edge_map, source_path=source_path)
+    return _build_cell(
+        next(iter(groups.values())),
+        edge_map,
+        source_path=source_path,
+        game=game,
+    )
 
 
 __all__ = [

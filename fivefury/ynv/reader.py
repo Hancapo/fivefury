@@ -25,6 +25,7 @@ from .model import (
     YnvSector,
     YnvSectorData,
 )
+from .runtime_headers import infer_ynv_game
 
 _ROOT_SIZE = 0x170
 _LIST_HEADER_SIZE = 0x30
@@ -390,6 +391,7 @@ def read_ynv(
     ynv = Ynv(
         version=int(header.version),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
+        game=infer_ynv_game(file_vft),
         file_vft=file_vft,
         file_unknown=file_unknown,
         pages_info=pages_info,

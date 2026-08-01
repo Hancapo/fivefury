@@ -7,6 +7,7 @@ from enum import IntFlag
 from pathlib import Path
 
 from ..common import FlexibleIntEnum
+from ..game_target import GameTarget, coerce_game_target
 from ..resource import ResourcePagesInfo
 from ..vector import vec_distance
 from .regions import position_matches_ynd_area
@@ -522,6 +523,7 @@ def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> i
 class Ynd:
     version: int = 1
     path: str = ""
+    game: GameTarget = GameTarget.GTA5
     area_id: int | None = None
     nodes: list[YndNode] = dataclasses.field(default_factory=list)
     file_vft: int = 0x406203D0
@@ -544,9 +546,16 @@ class Ynd:
         *,
         area_id: int | None = None,
         path: str | Path = "",
+        game: str | GameTarget = GameTarget.GTA5,
         version: int = 1,
     ) -> "Ynd":
-        return cls(version=int(version), path=str(path) if path else "", area_id=area_id, nodes=list(nodes))
+        return cls(
+            version=int(version),
+            path=str(path) if path else "",
+            game=coerce_game_target(game),
+            area_id=area_id,
+            nodes=list(nodes),
+        )
 
     @property
     def vehicle_node_count(self) -> int:
@@ -566,6 +575,7 @@ class Ynd:
 
     def build(self) -> "Ynd":
         self.version = int(self.version)
+        self.game = coerce_game_target(self.game)
         self.file_vft = int(self.file_vft) & 0xFFFFFFFF
         self.file_unknown = int(self.file_unknown) & 0xFFFFFFFF
         self.nodes = [node.build() for node in self.nodes]

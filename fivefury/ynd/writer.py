@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..binary import pack_struct
 from ..common import atomic_write_bytes
+from ..game_target import GameTarget, coerce_game_target
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -14,6 +15,7 @@ from ..resource import (
     write_resource_pages_info,
 )
 from .model import Ynd
+from .runtime_headers import YND_VERSION, get_ynd_runtime_profile
 
 _ROOT_SIZE = 0x70
 _NODE_SIZE = 0x28
@@ -27,8 +29,20 @@ def _virtual(offset: int) -> int:
     return _SYSTEM_BASE + int(offset)
 
 
-def build_ynd_system_layout(source: Ynd, *, page_count: int = 1) -> tuple[bytes, list[ResourceBlockSpan]]:
-    ynd = dataclasses.replace(source, nodes=[dataclasses.replace(node) for node in source.nodes]).build()
+def build_ynd_system_layout(
+    source: Ynd,
+    *,
+    page_count: int = 1,
+    game: str | GameTarget | None = None,
+) -> tuple[bytes, list[ResourceBlockSpan]]:
+    target = coerce_game_target(source.game if game is None else game)
+    profile = get_ynd_runtime_profile(target)
+    ynd = dataclasses.replace(
+        source,
+        game=target,
+        file_vft=profile.file_vft,
+        nodes=[dataclasses.replace(node) for node in source.nodes],
+    ).build()
     issues = ynd.validate()
     if issues:
         issue_lines = "\n".join(f"- {issue}" for issue in issues)
@@ -170,17 +184,25 @@ def build_ynd_system_layout(source: Ynd, *, page_count: int = 1) -> tuple[bytes,
     return writer.finish(), writer.block_spans
 
 
-def build_ynd_bytes(source: Ynd) -> bytes:
+def build_ynd_bytes(source: Ynd, *, game: str | GameTarget | None = None) -> bytes:
     storage_issues = source.validate_storage_limits()
     if storage_issues:
         raise ValueError("cannot build invalid YND:\n- " + "\n- ".join(storage_issues))
+    target = coerce_game_target(source.game if game is None else game)
+    source.game = target
     ynd = source.build()
+    if ynd.version != YND_VERSION:
+        raise ValueError(f"YND resources require version {YND_VERSION}, got {ynd.version}")
     page_count = 1
     system_flags = None
     graphics_flags = None
     system_data = b""
     for _ in range(16):
-        raw_system_data, block_spans = build_ynd_system_layout(ynd, page_count=page_count)
+        raw_system_data, block_spans = build_ynd_system_layout(
+            ynd,
+            page_count=page_count,
+            game=target,
+        )
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
             block_spans,
@@ -199,7 +221,12 @@ def build_ynd_bytes(source: Ynd) -> bytes:
     return build_rsc7(system_data, version=ynd.version, system_flags=system_flags, graphics_flags=graphics_flags)
 
 
-def save_ynd(source: Ynd, destination: str | Path) -> Path:
-    target = atomic_write_bytes(destination, build_ynd_bytes(source))
-    source.path = str(target)
-    return target
+def save_ynd(
+    source: Ynd,
+    destination: str | Path,
+    *,
+    game: str | GameTarget | None = None,
+) -> Path:
+    destination_path = atomic_write_bytes(destination, build_ynd_bytes(source, game=game))
+    source.path = str(destination_path)
+    return destination_path

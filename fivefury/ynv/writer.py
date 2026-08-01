@@ -5,6 +5,7 @@ import struct
 from pathlib import Path
 
 from ..common import atomic_write_bytes
+from ..game_target import GameTarget, coerce_game_target
 from ..resource import (
     ResourceBlockSpan,
     ResourceWriter,
@@ -22,6 +23,7 @@ from .model import (
     YnvSector,
     YnvSectorData,
 )
+from .runtime_headers import YNV_VERSION, get_ynv_runtime_profile
 
 _ROOT_SIZE = 0x170
 _LIST_PART_SIZE = 0x10
@@ -304,8 +306,22 @@ def _write_sector(
 
 
 def build_ynv_system_layout(
-    ynv: Ynv, *, page_count: int
+    source: Ynv,
+    *,
+    page_count: int,
+    game: str | GameTarget | None = None,
 ) -> tuple[bytes, list[ResourceBlockSpan]]:
+    target = coerce_game_target(source.game if game is None else game)
+    profile = get_ynv_runtime_profile(target)
+    ynv = dataclasses.replace(
+        source,
+        game=target,
+        file_vft=profile.file_vft,
+        vertices_info=dataclasses.replace(source.vertices_info, vft=profile.vertices_vft),
+        indices_info=dataclasses.replace(source.indices_info, vft=profile.indices_vft),
+        edges_info=dataclasses.replace(source.edges_info, vft=profile.edges_vft),
+        polys_info=dataclasses.replace(source.polys_info, vft=profile.polys_vft),
+    ).build()
     assert ynv.sector_tree is not None
     posoffset = tuple(float(component) for component in ynv.sector_tree.aabb_min)
     aabb_size = tuple(float(component) for component in ynv.aabb_size)
@@ -460,11 +476,15 @@ def build_ynv_system_layout(
     return writer.finish(), writer.block_spans
 
 
-def build_ynv_bytes(source: Ynv) -> bytes:
+def build_ynv_bytes(source: Ynv, *, game: str | GameTarget | None = None) -> bytes:
     storage_errors = source._validate_storage_limits()
     if storage_errors:
         raise ValueError("Invalid YNV:\n- " + "\n- ".join(storage_errors))
+    target = coerce_game_target(source.game if game is None else game)
+    source.game = target
     ynv = source.build()
+    if ynv.version != YNV_VERSION:
+        raise ValueError(f"YNV resources require version {YNV_VERSION}, got {ynv.version}")
     if ynv.sector_tree is None:
         raise ValueError("YNV requires a sector tree")
     ynv.pages_info.system_pages_count = int(ynv.system_pages_count)
@@ -479,7 +499,9 @@ def build_ynv_bytes(source: Ynv) -> bytes:
     graphics_flags = None
     for _ in range(16):
         raw_system_data, block_spans = build_ynv_system_layout(
-            ynv, page_count=page_count
+            ynv,
+            page_count=page_count,
+            game=target,
         )
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
@@ -507,8 +529,13 @@ def build_ynv_bytes(source: Ynv) -> bytes:
     )
 
 
-def save_ynv(source: Ynv, destination: str | Path) -> Path:
-    return atomic_write_bytes(destination, build_ynv_bytes(source))
+def save_ynv(
+    source: Ynv,
+    destination: str | Path,
+    *,
+    game: str | GameTarget | None = None,
+) -> Path:
+    return atomic_write_bytes(destination, build_ynv_bytes(source, game=game))
 
 
 __all__ = ["build_ynv_bytes", "build_ynv_system_layout", "save_ynv"]

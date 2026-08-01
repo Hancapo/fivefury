@@ -6,6 +6,7 @@ from enum import IntFlag
 from pathlib import Path
 
 from ..common import FlexibleIntEnum
+from ..game_target import GameTarget, coerce_game_target
 from ..resource import ResourcePagesInfo
 
 YnvResourcePagesInfo = ResourcePagesInfo
@@ -571,6 +572,7 @@ class YnvSector:
 class Ynv:
     version: int = 2
     path: str = ""
+    game: GameTarget = GameTarget.GTA5
     file_vft: int = 0x4061E7E8
     file_unknown: int = 1
     pages_info: YnvResourcePagesInfo = dataclasses.field(
@@ -894,6 +896,7 @@ class Ynv:
     def build(self) -> Ynv:
         self.version = int(self.version)
         self.path = str(self.path)
+        self.game = coerce_game_target(self.game)
         self.file_vft = int(self.file_vft or 0x4061E7E8) & 0xFFFFFFFF
         self.file_unknown = int(self.file_unknown or 1) & 0xFFFFFFFF
         self.pages_info = dataclasses.replace(self.pages_info)
