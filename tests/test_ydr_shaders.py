@@ -57,11 +57,11 @@ def test_format_ydr_gen9_shader_info_lists_buffers_and_parameters() -> None:
     assert "SpecularTex (Texture, legacy=SpecSampler, index=3)" in formatted
 
 
-def test_gen9_literal_parameter_hashes_and_glass_sampler_layout() -> None:
+def test_gen9_resolved_semantics_and_glass_sampler_layout() -> None:
     shader = read_gen9_shader_library().require_shader("glass_breakable")
 
     assert [
-        (parameter.name_hash, parameter.index, parameter.sampler_value)
+        (parameter.semantic_hash, parameter.index, parameter.sampler_value)
         for parameter in shader.sampler_parameters
     ] == [
         (0x184D4D47, 0, 0),
@@ -70,11 +70,11 @@ def test_gen9_literal_parameter_hashes_and_glass_sampler_layout() -> None:
         (0x24C5AB07, 3, 2),
         (0x49C32B64, 4, 4),
     ]
-    assert shader.require_parameter("specsampler").name_hash == 0xE44690BB
-    assert shader.require_parameter("bumpsampler").name_hash == 0x49C32B64
+    assert shader.require_parameter("trilinearwrap").semantic_hash == 0xE44690BB
+    assert shader.require_parameter("anisotropic4xwrap").semantic_hash == 0x49C32B64
 
 
-def test_gen9_runtime_layout_preserves_native_hashes_and_resolves_aliases() -> None:
+def test_gen9_runtime_layout_preserves_and_resolves_semantic_hashes() -> None:
     library = read_gen9_shader_library()
     base = library.require_shader("normal_spec")
     runtime = build_runtime_gen9_shader_definition(
@@ -85,16 +85,12 @@ def test_gen9_runtime_layout_preserves_native_hashes_and_resolves_aliases() -> N
         ),
         buffer_sizes=(48,),
         sampler_values=bytes((1, 5, 6, 2, 3, 4)),
+        shader_library=library,
     )
 
-    specular = runtime.require_parameter("specsampler")
-    bump = runtime.require_parameter("bumpsampler")
-    assert (specular.name_hash, specular.index, specular.sampler_value) == (0xE44690BB, 1, 5)
-    assert (bump.name_hash, bump.index, bump.sampler_value) == (0x49C32B64, 5, 4)
-    assert specular.pack_info() == bytes.fromhex("BB9046E406000000")
-    assert library.require_shader("default").require_parameter(
-        0xBABE4DBA
-    ).name == "diffusesampler"
-    assert library.require_shader("normal_spec_tnt").require_parameter(
-        0xE44690BB
-    ).name == "specsampler"
+    trilinear = runtime.require_parameter("trilinearwrap")
+    anisotropic = runtime.require_parameter("anisotropic4xwrap")
+    assert (trilinear.semantic_hash, trilinear.index, trilinear.sampler_value) == (0xE44690BB, 1, 5)
+    assert (anisotropic.semantic_hash, anisotropic.index, anisotropic.sampler_value) == (0x49C32B64, 5, 4)
+    assert trilinear.pack_info() == bytes.fromhex("BB9046E406000000")
+    assert library.require_shader("default").get_parameter(0xBABE4DBA) is None

@@ -40,6 +40,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Enhanced shader sampler semantics and runtime parameter resolution.
 - Composite-bound active counts and reserved capacity during binary round-trips.
 - YFT physics archetype filenames during binary round-trips.
 - Enhanced material parameter layouts during binary round-trips.
