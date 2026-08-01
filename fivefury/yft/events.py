@@ -3,15 +3,12 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Iterator, Sequence
 
-YFT_EVENT_SET_RESOURCE_TAG = 0x74536353
-
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftEventSet:
     pointer: int = 0
-    resource_tag: int = YFT_EVENT_SET_RESOURCE_TAG
-    resource_state: int = 0
-    reserved_08: int = 0
+    vft: int = 0
+    resource_state: int = 1
     instance_pointers: tuple[int, ...] = ()
     capacity: int = 0
     new_instance_type: int = 0
@@ -25,9 +22,7 @@ class YftEventSet:
     @property
     def can_rebuild(self) -> bool:
         return (
-            self.resource_tag == YFT_EVENT_SET_RESOURCE_TAG
-            and self.resource_state == 0
-            and self.reserved_08 == 0
+            self.resource_state == 1
             and self.is_empty
             and self.capacity == 0
             and self.new_instance_type == 0
@@ -138,7 +133,6 @@ class YftPhysicsChildEvents:
 
 
 __all__ = [
-    "YFT_EVENT_SET_RESOURCE_TAG",
     "YftEventSet",
     "YftPhysicsChildEvents",
     "YftPhysicsGroupEvents",

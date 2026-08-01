@@ -7,7 +7,7 @@ from ..binary import u64 as _u64
 from .events import YftEventSet
 from .io_helpers import read_pointer_array, try_virtual_offset
 
-_EVENT_SET_SIZE = 0x38
+_EVENT_SET_SIZE = 0x30
 
 
 def read_event_set(
@@ -23,21 +23,20 @@ def read_event_set(
     offset = try_virtual_offset(system_data, pointer)
     if offset is None or offset + _EVENT_SET_SIZE > len(system_data):
         return None
-    count = _u16(system_data, offset + 0x18)
-    capacity = _u16(system_data, offset + 0x1A)
-    instance_pointer = _u64(system_data, offset + 0x10)
+    count = _u16(system_data, offset + 0x10)
+    capacity = _u16(system_data, offset + 0x12)
+    instance_pointer = _u64(system_data, offset + 0x08)
     event_set = YftEventSet(
         pointer=pointer,
-        resource_tag=_u32(system_data, offset),
+        vft=_u32(system_data, offset),
         resource_state=_u32(system_data, offset + 4),
-        reserved_08=_u64(system_data, offset + 8),
         instance_pointers=tuple(
             read_pointer_array(system_data, instance_pointer, count)
         ),
         capacity=capacity,
-        new_instance_type=_i32(system_data, offset + 0x20),
-        bank_pointer=_u64(system_data, offset + 0x28),
-        group_pointer=_u64(system_data, offset + 0x30),
+        new_instance_type=_i32(system_data, offset + 0x18),
+        bank_pointer=_u64(system_data, offset + 0x20),
+        group_pointer=_u64(system_data, offset + 0x28),
     )
     if cache is not None:
         cache[pointer] = event_set

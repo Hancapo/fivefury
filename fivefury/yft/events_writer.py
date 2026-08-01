@@ -4,13 +4,16 @@ from collections.abc import Iterable
 
 from ..resource import ResourceWriter
 from .events import YftEventSet, YftPhysicsChildEvents
+from .resource_headers import YftRuntimeHeaders
 
-_EVENT_SET_SIZE = 0x40
+_EVENT_SET_SIZE = 0x30
 
 
 def write_event_sets(
     writer: ResourceWriter,
     event_sets: Iterable[YftEventSet],
+    *,
+    runtime_headers: YftRuntimeHeaders,
 ) -> dict[int, int]:
     offsets: dict[int, int] = {}
     for event_set in event_sets:
@@ -20,11 +23,10 @@ def write_event_sets(
         if not event_set.can_rebuild:
             raise ValueError("only empty runtime YFT event sets can be rebuilt")
         offset = writer.alloc(_EVENT_SET_SIZE, 16)
-        writer.pack_into("I", offset, int(event_set.resource_tag))
+        writer.pack_into("I", offset, int(runtime_headers.event_set))
         writer.pack_into("I", offset + 4, int(event_set.resource_state))
-        writer.pack_into("Q", offset + 8, int(event_set.reserved_08))
-        writer.pack_into("HH", offset + 0x18, 0, 0)
-        writer.pack_into("i", offset + 0x20, int(event_set.new_instance_type))
+        writer.pack_into("HH", offset + 0x10, 0, 0)
+        writer.pack_into("i", offset + 0x18, int(event_set.new_instance_type))
         offsets[identity] = offset
     return offsets
 

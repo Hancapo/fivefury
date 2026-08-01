@@ -2865,7 +2865,14 @@ def test_yft_validation_rejects_unwritable_resource_graphs():
     )
 
 
-def test_yft_empty_event_sets_roundtrip():
+@pytest.mark.parametrize(
+    ("version", "runtime_headers"),
+    (
+        (162, LEGACY_YFT_RUNTIME_HEADERS),
+        (171, GEN9_YFT_RUNTIME_HEADERS),
+    ),
+)
+def test_yft_empty_event_sets_roundtrip(version, runtime_headers):
     event_set = YftEventSet.declare()
     child = YftPhysicsChild.declare()
     child = dataclasses.replace(
@@ -2874,7 +2881,7 @@ def test_yft_empty_event_sets_roundtrip():
     )
     group = YftPhysicsGroup.declare("body", children=(child,))
     drawable = Ydr(
-        version=162,
+        version=version,
         lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]},
     )
     bound = BoundBox.from_center_size(
@@ -2885,6 +2892,7 @@ def test_yft_empty_event_sets_roundtrip():
     yft = create_yft(
         drawable,
         name="event_fragment",
+        version=version,
         physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
         physics_bound=bound,
     )
@@ -2896,7 +2904,8 @@ def test_yft_empty_event_sets_roundtrip():
     parsed_event = parsed.physics_lod("high").children[0].events.continuous
 
     assert parsed_event is not None
-    assert parsed_event.resource_tag == 0x74536353
+    assert parsed_event.vft == runtime_headers.event_set
+    assert parsed_event.resource_state == 1
     assert parsed_event.is_empty is True
     assert parsed.validate() == []
 
