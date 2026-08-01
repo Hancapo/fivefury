@@ -9,7 +9,16 @@ from ..metahash import MetaHash
 from ..resource import RSC7_MAGIC, checked_virtual_offset, split_rsc7_sections
 from .constants import EXPRESSION_BLOCK_SIZE, SPRING_BLOCK_SIZE, VIRTUAL_BASE
 from .instructions import parse_instruction_buffers
-from .model import ResourceListInfo, Yed, YedDictionary, YedExpression, YedSpring, YedStream, YedTrack
+from .model import (
+    ResourceListInfo,
+    Yed,
+    YedDictionary,
+    YedExpression,
+    YedSpring,
+    YedStream,
+    YedTrack,
+)
+from .runtime_headers import infer_yed_game
 
 
 def virtual_offset(pointer: int, data: bytes) -> int:
@@ -179,9 +188,11 @@ def read_yed(source: ByteSource, *, path: str | Path = "") -> Yed:
     if int.from_bytes(data[:4], "little") != RSC7_MAGIC:
         raise ValueError("YED data must be a standalone RSC7 resource")
     header, system_data, graphics_data = split_rsc7_sections(data)
+    dictionary = read_yed_dictionary(system_data)
     return Yed(
-        dictionary=read_yed_dictionary(system_data),
+        dictionary=dictionary,
         version=int(header.version),
+        game=infer_yed_game(dictionary.file_vft),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
         system_flags=int(header.system_flags),
         graphics_flags=int(header.graphics_flags),
