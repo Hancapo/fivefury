@@ -14,11 +14,13 @@ from fivefury import (
     BoundComposite,
     BoundGeometry,
     BoundMaterial,
+    BoundMaterialType,
     YdrMaterialInput,
     YdrMeshInput,
     build_bound_from_triangles,
     calculate_bound_ref_counts,
     create_ydr,
+    get_bound_material_density,
 )
 from fivefury.common import atomic_write_bytes
 from fivefury.resource import (
@@ -75,6 +77,7 @@ from fivefury.yft import (
     YftVerletCloth,
     build_fragment_geometry_bound,
     build_yft_bytes,
+    calculate_bound_mass_properties,
     create_yft,
     normalize_physics_lod,
     read_yft,
@@ -1038,6 +1041,197 @@ def test_yft_declarative_physics_validation():
     assert any(
         issue.is_error and issue.path == "state.damaged_drawable_index"
         for issue in issues
+    )
+
+
+def test_bound_mass_properties_calculate_box_mass_inertia_and_inverses():
+    bound = BoundBox.from_center_size((1.0, 2.0, 3.0), (2.0, 3.0, 4.0))
+
+    properties = calculate_bound_mass_properties(bound, density=10.0)
+    default_properties = calculate_bound_mass_properties(
+        BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    )
+
+    assert properties.volume == pytest.approx(24.0)
+    assert properties.mass == pytest.approx(240.0)
+    assert properties.center_of_gravity == pytest.approx((1.0, 2.0, 3.0))
+    assert properties.angular_inertia == pytest.approx((500.0, 400.0, 260.0))
+    assert properties.inverse_mass == pytest.approx(1.0 / 240.0)
+    assert properties.inverse_angular_inertia == pytest.approx(
+        (1.0 / 500.0, 1.0 / 400.0, 1.0 / 260.0)
+    )
+    assert default_properties.density == pytest.approx(1750.0)
+    assert default_properties.mass == pytest.approx(1750.0)
+
+
+def test_bound_mass_properties_use_native_material_density():
+    concrete = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (2.0, 2.0, 2.0),
+        material_index=BoundMaterialType.CONCRETE,
+    )
+
+    properties = calculate_bound_mass_properties(concrete)
+
+    assert get_bound_material_density(BoundMaterialType.CONCRETE) == pytest.approx(
+        7850.5
+    )
+    assert properties.volume == pytest.approx(8.0)
+    assert properties.density == pytest.approx(7850.5)
+    assert properties.mass == pytest.approx(62804.0)
+
+
+def test_composite_material_density_is_weighted_by_child_volume():
+    concrete = BoundBox.from_center_size(
+        (-2.0, 0.0, 0.0),
+        (1.0, 1.0, 1.0),
+        material_index=BoundMaterialType.CONCRETE,
+    )
+    wood = BoundBox.from_center_size(
+        (2.0, 0.0, 0.0),
+        (2.0, 2.0, 2.0),
+        material_index=BoundMaterialType.WOOD_SOLID_SMALL,
+    )
+
+    properties = calculate_bound_mass_properties(_composite(concrete, wood))
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare(
+            "high",
+            groups=(
+                YftPhysicsGroup.declare(
+                    "parts",
+                    children=(YftPhysicsChild.declare(), YftPhysicsChild.declare()),
+                ),
+            ),
+        ),
+        composite_bound=_composite(concrete, wood),
+    )
+
+    expected_mass = 7850.5 + 8.0 * 1400.0
+    assert properties.volume == pytest.approx(9.0)
+    assert properties.density == pytest.approx(expected_mass / 9.0)
+    assert properties.mass == pytest.approx(expected_mass)
+    assert [child.undamaged_mass for child in lod.children] == pytest.approx(
+        [7850.5, 11200.0]
+    )
+    assert lod.undamaged_damp_archetype.mass == pytest.approx(expected_mass)
+
+
+def test_physics_lod_calculates_each_child_from_its_composite_slot():
+    small = BoundBox.from_center_size((-2.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    large = BoundBox.from_center_size((2.0, 0.0, 0.0), (2.0, 2.0, 2.0))
+    groups = (
+        YftPhysicsGroup.declare(
+            "small",
+            children=(YftPhysicsChild.declare(),),
+        ),
+        YftPhysicsGroup.declare(
+            "large",
+            children=(YftPhysicsChild.declare(),),
+        ),
+    )
+
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare("high", groups=groups),
+        composite_bound=_composite(small, large),
+        density=2.0,
+    )
+
+    assert [child.undamaged_mass for child in lod.children] == pytest.approx(
+        [2.0, 16.0]
+    )
+    assert lod.children[0].undamaged_ang_inertia.as_tuple() == pytest.approx(
+        (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 2.0)
+    )
+    assert lod.children[1].undamaged_ang_inertia.as_tuple() == pytest.approx(
+        (32.0 / 3.0, 32.0 / 3.0, 32.0 / 3.0, 16.0)
+    )
+    assert [group.total_undamaged_mass for group in lod.groups] == pytest.approx(
+        [2.0, 16.0]
+    )
+    assert lod.undamaged_damp_archetype.mass == pytest.approx(18.0)
+    child_inertias = [
+        child.undamaged_ang_inertia for child in lod.children
+    ]
+    expected_archetype_inertia = lod.composite_bound.compute_composite_angular_inertia(
+        18.0,
+        masses=[item.mass for item in child_inertias],
+        inertias=[(item.x, item.y, item.z) for item in child_inertias],
+    )
+    assert lod.undamaged_damp_archetype.angular_inertia == pytest.approx(
+        expected_archetype_inertia
+    )
+    assert lod.largest_ang_inertia == pytest.approx(32.0 / 3.0)
+    assert lod.smallest_ang_inertia == pytest.approx((32.0 / 3.0) * 1.0e-3)
+
+
+def test_mass_calculation_preserves_explicit_values_unless_forced():
+    bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))
+    child = YftPhysicsChild.declare(undamaged_mass=7.0, damaged_mass=9.0)
+    declared = YftPhysicsLod.declare(
+        "high",
+        groups=(YftPhysicsGroup.declare("body", children=(child,)),),
+    )
+
+    preserved = normalize_physics_lod(
+        declared,
+        composite_bound=bound,
+        density=2.0,
+    )
+    forced = preserved.calculate_mass_properties(density=2.0, force=True)
+
+    assert preserved.children[0].undamaged_mass == pytest.approx(7.0)
+    assert preserved.children[0].damaged_mass == pytest.approx(9.0)
+    assert forced.children[0].undamaged_mass == pytest.approx(16.0)
+    assert forced.children[0].damaged_mass == pytest.approx(16.0)
+    assert forced.undamaged_damp_archetype.mass == pytest.approx(16.0)
+
+
+def test_damaged_child_uses_its_own_drawable_bound_for_mass_properties():
+    intact = BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    damaged = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))
+    damaged_drawable = Ydr(version=162)
+    damaged_drawable.bound = damaged
+    child = YftPhysicsChild.declare(
+        damaged_entity=YftPhysicsEntity.declare(damaged_drawable),
+    )
+    group = YftPhysicsGroup.declare("body", children=(child,))
+
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare("high", groups=(group,)),
+        composite_bound=intact,
+        density=3.0,
+    )
+
+    assert lod.children[0].undamaged_mass == pytest.approx(3.0)
+    assert lod.children[0].damaged_mass == pytest.approx(24.0)
+    assert lod.damaged_damp_archetype.mass == pytest.approx(24.0)
+
+
+@pytest.mark.parametrize("version", [162, 171])
+def test_calculated_mass_properties_roundtrip_through_yft_writer(version: int):
+    bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 3.0, 4.0))
+    child = YftPhysicsChild.declare()
+    group = YftPhysicsGroup.declare("body", children=(child,))
+    source = create_yft(
+        _simple_fragment_drawable("mass_properties"),
+        name="mass_properties",
+        version=version,
+        physics_lods=(YftPhysicsLod.declare("high", groups=(group,)),),
+        physics_bound=bound,
+        physics_density=10.0,
+    )
+
+    parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
+    parsed_lod = parsed.physics_lod("high")
+
+    assert parsed_lod.children[0].undamaged_mass == pytest.approx(240.0)
+    assert parsed_lod.children[0].undamaged_ang_inertia.as_tuple() == pytest.approx(
+        (500.0, 400.0, 260.0, 240.0)
+    )
+    assert parsed_lod.undamaged_damp_archetype.mass == pytest.approx(240.0)
+    assert parsed_lod.undamaged_damp_archetype.inv_mass == pytest.approx(
+        1.0 / 240.0
     )
 
 

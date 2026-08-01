@@ -19,6 +19,7 @@ from .resource_headers import (
 if TYPE_CHECKING:
     from ..bounds import Bound
     from ..ydr import Ydr
+    from .bound_profiles import YftPhysicsBoundProfile
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -482,7 +483,7 @@ class YftPhysicsChild:
         damaged_entity: YftPhysicsEntity | None = None,
         bone_id: int = 0,
         bone_controlled: bool | None = None,
-        undamaged_mass: float = 1.0,
+        undamaged_mass: float = 0.0,
         damaged_mass: float | None = None,
         owner_group_name: str = "",
         min_breaking_impulse: float = 0.0,
@@ -810,6 +811,23 @@ class YftPhysicsLod:
             groups=groups,
             damping_constants=self.damping_constants,
             root_cg_offset=self.root_cg_offset,
+        )
+
+    def calculate_mass_properties(
+        self,
+        *,
+        density: float | None = None,
+        force: bool = False,
+        profile: YftPhysicsBoundProfile | str = "prop",
+    ) -> YftPhysicsLod:
+        from .physics_authoring import normalize_physics_lod
+
+        return normalize_physics_lod(
+            self,
+            composite_bound=self.composite_bound,
+            density=density,
+            profile=profile,
+            recalculate_mass_properties=force,
         )
 
 

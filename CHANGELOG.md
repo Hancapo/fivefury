@@ -10,6 +10,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - GTA V streaming cache reading, writing, and authoring from YMAP, YTYP, and YBN assets.
 - Enhanced YFT authoring with drawable, physics, and collision-bound support.
+- Automatic mass and inertia calculation for YFT physics bounds.
+- Physical densities for collision materials.
+
+### Changed
+- YFT mass calculation now derives density from collision materials by default.
 
 ### Fixed
 - Enhanced YFT drawable layout detection and lossless reading.

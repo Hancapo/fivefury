@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Sequence
 
 from ..bounds import (
@@ -9,7 +10,9 @@ from ..bounds import (
     BoundBox,
     BoundChild,
     BoundComposite,
+    BoundGeometry,
     BoundType,
+    get_bound_material_density,
 )
 from ..bounds.geometry import identity_bound_transform
 from .bound_ownership import apply_physics_lod_bound_ref_counts
@@ -53,6 +56,78 @@ IDENTITY_MATRIX44: YftMatrix44 = (
     (0.0, 0.0, 0.0, 1.0),
 )
 
+DEFAULT_PHYSICS_DENSITY = 300.0
+YFT_ANGULAR_INERTIA_MAX_RATIO = 1.0e-3
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class YftMassProperties:
+    volume: float
+    density: float
+    mass: float
+    center_of_gravity: tuple[float, float, float]
+    angular_inertia: tuple[float, float, float]
+    inverse_mass: float
+    inverse_angular_inertia: tuple[float, float, float]
+
+    def as_inertia(self) -> YftPhysicsInertia:
+        return YftPhysicsInertia(*self.angular_inertia, mass=self.mass)
+
+
+def _nonnegative_finite(value: float, label: str) -> float:
+    result = float(value)
+    if not math.isfinite(result) or result < 0.0:
+        raise ValueError(f"{label} must be a finite non-negative value")
+    return result
+
+
+def calculate_bound_mass_properties(
+    bound: Bound | None,
+    *,
+    density: float | None = None,
+    mass: float | None = None,
+    fallback_mass: float = 1.0,
+) -> YftMassProperties:
+    resolved_density = bound_density(bound) if density is None else _nonnegative_finite(density, "density")
+    fallback = _nonnegative_finite(fallback_mass, "fallback_mass")
+    volume = 0.0 if bound is None else float(bound.compute_volume())
+    if not math.isfinite(volume) or volume < 0.0:
+        raise ValueError("bound volume must be a finite non-negative value")
+    resolved_mass = (
+        _nonnegative_finite(mass, "mass")
+        if mass is not None
+        else (volume * resolved_density if volume > 0.0 else fallback)
+    )
+    if bound is None:
+        inertia = box_inertia((1.0, 1.0, 1.0), resolved_mass)
+        center = (0.0, 0.0, 0.0)
+    else:
+        values = bound.compute_angular_inertia(resolved_mass)
+        if not all(math.isfinite(value) and value >= 0.0 for value in values):
+            raise ValueError("bound inertia must contain finite non-negative values")
+        inertia = YftPhysicsInertia(*values, mass=resolved_mass)
+        center = (
+            bound.compute_center_of_gravity()
+            if isinstance(bound, BoundComposite)
+            else tuple(float(value) for value in bound.sphere_center)
+        )
+    if not all(math.isfinite(value) for value in center):
+        raise ValueError("bound center of gravity must contain finite values")
+    inverse_mass = 1.0 / resolved_mass if resolved_mass > 0.0 else 0.0
+    inverse_inertia = tuple(
+        1.0 / value if value > 0.0 else 0.0
+        for value in (inertia.x, inertia.y, inertia.z)
+    )
+    return YftMassProperties(
+        volume=volume,
+        density=resolved_density,
+        mass=resolved_mass,
+        center_of_gravity=center,
+        angular_inertia=(inertia.x, inertia.y, inertia.z),
+        inverse_mass=inverse_mass,
+        inverse_angular_inertia=inverse_inertia,
+    )
+
 
 def box_inertia(
     size: tuple[float, float, float],
@@ -69,17 +144,53 @@ def box_inertia(
 
 
 def bound_inertia(bound: Bound | None, mass: float) -> YftPhysicsInertia:
-    if bound is None:
-        return box_inertia((1.0, 1.0, 1.0), mass)
-    inertia = bound.compute_angular_inertia(mass)
-    return YftPhysicsInertia(x=inertia[0], y=inertia[1], z=inertia[2], mass=float(mass))
+    return calculate_bound_mass_properties(bound, mass=mass).as_inertia()
 
 
-def bound_mass(bound: Bound | None, *, density: float = 1.0, fallback: float = 1.0) -> float:
+def bound_mass(
+    bound: Bound | None,
+    *,
+    density: float | None = None,
+    fallback: float = 1.0,
+) -> float:
+    return calculate_bound_mass_properties(
+        bound,
+        density=density,
+        fallback_mass=fallback,
+    ).mass
+
+
+def _primary_material_index(bound: Bound) -> int:
+    if isinstance(bound, BoundGeometry) and bound.materials:
+        return int(bound.materials[0].type)
+    return int(bound.material_index)
+
+
+def bound_density(
+    bound: Bound | None,
+    *,
+    fallback: float = DEFAULT_PHYSICS_DENSITY,
+) -> float:
+    resolved_fallback = _nonnegative_finite(fallback, "fallback")
     if bound is None:
-        return float(fallback)
-    volume = bound.compute_volume()
-    return max(0.0, volume * float(density)) if volume > 0.0 else float(fallback)
+        return resolved_fallback
+    if isinstance(bound, BoundComposite):
+        weighted_density = 0.0
+        total_volume = 0.0
+        for slot in bound.children:
+            child = slot.bound
+            if child is None:
+                continue
+            volume = float(child.compute_volume())
+            if not math.isfinite(volume) or volume <= 0.0:
+                continue
+            weighted_density += bound_density(child, fallback=resolved_fallback) * volume
+            total_volume += volume
+        if total_volume > 0.0:
+            return weighted_density / total_volume
+        return resolved_fallback
+    material_density = get_bound_material_density(_primary_material_index(bound))
+    return resolved_fallback if material_density is None else material_density
 
 
 def simple_physics_bound(
@@ -95,8 +206,34 @@ def default_damp_archetype(
     bound: Bound | None,
     mass: float,
     damping_constants: Sequence[YftPhysicsDamping] = DEFAULT_DAMPING_CONSTANTS,
+    child_inertias: Sequence[YftPhysicsInertia] = (),
+    child_bounds: Sequence[Bound | None] = (),
 ) -> YftPhysicsDampArchetype:
-    inertia = bound_inertia(bound, mass)
+    if isinstance(bound, BoundComposite) and child_inertias:
+        mass_values = tuple(item.mass for item in child_inertias)
+        inertia_values = tuple((item.x, item.y, item.z) for item in child_inertias)
+        composite = dataclasses.replace(
+            bound,
+            children=[
+                dataclasses.replace(
+                    slot,
+                    bound=(
+                        child_bounds[index]
+                        if index < len(child_bounds)
+                        else slot.bound
+                    ),
+                )
+                for index, slot in enumerate(bound.children)
+            ],
+        )
+        values = composite.compute_composite_angular_inertia(
+            mass,
+            masses=mass_values,
+            inertias=inertia_values,
+        )
+        inertia = YftPhysicsInertia(*values, mass=mass)
+    else:
+        inertia = bound_inertia(bound, mass)
     inv_mass = 1.0 / mass if mass > 0.0 else 0.0
     inv_inertia = tuple(1.0 / value if value > 0.0 else 0.0 for value in (inertia.x, inertia.y, inertia.z))
     return YftPhysicsDampArchetype(
@@ -201,13 +338,35 @@ def prepare_physics_bound(
     return bound
 
 
+def _bound_for_child(
+    root: Bound | None,
+    child: YftPhysicsChild,
+    index: int,
+    *,
+    damaged: bool,
+) -> Bound | None:
+    entity_bound = child.damaged_bound if damaged else child.undamaged_bound
+    if damaged:
+        return entity_bound
+    if isinstance(root, BoundComposite):
+        if index < len(root.children):
+            slot_bound = root.children[index].bound
+            if slot_bound is not None:
+                return slot_bound
+        return entity_bound
+    if index == 0:
+        return root or entity_bound
+    return entity_bound
+
+
 def normalize_physics_lod(
     lod: YftPhysicsLod,
     *,
     composite_bound: Bound | None = None,
-    density: float = 1.0,
+    density: float | None = None,
     has_damaged_drawable: bool = False,
     profile: YftPhysicsBoundProfile | str = YftPhysicsBoundProfile.PROP,
+    recalculate_mass_properties: bool = False,
 ) -> YftPhysicsLod:
     resolved_profile = coerce_yft_physics_bound_profile(profile)
     source_bound = composite_bound or lod.composite_bound
@@ -231,10 +390,14 @@ def normalize_physics_lod(
             density=density,
             has_damaged_drawable=has_damaged_drawable,
             profile=resolved_profile,
+            recalculate_mass_properties=recalculate_mass_properties,
         )
 
     resolved_groups = []
     resolved_children: list[YftPhysicsChild] = []
+    undamaged_child_bounds: list[Bound | None] = []
+    damaged_child_bounds: list[Bound | None] = []
+    declared_child_count = sum(len(group.children) for group in groups) or len(children)
     cursor = 0
     for index, group in enumerate(groups):
         group_name = group.name or group.debug_name or f"group_{index}"
@@ -242,19 +405,53 @@ def normalize_physics_lod(
         if not group_children and group.child_index != 0xFF:
             group_children = children[group.child_index : group.child_index + group.num_children]
         normalized_children = []
-        for child in group_children:
-            mass = child.undamaged_mass if child.undamaged_mass > 0.0 else bound_mass(bound, density=density)
-            damaged_mass = child.damaged_mass if child.damaged_mass > 0.0 else mass
+        for child_index, child in enumerate(group_children, start=cursor):
+            child_bound = _bound_for_child(
+                bound,
+                child,
+                child_index,
+                damaged=False,
+            )
+            damaged_bound = _bound_for_child(
+                bound,
+                child,
+                child_index,
+                damaged=True,
+            )
+            if damaged_bound is None and has_damaged_drawable and declared_child_count == 1:
+                damaged_bound = child_bound
+            mass = (
+                bound_mass(child_bound, density=density)
+                if recalculate_mass_properties or child.undamaged_mass <= 0.0
+                else child.undamaged_mass
+            )
+            damaged_mass = (
+                (
+                    bound_mass(damaged_bound, density=density)
+                    if damaged_bound is not None
+                    else mass
+                )
+                if recalculate_mass_properties or child.damaged_mass <= 0.0
+                else child.damaged_mass
+            )
             undamaged_inertia = (
-                child.undamaged_ang_inertia
-                if child.undamaged_ang_inertia.mass > 0.0
-                else bound_inertia(bound, mass)
+                bound_inertia(child_bound, mass)
+                if recalculate_mass_properties
+                or child.undamaged_ang_inertia.mass <= 0.0
+                else child.undamaged_ang_inertia
             )
             damaged_inertia = (
-                child.damaged_ang_inertia
-                if child.damaged_ang_inertia.mass > 0.0
-                else bound_inertia(bound, damaged_mass)
+                (
+                    bound_inertia(damaged_bound, damaged_mass)
+                    if damaged_bound is not None
+                    else YftPhysicsInertia(mass=damaged_mass)
+                )
+                if recalculate_mass_properties
+                or child.damaged_ang_inertia.mass <= 0.0
+                else child.damaged_ang_inertia
             )
+            undamaged_child_bounds.append(child_bound)
+            damaged_child_bounds.append(damaged_bound)
             normalized_children.append(
                 dataclasses.replace(
                     child,
@@ -274,6 +471,7 @@ def normalize_physics_lod(
                 debug_name=group.debug_name or group_name,
                 child_index=cursor if normalized_children else 0xFF,
                 num_children=len(normalized_children),
+                children=tuple(normalized_children),
                 total_undamaged_mass=sum(child.undamaged_mass for child in normalized_children),
                 total_damaged_mass=sum(child.damaged_mass for child in normalized_children),
             )
@@ -286,11 +484,21 @@ def normalize_physics_lod(
     min_impulses = tuple(lod.min_breaking_impulses) or tuple(
         child.min_breaking_impulse for child in resolved_children
     )
-    undamaged_inertia = tuple(lod.undamaged_ang_inertia) or tuple(
-        child.undamaged_ang_inertia for child in resolved_children
+    declared_undamaged_inertia = tuple(lod.undamaged_ang_inertia)
+    declared_damaged_inertia = tuple(lod.damaged_ang_inertia)
+    undamaged_inertia = (
+        declared_undamaged_inertia
+        if not recalculate_mass_properties
+        and len(declared_undamaged_inertia) == len(resolved_children)
+        and all(item.mass > 0.0 for item in declared_undamaged_inertia)
+        else tuple(child.undamaged_ang_inertia for child in resolved_children)
     )
-    damaged_inertia = tuple(lod.damaged_ang_inertia) or tuple(
-        child.damaged_ang_inertia for child in resolved_children
+    damaged_inertia = (
+        declared_damaged_inertia
+        if not recalculate_mass_properties
+        and len(declared_damaged_inertia) == len(resolved_children)
+        and all(item.mass > 0.0 for item in declared_damaged_inertia)
+        else tuple(child.damaged_ang_inertia for child in resolved_children)
     )
     link_attachments = lod.link_attachments
     if not link_attachments.matrices:
@@ -301,21 +509,30 @@ def normalize_physics_lod(
         raise ValueError(
             "link attachment count must match the physics child count"
         )
-    smallest = min((item.x for item in undamaged_inertia if item.x > 0.0), default=0.0)
     largest = max(
-        (max(item.x, item.y, item.z) for item in undamaged_inertia),
+        (
+            max(item.x, item.y, item.z)
+            for item in (*undamaged_inertia, *damaged_inertia)
+        ),
         default=0.0,
     )
+    smallest = largest * YFT_ANGULAR_INERTIA_MAX_RATIO
     total_mass = sum(child.undamaged_mass for child in resolved_children)
-    damp_undamaged = lod.undamaged_damp_archetype or default_damp_archetype(
+    damp_undamaged = (
+        None if recalculate_mass_properties else lod.undamaged_damp_archetype
+    ) or default_damp_archetype(
         bound=bound,
         mass=total_mass,
         damping_constants=damping_constants,
+        child_inertias=undamaged_inertia,
+        child_bounds=undamaged_child_bounds,
     )
     has_damage_state = has_damaged_drawable or any(
         child.has_damage_state for child in resolved_children
     )
-    damp_damaged = lod.damaged_damp_archetype
+    damp_damaged = (
+        None if recalculate_mass_properties else lod.damaged_damp_archetype
+    )
     if damp_damaged is None and has_damage_state:
         damp_damaged = default_damp_archetype(
             bound=bound,
@@ -324,6 +541,8 @@ def normalize_physics_lod(
                 or total_mass
             ),
             damping_constants=damping_constants,
+            child_inertias=damaged_inertia,
+            child_bounds=damaged_child_bounds,
         )
     normalized = dataclasses.replace(
         lod,
@@ -353,8 +572,16 @@ def normalize_physics_lod(
             link_attachments,
             matrices=link_attachments.matrices[: len(resolved_children)],
         ),
-        smallest_ang_inertia=lod.smallest_ang_inertia or smallest,
-        largest_ang_inertia=lod.largest_ang_inertia or largest,
+        smallest_ang_inertia=(
+            smallest
+            if recalculate_mass_properties
+            else lod.smallest_ang_inertia or smallest
+        ),
+        largest_ang_inertia=(
+            largest
+            if recalculate_mass_properties
+            else lod.largest_ang_inertia or largest
+        ),
         min_move_force=lod.min_move_force or 0.0,
         composite_bound=bound,
         undamaged_damp_archetype=damp_undamaged,
@@ -388,10 +615,14 @@ def physics_lod_pointers_for(lods: Sequence[YftPhysicsLod]) -> YftPhysicsLodPoin
 
 __all__ = [
     "DEFAULT_DAMPING_CONSTANTS",
+    "DEFAULT_PHYSICS_DENSITY",
     "IDENTITY_MATRIX44",
+    "YftMassProperties",
+    "bound_density",
     "bound_inertia",
     "bound_mass",
     "box_inertia",
+    "calculate_bound_mass_properties",
     "default_articulated_body_type",
     "default_damp_archetype",
     "normalize_physics_lod",
