@@ -882,6 +882,12 @@ from .yed import (
 )
 from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
 from .ymf import (
+    YMF_HOURS_ON_OFF_MASK,
+    YMF_MAX_ARRAY_ITEMS,
+    YMF_MAX_IMAP_DEPENDENCIES,
+    YMF_MAX_INTERIOR_BOUNDS,
+    YMF_MAX_ITYP_DEPENDENCIES,
+    YMF_MIN_INTERIOR_BOUNDS,
     HdTxdAssetBinding,
     ImapDependencies,
     ImapDependency,
@@ -1666,6 +1672,12 @@ __all__ = [
     "YmapLodLightType",
     "YmapMloInstanceFlags",
     "YmapPriorityLevel",
+    "YMF_HOURS_ON_OFF_MASK",
+    "YMF_MAX_ARRAY_ITEMS",
+    "YMF_MAX_IMAP_DEPENDENCIES",
+    "YMF_MAX_INTERIOR_BOUNDS",
+    "YMF_MAX_ITYP_DEPENDENCIES",
+    "YMF_MIN_INTERIOR_BOUNDS",
     "HdTxdAssetBinding",
     "ImapDependencies",
     "ImapDependency",

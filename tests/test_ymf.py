@@ -4,6 +4,11 @@ from fivefury.gamefile import GameFileType
 from fivefury.pso import is_pso
 from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
 from fivefury.ymf import (
+    YMF_HOURS_ON_OFF_MASK,
+    YMF_MAX_ARRAY_ITEMS,
+    YMF_MAX_IMAP_DEPENDENCIES,
+    YMF_MAX_INTERIOR_BOUNDS,
+    YMF_MAX_ITYP_DEPENDENCIES,
     HdTxdAssetBinding,
     ImapDependencies,
     ImapDependency,
@@ -238,3 +243,81 @@ def test_build_ymf_manifest_registers_standalone_mlo_rpf_without_ymap() -> None:
     assert [(int(item.name), [int(bound) for bound in item.bounds]) for item in manifest.interiors] == [
         (int(mlo.name), [int(mlo.name)])
     ]
+
+
+def test_ymf_runtime_limit_constants_match_serialized_contracts() -> None:
+    assert YMF_MAX_IMAP_DEPENDENCIES == 6
+    assert YMF_MAX_ITYP_DEPENDENCIES == 8
+    assert YMF_MAX_INTERIOR_BOUNDS == 2
+    assert YMF_HOURS_ON_OFF_MASK == 0x00FFFFFF
+    assert YMF_MAX_ARRAY_ITEMS == 0xFFFE
+
+
+def test_ymf_validation_counts_unique_imap_dependencies_across_entries() -> None:
+    manifest = PackFileMetaData(
+        imap_dependencies=[ImapDependency("city_imap", "parent_0")],
+        imap_dependencies_2=[
+            ImapDependencies("city_imap", [f"parent_{index}" for index in range(1, 5)]),
+            ImapDependencies("city_imap", ["parent_4", "parent_5", "parent_6"]),
+        ],
+    )
+
+    issues = manifest.validate()
+
+    assert any("7 dynamic YTYP dependencies" in issue and "at most 6" in issue for issue in issues)
+
+
+def test_ymf_validation_does_not_count_duplicate_or_permanent_imap_dependencies() -> None:
+    manifest = PackFileMetaData(
+        imap_dependencies_2=[
+            ImapDependencies("city_imap", [f"parent_{index}" for index in range(7)]),
+            ImapDependencies("city_imap", ["parent_0", "parent_1"]),
+        ],
+    )
+
+    assert manifest.validate(permanent_ytyps=["parent_6"]) == []
+    assert build_ymf(manifest, permanent_ytyps=["parent_6"]).to_bytes()
+
+
+def test_ymf_validation_counts_unique_ityp_parents_across_entries() -> None:
+    manifest = PackFileMetaData(
+        ityp_dependencies_2=[
+            ItypDependencies("child_ityp", [f"parent_{index}" for index in range(5)]),
+            ItypDependencies("child_ityp", [f"parent_{index}" for index in range(4, 9)]),
+        ],
+    )
+
+    issues = manifest.validate()
+
+    assert any("9 dynamic parent YTYPs" in issue and "at most 8" in issue for issue in issues)
+
+
+def test_ymf_writer_rejects_runtime_dependency_overflow() -> None:
+    manifest = PackFileMetaData(
+        imap_dependencies_2=[
+            ImapDependencies("city_imap", [f"parent_{index}" for index in range(7)]),
+        ],
+    )
+
+    try:
+        build_ymf(manifest).to_bytes()
+    except ValueError as exc:
+        assert "runtime supports at most 6" in str(exc)
+    else:
+        raise AssertionError("invalid YMF dependency count was serialized")
+
+
+def test_ymf_validation_rejects_non_hour_bits_and_oversized_arrays() -> None:
+    invalid_hours = MapDataGroup("timed_group", hours_on_off=1 << 24)
+    oversized = MapDataGroup("large_group", bounds=[0] * (YMF_MAX_ARRAY_ITEMS + 1))
+
+    assert any("hours 0 through 23" in issue for issue in invalid_hours.validate())
+    assert any("support at most 65534" in issue for issue in oversized.validate())
+
+
+def test_ymf_validation_rejects_duplicate_map_data_groups() -> None:
+    manifest = PackFileMetaData(
+        map_data_groups=[MapDataGroup("managed_group"), MapDataGroup("managed_group")],
+    )
+
+    assert any("repeats map data group managed_group" in issue for issue in manifest.validate())

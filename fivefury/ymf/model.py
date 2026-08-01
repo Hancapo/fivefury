@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,14 @@ from .enums import (
     YmfRelationship,
     YmfRelationshipType,
 )
+from .limits import (
+    YMF_HOURS_ON_OFF_MASK,
+    YMF_MAX_ARRAY_ITEMS,
+    YMF_MAX_IMAP_DEPENDENCIES,
+    YMF_MAX_INTERIOR_BOUNDS,
+    YMF_MAX_ITYP_DEPENDENCIES,
+    YMF_MIN_INTERIOR_BOUNDS,
+)
 from .utils import (
     _append_hash_items,
     _get,
@@ -45,6 +54,13 @@ def _ymf_enum_infos():
     from .schema import YMF_ENUM_INFOS
 
     return YMF_ENUM_INFOS
+
+
+def _array_size_issue(name: str, values: Sequence[Any]) -> str | None:
+    count = len(values)
+    if count <= YMF_MAX_ARRAY_ITEMS:
+        return None
+    return f"{name} has {count} entries; YMF arrays support at most {YMF_MAX_ARRAY_ITEMS}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -104,6 +120,16 @@ class MapDataGroup(MetaHashFieldsMixin):
 
     def __post_init__(self) -> None:
         self.flags = PackFileMetaDataImapGroupType(int(self.flags))
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if int(self.hours_on_off) < 0 or int(self.hours_on_off) & ~YMF_HOURS_ON_OFF_MASK:
+            issues.append(f"map data group {self.name} hours_on_off may only use hours 0 through 23")
+        for name, values in (("bounds", self.bounds), ("weather types", self.weather_types)):
+            issue = _array_size_issue(f"map data group {self.name} {name}", values)
+            if issue is not None:
+                issues.append(issue)
+        return issues
 
     def to_meta(self) -> dict[str, Any]:
         return {
@@ -295,7 +321,7 @@ class InteriorBoundsFile(MetaHashFieldsMixin):
         issues: list[str] = []
         if int(self.name) == 0:
             issues.append("interior bounds entry has no name")
-        if len(self.bounds) not in (1, 2):
+        if not YMF_MIN_INTERIOR_BOUNDS <= len(self.bounds) <= YMF_MAX_INTERIOR_BOUNDS:
             issues.append(f"interior {self.name} must reference one or two YBN bounds")
         elif int(self.name) not in {int(bound) for bound in self.bounds}:
             issues.append(f"interior {self.name} must include a YBN with the same name")
@@ -330,8 +356,65 @@ class PackFileMetaData:
     ityp_dependencies_2: list[ItypDependencies] = dataclasses.field(default_factory=list)
     interiors: list[InteriorBoundsFile] = dataclasses.field(default_factory=list)
 
-    def validate(self) -> list[str]:
+    def validate(self, *, permanent_ytyps: Iterable[HashLike] = ()) -> list[str]:
         issues: list[str] = []
+        permanent_hashes = {int(MetaHash.from_value(item)) for item in permanent_ytyps}
+
+        arrays = (
+            ("map data groups", self.map_data_groups),
+            ("HD TXD bindings", self.hd_txd_bindings),
+            ("legacy IMAP dependencies", self.imap_dependencies),
+            ("IMAP dependencies", self.imap_dependencies_2),
+            ("ITYP dependencies", self.ityp_dependencies_2),
+            ("interiors", self.interiors),
+        )
+        for name, values in arrays:
+            issue = _array_size_issue(f"manifest {name}", values)
+            if issue is not None:
+                issues.append(issue)
+
+        seen_groups: set[int] = set()
+        for group in self.map_data_groups:
+            group_hash = int(group.name)
+            if group_hash in seen_groups:
+                issues.append(f"manifest repeats map data group {group.name}")
+            seen_groups.add(group_hash)
+            issues.extend(group.validate())
+
+        imap_dependencies: dict[int, set[int]] = {}
+        for dependency in self.imap_dependencies:
+            target_hash = int(dependency.ityp_name)
+            if target_hash not in permanent_hashes:
+                imap_dependencies.setdefault(int(dependency.imap_name), set()).add(target_hash)
+        for dependency in self.imap_dependencies_2:
+            targets = imap_dependencies.setdefault(int(dependency.imap_name), set())
+            targets.update(
+                int(target)
+                for target in dependency.ityp_dependencies
+                if int(target) not in permanent_hashes
+            )
+        for imap_hash, targets in imap_dependencies.items():
+            if len(targets) > YMF_MAX_IMAP_DEPENDENCIES:
+                issues.append(
+                    f"IMAP {MetaHash(imap_hash)} has {len(targets)} dynamic YTYP dependencies; "
+                    f"the runtime supports at most {YMF_MAX_IMAP_DEPENDENCIES}"
+                )
+
+        ityp_dependencies: dict[int, set[int]] = {}
+        for dependency in self.ityp_dependencies_2:
+            targets = ityp_dependencies.setdefault(int(dependency.ityp_name), set())
+            targets.update(
+                int(target)
+                for target in dependency.ityp_dependencies
+                if int(target) not in permanent_hashes
+            )
+        for ityp_hash, targets in ityp_dependencies.items():
+            if len(targets) > YMF_MAX_ITYP_DEPENDENCIES:
+                issues.append(
+                    f"YTYP {MetaHash(ityp_hash)} has {len(targets)} dynamic parent YTYPs; "
+                    f"the runtime supports at most {YMF_MAX_ITYP_DEPENDENCIES}"
+                )
+
         seen_interiors: set[int] = set()
         for interior in self.interiors:
             interior_hash = int(interior.name)
