@@ -5,6 +5,10 @@ from collections.abc import Sequence
 
 from ..binary import align
 from ..resource import ResourceWriter
+from ..ydr.gen9 import (
+    build_gen9_vertex_declaration,
+    decode_gen9_vertex_declaration,
+)
 from .glass import (
     YftGlassPane,
     YftVehicleGlassRow,
@@ -22,9 +26,24 @@ def _virtual(offset: int, virtual_base: int) -> int:
     return int(virtual_base) + int(offset)
 
 
-def _write_vec3(system: ResourceWriter, offset: int, value) -> None:
+def _write_vec3(
+    system: ResourceWriter, offset: int, value, *, legacy_sentinel: bool
+) -> None:
     system.pack_into("3f", offset, *(float(item) for item in value))
-    system.pack_into("I", offset + 0x0C, _GLASS_SENTINEL)
+    system.pack_into("I", offset + 0x0C, _GLASS_SENTINEL if legacy_sentinel else 0)
+
+
+def _gen9_declaration_bytes(declaration) -> bytes:
+    raw = bytes(declaration.raw_gen9)
+    expected = (
+        int(declaration.flags),
+        int(declaration.types),
+        int(declaration.stride),
+        int(declaration.vertex_count),
+    )
+    if len(raw) == 0x140 and decode_gen9_vertex_declaration(raw) == expected:
+        return raw
+    return build_gen9_vertex_declaration(*expected)
 
 
 def write_glass_panes(
@@ -32,35 +51,52 @@ def write_glass_panes(
     panes: Sequence[YftGlassPane],
     *,
     virtual_base: int,
+    enhanced: bool = False,
 ) -> int:
     if not panes:
         return 0
     pane_offsets: list[int] = []
     for pane in panes:
-        offset = system.alloc(0x70, 16)
+        pane_size = 0x1A0 if enhanced else 0x70
+        tail_offset = 0x180 if enhanced else 0x50
+        offset = system.alloc(pane_size, 16)
         pane_offsets.append(offset)
-        _write_vec3(system, offset + 0x00, pane.position_base)
-        _write_vec3(system, offset + 0x10, pane.position_width)
-        _write_vec3(system, offset + 0x20, pane.position_height)
+        _write_vec3(
+            system, offset + 0x00, pane.position_base, legacy_sentinel=not enhanced
+        )
+        _write_vec3(
+            system, offset + 0x10, pane.position_width, legacy_sentinel=not enhanced
+        )
+        _write_vec3(
+            system, offset + 0x20, pane.position_height, legacy_sentinel=not enhanced
+        )
         system.pack_into("2f", offset + 0x30, *pane.uv_min)
         system.pack_into("2f", offset + 0x38, *pane.uv_max)
         declaration = pane.vertex_declaration
-        system.pack_into("I", offset + 0x40, int(declaration.flags))
-        system.pack_into("H", offset + 0x44, int(declaration.stride))
-        system.data[offset + 0x46] = 0
-        system.data[offset + 0x47] = declaration.count & 0xFF
-        system.pack_into("Q", offset + 0x48, int(declaration.types))
-        system.pack_into("f", offset + 0x50, float(pane.thickness))
-        system.pack_into("H", offset + 0x54, int(pane.flags))
-        system.data[offset + 0x56] = int(pane.glass_type) & 0xFF
-        system.data[offset + 0x57] = int(pane.shader_index) & 0xFF
+        if enhanced:
+            system.write(offset + 0x40, _gen9_declaration_bytes(declaration))
+        else:
+            system.pack_into("I", offset + 0x40, int(declaration.flags))
+            system.pack_into("H", offset + 0x44, int(declaration.stride))
+            system.data[offset + 0x46] = 0
+            system.data[offset + 0x47] = declaration.count & 0xFF
+            system.pack_into("Q", offset + 0x48, int(declaration.types))
+        system.pack_into("f", offset + tail_offset, float(pane.thickness))
+        system.pack_into("H", offset + tail_offset + 0x04, int(pane.flags))
+        system.data[offset + tail_offset + 0x06] = int(pane.glass_type) & 0xFF
+        system.data[offset + tail_offset + 0x07] = int(pane.shader_index) & 0xFF
         system.pack_into(
             "2f",
-            offset + 0x58,
+            offset + tail_offset + 0x08,
             float(pane.bounds_offset_front),
             float(pane.bounds_offset_back),
         )
-        _write_vec3(system, offset + 0x60, pane.tangent)
+        _write_vec3(
+            system,
+            offset + tail_offset + 0x10,
+            pane.tangent,
+            legacy_sentinel=not enhanced,
+        )
 
     owner_offset = system.alloc(len(pane_offsets) * 8, 8)
     for index, pane_offset in enumerate(pane_offsets):

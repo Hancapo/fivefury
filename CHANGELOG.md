@@ -39,6 +39,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Project license changed to The Unlicense.
 
 ### Fixed
+- Enhanced YFT breakable-glass pane layouts and vertex declarations.
 - Enhanced YFT drawable layout detection and byte-identical lossless
   round-trips.
 - Enhanced skinned geometry now preserves declared vertex offsets.

@@ -6,6 +6,8 @@ from ..binary import f32 as _f32
 from ..binary import u16 as _u16
 from ..binary import u32 as _u32
 from ..binary import u64 as _u64
+from ..ydr.gen9 import decode_gen9_vertex_declaration
+from .constants import GEN9_YFT_VERSIONS
 from .glass import (
     YftGlassPane,
     YftGlassPaneFlag,
@@ -28,20 +30,38 @@ def _require_range(data: bytes, offset: int, size: int, label: str) -> None:
         raise ValueError(f"{label} points outside the YFT system section")
 
 
-def _read_glass_pane(data: bytes, pointer: int) -> YftGlassPane:
+def _read_glass_pane(
+    data: bytes, pointer: int, *, enhanced: bool
+) -> YftGlassPane:
     offset = try_virtual_offset(data, pointer)
     if offset is None:
         raise ValueError("glass pane pointer is invalid")
-    _require_range(data, offset, 0x70, "glass pane")
-    for sentinel_offset in (0x0C, 0x1C, 0x2C, 0x6C):
-        if _u32(data, offset + sentinel_offset) != _GLASS_SENTINEL:
-            raise ValueError("glass pane has an invalid aligned-vector sentinel")
-    declaration = YftGlassVertexDeclaration(
-        flags=_u32(data, offset + 0x40),
-        stride=_u16(data, offset + 0x44),
-        component_count=data[offset + 0x47],
-        types=_u64(data, offset + 0x48),
-    )
+    pane_size = 0x1A0 if enhanced else 0x70
+    tail_offset = 0x180 if enhanced else 0x50
+    _require_range(data, offset, pane_size, "glass pane")
+    if enhanced:
+        raw_declaration = bytes(data[offset + 0x40 : offset + 0x180])
+        flags, types, stride, vertex_count = decode_gen9_vertex_declaration(
+            raw_declaration
+        )
+        declaration = YftGlassVertexDeclaration(
+            flags=flags,
+            stride=stride,
+            component_count=int(flags).bit_count(),
+            types=types,
+            vertex_count=vertex_count,
+            raw_gen9=raw_declaration,
+        )
+    else:
+        for sentinel_offset in (0x0C, 0x1C, 0x2C, 0x6C):
+            if _u32(data, offset + sentinel_offset) != _GLASS_SENTINEL:
+                raise ValueError("glass pane has an invalid aligned-vector sentinel")
+        declaration = YftGlassVertexDeclaration(
+            flags=_u32(data, offset + 0x40),
+            stride=_u16(data, offset + 0x44),
+            component_count=data[offset + 0x47],
+            types=_u64(data, offset + 0x48),
+        )
     return YftGlassPane(
         position_base=read_vec3(data, offset + 0x00),
         position_width=read_vec3(data, offset + 0x10),
@@ -49,23 +69,26 @@ def _read_glass_pane(data: bytes, pointer: int) -> YftGlassPane:
         uv_min=struct.unpack_from("<2f", data, offset + 0x30),
         uv_max=struct.unpack_from("<2f", data, offset + 0x38),
         vertex_declaration=declaration,
-        thickness=float(_f32(data, offset + 0x50)),
-        flags=YftGlassPaneFlag(_u16(data, offset + 0x54)),
-        glass_type=data[offset + 0x56],
-        shader_index=data[offset + 0x57],
-        bounds_offset_front=float(_f32(data, offset + 0x58)),
-        bounds_offset_back=float(_f32(data, offset + 0x5C)),
-        tangent=read_vec3(data, offset + 0x60),
+        thickness=float(_f32(data, offset + tail_offset)),
+        flags=YftGlassPaneFlag(_u16(data, offset + tail_offset + 0x04)),
+        glass_type=data[offset + tail_offset + 0x06],
+        shader_index=data[offset + tail_offset + 0x07],
+        bounds_offset_front=float(_f32(data, offset + tail_offset + 0x08)),
+        bounds_offset_back=float(_f32(data, offset + tail_offset + 0x0C)),
+        tangent=read_vec3(data, offset + tail_offset + 0x10),
     )
 
 
-def read_glass_panes(data: bytes, pointer: int, count: int) -> list[YftGlassPane]:
+def read_glass_panes(
+    data: bytes, pointer: int, count: int, *, version: int = 162
+) -> list[YftGlassPane]:
     if count <= 0:
         return []
     pointers = read_pointer_array(data, pointer, count)
     if len(pointers) != count or any(not item for item in pointers):
         raise ValueError("glass pane owner array is incomplete")
-    return [_read_glass_pane(data, item) for item in pointers]
+    enhanced = int(version) in GEN9_YFT_VERSIONS
+    return [_read_glass_pane(data, item, enhanced=enhanced) for item in pointers]
 
 
 def _read_vehicle_glass_row(data: bytes, offset: int, limit: int) -> YftVehicleGlassRow:

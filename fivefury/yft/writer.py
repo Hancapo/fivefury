@@ -532,6 +532,7 @@ def _write_fragment_root(
         system,
         yft.glass_panes,
         virtual_base=_DAT_VIRTUAL_BASE,
+        enhanced=int(yft.version) in GEN9_YFT_VERSIONS,
     )
     vehicle_glass_off = write_vehicle_glass_windows(
         system,

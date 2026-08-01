@@ -392,7 +392,8 @@ def test_yft_shared_matrix_set_roundtrip():
     )
 
 
-def test_yft_glass_roundtrip():
+@pytest.mark.parametrize("version", [162, 171])
+def test_yft_glass_roundtrip(version):
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
@@ -446,6 +447,7 @@ def test_yft_glass_roundtrip():
     source = create_yft(
         drawable,
         name="glass_fragment",
+        version=version,
         glass_panes=(pane,),
         vehicle_glass_windows=vehicle_glass,
     )
@@ -459,9 +461,12 @@ def test_yft_glass_roundtrip():
     assert struct.unpack_from("<Q", system_data, 0xE0)[0] != 0
     assert struct.unpack_from("<Q", system_data, 0x120)[0] != 0
     assert parsed.state.glass_attachment_bone == 4
+    assert parsed.version == version
     assert parsed.glass_pane_count == 1
     assert parsed.glass_panes[0].shader_index == 0
     assert parsed.glass_panes[0].bounds_offset_front == 0.125
+    if version == 171:
+        assert len(parsed.glass_panes[0].vertex_declaration.raw_gen9) == 0x140
     assert parsed.vehicle_glass_windows is not None
     window = parsed.vehicle_glass_windows.windows[0]
     assert window.component_id == 7
