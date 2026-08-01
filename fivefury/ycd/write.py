@@ -5,6 +5,7 @@ from typing import Any
 
 from ..buckets import at_hash_bucket_capacity
 from ..common import atomic_write_bytes, clip_short_name
+from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import (
     ResourceBlockSpan,
@@ -28,20 +29,11 @@ from .model import (
     YcdSequence,
     _resolve_ycd_clip_hash,
 )
+from .runtime_headers import YCD_VERSION, YcdRuntimeProfile, get_ycd_runtime_profile
 from .sequence_tracks import get_ycd_track_format
 from .sequences import build_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
-_RESOURCE_FILE_VFT = 1079444200
-_ANIMATION_MAP_VFT = 1079671816
-# These are the serialized class markers used by stock PC YCD resources.
-# Resource placement replaces them with the executable's live vtables, so
-# they are not tied to the runtime build.  Leaving either marker at zero
-# prevents some streaming paths (notably AUTOSTART_ANIM map archetypes) from
-# materializing a usable crAnimation/crClip object.
-_ANIMATION_VFT = 0x405A58F0
-_CLIP_ANIMATION_VFT = 0x405A4088
-_CLIP_ANIMATION_LIST_VFT = 0x405A3FF8
 _DEFAULT_CLIP_UNKNOWN_04H = 1
 _DEFAULT_CLIP_UNKNOWN_48H = 1
 _DEFAULT_ROOT_UNKNOWN_20H = 0x00000101
@@ -71,8 +63,9 @@ def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
 
 
 class _YcdWriter:
-    def __init__(self, ycd: Ycd) -> None:
+    def __init__(self, ycd: Ycd, profile: YcdRuntimeProfile) -> None:
         self.ycd = ycd
+        self.profile = profile
         self.writer = ResourceWriter(0x80)
         self.string_offsets: dict[str, int] = {}
         self.sequence_offsets: dict[int, int] = {}
@@ -87,6 +80,14 @@ class _YcdWriter:
 
     def _identity(self, value: Any) -> int:
         return id(value)
+
+    def _attribute_vft(self, attribute: YcdClipPropertyAttribute) -> int:
+        try:
+            return self.profile.attribute_vft(int(attribute.attribute_type))
+        except ValueError:
+            if int(attribute.vft) and coerce_game_target(self.ycd.game) is self.profile.game:
+                return int(attribute.vft)
+            raise
 
     def _compute_animation_usage_counts(self) -> dict[int, int]:
         counts: dict[int, int] = {}
@@ -237,7 +238,7 @@ class _YcdWriter:
         self.writer.pack_into(
             "IIIIBBHHHfIIIIIIIII",
             offset,
-            int(animation.vft) or _ANIMATION_VFT,
+            self.profile.animation_vft,
             1,
             0,
             0,
@@ -285,7 +286,7 @@ class _YcdWriter:
         self.writer.pack_into(
             "IIBBHIIIII",
             offset,
-            int(attribute.vft),
+            self._attribute_vft(attribute),
             int(attribute.unknown_04h),
             int(attribute.attribute_type),
             int(attribute.unknown_09h),
@@ -332,7 +333,7 @@ class _YcdWriter:
         self.writer.pack_into(
             "IIIIIIIIQHHIIIII",
             offset,
-            int(prop.vft),
+            self.profile.clip_property_vft,
             int(prop.unknown_04h),
             int(prop.unknown_08h),
             int(prop.unknown_0ch),
@@ -408,7 +409,7 @@ class _YcdWriter:
         self.writer.pack_into(
             "IIIIIIIIQHHIIIIIffQ",
             offset,
-            int(tag.vft),
+            self.profile.clip_tag_vft if tag.name_hash.uint else int(tag.vft),
             int(tag.unknown_04h),
             int(tag.unknown_08h),
             int(tag.unknown_0ch),
@@ -498,9 +499,9 @@ class _YcdWriter:
 
         offset = self.writer.alloc(0x70, 16)
         if isinstance(clip, YcdClipAnimation):
-            clip_vft = int(clip.vft) or _CLIP_ANIMATION_VFT
+            clip_vft = self.profile.clip_animation_vft
         elif isinstance(clip, YcdClipAnimationList):
-            clip_vft = int(clip.vft) or _CLIP_ANIMATION_LIST_VFT
+            clip_vft = self.profile.clip_animation_list_vft
         else:
             clip_vft = int(clip.vft)
         self.writer.pack_into(
@@ -585,7 +586,7 @@ class _YcdWriter:
         self.writer.pack_into(
             "IIIIIIQHHIII",
             offset,
-            _ANIMATION_MAP_VFT,
+            self.profile.animation_map_vft,
             1,
             0,
             0,
@@ -642,7 +643,7 @@ class _YcdWriter:
         clip_map_offset = self.write_clip_map_buckets(clips, clip_bucket_capacity)
         pages_info_offset = self.write_pages_info(page_counts)
 
-        self.writer.pack_into("IIQ", 0x00, _RESOURCE_FILE_VFT, 1, self.vptr(pages_info_offset))
+        self.writer.pack_into("IIQ", 0x00, self.profile.file_vft, 1, self.vptr(pages_info_offset))
         self.writer.pack_into(
             "IIQIIQHHIII",
             0x10,
@@ -661,14 +662,18 @@ class _YcdWriter:
         return self.writer.finish(), self.writer.block_spans
 
 
-def build_ycd_bytes(ycd: Ycd) -> bytes:
+def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
     source = ycd.build()
+    if source.header.version != YCD_VERSION:
+        raise ValueError(f"YCD resources require version {YCD_VERSION}, got {source.header.version}")
+    target = coerce_game_target(source.game if game is None else game)
+    profile = get_ycd_runtime_profile(target)
     page_counts = (0, 0)
     system_data = b""
     system_flags = None
     graphics_flags = None
     for _ in range(16):
-        raw_system_data, system_blocks = _YcdWriter(source).build_system_data(page_counts)
+        raw_system_data, system_blocks = _YcdWriter(source, profile).build_system_data(page_counts)
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
             system_blocks,
@@ -685,8 +690,8 @@ def build_ycd_bytes(ycd: Ycd) -> bytes:
     return build_rsc7(system_data, version=ycd.header.version, system_flags=system_flags, graphics_flags=graphics_flags)
 
 
-def save_ycd(ycd: Ycd, path: str | Path) -> Path:
-    return atomic_write_bytes(path, build_ycd_bytes(ycd))
+def save_ycd(ycd: Ycd, path: str | Path, *, game: str | GameTarget | None = None) -> Path:
+    return atomic_write_bytes(path, build_ycd_bytes(ycd, game=game))
 
 
 __all__ = ["build_ycd_bytes", "save_ycd"]

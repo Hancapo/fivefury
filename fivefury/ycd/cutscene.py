@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping, Sequence
 
 from ..cut import CutFile, CutScene, read_cut
+from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
-from .model import Ycd, YcdAnimation, YcdAnimationBoneId, YcdClipAnimation, YcdClipType, YcdSequence
+from .model import (
+    Ycd,
+    YcdAnimation,
+    YcdAnimationBoneId,
+    YcdClipAnimation,
+    YcdClipType,
+    YcdSequence,
+)
 from .sequence_channels import (
     YcdAnimSequence,
     YcdChannelType,
@@ -18,7 +26,6 @@ from .sequence_channels import (
     YcdStaticVector3Channel,
 )
 from .sequence_tracks import YcdAnimationTrack, get_ycd_track_format
-
 
 YCD_CUTSCENE_DEFAULT_FPS = 30.0
 YCD_CUTSCENE_DEFAULT_VERSION = 46
@@ -386,11 +393,13 @@ class YcdCutsceneBuilder:
         camera_cuts: Sequence[float] | None = None,
         fps: float = YCD_CUTSCENE_DEFAULT_FPS,
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
+        game: str | GameTarget = GameTarget.GTA5,
     ) -> None:
         self.name = str(name)
         self.duration = float(duration)
         self.fps = float(fps)
         self.version = int(version)
+        self.game = coerce_game_target(game)
         self.camera_cuts = self._normalize_camera_cuts(camera_cuts or [])
         self._clips: dict[str, YcdCutsceneClip] = {}
 
@@ -403,8 +412,9 @@ class YcdCutsceneBuilder:
         camera_cuts: Sequence[float] | None = None,
         fps: float = YCD_CUTSCENE_DEFAULT_FPS,
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
+        game: str | GameTarget = GameTarget.GTA5,
     ) -> YcdCutsceneBuilder:
-        return cls(name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version)
+        return cls(name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version, game=game)
 
     @classmethod
     def from_cut(
@@ -414,11 +424,19 @@ class YcdCutsceneBuilder:
         name: str | None = None,
         fps: float = YCD_CUTSCENE_DEFAULT_FPS,
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
+        game: str | GameTarget = GameTarget.GTA5,
     ) -> YcdCutsceneBuilder:
         if isinstance(source, CutScene):
             resolved_name = name or "cutscene"
             camera_cuts = [event.start for event in source.timeline if event.event_name == "camera_cut" and event.start > 0.0]
-            return cls(resolved_name, duration=source.duration, camera_cuts=camera_cuts, fps=fps, version=version)
+            return cls(
+                resolved_name,
+                duration=source.duration,
+                camera_cuts=camera_cuts,
+                fps=fps,
+                version=version,
+                game=game,
+            )
 
         if isinstance(source, CutFile):
             cut = source
@@ -431,7 +449,7 @@ class YcdCutsceneBuilder:
         root = cut.root
         duration = float(root.fields.get("fTotalDuration", 0.0))
         camera_cuts = [float(value) for value in root.fields.get("cameraCutList", []) if float(value) > 0.0]
-        return cls(source_name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version)
+        return cls(source_name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version, game=game)
 
     def _normalize_camera_cuts(self, camera_cuts: Sequence[float]) -> list[float]:
         result: list[float] = []
@@ -699,6 +717,7 @@ class YcdCutsceneBuilder:
             header=ResourceHeader(version=self.version, system_flags=0, graphics_flags=0),
             clips=clips,
             animations=animations,
+            game=self.game,
             path=f"{self.name}-{section.index}.ycd",
         )
         return ycd.build()
@@ -735,8 +754,9 @@ def build_cutscene_ycds(
     camera_cuts: Sequence[float] | None = None,
     fps: float = YCD_CUTSCENE_DEFAULT_FPS,
     version: int = YCD_CUTSCENE_DEFAULT_VERSION,
+    game: str | GameTarget = GameTarget.GTA5,
 ) -> YcdCutsceneBuilder:
-    return YcdCutsceneBuilder(name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version)
+    return YcdCutsceneBuilder(name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version, game=game)
 
 
 __all__ = [

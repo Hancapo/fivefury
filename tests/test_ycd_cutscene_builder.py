@@ -6,9 +6,19 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    GEN9_YCD_RUNTIME_PROFILE,
     YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+    GameTarget,
+    MetaHash,
     YcdAnimationTrack,
     YcdChannelType,
+    YcdClipAnimationEntry,
+    YcdClipAnimationList,
+    YcdClipProperty,
+    YcdClipPropertyAttribute,
+    YcdClipPropertyAttributeType,
+    YcdClipTag,
+    YcdClipType,
     YcdCutsceneBoneAnimation,
     YcdCutsceneBuilder,
     build_cutscene_sections,
@@ -126,6 +136,71 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
 
     assert any(int(bone.track) == int(YcdAnimationTrack.MOVER_TRANSLATION) for bone in prop1.animation.bone_ids)
     assert any(int(bone.track) == int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW) for bone in cam1.animation.bone_ids)
+
+
+def test_cutscene_builder_writes_enhanced_runtime_headers() -> None:
+    profile = GEN9_YCD_RUNTIME_PROFILE
+    builder = YcdCutsceneBuilder.create(
+        "enhanced_scene",
+        duration=1.0,
+        game=GameTarget.GTA5_ENHANCED,
+    )
+    builder.add_prop(
+        "prop_box",
+        position=(0.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    ycd = builder.build_ycds()[0]
+    animation = ycd.animations[0]
+    clip = ycd.clips[0]
+    clip.properties = [
+        YcdClipProperty(
+            name_hash=MetaHash("phase"),
+            attributes=[
+                YcdClipPropertyAttribute(
+                    name_hash=MetaHash("index"),
+                    attribute_type=YcdClipPropertyAttributeType.INT,
+                    value=1,
+                )
+            ],
+        )
+    ]
+    clip.tags = [YcdClipTag(name_hash=MetaHash("block"), start_phase=0.0, end_phase=1.0)]
+    ycd.clips.append(
+        YcdClipAnimationList(
+            hash=MetaHash("prop_box_list-0"),
+            name="prop_box_list-0",
+            short_name="prop_box_list-0",
+            clip_type=YcdClipType.ANIMATION_LIST,
+            total_duration=1.0,
+            animations=[
+                YcdClipAnimationEntry(
+                    start_time=0.0,
+                    end_time=1.0,
+                    rate=1.0,
+                    animation_hash=animation.hash,
+                    animation=animation,
+                )
+            ],
+        )
+    )
+
+    rebuilt = read_ycd(build_ycd_bytes(ycd))
+
+    assert rebuilt.game is GameTarget.GTA5_ENHANCED
+    assert rebuilt.file_vft == profile.file_vft
+    assert rebuilt.animation_map_vft == profile.animation_map_vft
+    assert {item.vft for item in rebuilt.animations} == {profile.animation_vft}
+    assert {item.vft for item in rebuilt.clips} == {
+        profile.clip_animation_vft,
+        profile.clip_animation_list_vft,
+    }
+    rebuilt_clip = next(item for item in rebuilt.clips if item.clip_type is YcdClipType.ANIMATION)
+    assert rebuilt_clip.properties[0].vft == profile.clip_property_vft
+    assert rebuilt_clip.properties[0].attributes[0].vft == profile.attribute_vft(
+        YcdClipPropertyAttributeType.INT
+    )
+    assert rebuilt_clip.tags[0].vft == profile.clip_tag_vft
 
 
 def test_cutscene_builder_returns_empty_when_no_animated_clips() -> None:

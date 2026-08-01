@@ -6,6 +6,7 @@ from enum import IntEnum
 from pathlib import Path
 
 from ..buckets import at_hash_bucket_capacity
+from ..game_target import GameTarget
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from .sequences import (
@@ -385,13 +386,18 @@ class YcdAnimation:
         skeletal_tracks = {
             int(YcdAnimationTrack.BONE_TRANSLATION),
             int(YcdAnimationTrack.BONE_ROTATION),
+            int(YcdAnimationTrack.BONE_SCALE),
             int(YcdAnimationTrack.MOVER_TRANSLATION),
             int(YcdAnimationTrack.MOVER_ROTATION),
             int(YcdAnimationTrack.FACIAL_CONTROL),
             int(YcdAnimationTrack.FACIAL_TRANSLATION),
             int(YcdAnimationTrack.FACIAL_ROTATION),
         }
-        if tracks & {int(YcdAnimationTrack.BONE_TRANSLATION), int(YcdAnimationTrack.BONE_ROTATION)} and tracks.issubset(skeletal_tracks):
+        if tracks & {
+            int(YcdAnimationTrack.BONE_TRANSLATION),
+            int(YcdAnimationTrack.BONE_ROTATION),
+            int(YcdAnimationTrack.BONE_SCALE),
+        } and tracks.issubset(skeletal_tracks):
             return MetaHash((int(self.hash.uint) + 1) & 0xFFFFFFFF)
         return current
 
@@ -831,6 +837,9 @@ class Ycd:
     header: ResourceHeader
     clips: list[YcdClip]
     animations: list[YcdAnimation]
+    game: GameTarget = GameTarget.GTA5
+    file_vft: int = 0
+    animation_map_vft: int = 0
     path: str | None = None
     clip_map: dict[int, YcdClip] = field(default_factory=dict)
     animation_map: dict[int, YcdAnimation] = field(default_factory=dict)
@@ -953,15 +962,15 @@ class Ycd:
         self.validate()
         return self
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
         from .write import build_ycd_bytes
 
-        return build_ycd_bytes(self)
+        return build_ycd_bytes(self, game=game)
 
-    def save(self, path: str | Path) -> Path:
+    def save(self, path: str | Path, *, game: str | GameTarget | None = None) -> Path:
         from .write import save_ycd
 
-        return save_ycd(self, path)
+        return save_ycd(self, path, game=game)
 
 
 __all__ = [
