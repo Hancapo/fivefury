@@ -2820,6 +2820,40 @@ def test_yft_articulated_joints_roundtrip():
     assert three_dof.use_child_for_twist_axis is True
 
 
+def test_gen9_yft_articulated_joint_uses_target_runtime_header():
+    from fivefury.resource import ResourceWriter
+    from fivefury.yft import (
+        IDENTITY_MATRIX44,
+        YftPhysicsJoint3Dof,
+        YftPhysicsJointType,
+    )
+    from fivefury.yft.physics_reader import read_physics_joint
+    from fivefury.yft.physics_writer import _write_physics_joint
+
+    writer = ResourceWriter(initial_size=0)
+    offset = _write_physics_joint(
+        writer,
+        YftPhysicsJoint3Dof(
+            parent_link_index=0,
+            child_link_index=1,
+            orientation_parent=IDENTITY_MATRIX44,
+            orientation_child=IDENTITY_MATRIX44,
+            vft=0x407033D8,
+        ),
+        runtime_headers=GEN9_YFT_RUNTIME_HEADERS,
+    )
+
+    assert struct.unpack_from("<I", writer.data, offset)[0] == (
+        GEN9_YFT_RUNTIME_HEADERS.joint_3dof
+    )
+    parsed = read_physics_joint(
+        writer.finish(),
+        0x50000000 + offset,
+        YftPhysicsJointType.THREE_DOF,
+    )
+    assert parsed.vft == GEN9_YFT_RUNTIME_HEADERS.joint_3dof
+
+
 def test_yft_validation_rejects_unwritable_resource_graphs():
     yft = Yft()
     yft.pointers.collision_event_set = 0x50000100

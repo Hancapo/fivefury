@@ -688,7 +688,7 @@ def _write_physics_joint(
     _write_resource_header(
         writer,
         offset,
-        vft=joint.vft,
+        vft=expected_vft,
         resource_state=joint.resource_state,
         expected_vft=expected_vft,
         label=type(joint).__name__,
