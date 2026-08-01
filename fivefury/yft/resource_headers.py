@@ -44,6 +44,7 @@ class YftRuntimeHeaders:
     articulated_body: int
     joint_1dof: int
     joint_3dof: int
+    event_set: int
     drawable: DrawableRuntimeHeaders
     cloth: YftClothRuntimeHeaders
     enhanced: bool = False
@@ -59,6 +60,7 @@ LEGACY_YFT_RUNTIME_HEADERS = YftRuntimeHeaders(
     articulated_body=PH_ARTICULATED_BODY_TYPE_EUPHORIA_VFT,
     joint_1dof=PH_JOINT_1DOF_TYPE_VFT,
     joint_3dof=PH_JOINT_3DOF_TYPE_VFT,
+    event_set=0x406048A8,
     drawable=LEGACY_FRAGMENT_DRAWABLE_HEADERS,
     cloth=YftClothRuntimeHeaders(
         environment_cloth=0x406065D8,
@@ -80,6 +82,7 @@ GEN9_YFT_RUNTIME_HEADERS = YftRuntimeHeaders(
     articulated_body=0x406B1750,
     joint_1dof=0x406B1628,
     joint_3dof=0x406B1690,
+    event_set=0x406E5C78,
     drawable=GEN9_FRAGMENT_DRAWABLE_HEADERS,
     cloth=YftClothRuntimeHeaders(
         environment_cloth=0x406E4058,

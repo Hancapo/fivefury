@@ -310,6 +310,11 @@ class _YftBinaryValidator:
             (0xB8, "collision_event_set"),
             (0xC0, "break_event_set"),
             (0xC8, "break_from_root_event_set"),
+        ):
+            event_pointer = self.u64(offset + field_offset)
+            if event_pointer:
+                self.validate_event_set(event_pointer, f"{path}.{label}")
+        for field_offset, label in (
             (0xD0, "collision_event_player"),
             (0xD8, "break_event_player"),
             (0xE0, "break_from_root_event_player"),
@@ -317,6 +322,34 @@ class _YftBinaryValidator:
             event_pointer = self.u64(offset + field_offset)
             if event_pointer:
                 self.pointer(event_pointer, f"{path}.{label}")
+
+    def validate_event_set(self, pointer: int, path: str) -> None:
+        offset = self.class_header(
+            pointer,
+            path,
+            size=0x30,
+            expected_vft=self.runtime_headers.event_set,
+        )
+        if offset is None:
+            return
+        count = self.u16(offset + 0x10)
+        capacity = self.u16(offset + 0x12)
+        if count > capacity:
+            self.error(
+                f"{path}.instances",
+                f"count {count} exceeds capacity {capacity}",
+            )
+        instances = self.pointer_array(
+            self.u64(offset + 0x08),
+            count,
+            f"{path}.instances",
+        )
+        for index, instance in enumerate(instances):
+            self.pointer(
+                instance,
+                f"{path}.instances[{index}]",
+                nullable=False,
+            )
 
     def validate_damp(self, pointer: int, path: str) -> int:
         offset = self.class_header(
@@ -980,6 +1013,18 @@ class _YftBinaryValidator:
         for group_index, group in enumerate(group_offsets):
             if group is None:
                 continue
+            death_event_set = self.u64(group)
+            if death_event_set:
+                self.validate_event_set(
+                    death_event_set,
+                    f"{path}.groups[{group_index}].death_event_set",
+                )
+            death_event_player = self.u64(group + 0x08)
+            if death_event_player:
+                self.pointer(
+                    death_event_player,
+                    f"{path}.groups[{group_index}].death_event_player",
+                )
             child_index = self.u8(group + 0x4E)
             group_child_count = self.u8(group + 0x4F)
             if child_index == 0xFF:
@@ -1260,6 +1305,18 @@ class _YftBinaryValidator:
         tune_name = self.u64(root_offset + 0x58)
         if tune_name:
             self.string(tune_name, "root.tune_name")
+        collision_event_set = self.u64(root_offset + 0x88)
+        if collision_event_set:
+            self.validate_event_set(
+                collision_event_set,
+                "root.collision_event_set",
+            )
+        collision_event_player = self.u64(root_offset + 0x90)
+        if collision_event_player:
+            self.pointer(
+                collision_event_player,
+                "root.collision_event_player",
+            )
 
         physics_group = self.u64(root_offset + 0xF0)
         if physics_group:

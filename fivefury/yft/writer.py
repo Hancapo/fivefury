@@ -690,7 +690,11 @@ def _build_yft_payload(
             bound_offset=bound_offset,
             runtime_headers=runtime_headers,
         )
-    event_set_offsets = write_event_sets(system, yft.iter_event_sets())
+    event_set_offsets = write_event_sets(
+        system,
+        yft.iter_event_sets(),
+        runtime_headers=runtime_headers,
+    )
     drawable_offsets: dict[str, int] = {}
     if main is not None:
         drawable_offsets["drawable"] = main.root_offset
