@@ -589,7 +589,8 @@ def _write_damp_archetype(
         label="phArchetypeDamp",
     )
     writer.pack_into("i", offset + 0x10, int(archetype.resource_type or 2))
-    writer.pack_into("Q", offset + 0x18, int(archetype.filename_pointer))
+    filename_offset = writer.c_string(archetype.filename) if archetype.filename else 0
+    writer.pack_into("Q", offset + 0x18, _virtual(filename_offset) if filename_offset else 0)
     writer.pack_into("Q", offset + 0x20, int(bound_pointer))
     writer.pack_into(
         "IIHH",

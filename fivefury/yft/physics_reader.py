@@ -20,6 +20,7 @@ from .io_helpers import (
     read_string_pointer_array,
     read_u8_array,
     read_vec3,
+    try_read_c_string,
     try_virtual_offset,
 )
 from .physics import (
@@ -289,6 +290,7 @@ def read_damp_archetype(
         vft=_u32(system_data, offset),
         resource_state=_u32(system_data, offset + 4),
         resource_type=_i32(system_data, offset + 0x10),
+        filename=try_read_c_string(system_data, _u64(system_data, offset + 0x18)),
         filename_pointer=_u64(system_data, offset + 0x18),
         bound_pointer=_u64(system_data, offset + 0x20),
         type_flags=_u32(system_data, offset + 0x28),

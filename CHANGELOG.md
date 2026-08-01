@@ -39,6 +39,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Project license changed to The Unlicense.
 
 ### Fixed
+
+- YFT physics archetype filenames during binary round-trips.
 - Enhanced material parameter layouts during binary round-trips.
 - YFT event-set layout and target-specific runtime headers.
 - Enhanced YFT articulated-joint runtime headers during reconstruction.

@@ -1119,6 +1119,38 @@ def test_yft_declarative_physics_validation():
     )
 
 
+def test_yft_relocates_damp_archetype_filename():
+    from fivefury.yft import simple_physics_bound
+
+    bound = simple_physics_bound()
+    child = YftPhysicsChild.declare(undamaged_mass=1.0)
+    group = YftPhysicsGroup.declare("body", children=(child,))
+    lod = normalize_physics_lod(
+        YftPhysicsLod.declare("high", groups=(group,)),
+        composite_bound=bound,
+    )
+    archetype = dataclasses.replace(
+        lod.undamaged_damp_archetype,
+        filename="prop_brandy_glass",
+        filename_pointer=0x50008186,
+    )
+    lod = dataclasses.replace(lod, undamaged_damp_archetype=archetype)
+    source = create_yft(
+        _simple_fragment_drawable("prop_brandy_glass"),
+        name="prop_brandy_glass",
+        physics_lods=(lod,),
+        physics_bound=bound,
+    )
+
+    raw = build_yft_bytes(source)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+    rebuilt = parsed.physics_lod("high").undamaged_damp_archetype
+
+    assert rebuilt.filename == "prop_brandy_glass"
+    assert rebuilt.filename_pointer != 0x50008186
+    assert validate_yft_bytes(raw) == []
+
+
 def test_yft_validation_accepts_native_unavailable_damage_properties():
     drawable = Ydr(version=162, lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]})
     child = dataclasses.replace(
