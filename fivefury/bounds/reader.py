@@ -416,10 +416,13 @@ def _read_composite(offset: int, system_data: bytes) -> BoundComposite:
     child_bounds_pointer = u64(system_data, offset + 0x88)
     flags1_pointer = u64(system_data, offset + 0x90)
     flags2_pointer = u64(system_data, offset + 0x98)
-    children_count = u16(system_data, offset + 0xA0)
+    children_capacity = u16(system_data, offset + 0xA0)
+    active_child_count = u16(system_data, offset + 0xA2)
     bvh_pointer = u64(system_data, offset + 0xA8)
 
-    child_pointers = _read_pointer_array(children_pointer, children_count, system_data)
+    child_pointers = _read_pointer_array(
+        children_pointer, children_capacity, system_data
+    )
     transforms1 = []
     transforms2 = []
     child_bounds = []
@@ -427,19 +430,19 @@ def _read_composite(offset: int, system_data: bytes) -> BoundComposite:
     flags2 = []
     if transforms1_pointer:
         start = _virtual_offset(transforms1_pointer, system_data)
-        transforms1 = [_read_matrix4f(start + (index * 0x40), system_data) for index in range(children_count)]
+        transforms1 = [_read_matrix4f(start + (index * 0x40), system_data) for index in range(children_capacity)]
     if transforms2_pointer:
         start = _virtual_offset(transforms2_pointer, system_data)
-        transforms2 = [_read_matrix4f(start + (index * 0x40), system_data) for index in range(children_count)]
+        transforms2 = [_read_matrix4f(start + (index * 0x40), system_data) for index in range(children_capacity)]
     if child_bounds_pointer:
         start = _virtual_offset(child_bounds_pointer, system_data)
-        child_bounds = [_read_aabb(start + (index * 0x20), system_data) for index in range(children_count)]
+        child_bounds = [_read_aabb(start + (index * 0x20), system_data) for index in range(children_capacity)]
     if flags1_pointer:
         start = _virtual_offset(flags1_pointer, system_data)
-        flags1 = [_read_composite_flags(start + (index * 0x08), system_data) for index in range(children_count)]
+        flags1 = [_read_composite_flags(start + (index * 0x08), system_data) for index in range(children_capacity)]
     if flags2_pointer:
         start = _virtual_offset(flags2_pointer, system_data)
-        flags2 = [_read_composite_flags(start + (index * 0x08), system_data) for index in range(children_count)]
+        flags2 = [_read_composite_flags(start + (index * 0x08), system_data) for index in range(children_capacity)]
 
     children: list[BoundChild] = []
     for index, child_pointer in enumerate(child_pointers):
@@ -460,6 +463,7 @@ def _read_composite(offset: int, system_data: bytes) -> BoundComposite:
     return BoundComposite(
         **values,
         children=children,
+        active_child_count=active_child_count,
         bvh_pointer=bvh_pointer,
         bvh=_read_bvh(bvh_pointer, system_data),
     )

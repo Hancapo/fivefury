@@ -1144,12 +1144,25 @@ class BoundChild:
 @dataclasses.dataclass(slots=True)
 class BoundComposite(Bound):
     children: list[BoundChild] = dataclasses.field(default_factory=list)
+    active_child_count: int | None = None
     bvh_pointer: int = 0
     bvh: BoundBvh | None = None
 
     @property
     def child_count(self) -> int:
+        return (
+            len(self.children)
+            if self.active_child_count is None
+            else self.active_child_count
+        )
+
+    @property
+    def child_capacity(self) -> int:
         return len(self.children)
+
+    @property
+    def active_children(self) -> list[BoundChild]:
+        return self.children[: self.child_count]
 
     @property
     def has_bvh(self) -> bool:
@@ -1172,10 +1185,10 @@ class BoundComposite(Bound):
         return child
 
     def compute_volume(self) -> float:
-        if self.children:
+        if self.active_children:
             return sum(
                 child.bound.compute_volume()
-                for child in self.children
+                for child in self.active_children
                 if child.bound is not None
             )
         return Bound.compute_volume(self)
@@ -1186,7 +1199,7 @@ class BoundComposite(Bound):
     ) -> tuple[float, float, float]:
         weighted = (0.0, 0.0, 0.0)
         total_weight = 0.0
-        for index, child in enumerate(self.children):
+        for index, child in enumerate(self.active_children):
             if child.bound is None:
                 continue
             weight = (
@@ -1213,7 +1226,7 @@ class BoundComposite(Bound):
         density = total_mass / total_volume if total_volume > 0.0 else 0.0
         center_of_gravity = self.compute_center_of_gravity(masses)
         total = (0.0, 0.0, 0.0)
-        for index, child in enumerate(self.children):
+        for index, child in enumerate(self.active_children):
             if child.bound is None:
                 continue
             part_mass = (
@@ -1245,14 +1258,14 @@ class BoundComposite(Bound):
 
     def build(self) -> BoundComposite:
         Bound.build(self)
-        for child in self.children:
+        for child in self.active_children:
             if child.bound is None:
                 continue
             child.bound.build()
             if child.bounds is None or not _aabb_is_valid(child.bounds):
                 child.bounds = child.bound.bounds
         active_children = [
-            child for child in self.children if child.bound is not None
+            child for child in self.active_children if child.bound is not None
         ]
         if active_children:
             transformed_bounds = [
@@ -1278,6 +1291,10 @@ class BoundComposite(Bound):
         issues = Bound.validate(self)
         if not self.children:
             issues.append("Composite bound has no children")
+        if not 0 <= self.child_count <= self.child_capacity:
+            issues.append(
+                "Composite bound active child count exceeds its capacity"
+            )
         for index, child in enumerate(self.children):
             if child.bounds is not None and not _aabb_is_valid(child.bounds):
                 issues.append(f"child {index} has non-finite or inverted local bounds")

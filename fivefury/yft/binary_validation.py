@@ -639,12 +639,12 @@ class _YftBinaryValidator:
             nullable=False,
         ) is None:
             return []
-        count = self.u16(offset + 0xA0)
-        capacity = self.u16(offset + 0xA2)
-        if count != capacity:
+        capacity = self.u16(offset + 0xA0)
+        count = self.u16(offset + 0xA2)
+        if count > capacity:
             self.error(
                 f"{path}.children",
-                f"count {count} does not match capacity {capacity}",
+                f"active count {count} exceeds capacity {capacity}",
             )
         if expected_slots is not None and count != expected_slots:
             self.error(
@@ -655,7 +655,7 @@ class _YftBinaryValidator:
         children = list(
             self.pointer_array(
                 self.u64(offset + 0x70),
-                count,
+                capacity,
                 f"{path}.children",
             )
         )
@@ -670,9 +670,9 @@ class _YftBinaryValidator:
             array_offsets[label] = self.pointer(
                 self.u64(offset + field_offset),
                 f"{path}.{label}",
-                size=count * item_size,
+                size=capacity * item_size,
                 nullable=(
-                    count == 0
+                    capacity == 0
                     or label in ("transforms_copy", "flags1", "flags2")
                 ),
             )
@@ -725,7 +725,7 @@ class _YftBinaryValidator:
             ):
                 self.error(child_path, "nested composite is not valid")
             self.validate_profile_bound_tree(child, child_path)
-        return children
+        return children[:count]
 
     def _bound_slot_signature(self, pointer: int) -> tuple[object, ...] | None:
         offset = self.pointer(
