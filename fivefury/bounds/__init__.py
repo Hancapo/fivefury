@@ -63,7 +63,14 @@ from .model import (
 )
 from .ownership import apply_bound_ref_counts, calculate_bound_ref_counts
 from .reader import read_bound_at, read_bound_from_pointer
-from .runtime_headers import GEN9_BOUND_FILE_VFTS, gen9_bound_file_vft
+from .runtime_headers import (
+    GEN9_BOUND_FILE_VFTS,
+    LEGACY_BOUND_FILE_VFTS,
+    gen9_bound_file_vft,
+    get_bound_file_vft_resolver,
+    infer_bound_game,
+    legacy_bound_file_vft,
+)
 from .writer import (
     build_bound_system_data,
     build_bound_system_layout,
@@ -75,6 +82,7 @@ __all__ = [
     "DEFAULT_BOUND_MATERIAL",
     "DEFAULT_BOUND_MATERIAL_LIBRARY",
     "GEN9_BOUND_FILE_VFTS",
+    "LEGACY_BOUND_FILE_VFTS",
     "MAX_BOUND_TRIANGLES_PER_CHILD",
     "MAX_BOUND_VERTICES_PER_CHILD",
     "Bound",
@@ -125,11 +133,14 @@ __all__ = [
     "chunk_bound_triangles",
     "coerce_bound_material_index",
     "gen9_bound_file_vft",
+    "get_bound_file_vft_resolver",
     "get_bound_material_color",
     "get_bound_material_density",
     "get_bound_material_name",
     "get_bound_material_type",
     "identity_bound_transform",
+    "infer_bound_game",
+    "legacy_bound_file_vft",
     "parse_bound_material_names",
     "read_bound_at",
     "read_bound_from_pointer",
