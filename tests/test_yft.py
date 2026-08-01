@@ -1151,6 +1151,40 @@ def test_yft_relocates_damp_archetype_filename():
     assert validate_yft_bytes(raw) == []
 
 
+def test_yft_preserves_composite_bound_capacity_above_active_count():
+    active_bound = BoundBox.from_center_size(
+        (0.0, 0.0, 0.0),
+        (1.0, 1.0, 1.0),
+    ).build()
+    composite = _composite(active_bound, None)
+    composite.active_child_count = 1
+    composite.build()
+    child = YftPhysicsChild.declare(undamaged_mass=1.0)
+    lod = YftPhysicsLod.declare(
+        "high",
+        groups=(YftPhysicsGroup.declare("body", children=(child,)),),
+    )
+    source = create_yft(
+        _simple_fragment_drawable("reserved_bound_slot"),
+        name="reserved_bound_slot",
+        physics_lods=(lod,),
+        physics_bound=composite,
+    )
+
+    raw = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(raw)
+    parsed = read_yft(raw, resolve_physics_entities=False)
+    parsed_bound = parsed.physics_lod("high").composite_bound
+    bound_offset = virtual_to_offset(
+        parsed.physics_lod("high").undamaged_damp_archetype.bound_pointer
+    )
+
+    assert parsed_bound.child_capacity == 2
+    assert parsed_bound.child_count == 1
+    assert struct.unpack_from("<HH", system_data, bound_offset + 0xA0) == (2, 1)
+    assert validate_yft_bytes(raw) == []
+
+
 def test_yft_validation_accepts_native_unavailable_damage_properties():
     drawable = Ydr(version=162, lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]})
     child = dataclasses.replace(

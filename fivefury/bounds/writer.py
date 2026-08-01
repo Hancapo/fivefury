@@ -249,7 +249,12 @@ def _write_composite(
         else 0
         for child in bound.children
     ]
-    child_count = len(bound.children)
+    child_capacity = len(bound.children)
+    active_child_count = bound.child_count
+    if not 0 <= active_child_count <= child_capacity:
+        raise ValueError(
+            "composite active child count must fit its allocated capacity"
+        )
 
     child_ptrs_offset = 0
     transforms1_offset = 0
@@ -259,8 +264,8 @@ def _write_composite(
     flags2_offset = 0
     bvh_offset = 0
 
-    if child_count:
-        child_ptrs_offset = writer.alloc(child_count * 8, 8)
+    if child_capacity:
+        child_ptrs_offset = writer.alloc(child_capacity * 8, 8)
         for index, child_offset in enumerate(child_offsets):
             writer.pack_into(
                 "Q",
@@ -268,13 +273,13 @@ def _write_composite(
                 _virtual(child_offset) if child_offset else 0,
             )
 
-        transforms1_offset = writer.alloc(child_count * 0x40, 16, relocate_pointers=False)
-        transforms2_offset = writer.alloc(child_count * 0x40, 16, relocate_pointers=False)
+        transforms1_offset = writer.alloc(child_capacity * 0x40, 16, relocate_pointers=False)
+        transforms2_offset = writer.alloc(child_capacity * 0x40, 16, relocate_pointers=False)
         for index, child in enumerate(bound.children):
             _write_transform(writer, transforms1_offset + (index * 0x40), child.transform)
             _write_transform(writer, transforms2_offset + (index * 0x40), child.transform)
 
-        child_bounds_offset = writer.alloc(child_count * 0x20, 16, relocate_pointers=False)
+        child_bounds_offset = writer.alloc(child_capacity * 0x20, 16, relocate_pointers=False)
         for index, child in enumerate(bound.children):
             _write_aabb(
                 writer,
@@ -298,8 +303,8 @@ def _write_composite(
             child.flags1 is not None or child.flags2 is not None
             for child in bound.children
         ):
-            flags1_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
-            flags2_offset = writer.alloc(child_count * 0x08, 8, relocate_pointers=False)
+            flags1_offset = writer.alloc(child_capacity * 0x08, 8, relocate_pointers=False)
+            flags2_offset = writer.alloc(child_capacity * 0x08, 8, relocate_pointers=False)
             for index, child in enumerate(bound.children):
                 _write_composite_flags(writer, flags1_offset + (index * 0x08), child.flags1)
                 _write_composite_flags(writer, flags2_offset + (index * 0x08), child.flags2)
@@ -313,8 +318,8 @@ def _write_composite(
     writer.pack_into("Q", offset + 0x88, _virtual(child_bounds_offset) if child_bounds_offset else 0)
     writer.pack_into("Q", offset + 0x90, _virtual(flags1_offset) if flags1_offset else 0)
     writer.pack_into("Q", offset + 0x98, _virtual(flags2_offset) if flags2_offset else 0)
-    writer.pack_into("H", offset + 0xA0, child_count)
-    writer.pack_into("H", offset + 0xA2, child_count)
+    writer.pack_into("H", offset + 0xA0, child_capacity)
+    writer.pack_into("H", offset + 0xA2, active_child_count)
     writer.pack_into("I", offset + 0xA4, 0)
     writer.pack_into("Q", offset + 0xA8, _virtual(bvh_offset) if bvh_offset else 0)
 
@@ -682,10 +687,10 @@ def _transform_aabb(bounds: BoundAabb, transform: BoundTransform | None) -> Boun
 
 
 def _build_composite_bvh(bound: BoundComposite) -> BoundBvh | None:
-    if len(bound.children) < _COMPOSITE_MIN_CHILDREN_FOR_BVH:
+    if bound.child_count < _COMPOSITE_MIN_CHILDREN_FOR_BVH:
         return None
     items: list[_BvhBuildItem] = []
-    for index, child in enumerate(bound.children):
+    for index, child in enumerate(bound.active_children):
         if child.bound is None:
             continue
         transformed_bounds = _transform_aabb(_child_bounds(child), child.transform)
@@ -701,7 +706,7 @@ def _build_composite_bvh(bound: BoundComposite) -> BoundBvh | None:
 
 def _refresh_composite_metrics(bound: BoundComposite) -> None:
     active_children = [
-        child for child in bound.children if child.bound is not None
+        child for child in bound.active_children if child.bound is not None
     ]
     if not active_children:
         bound.bvh = None

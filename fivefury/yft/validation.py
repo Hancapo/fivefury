@@ -385,7 +385,7 @@ def _validate_lod(
         ):
             for index, (slot, child) in enumerate(
                 zip(
-                    lod.composite_bound.children,
+                    lod.composite_bound.active_children,
                     lod.children,
                     strict=False,
                 )

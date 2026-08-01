@@ -57,7 +57,7 @@ def coerce_yft_physics_bound_profile(
 
 def iter_bound_slots(root: Bound) -> Iterator[Bound | None]:
     if isinstance(root, BoundComposite):
-        yield from (child.bound for child in root.children)
+        yield from (child.bound for child in root.active_children)
     else:
         yield root
 
@@ -108,7 +108,7 @@ def validate_bound_profile(
                 )
         if expected_slots is not None:
             actual_slots = (
-                len(root.children)
+                root.child_count
                 if isinstance(root, BoundComposite)
                 else 1
             )
@@ -122,9 +122,9 @@ def validate_bound_profile(
     if not isinstance(root, BoundComposite):
         issues.append("physics LOD root must be a BoundComposite")
         return issues
-    if expected_slots is not None and len(root.children) != expected_slots:
+    if expected_slots is not None and root.child_count != expected_slots:
         issues.append(
-            f"composite has {len(root.children)} slots for "
+            f"composite has {root.child_count} active slots for "
             f"{expected_slots} physics children"
         )
 
@@ -141,7 +141,7 @@ def validate_bound_profile(
                 f"{resolved.value} 0x{expected_vft:08X}"
             )
 
-    for index, child in enumerate(root.children):
+    for index, child in enumerate(root.active_children):
         bound = child.bound
         if bound is None:
             continue
