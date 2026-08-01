@@ -25,6 +25,7 @@ tests/*
 !tests/test_ynd.py
 !tests/test_rpf_ps3.py
 !tests/test_rpf_streaming_folder.py
+!tests/test_resource_stream.py
 !tests/test_cdr.py
 !tests/test_drawable.py
 !tests/test_yft.py

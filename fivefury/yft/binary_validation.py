@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import struct
 
-from ..bounds import BoundType
+from ..bounds import GEN9_BOUND_FILE_VFTS, BoundType
 from ..common import ByteSource, read_source_bytes
 from ..resource import (
     RSC7_VIRTUAL_BASE,
@@ -12,7 +12,7 @@ from ..resource import (
     parse_rsc7,
     validate_resource_pointer,
 )
-from ..ydr.fixups import audit_legacy_fragment_drawable_fixups
+from ..ydr.fixups import audit_fragment_drawable_fixups
 from .bound_profiles import (
     YftPhysicsBoundProfile,
     coerce_yft_physics_bound_profile,
@@ -27,16 +27,7 @@ from .geometry import (
     MAX_FRAGMENT_BOUND_POLYGONS,
     MAX_FRAGMENT_BOUND_VERTICES,
 )
-from .resource_headers import (
-    FRAG_PHYS_ARCHETYPE_DAMP_VFT,
-    FRAG_PHYS_TRANSFORMS_VFT,
-    FRAG_PHYSICS_LOD_VFT,
-    FRAG_TYPE_CHILD_VFT,
-    FRAGMENT_TYPE_VFT,
-    PH_JOINT_1DOF_TYPE_VFT,
-    PH_JOINT_3DOF_TYPE_VFT,
-    RESOURCE_STATE,
-)
+from .resource_headers import RESOURCE_STATE, yft_runtime_headers
 from .validation import (
     YftValidationIssue,
     YftValidationSeverity,
@@ -48,7 +39,6 @@ _PHYSICS_CHILD_SIZE = 0x100
 _ARCHETYPE_DAMP_SIZE = 0xE0
 _ARTICULATED_BODY_SIZE = 0xA4
 _JOINT_SIZES = {0: 0xB0, 1: 0xF0}
-_JOINT_VFTS = {0: PH_JOINT_1DOF_TYPE_VFT, 1: PH_JOINT_3DOF_TYPE_VFT}
 _BOUND_BASE_SIZE = 0x70
 _BOUND_COMPOSITE_SIZE = 0xB0
 _BOUND_GEOMETRY_SIZE = 0x130
@@ -69,6 +59,7 @@ class _YftBinaryValidator:
         self.system_data = system_data
         self.graphics_data = graphics_data
         self.profile = profile
+        self.runtime_headers = yft_runtime_headers(header.version)
         self.issues: list[YftValidationIssue] = []
         self._validated_drawables: set[int] = set()
         self._common_drawable: int = 0
@@ -206,11 +197,13 @@ class _YftBinaryValidator:
         if pointer in self._validated_drawables:
             return
         self._validated_drawables.add(pointer)
-        audit_legacy_fragment_drawable_fixups(
+        audit_fragment_drawable_fixups(
             self,
             pointer,
             path,
             require_shader_group=require_shader_group,
+            runtime_headers=self.runtime_headers.drawable,
+            enhanced=self.runtime_headers.enhanced,
         )
 
     def drawable_shader_count(self, pointer: int, path: str) -> int:
@@ -296,7 +289,7 @@ class _YftBinaryValidator:
             pointer,
             path,
             size=_PHYSICS_CHILD_SIZE,
-            expected_vft=FRAG_TYPE_CHILD_VFT,
+            expected_vft=self.runtime_headers.physics_child,
         )
         if offset is None:
             return
@@ -330,7 +323,7 @@ class _YftBinaryValidator:
             pointer,
             path,
             size=_ARCHETYPE_DAMP_SIZE,
-            expected_vft=FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+            expected_vft=self.runtime_headers.damp_archetype,
         )
         if offset is None:
             return 0
@@ -532,8 +525,17 @@ class _YftBinaryValidator:
             )
             return []
         vft = self.u32(offset)
-        expected_vft = expected_profile_vft(bound_type, self.profile)
-        if (
+        expected_vft = (
+            GEN9_BOUND_FILE_VFTS.get(bound_type)
+            if self.runtime_headers.enhanced
+            else expected_profile_vft(bound_type, self.profile)
+        )
+        if self.runtime_headers.enhanced and expected_vft is None:
+            self.error(
+                f"{path}.type",
+                f"{bound_type.name} is not defined for Enhanced resources",
+            )
+        elif (
             self.profile is not YftPhysicsBoundProfile.PRESERVE
             and expected_vft is None
         ):
@@ -545,8 +547,8 @@ class _YftBinaryValidator:
         elif expected_vft is not None and vft != expected_vft:
             self.error(
                 f"{path}.vft",
-                f"expected 0x{expected_vft:08X} for "
-                f"{self.profile.value}, found 0x{vft:08X}",
+                f"expected target runtime VFT 0x{expected_vft:08X}, "
+                f"found 0x{vft:08X}",
             )
         elif not vft:
             self.error(f"{path}.vft", "bound VFT is zero")
@@ -843,7 +845,11 @@ class _YftBinaryValidator:
                 joint_pointer,
                 f"{path}.joints[{index}]",
                 size=joint_size,
-                expected_vft=_JOINT_VFTS[joint_type],
+                expected_vft=(
+                    self.runtime_headers.joint_1dof
+                    if joint_type == 0
+                    else self.runtime_headers.joint_3dof
+                ),
             )
         inertia = self.u64(offset + 0x80)
         if inertia:
@@ -858,7 +864,7 @@ class _YftBinaryValidator:
             pointer,
             path,
             size=0x20,
-            expected_vft=FRAG_PHYS_TRANSFORMS_VFT,
+            expected_vft=self.runtime_headers.physics_transforms,
         )
         if offset is None:
             return
@@ -881,7 +887,7 @@ class _YftBinaryValidator:
             pointer,
             path,
             size=_PHYSICS_LOD_SIZE,
-            expected_vft=FRAG_PHYSICS_LOD_VFT,
+            expected_vft=self.runtime_headers.physics_lod,
         )
         if offset is None:
             return
@@ -1185,7 +1191,7 @@ class _YftBinaryValidator:
             root,
             "root",
             size=FRAGMENT_ROOT_SIZE,
-            expected_vft=FRAGMENT_TYPE_VFT,
+            expected_vft=self.runtime_headers.fragment_type,
         )
         if root_offset is None:
             return self.issues
@@ -1257,11 +1263,11 @@ class _YftBinaryValidator:
 
         physics_group = self.u64(root_offset + 0xF0)
         if physics_group:
-            group_offset = self.pointer(
+            group_offset = self.class_header(
                 physics_group,
                 "root.physics_lod_group",
                 size=0x30,
-                nullable=False,
+                expected_vft=self.runtime_headers.physics_lod_group,
             )
             if group_offset is not None:
                 for index, label in enumerate(("high", "medium", "low")):

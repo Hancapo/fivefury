@@ -10,6 +10,7 @@ from ..bounds import (
     BoundChild,
     BoundComposite,
     calculate_bound_ref_counts,
+    gen9_bound_file_vft,
     write_bound_resource,
 )
 from ..resource import ResourceWriter
@@ -35,13 +36,9 @@ from .physics import (
 )
 from .physics_authoring import normalize_physics_lod
 from .resource_headers import (
-    FRAG_PHYS_ARCHETYPE_DAMP_VFT,
-    FRAG_PHYS_TRANSFORMS_VFT,
-    FRAG_PHYSICS_LOD_VFT,
-    FRAG_TYPE_CHILD_VFT,
-    PH_JOINT_1DOF_TYPE_VFT,
-    PH_JOINT_3DOF_TYPE_VFT,
+    LEGACY_YFT_RUNTIME_HEADERS,
     RESOURCE_STATE,
+    YftRuntimeHeaders,
 )
 
 _PHYSICS_LOD_GROUP_SIZE = 0x30
@@ -82,15 +79,17 @@ def write_physics_child_header(
     writer: ResourceWriter,
     offset: int,
     child: YftPhysicsChild | None = None,
+    *,
+    runtime_headers: YftRuntimeHeaders = LEGACY_YFT_RUNTIME_HEADERS,
 ) -> None:
     _write_resource_header(
         writer,
         offset,
-        vft=child.vft if child is not None else FRAG_TYPE_CHILD_VFT,
+        vft=runtime_headers.physics_child,
         resource_state=(
             child.resource_state if child is not None else RESOURCE_STATE
         ),
-        expected_vft=FRAG_TYPE_CHILD_VFT,
+        expected_vft=runtime_headers.physics_child,
         label="fragTypeChild",
     )
 
@@ -381,6 +380,8 @@ def _link_physics_entity_bounds(
 def _write_physics_transforms(
     writer: ResourceWriter,
     transforms: YftPhysicsTransforms,
+    *,
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     if not transforms.matrices:
         return 0
@@ -388,9 +389,9 @@ def _write_physics_transforms(
     _write_resource_header(
         writer,
         offset,
-        vft=transforms.vft,
+        vft=runtime_headers.physics_transforms,
         resource_state=transforms.resource_state,
-        expected_vft=FRAG_PHYS_TRANSFORMS_VFT,
+        expected_vft=runtime_headers.physics_transforms,
         label="fragPhysTransforms",
     )
     writer.pack_into("Q", offset + 8, int(transforms.reserved_08))
@@ -524,9 +525,15 @@ def _write_physics_child(
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
     allow_fragment_fallback: bool,
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     child_offset = writer.alloc(_PHYSICS_CHILD_SIZE, 16) if offset is None else offset
-    write_physics_child_header(writer, child_offset, child)
+    write_physics_child_header(
+        writer,
+        child_offset,
+        child,
+        runtime_headers=runtime_headers,
+    )
     writer.pack_into("ff", child_offset + 0x08, child.undamaged_mass, child.damaged_mass)
     writer.data[child_offset + 0x10] = int(child.owner_group_pointer_index) & 0xFF
     writer.data[child_offset + 0x11] = int(child.flags) & 0xFF
@@ -570,14 +577,15 @@ def _write_damp_archetype(
     archetype: YftPhysicsDampArchetype,
     *,
     bound_pointer: int,
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     offset = writer.alloc(_ARCHETYPE_DAMP_SIZE, 16)
     _write_resource_header(
         writer,
         offset,
-        vft=archetype.vft,
+        vft=runtime_headers.damp_archetype,
         resource_state=archetype.resource_state,
-        expected_vft=FRAG_PHYS_ARCHETYPE_DAMP_VFT,
+        expected_vft=runtime_headers.damp_archetype,
         label="phArchetypeDamp",
     )
     writer.pack_into("i", offset + 0x10, int(archetype.resource_type or 2))
@@ -612,6 +620,7 @@ def _write_articulated_body_type(
     body: YftArticulatedBodyType | None,
     *,
     inertia: Sequence[YftPhysicsInertia],
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     if body is None:
         return 0
@@ -619,7 +628,7 @@ def _write_articulated_body_type(
     _write_resource_header(
         writer,
         offset,
-        vft=body.vft,
+        vft=runtime_headers.articulated_body,
         resource_state=body.resource_state,
         expected_vft=None,
         label="phArticulatedBodyType",
@@ -629,7 +638,10 @@ def _write_articulated_body_type(
         value = parent_indices[index] if index < len(parent_indices) else -1
         writer.pack_into("i", offset + 0x10 + index * 4, int(value))
     writer.pack_into("ff", offset + 0x6C, body.replace_upon_reresource, body.angular_decay_rate)
-    joint_offsets = [_write_physics_joint(writer, joint) for joint in body.joints]
+    joint_offsets = [
+        _write_physics_joint(writer, joint, runtime_headers=runtime_headers)
+        for joint in body.joints
+    ]
     joint_pointer_offset = _write_pointer_array(
         writer, [_virtual(joint_offset) for joint_offset in joint_offsets]
     )
@@ -658,6 +670,8 @@ def _write_matrix44(writer: ResourceWriter, offset: int, matrix) -> None:
 def _write_physics_joint(
     writer: ResourceWriter,
     joint: YftPhysicsJoint1Dof | YftPhysicsJoint3Dof,
+    *,
+    runtime_headers: YftRuntimeHeaders = LEGACY_YFT_RUNTIME_HEADERS,
 ) -> int:
     if isinstance(joint, YftPhysicsJoint1Dof):
         size = _JOINT_1DOF_SIZE
@@ -667,9 +681,9 @@ def _write_physics_joint(
         raise TypeError("YFT resources only support 1DOF and 3DOF joint types")
     offset = writer.alloc(size, 16)
     expected_vft = (
-        PH_JOINT_1DOF_TYPE_VFT
+        runtime_headers.joint_1dof
         if isinstance(joint, YftPhysicsJoint1Dof)
-        else PH_JOINT_3DOF_TYPE_VFT
+        else runtime_headers.joint_3dof
     )
     _write_resource_header(
         writer,
@@ -726,6 +740,7 @@ def _write_child_array(
     damaged_drawable_offset: int,
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     child_offsets: list[int] = []
     for index, child in enumerate(lod.children):
@@ -739,6 +754,7 @@ def _write_child_array(
                 entity_drawable_offsets=entity_drawable_offsets,
                 event_set_offsets=event_set_offsets,
                 allow_fragment_fallback=len(lod.children) == 1,
+                runtime_headers=runtime_headers,
             )
         )
     return _write_pointer_array(writer, [_virtual(offset) for offset in child_offsets])
@@ -754,6 +770,7 @@ def _write_physics_lod(
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
     bound_profile: YftPhysicsBoundProfile,
+    runtime_headers: YftRuntimeHeaders,
 ) -> int:
     if lod.composite_bound is None:
         raise ValueError(f"physics LOD '{lod.label}' requires a composite_bound")
@@ -766,9 +783,10 @@ def _write_physics_lod(
                 fragment_drawable_fallback=bool(main_drawable_offset),
             )
         ),
-        file_vft_resolver=lambda bound: profile_file_vft(
-            bound,
-            bound_profile,
+        file_vft_resolver=(
+            gen9_bound_file_vft
+            if runtime_headers.enhanced
+            else lambda bound: profile_file_vft(bound, bound_profile)
         ),
     )
     bound_pointer = _virtual(bound_offset)
@@ -797,9 +815,10 @@ def _write_physics_lod(
                     fragment_drawable_fallback=bool(damaged_drawable_offset),
                 )
             ),
-            file_vft_resolver=lambda bound: profile_file_vft(
-                bound,
-                bound_profile,
+            file_vft_resolver=(
+                gen9_bound_file_vft
+                if runtime_headers.enhanced
+                else lambda bound: profile_file_vft(bound, bound_profile)
             ),
         )
         if damaged_bound is not None
@@ -866,16 +885,19 @@ def _write_physics_lod(
         writer,
         lod.undamaged_damp_archetype,
         bound_pointer=bound_pointer,
+        runtime_headers=runtime_headers,
     ) if lod.undamaged_damp_archetype is not None else 0
     damaged_damp_offset = _write_damp_archetype(
         writer,
         lod.damaged_damp_archetype,
         bound_pointer=damaged_bound_pointer,
+        runtime_headers=runtime_headers,
     ) if lod.damaged_damp_archetype is not None else 0
     body_offset = _write_articulated_body_type(
         writer,
         lod.articulated_body_type,
         inertia=lod.undamaged_ang_inertia,
+        runtime_headers=runtime_headers,
     )
     group_names_offset = _group_name_offsets(writer, lod)
     group_offsets = [
@@ -895,11 +917,16 @@ def _write_physics_lod(
         damaged_drawable_offset=damaged_drawable_offset,
         entity_drawable_offsets=entity_drawable_offsets,
         event_set_offsets=event_set_offsets,
+        runtime_headers=runtime_headers,
     )
     min_impulses_offset = _write_float_array(writer, lod.min_breaking_impulses)
     undamaged_inertia_offset = _write_inertia_array(writer, lod.undamaged_ang_inertia)
     damaged_inertia_offset = _write_inertia_array(writer, lod.damaged_ang_inertia)
-    link_attachments_offset = _write_physics_transforms(writer, lod.link_attachments)
+    link_attachments_offset = _write_physics_transforms(
+        writer,
+        lod.link_attachments,
+        runtime_headers=runtime_headers,
+    )
     self_collision_a_offset = _write_u8_array(writer, [first for first, _second in lod.self_collision_pairs])
     self_collision_b_offset = _write_u8_array(writer, [second for _first, second in lod.self_collision_pairs])
 
@@ -907,9 +934,9 @@ def _write_physics_lod(
     _write_resource_header(
         writer,
         offset,
-        vft=lod.vft,
+        vft=runtime_headers.physics_lod,
         resource_state=lod.resource_state,
-        expected_vft=FRAG_PHYSICS_LOD_VFT,
+        expected_vft=runtime_headers.physics_lod,
         label="fragPhysicsLOD",
     )
     writer.pack_into("fff", offset + 0x14, lod.smallest_ang_inertia, lod.largest_ang_inertia, lod.min_move_force)
@@ -953,6 +980,7 @@ def write_physics_lod_group(
     bound_profile: YftPhysicsBoundProfile | str = (
         YftPhysicsBoundProfile.PROP
     ),
+    runtime_headers: YftRuntimeHeaders = LEGACY_YFT_RUNTIME_HEADERS,
 ) -> tuple[int, tuple[YftPhysicsLod, ...]]:
     if not lods:
         return 0, ()
@@ -980,8 +1008,17 @@ def write_physics_lod_group(
             entity_drawable_offsets=entity_drawable_offsets,
             event_set_offsets=event_set_offsets,
             bound_profile=resolved_profile,
+            runtime_headers=runtime_headers,
         )
     group_offset = writer.alloc(_PHYSICS_LOD_GROUP_SIZE, 16)
+    _write_resource_header(
+        writer,
+        group_offset,
+        vft=runtime_headers.physics_lod_group,
+        resource_state=RESOURCE_STATE,
+        expected_vft=runtime_headers.physics_lod_group,
+        label="fragPhysicsLODGroup",
+    )
     writer.pack_into("Q", group_offset + 0x10, _virtual(offsets["high"]) if "high" in offsets else 0)
     writer.pack_into("Q", group_offset + 0x18, _virtual(offsets["medium"]) if "medium" in offsets else 0)
     writer.pack_into("Q", group_offset + 0x20, _virtual(offsets["low"]) if "low" in offsets else 0)

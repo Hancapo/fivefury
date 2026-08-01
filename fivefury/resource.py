@@ -327,8 +327,45 @@ def compress_resource_stream(data: bytes) -> bytes:
     return zlib.compress(data, level=9, wbits=-15)
 
 
-def decompress_resource_stream(data: bytes) -> bytes:
-    return zlib.decompress(data, wbits=-15)
+def _decompress_raw_resource_stream(data: bytes, *, dictionary: bytes | None = None) -> bytes:
+    if dictionary is None:
+        decompressor = zlib.decompressobj(wbits=-15)
+    else:
+        decompressor = zlib.decompressobj(wbits=-15, zdict=dictionary)
+    output = decompressor.decompress(data) + decompressor.flush()
+    if not decompressor.eof:
+        raise ValueError("resource deflate stream is truncated")
+    if decompressor.unused_data or decompressor.unconsumed_tail:
+        raise ValueError("resource deflate stream contains trailing data")
+    return output
+
+
+def decompress_resource_stream(
+    data: bytes,
+    *,
+    expected_size: int | None = None,
+) -> bytes:
+    try:
+        output = _decompress_raw_resource_stream(data)
+    except zlib.error as exc:
+        if "invalid distance too far back" not in str(exc).lower():
+            raise ValueError("unable to decompress resource stream") from exc
+        try:
+            output = _decompress_raw_resource_stream(
+                data,
+                dictionary=b"\0" * 32768,
+            )
+        except (ValueError, zlib.error) as fallback_exc:
+            raise ValueError("unable to decompress resource stream") from fallback_exc
+    if expected_size is None:
+        return output
+    target_size = int(expected_size)
+    if len(output) > target_size:
+        raise ValueError(
+            f"resource stream expands to 0x{len(output):X} bytes, "
+            f"exceeding the declared 0x{target_size:X} bytes"
+        )
+    return output
 
 
 @dataclasses.dataclass(slots=True)
@@ -442,7 +479,7 @@ def parse_rsc7(data: bytes) -> tuple[ResourceHeader, bytes]:
     if magic != RSC7_MAGIC:
         raise ValueError("data does not start with an RSC7 header")
     header = ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
-    payload = decompress_resource_stream(data[16:])
+    payload = decompress_resource_stream(data[16:], expected_size=header.total_size)
     return header, payload
 
 

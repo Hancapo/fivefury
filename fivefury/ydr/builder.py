@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..binary import align
-from ..bounds import write_bound_resource
+from ..bounds import gen9_bound_file_vft, write_bound_resource
 from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
@@ -35,6 +35,7 @@ from .prepare import (
     select_layout,
 )
 from .resource_headers import (
+    GEN9_DRAWABLE_HEADERS,
     LEGACY_DRAWABLE_HEADERS,
     DrawableRuntimeHeaders,
 )
@@ -114,21 +115,29 @@ def _relocate_embedded_texture_dictionary(
     return bytes(output[dict_offset:])
 
 
-def _embedded_texture_game(source: YdrBuild) -> str:
+def _embedded_texture_game(source: YdrBuild, *, enhanced: bool) -> str:
     if source.embedded_textures is None:
         return 'gta5'
     game = (source.embedded_textures.game or '').strip().lower()
     if game:
-        if game == 'gta5' and int(source.version) in _ENHANCED_YDR_VERSIONS:
+        if game == 'gta5' and enhanced:
             return 'gta5_enhanced'
         return game
-    return 'gta5_enhanced' if int(source.version) in _ENHANCED_YDR_VERSIONS else 'gta5'
+    return 'gta5_enhanced' if enhanced else 'gta5'
 
 
-def _write_embedded_texture_dictionary(system: ResourceWriter, graphics: GraphicsWriter, source: YdrBuild) -> int:
+def _write_embedded_texture_dictionary(
+    system: ResourceWriter,
+    graphics: GraphicsWriter,
+    source: YdrBuild,
+    *,
+    enhanced: bool,
+) -> int:
     if source.embedded_textures is None or not source.embedded_textures.textures:
         return 0
-    ytd_bytes = source.embedded_textures.to_bytes(game=_embedded_texture_game(source))
+    ytd_bytes = source.embedded_textures.to_bytes(
+        game=_embedded_texture_game(source, enhanced=enhanced)
+    )
     header, virtual_data, graphics_data = split_rsc7_sections(ytd_bytes)
     dict_offset = system.alloc(len(virtual_data), 16)
     graphics_offset = graphics.alloc(graphics_data, 16, relocate_pointers=False) if graphics_data else 0
@@ -156,8 +165,10 @@ def _write_drawable_payload(
     write_extensions: bool = True,
     recalculate_skeleton_hashes: bool = True,
     runtime_headers: DrawableRuntimeHeaders = LEGACY_DRAWABLE_HEADERS,
+    enhanced: bool | None = None,
 ) -> int:
-    enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
+    if enhanced is None:
+        enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
     if not prepared_materials:
         shader_group_off = 0
     elif enhanced:
@@ -190,8 +201,21 @@ def _write_drawable_payload(
         vft=runtime_headers.joints,
     )
     lights_block_off = write_lights(system, source.lights) if write_extensions else 0
-    bound_off = write_bound_resource(system, source.bound) if source.bound is not None else 0
-    texture_dictionary_off = _write_embedded_texture_dictionary(system, graphics, source)
+    bound_off = (
+        write_bound_resource(
+            system,
+            source.bound,
+            file_vft_resolver=gen9_bound_file_vft if enhanced else None,
+        )
+        if source.bound is not None
+        else 0
+    )
+    texture_dictionary_off = _write_embedded_texture_dictionary(
+        system,
+        graphics,
+        source,
+        enhanced=enhanced,
+    )
 
     prepared_model_blocks_by_lod: dict[YdrLod, list[PreparedModelBlock]] = {}
     for lod_name in LOD_ORDER:
@@ -283,6 +307,7 @@ def _build_system_payload(
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
     graphics = GraphicsWriter()
+    enhanced = int(source.version) in _ENHANCED_YDR_VERSIONS
     _write_drawable_payload(
         system,
         graphics,
@@ -293,6 +318,8 @@ def _build_system_payload(
         root_off=0,
         write_pages=True,
         recalculate_skeleton_hashes=recalculate_skeleton_hashes,
+        runtime_headers=(GEN9_DRAWABLE_HEADERS if enhanced else LEGACY_DRAWABLE_HEADERS),
+        enhanced=enhanced,
     )
     return system.finish(), graphics.finish(), system.block_spans, graphics.block_spans
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-import struct
 import re
+import struct
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -329,16 +329,24 @@ def build_gen9_vertex_declaration(declaration_flags: int, declaration_types: int
     offsets = [0] * 52
     sizes = [0] * 52
     types = [0] * 52
-    offset = 0
+    semantic_offsets = [0] * 16
+    running_offset = 0
+    for legacy_index in range(16):
+        semantic_offsets[legacy_index] = running_offset
+        if ((int(declaration_flags) >> legacy_index) & 0x1) == 0:
+            continue
+        component_type = VertexComponentType(
+            (int(declaration_types) >> (legacy_index * 4)) & 0xF
+        )
+        running_offset += COMPONENT_SIZES.get(int(component_type), 0)
     for index in range(52):
-        offsets[index] = offset
         legacy_index = _G9_TO_LEGACY_COMPONENT_INDEX.get(index, -1)
         if legacy_index < 0:
             continue
+        offsets[index] = semantic_offsets[legacy_index]
         if ((int(declaration_flags) >> legacy_index) & 0x1) == 0:
             continue
         component_type = VertexComponentType((int(declaration_types) >> (legacy_index * 4)) & 0xF)
-        offset += COMPONENT_SIZES.get(int(component_type), 0)
         sizes[index] = int(vertex_stride) & 0xFF
         types[index] = int(get_gen9_component_type(legacy_index, declaration_types)) & 0xFF
     data = ((int(vertex_stride) & 0xFF) << 2) | ((int(vertex_count) & 0x3FFFFF) << 10)
@@ -351,7 +359,10 @@ def build_gen9_vertex_declaration(declaration_flags: int, declaration_types: int
     return b''.join(parts)
 
 
-def decode_gen9_vertex_declaration(data: bytes, offset: int = 0) -> tuple[int, int, int, int]:
+def decode_gen9_vertex_declaration_layout(
+    data: bytes,
+    offset: int = 0,
+) -> tuple[int, int, int, int, tuple[int, ...]]:
     offsets_size = 52 * 4
     offsets_end = offset + offsets_size
     sizes_end = offsets_end + 52
@@ -360,11 +371,13 @@ def decode_gen9_vertex_declaration(data: bytes, offset: int = 0) -> tuple[int, i
     if data_end > len(data):
         raise ValueError('Gen9 vertex declaration is truncated')
     type_values = data[sizes_end:types_end]
+    element_offsets = struct.unpack_from("<52I", data, offset)
     packed = int.from_bytes(data[types_end:data_end], 'little', signed=False)
     vertex_stride = (packed >> 2) & 0xFF
     vertex_count = (packed >> 10) & 0x3FFFFF
     flags = 0
     declaration_types = 0
+    component_offsets = [0] * 16
     for g9_index, type_value in enumerate(type_values):
         if not type_value:
             continue
@@ -373,6 +386,14 @@ def decode_gen9_vertex_declaration(data: bytes, offset: int = 0) -> tuple[int, i
             continue
         flags |= 1 << legacy_index
         declaration_types |= int(get_legacy_component_type_from_gen9(type_value)) << (legacy_index * 4)
+        component_offsets[legacy_index] = int(element_offsets[g9_index])
+    return flags, declaration_types, vertex_stride, vertex_count, tuple(component_offsets)
+
+
+def decode_gen9_vertex_declaration(data: bytes, offset: int = 0) -> tuple[int, int, int, int]:
+    flags, declaration_types, vertex_stride, vertex_count, _ = (
+        decode_gen9_vertex_declaration_layout(data, offset)
+    )
     return flags, declaration_types, vertex_stride, vertex_count
 
 
@@ -415,12 +436,6 @@ def build_shader_param_infos_g9(shader: ShaderGen9Definition, *, multiplier: int
 
 
 __all__ = [
-    'ShaderGen9Definition',
-    'ShaderGen9Library',
-    'ShaderGen9ParameterDefinition',
-    'ShaderParamTypeG9',
-    'ShaderResourceViewDimensionG9',
-    'VertexDeclarationG9ElementFormat',
     '_G9_INDEX_BUFFER_BIND_FLAGS',
     '_G9_PARAM_MULTIPLIER',
     '_G9_SHADER_PRESET_META',
@@ -434,10 +449,17 @@ __all__ = [
     '_G9_UNKNOWN1',
     '_G9_VERTEX_BUFFER_BIND_FLAGS',
     '_G9_VERTEX_BUFFER_BIND_FLAGS_SKINNED',
+    'ShaderGen9Definition',
+    'ShaderGen9Library',
+    'ShaderGen9ParameterDefinition',
+    'ShaderParamTypeG9',
+    'ShaderResourceViewDimensionG9',
+    'VertexDeclarationG9ElementFormat',
     'build_gen9_vertex_declaration',
     'build_shader_param_infos_g9',
     'build_shader_resource_view_g9',
     'decode_gen9_vertex_declaration',
+    'decode_gen9_vertex_declaration_layout',
     'load_gen9_shader_library',
     'read_gen9_shader_library',
     'resolve_gen9_shader_reference',

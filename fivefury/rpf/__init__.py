@@ -516,20 +516,7 @@ class RpfArchive:
         if not logical:
             return raw
         if isinstance(entry, RpfResourceFileEntry):
-            if _is_rsc7(raw):
-                return parse_rsc7(raw)[1]
-            payload = raw[16:] if len(raw) > 16 else b""
-            if entry.is_encrypted:
-                payload = self.crypto.decrypt_entry_payload(
-                    payload,
-                    self.encryption,
-                    entry_name=entry.name,
-                    entry_length=entry.file_size,
-                )
-            try:
-                return _decompress_deflate(payload)
-            except ValueError:
-                return payload
+            return parse_rsc7(self.read_entry_standalone(entry))[1]
         if entry.is_encrypted:
             raw = self._decrypt_entry_raw(entry, raw)
         if isinstance(entry, RpfBinaryFileEntry) and entry.file_size > 0:
@@ -1139,6 +1126,7 @@ class RpfArchive:
 
 __all__ = [
     "AES_ENCRYPTION",
+    "GTA5_PS3_AES_KEY",
     "NG_ENCRYPTION",
     "NONE_ENCRYPTION",
     "OPEN_ENCRYPTION",
@@ -1146,13 +1134,12 @@ __all__ = [
     "RPF_BLOCK_SIZE",
     "RPF_MAGIC",
     "RSC7_MAGIC",
-    "GTA5_PS3_AES_KEY",
     "RpfArchive",
     "RpfBinaryFileEntry",
     "RpfDirectoryEntry",
     "RpfEntry",
-    "RpfExtractionConflict",
     "RpfExportMode",
+    "RpfExtractionConflict",
     "RpfFileEntry",
     "RpfPlatform",
     "RpfResourceFileEntry",

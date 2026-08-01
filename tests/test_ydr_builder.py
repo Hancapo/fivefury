@@ -21,26 +21,27 @@ from fivefury import (
     YdrLight,
     YdrLightType,
     YdrLod,
+    YdrMaterialInput,
     YdrMesh,
+    YdrMeshInput,
     YdrModel,
+    YdrModelInput,
     YdrRenderMask,
     YdrShader,
-    YdrSkeletonBinding,
-    YdrMaterialInput,
-    YdrMeshInput,
-    YdrModelInput,
     YdrSkeleton,
+    YdrSkeletonBinding,
     Ytd,
+    assimp_to_ydr,
     calculate_bone_tag,
     calculate_skeleton_unknown_hashes,
     create_ydr,
-    assimp_to_ydr,
     read_assimp_scene,
     read_ydr,
     skeleton_bone_flag_names,
 )
 from fivefury.resource import split_rsc7_sections
 from fivefury.ydr.gen9 import decode_gen9_vertex_declaration
+from fivefury.ydr.resource_headers import GEN9_DRAWABLE_HEADERS
 
 _TEXTURE_BASE_VFT = 0x40617568
 
@@ -1145,6 +1146,7 @@ def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_pat
     declaration_off = _virtual_to_offset(int.from_bytes(model_data[vertex_buffer_off + 0x38 : vertex_buffer_off + 0x40], "little"))
 
     assert header.version == 159
+    assert int.from_bytes(system_data[0:4], "little") == GEN9_DRAWABLE_HEADERS.drawable
     assert int.from_bytes(shader_data[shader_off + 0x04 : shader_off + 0x08], "little") == 0x6D657461
     assert int.from_bytes(shader_data[shader_off + 0x08 : shader_off + 0x10], "little") >= 0x50000000
     assert int.from_bytes(shader_data[shader_off + 0x10 : shader_off + 0x18], "little") >= 0x50000000
@@ -1443,6 +1445,37 @@ def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     assert ydr.get_bone_by_name("root") is not None
     assert ydr.get_bone_by_tag(1) is not None
     assert [bone.name for bone in mesh.resolve_bones(ydr.skeleton)] == ["root", "child"]
+
+
+def test_gen9_skinned_mesh_uses_declared_component_offsets(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
+        materials=[YdrMaterialInput(name="main", shader="default.sps")],
+        version=159,
+        name="gen9_skinned_tri",
+        skeleton=_simple_skeleton(),
+    )
+
+    path = tmp_path / "gen9_skinned_tri.ydr"
+    build.save(path)
+    mesh = read_ydr(path).meshes[0]
+
+    assert mesh.blend_indices == [
+        (0, 0, 0, 0),
+        (0, 1, 0, 0),
+        (1, 0, 0, 0),
+    ]
+    assert mesh.blend_weights[1] == pytest.approx(
+        (0.5, 0.5, 0.0, 0.0),
+        abs=1 / 255,
+    )
 
 
 def test_skinned_default_layout_uses_canonical_default_vertex_data_type(tmp_path: Path) -> None:
