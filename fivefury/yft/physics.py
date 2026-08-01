@@ -329,6 +329,7 @@ class YftPhysicsDampArchetype:
     vft: int = FRAG_PHYS_ARCHETYPE_DAMP_VFT
     resource_state: int = RESOURCE_STATE
     resource_type: int = 0
+    filename: str = ""
     filename_pointer: int = 0
     bound_pointer: int = 0
     type_flags: int = 0
