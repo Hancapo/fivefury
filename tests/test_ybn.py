@@ -9,6 +9,7 @@ import pytest
 
 from fivefury import (
     DEFAULT_BOUND_MATERIAL_LIBRARY,
+    YBN_VERSION,
     BoundAabb,
     BoundBox,
     BoundBVH,
@@ -34,6 +35,7 @@ from fivefury import (
     BoundType,
     GameFileCache,
     GameFileType,
+    GameTarget,
     Ybn,
     bounds_from_vertices,
     build_bound_from_triangles,
@@ -332,6 +334,51 @@ def test_build_ybn_bytes_roundtrips_sphere_bound() -> None:
     assert ybn.bound.file_pages_info is not None
     assert ybn.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
     assert int.from_bytes(system_data[8:16], "little") != 0
+
+
+def test_build_ybn_bytes_uses_target_specific_runtime_headers() -> None:
+    legacy_data = build_ybn_bytes(_make_bvh_geometry(), game=GameTarget.GTA5)
+    enhanced_data = build_ybn_bytes(_make_bvh_geometry(), game=GameTarget.GTA5_ENHANCED)
+    _, legacy_system, _ = split_rsc7_sections(legacy_data)
+    _, enhanced_system, _ = split_rsc7_sections(enhanced_data)
+
+    assert int.from_bytes(legacy_system[:4], "little") == 0x4062FAB8
+    assert int.from_bytes(enhanced_system[:4], "little") == 0x406B2130
+    assert read_ybn(legacy_data).game is GameTarget.GTA5
+    assert read_ybn(enhanced_data).game is GameTarget.GTA5_ENHANCED
+
+
+def test_enhanced_ybn_runtime_headers_propagate_to_composite_children() -> None:
+    geometry = _make_bvh_geometry()
+    root = BoundComposite(
+        bound_type=BoundType.COMPOSITE,
+        sphere_radius=geometry.sphere_radius,
+        box_max=geometry.box_max,
+        margin=geometry.margin,
+        box_min=geometry.box_min,
+        box_center=geometry.box_center,
+        sphere_center=geometry.sphere_center,
+        ref_count=1,
+        angular_inertia=(0.0, 0.0, 0.0),
+        volume=geometry.volume,
+    )
+    root.add_child(geometry)
+    data = Ybn.from_bound(root, game=GameTarget.GTA5_ENHANCED).to_bytes()
+    parsed = read_ybn(data)
+
+    assert parsed.version == YBN_VERSION
+    assert parsed.game is GameTarget.GTA5_ENHANCED
+    assert parsed.bound.file_vft == 0x406B1940
+    assert isinstance(parsed.bound, BoundComposite)
+    assert parsed.bound.children[0].bound is not None
+    assert parsed.bound.children[0].bound.file_vft == 0x406B2130
+
+
+def test_enhanced_ybn_rejects_bound_without_known_runtime_header() -> None:
+    cloth = BoundCloth.from_center_size((0.0, 0.0, 0.0), (2.0, 0.25, 3.0))
+
+    with pytest.raises(ValueError, match="does not define a runtime header for CLOTH"):
+        build_ybn_bytes(cloth, game=GameTarget.GTA5_ENHANCED)
 
 
 def test_default_bound_material_library_has_expected_names() -> None:

@@ -7,9 +7,12 @@ from ..bounds import (
     Bound,
     BoundResourcePagesInfo,
     build_bound_system_layout,
+    get_bound_file_vft_resolver,
+    infer_bound_game,
     read_bound_at,
 )
 from ..common import atomic_write_bytes
+from ..game_target import GameTarget, coerce_game_target
 from ..resource import (
     RSC7_MAGIC,
     build_rsc7,
@@ -20,7 +23,7 @@ from ..resource import (
 from .mlo import collision_room_ids, set_collision_room, validate_mlo_collision
 
 _ROOT_OFFSET = 0x00
-_DEFAULT_YBN_VERSION = 43
+YBN_VERSION = 43
 
 
 @dataclasses.dataclass(slots=True)
@@ -28,15 +31,28 @@ class Ybn:
     version: int
     bound: Bound
     path: str = ""
+    game: GameTarget = GameTarget.GTA5
     system_pages_count: int = 0
     graphics_pages_count: int = 0
 
     @classmethod
-    def from_bound(cls, bound: Bound, *, version: int = _DEFAULT_YBN_VERSION, path: str | Path = "") -> Ybn:
-        return cls(version=version, bound=bound, path=str(path) if path else "")
+    def from_bound(
+        cls,
+        bound: Bound,
+        *,
+        game: str | GameTarget = GameTarget.GTA5,
+        version: int = YBN_VERSION,
+        path: str | Path = "",
+    ) -> Ybn:
+        return cls(
+            version=version,
+            bound=bound,
+            path=str(path) if path else "",
+            game=coerce_game_target(game),
+        )
 
     def to_bytes(self) -> bytes:
-        return build_ybn_bytes(self, version=self.version)
+        return build_ybn_bytes(self, game=self.game, version=self.version)
 
     def set_bound(self, bound: Bound) -> Bound:
         self.bound = bound
@@ -79,12 +95,23 @@ class Ybn:
         return target
 
 
-def build_ybn_bytes(source: Ybn | Bound, *, version: int | None = None) -> bytes:
+def build_ybn_bytes(
+    source: Ybn | Bound,
+    *,
+    game: str | GameTarget | None = None,
+    version: int | None = None,
+) -> bytes:
     bound = source.bound if isinstance(source, Ybn) else source
     bound = bound.build()
     if version is None:
-        version = source.version if isinstance(source, Ybn) else _DEFAULT_YBN_VERSION
+        version = source.version if isinstance(source, Ybn) else YBN_VERSION
     version = int(version)
+    if version != YBN_VERSION:
+        raise ValueError(f"YBN resources require version {YBN_VERSION}, got {version}")
+    target = coerce_game_target(
+        game if game is not None else source.game if isinstance(source, Ybn) else GameTarget.GTA5
+    )
+    file_vft_resolver = get_bound_file_vft_resolver(target)
     issues = bound.validate()
     if issues:
         issue_lines = "\n".join(f"- {issue}" for issue in issues)
@@ -100,7 +127,11 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int | None = None) -> bytes
             system_pages_count=page_count,
             graphics_pages_count=0,
         )
-        raw_system_data, block_spans = build_bound_system_layout(bound, root_pages_info=root_pages_info)
+        raw_system_data, block_spans = build_bound_system_layout(
+            bound,
+            root_pages_info=root_pages_info,
+            file_vft_resolver=file_vft_resolver,
+        )
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
             block_spans,
@@ -115,8 +146,14 @@ def build_ybn_bytes(source: Ybn | Bound, *, version: int | None = None) -> bytes
     return build_rsc7(system_data, version=version, system_flags=system_flags, graphics_flags=graphics_flags)
 
 
-def save_ybn(source: Ybn | Bound, destination: str | Path, *, version: int | None = None) -> Path:
-    return atomic_write_bytes(destination, build_ybn_bytes(source, version=version))
+def save_ybn(
+    source: Ybn | Bound,
+    destination: str | Path,
+    *,
+    game: str | GameTarget | None = None,
+    version: int | None = None,
+) -> Path:
+    return atomic_write_bytes(destination, build_ybn_bytes(source, game=game, version=version))
 
 
 def read_ybn(source: bytes | bytearray | memoryview | str | Path, *, path: str | Path = "") -> Ybn:
@@ -132,6 +169,7 @@ def read_ybn(source: bytes | bytearray | memoryview | str | Path, *, path: str |
         version=int(header.version),
         bound=read_bound_at(_ROOT_OFFSET, system_data),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
+        game=infer_bound_game(int.from_bytes(system_data[_ROOT_OFFSET : _ROOT_OFFSET + 4], "little")),
         system_pages_count=system_pages_count,
         graphics_pages_count=graphics_pages_count,
     )
@@ -140,6 +178,7 @@ def read_ybn(source: bytes | bytearray | memoryview | str | Path, *, path: str |
 
 
 __all__ = [
+    "YBN_VERSION",
     "Ybn",
     "build_ybn_bytes",
     "collision_room_ids",

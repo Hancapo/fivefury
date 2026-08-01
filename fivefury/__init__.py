@@ -778,6 +778,7 @@ from .ycd import (
     save_ycd,
 )
 from .ybn import (
+    YBN_VERSION,
     Ybn,
     build_ybn_bytes,
     collision_room_ids,
@@ -1474,6 +1475,7 @@ __all__ = [
     "YcdUvAnimationSample",
     "YcdUvTransformSample",
     "Ybn",
+    "YBN_VERSION",
     "Ydd",
     "YDD_VERSION_GEN9",
     "YDD_VERSION_LEGACY",

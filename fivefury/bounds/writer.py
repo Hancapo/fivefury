@@ -37,6 +37,7 @@ from .model import (
     _sphere_radius_from_bounds,
     _transform_point,
 )
+from .runtime_headers import legacy_bound_file_vft
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _RESOURCE_FILE_BASE_SIZE = 0x10
@@ -50,17 +51,6 @@ _COMPOSITE_BVH_ITEM_THRESHOLD = 1
 _COMPOSITE_MIN_CHILDREN_FOR_BVH = 6
 _MAX_BVH_TREE_NODE_COUNT = 127
 _FLOAT_EPSILON = 1.401298464324817e-45
-_DEFAULT_BOUND_FILE_VFT = {
-    BoundSphere: 1080221960,
-    BoundCapsule: 1080213112,
-    BoundBox: 1080221016,
-    BoundDisc: 1080229960,
-    BoundCylinder: 1080202872,
-    BoundBVH: 1080228536,
-    BoundGeometry: 1080226408,
-    BoundComposite: 1080212136,
-}
-
 BoundFileVftResolver = Callable[[Bound], int]
 
 
@@ -125,13 +115,6 @@ def _pack_bound_material_words(bound: Bound) -> tuple[int, int]:
     return (data1, data2)
 
 
-def _default_file_vft(bound: Bound) -> int:
-    for cls, value in _DEFAULT_BOUND_FILE_VFT.items():
-        if isinstance(bound, cls):
-            return value
-    return 0
-
-
 def _write_resource_file_base(
     writer: ResourceWriter,
     offset: int,
@@ -145,7 +128,7 @@ def _write_resource_file_base(
         if file_vft_resolver is not None
         else int(bound.file_vft)
         if bound.file_vft
-        else _default_file_vft(bound)
+        else legacy_bound_file_vft(bound)
     )
     writer.pack_into("I", offset + 0x00, file_vft)
     writer.pack_into("I", offset + 0x04, int(bound.file_unknown))
@@ -907,16 +890,36 @@ def _write_geometry(
         writer.pack_into("I", offset + 0x14C, 0)
 
 
-def build_bound_system_data(bound: Bound, *, root_pages_info: BoundResourcePagesInfo | None = None) -> bytes:
-    return build_bound_system_layout(bound, root_pages_info=root_pages_info)[0]
+def build_bound_system_data(
+    bound: Bound,
+    *,
+    root_pages_info: BoundResourcePagesInfo | None = None,
+    file_vft_resolver: BoundFileVftResolver | None = None,
+) -> bytes:
+    return build_bound_system_layout(
+        bound,
+        root_pages_info=root_pages_info,
+        file_vft_resolver=file_vft_resolver,
+    )[0]
 
 
-def build_bound_system_layout(bound: Bound, *, root_pages_info: BoundResourcePagesInfo | None = None) -> tuple[bytes, list[ResourceBlockSpan]]:
+def build_bound_system_layout(
+    bound: Bound,
+    *,
+    root_pages_info: BoundResourcePagesInfo | None = None,
+    file_vft_resolver: BoundFileVftResolver | None = None,
+) -> tuple[bytes, list[ResourceBlockSpan]]:
     writer = ResourceWriter(_bound_size(bound))
-    _write_bound(writer, bound, offset=0)
+    _write_bound(writer, bound, offset=0, file_vft_resolver=file_vft_resolver)
     if root_pages_info is not None:
         pages_info_offset = write_resource_pages_info(writer, root_pages_info)
-        _write_resource_file_base(writer, 0, bound, pages_info_offset=pages_info_offset)
+        _write_resource_file_base(
+            writer,
+            0,
+            bound,
+            pages_info_offset=pages_info_offset,
+            file_vft_resolver=file_vft_resolver,
+        )
     return (writer.finish(), writer.block_spans)
 
 

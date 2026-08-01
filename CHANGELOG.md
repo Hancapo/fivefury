@@ -8,6 +8,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
+- Enhanced YBN authoring.
 - Enhanced YDD authoring.
 - GTA V streaming cache reading, writing, and authoring from YMAP, YTYP, and YBN assets.
 - Enhanced YFT authoring with drawable, physics, and collision-bound support.
