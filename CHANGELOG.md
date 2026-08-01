@@ -39,6 +39,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Project license changed to The Unlicense.
 
 ### Fixed
+- Enhanced YFT articulated-joint runtime headers during reconstruction.
 - Enhanced YFT breakable-glass pane layouts and vertex declarations.
 - YFT validation of native unavailable mass and angular-inertia values.
 - Enhanced YFT drawable layout detection and byte-identical lossless
