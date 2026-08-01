@@ -29,6 +29,7 @@ def create_ymf_for_ymaps(
     include_empty_imaps: bool = False,
     include_ytyp_dependencies: bool = True,
     strict: bool = False,
+    permanent_ytyps: Iterable[HashLike] = (),
     name: str = "_manifest",
 ) -> Ymf:
     """Build a pack manifest for a set of streamed map files.
@@ -52,7 +53,7 @@ def create_ymf_for_ymaps(
         include_ytyp_dependencies=include_ytyp_dependencies,
         strict=strict,
     )
-    return Ymf.from_manifest(manifest, name=name)
+    return Ymf.from_manifest(manifest, name=name, permanent_ytyps=permanent_ytyps)
 
 
 def build_ymf_for_ymaps(*args: Any, **kwargs: Any) -> Ymf:

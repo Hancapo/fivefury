@@ -13,6 +13,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 - YMAP parent and manual-streaming flag semantics.
 - YNV polygon flag names and packed pedestrian density and audio fields.
+- YMF runtime limit validation for map dependencies, interior bounds, and managed groups.
 
 ## [0.2.25] - 2026-07-31
 

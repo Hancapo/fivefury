@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from ..meta import Meta
 from ..meta.defs import meta_name
 from ..meta.resource import MetaResource
+from ..metahash import HashLike, MetaHash
 from ..pso import PsoNode, PsoReader, is_pso
 from ..xml import looks_like_xml
 from .enums import YmfRelationship
@@ -23,11 +25,13 @@ class Ymf(MetaResource):
         manifest: PackFileMetaData | None = None,
         raw_bytes: bytes | None = None,
         pso_root: PsoNode | None = None,
+        permanent_ytyps: Iterable[HashLike] = (),
     ) -> None:
         super().__init__(meta=meta or Meta(), source=source)
         self._manifest = manifest
         self.raw_bytes = raw_bytes
         self.pso_root = pso_root
+        self.permanent_ytyps = tuple(MetaHash.from_value(item) for item in permanent_ytyps)
 
     @property
     def manifest(self) -> PackFileMetaData | None:
@@ -53,7 +57,7 @@ class Ymf(MetaResource):
             return self.raw_bytes
         manifest = self.manifest
         if manifest is not None:
-            issues = manifest.validate()
+            issues = manifest.validate(permanent_ytyps=self.permanent_ytyps)
             if issues:
                 raise ValueError("Invalid YMF manifest:\n- " + "\n- ".join(issues))
             self.meta = manifest.to_meta(name=self.name)
@@ -61,8 +65,20 @@ class Ymf(MetaResource):
         return self.meta.to_rsc7()
 
     @classmethod
-    def from_manifest(cls, manifest: PackFileMetaData, *, name: str = "", source: str = "") -> Ymf:
-        return cls(meta=manifest.to_meta(name=name), source=source, manifest=manifest)
+    def from_manifest(
+        cls,
+        manifest: PackFileMetaData,
+        *,
+        name: str = "",
+        source: str = "",
+        permanent_ytyps: Iterable[HashLike] = (),
+    ) -> Ymf:
+        return cls(
+            meta=manifest.to_meta(name=name),
+            source=source,
+            manifest=manifest,
+            permanent_ytyps=permanent_ytyps,
+        )
 
     @classmethod
     def from_meta(cls, meta: Meta, *, source: str = "") -> Ymf:
@@ -99,11 +115,18 @@ def read_ymf(data: bytes | str | Path) -> Ymf:
     return Ymf.from_bytes(data)
 
 
-def save_ymf(ymf: Ymf | PackFileMetaData | Meta, path: str | Path | None = None) -> Path:
+def save_ymf(
+    ymf: Ymf | PackFileMetaData | Meta,
+    path: str | Path | None = None,
+    *,
+    permanent_ytyps: Iterable[HashLike] = (),
+) -> Path:
     if isinstance(ymf, Ymf):
         resource = ymf
+        if permanent_ytyps:
+            resource.permanent_ytyps = tuple(MetaHash.from_value(item) for item in permanent_ytyps)
     elif isinstance(ymf, PackFileMetaData):
-        resource = Ymf.from_manifest(ymf)
+        resource = Ymf.from_manifest(ymf, permanent_ytyps=permanent_ytyps)
     else:
         resource = Ymf.from_meta(ymf)
     return resource.save(path)
@@ -113,5 +136,10 @@ def read_ymf_xml(source: bytes | str | Path) -> PackFileMetaData:
     return PackFileMetaData.from_xml(source)
 
 
-def build_ymf(manifest: PackFileMetaData, *, name: str = "") -> Ymf:
-    return Ymf.from_manifest(manifest, name=name)
+def build_ymf(
+    manifest: PackFileMetaData,
+    *,
+    name: str = "",
+    permanent_ytyps: Iterable[HashLike] = (),
+) -> Ymf:
+    return Ymf.from_manifest(manifest, name=name, permanent_ytyps=permanent_ytyps)
