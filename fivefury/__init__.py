@@ -593,6 +593,8 @@ from .ydr import (
 from .ydd import (
     BODY_JIGGLE_BREAST_BONES,
     BODY_JIGGLE_BUTT_BONES,
+    YDD_VERSION_GEN9,
+    YDD_VERSION_LEGACY,
     Ydd,
     YddDrawable,
     YddRadialRigReport,
@@ -1473,6 +1475,8 @@ __all__ = [
     "YcdUvTransformSample",
     "Ybn",
     "Ydd",
+    "YDD_VERSION_GEN9",
+    "YDD_VERSION_LEGACY",
     "YddDrawable",
     "YddRadialRigReport",
     "Ydr",

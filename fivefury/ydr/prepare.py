@@ -175,6 +175,7 @@ def normalize_materials(
             YdrMaterialInput(
                 name=material.name,
                 shader=material.shader,
+                layout_shader=material.layout_shader,
                 textures=dict(material.textures),
                 parameters=dict(material.parameters),
                 render_bucket=int(material.render_bucket),

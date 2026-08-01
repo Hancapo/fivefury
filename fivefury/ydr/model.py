@@ -911,6 +911,7 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
         return YdrMaterialInput(
             name=material_name,
             shader=shader,
+            layout_shader=self.shader_definition.name if self.shader_definition is not None else None,
             textures=textures,
             parameters=numeric_parameters,
             render_bucket=int(self.render_bucket),

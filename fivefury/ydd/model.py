@@ -5,8 +5,14 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TypeAlias
 
+from ..game_target import GameTarget
 from ..hashing import jenk_hash
 from ..ydr import Ydr, YdrBuild
+from .runtime_headers import (
+    YDD_VERSION_LEGACY,
+    get_ydd_runtime_profile_for_version,
+    resolve_ydd_version,
+)
 
 YddDrawableInput: TypeAlias = "YddDrawable | Ydr | YdrBuild"
 YddDrawableCollection: TypeAlias = Mapping[str, YddDrawableInput] | Sequence[YddDrawableInput]
@@ -24,7 +30,7 @@ def _coerce_drawable_input(
     *,
     name: str | None = None,
     name_hash: int | None = None,
-) -> "YddDrawable":
+) -> YddDrawable:
     if isinstance(value, YddDrawable):
         drawable_name = str(name or value.name or f"drawable_{index}")
         drawable_hash = int(name_hash if name_hash is not None else value.name_hash or jenk_hash(drawable_name)) & 0xFFFFFFFF
@@ -60,12 +66,12 @@ class YddDrawable:
 
 @dataclasses.dataclass(slots=True)
 class Ydd:
-    version: int = 165
+    version: int = YDD_VERSION_LEGACY
     path: str = ""
     drawables: list[YddDrawable] = dataclasses.field(default_factory=list)
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> "Ydd":
+    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> Ydd:
         from . import read_ydd
 
         return read_ydd(data, path=path)
@@ -75,6 +81,10 @@ class Ydd:
         if self.path:
             return Path(self.path).stem
         return "drawable_dictionary"
+
+    @property
+    def game(self) -> GameTarget:
+        return get_ydd_runtime_profile_for_version(self.version).game
 
     @property
     def drawable_count(self) -> int:
@@ -90,9 +100,10 @@ class Ydd:
         drawables: YddDrawableCollection,
         *,
         name: str = "",
-        version: int = 165,
-    ) -> "Ydd":
-        ydd = cls(version=int(version), path=name)
+        game: str | GameTarget | None = None,
+        version: int | None = None,
+    ) -> Ydd:
+        ydd = cls(version=resolve_ydd_version(game=game, version=version), path=name)
         for index, (drawable_name, drawable) in enumerate(_iter_drawable_inputs(drawables)):
             ydd.drawables.append(_coerce_drawable_input(drawable, index, name=drawable_name))
         return ydd
@@ -103,7 +114,7 @@ class Ydd:
     def with_drawables(
         self,
         drawables: YddDrawableCollection,
-    ) -> "Ydd":
+    ) -> Ydd:
         self.drawables = [
             _coerce_drawable_input(drawable, index, name=drawable_name)
             for index, (drawable_name, drawable) in enumerate(_iter_drawable_inputs(drawables))

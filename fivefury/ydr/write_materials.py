@@ -94,9 +94,16 @@ def merge_shader_parameter_defaults(
 
 
 def _resolve_legacy_shader_for_gen9(material, shader_library, resolve_shader: Callable, gen9_definition) -> tuple[object, str, int]:
-    candidates = [gen9_definition.file_name, gen9_definition.name, str(material.shader)]
+    candidates = [
+        material.layout_shader,
+        gen9_definition.file_name,
+        gen9_definition.name,
+        str(material.shader),
+    ]
     last_error: Exception | None = None
     for candidate in candidates:
+        if candidate is None:
+            continue
         try:
             shader_definition, shader_file_name, resolved_render_bucket = resolve_shader(
                 candidate,
