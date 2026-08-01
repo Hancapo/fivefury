@@ -4,6 +4,7 @@ import dataclasses
 import enum
 import re
 import struct
+from collections.abc import Sequence
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -25,6 +26,23 @@ _G9_VERTEX_BUFFER_BIND_FLAGS_SKINNED = 0x00586409
 _G9_INDEX_BUFFER_BIND_FLAGS = 0x0058020A
 _G9_UNKNOWN0 = 0
 _G9_UNKNOWN1 = 1
+_HASH_NAME_PATTERN = re.compile(r'^hash_([0-9a-fA-F]{8})$')
+_RUNTIME_PARAMETER_ALIASES = {
+    ("default", 0xBABE4DBA): "diffusesampler",
+    ("glass_breakable", 0xE44690BB): "specsampler",
+    ("glass_breakable", 0x49C32B64): "bumpsampler",
+    ("normal_spec", 0xE44690BB): "specsampler",
+    ("normal_spec", 0x49C32B64): "bumpsampler",
+    ("normal_spec_tnt", 0xE44690BB): "specsampler",
+    ("normal_spec_tnt", 0x49C32B64): "bumpsampler",
+}
+
+
+def _parameter_name_hash(name: str) -> int:
+    match = _HASH_NAME_PATTERN.fullmatch(name.strip())
+    if match is not None:
+        return int(match.group(1), 16)
+    return int(jenk_hash(name))
 
 
 class ShaderParamTypeG9(enum.IntEnum):
@@ -68,7 +86,7 @@ class ShaderGen9ParameterDefinition:
 
     @property
     def name_hash(self) -> int:
-        return int(jenk_hash(self.name))
+        return _parameter_name_hash(self.name)
 
     @property
     def legacy_name_hash(self) -> int:
@@ -82,9 +100,11 @@ class ShaderGen9ParameterDefinition:
 
     def pack_info(self) -> bytes:
         data = int(self.kind_enum) & 0x3
-        if self.kind_enum is ShaderParamTypeG9.TEXTURE:
-            data |= (int(self.index) & 0xFF) << 2
-        elif self.kind_enum is ShaderParamTypeG9.SAMPLER:
+        if self.kind_enum in (
+            ShaderParamTypeG9.TEXTURE,
+            ShaderParamTypeG9.UNKNOWN,
+            ShaderParamTypeG9.SAMPLER,
+        ):
             data |= (int(self.index) & 0xFF) << 2
         elif self.kind_enum is ShaderParamTypeG9.CBUFFER:
             data |= (int(self.buffer_index or 0) & 0x3F) << 2
@@ -198,6 +218,51 @@ class ShaderGen9Library:
         if shader is None:
             raise ValueError(f"Unknown YDR Gen9 shader '{value}'")
         return shader
+
+
+def build_runtime_gen9_shader_definition(
+    base: ShaderGen9Definition,
+    infos: Sequence[tuple[int, int, int, int, int]],
+    *,
+    buffer_sizes: Sequence[int],
+    sampler_values: bytes,
+) -> ShaderGen9Definition:
+    kind_names = {
+        ShaderParamTypeG9.TEXTURE: "Texture",
+        ShaderParamTypeG9.UNKNOWN: "Unknown",
+        ShaderParamTypeG9.SAMPLER: "Sampler",
+        ShaderParamTypeG9.CBUFFER: "CBuffer",
+    }
+    parameters: list[ShaderGen9ParameterDefinition] = []
+    for name_hash, raw_kind, index, offset, length in infos:
+        kind = ShaderParamTypeG9(raw_kind)
+        known = base.get_parameter(name_hash)
+        name = known.name if known is not None else f"hash_{name_hash:08X}"
+        legacy_name = known.legacy_name if known is not None else _RUNTIME_PARAMETER_ALIASES.get(
+            (base.name.casefold(), int(name_hash))
+        )
+        parameters.append(
+            ShaderGen9ParameterDefinition(
+                name=name,
+                kind=kind_names[kind],
+                index=int(index),
+                legacy_name=legacy_name,
+                sampler_value=(
+                    int(sampler_values[index])
+                    if kind is ShaderParamTypeG9.SAMPLER and index < len(sampler_values)
+                    else None
+                ),
+                buffer_index=int(index) if kind is ShaderParamTypeG9.CBUFFER else None,
+                param_offset=int(offset) if kind is ShaderParamTypeG9.CBUFFER else None,
+                param_length=int(length) if kind is ShaderParamTypeG9.CBUFFER else None,
+            )
+        )
+    return ShaderGen9Definition(
+        name=base.name,
+        file_name=base.file_name,
+        buffer_sizes=tuple(int(size) for size in buffer_sizes),
+        parameters=tuple(parameters),
+    )
 
 
 def resolve_gen9_shader_reference(

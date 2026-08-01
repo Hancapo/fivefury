@@ -8,6 +8,11 @@ from fivefury import (
     get_ydr_gen9_shader_info,
     get_ydr_shader_info,
 )
+from fivefury.ydr.gen9 import (
+    ShaderParamTypeG9,
+    build_runtime_gen9_shader_definition,
+    read_gen9_shader_library,
+)
 
 
 def test_get_ydr_shader_info_for_shader_file_enum() -> None:
@@ -50,3 +55,39 @@ def test_format_ydr_gen9_shader_info_lists_buffers_and_parameters() -> None:
     assert "Buffer Sizes:" in formatted
     assert "DiffuseTex (Texture, legacy=DiffuseSampler, index=0)" in formatted
     assert "SpecularTex (Texture, legacy=SpecSampler, index=3)" in formatted
+
+
+def test_gen9_literal_parameter_hashes_and_glass_sampler_layout() -> None:
+    shader = read_gen9_shader_library().require_shader("glass_breakable")
+
+    assert [
+        (parameter.name_hash, parameter.index, parameter.sampler_value)
+        for parameter in shader.sampler_parameters
+    ] == [
+        (0x184D4D47, 0, 0),
+        (0xE44690BB, 1, 5),
+        (0xF1FE2B71, 2, 1),
+        (0x24C5AB07, 3, 2),
+        (0x49C32B64, 4, 4),
+    ]
+    assert shader.require_parameter("specsampler").name_hash == 0xE44690BB
+    assert shader.require_parameter("bumpsampler").name_hash == 0x49C32B64
+
+
+def test_gen9_runtime_layout_preserves_native_hashes_and_resolves_aliases() -> None:
+    base = read_gen9_shader_library().require_shader("normal_spec")
+    runtime = build_runtime_gen9_shader_definition(
+        base,
+        (
+            (0xE44690BB, int(ShaderParamTypeG9.SAMPLER), 1, 0, 0),
+            (0x49C32B64, int(ShaderParamTypeG9.SAMPLER), 5, 0, 0),
+        ),
+        buffer_sizes=(48,),
+        sampler_values=bytes((1, 5, 6, 2, 3, 4)),
+    )
+
+    specular = runtime.require_parameter("specsampler")
+    bump = runtime.require_parameter("bumpsampler")
+    assert (specular.name_hash, specular.index, specular.sampler_value) == (0xE44690BB, 1, 5)
+    assert (bump.name_hash, bump.index, bump.sampler_value) == (0x49C32B64, 5, 4)
+    assert specular.pack_info() == bytes.fromhex("BB9046E406000000")

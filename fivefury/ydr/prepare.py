@@ -179,6 +179,7 @@ def normalize_materials(
                 textures=dict(material.textures),
                 parameters=dict(material.parameters),
                 render_bucket=int(material.render_bucket),
+                gen9_definition=material.gen9_definition,
             )
             for material in materials
         ]

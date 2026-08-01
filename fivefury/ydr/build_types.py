@@ -11,6 +11,7 @@ from .gen9_shader_enums import YdrGen9Shader
 from .shader_enums import YdrShader
 
 if TYPE_CHECKING:
+    from .gen9 import ShaderGen9Definition
     from .model import YdrJoints, YdrLight, YdrSkeleton
 
 
@@ -35,6 +36,7 @@ class YdrMaterialInput:
     textures: Mapping[str, TextureInputValue] = dataclasses.field(default_factory=dict)
     parameters: Mapping[str, MaterialParameterValue] = dataclasses.field(default_factory=dict)
     render_bucket: int = 0
+    gen9_definition: ShaderGen9Definition | None = None
 
 
 @dataclasses.dataclass(slots=True)
