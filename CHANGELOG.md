@@ -8,63 +8,93 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
-- Enhanced YFT environment-cloth authoring.
-- Enhanced YED authoring.
-- Enhanced YCD authoring.
-- Enhanced YND and YNV authoring.
-- Enhanced YBN authoring.
-- Enhanced YDD authoring.
-- GTA V streaming cache reading, writing, and authoring from YMAP, YTYP, and YBN assets.
-- Enhanced YFT authoring with drawable, physics, and collision-bound support.
-- Automatic mass and inertia calculation for YFT physics bounds.
-- Physical densities for collision materials.
+- Enhanced YFT environment-cloth authoring, including controllers, simulation
+  bridges, tuning, morph controllers, Verlet data, and nested collision bounds.
+- Target-aware YED authoring and cross-edition rebuilding for expression
+  dictionaries.
+- Target-aware YCD authoring for animation maps, animations, clips, clip lists,
+  properties, tags, attributes, and cutscene animation dictionaries.
+- Bone-scale animation tracks in YCD sequences.
+- Target-aware YND and YNV authoring across road networks, in-memory polygon
+  builders, and Assimp navmesh conversion.
+- Target-aware YBN authoring with automatic source detection and canonical
+  collision-bound headers for each edition.
+- Target-aware YDD authoring for drawable dictionaries, embedded drawables,
+  shaders, and the resource version required by each edition.
+- Binary reading, writing, and authoring for `gta5_cache_y.dat` from in-memory
+  or loose YMAP, YTYP, and YBN assets, with `GameFileCache` integration.
+- Enhanced YDR and YFT authoring for drawables, skinned geometry, physics, and
+  collision bounds.
+- Automatic YFT mass, center-of-gravity, angular-inertia, and inverse-property
+  calculation from physics bounds.
+- Collision-material densities and volume-weighted composite density
+  calculation.
+- Public YMF runtime limits and validation for map dependencies, type
+  dependencies, managed groups, interior bounds, and serialized capacities.
+- Formal YNV polygon flags and declarative pedestrian-density and audio fields.
 
 ### Changed
 - YFT mass calculation now derives density from collision materials by default.
+- YED saves now replace destination files atomically.
 - Project license changed to The Unlicense.
 
 ### Fixed
-- Enhanced YFT drawable layout detection and lossless reading.
-- Enhanced skinned vertex layouts and resource decompression.
+- Enhanced YFT drawable layout detection and byte-identical lossless
+  round-trips.
+- Enhanced skinned geometry now preserves declared vertex offsets.
+- Enhanced resource streams with zero-initialized DEFLATE history can be
+  decompressed.
 - YMAP parent and manual-streaming flag semantics.
-- YNV polygon flag names and packed pedestrian density and audio fields.
-- YMF runtime limit validation for map dependencies, interior bounds, and managed groups.
 
 ## [0.2.25] - 2026-07-31
 
 ### Fixed
-- YMF interior dependency generation.
+- YMF manifests now mark YTYP dependencies containing MLO archetypes as
+  interior data, including YTYPs without child dependencies.
 
 ## [0.2.24] - 2026-07-31
 
 ### Fixed
-- YTYP and MLO streaming compatibility.
+- YTYP and MLO primitive metadata now uses the native type identifiers required
+  by the streaming runtime.
+- Byte and vector metadata blocks no longer serialize as unresolved structure
+  references.
 
 ## [0.2.23] - 2026-07-30
 
 ### Fixed
-- Removed an incorrect MLO room attachment limit.
+- Removed the incorrect 11-entity limit for the first MLO room while retaining
+  the actual packed room and portal limits.
 
 ## [0.2.22] - 2026-07-30
 
 ### Fixed
-- Corrected YFT composite child-flag serialization.
+- YFT fragment composites now omit child-flag arrays when no flags were
+  authored, preserving their runtime physics classification.
+- Standalone collision composites continue to serialize explicitly authored
+  child flags.
 
 ## [0.2.21] - 2026-07-28
 
 ### Fixed
-- Corrected YFT physics-archetype ownership.
+- YFT physics archetype reference counts are now read, preserved, and written
+  instead of being replaced by an implicit default.
 
 ## [0.2.20] - 2026-07-28
 
 ### Fixed
-- Corrected damaged YFT collision-bound ownership.
+- Damaged YFT collision bounds now account for their LOD, archetype, and
+  drawable owners.
+- Binary validation now verifies the expected owner count for each physics
+  bound state.
 
 ## [0.2.19] - 2026-07-27
 
 ### Fixed
 - YFT prop profiles now preserve valid empty collision slots across damage
   states.
+- YFT validation distinguishes intentionally empty collision slots from active
+  slots with missing or invalid bounds.
 
 ## [0.2.18] - 2026-07-27
 
