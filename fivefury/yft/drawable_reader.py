@@ -15,6 +15,7 @@ from .constants import (
     DAT_VIRTUAL_BASE,
     FRAGMENT_DRAWABLE_BASE_OFFSET,
     FRAGMENT_DRAWABLE_SIZE,
+    GEN9_YFT_VERSIONS,
 )
 from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
 
@@ -116,6 +117,7 @@ def read_fragment_drawable(
         shader_library=shader_library,
         read_extensions=False,
         inherited_materials=inherited_materials,
+        enhanced=int(header.version) in GEN9_YFT_VERSIONS,
     )
     bound_pointer = struct.unpack_from("<Q", system_data, root_offset + 0xF0)[0]
     bound = (

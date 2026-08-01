@@ -409,9 +409,11 @@ def _read_ydr_from_sections(
     shader_library: ShaderLibrary | None = None,
     read_extensions: bool = True,
     inherited_materials: list[YdrMaterial] | None = None,
+    enhanced: bool | None = None,
 ) -> Ydr:
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
-    enhanced = int(header.version) in _ENHANCED_YDR_VERSIONS
+    if enhanced is None:
+        enhanced = int(header.version) in _ENHANCED_YDR_VERSIONS
     gen9_library = load_gen9_shader_library() if enhanced else None
     materials, texture_dictionary_pointer = parse_materials(
         system_data,
