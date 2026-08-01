@@ -8,6 +8,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
+- Enhanced YED authoring.
 - Enhanced YCD authoring.
 - Enhanced YND and YNV authoring.
 - Enhanced YBN authoring.

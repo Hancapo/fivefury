@@ -4,21 +4,34 @@ import struct
 from pathlib import Path
 
 from ..binary import align
+from ..common import atomic_write_bytes
+from ..game_target import GameTarget, coerce_game_target
 from ..resource import build_rsc7, get_resource_size_from_flags
-from .constants import DEFAULT_YED_DICTIONARY_VFT, EXPRESSION_BLOCK_SIZE, SPRING_BLOCK_SIZE
+from .constants import EXPRESSION_BLOCK_SIZE, SPRING_BLOCK_SIZE
 from .model import ResourceListInfo, Yed, YedExpression, YedStream
 from .reader import as_virtual_pointer
+from .runtime_headers import YED_VERSION, YedRuntimeProfile, get_yed_runtime_profile
 
 
-def build_yed_bytes(source: Yed) -> bytes:
-    if source._standalone_data is not None and not source.dirty:
+def build_yed_bytes(source: Yed, *, game: str | GameTarget | None = None) -> bytes:
+    target = coerce_game_target(source.game if game is None else game)
+    if int(source.version) != YED_VERSION:
+        raise ValueError(f"YED resources require version {YED_VERSION}, got {source.version}")
+    if source._standalone_data is not None and not source.dirty and target is coerce_game_target(source.game):
         return source._standalone_data
+    profile = get_yed_runtime_profile(target)
     if not source.system_data:
         source.validate()
-        return build_rsc7(_build_yed_system(source), version=int(source.version), graphics_data=source.graphics_data)
+        return build_rsc7(
+            _build_yed_system(source, profile),
+            version=int(source.version),
+            graphics_data=source.graphics_data,
+        )
 
     system = bytearray(source.system_data)
+    struct.pack_into("<I", system, 0x00, profile.dictionary_vft)
     for expression in source.expressions:
+        struct.pack_into("<I", system, expression.offset, profile.expression_vft)
         if not expression.has_spring_changes:
             continue
         spring_offset = align(len(system), 16)
@@ -128,7 +141,7 @@ def _write_expression_payloads(system: bytearray, expression: YedExpression) -> 
     )
 
 
-def _build_yed_system(source: Yed) -> bytes:
+def _build_yed_system(source: Yed, profile: YedRuntimeProfile) -> bytes:
     expressions = sorted(source.expressions, key=lambda expression: int(expression.name_hash))
     system = bytearray(0x80)
     struct.pack_into("<IIBBHI", system, 0x40, 0, 0, 1, 0, 0, 0)
@@ -147,7 +160,7 @@ def _build_yed_system(source: Yed) -> bytes:
             "<IIIIIIII",
             system,
             expression_offset,
-            int(expression.vft),
+            profile.expression_vft,
             int(expression.unknown_4h),
             0,
             0,
@@ -167,7 +180,7 @@ def _build_yed_system(source: Yed) -> bytes:
         "<IIQIIII",
         system,
         0x00,
-        int(source.dictionary.file_vft or DEFAULT_YED_DICTIONARY_VFT),
+        profile.dictionary_vft,
         int(source.dictionary.file_unknown),
         as_virtual_pointer(0x40),
         int(source.dictionary.unknown_10h),
@@ -180,10 +193,13 @@ def _build_yed_system(source: Yed) -> bytes:
     return bytes(system)
 
 
-def save_yed(source: Yed, destination: str | Path) -> Path:
-    target = Path(destination)
-    target.write_bytes(build_yed_bytes(source))
-    return target
+def save_yed(
+    source: Yed,
+    destination: str | Path,
+    *,
+    game: str | GameTarget | None = None,
+) -> Path:
+    return atomic_write_bytes(destination, build_yed_bytes(source, game=game))
 
 
 __all__ = [

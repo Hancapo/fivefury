@@ -6,9 +6,14 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from ..binary import vec3
+from ..game_target import GameTarget, coerce_game_target
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
-from .constants import DEFAULT_YED_EXPRESSION_VFT, DEFAULT_YED_VERSION, SPRING_BLOCK_SIZE
+from .constants import (
+    DEFAULT_YED_EXPRESSION_VFT,
+    DEFAULT_YED_VERSION,
+    SPRING_BLOCK_SIZE,
+)
 from .enums import YedInstructionType, YedTrackFormat
 
 
@@ -336,6 +341,7 @@ class YedDictionary:
 class Yed:
     dictionary: YedDictionary = dataclasses.field(default_factory=YedDictionary)
     version: int = DEFAULT_YED_VERSION
+    game: GameTarget = GameTarget.GTA5
     path: str = ""
     system_flags: int = 0
     graphics_flags: int = 0
@@ -504,16 +510,15 @@ class Yed:
             raise ValueError(f"invalid YED: {details}")
         return issues
 
-    def to_bytes(self) -> bytes:
-        if self._standalone_data is not None and not self.dirty:
-            return self._standalone_data
+    def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
         from .writer import build_yed_bytes
 
-        return build_yed_bytes(self)
+        return build_yed_bytes(self, game=game)
 
-    def save(self, destination: str | Path) -> Path:
-        target = Path(destination)
-        target.write_bytes(self.to_bytes())
+    def save(self, destination: str | Path, *, game: str | GameTarget | None = None) -> Path:
+        from .writer import save_yed
+
+        target = save_yed(self, destination, game=game)
         self.path = str(target)
         return target
 
@@ -525,8 +530,12 @@ class YedValidationIssue:
     expression: str = ""
 
 
-def create_yed(*expressions: str | YedExpression, version: int = DEFAULT_YED_VERSION) -> Yed:
-    yed = Yed(version=version)
+def create_yed(
+    *expressions: str | YedExpression,
+    version: int = DEFAULT_YED_VERSION,
+    game: str | GameTarget = GameTarget.GTA5,
+) -> Yed:
+    yed = Yed(version=version, game=coerce_game_target(game))
     for expression in expressions:
         yed.expressions.append(expression if isinstance(expression, YedExpression) else YedExpression.create(expression))
     return yed
