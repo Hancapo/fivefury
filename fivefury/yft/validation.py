@@ -427,12 +427,16 @@ def _validate_lod(
                 child_path,
                 "owner group index points outside the group array",
             )
-        if child.undamaged_mass < 0.0 or child.damaged_mass < 0.0:
+        masses = (child.undamaged_mass, child.damaged_mass)
+        if any(
+            not math.isfinite(mass) or (mass < 0.0 and mass != -1.0)
+            for mass in masses
+        ):
             _issue(
                 issues,
                 YftValidationSeverity.ERROR,
                 child_path,
-                "child mass cannot be negative",
+                "child mass must be -1 or a finite nonnegative value",
             )
         if child.min_breaking_impulse < 0.0:
             _issue(
@@ -441,11 +445,11 @@ def _validate_lod(
                 child_path,
                 "negative breaking impulse is unusual",
             )
-        if not _finite_values(
-            (
-                *child.undamaged_ang_inertia.as_tuple(),
-                *child.damaged_ang_inertia.as_tuple(),
-            )
+        inertias = (child.undamaged_ang_inertia, child.damaged_ang_inertia)
+        if any(
+            not inertia.is_unavailable
+            and not _finite_values(inertia.as_tuple())
+            for inertia in inertias
         ):
             _issue(
                 issues,

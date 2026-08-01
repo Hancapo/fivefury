@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -287,6 +288,14 @@ class YftPhysicsInertia:
 
     def as_tuple(self) -> tuple[float, float, float, float]:
         return (self.x, self.y, self.z, self.mass)
+
+    @property
+    def is_unavailable(self) -> bool:
+        return all(math.isnan(value) for value in self.as_tuple())
+
+    @classmethod
+    def unavailable(cls) -> YftPhysicsInertia:
+        return cls(*(float("nan"),) * 4)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

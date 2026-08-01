@@ -72,6 +72,7 @@ from fivefury.yft import (
     YftPhysicsEntity,
     YftPhysicsGroup,
     YftPhysicsGroupFlag,
+    YftPhysicsInertia,
     YftPhysicsLod,
     YftPhysicsLodPointers,
     YftSharedMatrixSet,
@@ -1115,6 +1116,39 @@ def test_yft_declarative_physics_validation():
     assert any(
         issue.is_error and issue.path == "state.damaged_drawable_index"
         for issue in issues
+    )
+
+
+def test_yft_validation_accepts_native_unavailable_damage_properties():
+    drawable = Ydr(version=162, lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]})
+    child = dataclasses.replace(
+        YftPhysicsChild.declare(undamaged_mass=1.0, damaged_mass=-1.0),
+        damaged_ang_inertia=YftPhysicsInertia.unavailable(),
+    )
+    lod = YftPhysicsLod.declare(
+        groups=(YftPhysicsGroup.declare("body", children=(child,)),)
+    )
+
+    issues = validate_yft(Yft(main_drawable=drawable, physics_lod_details=[lod]))
+
+    assert not any(
+        issue.is_error and ".children[0]" in issue.path for issue in issues
+    )
+
+    invalid_inertia = dataclasses.replace(
+        YftPhysicsInertia.unavailable(),
+        x=0.0,
+    )
+    invalid_child = dataclasses.replace(child, damaged_ang_inertia=invalid_inertia)
+    invalid_lod = YftPhysicsLod.declare(
+        groups=(YftPhysicsGroup.declare("body", children=(invalid_child,)),)
+    )
+    invalid_issues = validate_yft(
+        Yft(main_drawable=drawable, physics_lod_details=[invalid_lod])
+    )
+    assert any(
+        issue.is_error and "angular inertia" in issue.message
+        for issue in invalid_issues
     )
 
 
