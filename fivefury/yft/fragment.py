@@ -214,7 +214,7 @@ class Yft:
         lod: YftPhysicsLod,
         *,
         composite_bound=None,
-        density: float = 1.0,
+        density: float | None = None,
     ) -> Yft:
         from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
 
@@ -239,7 +239,7 @@ class Yft:
         bound,
         group_name: str = "default",
         mass: float | None = None,
-        density: float = 1.0,
+        density: float | None = None,
         lod: str = "high",
     ) -> Yft:
         from .physics import YftPhysicsChild, YftPhysicsGroup, YftPhysicsLod
@@ -257,6 +257,28 @@ class Yft:
             composite_bound=bound,
             density=density,
         )
+
+    def calculate_mass_properties(
+        self,
+        *,
+        density: float | None = None,
+        force: bool = False,
+    ) -> Yft:
+        from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
+
+        self.physics_lod_details = [
+            normalize_physics_lod(
+                lod,
+                composite_bound=lod.composite_bound,
+                density=density,
+                has_damaged_drawable=self.damaged_drawable is not None,
+                profile=self.physics_bound_profile,
+                recalculate_mass_properties=force,
+            )
+            for lod in self.physics_lod_details
+        ]
+        self.physics_lods = physics_lod_pointers_for(self.physics_lod_details)
+        return self
 
     def geometry_stats(self, lod: YdrLod | str | None = None) -> YftGeometryStats:
         drawables = list(self.iter_drawables())

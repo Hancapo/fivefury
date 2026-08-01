@@ -51,6 +51,31 @@ _DEFAULT_BOUND_MATERIAL_NAMES = (
     'TEMP_29', 'TEMP_30',
 )
 
+_DEFAULT_BOUND_MATERIAL_DENSITIES = (
+    1750.0, 7850.5, 4900.0, 7850.5, 6300.0, 6300.0, 4900.0, 6300.0, 7000.0, 7000.0,
+    7000.0, 7000.0, 7000.0, 7000.0, 8970.5, 7000.0, 8130.5, 5075.0, 5047.0, 5950.0,
+    6727.0, 5775.0, 5775.0, 5047.0, 6727.0, 3216.5, 3216.5, 560.0, 1683.5, 560.0,
+    6300.0, 6727.0, 5887.0, 6727.0, 6727.0, 4550.0, 5327.0, 4200.0, 6055.0, 6055.0,
+    6055.0, 6055.0, 6055.0, 5047.0, 6111.0, 3755.5, 4900.0, 5600.0, 5950.0, 5950.0,
+    525.0, 700.0, 350.0, 1820.0, 840.0, 24500.0, 28000.0, 31500.0, 1750.0, 2100.0,
+    2450.0, 3500.0, 3850.0, 21000.0, 3500.0, 4200.0, 1750.0, 31500.0, 31500.0, 1400.0,
+    2100.0, 2852.5, 2800.0, 2100.0, 350.0, 700.0, 1050.0, 595.0, 2100.0, 21000.0,
+    1400.0, 9695.0, 7000.0, 5250.0, 1750.0, 2800.0, 3500.0, 875.0, 21000.0, 3500.0,
+    875.0, 21000.0, 126.0, 4200.0, 875.0, 1925.0, 2800.0, 1050.0, 1050.0, 1750.0,
+    875.0, 2971.5, 2971.5, 400.0, 200.0, 4203.5, 175.0, 192.5, 157.5, 3307.5,
+    9026.5, 8750.0, 8750.0, 8750.0, 8750.0, 4130.0, 3363.5, 1750.0, 1750.0, 1750.0,
+    8750.0, 8750.0, 8750.0, 8750.0, 8750.0, 3573.5, 3573.5, 3573.5, 3573.5, 4200.0,
+    4200.0, 8750.0, 3500.0, 2100.0, 2100.0, 2100.0, 2100.0, 1750.0, 577.5, 350.0,
+    1750.0, 1750.0, 1750.0, 1750.0, 1750.0, 1750.0, 1750.0, 8750.0, 8750.0, 8750.0,
+    350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0,
+    350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0, 350.0,
+    350.0, 350.0, 3363.5, 3573.5, 7850.5, 7000.0, 1750.0, 1400.0, 1400.0, 7000.0,
+    525.0, 28000.0, 28000.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0,
+    5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0,
+    5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0, 5950.0,
+    5950.0, 5950.0, 5950.0,
+)
+
 BoundMaterialType = enum.IntEnum(
     "BoundMaterialType",
     {name: index for index, name in enumerate(_DEFAULT_BOUND_MATERIAL_NAMES)},
@@ -87,12 +112,14 @@ class BoundMaterialInfo:
     index: int
     name: str
     color: RGB
+    density: float | None = None
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class BoundMaterialLibrary:
     names: tuple[str, ...]
     colors: dict[int, RGB] = dataclasses.field(default_factory=dict)
+    densities: tuple[float, ...] = ()
 
     @property
     def count(self) -> int:
@@ -108,11 +135,24 @@ class BoundMaterialLibrary:
             return self.colors[index]
         return _fallback_color_from_name(self.get_name(index))
 
+    def get_density(self, index: int) -> float | None:
+        if 0 <= index < len(self.densities):
+            return self.densities[index]
+        return None
+
     def get(self, index: int) -> BoundMaterialInfo:
-        return BoundMaterialInfo(index=index, name=self.get_name(index), color=self.get_color(index))
+        return BoundMaterialInfo(
+            index=index,
+            name=self.get_name(index),
+            color=self.get_color(index),
+            density=self.get_density(index),
+        )
 
 
-DEFAULT_BOUND_MATERIAL_LIBRARY = BoundMaterialLibrary(_DEFAULT_BOUND_MATERIAL_NAMES)
+DEFAULT_BOUND_MATERIAL_LIBRARY = BoundMaterialLibrary(
+    _DEFAULT_BOUND_MATERIAL_NAMES,
+    densities=_DEFAULT_BOUND_MATERIAL_DENSITIES,
+)
 
 
 def get_bound_material_name(index: int | BoundMaterialType) -> str:
@@ -121,6 +161,10 @@ def get_bound_material_name(index: int | BoundMaterialType) -> str:
 
 def get_bound_material_color(index: int | BoundMaterialType) -> RGB:
     return DEFAULT_BOUND_MATERIAL_LIBRARY.get_color(int(index))
+
+
+def get_bound_material_density(index: int | BoundMaterialType) -> float | None:
+    return DEFAULT_BOUND_MATERIAL_LIBRARY.get_density(int(index))
 
 
 def parse_bound_material_names(text: str) -> BoundMaterialLibrary:
@@ -145,12 +189,13 @@ def read_bound_material_names(path: str | Path) -> BoundMaterialLibrary:
 
 
 __all__ = [
+    "DEFAULT_BOUND_MATERIAL_LIBRARY",
     "BoundMaterialInfo",
     "BoundMaterialLibrary",
     "BoundMaterialType",
-    "DEFAULT_BOUND_MATERIAL_LIBRARY",
     "coerce_bound_material_index",
     "get_bound_material_color",
+    "get_bound_material_density",
     "get_bound_material_name",
     "get_bound_material_type",
     "parse_bound_material_names",

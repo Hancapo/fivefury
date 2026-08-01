@@ -60,7 +60,10 @@ from .glass_writer import write_glass_panes, write_vehicle_glass_windows
 from .matrices import YftSharedMatrixSet
 from .matrices_writer import write_shared_matrix_set
 from .physics import YftPhysicsLod
-from .physics_authoring import normalize_physics_lod, physics_lod_pointers_for
+from .physics_authoring import (
+    normalize_physics_lod,
+    physics_lod_pointers_for,
+)
 from .physics_writer import write_physics_child_header, write_physics_lod_group
 from .resource_headers import YftRuntimeHeaders, yft_runtime_headers
 from .validation import assert_valid_yft
@@ -438,7 +441,7 @@ def create_yft(
     physics_bound_profile: YftPhysicsBoundProfile | str = (
         YftPhysicsBoundProfile.PROP
     ),
-    physics_density: float = 1.0,
+    physics_density: float | None = None,
     bounding_sphere: tuple[float, float, float, float] | None = None,
     user_data: int = 0,
 ) -> Yft:
