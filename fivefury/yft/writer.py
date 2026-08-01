@@ -706,6 +706,8 @@ def _build_yft_payload(
         system,
         yft.environment_cloths,
         drawable_offsets=drawable_offsets,
+        runtime_headers=runtime_headers.cloth,
+        enhanced=runtime_headers.enhanced,
     )
     root_child_off = _write_fragment_root(
         system,

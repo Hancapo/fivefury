@@ -24,6 +24,16 @@ PH_JOINT_3DOF_TYPE_VFT = 0x4062BC40
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class YftClothRuntimeHeaders:
+    environment_cloth: int
+    controller: int
+    bridge: int
+    tuning: int
+    morph_controller: int
+    verlet_cloth: int
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class YftRuntimeHeaders:
     fragment_type: int
     physics_lod_group: int
@@ -35,6 +45,7 @@ class YftRuntimeHeaders:
     joint_1dof: int
     joint_3dof: int
     drawable: DrawableRuntimeHeaders
+    cloth: YftClothRuntimeHeaders
     enhanced: bool = False
 
 
@@ -49,6 +60,14 @@ LEGACY_YFT_RUNTIME_HEADERS = YftRuntimeHeaders(
     joint_1dof=PH_JOINT_1DOF_TYPE_VFT,
     joint_3dof=PH_JOINT_3DOF_TYPE_VFT,
     drawable=LEGACY_FRAGMENT_DRAWABLE_HEADERS,
+    cloth=YftClothRuntimeHeaders(
+        environment_cloth=0x406065D8,
+        controller=0x4060DB18,
+        bridge=0x4060F160,
+        tuning=0x40606400,
+        morph_controller=0x406063D8,
+        verlet_cloth=0x4062CB48,
+    ),
 )
 
 GEN9_YFT_RUNTIME_HEADERS = YftRuntimeHeaders(
@@ -62,6 +81,14 @@ GEN9_YFT_RUNTIME_HEADERS = YftRuntimeHeaders(
     joint_1dof=0x406B1628,
     joint_3dof=0x406B1690,
     drawable=GEN9_FRAGMENT_DRAWABLE_HEADERS,
+    cloth=YftClothRuntimeHeaders(
+        environment_cloth=0x406E4058,
+        controller=0x406E39D8,
+        bridge=0x406ECE78,
+        tuning=0x4069B018,
+        morph_controller=0x406E3F98,
+        verlet_cloth=0x406B66F0,
+    ),
     enhanced=True,
 )
 
@@ -83,6 +110,7 @@ __all__ = [
     "PH_JOINT_1DOF_TYPE_VFT",
     "PH_JOINT_3DOF_TYPE_VFT",
     "RESOURCE_STATE",
+    "YftClothRuntimeHeaders",
     "YftRuntimeHeaders",
     "yft_runtime_headers",
 ]
