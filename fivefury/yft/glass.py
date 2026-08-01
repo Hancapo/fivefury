@@ -37,6 +37,8 @@ class YftGlassVertexDeclaration:
     stride: int
     types: int
     component_count: int = 0
+    vertex_count: int = 0
+    raw_gen9: bytes = dataclasses.field(default=b"", repr=False, compare=False)
 
     @property
     def count(self) -> int:

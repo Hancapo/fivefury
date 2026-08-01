@@ -239,6 +239,7 @@ def read_yft(
             system_data,
             pointers.glass_pane_model_infos,
             glass_pane_count,
+            version=int(header.version),
         ),
         vehicle_glass_windows=read_vehicle_glass_windows(
             system_data,
