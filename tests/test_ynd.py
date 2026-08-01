@@ -7,6 +7,7 @@ import pytest
 from fivefury import (
     GameFileCache,
     GameFileType,
+    GameTarget,
     Ynd,
     YndLink,
     YndNetwork,
@@ -17,6 +18,7 @@ from fivefury import (
     get_ynd_area_id,
     read_ynd,
 )
+from fivefury.resource import split_rsc7_sections
 
 _REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references" / "ynd"
 
@@ -187,6 +189,30 @@ def test_junction_heightmap_roundtrips_through_ynd_writer() -> None:
     assert rebuilt.nodes[0].junction.heightmap_dim_x == 2
     assert rebuilt.nodes[0].junction.heightmap_dim_y == 2
     assert rebuilt.nodes[0].junction.heightmap == junction.heightmap
+
+
+def test_ynd_writer_uses_target_specific_runtime_header() -> None:
+    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
+    node = YndNode(area_id=area_id, node_id=0, position=(0.0, 0.0, 0.0))
+    ynd = Ynd.from_nodes(
+        [node],
+        area_id=area_id,
+        game=GameTarget.GTA5_ENHANCED,
+    )
+
+    data = build_ynd_bytes(ynd)
+    _, system_data, _ = split_rsc7_sections(data)
+    rebuilt = read_ynd(data)
+
+    assert int.from_bytes(system_data[:4], "little") == 0x406D2A40
+    assert rebuilt.game is GameTarget.GTA5_ENHANCED
+
+
+def test_ynd_network_propagates_target_to_cells() -> None:
+    node = YndNode(node_id=0, position=(0.0, 0.0, 0.0))
+    network = YndNetwork.from_nodes([node], game=GameTarget.GTA5_ENHANCED)
+
+    assert network.build_ynds()[0].game is GameTarget.GTA5_ENHANCED
 
 
 def test_build_rejects_nodes_outside_ynd_area() -> None:

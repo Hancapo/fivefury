@@ -11,6 +11,7 @@ from ..resource import (
     split_rsc7_sections,
 )
 from .model import Ynd, YndJunction, YndLink, YndNode, YndResourcePagesInfo
+from .runtime_headers import infer_ynd_game
 
 _ROOT_SIZE = 0x70
 _NODE_SIZE = 0x28
@@ -156,6 +157,7 @@ def read_ynd(source: bytes | bytearray | memoryview | str | Path, *, path: str |
     ynd = Ynd(
         version=int(header.version),
         path=str(path or source) if isinstance(source, (str, Path)) or path else "",
+        game=infer_ynd_game(u32(system_data, 0x00)),
         area_id=(int(nodes[0].area_id) if nodes and all(node.area_id == nodes[0].area_id for node in nodes) else None),
         nodes=nodes,
         file_vft=u32(system_data, 0x00),

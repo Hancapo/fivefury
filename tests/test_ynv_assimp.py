@@ -9,10 +9,12 @@ import fivefury.ynv.assimp as ynv_assimp
 from fivefury import (
     YNV_MAX_POLYGON_VERTICES,
     AssimpScene,
+    GameTarget,
     YdrMeshInput,
     YnvEdgeFlags,
     YnvPortal,
     YnvSourcePolygon,
+    build_ynv_bytes,
     build_ynv_cell,
     build_ynv_cells,
     clip_ynv_polygon_to_cell,
@@ -95,6 +97,26 @@ def test_build_cell_returns_source_polygon_provenance() -> None:
     assert ynv.area_id == 4040
     assert provenance == {"floor": (0,)}
     assert ynv.validate() == []
+
+
+def test_build_cell_writes_enhanced_runtime_headers() -> None:
+    ynv, _ = build_ynv_cell(
+        [
+            YnvSourcePolygon(
+                [(10.0, 10.0, 0.0), (20.0, 10.0, 0.0), (10.0, 20.0, 0.0)]
+            )
+        ],
+        game=GameTarget.GTA5_ENHANCED,
+    )
+
+    rebuilt = read_ynv(build_ynv_bytes(ynv))
+
+    assert rebuilt.game is GameTarget.GTA5_ENHANCED
+    assert rebuilt.file_vft == 0x406D2160
+    assert rebuilt.vertices_info.vft == 0x406D21A8
+    assert rebuilt.indices_info.vft == 0x406D21A8
+    assert rebuilt.edges_info.vft == 0x406D21A8
+    assert rebuilt.polys_info.vft == 0x406D21A8
 
 
 def test_provenance_can_bind_portals_to_authored_polygons() -> None:

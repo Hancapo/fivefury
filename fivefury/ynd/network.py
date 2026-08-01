@@ -3,9 +3,10 @@ from __future__ import annotations
 import copy
 import dataclasses
 from collections import Counter
-from pathlib import Path
 from collections.abc import Hashable
+from pathlib import Path
 
+from ..game_target import GameTarget, coerce_game_target
 from .model import Ynd, YndNode
 from .regions import get_ynd_area_id
 
@@ -23,11 +24,24 @@ def _node_key(node: YndNode, fallback_index: int, duplicate_keys: set[Hashable])
 class YndNetwork:
     version: int = 1
     path: str = ""
+    game: GameTarget = GameTarget.GTA5
     nodes: list[YndNode] = dataclasses.field(default_factory=list)
 
     @classmethod
-    def from_nodes(cls, nodes: list[YndNode], *, path: str | Path = "", version: int = 1) -> "YndNetwork":
-        return cls(version=int(version), path=str(path) if path else "", nodes=list(nodes))
+    def from_nodes(
+        cls,
+        nodes: list[YndNode],
+        *,
+        path: str | Path = "",
+        game: str | GameTarget = GameTarget.GTA5,
+        version: int = 1,
+    ) -> YndNetwork:
+        return cls(
+            version=int(version),
+            path=str(path) if path else "",
+            game=coerce_game_target(game),
+            nodes=list(nodes),
+        )
 
     def build_ynds(self) -> list[Ynd]:
         draft_nodes = copy.deepcopy(self.nodes)
@@ -72,6 +86,7 @@ class YndNetwork:
                     area_nodes[area_id],
                     area_id=area_id,
                     path=self.path,
+                    game=self.game,
                     version=self.version,
                 ).build()
             )

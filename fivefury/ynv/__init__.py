@@ -40,18 +40,28 @@ from .model import (
     identity_4x4,
 )
 from .reader import read_ynv
+from .runtime_headers import (
+    GEN9_YNV_RUNTIME_PROFILE,
+    LEGACY_YNV_RUNTIME_PROFILE,
+    YNV_VERSION,
+    YnvRuntimeProfile,
+    get_ynv_runtime_profile,
+)
 from .writer import build_ynv_bytes, build_ynv_system_layout, save_ynv
 
 __all__ = [
+    "GEN9_YNV_RUNTIME_PROFILE",
+    "LEGACY_YNV_RUNTIME_PROFILE",
     "YNV_CELL_COUNT",
     "YNV_CELL_SIZE",
     "YNV_GRID_MIN",
     "YNV_MAX_ADJACENT_AREAS",
     "YNV_MAX_INDICES",
-    "YNV_MAX_POLYGON_VERTICES",
     "YNV_MAX_POLYGONS",
+    "YNV_MAX_POLYGON_VERTICES",
     "YNV_MAX_VERTICES",
     "YNV_POLY_ARRAY_BLOCK_SIZE",
+    "YNV_VERSION",
     "Ynv",
     "YnvAabb",
     "YnvAdjacencyType",
@@ -69,6 +79,7 @@ __all__ = [
     "YnvPortal",
     "YnvPortalType",
     "YnvResourcePagesInfo",
+    "YnvRuntimeProfile",
     "YnvSector",
     "YnvSectorData",
     "YnvSourcePolygon",
@@ -81,6 +92,7 @@ __all__ = [
     "get_ynv_area_id",
     "get_ynv_cell_span",
     "get_ynv_file_coords",
+    "get_ynv_runtime_profile",
     "identity_4x4",
     "obj_to_nav",
     "read_ynv",
