@@ -1,9 +1,20 @@
+from .cutscene import (
+    YCD_CUTSCENE_DEFAULT_FPS,
+    YCD_CUTSCENE_DEFAULT_VERSION,
+    YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+    YcdCutsceneBoneAnimation,
+    YcdCutsceneBuilder,
+    YcdCutsceneClip,
+    YcdCutsceneSection,
+    YcdCutsceneTrack,
+    build_cutscene_sections,
+    build_cutscene_ycds,
+)
 from .model import (
     Ycd,
     YcdAnimation,
     YcdAnimationBoneId,
     YcdAnimationTrack,
-    YcdTrackFormat,
     YcdAnimSequence,
     YcdCameraAnimationSample,
     YcdChannelType,
@@ -20,33 +31,33 @@ from .model import (
     YcdFramePosition,
     YcdSequence,
     YcdSequenceRootChannelRef,
+    YcdTrackFormat,
     YcdTransformSample,
-    YcdUvClipBinding,
     YcdUvAnimationSample,
+    YcdUvClipBinding,
     YcdUvTransformSample,
     build_ycd_uv_clip_hash,
     build_ycd_uv_clip_name,
     create_ycd_uv_clip,
-    parse_ycd_uv_clip_binding,
     get_ycd_track_format,
-)
-from .cutscene import (
-    YCD_CUTSCENE_DEFAULT_FPS,
-    YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
-    YCD_CUTSCENE_DEFAULT_VERSION,
-    YcdCutsceneBoneAnimation,
-    YcdCutsceneBuilder,
-    YcdCutsceneClip,
-    YcdCutsceneSection,
-    YcdCutsceneTrack,
-    build_cutscene_sections,
-    build_cutscene_ycds,
+    parse_ycd_uv_clip_binding,
 )
 from .reader import read_ycd
+from .runtime_headers import (
+    GEN9_YCD_RUNTIME_PROFILE,
+    LEGACY_YCD_RUNTIME_PROFILE,
+    YCD_VERSION,
+    YcdRuntimeProfile,
+    get_ycd_runtime_profile,
+)
 from .write import build_ycd_bytes, save_ycd
 
 __all__ = [
     "Ycd",
+    "GEN9_YCD_RUNTIME_PROFILE",
+    "LEGACY_YCD_RUNTIME_PROFILE",
+    "YCD_VERSION",
+    "YcdRuntimeProfile",
     "YcdAnimation",
     "YcdAnimationBoneId",
     "YcdAnimationTrack",
@@ -82,6 +93,7 @@ __all__ = [
     "build_cutscene_ycds",
     "create_ycd_uv_clip",
     "get_ycd_track_format",
+    "get_ycd_runtime_profile",
     "parse_ycd_uv_clip_binding",
     "YCD_CUTSCENE_DEFAULT_FPS",
     "YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT",

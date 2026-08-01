@@ -12,6 +12,7 @@ class YcdTrackFormat(IntEnum):
 class YcdAnimationTrack(IntEnum):
     BONE_TRANSLATION = 0
     BONE_ROTATION = 1
+    BONE_SCALE = 2
     UNKNOWN_22 = 22
     FACIAL_CONTROL = 24
     FACIAL_TRANSLATION = 25
@@ -57,6 +58,7 @@ class YcdAnimationTrack(IntEnum):
 TRACK_NAME_BY_ID = {
     YcdAnimationTrack.BONE_TRANSLATION: "kTrackBoneTranslation",
     YcdAnimationTrack.BONE_ROTATION: "kTrackBoneRotation",
+    YcdAnimationTrack.BONE_SCALE: "kTrackBoneScale",
     YcdAnimationTrack.MOVER_TRANSLATION: "kTrackMoverTranslation",
     YcdAnimationTrack.MOVER_ROTATION: "kTrackMoverRotation",
     YcdAnimationTrack.CAMERA_TRANSLATION: "kTrackCameraTranslation",
@@ -136,6 +138,7 @@ FACIAL_TRACK_IDS = frozenset(
 TRACK_FORMAT_BY_ID = {
     int(YcdAnimationTrack.BONE_TRANSLATION): YcdTrackFormat.VECTOR3,
     int(YcdAnimationTrack.BONE_ROTATION): YcdTrackFormat.QUATERNION,
+    int(YcdAnimationTrack.BONE_SCALE): YcdTrackFormat.VECTOR3,
     int(YcdAnimationTrack.MOVER_TRANSLATION): YcdTrackFormat.VECTOR3,
     int(YcdAnimationTrack.MOVER_ROTATION): YcdTrackFormat.QUATERNION,
     int(YcdAnimationTrack.CAMERA_TRANSLATION): YcdTrackFormat.VECTOR3,
@@ -198,7 +201,11 @@ def is_ycd_uv_track(track: int) -> bool:
 
 
 def is_ycd_object_track(track: int) -> bool:
-    return int(track) in (int(YcdAnimationTrack.BONE_TRANSLATION), int(YcdAnimationTrack.BONE_ROTATION))
+    return int(track) in (
+        int(YcdAnimationTrack.BONE_TRANSLATION),
+        int(YcdAnimationTrack.BONE_ROTATION),
+        int(YcdAnimationTrack.BONE_SCALE),
+    )
 
 
 def is_ycd_camera_track(track: int) -> bool:

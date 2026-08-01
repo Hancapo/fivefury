@@ -2,11 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..binary import f32 as _f32, read_c_string, u16 as _u16, u32 as _u32, u64 as _u64
+from ..binary import f32 as _f32
+from ..binary import read_c_string
+from ..binary import u16 as _u16
+from ..binary import u32 as _u32
+from ..binary import u64 as _u64
 from ..common import clip_short_name
 from ..metahash import MetaHash
-from ..resource import checked_virtual_offset, read_virtual_pointer_array, split_rsc7_sections
 from ..resolver import register_name
+from ..resource import (
+    checked_virtual_offset,
+    read_virtual_pointer_array,
+    split_rsc7_sections,
+)
 from .model import (
     Ycd,
     YcdAnimation,
@@ -22,6 +30,7 @@ from .model import (
     YcdClipType,
     YcdSequence,
 )
+from .runtime_headers import infer_ycd_game
 from .sequences import parse_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
@@ -480,6 +489,7 @@ def read_ycd(source: bytes | str | Path, *, path: str | Path | None = None) -> Y
         raise ValueError("graphics-backed YCD resources are not supported yet")
 
     reader = _YcdReader(system_data)
+    file_vft = _u32(system_data, 0x00)
     root_offset = 0x10
     animations_pointer = _u64(system_data, root_offset + 0x08)
     clips_pointer = _u64(system_data, root_offset + 0x18)
@@ -494,13 +504,19 @@ def read_ycd(source: bytes | str | Path, *, path: str | Path | None = None) -> Y
     animation_entry_count = 0
     if animations_pointer:
         animation_map_offset = reader.virtual_offset(animations_pointer)
+        animation_map_vft = _u32(system_data, animation_map_offset)
         animation_bucket_capacity = _u16(system_data, animation_map_offset + 0x20)
         animation_entry_count = _u16(system_data, animation_map_offset + 0x22)
+    else:
+        animation_map_vft = 0
 
     return Ycd(
         header=header,
         clips=clips,
         animations=animations,
+        game=infer_ycd_game(file_vft),
+        file_vft=file_vft,
+        animation_map_vft=animation_map_vft,
         path=str(path) if path is not None else None,
         clip_map=clip_map,
         animation_map=animation_map,
