@@ -27,15 +27,6 @@ _G9_INDEX_BUFFER_BIND_FLAGS = 0x0058020A
 _G9_UNKNOWN0 = 0
 _G9_UNKNOWN1 = 1
 _HASH_NAME_PATTERN = re.compile(r'^hash_([0-9a-fA-F]{8})$')
-_RUNTIME_PARAMETER_ALIASES = {
-    ("default", 0xBABE4DBA): "diffusesampler",
-    ("glass_breakable", 0xE44690BB): "specsampler",
-    ("glass_breakable", 0x49C32B64): "bumpsampler",
-    ("normal_spec", 0xE44690BB): "specsampler",
-    ("normal_spec", 0x49C32B64): "bumpsampler",
-    ("normal_spec_tnt", 0xE44690BB): "specsampler",
-    ("normal_spec_tnt", 0x49C32B64): "bumpsampler",
-}
 
 
 def _parameter_name_hash(name: str) -> int:
@@ -43,6 +34,15 @@ def _parameter_name_hash(name: str) -> int:
     if match is not None:
         return int(match.group(1), 16)
     return int(jenk_hash(name))
+
+
+def _parse_explicit_hash(value: str | None) -> int | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    return int(text, 16)
 
 
 class ShaderParamTypeG9(enum.IntEnum):
@@ -65,6 +65,7 @@ class ShaderGen9ParameterDefinition:
     name: str
     kind: str
     index: int = 0
+    native_name_hash: int | None = None
     legacy_name: str | None = None
     sampler_value: int | None = None
     buffer_index: int | None = None
@@ -86,6 +87,8 @@ class ShaderGen9ParameterDefinition:
 
     @property
     def name_hash(self) -> int:
+        if self.native_name_hash is not None:
+            return int(self.native_name_hash)
         return _parameter_name_hash(self.name)
 
     @property
@@ -119,6 +122,7 @@ class ShaderGen9Definition:
     file_name: str
     buffer_sizes: tuple[int, ...]
     parameters: tuple[ShaderGen9ParameterDefinition, ...]
+    parameter_hash_aliases: tuple[tuple[int, str], ...] = ()
     _by_name: dict[str, ShaderGen9ParameterDefinition] = dataclasses.field(init=False, repr=False)
     _by_hash: dict[int, ShaderGen9ParameterDefinition] = dataclasses.field(init=False, repr=False)
     _by_legacy_name: dict[str, ShaderGen9ParameterDefinition] = dataclasses.field(init=False, repr=False)
@@ -137,6 +141,16 @@ class ShaderGen9Definition:
             for parameter in self.parameters
             if parameter.legacy_name_hash
         })
+        for name_hash, parameter_name in self.parameter_hash_aliases:
+            parameter = self._by_name.get(parameter_name.lower()) or self._by_legacy_name.get(
+                parameter_name.lower()
+            )
+            if parameter is None:
+                raise ValueError(
+                    f"Gen9 shader '{self.name}' aliases 0x{name_hash:08X} "
+                    f"to unknown parameter '{parameter_name}'"
+                )
+            self._by_hash[int(name_hash)] = parameter
 
     @property
     def name_hash(self) -> int:
@@ -238,14 +252,13 @@ def build_runtime_gen9_shader_definition(
         kind = ShaderParamTypeG9(raw_kind)
         known = base.get_parameter(name_hash)
         name = known.name if known is not None else f"hash_{name_hash:08X}"
-        legacy_name = known.legacy_name if known is not None else _RUNTIME_PARAMETER_ALIASES.get(
-            (base.name.casefold(), int(name_hash))
-        )
+        legacy_name = known.legacy_name if known is not None else None
         parameters.append(
             ShaderGen9ParameterDefinition(
                 name=name,
                 kind=kind_names[kind],
                 index=int(index),
+                native_name_hash=int(name_hash),
                 legacy_name=legacy_name,
                 sampler_value=(
                     int(sampler_values[index])
@@ -280,6 +293,7 @@ def _parse_shader_parameter(node: ET.Element) -> ShaderGen9ParameterDefinition:
         name=str(node.attrib.get('name') or '').strip(),
         kind=kind,
         index=int(node.attrib.get('index') or 0),
+        native_name_hash=_parse_explicit_hash(node.attrib.get('hash')),
         legacy_name=(str(node.attrib.get('old')).strip() or None) if node.attrib.get('old') is not None else None,
         sampler_value=int(node.attrib.get('sampler')) if node.attrib.get('sampler') is not None else None,
         buffer_index=int(node.attrib.get('buffer')) if node.attrib.get('buffer') is not None else None,
@@ -302,7 +316,27 @@ def read_gen9_shader_library(path: str | Path | None = None) -> ShaderGen9Librar
             buffer_sizes = ()
         parameters_node = item.find('Parameters')
         parameters = tuple(_parse_shader_parameter(node) for node in parameters_node.findall('Item')) if parameters_node is not None else ()
-        shaders.append(ShaderGen9Definition(name=name, file_name=file_name, buffer_sizes=buffer_sizes, parameters=parameters))
+        aliases_node = item.find('Aliases')
+        aliases = (
+            tuple(
+                (
+                    int(str(node.attrib['hash']).strip(), 16),
+                    str(node.attrib['name']).strip(),
+                )
+                for node in aliases_node.findall('Item')
+            )
+            if aliases_node is not None
+            else ()
+        )
+        shaders.append(
+            ShaderGen9Definition(
+                name=name,
+                file_name=file_name,
+                buffer_sizes=buffer_sizes,
+                parameters=parameters,
+                parameter_hash_aliases=aliases,
+            )
+        )
     return ShaderGen9Library(tuple(shaders))
 
 
