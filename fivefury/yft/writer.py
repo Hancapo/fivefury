@@ -39,6 +39,7 @@ from .cloth_writer import write_environment_cloths
 from .constants import (
     FRAGMENT_DRAWABLE_SIZE,
     FRAGMENT_ROOT_SIZE,
+    GEN9_YFT_VERSIONS,
     LIGHT_ATTRIBUTES_ARRAY_OFFSET,
 )
 from .drawables import YftDrawable
@@ -718,6 +719,10 @@ def build_yft_bytes(
         if not source.raw_bytes:
             raise ValueError("lossless YFT writing requires a YFT read from bytes")
         return bytes(source.raw_bytes)
+    if int(source.version) in GEN9_YFT_VERSIONS:
+        raise NotImplementedError(
+            "Gen9 YFT rebuilding is not supported until its runtime class headers are mapped"
+        )
 
     for lod in source.physics_lod_details:
         apply_physics_lod_bound_ref_counts(

@@ -79,6 +79,7 @@ from fivefury.yft import (
     validate_yft,
     validate_yft_bytes,
 )
+from fivefury.yft import drawable_reader as yft_drawable_reader
 from fivefury.yft.resource_headers import (
     FRAG_PHYS_ARCHETYPE_DAMP_VFT,
     FRAG_PHYS_TRANSFORMS_VFT,
@@ -100,6 +101,39 @@ def _composite(*bounds):
         sphere_center=(0.0, 0.0, 0.0),
         children=[BoundChild(bound) for bound in bounds],
     ).build()
+
+
+def test_gen9_yft_drawable_uses_gen9_embedded_layout(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bool | None] = []
+
+    def fake_read_drawable(*args, enhanced=None, **kwargs):
+        calls.append(enhanced)
+        return Ydr(version=159)
+
+    monkeypatch.setattr(
+        yft_drawable_reader,
+        "_read_ydr_from_sections",
+        fake_read_drawable,
+    )
+    yft_drawable_reader.read_fragment_drawable(
+        ResourceHeader(version=171, system_flags=0, graphics_flags=0),
+        bytes(0x150),
+        b"",
+        0x50000000,
+        label="drawable",
+        path="enhanced.yft",
+        shader_library=None,
+    )
+
+    assert calls == [True]
+
+
+def test_gen9_yft_rebuild_is_rejected_but_lossless_write_is_allowed() -> None:
+    yft = Yft(version=171, raw_bytes=b"enhanced-yft")
+
+    assert build_yft_bytes(yft, lossless=True) == b"enhanced-yft"
+    with pytest.raises(NotImplementedError, match="Gen9 YFT rebuilding"):
+        build_yft_bytes(yft)
 
 
 def _bound_child_pointer(
