@@ -22,6 +22,11 @@ from fivefury import (
     create_ydr,
     get_bound_material_density,
 )
+from fivefury.bounds import (
+    GEN9_BOUND_FILE_VFTS,
+    LEGACY_BOUND_FILE_VFTS,
+    BoundType,
+)
 from fivefury.common import atomic_write_bytes
 from fivefury.resource import (
     ResourceHeader,
@@ -92,6 +97,7 @@ from fivefury.yft.resource_headers import (
     FRAG_PHYSICS_LOD_VFT,
     FRAG_TYPE_CHILD_VFT,
     GEN9_YFT_RUNTIME_HEADERS,
+    LEGACY_YFT_RUNTIME_HEADERS,
     PH_JOINT_3DOF_TYPE_VFT,
     RESOURCE_STATE,
 )
@@ -469,7 +475,14 @@ def test_yft_glass_roundtrip():
     assert parsed.validate() == []
 
 
-def test_yft_environment_cloth_roundtrip():
+@pytest.mark.parametrize(
+    ("version", "runtime_headers"),
+    [
+        (162, LEGACY_YFT_RUNTIME_HEADERS),
+        (171, GEN9_YFT_RUNTIME_HEADERS),
+    ],
+)
+def test_yft_environment_cloth_roundtrip(version, runtime_headers):
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
@@ -507,6 +520,10 @@ def test_yft_environment_cloth_roundtrip():
                     bounds_max=(1.0, 1.0, 0.0),
                     vertices=vertices,
                     previous_vertices=list(vertices),
+                    bound=BoundBox.from_center_size(
+                        (0.5, 0.5, 0.0),
+                        (1.0, 1.0, 0.1),
+                    ).build(),
                 ),
                 None,
                 None,
@@ -514,7 +531,7 @@ def test_yft_environment_cloth_roundtrip():
         ),
         tuning=YftClothTuning(weight=0.75),
     )
-    source = create_yft(drawable, name="cloth_fragment")
+    source = create_yft(drawable, name="cloth_fragment", version=version)
     source.environment_cloths.append(cloth)
 
     parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
@@ -527,7 +544,59 @@ def test_yft_environment_cloth_roundtrip():
     assert parsed_cloth.controller.bridge.display_maps[0] == [0, 1, 2]
     assert parsed_cloth.controller.verlet_lods[0].vertices == vertices
     assert parsed_cloth.tuning.weight == 0.75
-    assert parsed_cloth.tuning.vft != 0
+    assert int.from_bytes(parsed_cloth.raw_header[:4], "little") == (
+        runtime_headers.cloth.environment_cloth
+    )
+    assert parsed_cloth.tuning.vft == runtime_headers.cloth.tuning
+    assert int.from_bytes(parsed_cloth.controller.raw_header[:4], "little") == (
+        runtime_headers.cloth.controller
+    )
+    assert int.from_bytes(
+        parsed_cloth.controller.bridge.raw_header[:4], "little"
+    ) == runtime_headers.cloth.bridge
+    assert int.from_bytes(
+        parsed_cloth.controller.morph.raw_header[:4], "little"
+    ) == runtime_headers.cloth.morph_controller
+    assert int.from_bytes(
+        parsed_cloth.controller.verlet_lods[0].raw_header[:4], "little"
+    ) == runtime_headers.cloth.verlet_cloth
+    expected_bound_vfts = (
+        GEN9_BOUND_FILE_VFTS if version == 171 else LEGACY_BOUND_FILE_VFTS
+    )
+    assert (
+        parsed_cloth.controller.verlet_lods[0].bound.file_vft
+        == expected_bound_vfts[BoundType.BOX]
+    )
+
+    target_version = 162 if version == 171 else 171
+    target_headers = (
+        LEGACY_YFT_RUNTIME_HEADERS
+        if target_version == 162
+        else GEN9_YFT_RUNTIME_HEADERS
+    )
+    parsed.version = target_version
+    converted = read_yft(build_yft_bytes(parsed), resolve_physics_entities=False)
+    converted_cloth = converted.environment_cloths[0]
+
+    assert int.from_bytes(converted_cloth.raw_header[:4], "little") == (
+        target_headers.cloth.environment_cloth
+    )
+    assert converted_cloth.tuning.vft == target_headers.cloth.tuning
+    assert int.from_bytes(converted_cloth.controller.raw_header[:4], "little") == (
+        target_headers.cloth.controller
+    )
+    assert int.from_bytes(
+        converted_cloth.controller.verlet_lods[0].raw_header[:4], "little"
+    ) == target_headers.cloth.verlet_cloth
+    target_bound_vfts = (
+        LEGACY_BOUND_FILE_VFTS
+        if target_version == 162
+        else GEN9_BOUND_FILE_VFTS
+    )
+    assert (
+        converted_cloth.controller.verlet_lods[0].bound.file_vft
+        == target_bound_vfts[BoundType.BOX]
+    )
 
 
 def test_read_yft_discovers_fragment_drawables(monkeypatch):

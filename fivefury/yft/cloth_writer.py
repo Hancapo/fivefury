@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from collections.abc import Mapping, Sequence
 
+from ..bounds import gen9_bound_file_vft, legacy_bound_file_vft
 from ..bounds.writer import write_bound_resource
 from ..resource import ResourceWriter
 from .cloth import (
@@ -15,14 +16,9 @@ from .cloth import (
     YftVerletCloth,
 )
 from .constants import CHAR_CLOTH_ARRAY_OFFSET, ENV_CLOTH_ARRAY_OFFSET
+from .resource_headers import YftClothRuntimeHeaders
 
 _VIRTUAL_BASE = 0x50000000
-_ENVIRONMENT_CLOTH_VFT = 0x406065D8
-_CLOTH_CONTROLLER_VFT = 0x4060DB18
-_CLOTH_BRIDGE_VFT = 0x4060F160
-_CLOTH_TUNING_VFT = 0x40606400
-_MORPH_CONTROLLER_VFT = 0x406063D8
-_VERLET_CLOTH_VFT = 0x4062CB48
 
 
 def _virtual(offset: int) -> int:
@@ -33,7 +29,7 @@ def _template(raw: bytes, size: int, *, vft: int = 0) -> bytearray:
     if raw and len(raw) != size:
         raise ValueError(f"cloth block template must be exactly 0x{size:X} bytes")
     result = bytearray(raw or bytes(size))
-    if vft and not struct.unpack_from("<I", result, 0)[0]:
+    if vft:
         struct.pack_into("<I", result, 0, vft)
     if size >= 8 and not struct.unpack_from("<I", result, 4)[0]:
         struct.pack_into("<I", result, 4, 1)
@@ -81,11 +77,16 @@ def _write_array(
     )
 
 
-def _write_tuning(writer: ResourceWriter, tuning: YftClothTuning | None) -> int:
+def _write_tuning(
+    writer: ResourceWriter,
+    tuning: YftClothTuning | None,
+    *,
+    runtime_headers: YftClothRuntimeHeaders,
+) -> int:
     if tuning is None:
         return 0
     offset = writer.alloc(0x40, 16)
-    writer.pack_into("I", offset, int(tuning.vft) or _CLOTH_TUNING_VFT)
+    writer.pack_into("I", offset, runtime_headers.tuning)
     writer.pack_into("I", offset + 0x04, 1)
     writer.pack_into(
         "2f", offset + 0x10, float(tuning.rotation_rate), float(tuning.angle_threshold)
@@ -120,11 +121,16 @@ def _write_fixed_block(
     return offset
 
 
-def _write_bridge(writer: ResourceWriter, bridge: YftClothBridge | None) -> int:
+def _write_bridge(
+    writer: ResourceWriter,
+    bridge: YftClothBridge | None,
+    *,
+    runtime_headers: YftClothRuntimeHeaders,
+) -> int:
     if bridge is None:
         return 0
     offset = _alloc_block(
-        writer, bridge.raw_header, 0x140, vft=_CLOTH_BRIDGE_VFT
+        writer, bridge.raw_header, 0x140, vft=runtime_headers.bridge
     )
     writer.pack_into("4I", offset + 0x10, *bridge.mesh_vertex_counts)
     for index, values in enumerate(bridge.pin_radii):
@@ -187,12 +193,18 @@ def _write_morph_map(writer: ResourceWriter, morph_map: YftClothMorphMap | None)
 
 
 def _write_morph_controller(
-    writer: ResourceWriter, controller: YftClothMorphController | None
+    writer: ResourceWriter,
+    controller: YftClothMorphController | None,
+    *,
+    runtime_headers: YftClothRuntimeHeaders,
 ) -> int:
     if controller is None:
         return 0
     offset = _alloc_block(
-        writer, controller.raw_header, 0x40, vft=_MORPH_CONTROLLER_VFT
+        writer,
+        controller.raw_header,
+        0x40,
+        vft=runtime_headers.morph_controller,
     )
     for index, morph_map in enumerate(controller.maps):
         map_offset = _write_morph_map(writer, morph_map)
@@ -205,15 +217,34 @@ def _write_morph_controller(
     return offset
 
 
-def _write_verlet(writer: ResourceWriter, cloth: YftVerletCloth | None) -> int:
+def _write_verlet(
+    writer: ResourceWriter,
+    cloth: YftVerletCloth | None,
+    *,
+    runtime_headers: YftClothRuntimeHeaders,
+    enhanced: bool,
+) -> int:
     if cloth is None:
         return 0
     if cloth.previous_vertices and len(cloth.previous_vertices) != cloth.vertex_count:
         raise ValueError("cloth previous-vertex count must match vertex count")
     offset = _alloc_block(
-        writer, cloth.raw_header, 0x180, vft=_VERLET_CLOTH_VFT
+        writer,
+        cloth.raw_header,
+        0x180,
+        vft=runtime_headers.verlet_cloth,
     )
-    bound_offset = write_bound_resource(writer, cloth.bound) if cloth.bound else 0
+    bound_offset = (
+        write_bound_resource(
+            writer,
+            cloth.bound,
+            file_vft_resolver=(
+                gen9_bound_file_vft if enhanced else legacy_bound_file_vft
+            ),
+        )
+        if cloth.bound
+        else 0
+    )
     behavior_offset = _write_fixed_block(
         writer, cloth.behavior_data, 0x40, label="cloth behavior data"
     )
@@ -261,7 +292,13 @@ def _write_verlet(writer: ResourceWriter, cloth: YftVerletCloth | None) -> int:
     return offset
 
 
-def _write_controller(writer: ResourceWriter, controller: YftClothController) -> int:
+def _write_controller(
+    writer: ResourceWriter,
+    controller: YftClothController,
+    *,
+    runtime_headers: YftClothRuntimeHeaders,
+    enhanced: bool,
+) -> int:
     if controller.bridge is None:
         raise ValueError("environment cloth requires a simulation-to-graphics bridge")
     if controller.morph is None:
@@ -269,12 +306,29 @@ def _write_controller(writer: ResourceWriter, controller: YftClothController) ->
     if controller.verlet_lods[0] is None:
         raise ValueError("environment cloth requires its highest-detail Verlet data")
     offset = _alloc_block(
-        writer, controller.raw_header, 0x80, vft=_CLOTH_CONTROLLER_VFT
+        writer,
+        controller.raw_header,
+        0x80,
+        vft=runtime_headers.controller,
     )
-    bridge_offset = _write_bridge(writer, controller.bridge)
-    morph_offset = _write_morph_controller(writer, controller.morph)
+    bridge_offset = _write_bridge(
+        writer,
+        controller.bridge,
+        runtime_headers=runtime_headers,
+    )
+    morph_offset = _write_morph_controller(
+        writer,
+        controller.morph,
+        runtime_headers=runtime_headers,
+    )
     verlet_offsets = [
-        _write_verlet(writer, verlet) for verlet in controller.verlet_lods
+        _write_verlet(
+            writer,
+            verlet,
+            runtime_headers=runtime_headers,
+            enhanced=enhanced,
+        )
+        for verlet in controller.verlet_lods
     ]
     writer.pack_into("Q", offset + 0x10, _virtual(bridge_offset))
     writer.pack_into("Q", offset + 0x18, _virtual(morph_offset))
@@ -299,6 +353,8 @@ def write_environment_cloths(
     cloths: Sequence[YftEnvironmentCloth],
     *,
     drawable_offsets: Mapping[str, int],
+    runtime_headers: YftClothRuntimeHeaders,
+    enhanced: bool,
 ) -> None:
     writer.pack_into("QHHI", CHAR_CLOTH_ARRAY_OFFSET, 0, 0, 0, 0)
     if not cloths:
@@ -315,16 +371,28 @@ def write_environment_cloths(
                 f"'{cloth.drawable_label}'"
             )
         offset = _alloc_block(
-            writer, cloth.raw_header, 0x80, vft=_ENVIRONMENT_CLOTH_VFT
+            writer,
+            cloth.raw_header,
+            0x80,
+            vft=runtime_headers.environment_cloth,
         )
-        tuning_offset = _write_tuning(writer, cloth.tuning)
+        tuning_offset = _write_tuning(
+            writer,
+            cloth.tuning,
+            runtime_headers=runtime_headers,
+        )
         behavior_offset = _write_fixed_block(
             writer,
             cloth.behavior_data,
             0x40,
             label="environment cloth behavior data",
         )
-        controller_offset = _write_controller(writer, cloth.controller)
+        controller_offset = _write_controller(
+            writer,
+            cloth.controller,
+            runtime_headers=runtime_headers,
+            enhanced=enhanced,
+        )
         writer.pack_into(
             "Q", offset + 0x10, _virtual(tuning_offset) if tuning_offset else 0
         )
