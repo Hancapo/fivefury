@@ -7,6 +7,15 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-02
+
+### Added
+- PSCH enum definitions can now be read and written through the public PSO API.
+- Public validation for YMF PSO roots, blocks, arrays, pointers, and schemas.
+
+### Changed
+- Rewriting a YMF now preserves PSO schemas and sections without semantic model equivalents.
+
 ### Fixed
 - YMF manifests now use the runtime-compatible PSO layout required for streamed MLO registration.
 
