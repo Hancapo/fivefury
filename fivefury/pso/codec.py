@@ -1,7 +1,18 @@
 from __future__ import annotations
 
-from ..binary import i32_be as _i32, u16_be as _u16, u32_be as _u32
-from .model import PSIN, PsoArrayHeader, PsoBlock, PsoEntry, PsoPointer, PsoStruct
+from ..binary import i32_be as _i32
+from ..binary import u16_be as _u16
+from ..binary import u32_be as _u32
+from .model import (
+    PSIN,
+    PsoArrayHeader,
+    PsoBlock,
+    PsoEntry,
+    PsoEnum,
+    PsoEnumEntry,
+    PsoPointer,
+    PsoStruct,
+)
 
 
 def is_pso(data: bytes | bytearray | memoryview) -> bool:
@@ -18,7 +29,9 @@ def decode_pointer(data: bytes, offset: int) -> PsoPointer:
 
 
 def decode_array_header(data: bytes, offset: int) -> PsoArrayHeader:
-    return PsoArrayHeader(pointer=decode_pointer(data, offset), count=_u16(data, offset + 8))
+    return PsoArrayHeader(
+        pointer=decode_pointer(data, offset), count=_u16(data, offset + 8)
+    )
 
 
 def parse_sections(data: bytes) -> dict[int, bytes]:
@@ -43,7 +56,9 @@ def parse_pmap(data: bytes) -> tuple[dict[int, PsoBlock], int]:
         name_hash = _u32(data, offset)
         block_offset = _i32(data, offset + 4)
         length = _i32(data, offset + 12)
-        blocks[index + 1] = PsoBlock(name_hash=name_hash, offset=block_offset, length=length)
+        blocks[index + 1] = PsoBlock(
+            name_hash=name_hash, offset=block_offset, length=length
+        )
         offset += 16
     return blocks, root_id
 
@@ -75,7 +90,29 @@ def parse_psch(data: bytes) -> dict[int, PsoStruct]:
                 )
             )
             entry_offset += 12
-        result[name_hash] = PsoStruct(name_hash=name_hash, length=length, entries=entries)
+        result[name_hash] = PsoStruct(
+            name_hash=name_hash, length=length, entries=entries
+        )
+    return result
+
+
+def parse_psch_enums(data: bytes) -> dict[int, PsoEnum]:
+    count = _u32(data, 8)
+    result: dict[int, PsoEnum] = {}
+    for index in range(count):
+        name_hash = _u32(data, 12 + index * 8)
+        offset = _i32(data, 16 + index * 8)
+        if data[offset] != 1:
+            continue
+        entry_count = _u16(data, offset + 2)
+        entries = [
+            PsoEnumEntry(
+                name_hash=_u32(data, offset + 4 + entry_index * 8),
+                value=_i32(data, offset + 8 + entry_index * 8),
+            )
+            for entry_index in range(entry_count)
+        ]
+        result[name_hash] = PsoEnum(name_hash=name_hash, entries=entries)
     return result
 
 
@@ -100,5 +137,6 @@ __all__ = [
     "joaat_checksum",
     "parse_pmap",
     "parse_psch",
+    "parse_psch_enums",
     "parse_sections",
 ]
