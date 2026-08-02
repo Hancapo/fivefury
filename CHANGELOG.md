@@ -10,32 +10,20 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [0.3.0] - 2026-08-01
 
 ### Added
-- Enhanced YFT environment-cloth authoring, including controllers, simulation
-  bridges, tuning, morph controllers, Verlet data, and nested collision bounds.
-- Target-aware YED authoring and cross-edition rebuilding for expression
-  dictionaries.
-- Target-aware YCD authoring for animation maps, animations, clips, clip lists,
-  properties, tags, attributes, and cutscene animation dictionaries.
+- Enhanced YFT environment-cloth authoring, including controllers, simulation bridges, tuning, morph controllers, Verlet data, and nested collision bounds.
+- Target-aware YED authoring and cross-edition rebuilding for expression dictionaries.
+- Target-aware YCD authoring for animation maps, animations, clips, clip lists, properties, tags, attributes, and cutscene animation dictionaries.
 - Bone-scale animation tracks in YCD sequences.
-- Target-aware YND and YNV authoring across road networks, in-memory polygon
-  builders, and Assimp navmesh conversion.
-- Target-aware YBN authoring with automatic source detection and canonical
-  collision-bound headers for each edition.
-- Target-aware YDD authoring for drawable dictionaries, embedded drawables,
-  shaders, and the resource version required by each edition.
-- Binary reading, writing, and authoring for `gta5_cache_y.dat` from in-memory
-  or loose YMAP, YTYP, and YBN assets, with `GameFileCache` integration.
-- Enhanced YDR and YFT authoring for drawables, skinned geometry, physics, and
-  collision bounds.
-- Automatic YFT mass, center-of-gravity, angular-inertia, and inverse-property
-  calculation from physics bounds.
-- Collision-material densities and volume-weighted composite density
-  calculation.
-- Public YMF runtime limits and validation for map dependencies, type
-  dependencies, managed groups, interior bounds, and serialized capacities.
+- Target-aware YND and YNV authoring across road networks, in-memory polygon builders, and Assimp navmesh conversion.
+- Target-aware YBN authoring with automatic source detection and canonical collision-bound headers for each edition.
+- Target-aware YDD authoring for drawable dictionaries, embedded drawables, shaders, and the resource version required by each edition.
+- Binary reading, writing, and authoring for `gta5_cache_y.dat` from in-memory or loose YMAP, YTYP, and YBN assets, with `GameFileCache` integration.
+- Enhanced YDR and YFT authoring for drawables, skinned geometry, physics, and collision bounds.
+- Automatic YFT mass, center-of-gravity, angular-inertia, and inverse-property calculation from physics bounds.
+- Collision-material densities and volume-weighted composite density calculation.
+- Public YMF runtime limits and validation for map dependencies, type dependencies, managed groups, interior bounds, and serialized capacities.
 - Formal YNV polygon flags and declarative pedestrian-density and audio fields.
-- Declarative YFT breakable-glass authoring from drawable geometry, skeleton
-  bindings, physics groups, and collision bounds.
+- Declarative YFT breakable-glass authoring from drawable geometry, skeleton bindings, physics groups, and collision bounds.
 
 ### Changed
 - YFT mass calculation now derives density from collision materials by default.
@@ -43,7 +31,6 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Project license changed to The Unlicense.
 
 ### Fixed
-
 - Enhanced shader sampler semantics and runtime parameter resolution.
 - Composite-bound active counts and reserved capacity during binary round-trips.
 - YFT physics archetype filenames during binary round-trips.
@@ -51,14 +38,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YFT event-set layout and target-specific runtime headers.
 - Enhanced YFT articulated-joint runtime headers during reconstruction.
 - Enhanced YFT breakable-glass pane layouts and vertex declarations.
-- YFT breakable-glass group, pane, shader, bone, geometry, and bound
-  validation.
+- YFT breakable-glass group, pane, shader, bone, geometry, and bound validation.
 - YFT validation of native unavailable mass and angular-inertia values.
-- Enhanced YFT drawable layout detection and byte-identical lossless
-  round-trips.
+- Enhanced YFT drawable layout detection and byte-identical lossless round-trips.
 - Enhanced skinned geometry now preserves declared vertex offsets.
-- Enhanced resource streams with zero-initialized DEFLATE history can be
-  decompressed.
+- Enhanced resource streams with zero-initialized DEFLATE history can be decompressed.
 - YMAP parent and manual-streaming flag semantics.
 
 ## [0.2.25] - 2026-07-31
