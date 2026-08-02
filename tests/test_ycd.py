@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import pytest
 
@@ -9,41 +8,55 @@ from fivefury import (
     MetaHash,
     Ycd,
     YcdAnimation,
-    YcdAnimationTrack,
     YcdAnimationBoneId,
+    YcdAnimationTrack,
     YcdAnimSequence,
     YcdCameraAnimationSample,
     YcdChannelType,
     YcdClipAnimation,
-    YcdFacialAnimationSample,
     YcdClipPropertyAttributeType,
+    YcdCutsceneBoneAnimation,
+    YcdCutsceneBuilder,
+    YcdFacialAnimationSample,
     YcdSequence,
     YcdTrackFormat,
     YcdTransformSample,
     YcdUvAnimationSample,
     YcdUvClipBinding,
     YcdUvTransformSample,
-    YcdCutsceneBoneAnimation,
-    YcdCutsceneBuilder,
     build_ycd_bytes,
     build_ycd_uv_clip_hash,
     build_ycd_uv_clip_name,
+    get_ycd_runtime_profile,
     get_ycd_track_format,
     parse_ycd_uv_clip_binding,
     read_ycd,
 )
-from fivefury.ycd.sequence_channels import YcdQuantizeFloatChannel, YcdStaticFloatChannel
-from fivefury.resource import get_resource_total_page_count, split_rsc7_sections
+from fivefury.resource import (
+    ResourceHeader,
+    get_resource_total_page_count,
+    split_rsc7_sections,
+)
+from fivefury.ycd.sequence_channels import (
+    YcdQuantizeFloatChannel,
+    YcdStaticFloatChannel,
+)
+from tests.helpers import reference_root
+
+REFERENCE_YCD_DIR = reference_root() / "ycd"
+YCD_PATH = REFERENCE_YCD_DIR / "maude_mcs_1-0.ycd"
 
 
-TESTS_DIR = Path(__file__).resolve().parent
-YCD_PATH = TESTS_DIR / "maude_mcs_1-0.ycd"
-REFERENCE_YCD_DIR = TESTS_DIR.parent / "references" / "ycd"
+requires_ycd_sample = pytest.mark.skipif(
+    not YCD_PATH.is_file(), reason="YCD sample not available"
+)
 
 
-pytestmark = pytest.mark.skipif(not YCD_PATH.is_file(), reason="ycd samples not available")
+def _ycd_header() -> ResourceHeader:
+    return ResourceHeader(version=46, system_flags=0, graphics_flags=0)
 
 
+@requires_ycd_sample
 def test_read_ycd_smoke() -> None:
     ycd = read_ycd(YCD_PATH)
 
@@ -89,6 +102,7 @@ def test_read_ycd_smoke() -> None:
     assert maude.animation.sequences[0].frame_length == 76
 
 
+@requires_ycd_sample
 def test_ycd_build_cutscene_map_strips_suffixes() -> None:
     ycd = read_ycd(YCD_PATH)
     cutscene_map = ycd.build_cutscene_map(0)
@@ -100,6 +114,7 @@ def test_ycd_build_cutscene_map_strips_suffixes() -> None:
     assert maude.short_name == "csb_maude_dual-0"
 
 
+@requires_ycd_sample
 def test_ycd_clip_and_animation_lookup() -> None:
     ycd = read_ycd(YCD_PATH)
 
@@ -139,7 +154,7 @@ def test_ycd_uv_animation_support() -> None:
     uv_values = animation.evaluate_uv_animation(0)
     assert uv_values
     assert len(uv_values) == 2
-    assert set(track for _, track in uv_values) == {
+    assert {track for _, track in uv_values} == {
         int(YcdAnimationTrack.SHADER_SLIDE_U),
         int(YcdAnimationTrack.SHADER_SLIDE_V),
     }
@@ -171,7 +186,7 @@ def test_ycd_object_animation_support() -> None:
 
     object_values = animation.evaluate_object_animation(0)
     assert object_values
-    assert set(track for _, track in object_values) == {
+    assert {track for _, track in object_values} == {
         int(YcdAnimationTrack.BONE_TRANSLATION),
         int(YcdAnimationTrack.BONE_ROTATION),
     }
@@ -180,6 +195,7 @@ def test_ycd_object_animation_support() -> None:
     assert len(rotation_sequence.evaluate_quaternion(0)) == 4
 
 
+@requires_ycd_sample
 def test_ycd_root_motion_camera_and_bone_support() -> None:
     ycd = read_ycd(YCD_PATH)
 
@@ -272,9 +288,7 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
     def _assert_attribute_equivalent(original_attribute, rebuilt_attribute) -> None:
         assert rebuilt_attribute.name_hash.uint == original_attribute.name_hash.uint
         assert rebuilt_attribute.attribute_type == original_attribute.attribute_type
-        if isinstance(original_attribute.value, tuple):
-            assert rebuilt_attribute.value == pytest.approx(original_attribute.value)
-        elif isinstance(original_attribute.value, float):
+        if isinstance(original_attribute.value, (tuple, float)):
             assert rebuilt_attribute.value == pytest.approx(original_attribute.value)
         else:
             assert rebuilt_attribute.value == original_attribute.value
@@ -393,7 +407,7 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_animation.usage_count == original_animation.usage_count
         assert rebuilt_animation.sequence_count == original_animation.sequence_count
         assert rebuilt_animation.bone_id_count == original_animation.bone_id_count
-        assert rebuilt_animation.vft == original_animation.vft
+        assert rebuilt_animation.vft == get_ycd_runtime_profile(original.game).animation_vft
         assert rebuilt_animation.flags == original_animation.flags
         expected_max_seq_block_length = max(
             (0x20 + len(sequence.raw_data) for sequence in rebuilt_animation.sequences),
@@ -463,6 +477,7 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
                     assert rebuilt_entry.alignment_padding_0ch == original_entry.alignment_padding_0ch
 
 
+@requires_ycd_sample
 def test_ycd_roundtrip_smoke() -> None:
     expected = read_ycd(YCD_PATH)
     source = read_ycd(YCD_PATH)
@@ -486,13 +501,13 @@ def _mutate_first_serializable_channel(animation) -> tuple[int, int, int, str, o
                     channel.frames = [0] * max(sequence.num_frames, 1)
                     return sequence_index, anim_sequence_index, channel_index, "values", target
                 if hasattr(channel, "values"):
-                    values = getattr(channel, "values")
+                    values = channel.values
                     if values:
                         target = float(getattr(channel, "offset", 0.0)) + (float(getattr(channel, "quantum", 0.0)) or 1.0)
                         channel.values = [target] * len(values)
                         return sequence_index, anim_sequence_index, channel_index, "values", target
                 if hasattr(channel, "value"):
-                    current = getattr(channel, "value")
+                    current = channel.value
                     if isinstance(current, tuple) and len(current) == 4:
                         xyz = (0.1, 0.2, 0.3)
                         w = math.sqrt(max(1.0 - sum(component * component for component in xyz), 0.0))
@@ -506,6 +521,7 @@ def _mutate_first_serializable_channel(animation) -> tuple[int, int, int, str, o
     raise AssertionError("No serializable YCD channel was found")
 
 
+@requires_ycd_sample
 def test_ycd_roundtrip_rebuilds_sequences_without_raw_data() -> None:
     expected = read_ycd(YCD_PATH)
     source = read_ycd(YCD_PATH)
@@ -516,6 +532,7 @@ def test_ycd_roundtrip_rebuilds_sequences_without_raw_data() -> None:
     _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
+@requires_ycd_sample
 def test_ycd_roundtrip_persists_channel_edits() -> None:
     ycd = read_ycd(YCD_PATH)
     clip = ycd.get_clip("exportcamera-0")
@@ -533,11 +550,11 @@ def test_ycd_roundtrip_persists_channel_edits() -> None:
     rebuilt_channel = rebuilt_clip.animation.sequences[sequence_index].anim_sequences[anim_sequence_index].channels[channel_index]
 
     if attribute_name == "values":
-        rebuilt_values = getattr(rebuilt_channel, "values")
+        rebuilt_values = rebuilt_channel.values
         assert rebuilt_values
         assert rebuilt_values[0] == pytest.approx(target)
     else:
-        rebuilt_value = getattr(rebuilt_channel, "value")
+        rebuilt_value = rebuilt_channel.value
         if isinstance(target, tuple):
             assert rebuilt_value == pytest.approx(target)
         else:
@@ -723,7 +740,7 @@ def test_ycd_writer_sanitizes_non_uv_quantize_overflow() -> None:
     )
 
     ycd = Ycd(
-        header=read_ycd(YCD_PATH).header,
+        header=_ycd_header(),
         clips=[],
         animations=[animation],
         path="quantize_overflow_test.ycd",
@@ -801,7 +818,7 @@ def test_ycd_writer_preserves_object_quantize_metadata() -> None:
     )
 
     ycd = Ycd(
-        header=read_ycd(YCD_PATH).header,
+        header=_ycd_header(),
         clips=[],
         animations=[animation],
         path="object_quantize_preserve_test.ycd",
@@ -858,7 +875,7 @@ def test_ycd_build_derives_unknown1c_for_object_animation() -> None:
         ],
         bone_ids=[bone],
     )
-    ycd = Ycd(header=read_ycd(YCD_PATH).header, clips=[], animations=[animation], path="object_unknown1c.ycd")
+    ycd = Ycd(header=_ycd_header(), clips=[], animations=[animation], path="object_unknown1c.ycd")
 
     ycd.build()
 
@@ -912,7 +929,7 @@ def test_ycd_build_derives_unknown1c_for_object_animation_with_mover_tracks() ->
         ],
         bone_ids=[mover, bone],
     )
-    ycd = Ycd(header=read_ycd(YCD_PATH).header, clips=[], animations=[animation], path="object_mover_unknown1c.ycd")
+    ycd = Ycd(header=_ycd_header(), clips=[], animations=[animation], path="object_mover_unknown1c.ycd")
 
     ycd.build()
 
@@ -957,7 +974,7 @@ def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
         ],
         bone_ids=[uv_u, uv_v],
     )
-    ycd = Ycd(header=read_ycd(YCD_PATH).header, clips=[], animations=[animation], path="uv_unknown1c.ycd")
+    ycd = Ycd(header=_ycd_header(), clips=[], animations=[animation], path="uv_unknown1c.ycd")
 
     ycd.build()
 

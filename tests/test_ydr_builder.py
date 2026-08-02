@@ -42,6 +42,7 @@ from fivefury import (
 from fivefury.resource import split_rsc7_sections
 from fivefury.ydr.gen9 import decode_gen9_vertex_declaration
 from fivefury.ydr.resource_headers import GEN9_DRAWABLE_HEADERS
+from tests.helpers import configured_path, reference_root
 
 _TEXTURE_BASE_VFT = 0x40617568
 
@@ -257,8 +258,9 @@ def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
 
 
 def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path: Path) -> None:
-    source_path = Path(
-        r"C:\txData\FiveMBasicServerCFXDefault_F95623.base\resources\anderius\stream\funplace2\bigbugboard.ydr"
+    source_path = configured_path(
+        "FIVEFURY_TEST_YDR_SYSTEM_ONLY",
+        reference_root() / "ydr/bigbugboard.ydr",
     )
     if not source_path.exists():
         pytest.skip("real YDR sample not available")

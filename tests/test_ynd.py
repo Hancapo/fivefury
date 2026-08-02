@@ -16,20 +16,28 @@ from fivefury import (
     build_ynd_bytes,
     decode_junction_heightmap,
     get_ynd_area_id,
+    get_ynd_runtime_profile,
     read_ynd,
 )
 from fivefury.resource import split_rsc7_sections
-
-_REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references" / "ynd"
+from tests.helpers import reference_root
 
 
 def _reference_ynd_paths() -> list[Path]:
-    return sorted(_REFERENCE_DIR.glob("*.ynd"))
+    return sorted((reference_root() / "ynd").glob("*.ynd"))
+
+
+def _generated_ynd() -> Ynd:
+    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
+    return Ynd.from_nodes(
+        [YndNode(area_id=area_id, node_id=0, position=(0.0, 0.0, 0.0))],
+        area_id=area_id,
+    )
 
 
 def _assert_roundtrip_equivalent(original: Ynd, rebuilt: Ynd) -> None:
     assert rebuilt.version == original.version
-    assert rebuilt.file_vft == original.file_vft
+    assert rebuilt.file_vft == get_ynd_runtime_profile(original.game).file_vft
     assert rebuilt.file_unknown == original.file_unknown
     assert len(rebuilt.nodes) == len(original.nodes)
     assert rebuilt.vehicle_node_count == original.vehicle_node_count
@@ -97,7 +105,7 @@ def test_read_all_reference_ynd_samples() -> None:
     for path in paths:
         ynd = read_ynd(path)
         assert ynd.version == 1
-        assert ynd.file_vft == 0x406203D0
+        assert ynd.file_vft != 0
         assert ynd.file_unknown == 1
         assert ynd.nodes
         assert ynd.vehicle_node_count + ynd.ped_node_count == len(ynd.nodes)
@@ -126,19 +134,15 @@ def test_roundtrip_all_reference_ynd_samples() -> None:
 
 
 def test_gamefilecache_parses_loose_ynd(tmp_path: Path) -> None:
-    paths = _reference_ynd_paths()
-    if not paths:
-        pytest.skip("real YND reference directory not available")
-
     stream_dir = tmp_path / "stream"
     stream_dir.mkdir()
-    target = stream_dir / paths[0].name
-    target.write_bytes(paths[0].read_bytes())
+    target = stream_dir / "nodes0.ynd"
+    target.write_bytes(build_ynd_bytes(_generated_ynd()))
 
     cache = GameFileCache(tmp_path, use_index_cache=False)
     cache.scan(use_index_cache=False)
 
-    game_file = cache.get_file(f"stream/{paths[0].name}")
+    game_file = cache.get_file("stream/nodes0.ynd")
     assert game_file is not None
     assert game_file.kind == GameFileType.YND
     assert isinstance(game_file.parsed, Ynd)

@@ -16,7 +16,13 @@ import pytest
 from fivefury.meta import RawStruct
 from fivefury.meta.defs import meta_name
 from tests.compat import PytestCompat
-from tests.helpers import resolve_symbol, touch, write_bytes
+from tests.helpers import (
+    configured_path,
+    reference_root,
+    resolve_symbol,
+    touch,
+    write_bytes,
+)
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _DAT_PHYSICAL_BASE = 0x60000000
@@ -150,7 +156,7 @@ def _parse_meta_layout(data: bytes) -> dict[str, object]:
 
 def _build_test_ytd_bytes(*, enhanced: bool = False) -> bytes:
     from fivefury.resource import build_rsc7
-    from fivefury.texture import BCFormat, BC_TO_DX9, BC_TO_RSC8, row_pitch
+    from fivefury.texture import BC_TO_DX9, BC_TO_RSC8, BCFormat, row_pitch
 
     name = b"test_diffuse\x00"
     pixel_data = b"\x11\x22\x33\x44\x55\x66\x77\x88"
@@ -305,7 +311,10 @@ class MetaAndArchiveContractTests(PytestCompat):
     def test_good_ymap_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ymap
 
-        source = Path(r"C:\Users\vicho\OneDrive\Desktop\aprende\raw\aliencity4.ymap")
+        source = configured_path(
+            "FIVEFURY_TEST_YMAP",
+            reference_root() / "ymap/aliencity4.ymap",
+        )
         if not source.exists():
             self.skipTest("Representative working YMAP fixture is not available")
 
@@ -324,7 +333,10 @@ class MetaAndArchiveContractTests(PytestCompat):
     def test_good_ytyp_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ytyp
 
-        source = Path(r"C:\Users\vicho\OneDrive\Desktop\aprende\raw\alien.ytyp")
+        source = configured_path(
+            "FIVEFURY_TEST_YTYP",
+            reference_root() / "ytyp/alien.ytyp",
+        )
         if not source.exists():
             self.skipTest("Representative working YTYP fixture is not available")
 
@@ -580,7 +592,14 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertIsNotNone(parsed.distant_lod_lights)
 
     def test_ymap_grass_and_extensions_roundtrip(self) -> None:
-        from fivefury import Aabb, Entity, GrassBatch, GrassInstance, ParticleEffectExtension, Ymap
+        from fivefury import (
+            Aabb,
+            Entity,
+            GrassBatch,
+            GrassInstance,
+            ParticleEffectExtension,
+            Ymap,
+        )
 
         ymap = Ymap(name="typed_surfaces.ymap")
         entity = Entity(archetype_name="prop_tree_pine_01", position=(10.0, 20.0, 30.0), lod_dist=45.0)
@@ -1920,7 +1939,10 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertEqual(enhanced.textures[0].mip_count, 1)
 
     def test_build_rsc7_adapts_page_size_for_large_graphics_sections(self) -> None:
-        from fivefury.resource import get_resource_flags_from_size_adaptive, get_resource_size_from_flags
+        from fivefury.resource import (
+            get_resource_flags_from_size_adaptive,
+            get_resource_size_from_flags,
+        )
 
         size = 3_488_920
         flags = get_resource_flags_from_size_adaptive(size, 13)
@@ -2055,7 +2077,15 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
 
     def test_gamefilecache_extracts_asset_textures_from_external_ymap_and_parent_txd_chain(self) -> None:
-        from fivefury import Archetype, Entity, GameFileCache, GameFileType, Gtxd, Ymap, Ytyp
+        from fivefury import (
+            Archetype,
+            Entity,
+            GameFileCache,
+            GameFileType,
+            Gtxd,
+            Ymap,
+            Ytyp,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "game"
@@ -2179,7 +2209,13 @@ class MetaAndArchiveContractTests(PytestCompat):
             self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
 
     def test_open_resource_texture_asset_returns_typed_classes(self) -> None:
-        from fivefury import YddAsset, YdrAsset, YftAsset, YptAsset, open_resource_texture_asset
+        from fivefury import (
+            YddAsset,
+            YdrAsset,
+            YftAsset,
+            YptAsset,
+            open_resource_texture_asset,
+        )
 
         for kind, asset_type in (
             ("ydr", YdrAsset),

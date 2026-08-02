@@ -35,12 +35,11 @@ from fivefury.resource import (
     read_resource_pages_info,
     split_rsc7_sections,
 )
-
-_REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references" / "ynv"
+from tests.helpers import reference_root
 
 
 def _reference_ynv_paths() -> list[Path]:
-    return sorted(_REFERENCE_DIR.glob("*.ynv"))
+    return sorted((reference_root() / "ynv").glob("*.ynv"))
 
 
 def _assert_float_tuple_close(
@@ -167,6 +166,51 @@ def _minimal_sector_tree() -> YnvSector:
     )
 
 
+def _generated_ynv() -> Ynv:
+    area_id = 42
+    return Ynv(
+        area_id=area_id,
+        vertices=[
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ],
+        indices=[0, 1, 2],
+        edges=[
+            YnvEdge(
+                poly1=YnvEdgePart(
+                    area_id=area_id,
+                    poly_id=0,
+                    adjacency_type=YnvAdjacencyType.CLIMB_HIGH,
+                )
+            ),
+            YnvEdge(),
+            YnvEdge(),
+        ],
+        polys=[YnvPoly(index_id=0, index_count=3, area_id=area_id)],
+        portal_links=[0],
+        portals=[
+            YnvPortal(
+                type=YnvPortalType.TYPE_2,
+                area_id_from=area_id,
+                poly_id_from1=0,
+                poly_id_from2=0,
+                area_id_to=area_id + 1,
+                poly_id_to1=0,
+                poly_id_to2=0,
+            )
+        ],
+        sector_tree=YnvSector(
+            aabb_min=(0.0, 0.0, 0.0),
+            aabb_max=(10.0, 10.0, 10.0),
+            data=YnvSectorData(
+                poly_ids=[0],
+                points=[YnvPoint(position=(0.25, 0.25, 0.0), type=YnvPointType.TYPE_3)],
+            ),
+        ),
+    ).build()
+
+
 def test_read_all_reference_ynv_samples() -> None:
     paths = _reference_ynv_paths()
     if not paths:
@@ -210,16 +254,13 @@ def test_roundtrip_all_reference_ynv_samples() -> None:
 
 
 def test_gamefilecache_parses_loose_ynv(tmp_path: Path) -> None:
-    paths = _reference_ynv_paths()
-    if not paths:
-        pytest.skip("real YNV reference directory not available")
     stream_dir = tmp_path / "stream"
     stream_dir.mkdir()
-    target = stream_dir / paths[0].name
-    target.write_bytes(paths[0].read_bytes())
+    target = stream_dir / "navmesh0.ynv"
+    target.write_bytes(build_ynv_bytes(_generated_ynv()))
     cache = GameFileCache(tmp_path, use_index_cache=False)
     cache.scan(use_index_cache=False)
-    game_file = cache.get_file(f"stream/{paths[0].name}")
+    game_file = cache.get_file("stream/navmesh0.ynv")
     assert game_file is not None
     assert game_file.kind == GameFileType.YNV
     assert isinstance(game_file.parsed, Ynv)
@@ -227,11 +268,9 @@ def test_gamefilecache_parses_loose_ynv(tmp_path: Path) -> None:
 
 
 def test_edge_adjacency_type_roundtrips_from_detail_bits() -> None:
-    paths = _reference_ynv_paths()
-    if not paths:
-        pytest.skip("real YNV reference directory not available")
-    edge_part = read_ynv(build_ynv_bytes(read_ynv(paths[0]))).edges[0].poly1
+    edge_part = read_ynv(build_ynv_bytes(_generated_ynv())).edges[0].poly1
     assert isinstance(edge_part.adjacency_type, YnvAdjacencyType)
+    assert edge_part.adjacency_type is YnvAdjacencyType.CLIMB_HIGH
 
 
 def test_edge_part_uses_gta_v_15_bit_polygon_layout() -> None:
@@ -270,10 +309,7 @@ def test_edge_secondary_word_exposes_named_flags() -> None:
 
 
 def test_reference_point_and_portal_types_are_typed() -> None:
-    paths = _reference_ynv_paths()
-    if not paths:
-        pytest.skip("real YNV reference directory not available")
-    sample = read_ynv(paths[0])
+    sample = read_ynv(build_ynv_bytes(_generated_ynv()))
     assert sample.points
     assert isinstance(sample.points[0].type, YnvPointType)
     if sample.portals:
@@ -304,10 +340,7 @@ def test_build_recalculates_content_flags_from_payload_presence() -> None:
     ).build()
     assert ynv.content_flags == YnvContentFlags.VEHICLE
 
-    paths = _reference_ynv_paths()
-    if not paths:
-        pytest.skip("real YNV reference directory not available")
-    sample = read_ynv(paths[0])
+    sample = _generated_ynv()
     sample.content_flags = YnvContentFlags.VEHICLE
     sample.build()
     assert sample.content_flags & YnvContentFlags.POLYGONS
@@ -344,10 +377,7 @@ def test_build_reindexes_sector_points() -> None:
 
 
 def test_writer_rejects_invalid_poly_index_span() -> None:
-    paths = _reference_ynv_paths()
-    if not paths:
-        pytest.skip("real YNV reference directory not available")
-    sample = read_ynv(paths[0])
+    sample = _generated_ynv()
     sample.polys[0].index_id = len(sample.indices)
     with pytest.raises(ValueError, match="index span"):
         build_ynv_bytes(sample)
@@ -499,10 +529,7 @@ def test_validation_checks_only_local_special_link_polygon_ids() -> None:
 
 
 def test_writer_rejects_invalid_portal_link_span() -> None:
-    paths = _reference_ynv_paths()
-    if not paths:
-        pytest.skip("real YNV reference directory not available")
-    sample = read_ynv(paths[0])
+    sample = _generated_ynv()
     sample.polys[0].portal_link_id = len(sample.portal_links)
     sample.polys[0].portal_link_count = 1
     with pytest.raises(ValueError, match="portal link span"):

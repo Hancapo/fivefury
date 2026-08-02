@@ -7,15 +7,21 @@ import zlib
 from pathlib import Path
 
 from fivefury import Cdr, CdrGeometryType, CdrLod, GameFileCache, GameFileType, read_cdr
-from fivefury.cdr.resource import get_ps3_resource_size_from_flags, split_ps3_rsc7_sections
+from fivefury.cdr.resource import (
+    get_ps3_resource_size_from_flags,
+    split_ps3_rsc7_sections,
+)
 from fivefury.cdr.shaders import get_cdr_parameter_definition, get_cdr_shader_definition
 from fivefury.cdr.vertices import decompress_edge_indices
 from fivefury.gamefile import guess_game_file_type
 from fivefury.resource import RSC7_MAGIC
+from tests.helpers import configured_path, reference_root
 
-_PS3_REFERENCE = Path(
-    r"C:\Users\vicho\OneDrive\Desktop\USRDIR_ps3_rpfs_extracted\part0\levels\gta5\_citye\downtown_01\dt1_00.rpf"
+_PS3_EXTRACTED_ROOT = configured_path(
+    "FIVEFURY_TEST_PS3_EXTRACTED_ROOT",
+    reference_root() / "ps3_extracted",
 )
+_PS3_REFERENCE = _PS3_EXTRACTED_ROOT / "part0/levels/gta5/_citye/downtown_01/dt1_00.rpf"
 
 
 def _ptr(offset: int) -> int:
@@ -151,8 +157,8 @@ class CdrTests(unittest.TestCase):
 
     def test_real_ps3_only_tree_shader_when_available(self) -> None:
         source = (
-            _PS3_REFERENCE.parents[2]
-            / "props"
+            _PS3_EXTRACTED_ROOT
+            / "part0/levels/gta5/props"
             / "vegetation"
             / "v_bush.rpf"
             / "prop_bush_med_01.cdr"

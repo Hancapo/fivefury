@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import struct
 import tempfile
 import unittest
-import struct
 from pathlib import Path
 
 from fivefury import GameFileCache, RpfArchive
 from fivefury.rpf import RPF_BLOCK_SIZE, RPF_MAGIC, RpfPlatform
+from tests.helpers import configured_path, reference_root
 
 
 def _to_ps3_entry_bytes(pc_entry: bytes) -> bytes:
@@ -80,9 +81,11 @@ class RpfPs3Tests(unittest.TestCase):
             self.assertIsNotNone(cache.find_path("ps3_test.rpf/hello.bin"))
 
     def test_rpf_reader_opens_real_ps3_archive_when_available(self) -> None:
-        source = Path(
-            r"C:\Users\vicho\Downloads\Compressed\GAMES\GAMES\BLES01807-[Grand Theft Auto V]\PS3_GAME\USRDIR\audio_rel.rpf"
+        usrdir = configured_path(
+            "FIVEFURY_TEST_PS3_USRDIR",
+            reference_root() / "ps3_usrdir",
         )
+        source = usrdir / "audio_rel.rpf"
         if not source.exists():
             self.skipTest("PS3 GTA V fixture is not available")
 

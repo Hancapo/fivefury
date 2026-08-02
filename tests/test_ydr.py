@@ -32,7 +32,12 @@ from fivefury.ydr import YdrMaterialDescriptor, build_ydr_bytes
 from fivefury.ydr.defs import VertexComponentType, VertexSemantic
 from fivefury.ydr.reader import _decode_vertices
 from fivefury.ytd import Texture, TextureFormat, Ytd
-from tests.helpers import require_reference, write_bytes
+from tests.helpers import (
+    configured_path,
+    reference_root,
+    require_reference,
+    write_bytes,
+)
 
 _DAT_VIRTUAL_BASE = 0x50000000
 _DAT_PHYSICAL_BASE = 0x60000000
@@ -426,9 +431,12 @@ def test_read_real_reference_ydr_embedded_bound() -> None:
 
 
 def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_available() -> None:
-    path = Path(r"C:\Users\vicho\OneDrive\Desktop\ydr_debug\bad\city61market.ydr")
+    path = configured_path(
+        "FIVEFURY_TEST_YDR_BAD_CITY61MARKET",
+        reference_root() / "ydr/bad/city61market.ydr",
+    )
     if not path.exists():
-        return
+        pytest.skip(f"external YDR reference not available: {path}")
 
     source = read_ydr(path)
     raw = build_ydr_bytes(source)

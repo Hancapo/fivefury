@@ -19,12 +19,11 @@ from fivefury import (
 )
 from fivefury.resource import split_rsc7_sections, virtual_to_offset
 from fivefury.ydd import YDD_VERSION_GEN9
-
-_REFERENCE_DIR = Path(__file__).resolve().parents[1] / "references"
+from tests.helpers import reference_root
 
 
 def _reference_ydd_paths() -> list[Path]:
-    return sorted(_REFERENCE_DIR.rglob("*.ydd"))
+    return sorted(reference_root().rglob("*.ydd"))
 
 
 def test_read_real_reference_ydd_drawable_dictionary() -> None:
