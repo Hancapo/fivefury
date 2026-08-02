@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from fivefury.gamefile import GameFileType
-from fivefury.pso import is_pso
+from fivefury.pso import (
+    PMAP,
+    PSCH,
+    PSIG,
+    PSIN,
+    decode_array_header,
+    is_pso,
+    parse_pmap,
+    parse_psch_enums,
+    parse_sections,
+)
 from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
 from fivefury.ymf import (
     YMF_HOURS_ON_OFF_MASK,
@@ -61,13 +71,29 @@ class _FakeCache:
 def test_ymf_manifest_relationships_cover_map_dependencies() -> None:
     manifest = PackFileMetaData(
         imap_dependencies=[ImapDependency("old_imap", "old_ityp")],
-        imap_dependencies_2=[ImapDependencies("city_imap", ["city_ityp", "shared_ityp"], ManifestFlags.INTERIOR_DATA)],
-        ityp_dependencies_2=[ItypDependencies("city_ityp", ["interior_ityp"], ManifestFlags.INTERIOR_DATA)],
+        imap_dependencies_2=[
+            ImapDependencies(
+                "city_imap", ["city_ityp", "shared_ityp"], ManifestFlags.INTERIOR_DATA
+            )
+        ],
+        ityp_dependencies_2=[
+            ItypDependencies(
+                "city_ityp", ["interior_ityp"], ManifestFlags.INTERIOR_DATA
+            )
+        ],
         map_data_groups=[
-            MapDataGroup("city_group", ["city_bounds"], PackFileMetaDataImapGroupType.TIME_DEPENDENT),
+            MapDataGroup(
+                "city_group",
+                ["city_bounds"],
+                PackFileMetaDataImapGroupType.TIME_DEPENDENT,
+            ),
         ],
         interiors=[InteriorBoundsFile("interior_name", ["interior_bounds"])],
-        hd_txd_bindings=[HdTxdAssetBinding(PackFileMetaDataAssetType.AT_TXD, "city_txd", "city_txd_hd")],
+        hd_txd_bindings=[
+            HdTxdAssetBinding(
+                PackFileMetaDataAssetType.AT_TXD, "city_txd", "city_txd_hd"
+            )
+        ],
     )
 
     relationships = manifest.iter_relationships()
@@ -88,12 +114,15 @@ def test_ymf_manifest_relationships_cover_map_dependencies() -> None:
 
 def test_ymf_xml_roundtrip_uses_pack_file_metadata_shape() -> None:
     manifest = PackFileMetaData(
-        imap_dependencies_2=[ImapDependencies("city_imap", ["city_ityp"], ManifestFlags.INTERIOR_DATA)],
+        imap_dependencies_2=[
+            ImapDependencies("city_imap", ["city_ityp"], ManifestFlags.INTERIOR_DATA)
+        ],
         map_data_groups=[
             MapDataGroup(
                 "city_group",
                 ["city_bounds"],
-                PackFileMetaDataImapGroupType.TIME_DEPENDENT | PackFileMetaDataImapGroupType.WEATHER_DEPENDENT,
+                PackFileMetaDataImapGroupType.TIME_DEPENDENT
+                | PackFileMetaDataImapGroupType.WEATHER_DEPENDENT,
                 ["RAIN"],
                 0x00FF00FF,
             )
@@ -106,7 +135,8 @@ def test_ymf_xml_roundtrip_uses_pack_file_metadata_shape() -> None:
     assert str(parsed.imap_dependencies_2[0].ityp_dependencies[0]) == "city_ityp"
     assert parsed.imap_dependencies_2[0].flags is ManifestFlags.INTERIOR_DATA
     assert parsed.map_data_groups[0].flags == (
-        PackFileMetaDataImapGroupType.TIME_DEPENDENT | PackFileMetaDataImapGroupType.WEATHER_DEPENDENT
+        PackFileMetaDataImapGroupType.TIME_DEPENDENT
+        | PackFileMetaDataImapGroupType.WEATHER_DEPENDENT
     )
     assert parsed.map_data_groups[0].hours_on_off == 0x00FF00FF
 
@@ -123,9 +153,65 @@ def test_ymf_binary_roundtrip_preserves_manifest_relationships() -> None:
     parsed = read_ymf(data)
     relationships = iter_ymf_relationships(parsed)
 
-    assert [item.kind for item in relationships] == [YmfRelationshipType.IMAP_TO_ITYP, YmfRelationshipType.ITYP_TO_ITYP]
-    assert int(relationships[0].source) == int(manifest.imap_dependencies_2[0].imap_name)
-    assert int(relationships[0].target) == int(manifest.imap_dependencies_2[0].ityp_dependencies[0])
+    assert [item.kind for item in relationships] == [
+        YmfRelationshipType.IMAP_TO_ITYP,
+        YmfRelationshipType.ITYP_TO_ITYP,
+    ]
+    assert int(relationships[0].source) == int(
+        manifest.imap_dependencies_2[0].imap_name
+    )
+    assert int(relationships[0].target) == int(
+        manifest.imap_dependencies_2[0].ityp_dependencies[0]
+    )
+
+
+def test_ymf_writer_uses_runtime_pso_layout() -> None:
+    manifest = PackFileMetaData(
+        imap_dependencies_2=[
+            ImapDependencies(0x77C7848A, [0xE8D5FCC4], ManifestFlags.INTERIOR_DATA)
+        ],
+        ityp_dependencies_2=[
+            ItypDependencies(
+                0xE8D5FCC4,
+                [
+                    0xA3855B81,
+                    0x4396D8B2,
+                    0x1C63944D,
+                    0xE07309C7,
+                    0x7E286CC2,
+                    0xF83E79BC,
+                ],
+                ManifestFlags.INTERIOR_DATA,
+            )
+        ],
+        interiors=[InteriorBoundsFile(0xE8D5FCC4, [0xE8D5FCC4])],
+    )
+
+    sections = parse_sections(build_ymf(manifest).to_bytes())
+    blocks, root_block_id = parse_pmap(sections[PMAP])
+
+    assert list(sections) == [PSIN, PMAP, PSCH]
+    assert PSIG not in sections
+    assert sections[PSIN][8:16] == b"\x00" * 8
+    assert len(sections[PSIN]) == 216
+    assert len(sections[PMAP]) == 96
+    assert len(sections[PSCH]) == 412
+    assert [
+        (block.name_hash, block.offset, block.length) for block in blocks.values()
+    ] == [
+        (6, 16, 32),
+        (0xC11F3EE1, 48, 24),
+        (0x5A564E50, 72, 24),
+        (0x2C325290, 96, 24),
+        (0x93A68A2F, 120, 96),
+    ]
+    assert root_block_id == 5
+    assert decode_array_header(sections[PSIN], blocks[2].offset + 8).pointer.offset == 0
+    assert decode_array_header(sections[PSIN], blocks[3].offset + 8).pointer.offset == 4
+    assert (
+        decode_array_header(sections[PSIN], blocks[4].offset + 8).pointer.offset == 28
+    )
+    assert list(parse_psch_enums(sections[PSCH])) == [0x6452A05B]
 
 
 def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
@@ -143,10 +229,14 @@ def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
 
     assert len(manifest.imap_dependencies_2) == 1
     assert str(manifest.imap_dependencies_2[0].imap_name) == "city_imap"
-    assert [str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies] == ["city_ityp"]
+    assert [
+        str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies
+    ] == ["city_ityp"]
     assert len(manifest.ityp_dependencies_2) == 1
     assert str(manifest.ityp_dependencies_2[0].ityp_name) == "city_ityp"
-    assert [str(item) for item in manifest.ityp_dependencies_2[0].ityp_dependencies] == ["shared_ityp"]
+    assert [
+        str(item) for item in manifest.ityp_dependencies_2[0].ityp_dependencies
+    ] == ["shared_ityp"]
 
 
 def test_create_ymf_for_ymaps_can_use_cached_ymaps_and_marks_interiors() -> None:
@@ -164,11 +254,15 @@ def test_create_ymf_for_ymaps_can_use_cached_ymaps_and_marks_interiors() -> None
     assert ymf.suggested_path() == "_manifest.ymf"
     assert manifest is not None
     assert str(manifest.imap_dependencies_2[0].imap_name) == "interior_imap"
-    assert [str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies] == ["interior_ityp"]
+    assert [
+        str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies
+    ] == ["interior_ityp"]
     assert manifest.imap_dependencies_2[0].flags is ManifestFlags.INTERIOR_DATA
 
 
-def test_build_ymf_manifest_for_ymaps_accepts_explicit_custom_dependencies_without_cache() -> None:
+def test_build_ymf_manifest_for_ymaps_accepts_explicit_custom_dependencies_without_cache() -> (
+    None
+):
     ymap = Ymap(name="custom_imap")
 
     manifest = build_ymf_manifest_for_ymaps(
@@ -177,13 +271,17 @@ def test_build_ymf_manifest_for_ymaps_accepts_explicit_custom_dependencies_witho
     )
 
     assert str(manifest.imap_dependencies_2[0].imap_name) == "custom_imap"
-    assert [str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies] == ["custom_ityp"]
+    assert [
+        str(item) for item in manifest.imap_dependencies_2[0].ityp_dependencies
+    ] == ["custom_ityp"]
 
 
 def test_build_ymf_manifest_marks_the_ytyp_holding_an_mlo_as_an_interior_type() -> None:
     mlo = MloArchetypeDef(name="custom_mlo", rooms=[MloRoomDef(name="limbo")])
     ytyp = Ytyp(name="custom_ityp", archetypes=[mlo])
-    ymap = Ymap(name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")])
+    ymap = Ymap(
+        name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")]
+    )
 
     manifest = build_ymf_manifest_for_ymaps([ymap], ytyps=[ytyp])
 
@@ -216,7 +314,9 @@ def test_build_ymf_manifest_registers_mlo_static_bounds_when_ybn_is_packaged() -
         rooms=[MloRoomDef(name="limbo")],
     )
     ytyp = Ytyp(name="custom_ityp", archetypes=[mlo])
-    ymap = Ymap(name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")])
+    ymap = Ymap(
+        name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")]
+    )
 
     manifest = build_ymf_manifest_for_ymaps(
         [ymap],
@@ -240,9 +340,10 @@ def test_build_ymf_manifest_registers_standalone_mlo_rpf_without_ymap() -> None:
         ybns={"custom_mlo": object()},
     )
 
-    assert [(int(item.name), [int(bound) for bound in item.bounds]) for item in manifest.interiors] == [
-        (int(mlo.name), [int(mlo.name)])
-    ]
+    assert [
+        (int(item.name), [int(bound) for bound in item.bounds])
+        for item in manifest.interiors
+    ] == [(int(mlo.name), [int(mlo.name)])]
 
 
 def test_ymf_runtime_limit_constants_match_serialized_contracts() -> None:
@@ -264,10 +365,15 @@ def test_ymf_validation_counts_unique_imap_dependencies_across_entries() -> None
 
     issues = manifest.validate()
 
-    assert any("7 dynamic YTYP dependencies" in issue and "at most 6" in issue for issue in issues)
+    assert any(
+        "7 dynamic YTYP dependencies" in issue and "at most 6" in issue
+        for issue in issues
+    )
 
 
-def test_ymf_validation_does_not_count_duplicate_or_permanent_imap_dependencies() -> None:
+def test_ymf_validation_does_not_count_duplicate_or_permanent_imap_dependencies() -> (
+    None
+):
     manifest = PackFileMetaData(
         imap_dependencies_2=[
             ImapDependencies("city_imap", [f"parent_{index}" for index in range(7)]),
@@ -283,13 +389,17 @@ def test_ymf_validation_counts_unique_ityp_parents_across_entries() -> None:
     manifest = PackFileMetaData(
         ityp_dependencies_2=[
             ItypDependencies("child_ityp", [f"parent_{index}" for index in range(5)]),
-            ItypDependencies("child_ityp", [f"parent_{index}" for index in range(4, 9)]),
+            ItypDependencies(
+                "child_ityp", [f"parent_{index}" for index in range(4, 9)]
+            ),
         ],
     )
 
     issues = manifest.validate()
 
-    assert any("9 dynamic parent YTYPs" in issue and "at most 8" in issue for issue in issues)
+    assert any(
+        "9 dynamic parent YTYPs" in issue and "at most 8" in issue for issue in issues
+    )
 
 
 def test_ymf_writer_rejects_runtime_dependency_overflow() -> None:
@@ -320,4 +430,6 @@ def test_ymf_validation_rejects_duplicate_map_data_groups() -> None:
         map_data_groups=[MapDataGroup("managed_group"), MapDataGroup("managed_group")],
     )
 
-    assert any("repeats map data group managed_group" in issue for issue in manifest.validate())
+    assert any(
+        "repeats map data group managed_group" in issue for issue in manifest.validate()
+    )

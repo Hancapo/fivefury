@@ -14,6 +14,8 @@ from ..pso.model import (
     PsoDataTypeStructure,
     PsoDataTypeUInt,
     PsoEntry,
+    PsoEnum,
+    PsoEnumEntry,
     PsoStruct,
 )
 from ..pso.schema import serialize_psch
@@ -70,8 +72,6 @@ YMF_PSO_NAMES = {
     0x6452A05B: "manifestFlags",
     0x8FB42AE6: "itypDepArray",
 }
-
-YMF_PSIG_SECTION = bytes.fromhex("50 53 49 47 00 00 00 14 A5 84 C5 93 2D F5 40 13 F5 EE C3 D0")
 
 YMF_PSO_STRUCTS = {
     YMF_PSO_ROOT: PsoStruct(
@@ -157,22 +157,50 @@ YMF_PSO_STRUCTS = {
     ),
 }
 
+YMF_PSO_ENUMS = {
+    0x471BCA5B: PsoEnum(
+        0x471BCA5B,
+        [PsoEnumEntry(0xB493A9DC, 0), PsoEnumEntry(0x0C968CFB, 1)],
+    ),
+    0xC9E9A69A: PsoEnum(
+        0xC9E9A69A,
+        [
+            PsoEnumEntry(0xE6B7EB79, 0),
+            PsoEnumEntry(0x74980D3B, 1),
+            PsoEnumEntry(0x1C43E8EC, 2),
+            PsoEnumEntry(0xAB34CAAD, 3),
+        ],
+    ),
+    0x6452A05B: PsoEnum(
+        0x6452A05B,
+        [PsoEnumEntry(0x21569096, 0)],
+    ),
+}
+
 
 def resolve_ymf_pso_name(hash_value: int) -> str:
-    return YMF_PSO_NAMES.get(hash_value) or META_NAME_REVERSE.get(hash_value, f"hash_{hash_value:08X}")
+    return YMF_PSO_NAMES.get(hash_value) or META_NAME_REVERSE.get(
+        hash_value, f"hash_{hash_value:08X}"
+    )
 
 
 @dataclasses.dataclass(slots=True)
 class _PsoPayload:
     data: bytearray
-    hash_arrays: list[tuple[int, list[MetaHash | HashLike]]] = dataclasses.field(default_factory=list)
+    hash_arrays: list[tuple[int, list[MetaHash | HashLike]]] = dataclasses.field(
+        default_factory=list
+    )
 
 
 def build_ymf_pso(manifest: PackFileMetaData) -> bytes:
     array_blocks: list[tuple[int, int, PsoBlockBuilder, int]] = []
-    pending_hash_arrays: list[tuple[PsoBlockBuilder, int, list[MetaHash | HashLike]]] = []
+    pending_hash_arrays: list[
+        tuple[PsoBlockBuilder, int, list[MetaHash | HashLike]]
+    ] = []
 
-    def add_struct_array(root_offset: int, type_hash: int, payloads: Iterable[_PsoPayload]) -> None:
+    def add_struct_array(
+        root_offset: int, type_hash: int, payloads: Iterable[_PsoPayload]
+    ) -> None:
         items = list(payloads)
         if not items:
             return
@@ -180,48 +208,102 @@ def build_ymf_pso(manifest: PackFileMetaData) -> bytes:
         for payload in items:
             relative_offset = block.append(payload.data)
             for field_offset, values in payload.hash_arrays:
-                pending_hash_arrays.append((block, relative_offset + field_offset, values))
+                pending_hash_arrays.append(
+                    (block, relative_offset + field_offset, values)
+                )
         array_blocks.append((root_offset, type_hash, block, len(items)))
 
-    add_struct_array(0, YMF_PSO_MAP_DATA_GROUP, (_pack_pso_map_data_group(item) for item in manifest.map_data_groups))
-    add_struct_array(16, YMF_PSO_HD_TXD_BINDING, (_pack_pso_hd_txd_binding(item) for item in manifest.hd_txd_bindings))
-    add_struct_array(32, YMF_PSO_IMAP_DEPENDENCY, (_pack_pso_imap_dependency(item) for item in manifest.imap_dependencies))
-    add_struct_array(48, YMF_PSO_IMAP_DEPENDENCIES, (_pack_pso_imap_dependencies(item, imap=True) for item in manifest.imap_dependencies_2))
-    add_struct_array(64, YMF_PSO_ITYP_DEPENDENCIES, (_pack_pso_imap_dependencies(item, imap=False) for item in manifest.ityp_dependencies_2))
-    add_struct_array(80, YMF_PSO_INTERIOR_BOUNDS, (_pack_pso_interior_bounds(item) for item in manifest.interiors))
+    add_struct_array(
+        0,
+        YMF_PSO_MAP_DATA_GROUP,
+        (_pack_pso_map_data_group(item) for item in manifest.map_data_groups),
+    )
+    add_struct_array(
+        16,
+        YMF_PSO_HD_TXD_BINDING,
+        (_pack_pso_hd_txd_binding(item) for item in manifest.hd_txd_bindings),
+    )
+    add_struct_array(
+        32,
+        YMF_PSO_IMAP_DEPENDENCY,
+        (_pack_pso_imap_dependency(item) for item in manifest.imap_dependencies),
+    )
+    add_struct_array(
+        48,
+        YMF_PSO_IMAP_DEPENDENCIES,
+        (
+            _pack_pso_imap_dependencies(item, imap=True)
+            for item in manifest.imap_dependencies_2
+        ),
+    )
+    add_struct_array(
+        64,
+        YMF_PSO_ITYP_DEPENDENCIES,
+        (
+            _pack_pso_imap_dependencies(item, imap=False)
+            for item in manifest.ityp_dependencies_2
+        ),
+    )
+    add_struct_array(
+        80,
+        YMF_PSO_INTERIOR_BOUNDS,
+        (_pack_pso_interior_bounds(item) for item in manifest.interiors),
+    )
 
-    hash_array_blocks = [
-        (owner, offset, PsoBlockBuilder(1, bytearray(_pso_hash_array(values))), len(values))
-        for owner, offset, values in pending_hash_arrays
-    ]
+    hash_block = PsoBlockBuilder(PsoDataTypeUInt)
+    hash_array_offsets: list[tuple[PsoBlockBuilder, int, int, int]] = []
+    for owner, owner_offset, values in pending_hash_arrays:
+        relative_offset = hash_block.append(_pso_hash_array(values))
+        hash_array_offsets.append((owner, owner_offset, relative_offset, len(values)))
 
     root_block = PsoBlockBuilder(YMF_PSO_ROOT, bytearray(96))
-    blocks = [root_block, *(block for _, _, block, _ in array_blocks), *(block for _, _, block, _ in hash_array_blocks)]
-    block_ids_by_index = {id(block): index + 1 for index, block in enumerate(blocks)}
-    block_ids = {block.name_hash: index + 1 for index, block in enumerate(blocks) if block.name_hash != 1}
+    blocks = [
+        *([hash_block] if hash_block.data else []),
+        *(block for _, _, block, _ in array_blocks),
+        root_block,
+    ]
+    block_ids = {block.name_hash: index + 1 for index, block in enumerate(blocks)}
     for root_offset, type_hash, _block, count in array_blocks:
-        root_block.data[root_offset : root_offset + 16] = _pso_array_header(block_ids[type_hash], count)
-    for owner, offset, block, count in hash_array_blocks:
-        owner.data[offset : offset + 16] = _pso_array_header(block_ids_by_index[id(block)], count)
+        root_block.data[root_offset : root_offset + 16] = _pso_array_header(
+            block_ids[type_hash], count
+        )
+    for owner, owner_offset, relative_offset, count in hash_array_offsets:
+        owner.data[owner_offset : owner_offset + 16] = _pso_array_header(
+            block_ids[PsoDataTypeUInt],
+            count,
+            relative_offset=relative_offset,
+        )
 
-    used_structs = {YMF_PSO_ROOT: YMF_PSO_STRUCTS[YMF_PSO_ROOT]}
+    used_structs: dict[int, PsoStruct] = {}
     for _root_offset, type_hash, _block, _count in array_blocks:
-        if type_hash == 1:
-            continue
         used_structs[type_hash] = YMF_PSO_STRUCTS[type_hash]
+    used_structs[YMF_PSO_ROOT] = YMF_PSO_STRUCTS[YMF_PSO_ROOT]
+    used_enum_hashes = {
+        entry.reference_key
+        for struct_info in used_structs.values()
+        for entry in struct_info.entries
+        if entry.type_id == PsoDataTypeEnum and entry.reference_key in YMF_PSO_ENUMS
+    }
+    used_enums = {
+        enum_hash: enum_info
+        for enum_hash, enum_info in YMF_PSO_ENUMS.items()
+        if enum_hash in used_enum_hashes
+    }
+    root_block_id = block_ids[YMF_PSO_ROOT]
 
     return b"".join(
         [
-            build_psin_section(blocks),
-            build_pmap_section(blocks, root_block_id=1),
-            serialize_psch(used_structs),
-            YMF_PSIG_SECTION,
+            build_psin_section(blocks, prefix=b"\x00" * 8),
+            build_pmap_section(blocks, root_block_id=root_block_id),
+            serialize_psch(used_structs, used_enums),
         ]
     )
 
 
-def _pso_array_header(block_id: int, count: int) -> bytes:
-    return struct.pack(">IIHHI", encode_pointer_word(block_id, 0), 0, count, count, 0)
+def _pso_array_header(block_id: int, count: int, *, relative_offset: int = 0) -> bytes:
+    return struct.pack(
+        ">IIHHI", encode_pointer_word(block_id, relative_offset), 0, count, count, 0
+    )
 
 
 def _pso_hash(value: MetaHash | HashLike) -> bytes:
@@ -259,10 +341,18 @@ def _pack_pso_hd_txd_binding(item: HdTxdAssetBinding) -> _PsoPayload:
 
 
 def _pack_pso_imap_dependency(item: ImapDependency) -> _PsoPayload:
-    return _PsoPayload(bytearray(_pso_hash(item.imap_name) + _pso_hash(item.ityp_name) + _pso_hash(item.pack_file_name)))
+    return _PsoPayload(
+        bytearray(
+            _pso_hash(item.imap_name)
+            + _pso_hash(item.ityp_name)
+            + _pso_hash(item.pack_file_name)
+        )
+    )
 
 
-def _pack_pso_imap_dependencies(item: ImapDependencies | ItypDependencies, *, imap: bool) -> _PsoPayload:
+def _pack_pso_imap_dependencies(
+    item: ImapDependencies | ItypDependencies, *, imap: bool
+) -> _PsoPayload:
     output = bytearray(24)
     output[0:4] = _pso_hash(item.imap_name if imap else item.ityp_name)
     output[4:8] = struct.pack(">i", int(item.flags))
