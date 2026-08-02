@@ -29,6 +29,7 @@ from .model import (
     MapDataGroup,
     PackFileMetaData,
 )
+from .pso import validate_ymf_pso_layout
 from .resource import (
     Ymf,
     build_ymf,
@@ -69,4 +70,5 @@ __all__ = [
     "read_ymf",
     "read_ymf_xml",
     "save_ymf",
+    "validate_ymf_pso_layout",
 ]

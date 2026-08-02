@@ -2,11 +2,23 @@ from __future__ import annotations
 
 import dataclasses
 import struct
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from ..meta.defs import META_NAME_REVERSE
 from ..metahash import HashLike, MetaHash
+from ..pso.codec import (
+    decode_array_header,
+    parse_pmap,
+    parse_psch_enums,
+    parse_sections,
+)
 from ..pso.model import (
+    CHKS,
+    PMAP,
+    PSCH,
+    PSIG,
+    PSIN,
     PsoDataTypeArray,
     PsoDataTypeEnum,
     PsoDataTypeFlags,
@@ -21,9 +33,11 @@ from ..pso.model import (
 from ..pso.schema import serialize_psch
 from ..pso.writer import (
     PsoBlockBuilder,
+    build_chks_section,
     build_pmap_section,
     build_psin_section,
     encode_pointer_word,
+    finalize_sections_with_checksum,
 )
 from .model import (
     HdTxdAssetBinding,
@@ -192,7 +206,10 @@ class _PsoPayload:
     )
 
 
-def build_ymf_pso(manifest: PackFileMetaData) -> bytes:
+def build_ymf_pso(
+    manifest: PackFileMetaData,
+    template: Mapping[str, Any] | None = None,
+) -> bytes:
     array_blocks: list[tuple[int, int, PsoBlockBuilder, int]] = []
     pending_hash_arrays: list[
         tuple[PsoBlockBuilder, int, list[MetaHash | HashLike]]
@@ -289,15 +306,163 @@ def build_ymf_pso(manifest: PackFileMetaData) -> bytes:
         for enum_hash, enum_info in YMF_PSO_ENUMS.items()
         if enum_hash in used_enum_hashes
     }
+    if template is not None:
+        for type_hash, struct_info in template.get("structs", {}).items():
+            if type_hash not in YMF_PSO_STRUCTS:
+                used_structs.setdefault(type_hash, struct_info)
+        for enum_hash, enum_info in template.get("enums", {}).items():
+            if enum_hash not in YMF_PSO_ENUMS:
+                used_enums.setdefault(enum_hash, enum_info)
     root_block_id = block_ids[YMF_PSO_ROOT]
 
-    return b"".join(
-        [
-            build_psin_section(blocks, prefix=b"\x00" * 8),
-            build_pmap_section(blocks, root_block_id=root_block_id),
-            serialize_psch(used_structs, used_enums),
-        ]
+    sections = [
+        build_psin_section(blocks, prefix=b"\x00" * 8),
+        build_pmap_section(blocks, root_block_id=root_block_id),
+        serialize_psch(used_structs, used_enums),
+    ]
+    template_sections: Mapping[int, bytes] = (
+        template.get("sections", {}) if template is not None else {}
     )
+    for ident, section in template_sections.items():
+        if ident not in {PSIN, PMAP, PSCH, PSIG, CHKS}:
+            sections.append(bytes(section))
+    if CHKS in template_sections:
+        sections.append(build_chks_section(template_sections[CHKS]))
+        output = finalize_sections_with_checksum(sections)
+    else:
+        output = b"".join(sections)
+
+    issues = validate_ymf_pso_layout(output)
+    if issues:
+        raise ValueError("Invalid generated YMF PSO:\n- " + "\n- ".join(issues))
+    return output
+
+
+_ROOT_ARRAY_FIELDS = (
+    (0, YMF_PSO_MAP_DATA_GROUP),
+    (16, YMF_PSO_HD_TXD_BINDING),
+    (32, YMF_PSO_IMAP_DEPENDENCY),
+    (48, YMF_PSO_IMAP_DEPENDENCIES),
+    (64, YMF_PSO_ITYP_DEPENDENCIES),
+    (80, YMF_PSO_INTERIOR_BOUNDS),
+)
+
+_HASH_ARRAY_FIELDS = {
+    YMF_PSO_MAP_DATA_GROUP: (8, 32),
+    YMF_PSO_IMAP_DEPENDENCIES: (8,),
+    YMF_PSO_ITYP_DEPENDENCIES: (8,),
+    YMF_PSO_INTERIOR_BOUNDS: (8,),
+}
+
+
+def _validate_array_pointer(
+    *,
+    psin: bytes,
+    blocks: Mapping[int, Any],
+    owner_offset: int,
+    field_offset: int,
+    expected_type: int,
+    stride: int,
+    label: str,
+) -> list[str]:
+    header = decode_array_header(psin, owner_offset + field_offset)
+    if header.count == 0:
+        return [] if header.pointer.is_null else [f"{label} has a pointer with a zero count"]
+    target = blocks.get(header.pointer.block_id)
+    if target is None:
+        return [f"{label} references missing block {header.pointer.block_id}"]
+    issues: list[str] = []
+    if target.name_hash != expected_type:
+        issues.append(
+            f"{label} references block type 0x{target.name_hash:08X}, expected 0x{expected_type:08X}"
+        )
+    end = header.pointer.offset + header.count * stride
+    if header.pointer.offset < 0 or end > target.length:
+        issues.append(
+            f"{label} range {header.pointer.offset}:{end} exceeds block length {target.length}"
+        )
+    return issues
+
+
+def validate_ymf_pso_layout(data: bytes) -> list[str]:
+    try:
+        sections = parse_sections(data)
+        psin = sections[PSIN]
+        blocks, root_block_id = parse_pmap(sections[PMAP])
+        psch = sections[PSCH]
+    except (KeyError, ValueError, IndexError, struct.error) as exc:
+        return [f"invalid PSO structure: {exc}"]
+
+    issues: list[str] = []
+    if psin[8:16] != b"\x00" * 8:
+        issues.append("PSIN must use the eight-byte zero prefix")
+    if PSIG in sections:
+        issues.append("PSIG is not valid for the runtime YMF profile")
+    root_block = blocks.get(root_block_id)
+    if root_block is None:
+        issues.append(f"PMAP root block {root_block_id} does not exist")
+        return issues
+    if root_block.name_hash != YMF_PSO_ROOT:
+        issues.append(f"PMAP root type is 0x{root_block.name_hash:08X}, expected 0x{YMF_PSO_ROOT:08X}")
+    if root_block_id != len(blocks):
+        issues.append("the YMF root must be the final PMAP block")
+    if root_block.length != YMF_PSO_STRUCTS[YMF_PSO_ROOT].length:
+        issues.append(f"YMF root length is {root_block.length}, expected 96")
+    if any(block.name_hash == 1 for block in blocks.values()):
+        issues.append("anonymous PSO blocks are not valid for YMF hash arrays")
+    hash_blocks = [block for block in blocks.values() if block.name_hash == PsoDataTypeUInt]
+    if len(hash_blocks) > 1:
+        issues.append("YMF hash arrays must share one UInt block")
+
+    for field_offset, expected_type in _ROOT_ARRAY_FIELDS:
+        issues.extend(
+            _validate_array_pointer(
+                psin=psin,
+                blocks=blocks,
+                owner_offset=root_block.offset,
+                field_offset=field_offset,
+                expected_type=expected_type,
+                stride=YMF_PSO_STRUCTS[expected_type].length,
+                label=f"root array at 0x{field_offset:X}",
+            )
+        )
+
+    present_types = {block.name_hash for block in blocks.values()}
+    for block_id, block in blocks.items():
+        field_offsets = _HASH_ARRAY_FIELDS.get(block.name_hash)
+        if field_offsets is None:
+            continue
+        stride = YMF_PSO_STRUCTS[block.name_hash].length
+        if block.length % stride:
+            issues.append(
+                f"block {block_id} length {block.length} is not aligned to structure size {stride}"
+            )
+            continue
+        for item_offset in range(0, block.length, stride):
+            for field_offset in field_offsets:
+                issues.extend(
+                    _validate_array_pointer(
+                        psin=psin,
+                        blocks=blocks,
+                        owner_offset=block.offset + item_offset,
+                        field_offset=field_offset,
+                        expected_type=PsoDataTypeUInt,
+                        stride=4,
+                        label=f"block {block_id} item {item_offset // stride} hash array at 0x{field_offset:X}",
+                    )
+                )
+
+    enums = parse_psch_enums(psch)
+    required_enums = {
+        entry.reference_key
+        for type_hash in present_types
+        for entry in YMF_PSO_STRUCTS.get(type_hash, PsoStruct(0, 0, [])).entries
+        if entry.type_id == PsoDataTypeEnum and entry.reference_key in YMF_PSO_ENUMS
+    }
+    missing_enums = required_enums.difference(enums)
+    for enum_hash in sorted(missing_enums):
+        issues.append(f"PSCH is missing enum 0x{enum_hash:08X}")
+    return issues
 
 
 def _pso_array_header(block_id: int, count: int, *, relative_offset: int = 0) -> bytes:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from ..meta import Meta
 from ..meta.defs import meta_name
@@ -25,12 +26,14 @@ class Ymf(MetaResource):
         manifest: PackFileMetaData | None = None,
         raw_bytes: bytes | None = None,
         pso_root: PsoNode | None = None,
+        pso_template: dict[str, Any] | None = None,
         permanent_ytyps: Iterable[HashLike] = (),
     ) -> None:
         super().__init__(meta=meta or Meta(), source=source)
         self._manifest = manifest
         self.raw_bytes = raw_bytes
         self.pso_root = pso_root
+        self.pso_template = pso_template
         self.permanent_ytyps = tuple(MetaHash.from_value(item) for item in permanent_ytyps)
 
     @property
@@ -61,7 +64,7 @@ class Ymf(MetaResource):
             if issues:
                 raise ValueError("Invalid YMF manifest:\n- " + "\n- ".join(issues))
             self.meta = manifest.to_meta(name=self.name)
-            return build_ymf_pso(manifest)
+            return build_ymf_pso(manifest, self.pso_template)
         return self.meta.to_rsc7()
 
     @classmethod
@@ -89,8 +92,14 @@ class Ymf(MetaResource):
         if looks_like_xml(data):
             return cls.from_manifest(PackFileMetaData.from_xml(data), source=source)
         if is_pso(data):
-            root = PsoReader(data, name_resolver=resolve_ymf_pso_name).read().root
-            return cls(source=source, manifest=PackFileMetaData.from_meta_root(root), raw_bytes=bytes(data), pso_root=root)
+            document = PsoReader(data, name_resolver=resolve_ymf_pso_name).read()
+            return cls(
+                source=source,
+                manifest=PackFileMetaData.from_meta_root(document.root),
+                raw_bytes=bytes(data),
+                pso_root=document.root,
+                pso_template=document.metadata.get("pso_template"),
+            )
         parsed = super().from_bytes(data, source=source)
         return cls(meta=parsed.meta, source=source)
 

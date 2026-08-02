@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- YMF manifests now use the runtime-compatible PSO layout required for streamed MLO registration.
+
 ## [0.3.0] - 2026-08-01
 
 ### Added
