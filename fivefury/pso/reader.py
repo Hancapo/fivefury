@@ -4,14 +4,31 @@ from collections.abc import Callable
 from typing import Any
 
 from ..binary import (
-    read_c_string,
     f32_be as _f32,
+)
+from ..binary import (
     i32_be as _i32,
+)
+from ..binary import (
     i64_be as _i64,
+)
+from ..binary import (
+    read_c_string,
+)
+from ..binary import (
     u16_be as _u16,
+)
+from ..binary import (
     u32_be as _u32,
 )
-from .codec import decode_array_header, decode_pointer, parse_pmap, parse_psch, parse_sections
+from .codec import (
+    decode_array_header,
+    decode_pointer,
+    parse_pmap,
+    parse_psch,
+    parse_psch_enums,
+    parse_sections,
+)
 from .model import (
     ARRAY_INFO_HASH,
     PMAP,
@@ -303,6 +320,7 @@ class PsoReader:
                     if ident != PSIN and ident != PMAP
                 },
                 "structs": self.structs,
+                "enums": parse_psch_enums(self.sections[PSCH]),
                 "root_type_hash": root_block.name_hash,
                 "psin_prefix": bytes(self.sections[PSIN][8:16]),
                 "pmap_unknown": _u16(self.sections[PMAP], 14),

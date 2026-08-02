@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fivefury.gamefile import GameFileType
 from fivefury.pso import (
     PMAP,
@@ -36,8 +38,11 @@ from fivefury.ymf import (
     iter_ymf_relationships,
     read_ymf,
     read_ymf_xml,
+    validate_ymf_pso_layout,
 )
 from fivefury.ytyp import Archetype, MloArchetypeDef, MloRoomDef, Ytyp, YtypDependency
+
+YMF_FIXTURES = Path(__file__).with_name("fixtures") / "ymf"
 
 
 class _FakeAsset:
@@ -212,6 +217,37 @@ def test_ymf_writer_uses_runtime_pso_layout() -> None:
         decode_array_header(sections[PSIN], blocks[4].offset + 8).pointer.offset == 28
     )
     assert list(parse_psch_enums(sections[PSCH])) == [0x6452A05B]
+
+
+def test_ymf_runtime_fixture_rebuilds_byte_identically() -> None:
+    source = (YMF_FIXTURES / "burgershot_manifest.runtime.ymf").read_bytes()
+    ymf = read_ymf(source)
+
+    assert validate_ymf_pso_layout(source) == []
+    assert ymf.to_bytes() == source
+
+
+def test_ymf_runtime_validation_rejects_out_of_range_block_pointer() -> None:
+    source = bytearray((YMF_FIXTURES / "burgershot_manifest.runtime.ymf").read_bytes())
+    root_imap_array_pointer = 120 + 48
+    source[root_imap_array_pointer : root_imap_array_pointer + 4] = (0xFFF).to_bytes(4, "big")
+
+    issues = validate_ymf_pso_layout(bytes(source))
+
+    assert any("missing block 4095" in issue for issue in issues)
+
+
+def test_ymf_rewrite_preserves_unknown_pso_sections() -> None:
+    source = (YMF_FIXTURES / "burgershot_manifest.runtime.ymf").read_bytes()
+    extra_section = b"TEST" + (12).to_bytes(4, "big") + b"data"
+    ymf = read_ymf(source + extra_section)
+    assert ymf.manifest is not None
+    ymf.manifest.imap_dependencies_2[0].imap_name = 0x11223344
+
+    rebuilt_sections = parse_sections(ymf.to_bytes())
+
+    assert rebuilt_sections[int.from_bytes(b"TEST", "big")] == extra_section
+    assert validate_ymf_pso_layout(ymf.to_bytes()) == []
 
 
 def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
