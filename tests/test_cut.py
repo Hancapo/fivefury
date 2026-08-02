@@ -5,27 +5,25 @@ from pathlib import Path
 
 import pytest
 
-from fivefury.hashing import jenk_hash, jenk_partial_hash
-from fivefury.cut.events import CUT_EVENT_ID_TO_NAME, get_cut_event_spec
 from fivefury import (
     CutCascadeShadowPayload,
     CutDecalPayload,
-    CutFile,
-    CutHashedString,
-    CutFinalNamePayload,
-    CutHashFloatPayload,
     CutEventType,
-    CutLoadScenePayload,
+    CutFile,
+    CutFinalNamePayload,
+    CutHashedString,
+    CutHashFloatPayload,
     CutLightFlag,
     CutLightProperty,
     CutLightType,
+    CutLoadScenePayload,
     CutPropAnimationPreset,
-    CutTypeFileStrategy,
     CutScene,
     CutSceneFlags,
+    CutTypeFileStrategy,
     GameFileType,
-    YdrLight,
     YcdCutsceneBuilder,
+    YdrLight,
     analyze_cut,
     build_cut_bytes,
     get_cut_event_name,
@@ -34,18 +32,25 @@ from fivefury import (
     read_cutxml,
     scene_to_cut,
 )
+from fivefury.cut.events import CUT_EVENT_ID_TO_NAME, get_cut_event_spec
 from fivefury.gamefile import guess_game_file_type
-
+from fivefury.hashing import jenk_hash, jenk_partial_hash
+from tests.helpers import reference_root
 
 TESTS_DIR = Path(__file__).resolve().parent
-CUT_PATH = TESTS_DIR / "mp_int_mcs_18_a1.cut"
+CUT_REFERENCE_DIR = reference_root() / "cut"
+CUT_PATH = CUT_REFERENCE_DIR / "mp_int_mcs_18_a1.cut"
 CUTXML_PATH = TESTS_DIR / "mp_int_mcs_18_a1.cutxml"
-LAMAR_CUT_PATH = TESTS_DIR.parent / "references" / "lamar_1_int.cut"
-EF_CUT_PATH = TESTS_DIR / "ef_1_rcm.cut"
-MAUDE_CUT_PATH = TESTS_DIR / "maude_mcs_1.cut"
+LAMAR_CUT_PATH = CUT_REFERENCE_DIR / "lamar_1_int.cut"
+EF_CUT_PATH = CUT_REFERENCE_DIR / "ef_1_rcm.cut"
 
 
-pytestmark = pytest.mark.skipif(not CUT_PATH.is_file() or not CUTXML_PATH.is_file(), reason="cut samples not available")
+requires_cut = pytest.mark.skipif(
+    not CUT_PATH.is_file(), reason="binary CUT sample not available"
+)
+requires_cutxml = pytest.mark.skipif(
+    not CUTXML_PATH.is_file(), reason="CUT XML sample not available"
+)
 
 
 def _counts(cut: CutFile) -> dict[str, int]:
@@ -60,6 +65,7 @@ def _counts(cut: CutFile) -> dict[str, int]:
     }
 
 
+@requires_cutxml
 def test_read_cutxml_smoke() -> None:
     cutxml = read_cutxml(CUTXML_PATH)
 
@@ -74,6 +80,8 @@ def test_read_cutxml_smoke() -> None:
     }
 
 
+@requires_cut
+@requires_cutxml
 def test_read_cut_matches_cutxml_shape() -> None:
     cut = read_cut(CUT_PATH)
     cutxml = read_cutxml(CUTXML_PATH)
@@ -91,6 +99,7 @@ def test_cut_game_file_type_mapping() -> None:
     assert guess_game_file_type("foo.cutxml") is GameFileType.UNKNOWN
 
 
+@requires_cut
 def test_cut_summary_and_resolution() -> None:
     cut = read_cut(CUT_PATH)
     summary = analyze_cut(cut)
@@ -106,6 +115,7 @@ def test_cut_summary_and_resolution() -> None:
     assert first_event.event_args.type_name == "rage__cutfObjectIdEventArgs"
 
 
+@requires_cut
 def test_cut_roundtrip_binary_writer() -> None:
     cut = read_cut(CUT_PATH)
     cut.root.fields["fTotalDuration"] = 12.5
@@ -134,6 +144,7 @@ def test_cut_roundtrip_preserves_complex_real_templates(path: Path) -> None:
     assert len(rebuilt.event_args) == len(cut.event_args)
 
 
+@requires_cut
 def test_cut_scene_abstraction_reads_like_timeline() -> None:
     scene = read_cut_scene(CUT_PATH)
 
@@ -154,6 +165,7 @@ def test_cut_scene_abstraction_reads_like_timeline() -> None:
     assert scene.timeline[0].start == pytest.approx(0.0)
 
 
+@requires_cut
 def test_cut_scene_roundtrip() -> None:
     scene = read_cut_scene(CUT_PATH)
     scene.duration = 33.0
@@ -186,7 +198,7 @@ def test_cut_scene_builder_from_scratch() -> None:
     scene.create_event("show_subtitle", start=0.0, target=subtitle, label="hola amigos", duration=15.0, payload={"iLanguageID": 0})
 
     cut = scene_to_cut(scene)
-    rebuilt = read_cut(build_cut_bytes(cut, template=CUT_PATH))
+    rebuilt = read_cut(build_cut_bytes(cut))
 
     assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(15.0)
     assert rebuilt.root.fields["cFaceDir"] == "x:/gta5/assets_ng/cuts/test/faces"
@@ -329,7 +341,7 @@ def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> Non
     scene.show_overlay(0.0, overlay)
     scene.hide_overlay(1.0, overlay)
 
-    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
 
     assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(20.0)
     assert len(rebuilt.load_events) == 4
@@ -363,7 +375,7 @@ def test_cut_scene_builder_supports_variation_events_with_real_template() -> Non
     scene.load_models(0.0, [ped.object_id], target=asset_manager)
     scene.set_variation(0.0, ped, component=3, drawable=1, texture=2)
 
-    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=LAMAR_CUT_PATH))
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
 
     assert len(rebuilt.load_events) == 2
     assert len(rebuilt.events) == 1
@@ -377,6 +389,9 @@ def test_cut_scene_builder_supports_variation_events_with_real_template() -> Non
     assert args.fields["iTexture"] == 2
 
 
+@pytest.mark.skipif(
+    not LAMAR_CUT_PATH.is_file(), reason="blocking-bounds CUT template not available"
+)
 def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templates() -> None:
     scene = CutScene.create(duration=12.0, face_dir="x:/gta5/assets_ng/cuts/test_fx/faces")
     asset_manager = scene.add_asset_manager()
@@ -406,7 +421,9 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     scene.blendout_camera(1.0, camera)
     scene.first_person_blendout_camera(2.0, camera, CutHashFloatPayload(1.0))
 
-    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=LAMAR_CUT_PATH))
+    rebuilt = read_cut(
+        build_cut_bytes(scene_to_cut(scene), template=read_cut(LAMAR_CUT_PATH))
+    )
 
     event_ids = [event.fields["iEventId"] for event in rebuilt.events]
     assert 18 in event_ids  # add_blocking_bounds
@@ -460,7 +477,7 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     scene.hide_hidden_object(0.0, hidden)
     scene.show_hidden_object(1.0, hidden)
 
-    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
 
     event_names = [get_cut_event_name(event.fields["iEventId"]) for event in rebuilt.events]
     assert "trigger_decal" in event_names
@@ -511,7 +528,7 @@ def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
     lights = scene.ensure_ydr_embedded_lights(ydr, name_prefix="stage01")
 
     assert len(lights) == 1
-    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
     cut_light = next(obj for obj in rebuilt.objects if obj.type_name == "rage__cutfLightObject")
     assert cut_light.fields["iLightType"] == int(CutLightType.SPOT)
     assert cut_light.fields["iLightProperty"] == int(CutLightProperty.CASTS_SHADOWS)
@@ -549,7 +566,7 @@ def test_cut_prop_binding_exposes_real_streaming_fields() -> None:
     assert prop.handle == "prop_handle"
     assert prop.type_file == "prop_type"
 
-    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene), template=MAUDE_CUT_PATH))
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
     rebuilt_prop = rebuilt.objects[0]
 
     assert rebuilt_prop.type_name == "rage__cutfPropModelObject"

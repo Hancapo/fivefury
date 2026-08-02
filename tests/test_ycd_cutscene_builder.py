@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
 import pytest
 
 from fivefury import (
     GEN9_YCD_RUNTIME_PROFILE,
     YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+    CutScene,
     GameTarget,
     MetaHash,
     YcdAnimationTrack,
@@ -23,13 +23,10 @@ from fivefury import (
     YcdCutsceneBuilder,
     build_cutscene_sections,
     build_ycd_bytes,
-    read_cut,
     read_ycd,
+    scene_to_cut,
 )
 from fivefury.resource import split_rsc7_sections, virtual_to_offset
-
-TESTS_DIR = Path(__file__).resolve().parent
-CUT_SAMPLE_PATH = TESTS_DIR.parent / "references" / "lamar_1_int.cut"
 
 
 def test_build_cutscene_sections_uses_camera_cuts() -> None:
@@ -300,11 +297,16 @@ def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequence
     )
 
 
-@pytest.mark.skipif(not CUT_SAMPLE_PATH.is_file(), reason="cut sample not available")
 def test_cutscene_builder_from_cut_reads_camera_cuts() -> None:
-    cut = read_cut(CUT_SAMPLE_PATH)
+    cut = scene_to_cut(
+        CutScene.create(
+            scene_name="generated_cut",
+            duration=12.0,
+            camera_cut_list=[2.0, 4.0, 8.5],
+        )
+    )
     builder = YcdCutsceneBuilder.from_cut(cut, name="lamar_1_int")
 
-    assert builder.duration == pytest.approx(142.86666870117188)
-    assert builder.camera_cuts[:4] == pytest.approx([8.0, 16.0, 24.0, 32.5])
+    assert builder.duration == pytest.approx(12.0)
+    assert builder.camera_cuts == pytest.approx([2.0, 4.0, 8.5])
     assert len(builder.sections) == len(builder.camera_cuts) + 1

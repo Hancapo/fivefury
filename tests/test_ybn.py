@@ -54,7 +54,7 @@ from fivefury.resource import (
     get_resource_total_page_count,
     split_rsc7_sections,
 )
-from tests.helpers import require_reference
+from tests.helpers import configured_path, reference_root, require_reference
 
 _RESOURCE_FILE_BASE_SIZE = 0x10
 
@@ -398,9 +398,12 @@ def test_parse_bound_material_names_uses_simple_name_per_line_format() -> None:
 
 
 def test_roundtrip_real_west02_ybn_if_available() -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\west02_0.ybn")
+    source_path = configured_path(
+        "FIVEFURY_TEST_YBN_WEST02",
+        reference_root() / "ybn/west02_0.ybn",
+    )
     if not source_path.exists():
-        return
+        pytest.skip(f"external YBN reference not available: {source_path}")
 
     source = read_ybn(source_path)
     data = source.to_bytes()
@@ -419,9 +422,12 @@ def test_roundtrip_real_west02_ybn_if_available() -> None:
 
 
 def test_resource_page_flags_match_codewalker_assign_positions2_for_real_ybn_if_available() -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\ybn_debug\bad\aliencity2.ybn")
+    source_path = configured_path(
+        "FIVEFURY_TEST_YBN_BAD_ALIENCITY2",
+        reference_root() / "ybn/bad/aliencity2.ybn",
+    )
     if not source_path.exists():
-        return
+        pytest.skip(f"external YBN reference not available: {source_path}")
 
     from fivefury.bounds import BoundResourcePagesInfo, build_bound_system_layout
 
@@ -439,9 +445,12 @@ def test_resource_page_flags_match_codewalker_assign_positions2_for_real_ybn_if_
 
 
 def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_if_available() -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\ybn_debug\bad\aliencity2.ybn")
+    source_path = configured_path(
+        "FIVEFURY_TEST_YBN_BAD_ALIENCITY2",
+        reference_root() / "ybn/bad/aliencity2.ybn",
+    )
     if not source_path.exists():
-        return
+        pytest.skip(f"external YBN reference not available: {source_path}")
 
     source = read_ybn(source_path.read_bytes(), path=source_path)
     data = source.to_bytes()
@@ -458,9 +467,12 @@ def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_
 
 
 def test_read_ybn_normalizes_real_bounds_from_codewalker_layout_if_available() -> None:
-    source_path = Path(r"C:\Users\vicho\OneDrive\Desktop\ybn_debug\good\aliencity2_codewalker_by_xml_reimport.ybn")
+    source_path = configured_path(
+        "FIVEFURY_TEST_YBN_GOOD_ALIENCITY2",
+        reference_root() / "ybn/good/aliencity2.ybn",
+    )
     if not source_path.exists():
-        return
+        pytest.skip(f"external YBN reference not available: {source_path}")
 
     ybn = read_ybn(source_path)
 

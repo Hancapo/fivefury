@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import importlib
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import pytest
 
@@ -58,14 +59,21 @@ def write_bytes(path, data: bytes) -> None:
     path.write_bytes(data)
 
 
-def require_reference(*parts: str) -> Path:
+def reference_root() -> Path:
     configured = os.environ.get("FIVEFURY_REFERENCE_DIR")
-    root = (
+    return (
         Path(configured).expanduser()
         if configured
         else Path(__file__).resolve().parents[1] / "references"
     )
-    path = root.joinpath(*parts)
+
+
+def configured_path(variable: str, default: str | Path) -> Path:
+    return Path(os.environ.get(variable, default)).expanduser()
+
+
+def require_reference(*parts: str) -> Path:
+    path = reference_root().joinpath(*parts)
     if not path.exists():
         pytest.skip(
             f"external reference not available: {path}; "
