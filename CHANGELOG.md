@@ -32,6 +32,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Public YMF runtime limits and validation for map dependencies, type
   dependencies, managed groups, interior bounds, and serialized capacities.
 - Formal YNV polygon flags and declarative pedestrian-density and audio fields.
+- Declarative YFT breakable-glass authoring from drawable geometry, skeleton
+  bindings, physics groups, and collision bounds.
 
 ### Changed
 - YFT mass calculation now derives density from collision materials by default.
@@ -47,6 +49,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YFT event-set layout and target-specific runtime headers.
 - Enhanced YFT articulated-joint runtime headers during reconstruction.
 - Enhanced YFT breakable-glass pane layouts and vertex declarations.
+- YFT breakable-glass group, pane, shader, bone, geometry, and bound
+  validation.
 - YFT validation of native unavailable mass and angular-inertia values.
 - Enhanced YFT drawable layout detection and byte-identical lossless
   round-trips.

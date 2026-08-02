@@ -3,6 +3,11 @@ from __future__ import annotations
 import dataclasses
 import enum
 from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..ydr import YdrMesh
+    from .glass_authoring import YftGlassOrthonormalTransform
 
 Vec3 = tuple[float, float, float]
 Matrix44 = tuple[
@@ -66,6 +71,30 @@ class YftGlassPane:
     bounds_offset_front: float = 0.0
     bounds_offset_back: float = 0.0
     tangent: Vec3 = (1.0, 0.0, 0.0)
+
+    @classmethod
+    def from_mesh(
+        cls,
+        mesh: YdrMesh,
+        *,
+        bone_index: int | None = None,
+        glass_type: int = 0,
+        shader_index: int | None = None,
+        bounds_minimum: Vec3 | None = None,
+        bounds_maximum: Vec3 | None = None,
+        bounds_transform: YftGlassOrthonormalTransform | None = None,
+    ) -> YftGlassPane:
+        from .glass_authoring import build_yft_glass_pane_from_mesh
+
+        return build_yft_glass_pane_from_mesh(
+            mesh,
+            bone_index=bone_index,
+            glass_type=glass_type,
+            shader_index=shader_index,
+            bounds_minimum=bounds_minimum,
+            bounds_maximum=bounds_maximum,
+            bounds_transform=bounds_transform,
+        )
 
 
 class YftVehicleGlassFlag(enum.IntFlag):

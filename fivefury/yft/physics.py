@@ -145,8 +145,11 @@ class YftPhysicsGroup:
     child_index: int = 0xFF
     num_children: int = 0
     num_child_groups: int = 0
-    glass_model_and_type: int = 0
+    glass_model_and_type: int = 0xFF
     glass_pane_model_info_index: int = 0
+    authored_glass_type: int | None = dataclasses.field(
+        default=None, repr=False, compare=False
+    )
     flags: YftPhysicsGroupFlag = YftPhysicsGroupFlag.NONE
     min_damage_force: float = 0.0
     damage_health: float = 0.0
@@ -226,6 +229,7 @@ class YftPhysicsGroup:
         children: Sequence[YftPhysicsChild] = (),
         child_groups: Sequence[int | str] = (),
         flags: YftPhysicsGroupFlag | int = YftPhysicsGroupFlag.NONE,
+        glass_pane_index: int | None = None,
         strength: float = 0.0,
         total_undamaged_mass: float | None = None,
         total_damaged_mass: float | None = None,
@@ -242,6 +246,13 @@ class YftPhysicsGroup:
             if total_damaged_mass is not None
             else sum(child.damaged_mass for child in declared_children)
         )
+        declared_flags = YftPhysicsGroupFlag(flags)
+        if glass_pane_index is not None:
+            if not declared_children:
+                raise ValueError("glass groups require at least one physics child")
+            if not 0 <= int(glass_pane_index) <= 0xFF:
+                raise ValueError("glass_pane_index must fit in an unsigned byte")
+            declared_flags |= YftPhysicsGroupFlag.MADE_OF_GLASS
         return cls(
             name=str(name),
             strength=float(strength),
@@ -250,7 +261,10 @@ class YftPhysicsGroup:
             child_index=0 if declared_children else 0xFF,
             num_children=len(declared_children),
             num_child_groups=len(child_groups),
-            flags=YftPhysicsGroupFlag(flags),
+            glass_pane_model_info_index=(
+                int(glass_pane_index) if glass_pane_index is not None else 0
+            ),
+            flags=declared_flags,
             debug_name=debug_name or str(name),
             children=declared_children,
             child_group_names=tuple(
@@ -260,6 +274,36 @@ class YftPhysicsGroup:
                 int(value) for value in child_groups if not isinstance(value, str)
             ),
         )
+
+    @classmethod
+    def declare_glass(
+        cls,
+        name: str,
+        *,
+        glass_type: int = 0,
+        pane_index: int | None = None,
+        children: Sequence[YftPhysicsChild],
+        child_groups: Sequence[int | str] = (),
+        flags: YftPhysicsGroupFlag | int = YftPhysicsGroupFlag.NONE,
+        strength: float = 0.0,
+        total_undamaged_mass: float | None = None,
+        total_damaged_mass: float | None = None,
+        debug_name: str = "",
+    ) -> YftPhysicsGroup:
+        if not 0 <= int(glass_type) <= 0xFF:
+            raise ValueError("glass_type must fit in an unsigned byte")
+        group = cls.declare(
+            name,
+            children=children,
+            child_groups=child_groups,
+            flags=flags,
+            glass_pane_index=0 if pane_index is None else pane_index,
+            strength=strength,
+            total_undamaged_mass=total_undamaged_mass,
+            total_damaged_mass=total_damaged_mass,
+            debug_name=debug_name,
+        )
+        return dataclasses.replace(group, authored_glass_type=int(glass_type))
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
