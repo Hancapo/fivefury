@@ -67,6 +67,18 @@ class PsoEntry:
 
 
 @dataclass(slots=True)
+class PsoEnumEntry:
+    name_hash: int
+    value: int
+
+
+@dataclass(slots=True)
+class PsoEnum:
+    name_hash: int
+    entries: list[PsoEnumEntry]
+
+
+@dataclass(slots=True)
 class PsoStruct:
     name_hash: int
     length: int
@@ -141,8 +153,10 @@ __all__ = [
     "PsoDataTypeUByte",
     "PsoDataTypeUInt",
     "PsoDataTypeUShort",
-    "PsoEntry",
     "PsoDocument",
+    "PsoEntry",
+    "PsoEnum",
+    "PsoEnumEntry",
     "PsoHashedString",
     "PsoNode",
     "PsoPointer",
