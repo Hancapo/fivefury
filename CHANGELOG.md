@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-01
+
 ### Added
 - Enhanced YFT environment-cloth authoring, including controllers, simulation
   bridges, tuning, morph controllers, Verlet data, and nested collision bounds.
