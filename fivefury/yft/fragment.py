@@ -280,6 +280,25 @@ class Yft:
         self.physics_lods = physics_lod_pointers_for(self.physics_lod_details)
         return self
 
+    def build_glass(
+        self,
+        *,
+        physics_lod: int | str = "high",
+        drawable_lod: YdrLod | str | None = None,
+    ) -> list[YftGlassPane]:
+        from .glass_builder import build_yft_glass
+
+        return build_yft_glass(
+            self,
+            physics_lod=physics_lod,
+            drawable_lod=drawable_lod,
+        )
+
+    def ensure_glass(self) -> list[YftGlassPane]:
+        from .glass_builder import ensure_yft_glass
+
+        return ensure_yft_glass(self)
+
     def geometry_stats(self, lod: YdrLod | str | None = None) -> YftGeometryStats:
         drawables = list(self.iter_drawables())
         models = [

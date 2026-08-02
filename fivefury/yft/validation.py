@@ -127,12 +127,154 @@ def _validate_fragment_geometry_limits(
                     )
 
 
+def _validate_glass_geometry_relationship(
+    child: object,
+    pane: object,
+    path: str,
+    issues: list[YftValidationIssue],
+    *,
+    common_drawable: object | None,
+) -> None:
+    entity = getattr(child, "undamaged_entity", None)
+    child_drawable = getattr(entity, "drawable", None)
+    if child_drawable is None:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.child.undamaged_entity.drawable",
+            "glass physics requires an intact child drawable",
+        )
+    elif getattr(child_drawable, "bound", None) is None:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.child.undamaged_entity.drawable.bound",
+            "glass physics requires an intact drawable bound",
+        )
+
+    if common_drawable is None:
+        return
+    materials = getattr(common_drawable, "materials", ())
+    shader_index = int(getattr(pane, "shader_index", 0))
+    material_indices = {
+        int(getattr(material, "index", index))
+        for index, material in enumerate(materials)
+    }
+    if shader_index not in material_indices:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.glass_pane.shader_index",
+            "does not point into the common drawable shader group",
+        )
+        return
+
+    skeleton = getattr(common_drawable, "skeleton", None)
+    iter_models = getattr(common_drawable, "iter_models", None)
+    if skeleton is None or iter_models is None:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.child.bone_id",
+            "glass physics requires a common drawable skeleton",
+        )
+        return
+    bone_id = int(getattr(child, "bone_id", 0))
+    bone = skeleton.get_bone_by_tag(bone_id) or skeleton.get_bone_by_index(bone_id)
+    if bone is None:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.child.bone_id",
+            "does not resolve in the common drawable skeleton",
+        )
+        return
+
+    models = tuple(iter_models())
+    candidates = tuple(
+        model
+        for model in models
+        if bool(getattr(model, "has_skin", False))
+        or int(getattr(model, "bone_index", -1)) == int(bone.index)
+    )
+    if not candidates:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.child.bone_id",
+            "does not select render geometry in the common drawable",
+        )
+        return
+    if not any(
+        int(getattr(mesh, "material_index", -1)) == shader_index
+        for model in candidates
+        for mesh in getattr(model, "meshes", ())
+    ):
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.glass_pane.shader_index",
+            "does not match geometry selected by the glass child bone",
+        )
+
+
+def _validate_glass_group(
+    lod: YftPhysicsLod,
+    group_index: int,
+    path: str,
+    issues: list[YftValidationIssue],
+    *,
+    glass_panes: list[object],
+    common_drawable: object | None,
+) -> None:
+    group = lod.groups[group_index]
+    if not group.is_glass:
+        if group.glass_pane_model_info_index != 0:
+            _issue(
+                issues,
+                YftValidationSeverity.ERROR,
+                f"{path}.glass_pane_model_info_index",
+                "non-glass groups cannot reference glass pane metadata",
+            )
+        return
+
+    if group.child_index == 0xFF or group.num_children == 0:
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.children",
+            "glass groups require at least one physics child",
+        )
+        return
+    if group.child_index >= len(lod.children):
+        return
+
+    pane_index = int(group.glass_pane_model_info_index)
+    if pane_index >= len(glass_panes):
+        _issue(
+            issues,
+            YftValidationSeverity.ERROR,
+            f"{path}.glass_pane_model_info_index",
+            "does not point into the fragment glass pane array",
+        )
+        return
+    _validate_glass_geometry_relationship(
+        lod.children[group.child_index],
+        glass_panes[pane_index],
+        path,
+        issues,
+        common_drawable=common_drawable,
+    )
+
+
 def _validate_lod(
     lod: YftPhysicsLod,
     path: str,
     issues: list[YftValidationIssue],
     *,
     bound_profile: YftPhysicsBoundProfile,
+    glass_panes: list[object],
+    common_drawable: object | None,
 ) -> None:
     for field, value in (
         ("num_groups", len(lod.groups)),
@@ -261,7 +403,7 @@ def _validate_lod(
             ("child_index", group.child_index),
             ("num_children", group.num_children),
             ("num_child_groups", group.num_child_groups),
-            ("glass_model_and_type", group.glass_model_and_type or 0xFF),
+            ("glass_model_and_type", group.glass_model_and_type),
             (
                 "glass_pane_model_info_index",
                 group.glass_pane_model_info_index,
@@ -309,6 +451,14 @@ def _validate_lod(
                 group_path,
                 "group mass cannot be negative",
             )
+        _validate_glass_group(
+            lod,
+            index,
+            group_path,
+            issues,
+            glass_panes=glass_panes,
+            common_drawable=common_drawable,
+        )
 
     claimed_children: set[int] = set()
     for group_index, group in enumerate(lod.groups):
@@ -1039,6 +1189,8 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             lod_path,
             issues,
             bound_profile=source.physics_bound_profile,
+            glass_panes=source.glass_panes,
+            common_drawable=source.main_drawable,
         )
         if lod.composite_bound is not None:
             from .bound_ownership import (
