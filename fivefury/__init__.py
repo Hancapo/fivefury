@@ -947,6 +947,7 @@ from .ymf import (
     read_ymf,
     read_ymf_xml,
     save_ymf,
+    validate_ymf_pso_layout,
 )
 from .ymt import (
     PedComponent,
@@ -1766,6 +1767,7 @@ __all__ = [
     "Ymf",
     "YmfRelationship",
     "YmfRelationshipType",
+    "validate_ymf_pso_layout",
     "Ymt",
     "YmtAabb",
     "YmtPedInitData",
