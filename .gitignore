@@ -23,6 +23,7 @@ tests/*
 !tests/test_gtxd.py
 !tests/test_ymf.py
 !tests/test_ynd.py
+!tests/test_ymap_occluders.py
 !tests/test_rpf_ps3.py
 !tests/test_rpf_streaming_folder.py
 !tests/test_resource_stream.py

@@ -31,11 +31,14 @@ class BoxOccluder:
 
     @property
     def size(self) -> tuple[float, float, float]:
-        return (self.iLength / 4.0, self.iWidth / 4.0, self.iHeight / 4.0)
+        # GTA V's rasterizer expands ``iWidth`` along the local X axis and
+        # ``iLength`` along local Y.  Expose the public box size as (X, Y, Z)
+        # even though the packed field order is (length, width, height).
+        return (self.iWidth / 4.0, self.iLength / 4.0, self.iHeight / 4.0)
 
     @property
     def angle_radians(self) -> float:
-        return math.atan2(self.iCosZ / 32767.0, self.iSinZ / 32767.0)
+        return math.atan2(self.iSinZ / 16384.0, self.iCosZ / 16384.0)
 
     @property
     def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
@@ -94,14 +97,16 @@ class BoxOccluder:
             iCenterX=round(position[0] * 4),
             iCenterY=round(position[1] * 4),
             iCenterZ=round(position[2] * 4),
-            iLength=max(1, round(abs(size[0]) * 4)),
-            iWidth=max(1, round(abs(size[1]) * 4)),
+            # The runtime's BoxOccluder::CalculateVerts treats width as local
+            # X and length as local Y, despite their serialized field order.
+            iLength=max(1, round(abs(size[1]) * 4)),
+            iWidth=max(1, round(abs(size[0]) * 4)),
             iHeight=max(1, round(abs(size[2]) * 4)),
-            # These field names are counter-intuitive. CodeWalker reconstructs
-            # the Z angle with atan2(iCosZ, iSinZ), and stores a half-length
-            # direction vector in the two signed shorts.
-            iCosZ=round(math.sin(radians) * 16384),
-            iSinZ=round(math.cos(radians) * 16384),
+            # Match GTA V's BoxOccluder::SetSize exactly.  Swapping these to
+            # match CodeWalker's display convention mirrors non-axis-aligned
+            # boxes in the runtime and can make them occlude unrelated assets.
+            iCosZ=round(math.cos(radians) * 16384),
+            iSinZ=round(math.sin(radians) * 16384),
         )
 
 
