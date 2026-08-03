@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-03
+
 ### Fixed
 - Generated YNV edges now preserve both persistent neighboring-polygon references.
 - Box occluder size and rotation fields now use the runtime layout.

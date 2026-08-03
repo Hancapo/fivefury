@@ -1,8 +1,15 @@
 # FiveFury
 
-FiveFury is a Python library for reading, writing, and packaging GTA V asset files: drawables, collisions, map metadata, animations, navigation data, texture dictionaries, text tables, audio containers, cutscenes, DLC metadata, and RPF archives.
+FiveFury is a Python toolkit for authoring, inspecting, validating, converting, and packaging GTA V assets. It exposes typed models and declarative builders over the game's binary resource formats, metadata containers, and RPF archives without hiding the lower-level data needed for advanced workflows.
 
-It targets practical modding workflows — declarative high-level helpers for common authoring tasks, with access to the underlying binary and resource layers when you need them. Heavy operations (vertex packing, collision generation, hashing, crypto, resource layout, archive scanning) run in a bundled native extension.
+FiveFury is designed for tools that need to do more than convert a single file:
+
+- Read, modify, and rebuild assets while preserving data that is not yet modeled.
+- Create maps, collisions, navigation data, drawables, fragments, animations, and archives from Python objects.
+- Target GTA V Legacy or Enhanced where their binary layouts differ.
+- Validate resource pointers, packed limits, ownership, and format-specific invariants before writing.
+- Index a game installation and resolve assets, hashes, textures, parent dictionaries, and map dependencies.
+- Run expensive hashing, resource-layout, geometry, collision, and archive operations through the bundled native extension.
 
 ## Installation
 
@@ -10,85 +17,108 @@ It targets practical modding workflows — declarative high-level helpers for co
 pip install fivefury
 ```
 
-Python 3.11+ is required.
+FiveFury requires Python 3.11 or newer.
 
-The Assimp-backed import helpers (`assimp_to_ydr`, `obj_to_ydr`, `fbx_to_ydr`, `obj_to_nav`) additionally require the `impasse` package and a native `assimp` library reachable through the environment (usually via `PATH`).
+Mesh import through `assimp_to_ydr(...)` and navmesh import through `obj_to_nav(...)` additionally require `impasse` and a native Assimp library available through the environment. The regular binary readers, writers, and builders do not require Assimp.
 
-## Format support
+## Supported workflows
 
-| Format | Status | Scope |
+| Area | Formats | Current coverage |
 | --- | --- | --- |
-| `YDR` | Full | Drawables: models, LODs, materials, shaders, lights, embedded textures and bounds, skeletons, skinning |
-| `CDR` | Read | PS3 drawables: materials, LODs, QB/EDGE geometry, compressed indices, skeletons and skinning |
-| `YDD` | Full | Drawable dictionaries, creation from named drawables, ped-component rigging helpers |
-| `YBN` | Full | Primitive, composite, geometry, and BVH bounds; collision generation from triangle meshes |
-| `YCD` | Full | Clip dictionaries: skeletal, object, UV, camera, and root-motion tracks |
-| `YMAP` | Full | Entities, car generators, occluders, timecycle modifiers, LOD/distant lights |
-| `YTYP` | Full | Base/time/MLO archetypes, extensions, rooms, portals, entity sets |
-| `YMF` | Full | Map manifests, IMAP/ITYP dependencies, generation from YMAP sets |
-| `YTD` | Full | Texture dictionaries: read/write, extraction, embedded-asset helpers |
-| `YND` | Full | Path nodes, links, area partitioning, junction heightmaps |
-| `YNV` | Full | Navmeshes: sectors, polys, portals, validation, basic OBJ partitioning |
-| `heightmap.dat` | Full | World-height grids, native quantization, row RLE, water masks, spatial queries |
-| `water.xml` | Full | Water surfaces, triangle corners, calming regions, wave amplitude and direction |
-| `CUT` | Full | Cutscenes, plus the readable `.cuts` script format for round-trip authoring |
-| `GXT2` | Full | Hashed text tables with binary read/write and text import/export |
-| `AWC` | Full | Audio containers: PCM/WAV extraction, authoring from WAV/MP3/OGG/FLAC |
-| `RPF` | Full | RPF7 archives: nested archives, folder/ZIP conversion, encrypted archive reading |
-| DLC metadata | Full | `setup2.xml`, `content.xml`, `dlclist.xml`, title-update patch overlays |
-| `GTXD` | Full | Parent texture dictionary metadata (XML and binary RBF) |
-| `YFT` | Partial | Fragment read/write: drawables, physics LODs/groups/children, composite bounds |
-| `REL` | Partial | Audio metadata banks; typed models for synths, curves, categories, and common sound graphs |
-| `YED` | Partial | Expression dictionaries: inspection, spring editing, small dictionaries from scratch |
-| `YMT` | Partial | META/PSO/RBF read/write with typed helpers for known roots; unknown payloads preserved |
-| `YPT` | Partial | Embedded texture dictionary discovery/extraction only |
-| `YWR`, `YVR` | Indexed | Detected by `GameFileCache` and RPF tooling; no dedicated parser yet |
-| `YFD`, `YPDB`, `MRF` | — | Not implemented |
+| Drawables | `YDR`, `YDD`, `YTD` | Models and LODs, shader groups and parameters, samplers, embedded textures, lights, bounds, skeletons, skinning, drawable dictionaries, and texture dictionaries |
+| Fragments and physics | `YFT` | Fragment drawables, damaged states, physics LODs/groups/children, contextual collision bounds, ownership validation, mass and inertia calculation, breakable glass, and environment cloth |
+| World placement | `YMAP`, `YTYP` | Entities, physics dictionaries, MLO instances and definitions, archetypes, rooms, portals, entity sets, car generators, occluders, timecycle modifiers, and LOD lights |
+| Streaming metadata | `YMF`, `GTXD`, `gta5_cache_y.dat` | Map/type dependencies, MLO registration, texture-dictionary parent chains, runtime PSO validation, and cache generation from in-memory or loose assets |
+| Collision | `YBN` | Primitive, composite, geometry, and BVH bounds; materials, octants, MLO room IDs, and collision generation from triangle meshes |
+| Navigation | `YND`, `YNV` | Road nodes and links, area partitioning, junction heightmaps, navmesh sectors/polygons/portals, in-memory cell builders, and Assimp/OBJ conversion |
+| World data | `heightmap.dat`, `water.xml` | Quantized height grids, row RLE, water masks and queries, water surfaces, wave quads, and calming regions |
+| Animation | `YCD`, `YED` | Skeletal, object, UV, camera, root-motion, and bone-scale tracks; clip dictionaries; expression dictionaries and spring data |
+| Cutscenes | `.cut`, `.cuts` | Binary cutscene read/write, declarative scene authoring, validation, YCD section generation, and a readable CutScript round-trip format |
+| Audio and text | `AWC`, `REL`, `GXT2` | Audio containers and common codecs, typed audio metadata graphs, synth/curve/category records, and hashed text tables |
+| Packaging | `RPF7`, DLC metadata | PC archive creation, nested archives, folder/ZIP conversion, standalone resource extraction, encrypted archive reading, and generated DLC setup/content metadata |
+| Generic metadata | `YMT`, META, PSO, RBF | Typed known roots, generic binary containers, PSCH enums, and preservation of unknown schemas or payloads during supported rewrites |
+| Console assets | `CDR`, PS3 `RPF7` | Read-only PS3 drawable decoding and automatic PS3 archive detection/extraction |
 
-`YDR` and `CDR` expose the same format-neutral drawable interface for LODs, models, meshes, materials, parameters, textures, and shader metadata. Their binary layouts remain isolated: PC/Enhanced authoring stays in `ydr`, while PS3 resource pages, QB/EDGE geometry, and console shader additions stay in `cdr`.
+Additional discovery support is available for embedded `YPT` texture dictionaries. `GameFileCache` can index `YWR` and `YVR`, but FiveFury does not yet expose dedicated parsers for them. `YFD`, `YPDB`, and `MRF` are not implemented.
+
+### Legacy and Enhanced
+
+Target-aware APIs use `GameTarget` instead of loose version labels:
+
+```python
+from fivefury import GameTarget, YdrGen9Shader, assimp_to_ydr
+
+assimp_to_ydr(
+    "source/prop.fbx",
+    "stream/prop.ydr",
+    game=GameTarget.GTA5_ENHANCED,
+    shader=YdrGen9Shader.DEFAULT,
+)
+```
+
+The target changes runtime headers, resource versions, bounds, shader metadata, and vertex layouts only where the format requires it. Readers infer the edition from the asset when possible. Legacy remains the default.
+
+Current target-aware authoring covers the main `YDR`, `YDD`, `YFT`, `YBN`, `YCD`, `YED`, `YND`, and `YNV` paths. Support is format-specific rather than a blanket claim that every GTA V file differs between editions.
 
 ## Quick start
 
-### Create a YMAP and pack it into an RPF
+### Build and package a map
 
 ```python
 from fivefury import Ymap, create_rpf
 
 ymap = Ymap(name="example_map")
-ymap.entity("prop_tree_pine_01", position=(100, 200, 0), lod_dist=150.0)
-ymap.car_gen("sultan", (110, 205, 0), heading=90)
+ymap.entity(
+    "prop_tree_pine_01",
+    position=(100.0, 200.0, 0.0),
+    lod_dist=150.0,
+)
+ymap.physics_dictionary("example_map")
+ymap.car_gen("sultan", (110.0, 205.0, 0.0), heading=90.0)
 ymap.save("example_map.ymap", auto_extents=True)
 
-archive = create_rpf("mods.rpf")
+archive = create_rpf("example_pack.rpf")
 archive.add("stream/example_map.ymap", ymap)
-archive.save("mods.rpf")
+archive.save("example_pack.rpf")
 ```
 
-### Build a drawable
+Factories such as `entity(...)` and `car_gen(...)` append the new object to the owning `Ymap`. Prebuilt objects can instead be inserted with `ymap.add(item)` or directly through the corresponding typed collection.
+
+### Build a drawable from memory
 
 ```python
-from fivefury import YdrMeshInput, create_ydr
+from fivefury import YdrMeshInput, YdrShader, create_ydr
 
 ydr = create_ydr(
+    name="example_drawable",
+    shader=YdrShader.DEFAULT,
     meshes=[
         YdrMeshInput(
-            positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+            positions=[
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+            ],
             indices=[0, 1, 2],
             texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
         )
     ],
     material_textures={"DiffuseSampler": "example_diffuse"},
-    name="example_drawable",
 )
 ydr.save("example_drawable.ydr")
 ```
 
-Existing drawables can be read with `read_ydr(...)`, then edited through `update_material(...)`, `add_embedded_texture(...)`, `set_bound(...)`, skeleton and skinning helpers, and saved back. `assimp_to_ydr(...)` imports any mesh format Assimp can read.
+`read_ydr(...)` returns an editable asset with material, texture, bound, light, skeleton, and skinning helpers. Render geometry can also be converted into an embedded collision bound with `ydr.ensure_bound_from_render_geometry()`.
 
 ### Generate collision
 
 ```python
-from fivefury import BoundMaterial, BoundMaterialType, build_bound_from_triangles, save_ybn
+from fivefury import (
+    BoundMaterial,
+    BoundMaterialType,
+    build_bound_from_triangles,
+    save_ybn,
+)
 
 triangles = [
     ((0.0, 0.0, 0.0), (4.0, 0.0, 0.0), (0.0, 4.0, 0.0)),
@@ -102,100 +132,52 @@ bound = build_bound_from_triangles(
 save_ybn(bound, "floor_collision.ybn")
 ```
 
-Generated geometry is chunked as needed and gets BVH and octant data. The same bounds model backs standalone `YBN` files, embedded `YDR` collisions, and `YFT` physics — a drawable's render mesh can also be converted directly with `ydr.ensure_bound_from_render_geometry()`.
+The builder chunks oversized geometry, builds BVHs and octants, and validates packed limits before serialization. The same bounds model is shared by standalone `YBN`, embedded `YDR` collision, MLO collision, and `YFT` physics.
 
-### Author water
-
-```python
-from fivefury import WaterData, WaterQuad, WaterWaveQuad
-
-water = WaterData()
-water.add(
-    WaterQuad.rectangle(
-        center=(100.0, 200.0, 12.5),
-        size=(80.0, 40.0),
-        alpha=26,
-        limited_depth=True,
-    )
-)
-water.add(
-    WaterWaveQuad.from_angle(
-        bounds=(60, 180, 140, 220),
-        amplitude=1.2,
-        degrees=90.0,
-    )
-)
-water.translate(x=500, y=-200, z=20.0).save("water.xml")
-```
-
-### Author a world height map
+### Build the runtime map cache from loose assets
 
 ```python
-from fivefury import HeightMap, HeightMapBounds
+from fivefury import build_gta5_cache_y_from_directory
 
-heightmap = HeightMap.empty(
-    columns=10,
-    rows=10,
-    bounds=HeightMapBounds(0.0, 0.0, 0.0, 500.0, 500.0, 800.0),
-)
-heightmap.set_height(4, 6, minimum=32.0, maximum=78.0)
-heightmap.set_water(4, 6)
-heightmap.save("heightmap.dat")
+cache = build_gta5_cache_y_from_directory("build/stream")
+cache.save("build/gta5_cache_y.dat")
 ```
 
-### Convert audio to AWC
-
-```python
-from fivefury import convert_audio_to_awc
-
-convert_audio_to_awc("music/song.flac", "stream/song.awc", channels=2)
-```
-
-### Work with RPF archives
-
-```python
-from fivefury import RpfArchive, RpfExportMode, rpf_to_zip, zip_to_rpf
-
-zip_to_rpf("unpacked_mod_folder", "packed_mod.rpf")
-rpf_to_zip("packed_mod.rpf", "packed_mod.zip", mode=RpfExportMode.STANDALONE)
-
-with RpfArchive.from_path("packed_mod.rpf") as archive:
-    archive.to_folder("out", mode=RpfExportMode.STANDALONE)
-```
-
-Encrypted standalone archives open directly; FiveFury initializes the bundled crypto context automatically. Export modes: `STORED` (raw bytes), `STANDALONE` (valid standalone files with `RSC7` containers), `LOGICAL` (inner payloads).
+The builder reads loose `YMAP`, `YTYP`, and `YBN` files, derives map and interior records, validates the result, and writes the binary cache atomically.
 
 ### Index a game installation
 
 ```python
 from fivefury import GameFileCache
 
-cache = GameFileCache(r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V")
+cache = GameFileCache("path/to/Grand Theft Auto V")
 cache.scan_game(use_index_cache=True)
 
 asset = cache.get_asset("prop_tree_pine_01", kind=".ydr")
-cache.extract_asset(asset, "prop_tree_pine_01.ydr")
-cache.extract_asset_textures("prop_tree_pine_01.ydr", "textures")
+cache.extract_asset(asset, "out/prop_tree_pine_01.ydr")
+cache.extract_asset_textures(asset, "out/textures")
 ```
 
-`GameFileCache` indexes loose files and archives, loads supported formats lazily, exposes typed lookups by name/hash/kind, resolves textures through `YTD`, `GTXD` parent chains, and embedded dictionaries, and can generate `YMF` manifests for custom maps. Scan scope is configurable (`dlc_level`, `exclude_folders`, `load_audio`, `load_vehicles`, `load_peds`).
-
-### Author DLC metadata
-
-```python
-from fivefury import write_dlc_folder_metadata
-
-write_dlc_folder_metadata("build/my_pack", pack_name="my_pack", order=60)
-```
-
-Scans the extracted DLC folder, infers common entries (nested `.rpf`, `.ityp` requests, audio data, text metadata), and writes `setup2.xml` and `content.xml`. `DlcPatch` builds `update.rpf` title-update overlays.
+`GameFileCache` scans loose files and nested archives, performs lazy typed loading, resolves names and hashes, follows `YTD`/`GTXD` texture relationships, and supplies the dependency context used by map-manifest tooling.
 
 ## API conventions
 
-High-level objects follow a consistent shape: `add_*` for collections, `set_*` for single assignments, `build()` to normalize derived state, and `validate()` to collect consistency issues before writing. Formats with stable game-side names expose typed enums (shaders, LODs, render masks, archetype asset types, bound materials, track formats).
+FiveFury keeps the authoring layer close to the data model:
+
+- Typed collections accept ordinary `append(...)` operations and most aggregate models also expose a generic `add(item)` dispatcher.
+- Semantic factories such as `entity(...)`, `car_gen(...)`, or `rectangle(...)` construct valid domain objects without stringly typed dictionaries.
+- `build()` derives normalized state, `validate()` reports structural issues, and `save()` performs binary serialization.
+- Stable game-side values use enums for targets, shaders, LODs, flags, render masks, materials, and track formats.
+- Core writers use atomic replacement and reject known invalid references, ownership, pointers, or packed ranges before replacing the destination.
+
+## Scope and guarantees
+
+FiveFury aims for runtime-compatible binary output, but GTA V formats contain edition-specific and asset-specific structures. Passing validation proves the modeled binary invariants; it is not a substitute for testing newly authored content in the target game.
+
+`YFT`, `REL`, `YED`, and `YMT` expose substantial read/write functionality, but not every runtime subtype is modeled semantically. Unknown metadata is preserved where the container supports lossless rewriting instead of being guessed. PS3 `CDR` and RPF support is currently focused on reading and extraction, while PC RPF7 supports authoring.
 
 ## License
 
-FiveFury is released under The Unlicense. See [LICENSE](LICENSE).
+FiveFury is released under [The Unlicense](LICENSE).
 
-Release notes live in [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md) for release history and compatibility notes.
