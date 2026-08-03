@@ -182,7 +182,8 @@ def _generated_ynv() -> Ynv:
                     area_id=area_id,
                     poly_id=0,
                     adjacency_type=YnvAdjacencyType.CLIMB_HIGH,
-                )
+                ),
+                poly2=YnvEdgePart(area_id=area_id, poly_id=0),
             ),
             YnvEdge(),
             YnvEdge(),
@@ -306,6 +307,32 @@ def test_edge_secondary_word_exposes_named_flags() -> None:
 
     assert edge.flags == (YnvEdgeFlags.HIGH_DROP_OVER_EDGE | YnvEdgeFlags.EXTERNAL_EDGE)
     assert (edge.poly2.to_value({0x3FFF: 0}) >> 20) == 0xC
+
+
+def test_edge_neighbor_updates_both_persistent_references() -> None:
+    edge = YnvEdge()
+
+    edge.set_neighbor(42, 17, adjacency_type=YnvAdjacencyType.CLIMB_LOW)
+
+    assert (edge.poly1.area_id, edge.poly1.poly_id) == (42, 17)
+    assert (edge.poly2.area_id, edge.poly2.poly_id) == (42, 17)
+    assert edge.poly1.adjacency_type is YnvAdjacencyType.CLIMB_LOW
+    assert edge.references_match
+    assert not edge.is_boundary
+
+    edge.clear_neighbor()
+    assert edge.references_match
+    assert edge.is_boundary
+
+
+def test_validation_rejects_disagreeing_persistent_edge_references() -> None:
+    ynv = _generated_ynv()
+    ynv.edges[0].poly2.poly_id = 1
+
+    assert any(
+        "adjacent/original polygon references disagree" in issue
+        for issue in ynv.validate()
+    )
 
 
 def test_reference_point_and_portal_types_are_typed() -> None:

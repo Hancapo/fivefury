@@ -265,8 +265,59 @@ class YnvEdgePart:
 
 @dataclasses.dataclass(slots=True)
 class YnvEdge:
+    """A persistent navmesh adjacency record.
+
+    ``poly1`` is the current adjacent polygon reference and ``poly2`` is the
+    original adjacent polygon reference retained for runtime tessellation.
+    The owning polygon is implicit in its ``index_id``/``index_count`` span;
+    it is not stored in either edge word.  Authored files must initialize both
+    references to the same neighbour (or clear both for a boundary).
+    """
+
     poly1: YnvEdgePart = dataclasses.field(default_factory=YnvEdgePart)
     poly2: YnvEdgePart = dataclasses.field(default_factory=YnvEdgePart)
+
+    @property
+    def references_match(self) -> bool:
+        return (
+            int(self.poly1.area_id) == int(self.poly2.area_id)
+            and int(self.poly1.poly_id) == int(self.poly2.poly_id)
+        )
+
+    @property
+    def is_boundary(self) -> bool:
+        return (
+            int(self.poly1.area_id) == 0x3FFF
+            and int(self.poly1.poly_id) == 0x7FFF
+            and int(self.poly2.area_id) == 0x3FFF
+            and int(self.poly2.poly_id) == 0x7FFF
+        )
+
+    def set_neighbor(
+        self,
+        area_id: int,
+        poly_id: int,
+        *,
+        adjacency_type: YnvAdjacencyType | int = YnvAdjacencyType.NORMAL,
+    ) -> None:
+        """Set both persistent copies of an adjacent polygon reference."""
+
+        adjacency = YnvAdjacencyType(int(adjacency_type))
+        self.poly1.area_id = int(area_id)
+        self.poly1.poly_id = int(poly_id)
+        self.poly1.adjacency_type = adjacency
+        self.poly2.area_id = int(area_id)
+        self.poly2.poly_id = int(poly_id)
+
+    def clear_neighbor(self) -> None:
+        """Turn this record into a boundary while preserving behavior bits."""
+
+        self.poly1.area_id = 0x3FFF
+        self.poly1.poly_id = 0x7FFF
+        self.poly1.adjacency_type = YnvAdjacencyType.NORMAL
+        self.poly1.detail_flags = 0
+        self.poly2.area_id = 0x3FFF
+        self.poly2.poly_id = 0x7FFF
 
     @property
     def flags(self) -> YnvEdgeFlags:
@@ -750,6 +801,12 @@ class Ynv:
                     "16-bit YNV field"
                 )
         for index, edge in enumerate(self.edges):
+            if not edge.references_match:
+                errors.append(
+                    f"edges[{index}] adjacent/original polygon references disagree: "
+                    f"({edge.poly1.area_id}, {edge.poly1.poly_id}) != "
+                    f"({edge.poly2.area_id}, {edge.poly2.poly_id})"
+                )
             for label, part in (("poly1", edge.poly1), ("poly2", edge.poly2)):
                 if not 0 <= int(part.poly_id) <= 0x7FFF:
                     errors.append(

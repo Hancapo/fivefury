@@ -166,9 +166,14 @@ def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
     assert all(
         any(
             edge.flags & YnvEdgeFlags.EXTERNAL_EDGE
+            and edge.poly1.area_id != ynv.area_id
             and edge.poly2.area_id != ynv.area_id
             for edge in ynv.edges
         )
+        for ynv in rebuilt
+    )
+    assert all(
+        all(edge.references_match for edge in ynv.edges)
         for ynv in rebuilt
     )
 
