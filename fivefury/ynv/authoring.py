@@ -13,7 +13,6 @@ from .model import (
     YnvContentFlags,
     YnvEdge,
     YnvEdgeFlags,
-    YnvEdgePart,
     YnvPoly,
     YnvPolyFlags0,
     YnvPolyFlags1,
@@ -385,23 +384,15 @@ def _build_cell(
                 ),
                 None,
             )
-            poly2 = YnvEdgePart()
+            edge = YnvEdge()
             if neighbour is not None:
                 neighbour_polygon, _ = neighbour
-                poly2 = YnvEdgePart(
+                edge.set_neighbor(
                     area_id=neighbour_polygon.area_id,
                     poly_id=neighbour_polygon.local_index,
                     adjacency_type=YnvAdjacencyType.NORMAL,
                 )
                 has_cross_area_edge |= neighbour_polygon.area_id != area_id
-            edge = YnvEdge(
-                poly1=YnvEdgePart(
-                    area_id=area_id,
-                    poly_id=polygon.local_index,
-                    adjacency_type=YnvAdjacencyType.NORMAL,
-                ),
-                poly2=poly2,
-            )
             if neighbour is not None and neighbour[0].area_id != area_id:
                 edge.flags |= YnvEdgeFlags.EXTERNAL_EDGE
             edges.append(edge)
