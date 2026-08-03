@@ -933,6 +933,44 @@ def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     assert ydr.get_model(0).get_material(0) is ydr.materials[0]
 
 
+def test_writer_derives_root_lod_bucket_mask_from_used_materials(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[
+                        _offset_triangle_mesh(0.0, material="opaque"),
+                        _offset_triangle_mesh(2.0, material="decal"),
+                    ],
+                    render_mask=0xFF,
+                    flags=0,
+                )
+            ]
+        },
+        materials=[
+            YdrMaterialInput(
+                name="opaque",
+                shader="default.sps",
+                textures={"DiffuseSampler": "opaque_diffuse"},
+            ),
+            YdrMaterialInput(
+                name="decal",
+                shader="decal.sps",
+                textures={"DiffuseSampler": "decal_diffuse"},
+            ),
+        ],
+        name="automatic_root_bucket_mask",
+    )
+
+    ydr_path = tmp_path / "automatic_root_bucket_mask.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    # High byte: model sub-buckets. Low byte: opaque (bit 0) and decal
+    # (bit 2). Per-model flags live in grmModel and are not this summary.
+    assert ydr.render_mask_flags[YdrLod.HIGH] == 0xFF05
+
+
 def test_build_and_read_multi_lod_ydr(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={

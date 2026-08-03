@@ -286,7 +286,15 @@ def _write_drawable_payload(
         radius=radius,
         lod_distances={lod_name: float(source.lod_distances.get(lod_name, 9998.0)) for lod_name in LOD_ORDER},
         render_mask_flags={
-            lod_name: int(source.render_mask_flags.get(lod_name, default_root_render_mask_flags(prepared_lods.get(lod_name, ()))))
+            lod_name: int(
+                source.render_mask_flags.get(
+                    lod_name,
+                    default_root_render_mask_flags(
+                        prepared_lods.get(lod_name, ()),
+                        prepared_materials,
+                    ),
+                )
+            )
             for lod_name in LOD_ORDER
         },
         unknown_98=source.unknown_98,

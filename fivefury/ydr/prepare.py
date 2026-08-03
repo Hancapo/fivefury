@@ -819,13 +819,23 @@ def normalize_lods(source: YdrBuild) -> dict[YdrLod, list[YdrModelInput]]:
     return normalized
 
 
-def default_root_render_mask_flags(models: Sequence[PreparedModel]) -> int:
+def default_root_render_mask_flags(
+    models: Sequence[PreparedModel],
+    materials: Sequence[PreparedMaterial] = (),
+) -> int:
     render_mask = 0
-    flags = 0
+    base_bucket_mask = 0
+    material_buckets = {int(material.index): int(material.render_bucket) for material in materials}
     for model in models:
         render_mask |= int(model.render_mask) & 0xFF
-        flags |= int(model.flags) & 0xFF
-    return ((render_mask & 0xFF) << 8) | (flags & 0xFF)
+        for mesh in model.meshes:
+            render_bucket = material_buckets.get(int(mesh.material_index))
+            if render_bucket is None:
+                continue
+            if not 0 <= render_bucket < 8:
+                raise ValueError(f"YDR render bucket must be between 0 and 7, got {render_bucket}")
+            base_bucket_mask |= 1 << render_bucket
+    return ((render_mask & 0xFF) << 8) | (base_bucket_mask & 0xFF)
 
 
 def drawable_name(source_name: str) -> str:

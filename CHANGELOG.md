@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Newly built YDR/YFT drawable LOD headers now derive their base render-bucket mask from the materials actually used by each LOD instead of incorrectly copying per-model flags. Mixed opaque/decal map assets emit GTA V-compatible masks such as `0xFF05` rather than a zero base-bucket mask.
+
 ## [0.3.1] - 2026-08-02
 
 ### Added
