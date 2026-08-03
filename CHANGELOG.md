@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Box occluders now encode their runtime X/Y extents and cosine/sine fields in GTA V's native layout instead of CodeWalker's display convention.
+
 ## [0.3.1] - 2026-08-02
 
 ### Added
