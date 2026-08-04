@@ -233,10 +233,29 @@ def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], 
             _issue(issues, "error", "camera_cut.name.missing", "CAMERA_CUT has no cName")
         near_clip = float(event.payload.get("fNearDrawDistance") or 0.0)
         far_clip = float(event.payload.get("fFarDrawDistance") or 0.0)
-        if near_clip < 0.0 or far_clip < 0.0:
-            _issue(issues, "error", "camera_cut.clip.negative", f"CAMERA_CUT '{name or event.start}' has negative near/far draw distance")
-        elif far_clip and near_clip and far_clip <= near_clip:
-            _issue(issues, "error", "camera_cut.clip.order", f"CAMERA_CUT '{name or event.start}' far clip must be greater than near clip")
+        invalid_negative = any(
+            value < 0.0 and value != -1.0 for value in (near_clip, far_clip)
+        )
+        if invalid_negative:
+            _issue(
+                issues,
+                "error",
+                "camera_cut.clip.invalid",
+                f"CAMERA_CUT '{name or event.start}' near/far draw distance "
+                "must be non-negative or -1",
+            )
+        elif (
+            far_clip > 0.0
+            and near_clip > 0.0
+            and far_clip <= near_clip
+        ):
+            _issue(
+                issues,
+                "error",
+                "camera_cut.clip.order",
+                f"CAMERA_CUT '{name or event.start}' far clip must be greater "
+                "than near clip",
+            )
         elif strict and far_clip == 0.0:
             _issue(
                 issues,
@@ -247,6 +266,37 @@ def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], 
             )
         if far_clip > 100000.0:
             _issue(issues, "warning", "camera_cut.far_clip.huge", f"CAMERA_CUT '{name or event.start}' has a very large far clip")
+        used_hours = 0
+        modifiers = event.payload.get("TimeOfDayDofModifers") or []
+        for index, modifier in enumerate(modifiers):
+            fields = modifier.fields if hasattr(modifier, "fields") else modifier
+            hour_flags = int(fields.get("TimeOfDayFlags", 0))
+            strength = int(fields.get("DofStrengthModifier", 0))
+            if hour_flags < 0 or hour_flags > 0xFFFFFF:
+                _issue(
+                    issues,
+                    "error",
+                    "camera_cut.dof.hours",
+                    f"CAMERA_CUT '{name or event.start}' DOF modifier {index} "
+                    "has invalid hour flags",
+                )
+            if used_hours & hour_flags:
+                _issue(
+                    issues,
+                    "error",
+                    "camera_cut.dof.overlap",
+                    f"CAMERA_CUT '{name or event.start}' has overlapping DOF "
+                    "modifier hours",
+                )
+            if strength < -15 or strength > 15:
+                _issue(
+                    issues,
+                    "error",
+                    "camera_cut.dof.strength",
+                    f"CAMERA_CUT '{name or event.start}' DOF modifier {index} "
+                    "strength is outside -15..15",
+                )
+            used_hours |= hour_flags
 
 
 def _validate_animations(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:

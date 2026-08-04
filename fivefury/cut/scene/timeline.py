@@ -90,6 +90,7 @@ class CutTimelineEvent:
         payload: CutEventPayload | dict[str, Any] | None = None,
         event_payload: dict[str, Any] | None = None,
         is_load_event: bool | None = None,
+        args_type: str | None = None,
     ) -> "CutTimelineEvent":
         spec = get_cut_event_spec(event)
         event_id = get_cut_event_id(event)
@@ -126,7 +127,7 @@ class CutTimelineEvent:
             target_id=target_id,
             target_name=target_name,
             target_role=target_role,
-            args_type=spec.args_type_name if spec is not None else None,
+            args_type=args_type or (spec.args_type_name if spec is not None else None),
             payload=payload_fields,
             event_payload=dict(event_payload or {}),
             is_load_event=bool(spec.is_load_event if is_load_event is None and spec is not None else is_load_event),
@@ -156,11 +157,17 @@ class CutTimelineEvent:
             for key, value in self.event_payload.items():
                 event.fields[key] = _clone_value(value)
             args = None
-            if spec is not None and spec.args_type_name is not None:
-                args_fields = {key: _clone_value(value) for key, value in spec.default_args.items()}
-                label_field = _event_label_field(spec.args_type_name)
+            args_type_name = self.args_type or (
+                spec.args_type_name if spec is not None else None
+            )
+            if args_type_name is not None:
+                args_fields = {
+                    key: _clone_value(value)
+                    for key, value in (spec.default_args.items() if spec is not None else ())
+                }
+                label_field = _event_label_field(args_type_name)
                 if self.label is not None and label_field is not None and label_field not in self.payload:
-                    args_fields[label_field] = _coerce_event_label_value(spec.args_type_name, label_field, self.label)
+                    args_fields[label_field] = _coerce_event_label_value(args_type_name, label_field, self.label)
                 if self.duration is not None:
                     if "fSubtitleDuration" in args_fields:
                         args_fields["fSubtitleDuration"] = float(self.duration)
@@ -170,10 +177,14 @@ class CutTimelineEvent:
                         args_fields["interpTimeTag"] = float(self.duration)
                 for key, value in self.payload.items():
                     if key == label_field and isinstance(value, str):
-                        args_fields[key] = _coerce_event_label_value(spec.args_type_name, key, value)
+                        args_fields[key] = _coerce_event_label_value(args_type_name, key, value)
                     else:
                         args_fields[key] = _clone_value(value)
-                args = CutNode(type_name=spec.args_type_name, type_hash=_node_type_hash(spec.args_type_name), fields=args_fields)
+                args = CutNode(
+                    type_name=args_type_name,
+                    type_hash=_node_type_hash(args_type_name),
+                    fields=args_fields,
+                )
             return CutResolvedEvent(event=event, object=None, event_args=args, is_load_event=self.is_load_event)
 
         event = _clone_value(self.raw.event)

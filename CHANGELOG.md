@@ -7,10 +7,23 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+- `set_draw_distance` now requires near and far distances.
+- `set_attachment` now identifies the child, parent, and attachment bone.
+- CutScript `DRAW_DISTANCE` and `ATTACH` use the corresponding explicit forms.
+
+### Added
+- Named animation clip events.
+- Complete camera render overrides, character lighting, and time-of-day DOF modifiers.
+
+### Changed
+- CUT events now use the runtime event ordering without modifying authored times.
+
 ### Fixed
 - CUT files loaded from RPF archives now decode through `GameFileCache`.
 - CUT rewriting now preserves dynamic fields and vehicle bone-name lists.
 - CUT saves now replace destination files atomically.
+- Draw-distance and attachment events now use their proper argument layouts.
 
 ## [0.3.2] - 2026-08-03
 

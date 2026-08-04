@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..model import CutFile, CutHashedString, CutNode
+from ..events import get_cut_event_sort_rank
 from ..flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS, pack_cutscene_flags, unpack_cutscene_flags
+from ..model import CutFile, CutHashedString, CutNode
 from ..pso import read_cut
 from ..xml import read_cutxml
 from .base import CutScene
@@ -31,7 +32,9 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
         track.events.append(timeline_event)
     tracks = list(tracks_by_key.values())
     for track in tracks:
-        track.events.sort(key=lambda item: (item.start, item.event_id or -1))
+        track.events.sort(
+            key=lambda item: (item.start, get_cut_event_sort_rank(item.event_id))
+        )
     root = cut.root.fields
     return CutScene(
         scene_name=None,
@@ -148,70 +151,12 @@ def _timeline_camera_cut_list(scene: CutScene) -> list[float]:
     return result
 
 
-def _load_event_sort_key(event: CutNode) -> tuple[float, int, int]:
+def _event_sort_key(event: CutNode) -> tuple[float, int]:
     event_id = int(event.fields.get("iEventId", -1))
-    # Keep loads in the same dependency order used by retail cutscene tables:
-    # scene first, streamed models before the animation dictionaries that bind them.
-    priority = {
-        0: 0,   # load_scene
-        6: 10,  # load_models
-        2: 20,  # load_anim_dict
-        8: 20,  # load_particle_effects
-        10: 20, # load_overlays
-        4: 30,  # load_audio
-        12: 40, # load_subtitles
-        7: 90,  # unload_models
-        9: 90,  # unload_particle_effects
-        11: 90, # unload_overlays
-        3: 91,  # unload_anim_dict
-        5: 92,  # unload_audio
-        13: 93, # unload_subtitles
-    }.get(event_id, 50)
-    return (float(event.fields.get("fTime", 0.0) or 0.0), priority, event_id)
-
-
-def _normalize_initial_set_anim_events(events: list[CutNode]) -> None:
-    if not events:
-        return
-    first_camera_time = min(
-        (
-            float(event.fields.get("fTime", 0.0) or 0.0)
-            for event in events
-            if int(event.fields.get("iEventId", -1)) == 43
-        ),
-        default=None,
+    return (
+        float(event.fields.get("fTime", 0.0) or 0.0),
+        get_cut_event_sort_rank(event_id),
     )
-    if first_camera_time is None or abs(first_camera_time) > (1.0 / _CUTSCENE_FPS):
-        return
-    first_frame = 1.0 / _CUTSCENE_FPS
-    for event in events:
-        if int(event.fields.get("iEventId", -1)) != 22:
-            continue
-        event_time = float(event.fields.get("fTime", 0.0) or 0.0)
-        if 0.0 <= event_time <= first_frame:
-            event.fields["fTime"] = first_frame
-
-
-def _event_sort_key(event: CutNode) -> tuple[float, int, int]:
-    event_id = int(event.fields.get("iEventId", -1))
-    # Runtime cuts need an active camera before animation binding starts.
-    # Starting every set_anim on the same tick as the first camera cut can
-    # make streamed prop-heavy cuts fail to start in-game.
-    priority = {
-        43: 0,  # camera_cut
-        22: 5,  # set_anim
-        28: 5,  # play_audio
-        34: 10, # set_variation
-        18: 15, # add_blocking_bounds
-        14: 16, # hide_objects
-        48: 25, # enable_dof
-        74: 30, # set_light
-        30: 40, # show_subtitle
-        23: 80, # clear_anim
-        29: 85, # stop_audio
-        75: 90, # clear_light
-    }.get(event_id, 50)
-    return (float(event.fields.get("fTime", 0.0) or 0.0), priority, event_id)
 
 
 def _scene_offset(scene: CutScene) -> tuple[float, float, float]:
@@ -422,8 +367,7 @@ def scene_to_cut(scene: CutScene) -> CutFile:
             load_events.append(event)
         else:
             events.append(event)
-    _normalize_initial_set_anim_events(events)
-    root.fields["pCutsceneLoadEventList"] = sorted(load_events, key=_load_event_sort_key)
+    root.fields["pCutsceneLoadEventList"] = sorted(load_events, key=_event_sort_key)
     root.fields["pCutsceneEventList"] = sorted(events, key=_event_sort_key)
     if any(item is None for item in event_args):
         remap: dict[int, int] = {}

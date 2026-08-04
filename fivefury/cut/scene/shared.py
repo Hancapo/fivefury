@@ -39,6 +39,8 @@ _ARGS_CATEGORY_MAP = {
     "rage__cutfObjectIdEventArgs": "object_ref",
     "rage__cutfObjectVariationEventArgs": "object_variation",
     "rage__cutfObjectIdNameEventArgs": "object_named",
+    "rage__cutfAttachmentEventArgs": "object_attachment",
+    "rage__cutfTwoFloatValuesEventArgs": "float_pair",
     "rage__cutfNameEventArgs": "named",
     "rage__cutfFinalNameEventArgs": "named",
     "rage__cutfCascadeShadowEventArgs": "camera_fx",
@@ -118,7 +120,12 @@ def _event_label_field(args_type_name: str) -> str | None:
         return "cName"
     if args_type_name == "rage__cutfCascadeShadowEventArgs":
         return "cameraCutHashTag"
-    if args_type_name in {"rage__cutfSubtitleEventArgs", "rage__cutfNameEventArgs", "rage__cutfFinalNameEventArgs"}:
+    if args_type_name in {
+        "rage__cutfSubtitleEventArgs",
+        "rage__cutfNameEventArgs",
+        "rage__cutfFinalNameEventArgs",
+        "rage__cutfObjectIdNameEventArgs",
+    }:
         return "cName"
     return None
 
@@ -202,6 +209,11 @@ def _event_category(resolved: CutResolvedEvent) -> str:
                 return "animation_binding"
             if object_role == "camera":
                 return "camera_binding"
+        if (
+            resolved.event_args.type_name == "rage__cutfObjectIdNameEventArgs"
+            and object_role == "animation_manager"
+        ):
+            return "animation_binding"
         if resolved.event_args.type_name == "rage__cutfObjectIdListEventArgs" and object_role == "asset_manager":
             return "asset_group"
         category = _ARGS_CATEGORY_MAP.get(resolved.event_args.type_name)

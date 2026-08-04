@@ -14,6 +14,7 @@ from .lights import CutLightFlag, CutLightProperty, CutLightType
 from .model import CutFile, CutHashedString, CutNode
 from .payloads import (
     CutCameraCutPayload,
+    CutDrawDistancePayload,
     CutLoadScenePayload,
     CutScreenFadePayload,
     CutSubtitlePayload,
@@ -976,25 +977,43 @@ class _CutScriptParser:
                 )
 
     def _draw_distance(self, time: float, args: list[str], line_no: int) -> None:
-        _expect_count(args, line_no, 2, "DRAW_DISTANCE camera value")
+        _expect_count(args, line_no, 3, "DRAW_DISTANCE camera near far")
         camera = self._binding(args[0], line_no)
         if camera.role != "camera":
             raise CutScriptError(line_no, f"{args[0]!r} is not a CAMERA asset")
         self._require_scene(line_no).set_draw_distance(
-            time, camera, _float(args[1], line_no, "draw distance")
+            time,
+            camera,
+            CutDrawDistancePayload(
+                _float(args[1], line_no, "near draw distance"),
+                _float(args[2], line_no, "far draw distance"),
+            ),
         )
 
     def _play_anim(
         self, time: float, args: list[str], line_no: int, *, stop: bool
     ) -> None:
-        _expect_count(args, line_no, 1, "PLAY object")
+        command = "STOP" if stop else "PLAY"
+        if len(args) not in {1, 3}:
+            raise CutScriptError(
+                line_no,
+                f"{command} expects: {command} object [CLIP clip_name]",
+            )
         binding = self._binding(args[0], line_no)
+        clip_name = None
+        if len(args) == 3:
+            if args[1].upper() != "CLIP":
+                raise CutScriptError(
+                    line_no,
+                    f"{command} expects: {command} object [CLIP clip_name]",
+                )
+            clip_name = args[2]
         manager = self._animation_manager(line_no)
         scene = self._require_scene(line_no)
         if stop:
-            scene.clear_anim(time, binding, target=manager)
+            scene.clear_anim(time, binding, clip_name=clip_name, target=manager)
         else:
-            scene.set_anim(time, binding, target=manager)
+            scene.set_anim(time, binding, clip_name=clip_name, target=manager)
 
     def _visibility(
         self, time: float, args: list[str], line_no: int, *, show: bool
@@ -1113,13 +1132,14 @@ class _CutScriptParser:
             scene.stop_audio(time, audio, args[0])
 
     def _attachment(self, time: float, args: list[str], line_no: int) -> None:
-        _expect_count(args, line_no, 3, "ATTACH object TO attachment_name")
-        binding = self._binding(args[0], line_no)
-        if args[1].upper() != "TO":
+        _expect_count(args, line_no, 5, "ATTACH child TO parent BONE bone_name")
+        child = self._binding(args[0], line_no)
+        if args[1].upper() != "TO" or args[3].upper() != "BONE":
             raise CutScriptError(
-                line_no, "ATTACH expects: ATTACH object TO attachment_name"
+                line_no, "ATTACH expects: ATTACH child TO parent BONE bone_name"
             )
-        self._require_scene(line_no).set_attachment(time, binding, args[2])
+        parent = self._binding(args[2], line_no)
+        self._require_scene(line_no).set_attachment(time, child, parent, args[4])
 
     def _fade(
         self, time: float, args: list[str], line_no: int, *, fade_in: bool
@@ -1450,7 +1470,13 @@ def _write_track_event(
         alias = _event_object_alias(event, aliases)
         if alias:
             command = "STOP" if name == "clear_anim" else "PLAY"
-            lines.append(f"  {time} {command} {alias}")
+            clip_name = payload.get("cName")
+            clip_suffix = (
+                f" CLIP {_token(clip_name, resolver=resolver)}"
+                if clip_name
+                else ""
+            )
+            lines.append(f"  {time} {command} {alias}{clip_suffix}")
     elif name in {"show_objects", "hide_objects"}:
         alias = _event_object_alias(event, aliases)
         if alias:
@@ -1458,10 +1484,21 @@ def _write_track_event(
                 f"  {time} {'SHOW' if name == 'show_objects' else 'HIDE'} {alias}"
             )
     elif name == "set_attachment":
-        alias = _event_object_alias(event, aliases)
-        if alias:
+        child = (
+            aliases.get(int(event.target_id), f"object_{event.target_id}")
+            if event.target_id is not None
+            else None
+        )
+        parent_id = payload.get("iObjectId")
+        parent = (
+            aliases.get(int(parent_id), f"object_{parent_id}")
+            if parent_id is not None
+            else None
+        )
+        if child and parent:
+            bone_name = _token(payload.get("cBoneName"), resolver=resolver)
             lines.append(
-                f"  {time} ATTACH {alias} TO {_token(payload.get('cName') or event.label, resolver=resolver)}"
+                f"  {time} ATTACH {child} TO {parent} BONE {bone_name}"
             )
     elif name == "set_draw_distance":
         camera = (
@@ -1469,9 +1506,9 @@ def _write_track_event(
             if event.target_id is not None
             else "camera"
         )
-        lines.append(
-            f"  {time} DRAW_DISTANCE {camera} {_number(payload.get('fValue', 0.0))}"
-        )
+        near_distance = _number(payload.get("fValue", -1.0))
+        far_distance = _number(payload.get("fValue2", -1.0))
+        lines.append(f"  {time} DRAW_DISTANCE {camera} {near_distance} {far_distance}")
     elif name == "camera_cut":
         camera = (
             aliases.get(int(event.target_id), f"camera_{event.target_id}")

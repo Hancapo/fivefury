@@ -147,6 +147,7 @@ from .cdr import (
     split_ps3_rsc7_sections,
 )
 from .cut import (
+    CutAttachmentPayload,
     CutBinding,
     CutAssetManager,
     CutAnimationManager,
@@ -156,9 +157,12 @@ from .cut import (
     CutAudio,
     CutBlockingBounds,
     CutCamera,
+    CutCameraCharacterLightPayload,
+    CutCameraDofModifierPayload,
     CutCascadeShadowPayload,
     CutDecal,
     CutDecalPayload,
+    CutDrawDistancePayload,
     CutEventSpec,
     CutEventType,
     CutEventPayload,

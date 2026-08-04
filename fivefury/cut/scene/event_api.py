@@ -4,13 +4,14 @@ from typing import Iterable
 
 from ..events import CutEventType
 from ..payloads import (
+    CutAttachmentPayload,
     CutAnimationDictPayload,
     CutAnimationTargetPayload,
     CutCameraCutPayload,
     CutCascadeShadowPayload,
     CutDecalPayload,
+    CutDrawDistancePayload,
     CutFinalNamePayload,
-    CutFloatValuePayload,
     CutHashBoolPayload,
     CutHashFloatPayload,
     CutLoadScenePayload,
@@ -91,14 +92,48 @@ def unload_audio(self: CutScene, start: float, name: str | CutNamePayload, *, ta
     return self.create_event(CutEventType.UNLOAD_AUDIO, start=start, target=target, track="audio_cue", payload=payload)
 
 
-def set_anim(self: CutScene, start: float, animated: CutBinding | int, *, target: CutBinding | int | None = None) -> CutTimelineEvent:
-    object_id = animated.object_id if isinstance(animated, CutBinding) else int(animated)
-    return self.create_event(CutEventType.SET_ANIM, start=start, target=target, track="animation_binding", payload=CutAnimationTargetPayload(object_id))
+def set_anim(
+    self: CutScene,
+    start: float,
+    animated: CutBinding | int,
+    *,
+    clip_name: str | None = None,
+    target: CutBinding | int | None = None,
+) -> CutTimelineEvent:
+    object_id = (
+        animated.object_id if isinstance(animated, CutBinding) else int(animated)
+    )
+    args_type = "rage__cutfObjectIdNameEventArgs" if clip_name is not None else None
+    return self.create_event(
+        CutEventType.SET_ANIM,
+        start=start,
+        target=target,
+        track="animation_binding",
+        payload=CutAnimationTargetPayload(object_id, clip_name),
+        args_type=args_type,
+    )
 
 
-def clear_anim(self: CutScene, start: float, animated: CutBinding | int, *, target: CutBinding | int | None = None) -> CutTimelineEvent:
-    object_id = animated.object_id if isinstance(animated, CutBinding) else int(animated)
-    return self.create_event(CutEventType.CLEAR_ANIM, start=start, target=target, track="animation_binding", payload=CutAnimationTargetPayload(object_id))
+def clear_anim(
+    self: CutScene,
+    start: float,
+    animated: CutBinding | int,
+    *,
+    clip_name: str | None = None,
+    target: CutBinding | int | None = None,
+) -> CutTimelineEvent:
+    object_id = (
+        animated.object_id if isinstance(animated, CutBinding) else int(animated)
+    )
+    args_type = "rage__cutfObjectIdNameEventArgs" if clip_name is not None else None
+    return self.create_event(
+        CutEventType.CLEAR_ANIM,
+        start=start,
+        target=target,
+        track="animation_binding",
+        payload=CutAnimationTargetPayload(object_id, clip_name),
+        args_type=args_type,
+    )
 
 
 def play_animation(
@@ -107,12 +142,16 @@ def play_animation(
     animated: CutBinding | int,
     dict_name: str,
     *,
+    clip_name: str | None = None,
     end: float | None = None,
     target: CutBinding | int | None = None,
 ) -> list[CutTimelineEvent]:
-    events: list[CutTimelineEvent] = [self.load_anim_dict(start, dict_name, target=target), self.set_anim(start, animated, target=target)]
+    events: list[CutTimelineEvent] = [
+        self.load_anim_dict(start, dict_name, target=target),
+        self.set_anim(start, animated, clip_name=clip_name, target=target),
+    ]
     if end is not None:
-        events.append(self.clear_anim(end, animated, target=target))
+        events.append(self.clear_anim(end, animated, clip_name=clip_name, target=target))
         events.append(self.unload_anim_dict(end, dict_name, target=target))
     return events
 
@@ -129,8 +168,12 @@ def fade_in(self: CutScene, start: float, fade: CutBinding | int | None, payload
     return self.create_event(CutEventType.FADE_IN, start=start, target=fade, payload=payload)
 
 
-def set_draw_distance(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
-    payload = value if isinstance(value, CutFloatValuePayload) else CutFloatValuePayload(float(value))
+def set_draw_distance(
+    self: CutScene,
+    start: float,
+    camera: CutBinding | int | None,
+    payload: CutDrawDistancePayload,
+) -> CutTimelineEvent:
     return self.create_event(CutEventType.SET_DRAW_DISTANCE, start=start, target=camera, payload=payload)
 
 
@@ -152,9 +195,19 @@ def revert_fixup_objects(self: CutScene, start: float, objects: Iterable[CutBind
     return self.create_event(CutEventType.REVERT_FIXUP_OBJECTS, start=start, target=target, payload=CutObjectIdListPayload(_coerce_object_ids(objects)))
 
 
-def set_attachment(self: CutScene, start: float, target: CutBinding | int, name: str) -> CutTimelineEvent:
-    object_id = _coerce_object_id(target)
-    return self.create_event(CutEventType.SET_ATTACHMENT, start=start, target=target, payload=CutObjectNamePayload(object_id, str(name)))
+def set_attachment(
+    self: CutScene,
+    start: float,
+    child: CutBinding | int,
+    parent: CutBinding | int,
+    bone_name: str,
+) -> CutTimelineEvent:
+    return self.create_event(
+        CutEventType.SET_ATTACHMENT,
+        start=start,
+        target=child,
+        payload=CutAttachmentPayload(_coerce_object_id(parent), str(bone_name)),
+    )
 
 
 def add_blocking_bounds(self: CutScene, start: float, bounds: CutBinding | int) -> CutTimelineEvent:
