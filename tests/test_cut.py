@@ -12,7 +12,7 @@ from fivefury import (
     CutFile,
     CutFinalNamePayload,
     CutHashedString,
-    CutHashFloatPayload,
+    CutFloatValuePayload,
     CutLightFlag,
     CutLightProperty,
     CutLightType,
@@ -419,7 +419,7 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     )
     scene.cascade_shadows_set_dynamic_depth_value(0.5, camera, 0.75)
     scene.blendout_camera(1.0, camera)
-    scene.first_person_blendout_camera(2.0, camera, CutHashFloatPayload(1.0))
+    scene.first_person_blendout_camera(2.0, camera, CutFloatValuePayload(1.0))
 
     rebuilt = read_cut(
         build_cut_bytes(scene_to_cut(scene), template=read_cut(LAMAR_CUT_PATH))
@@ -438,19 +438,19 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     cascade_args = rebuilt.get_event_args(cascade_event.fields["iEventArgsIndex"])
     assert cascade_args is not None
     assert cascade_args.type_name == "rage__cutfCascadeShadowEventArgs"
-    assert cascade_args.fields["cameraCutHashTag"].hash == jenk_hash("cam_fx")
+    assert cascade_args.fields["cameraCutHashName"].hash == jenk_hash("cam_fx")
     assert cascade_args.fields["position"] == pytest.approx((1.0, 2.0, 3.0))
     assert cascade_args.fields["radius"] == pytest.approx(5.0)
-    assert cascade_args.fields["interpTimeTag"] == pytest.approx(0.25)
-    assert cascade_args.fields["cascadeIndexTag"] == 2
+    assert cascade_args.fields["interpTime"] == pytest.approx(0.25)
+    assert cascade_args.fields["cascadeIndex"] == 2
     assert cascade_args.fields["enabled"] is True
-    assert cascade_args.fields["interpolateToDisabledTag"] is False
+    assert cascade_args.fields["interpolateToDisabled"] is False
 
     depth_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 73)
     depth_args = rebuilt.get_event_args(depth_event.fields["iEventArgsIndex"])
     assert depth_args is not None
-    assert depth_args.type_name == "hash_5FF00EA5"
-    assert depth_args.fields["hash_0BD8B46C"] == pytest.approx(0.75)
+    assert depth_args.type_name == "rage__cutfFloatValueEventArgs"
+    assert depth_args.fields["fValue"] == pytest.approx(0.75)
 
 
 def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> None:

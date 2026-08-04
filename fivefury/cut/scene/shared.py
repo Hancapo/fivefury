@@ -16,14 +16,19 @@ _OBJECT_ROLE_MAP = {
     "rage__cutfPedModelObject": "ped",
     "rage__cutfPropModelObject": "prop",
     "rage__cutfVehicleModelObject": "vehicle",
+    "rage__cutfWeaponModelObject": "weapon",
     "rage__cutfHiddenModelObject": "hidden_object",
     "rage__cutfFixupModelObject": "fixup_object",
     "rage__cutfOverlayObject": "overlay",
     "rage__cutfDecalObject": "decal",
     "rage__cutfBlockingBoundsObject": "blocking_bounds",
+    "rage__cutfRemovalBoundsObject": "removal_bounds",
     "rage__cutfLightObject": "light",
     "rage__cutfAnimatedLightObject": "light",
     "rage__cutfParticleEffectObject": "particle_fx",
+    "rage__cutfAnimatedParticleEffectObject": "particle_fx",
+    "rage__cutfRayfireObject": "rayfire",
+    "rage__cutfEventObject": "event_object",
     "rage__cutfAudioObject": "audio",
     "rage__cutfSubtitleObject": "subtitle",
     "rage__cutfScreenFadeObject": "fade",
@@ -38,14 +43,16 @@ _ARGS_CATEGORY_MAP = {
     "rage__cutfObjectIdListEventArgs": "object_group",
     "rage__cutfObjectIdEventArgs": "object_ref",
     "rage__cutfObjectVariationEventArgs": "object_variation",
+    "rage__cutfVehicleVariationEventArgs": "vehicle_variation",
+    "rage__cutfVehicleExtraEventArgs": "vehicle_extras",
     "rage__cutfObjectIdNameEventArgs": "object_named",
     "rage__cutfAttachmentEventArgs": "object_attachment",
     "rage__cutfTwoFloatValuesEventArgs": "float_pair",
     "rage__cutfNameEventArgs": "named",
     "rage__cutfFinalNameEventArgs": "named",
     "rage__cutfCascadeShadowEventArgs": "camera_fx",
-    "hash_5FF00EA5": "camera_fx",
-    "hash_94061376": "camera_fx",
+    "rage__cutfFloatValueEventArgs": "camera_fx",
+    "rage__cutfBoolValueEventArgs": "camera_fx",
 }
 
 _EVENT_BASE_FIELDS = {"fTime", "iEventId", "iEventArgsIndex", "pChildEvents", "StickyId", "IsChild", "iObjectId"}
@@ -56,6 +63,7 @@ _ROLE_DEFAULT_OBJECT_TYPE = {
     "ped": "rage__cutfPedModelObject",
     "prop": "rage__cutfPropModelObject",
     "vehicle": "rage__cutfVehicleModelObject",
+    "weapon": "rage__cutfWeaponModelObject",
     "light": "rage__cutfLightObject",
     "audio": "rage__cutfAudioObject",
     "subtitle": "rage__cutfSubtitleObject",
@@ -65,6 +73,10 @@ _ROLE_DEFAULT_OBJECT_TYPE = {
     "hidden_object": "rage__cutfHiddenModelObject",
     "fixup_object": "rage__cutfFixupModelObject",
     "blocking_bounds": "rage__cutfBlockingBoundsObject",
+    "removal_bounds": "rage__cutfRemovalBoundsObject",
+    "particle_fx": "rage__cutfParticleEffectObject",
+    "rayfire": "rage__cutfRayfireObject",
+    "event_object": "rage__cutfEventObject",
     "animation_manager": "rage__cutfAnimationManagerObject",
     "asset_manager": "rage__cutfAssetManagerObject",
 }
@@ -109,7 +121,10 @@ def _object_name_field(type_name: str) -> str:
         "rage__cutfPedModelObject",
         "rage__cutfPropModelObject",
         "rage__cutfVehicleModelObject",
+        "rage__cutfWeaponModelObject",
         "rage__cutfParticleEffectObject",
+        "rage__cutfAnimatedParticleEffectObject",
+        "rage__cutfRayfireObject",
     }:
         return "StreamingName"
     return "cName"
@@ -119,7 +134,7 @@ def _event_label_field(args_type_name: str) -> str | None:
     if args_type_name == "rage__cutfCameraCutEventArgs":
         return "cName"
     if args_type_name == "rage__cutfCascadeShadowEventArgs":
-        return "cameraCutHashTag"
+        return "cameraCutHashName"
     if args_type_name in {
         "rage__cutfSubtitleEventArgs",
         "rage__cutfNameEventArgs",
@@ -191,7 +206,7 @@ def _object_role(type_name: str) -> str:
 
 
 def _is_scene_entity(role: str | None) -> bool:
-    return role in {"ped", "prop", "vehicle", "hidden_object", "overlay", "particle_fx"}
+    return role in {"ped", "prop", "vehicle", "weapon", "hidden_object", "overlay", "particle_fx", "rayfire"}
 
 
 def _event_category(resolved: CutResolvedEvent) -> str:
@@ -234,8 +249,6 @@ def _event_duration(args_node: CutNode | None) -> float | None:
         return float(args_node.fields["fSubtitleDuration"])
     if "interpTime" in args_node.fields:
         return float(args_node.fields["interpTime"])
-    if "interpTimeTag" in args_node.fields:
-        return float(args_node.fields["interpTimeTag"])
     if "fTransitionInDuration" in args_node.fields or "fTransitionOutDuration" in args_node.fields:
         return max(
             float(args_node.fields.get("fTransitionInDuration", 0.0) or 0.0),
@@ -246,7 +259,7 @@ def _event_duration(args_node: CutNode | None) -> float | None:
 
 def _event_label(args_node: CutNode | None, object_name: str | None) -> str | None:
     if args_node is not None:
-        for field_name in ("cName", "cameraCutHashName", "cameraCutHashTag", "StreamingName"):
+        for field_name in ("cName", "cameraCutHashName", "StreamingName"):
             if field_name in args_node.fields:
                 value = _coerce_name(args_node.fields[field_name])
                 if value:

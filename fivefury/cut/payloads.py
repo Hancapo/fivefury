@@ -148,6 +148,44 @@ class CutObjectVariationPayload(CutEventPayload):
 
 
 @dataclass(slots=True)
+class CutVehicleVariationPayload(CutEventPayload):
+    object_id: int
+    main_body_colour: int = 0
+    second_body_colour: int = 0
+    specular_colour: int = 0
+    wheel_trim_colour: int = 0
+    body_colour_5: int = 0
+    livery: int = 0
+    livery_2: int = 0
+    dirt_level: float = 0.0
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "iObjectId": int(self.object_id),
+            "iMainBodyColour": int(self.main_body_colour),
+            "iSecondBodyColour": int(self.second_body_colour),
+            "iSpecularColour": int(self.specular_colour),
+            "iWheelTrimColour": int(self.wheel_trim_colour),
+            "iBodyColour5": int(self.body_colour_5),
+            "iLivery": int(self.livery),
+            "iLivery2": int(self.livery_2),
+            "fDirtLevel": float(self.dirt_level),
+        }
+
+
+@dataclass(slots=True)
+class CutVehicleExtraPayload(CutEventPayload):
+    object_id: int
+    bone_ids: list[int]
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "iObjectId": int(self.object_id),
+            "pExtraBoneIds": [int(value) for value in self.bone_ids],
+        }
+
+
+@dataclass(slots=True)
 class CutObjectTargetPayload(CutEventPayload):
     object_id: int
 
@@ -337,30 +375,14 @@ class CutCascadeShadowPayload(CutEventPayload):
 
     def to_fields(self) -> dict[str, Any]:
         return {
-            "cameraCutHashTag": self.camera_cut_hash,
+            "cameraCutHashName": self.camera_cut_hash,
             "position": self.position,
             "radius": float(self.radius),
-            "interpTimeTag": float(self.interp_time),
-            "cascadeIndexTag": int(self.cascade_index),
+            "interpTime": float(self.interp_time),
+            "cascadeIndex": int(self.cascade_index),
             "enabled": bool(self.enabled),
-            "interpolateToDisabledTag": bool(self.interpolate_to_disabled),
+            "interpolateToDisabled": bool(self.interpolate_to_disabled),
         }
-
-
-@dataclass(slots=True)
-class CutHashFloatPayload(CutEventPayload):
-    value: float
-
-    def to_fields(self) -> dict[str, Any]:
-        return {"hash_0BD8B46C": float(self.value)}
-
-
-@dataclass(slots=True)
-class CutHashBoolPayload(CutEventPayload):
-    value: bool
-
-    def to_fields(self) -> dict[str, Any]:
-        return {"hash_0C74B449": bool(self.value)}
 
 
 @dataclass(slots=True)
@@ -372,10 +394,10 @@ class CutPlayParticleEffectPayload(CutEventPayload):
 
     def to_fields(self) -> dict[str, Any]:
         return {
-            "vParticleInitialBoneRotation": self.initial_bone_rotation,
-            "vParticleInitialBoneOffset": self.initial_bone_offset,
-            "hash_33B52A22": int(self.attach_parent_id),
-            "hash_EAA4CB67": int(self.attach_bone_hash),
+            "vInitialBoneRotation": self.initial_bone_rotation,
+            "vInitialBoneOffset": self.initial_bone_offset,
+            "iAttachParentId": int(self.attach_parent_id),
+            "iAttachBoneHash": int(self.attach_bone_hash),
         }
 
 
