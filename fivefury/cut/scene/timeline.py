@@ -173,8 +173,6 @@ class CutTimelineEvent:
                         args_fields["fSubtitleDuration"] = float(self.duration)
                     elif "interpTime" in args_fields:
                         args_fields["interpTime"] = float(self.duration)
-                    elif "interpTimeTag" in args_fields:
-                        args_fields["interpTimeTag"] = float(self.duration)
                 for key, value in self.payload.items():
                     if key == label_field and isinstance(value, str):
                         args_fields[key] = _coerce_event_label_value(args_type_name, key, value)
@@ -207,16 +205,11 @@ class CutTimelineEvent:
                 elif "cameraCutHashName" in args.fields:
                     current = args.fields["cameraCutHashName"]
                     args.fields["cameraCutHashName"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.label), text=self.label)
-                elif "cameraCutHashTag" in args.fields:
-                    current = args.fields["cameraCutHashTag"]
-                    args.fields["cameraCutHashTag"] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.label), text=self.label)
             if self.duration is not None:
                 if "fSubtitleDuration" in args.fields:
                     args.fields["fSubtitleDuration"] = float(self.duration)
                 elif "interpTime" in args.fields:
                     args.fields["interpTime"] = float(self.duration)
-                elif "interpTimeTag" in args.fields:
-                    args.fields["interpTimeTag"] = float(self.duration)
             for key, value in self.payload.items():
                 args.fields[key] = _clone_value(value)
         return CutResolvedEvent(event=event, object=_clone_value(self.raw.object) if self.raw.object is not None else None, event_args=args, is_load_event=self.is_load_event)

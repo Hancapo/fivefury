@@ -210,16 +210,14 @@ class _TypedCutBinding(CutBinding):
             raw=raw if raw is not None else CutNode(type_name=type_name, type_hash=_node_type_hash(type_name), fields={}),
         )
 
-
-class _CutStreamedModelBinding(_TypedCutBinding):
     def _get_hashed_text_field(self, field_name: str) -> str | None:
         return _coerce_name(self.fields.get(field_name))
 
     def _set_hashed_text_field(self, field_name: str, value: str | None) -> None:
         if value is None:
             self.fields.pop(field_name, None)
-            return
-        self.fields[field_name] = _hashed_string(value)
+        else:
+            self.fields[field_name] = _hashed_string(value)
 
     def _get_int_field(self, field_name: str) -> int | None:
         value = self.fields.get(field_name)
@@ -228,9 +226,11 @@ class _CutStreamedModelBinding(_TypedCutBinding):
     def _set_int_field(self, field_name: str, value: int | None) -> None:
         if value is None:
             self.fields.pop(field_name, None)
-            return
-        self.fields[field_name] = int(value)
+        else:
+            self.fields[field_name] = int(value)
 
+
+class _CutNamedStreamedBinding(_TypedCutBinding):
     @property
     def cutscene_name(self) -> str | None:
         return self._get_hashed_text_field("cName")
@@ -252,6 +252,8 @@ class _CutStreamedModelBinding(_TypedCutBinding):
         elif self.name == previous:
             self.name = None
 
+
+class _CutNamedAnimatedStreamedBinding(_CutNamedStreamedBinding):
     @property
     def anim_streaming_base(self) -> int | None:
         return self._get_int_field("AnimStreamingBase")
@@ -260,6 +262,8 @@ class _CutStreamedModelBinding(_TypedCutBinding):
     def anim_streaming_base(self, value: int | None) -> None:
         self._set_int_field("AnimStreamingBase", value)
 
+
+class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
     @property
     def anim_export_ctrl_spec_file(self) -> str | None:
         return self._get_hashed_text_field("cAnimExportCtrlSpecFile")
@@ -514,9 +518,60 @@ class CutVehicle(_CutStreamedModelBinding):
     ROLE = "vehicle"
 
 
+class CutWeapon(_CutStreamedModelBinding):
+    TYPE_NAME = "rage__cutfWeaponModelObject"
+    ROLE = "weapon"
+
+    @property
+    def generic_weapon_type(self) -> int | None:
+        return self._get_int_field("GenericWeaponType")
+
+    @generic_weapon_type.setter
+    def generic_weapon_type(self, value: int | None) -> None:
+        self._set_int_field("GenericWeaponType", value)
+
+
 class CutLight(_TypedCutBinding):
     TYPE_NAME = "rage__cutfLightObject"
     ROLE = "light"
+
+
+class CutAnimatedLight(CutLight):
+    TYPE_NAME = "rage__cutfAnimatedLightObject"
+
+    @property
+    def anim_streaming_base(self) -> int | None:
+        return self._get_int_field("AnimStreamingBase")
+
+    @anim_streaming_base.setter
+    def anim_streaming_base(self, value: int | None) -> None:
+        self._set_int_field("AnimStreamingBase", value)
+
+
+class CutParticleEffect(_CutNamedStreamedBinding):
+    TYPE_NAME = "rage__cutfParticleEffectObject"
+    ROLE = "particle_fx"
+
+    @property
+    def effect_list(self) -> str | None:
+        return self._get_hashed_text_field("athFxListHash")
+
+    @effect_list.setter
+    def effect_list(self, value: str | None) -> None:
+        self._set_hashed_text_field("athFxListHash", value)
+
+
+class CutAnimatedParticleEffect(_CutNamedAnimatedStreamedBinding):
+    TYPE_NAME = "rage__cutfAnimatedParticleEffectObject"
+    ROLE = "particle_fx"
+
+    @property
+    def effect_list(self) -> str | None:
+        return self._get_hashed_text_field("athFxListHash")
+
+    @effect_list.setter
+    def effect_list(self, value: str | None) -> None:
+        self._set_hashed_text_field("athFxListHash", value)
 
 
 class CutAudio(_TypedCutBinding):
@@ -558,6 +613,49 @@ class CutBlockingBounds(_TypedCutBinding):
     TYPE_NAME = "rage__cutfBlockingBoundsObject"
     ROLE = "blocking_bounds"
 
+    @property
+    def corners(self) -> tuple[tuple[float, float, float], ...]:
+        return tuple(tuple(float(axis) for axis in corner) for corner in self.fields.get("vCorners", ()))
+
+    @corners.setter
+    def corners(self, value: tuple[tuple[float, float, float], ...]) -> None:
+        if len(value) != 4 or any(len(corner) != 3 for corner in value):
+            raise ValueError("blocking bounds require exactly four 3D corners")
+        self.fields["vCorners"] = [tuple(float(axis) for axis in corner) for corner in value]
+
+    @property
+    def height(self) -> float:
+        return float(self.fields.get("fHeight", 0.0))
+
+    @height.setter
+    def height(self, value: float) -> None:
+        self.fields["fHeight"] = float(value)
+
+
+class CutRemovalBounds(CutBlockingBounds):
+    TYPE_NAME = "rage__cutfRemovalBoundsObject"
+    ROLE = "removal_bounds"
+
+
+class CutRayfire(_CutNamedStreamedBinding):
+    TYPE_NAME = "rage__cutfRayfireObject"
+    ROLE = "rayfire"
+
+    @property
+    def start_position(self) -> tuple[float, float, float]:
+        return tuple(float(value) for value in self.fields.get("vStartPosition", (0.0, 0.0, 0.0)))
+
+    @start_position.setter
+    def start_position(self, value: tuple[float, float, float]) -> None:
+        if len(value) != 3:
+            raise ValueError("rayfire start_position must contain three values")
+        self.fields["vStartPosition"] = tuple(float(axis) for axis in value)
+
+
+class CutEventObject(_TypedCutBinding):
+    TYPE_NAME = "rage__cutfEventObject"
+    ROLE = "event_object"
+
 
 _BINDING_CLASS_BY_TYPE = {
     CutAssetManager.TYPE_NAME: CutAssetManager,
@@ -566,7 +664,11 @@ _BINDING_CLASS_BY_TYPE = {
     CutPed.TYPE_NAME: CutPed,
     CutProp.TYPE_NAME: CutProp,
     CutVehicle.TYPE_NAME: CutVehicle,
+    CutWeapon.TYPE_NAME: CutWeapon,
     CutLight.TYPE_NAME: CutLight,
+    CutAnimatedLight.TYPE_NAME: CutAnimatedLight,
+    CutParticleEffect.TYPE_NAME: CutParticleEffect,
+    CutAnimatedParticleEffect.TYPE_NAME: CutAnimatedParticleEffect,
     CutAudio.TYPE_NAME: CutAudio,
     CutSubtitle.TYPE_NAME: CutSubtitle,
     CutFade.TYPE_NAME: CutFade,
@@ -575,6 +677,9 @@ _BINDING_CLASS_BY_TYPE = {
     CutHiddenObject.TYPE_NAME: CutHiddenObject,
     CutFixupObject.TYPE_NAME: CutFixupObject,
     CutBlockingBounds.TYPE_NAME: CutBlockingBounds,
+    CutRemovalBounds.TYPE_NAME: CutRemovalBounds,
+    CutRayfire.TYPE_NAME: CutRayfire,
+    CutEventObject.TYPE_NAME: CutEventObject,
 }
 
 _ROLE_PROPERTY_NAMES = {
@@ -582,6 +687,7 @@ _ROLE_PROPERTY_NAMES = {
     "ped": "peds",
     "prop": "props",
     "vehicle": "vehicles",
+    "weapon": "weapons",
     "light": "lights",
     "audio": "audio",
     "subtitle": "subtitles",
@@ -590,6 +696,9 @@ _ROLE_PROPERTY_NAMES = {
     "decal": "decals",
     "particle_fx": "particle_effects",
     "blocking_bounds": "blocking_bounds",
+    "removal_bounds": "removal_bounds",
+    "rayfire": "rayfires",
+    "event_object": "event_objects",
     "fixup_object": "fixup_objects",
     "animation_manager": "animation_managers",
     "asset_manager": "asset_managers",
@@ -602,12 +711,15 @@ _BINDING_ADDERS = {
     "ped": CutPed,
     "prop": CutProp,
     "vehicle": CutVehicle,
+    "weapon": CutWeapon,
     "light": CutLight,
     "audio": CutAudio,
     "subtitle": CutSubtitle,
     "fade": CutFade,
     "overlay": CutOverlay,
     "decal": CutDecal,
+    "rayfire": CutRayfire,
+    "event_object": CutEventObject,
 }
 
 
@@ -617,6 +729,10 @@ def _binding_from_node(node: CutNode) -> CutBinding:
         CutPed.TYPE_NAME,
         CutProp.TYPE_NAME,
         CutVehicle.TYPE_NAME,
+        CutWeapon.TYPE_NAME,
+        CutParticleEffect.TYPE_NAME,
+        CutAnimatedParticleEffect.TYPE_NAME,
+        CutRayfire.TYPE_NAME,
     }:
         name = _coerce_name(node.fields.get("StreamingName")) or _coerce_name(node.fields.get("cName"))
     else:

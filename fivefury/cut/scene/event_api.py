@@ -7,13 +7,13 @@ from ..payloads import (
     CutAttachmentPayload,
     CutAnimationDictPayload,
     CutAnimationTargetPayload,
+    CutBoolValuePayload,
     CutCameraCutPayload,
     CutCascadeShadowPayload,
     CutDecalPayload,
     CutDrawDistancePayload,
     CutFinalNamePayload,
-    CutHashBoolPayload,
-    CutHashFloatPayload,
+    CutFloatValuePayload,
     CutLoadScenePayload,
     CutNamePayload,
     CutObjectNamePayload,
@@ -23,6 +23,8 @@ from ..payloads import (
     CutPlayParticleEffectPayload,
     CutScreenFadePayload,
     CutSubtitlePayload,
+    CutVehicleExtraPayload,
+    CutVehicleVariationPayload,
 )
 from .base import CutScene
 from .bindings import CutBinding
@@ -270,13 +272,37 @@ def disable_dof(self: CutScene, start: float, camera: CutBinding | int) -> CutTi
     return self.create_event(CutEventType.DISABLE_DOF, start=start, target=camera, payload=CutObjectTargetPayload(object_id))
 
 
-def set_variation(self: CutScene, start: float, target: CutBinding | int, *, component: int, drawable: int, texture: int) -> CutTimelineEvent:
-    object_id = target.object_id if isinstance(target, CutBinding) else int(target)
+def set_variation(
+    self: CutScene,
+    start: float,
+    target: CutBinding | int,
+    payload: CutObjectVariationPayload | CutVehicleVariationPayload | CutVehicleExtraPayload | None = None,
+    *,
+    component: int | None = None,
+    drawable: int | None = None,
+    texture: int | None = None,
+) -> CutTimelineEvent:
+    object_id = _coerce_object_id(target)
+    if payload is None:
+        if component is None or drawable is None or texture is None:
+            raise TypeError("component, drawable, and texture are required without a variation payload")
+        payload = CutObjectVariationPayload(object_id, component, drawable, texture)
+    elif not isinstance(payload, (CutObjectVariationPayload, CutVehicleVariationPayload, CutVehicleExtraPayload)):
+        raise TypeError(f"unsupported variation payload: {type(payload).__name__}")
+    elif payload.object_id != object_id:
+        raise ValueError("variation payload object_id must match the target object")
+    if isinstance(payload, CutVehicleVariationPayload):
+        args_type = "rage__cutfVehicleVariationEventArgs"
+    elif isinstance(payload, CutVehicleExtraPayload):
+        args_type = "rage__cutfVehicleExtraEventArgs"
+    elif isinstance(payload, CutObjectVariationPayload):
+        args_type = "rage__cutfObjectVariationEventArgs"
     return self.create_event(
         CutEventType.SET_VARIATION,
         start=start,
         target=target,
-        payload=CutObjectVariationPayload(object_id=object_id, component=component, drawable=drawable, texture=texture),
+        payload=payload,
+        args_type=args_type,
     )
 
 
@@ -307,8 +333,8 @@ def catchup_camera(self: CutScene, start: float, camera: CutBinding | int) -> Cu
     return self.create_event(CutEventType.CATCHUP_CAMERA, start=start, target=camera, payload=CutObjectTargetPayload(object_id))
 
 
-def first_person_blendout_camera(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload = 1.0) -> CutTimelineEvent:
-    payload = value if isinstance(value, CutHashFloatPayload) else CutHashFloatPayload(float(value))
+def first_person_blendout_camera(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload = 1.0) -> CutTimelineEvent:
+    payload = value if isinstance(value, CutFloatValuePayload) else CutFloatValuePayload(float(value))
     return self.create_event(CutEventType.FIRST_PERSON_BLENDOUT_CAMERA, start=start, target=camera, payload=payload)
 
 
@@ -322,11 +348,11 @@ def enable_cascade_shadow_bounds(self: CutScene, start: float, camera: CutBindin
 
 
 def cascade_shadows_bool(self: CutScene, event: str | int | CutEventType, start: float, camera: CutBinding | int | None, enabled: bool) -> CutTimelineEvent:
-    return self.create_event(event, start=start, target=camera, payload=CutHashBoolPayload(bool(enabled)))
+    return self.create_event(event, start=start, target=camera, payload=CutBoolValuePayload(bool(enabled)))
 
 
-def cascade_shadows_float(self: CutScene, event: str | int | CutEventType, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
-    payload = value if isinstance(value, CutHashFloatPayload) else CutHashFloatPayload(float(value))
+def cascade_shadows_float(self: CutScene, event: str | int | CutEventType, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
+    payload = value if isinstance(value, CutFloatValuePayload) else CutFloatValuePayload(float(value))
     return self.create_event(event, start=start, target=camera, payload=payload)
 
 
@@ -346,8 +372,8 @@ def cascade_shadows_set_aircraft_mode(self: CutScene, start: float, camera: CutB
     return cascade_shadows_bool(self, CutEventType.CASCADE_SHADOWS_SET_AIRCRAFT_MODE, start, camera, enabled)
 
 
-def cascade_shadows_set_dynamic_depth_value(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
-    payload = value if isinstance(value, CutHashFloatPayload) else CutHashFloatPayload(float(value))
+def cascade_shadows_set_dynamic_depth_value(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
+    payload = value if isinstance(value, CutFloatValuePayload) else CutFloatValuePayload(float(value))
     return self.create_event(CutEventType.CASCADE_SHADOWS_SET_DYNAMIC_DEPTH_VALUE, start=start, target=camera, payload=payload)
 
 
@@ -359,39 +385,39 @@ def cascade_shadows_set_fly_camera_mode(self: CutScene, start: float, camera: Cu
     return cascade_shadows_bool(self, CutEventType.CASCADE_SHADOWS_SET_FLY_CAMERA_MODE, start, camera, enabled)
 
 
-def cascade_shadows_set_cascade_bounds_hfov(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_cascade_bounds_hfov(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_CASCADE_BOUNDS_HFOV, start, camera, value)
 
 
-def cascade_shadows_set_cascade_bounds_vfov(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_cascade_bounds_vfov(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_CASCADE_BOUNDS_VFOV, start, camera, value)
 
 
-def cascade_shadows_set_cascade_bounds_scale(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_cascade_bounds_scale(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_CASCADE_BOUNDS_SCALE, start, camera, value)
 
 
-def cascade_shadows_set_entity_tracker_scale(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_entity_tracker_scale(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_ENTITY_TRACKER_SCALE, start, camera, value)
 
 
-def cascade_shadows_set_split_z_exp_weight(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_split_z_exp_weight(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_SPLIT_Z_EXP_WEIGHT, start, camera, value)
 
 
-def cascade_shadows_set_dither_radius_scale(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_dither_radius_scale(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_DITHER_RADIUS_SCALE, start, camera, value)
 
 
-def cascade_shadows_set_depth_bias(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_depth_bias(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_DEPTH_BIAS, start, camera, value)
 
 
-def cascade_shadows_set_slope_bias(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_slope_bias(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_SLOPE_BIAS, start, camera, value)
 
 
-def cascade_shadows_set_shadow_sample_type(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutHashFloatPayload) -> CutTimelineEvent:
+def cascade_shadows_set_shadow_sample_type(self: CutScene, start: float, camera: CutBinding | int | None, value: float | CutFloatValuePayload) -> CutTimelineEvent:
     return cascade_shadows_float(self, CutEventType.CASCADE_SHADOWS_SET_SHADOW_SAMPLE_TYPE, start, camera, value)
 
 
@@ -408,7 +434,7 @@ def cascade_shadows_reset_cascade_shadows(self: CutScene, start: float, camera: 
         CutEventType.CASCADE_SHADOWS_RESET_CASCADE_SHADOWS,
         start=start,
         target=camera,
-        payload=CutHashBoolPayload(bool(enabled)),
+        payload=CutBoolValuePayload(bool(enabled)),
     )
 
 

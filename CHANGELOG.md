@@ -15,6 +15,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - Named animation clip events.
 - Complete camera render overrides, character lighting, and time-of-day DOF modifiers.
+- CUT bindings for weapons, animated lights, particle effects, bounds, rayfire objects, and generic event objects.
+- Vehicle colour, livery, dirt, and extra-bone variation payloads.
 
 ### Changed
 - CUT events now use the runtime event ordering without modifying authored times.
@@ -24,6 +26,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - CUT rewriting now preserves dynamic fields and vehicle bone-name lists.
 - CUT saves now replace destination files atomically.
 - Draw-distance and attachment events now use their proper argument layouts.
+- Template-free CUT authoring now uses the complete object and event-argument schemas.
 
 ## [0.3.2] - 2026-08-03
 
