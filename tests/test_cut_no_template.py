@@ -19,6 +19,7 @@ from fivefury import (
     CutProp,
     CutPropAnimationPreset,
     CutScene,
+    CutSceneFlags,
     CutSceneValidationError,
     CutSubtitle,
     CutSubtitleCue,
@@ -28,6 +29,7 @@ from fivefury import (
     scene_to_cut,
     validate_cut_scene,
 )
+from fivefury.cut.limits import CUT_MAX_CONCATENATED_SCENES, CUT_MAX_PSO_ARRAY_ITEMS
 from fivefury.cache.io import _decode_payload
 from fivefury.gamefile import GameFileType
 from fivefury.hashing import jenk_hash
@@ -320,3 +322,61 @@ def test_cut_camera_validation_accepts_minus_one_overrides() -> None:
     issues = validate_cut_scene(scene, strict=True)
 
     assert not any(issue.code.startswith("camera_cut.clip") and issue.severity == "error" for issue in issues)
+
+
+def test_cut_validation_rejects_runtime_duration_and_range_errors() -> None:
+    too_short = CutScene.create(duration=0.5)
+    bad_range = CutScene.create(duration=5.0, range_start=30, range_end=150)
+
+    assert any(issue.code == "cut.duration.too_short" for issue in validate_cut_scene(too_short))
+    assert any(issue.code == "cut.range.duration_mismatch" for issue in validate_cut_scene(bad_range))
+
+
+def test_cut_validation_rejects_unsafe_section_layouts() -> None:
+    duration_sections = CutScene.create(
+        duration=5.0,
+        cutscene_flags=CutSceneFlags.IS_SECTIONED | CutSceneFlags.SECTION_BY_DURATION,
+        section_by_time_slice_duration=0.5,
+    )
+    split_sections = CutScene.create(
+        duration=5.0,
+        cutscene_flags=CutSceneFlags.IS_SECTIONED | CutSceneFlags.SECTION_BY_SPLIT,
+        section_split_list=[2.0, 1.0],
+    )
+    conflicting_modes = CutScene.create(
+        duration=5.0,
+        cutscene_flags=(
+            CutSceneFlags.IS_SECTIONED
+            | CutSceneFlags.SECTION_BY_CAMERA_CUTS
+            | CutSceneFlags.SECTION_BY_SPLIT
+        ),
+    )
+
+    assert any(issue.code == "cut.section.duration.too_short" for issue in validate_cut_scene(duration_sections))
+    assert any(issue.code == "cut.section.split.order" for issue in validate_cut_scene(split_sections))
+    assert any(issue.code == "cut.section.mode.multiple" for issue in validate_cut_scene(conflicting_modes))
+
+
+def test_cut_validation_accepts_retail_camera_cut_precision() -> None:
+    scene = CutScene.create(
+        duration=2.0,
+        cutscene_flags=CutSceneFlags.IS_SECTIONED | CutSceneFlags.SECTION_BY_CAMERA_CUTS,
+        camera_cut_list=[0.9999964],
+    )
+
+    assert not any(issue.code == "cut.section.interval.too_short" for issue in validate_cut_scene(scene))
+
+
+def test_cut_writer_rejects_fixed_and_dynamic_array_overflow() -> None:
+    cut = scene_to_cut(CutScene.create(duration=1.0))
+    concat_item = cut.root.fields["concatDataList"][0]
+    cut.root.fields["concatDataList"] = [concat_item] * (CUT_MAX_CONCATENATED_SCENES + 1)
+
+    with pytest.raises(ValueError, match="concatDataList"):
+        build_cut_bytes(cut)
+
+    cut.root.fields["concatDataList"] = [concat_item]
+    cut.root.fields["cameraCutList"] = [0.0] * (CUT_MAX_PSO_ARRAY_ITEMS + 1)
+
+    with pytest.raises(ValueError, match="cameraCutList"):
+        build_cut_bytes(cut)

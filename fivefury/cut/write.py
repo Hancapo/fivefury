@@ -47,6 +47,7 @@ from ..pso import (
     patch_pointers,
 )
 from ..pso.schema import serialize_psch as _serialize_psch
+from .limits import CUT_MAX_PSO_ARRAY_ITEMS
 from .model import CutFile, CutHashedString, CutNode
 from .names import ARRAY_INFO_HASH, CUT_HASH_NAMES, CUT_NAME_VALUES
 from .schema import BUILTIN_CUT_STRUCTS, builtin_cut_template
@@ -258,7 +259,9 @@ class _CutWriter:
             return
         if entry.subtype in {1, 2, 4}:
             capacity = (entry.reference_key >> 16) & 0xFFFF
-            values = values[:capacity]
+            if len(values) > capacity:
+                field_name = CUT_HASH_NAMES.get(entry.name_hash, f"0x{entry.name_hash:08X}")
+                raise ValueError(f"CUT array '{field_name}' has {len(values)} items; capacity is {capacity}")
             if array_info.type_id == PsoDataTypeStructure and array_info.reference_key != 0:
                 struct_info = self.structs[array_info.reference_key]
                 stride = struct_info.length
@@ -326,6 +329,11 @@ class _CutWriter:
                 return
             raise ValueError("unsupported inline array shape")
 
+        if len(values) > CUT_MAX_PSO_ARRAY_ITEMS:
+            field_name = CUT_HASH_NAMES.get(entry.name_hash, f"0x{entry.name_hash:08X}")
+            raise ValueError(
+                f"CUT array '{field_name}' has {len(values)} items; maximum is {CUT_MAX_PSO_ARRAY_ITEMS}"
+            )
         if not values:
             return
 

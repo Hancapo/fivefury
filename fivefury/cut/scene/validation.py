@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING, Any, Literal
 from ...hashing import jenk_finalize_hash, jenk_partial_hash
 from ...metahash import MetaHash
 from ..events import get_cut_event_name, get_cut_event_spec
-from ..flags import CutSceneFlags, unpack_cutscene_flags
+from ..flags import DEFAULT_PLAYABLE_CUTSCENE_FLAGS, CutSceneFlags, unpack_cutscene_flags
+from ..limits import (
+    CUT_FPS,
+    CUT_MAX_CONCATENATED_SCENES,
+    CUT_MAX_PSO_ARRAY_ITEMS,
+    CUT_MINIMUM_DURATION,
+    CUT_MINIMUM_SECTION_DURATION,
+)
 from .bindings import CutBinding
 from .shared import _coerce_name, _is_scene_entity
 
@@ -123,6 +130,19 @@ def _binding_int_field(binding: CutBinding, field_name: str) -> int:
     return int(value) if value not in (None, "") else 0
 
 
+def _scene_flags(scene: "CutScene") -> CutSceneFlags:
+    if scene.cutscene_flags is not None:
+        return unpack_cutscene_flags(scene.cutscene_flags)
+    if scene.raw is not None:
+        stored = scene.raw.root.fields.get("iCutsceneFlags")
+        if stored is not None:
+            return unpack_cutscene_flags(stored)
+    flags = CutSceneFlags(DEFAULT_PLAYABLE_CUTSCENE_FLAGS)
+    if scene.camera_cut_list:
+        flags |= CutSceneFlags.SECTION_BY_CAMERA_CUTS
+    return flags
+
+
 def _validate_root(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
     if scene.duration is None:
         _issue(issues, "error", "cut.duration.missing", "CutScene duration is missing")
@@ -132,12 +152,164 @@ def _validate_root(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> 
             _issue(issues, "error", "cut.duration.invalid", "CutScene duration must be finite")
         elif duration <= 0.0:
             _issue(issues, "error", "cut.duration.non_positive", "CutScene duration must be greater than zero")
+        elif duration < CUT_MINIMUM_DURATION:
+            _issue(
+                issues,
+                "error",
+                "cut.duration.too_short",
+                f"CutScene duration must be at least {CUT_MINIMUM_DURATION:g} second",
+            )
     if scene.playback_rate <= 0.0 or not isfinite(float(scene.playback_rate)):
         _issue(issues, "error", "cut.playback_rate.invalid", "CutScene playback_rate must be finite and greater than zero")
-    if scene.section_by_time_slice_duration is not None and float(scene.section_by_time_slice_duration) <= 0.0:
-        _issue(issues, "error", "cut.section_duration.invalid", "section_by_time_slice_duration must be greater than zero")
-    if scene.range_start is not None and scene.range_end is not None and int(scene.range_end) < int(scene.range_start):
+    if scene.section_by_time_slice_duration is not None:
+        section_duration = float(scene.section_by_time_slice_duration)
+        if not isfinite(section_duration) or section_duration <= 0.0:
+            _issue(issues, "error", "cut.section_duration.invalid", "section_by_time_slice_duration must be finite and greater than zero")
+    range_start = int(scene.range_start or 0)
+    range_end = int(scene.range_end) if scene.range_end is not None else round(float(scene.duration or 0.0) * CUT_FPS)
+    if range_start < 0:
+        _issue(issues, "error", "cut.range.start_negative", "range_start cannot be negative")
+    if range_end < range_start:
         _issue(issues, "error", "cut.range.invalid", "range_end cannot be lower than range_start")
+    elif scene.duration is not None and isfinite(float(scene.duration)):
+        expected_frames = round(float(scene.duration) * CUT_FPS)
+        if abs((range_end - range_start) - expected_frames) > 1:
+            _issue(
+                issues,
+                "error",
+                "cut.range.duration_mismatch",
+                "range_start/range_end do not describe the authored cutscene duration",
+            )
+
+
+def _validate_binary_capacities(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+    counts = {
+        "objects": len(scene.bindings),
+        "load events": sum(event.is_load_event for event in scene.timeline),
+        "events": sum(not event.is_load_event for event in scene.timeline),
+        "event arguments": len(scene.timeline),
+        "camera cuts": len(scene.camera_cut_list or ()),
+        "section splits": len(scene.section_split_list or ()),
+    }
+    for label, count in counts.items():
+        if count > CUT_MAX_PSO_ARRAY_ITEMS:
+            _issue(
+                issues,
+                "error",
+                "cut.array.capacity",
+                f"CutScene has {count} {label}; PSO arrays support at most {CUT_MAX_PSO_ARRAY_ITEMS}",
+            )
+    concat_count = 1
+    if scene.raw is not None:
+        concat_count = len(scene.raw.root.fields.get("concatDataList") or ()) or 1
+    if concat_count > CUT_MAX_CONCATENATED_SCENES:
+        _issue(
+            issues,
+            "error",
+            "cut.concat.capacity",
+            f"CutScene has {concat_count} concatenated scenes; maximum is {CUT_MAX_CONCATENATED_SCENES}",
+        )
+
+
+def _validate_section_list(
+    values: list[float] | None,
+    *,
+    label: str,
+    range_start: float,
+    range_end: float,
+    issues: list[CutSceneValidationIssue],
+) -> list[float]:
+    result: list[float] = []
+    previous: float | None = None
+    for index, raw_value in enumerate(values or ()):
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            _issue(issues, "error", f"cut.section.{label}.invalid", f"{label} entry {index} must be numeric")
+            continue
+        if not isfinite(value):
+            _issue(issues, "error", f"cut.section.{label}.invalid", f"{label} entry {index} must be finite")
+            continue
+        if value <= range_start or value >= range_end:
+            _issue(
+                issues,
+                "error",
+                f"cut.section.{label}.range",
+                f"{label} entry {index} must be inside the active cutscene range",
+            )
+        if previous is not None and value <= previous:
+            _issue(
+                issues,
+                "error",
+                f"cut.section.{label}.order",
+                f"{label} entries must be strictly increasing",
+            )
+        result.append(value)
+        previous = value
+    return result
+
+
+def _validate_sections(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+    flags = _scene_flags(scene)
+    modes = flags & (
+        CutSceneFlags.SECTION_BY_CAMERA_CUTS
+        | CutSceneFlags.SECTION_BY_DURATION
+        | CutSceneFlags.SECTION_BY_SPLIT
+    )
+    if int(modes).bit_count() > 1:
+        _issue(issues, "error", "cut.section.mode.multiple", "CutScene can use only one sectioning mode")
+    if modes and not flags & CutSceneFlags.IS_SECTIONED:
+        _issue(issues, "error", "cut.section.mode.unsectioned", "A sectioning mode requires IS_SECTIONED")
+
+    range_start = int(scene.range_start or 0) / CUT_FPS
+    range_end_frames = int(scene.range_end) if scene.range_end is not None else round(float(scene.duration or 0.0) * CUT_FPS)
+    range_end = range_end_frames / CUT_FPS
+    if range_end <= range_start:
+        return
+    boundaries = [range_start]
+    if modes == CutSceneFlags.SECTION_BY_CAMERA_CUTS:
+        boundaries.extend(
+            _validate_section_list(
+                scene.camera_cut_list,
+                label="camera_cut",
+                range_start=range_start,
+                range_end=range_end,
+                issues=issues,
+            )
+        )
+    elif modes == CutSceneFlags.SECTION_BY_SPLIT:
+        boundaries.extend(
+            _validate_section_list(
+                scene.section_split_list,
+                label="split",
+                range_start=range_start,
+                range_end=range_end,
+                issues=issues,
+            )
+        )
+    elif modes == CutSceneFlags.SECTION_BY_DURATION:
+        section_duration = float(scene.section_by_time_slice_duration or 0.0)
+        if section_duration < CUT_MINIMUM_SECTION_DURATION:
+            _issue(
+                issues,
+                "error",
+                "cut.section.duration.too_short",
+                f"Duration-based sections must be at least {CUT_MINIMUM_SECTION_DURATION:g} second",
+            )
+        elif isfinite(section_duration):
+            next_boundary = range_start + section_duration
+            while next_boundary < range_end:
+                boundaries.append(next_boundary)
+                next_boundary += section_duration
+    boundaries.append(range_end)
+    for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+        if end - start < CUT_MINIMUM_SECTION_DURATION - 1e-4:
+            _issue(
+                issues,
+                "error",
+                "cut.section.interval.too_short",
+                f"CutScene section {index} is shorter than {CUT_MINIMUM_SECTION_DURATION:g} second",
+            )
 
 
 def _validate_bindings(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
@@ -371,7 +543,7 @@ def _validate_assets(scene: "CutScene", issues: list[CutSceneValidationIssue]) -
 
 
 def _validate_flags(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
-    flags = unpack_cutscene_flags(scene.cutscene_flags)
+    flags = _scene_flags(scene)
     if CutSceneFlags.IS_SECTIONED in flags:
         if scene.section_by_time_slice_duration is not None and float(scene.section_by_time_slice_duration) <= 0.0:
             _issue(issues, "error", "flags.sectioned.invalid_duration", "IS_SECTIONED requires a positive section duration")
@@ -383,6 +555,8 @@ def validate_cut_scene(scene: "CutScene", *, strict: bool = False) -> list[CutSc
     scene.build()
     issues: list[CutSceneValidationIssue] = []
     _validate_root(scene, issues)
+    _validate_binary_capacities(scene, issues)
+    _validate_sections(scene, issues)
     _validate_bindings(scene, issues)
     _validate_events(scene, issues)
     _validate_loading(scene, issues)

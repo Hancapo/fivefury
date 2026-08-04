@@ -31,6 +31,14 @@ from .lights import (
     cut_light_type_from_ydr_light_type,
     ensure_ydr_embedded_lights,
 )
+from .limits import (
+    CUT_FPS,
+    CUT_MAX_CONCATENATED_SCENES,
+    CUT_MAX_PSO_ARRAY_ITEMS,
+    CUT_MINIMUM_DURATION,
+    CUT_MINIMUM_DURATION_FRAMES,
+    CUT_MINIMUM_SECTION_DURATION,
+)
 from .model import CutFile, CutHashedString, CutNode
 from .payloads import (
     CutAttachmentPayload,
@@ -177,6 +185,12 @@ __all__ = [
     "CutVehicleExtraPayload",
     "CutVehicleVariationPayload",
     "CutWeapon",
+    "CUT_FPS",
+    "CUT_MAX_CONCATENATED_SCENES",
+    "CUT_MAX_PSO_ARRAY_ITEMS",
+    "CUT_MINIMUM_DURATION",
+    "CUT_MINIMUM_DURATION_FRAMES",
+    "CUT_MINIMUM_SECTION_DURATION",
     "cut_light_fields_from_ydr_light",
     "cut_light_flags_from_ydr_flags",
     "cut_light_property_from_ydr_flags",
