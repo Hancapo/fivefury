@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-04
+
 ### Breaking Changes
 - `set_draw_distance` now requires near and far distances.
 - `set_attachment` now identifies the child, parent, and attachment bone.
