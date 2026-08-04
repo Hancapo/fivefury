@@ -11,8 +11,8 @@ from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..gta5_cache import read_gta5_cache_y
 from ..gtxd import read_gtxd
 from ..gxt2 import read_gxt2
-from ..heightmap import read_heightmap
 from ..hashing import _get_lut
+from ..heightmap import read_heightmap
 from ..metahash import MetaHash
 from ..rel import read_rel
 from ..resource import parse_rsc7
@@ -111,7 +111,6 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
         ".ybn": (GameFileType.YBN, lambda payload: read_ybn(payload, path=path)),
         ".ynd": (GameFileType.YND, lambda payload: read_ynd(payload, path=path)),
         ".ynv": (GameFileType.YNV, lambda payload: read_ynv(payload, path=path)),
-        ".cut": (GameFileType.CUT, read_cut),
     }
     if ext in resource_decoders:
         kind, decoder = resource_decoders[ext]
@@ -122,6 +121,7 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
         ".awc": (GameFileType.AWC, lambda payload: read_awc(payload, path=path)),
         ".rel": (GameFileType.REL, lambda payload: read_rel(payload, path=path)),
         ".rpf": (GameFileType.RPF, RpfArchive.from_bytes),
+        ".cut": (GameFileType.CUT, read_cut),
     }
     if ext in direct_decoders:
         kind, decoder = direct_decoders[ext]

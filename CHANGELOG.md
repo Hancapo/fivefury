@@ -7,6 +7,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- CUT files loaded from RPF archives now decode through `GameFileCache`.
+- CUT rewriting now preserves dynamic fields and vehicle bone-name lists.
+- CUT saves now replace destination files atomically.
+
 ## [0.3.2] - 2026-08-03
 
 ### Fixed

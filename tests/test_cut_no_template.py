@@ -3,13 +3,15 @@ from __future__ import annotations
 import pytest
 
 from fivefury import (
-    CutAssetManager,
     CutAnimationManager,
+    CutAssetManager,
     CutCamera,
     CutCameraCutPayload,
     CutEventBehavior,
     CutEventType,
+    CutHashedString,
     CutLoadScenePayload,
+    CutNode,
     CutPed,
     CutProp,
     CutPropAnimationPreset,
@@ -22,6 +24,8 @@ from fivefury import (
     read_cut,
     scene_to_cut,
 )
+from fivefury.cache.io import _decode_payload
+from fivefury.gamefile import GameFileType
 from fivefury.hashing import jenk_hash
 
 
@@ -54,6 +58,45 @@ def test_cut_scene_builder_writes_without_template() -> None:
     assert any(event.fields["iEventId"] == 43 for event in rebuilt.events)
     camera_args = next(args for args in rebuilt.event_args if args.type_name == "rage__cutfCameraCutEventArgs")
     assert camera_args.fields["cName"].hash != 0
+
+
+def test_cut_writer_preserves_fields_after_dynamic_structure_pointer() -> None:
+    scene = CutScene.create(duration=5.0)
+    asset_manager = scene.add_asset_manager()
+    scene.load_scene(0.0, CutLoadScenePayload("nested_attributes"), target=asset_manager)
+    cut = scene_to_cut(scene)
+    args = cut.event_args[0]
+    args.fields["cutfAttributes"] = CutNode(
+        type_name="rage__cutfEventArgs",
+        fields={},
+    )
+    expected = args.fields["cName"]
+
+    rebuilt = read_cut(build_cut_bytes(cut))
+    actual = rebuilt.event_args[0].fields["cName"]
+
+    assert isinstance(expected, CutHashedString)
+    assert isinstance(actual, CutHashedString)
+    assert actual.hash == expected.hash
+
+
+def test_cut_writer_roundtrips_atstring_arrays() -> None:
+    scene = CutScene.create(duration=5.0)
+    vehicle = scene.add_vehicle("car", fields={"cRemoveBoneNameList": ["door_dside_f", "wheel_lf"]})
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+    rebuilt_vehicle = next(node for node in rebuilt.objects if node.fields["iObjectId"] == vehicle.object_id)
+
+    assert rebuilt_vehicle.fields["cRemoveBoneNameList"] == ["door_dside_f", "wheel_lf"]
+
+
+def test_cut_decoder_uses_logical_pso_instead_of_stored_archive_bytes() -> None:
+    logical = scene_to_cut(CutScene.create(duration=5.0)).to_bytes()
+
+    parsed, kind = _decode_payload("example.cut", logical, raw=b"compressed archive payload")
+
+    assert kind is GameFileType.CUT
+    assert parsed.root.type_name == "rage__cutfCutsceneFile2"
 
 
 def test_cut_scene_save_validation_allows_playable_minimal_scene() -> None:

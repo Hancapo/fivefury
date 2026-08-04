@@ -142,6 +142,6 @@ class CutFile:
         return build_cut_bytes(self, template=template)
 
     def save(self, destination: str, *, template: "CutFile | bytes | str | None" = None) -> None:
-        from pathlib import Path
+        from ..common import atomic_write_bytes
 
-        Path(destination).write_bytes(self.to_bytes(template=template))
+        atomic_write_bytes(destination, self.to_bytes(template=template))

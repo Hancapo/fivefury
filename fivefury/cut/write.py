@@ -10,7 +10,7 @@ from ..binary import (
     pack_u16_be as _u16,
     pack_u32_be as _u32,
 )
-from ..common import hash_value
+from ..common import atomic_write_bytes, hash_value
 from ..pso import (
     CHKS,
     PSCH,
@@ -361,6 +361,25 @@ class _CutWriter:
                 block_hash, rel = self._alloc_primitive_array(PsoDataTypeUInt, [_resolve_hash(item) for item in values])
                 self._write_external_array_header(buffer, offset, block_hash, rel, len(values))
                 return
+            if array_info.subtype in {2, 3}:
+                stride = 8 if array_info.subtype == 2 else 16
+                headers = bytearray(stride * len(values))
+                string_patches: list[tuple[int, int, int]] = []
+                for index, item in enumerate(values):
+                    text_value = _string_value(item)
+                    block_hash, string_rel = self._alloc_string(text_value)
+                    item_offset = index * stride
+                    string_patches.append((item_offset, block_hash, string_rel))
+                    if array_info.subtype == 3:
+                        count = len(text_value.encode("utf-8")) + 1
+                        headers[item_offset + 8 : item_offset + 10] = _u16(count)
+                        headers[item_offset + 10 : item_offset + 12] = _u16(count)
+                array_block = self._get_block(PsoDataTypeString)
+                array_rel = array_block.append(bytes(headers))
+                for patch_offset, block_hash, string_rel in string_patches:
+                    self.patches.append(_Patch(array_block.data, array_rel + patch_offset, block_hash, string_rel))
+                self._write_external_array_header(buffer, offset, PsoDataTypeString, array_rel, len(values))
+                return
             raise ValueError("unsupported string array subtype")
 
         block_hash, rel = self._alloc_primitive_array(array_info.type_id, values)
@@ -387,16 +406,16 @@ class _CutWriter:
                 elif entry.subtype in {3, 4}:
                     if value is None:
                         continue
-                    node = self._coerce_node(value, entry.reference_key)
+                    child_node = self._coerce_node(value, entry.reference_key)
                     block_hash = (
                         entry.reference_key
                         if entry.reference_key not in {None, 0}
                         else self._resolve_dynamic_type_hash(
-                            node,
+                            child_node,
                             context=f"pointer field {CUT_HASH_NAMES.get(entry.name_hash, f'hash_{entry.name_hash:08X}')}",
                         )
                     )
-                    block_hash, rel = self._alloc_structure(block_hash, node)
+                    block_hash, rel = self._alloc_structure(block_hash, child_node)
                     self._record_pointer_patch(buffer, offset, block_hash, rel)
                 else:
                     raise ValueError(f"unsupported structure subtype {entry.subtype}")
@@ -481,6 +500,4 @@ def save_cut(
     *,
     template: CutFile | bytes | str | Path | None = None,
 ) -> Path:
-    target = Path(destination)
-    target.write_bytes(build_cut_bytes(cut, template=template))
-    return target
+    return atomic_write_bytes(destination, build_cut_bytes(cut, template=template))
