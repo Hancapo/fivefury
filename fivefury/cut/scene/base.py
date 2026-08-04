@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from ...metahash import MetaHash
 from ...hashing import jenk_finalize_hash, jenk_partial_hash
-from ..events import CutEventType, get_cut_event_spec
+from ..events import CutEventType, get_cut_event_sort_rank, get_cut_event_spec
 from ..flags import CutSceneFlags
 from ..model import CutFile
 from ..payloads import CutEventPayload
@@ -276,7 +276,7 @@ class CutScene:
         if timeline_event.kind and track.kind != timeline_event.kind and track.kind == track.key:
             track.kind = timeline_event.kind
         track.events.append(timeline_event)
-        track.events.sort(key=lambda item: (item.start, item.event_id or -1, item.display_name))
+        track.events.sort(key=lambda item: (item.start, get_cut_event_sort_rank(item.event_id)))
         return timeline_event
 
     def create_event(
@@ -291,6 +291,7 @@ class CutScene:
         payload: CutEventPayload | dict[str, Any] | None = None,
         event_payload: dict[str, Any] | None = None,
         is_load_event: bool | None = None,
+        args_type: str | None = None,
     ) -> CutTimelineEvent:
         spec = get_cut_event_spec(event)
         target_binding: CutBinding | None = None
@@ -317,6 +318,7 @@ class CutScene:
             payload=payload,
             event_payload=event_payload,
             is_load_event=is_load_event,
+            args_type=args_type,
         )
         return self.add_event(timeline_event)
 

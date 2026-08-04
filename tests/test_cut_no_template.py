@@ -6,7 +6,10 @@ from fivefury import (
     CutAnimationManager,
     CutAssetManager,
     CutCamera,
+    CutCameraCharacterLightPayload,
     CutCameraCutPayload,
+    CutCameraDofModifierPayload,
+    CutDrawDistancePayload,
     CutEventBehavior,
     CutEventType,
     CutHashedString,
@@ -23,6 +26,7 @@ from fivefury import (
     build_cut_bytes,
     read_cut,
     scene_to_cut,
+    validate_cut_scene,
 )
 from fivefury.cache.io import _decode_payload
 from fivefury.gamefile import GameFileType
@@ -233,7 +237,7 @@ def test_cut_scene_animation_manager_writes_without_template() -> None:
     }
 
 
-def test_cut_scene_normalizes_retail_prop_startup_order() -> None:
+def test_cut_scene_preserves_authored_prop_startup_time() -> None:
     scene = CutScene.create(duration=8.0)
     asset_manager = scene.add(CutAssetManager())
     animation_manager = scene.add(CutAnimationManager())
@@ -261,7 +265,58 @@ def test_cut_scene_normalizes_retail_prop_startup_order() -> None:
     ]
     assert [(event.fields["fTime"], event.fields["iEventId"]) for event in rebuilt.events[:2]] == [
         (0.0, int(CutEventType.CAMERA_CUT)),
-        (pytest.approx(1.0 / 30.0), int(CutEventType.SET_ANIM)),
+        (pytest.approx(1.0 / 240.0), int(CutEventType.SET_ANIM)),
     ]
     rebuilt_prop = next(node for node in rebuilt.objects if node.type_name == "rage__cutfPropModelObject")
     assert rebuilt_prop.fields["cHandle"].hash == 0
+
+
+def test_cut_event_args_use_complete_runtime_layouts() -> None:
+    scene = CutScene.create(duration=5.0)
+    animation_manager = scene.add_animation_manager()
+    camera = scene.add_camera("cam")
+    parent = scene.add_prop("parent")
+    child = scene.add_prop("child")
+
+    scene.set_anim(0.0, child, clip_name="child_clip", target=animation_manager)
+    scene.set_draw_distance(0.0, camera, CutDrawDistancePayload(0.1, 1500.0))
+    scene.set_attachment(0.0, child, parent, "SKEL_R_Hand")
+    scene.camera_cut(
+        0.0,
+        camera,
+        CutCameraCutPayload(
+            "cam",
+            character_light=CutCameraCharacterLightPayload(intensity=0.25),
+            time_of_day_dof_modifiers=[CutCameraDofModifierPayload(0x3F, 4)],
+        ),
+    )
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+    args_by_type = {args.type_name: args for args in rebuilt.event_args}
+
+    named_anim = args_by_type["rage__cutfObjectIdNameEventArgs"]
+    assert named_anim.fields["iObjectId"] == child.object_id
+    assert named_anim.fields["cName"].hash == jenk_hash("child_clip")
+    draw_distance = args_by_type["rage__cutfTwoFloatValuesEventArgs"]
+    assert draw_distance.fields["fValue"] == pytest.approx(0.1)
+    assert draw_distance.fields["fValue2"] == pytest.approx(1500.0)
+    attachment = args_by_type["rage__cutfAttachmentEventArgs"]
+    assert attachment.fields["iObjectId"] == parent.object_id
+    assert attachment.fields["cBoneName"].hash == jenk_hash("SKEL_R_Hand")
+    camera_args = args_by_type["rage__cutfCameraCutEventArgs"]
+    assert camera_args.fields["fNearDrawDistance"] == pytest.approx(-1.0)
+    assert camera_args.fields["AbsoluteIntensityEnabled"] is True
+    assert camera_args.fields["CharacterLight"].fields["fIntensity"] == pytest.approx(0.25)
+    dof_modifier = camera_args.fields["TimeOfDayDofModifers"][0]
+    assert dof_modifier.fields["TimeOfDayFlags"] == 0x3F
+    assert dof_modifier.fields["DofStrengthModifier"] == 4
+
+
+def test_cut_camera_validation_accepts_minus_one_overrides() -> None:
+    scene = CutScene.create(duration=1.0)
+    camera = scene.add_camera("cam")
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam"))
+
+    issues = validate_cut_scene(scene, strict=True)
+
+    assert not any(issue.code.startswith("camera_cut.clip") and issue.severity == "error" for issue in issues)

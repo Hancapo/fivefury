@@ -79,7 +79,7 @@ TRACK CAMERA
     ROT 0 0 0
     NEAR 0.05
     FAR 1000
-  2.000 DRAW_DISTANCE cam_wide 750
+  2.000 DRAW_DISTANCE cam_wide 0.05 750
   4.000 CUT cam_close:
     NAME "cam_close_face"
     POS 0 -3 2
@@ -90,13 +90,13 @@ TRACK CAMERA
 END
 
 TRACK ANIMATION
-  0.033 PLAY miku
-  12.500 STOP miku
+  0.033 PLAY miku CLIP "miku_hatsune-0"
+  12.500 STOP miku CLIP "miku_hatsune-0"
 END
 
 TRACK OBJECTS
   0.000 SHOW stage, miku
-  0.250 ATTACH microphone TO "p_mic_hand"
+  0.250 ATTACH microphone TO miku BONE "p_mic_hand"
   0.000 HIDE microphone
   3.000 SHOW microphone
   10.000 HIDE microphone
@@ -196,6 +196,15 @@ def test_cutscript_writes_valid_cut_bytes() -> None:
         event.fields["iEventId"] == int(CutEventType.SET_ATTACHMENT)
         for event in cut.events
     )
+    set_anim = next(
+        event
+        for event in cut.events
+        if event.fields["iEventId"] == int(CutEventType.SET_ANIM)
+    )
+    set_anim_args = cut.get_event_args(set_anim.fields["iEventArgsIndex"])
+    assert set_anim_args is not None
+    assert set_anim_args.type_name == "rage__cutfObjectIdNameEventArgs"
+    assert set_anim_args.fields["cName"].hash != 0
 
 
 def test_cutscript_save_uses_script_save_path(tmp_path) -> None:

@@ -323,8 +323,8 @@ def test_cut_scene_builder_writes_initial_anim_events_before_camera_cut() -> Non
     cut = scene_to_cut(scene)
 
     assert [event.fields["iEventId"] for event in cut.events[:2]] == [
-        int(CutEventType.CAMERA_CUT),
         int(CutEventType.SET_ANIM),
+        int(CutEventType.CAMERA_CUT),
     ]
 
 

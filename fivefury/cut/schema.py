@@ -337,6 +337,34 @@ _BUILTIN_STRUCT_ITEMS = [
         _entry("fValue", PsoDataTypeFloat, 0, 32),
     ),
     _struct(
+        "rage__cutfTwoFloatValuesEventArgs",
+        40,
+        _entry(
+            "attributeList",
+            PsoDataTypeStructure,
+            0,
+            12,
+            CUT_NAME_VALUES["rage__parAttributeList"],
+        ),
+        _entry("cutfAttributes", PsoDataTypeStructure, 4, 24),
+        _entry("fValue", PsoDataTypeFloat, 0, 32),
+        _entry("fValue2", PsoDataTypeFloat, 0, 36),
+    ),
+    _struct(
+        "rage__cutfAttachmentEventArgs",
+        48,
+        _entry(
+            "attributeList",
+            PsoDataTypeStructure,
+            0,
+            12,
+            CUT_NAME_VALUES["rage__parAttributeList"],
+        ),
+        _entry("cutfAttributes", PsoDataTypeStructure, 4, 24),
+        _entry("iObjectId", PsoDataTypeSInt, 0, 32),
+        _entry("cBoneName", PsoDataTypeString, 7, 40),
+    ),
+    _struct(
         "rage__cutfBoolValueEventArgs",
         40,
         _entry("attributeList", PsoDataTypeStructure, 0, 12, CUT_NAME_VALUES["rage__parAttributeList"]),
@@ -414,6 +442,12 @@ _BUILTIN_STRUCT_ITEMS = [
         _entry("vDirection", PsoDataTypeFloat3, 0, 16),
         _entry("vColour", PsoDataTypeFloat3, 0, 32),
         _entry("fIntensity", PsoDataTypeFloat, 0, 48),
+    ),
+    _struct_hash(
+        1378659296,
+        16,
+        _entry("TimeOfDayFlags", PsoDataTypeUInt, 0, 8),
+        _entry("DofStrengthModifier", PsoDataTypeSInt, 0, 12),
     ),
     _struct(
         "rage__cutfCameraCutEventArgs",

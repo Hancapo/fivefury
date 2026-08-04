@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..colors import CssColor, parse_css_argb
@@ -78,9 +78,17 @@ class CutFinalNamePayload(CutEventPayload):
 @dataclass(slots=True)
 class CutAnimationTargetPayload(CutEventPayload):
     object_id: int
+    clip_name: str | None = None
 
     def to_fields(self) -> dict[str, Any]:
-        return {"iObjectId": int(self.object_id)}
+        fields: dict[str, Any] = {"iObjectId": int(self.object_id)}
+        if self.clip_name is not None:
+            fields["cName"] = self.clip_name
+        return fields
+
+    @property
+    def event_label(self) -> str | None:
+        return self.clip_name
 
 
 @dataclass(slots=True)
@@ -89,6 +97,30 @@ class CutFloatValuePayload(CutEventPayload):
 
     def to_fields(self) -> dict[str, Any]:
         return {"fValue": float(self.value)}
+
+
+@dataclass(slots=True)
+class CutDrawDistancePayload(CutEventPayload):
+    near_distance: float
+    far_distance: float
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "fValue": float(self.near_distance),
+            "fValue2": float(self.far_distance),
+        }
+
+
+@dataclass(slots=True)
+class CutAttachmentPayload(CutEventPayload):
+    parent_object_id: int
+    bone_name: str
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "iObjectId": int(self.parent_object_id),
+            "cBoneName": self.bone_name,
+        }
 
 
 @dataclass(slots=True)
@@ -170,13 +202,72 @@ class CutSubtitlePayload(CutEventPayload):
 
 
 @dataclass(slots=True)
+class CutCameraCharacterLightPayload:
+    use_timecycle_values: bool = True
+    direction: tuple[float, float, float] = (0.0, 1.0, 0.0)
+    colour: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    intensity: float = 0.0
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "bUseTimeCycleValues": bool(self.use_timecycle_values),
+            "vDirection": self.direction,
+            "vColour": self.colour,
+            "fIntensity": float(self.intensity),
+        }
+
+
+@dataclass(slots=True)
+class CutCameraDofModifierPayload:
+    hour_flags: int
+    strength: int
+
+    def to_fields(self) -> dict[str, Any]:
+        return {
+            "TimeOfDayFlags": int(self.hour_flags),
+            "DofStrengthModifier": int(self.strength),
+        }
+
+
+@dataclass(slots=True)
 class CutCameraCutPayload(CutEventPayload):
     name: str
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rotation_quaternion: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
-    near_draw_distance: float = 0.0
-    far_draw_distance: float = 0.0
-    map_lod_scale: float = 0.0
+    near_draw_distance: float = -1.0
+    far_draw_distance: float = -1.0
+    map_lod_scale: float = -1.0
+    reflection_lod_range_start: float = -1.0
+    reflection_lod_range_end: float = -1.0
+    reflection_slod_range_start: float = -1.0
+    reflection_slod_range_end: float = -1.0
+    lod_mult_hd: float = -1.0
+    lod_mult_orphaned_hd: float = -1.0
+    lod_mult_lod: float = -1.0
+    lod_mult_slod1: float = -1.0
+    lod_mult_slod2: float = -1.0
+    lod_mult_slod3: float = -1.0
+    lod_mult_slod4: float = -1.0
+    water_reflection_far_clip: float = -1.0
+    ssao_light_intensity: float = -1.0
+    exposure_push: float = 0.0
+    light_fade_distance_mult: float = 1.0
+    light_shadow_fade_distance_mult: float = 1.0
+    light_specular_fade_distance_mult: float = 1.0
+    light_volumetric_fade_distance_mult: float = 1.0
+    directional_light_multiplier: float = -1.0
+    lens_artefact_multiplier: float = -1.0
+    bloom_max: float = -1.0
+    disable_high_quality_dof: bool = False
+    freeze_reflection_map: bool = False
+    disable_directional_lighting: bool = False
+    absolute_intensity_enabled: bool = True
+    character_light: CutCameraCharacterLightPayload = field(
+        default_factory=CutCameraCharacterLightPayload
+    )
+    time_of_day_dof_modifiers: list[CutCameraDofModifierPayload] = field(
+        default_factory=list
+    )
 
     def to_fields(self) -> dict[str, Any]:
         return {
@@ -186,6 +277,35 @@ class CutCameraCutPayload(CutEventPayload):
             "fNearDrawDistance": self.near_draw_distance,
             "fFarDrawDistance": self.far_draw_distance,
             "fMapLodScale": self.map_lod_scale,
+            "ReflectionLodRangeStart": self.reflection_lod_range_start,
+            "ReflectionLodRangeEnd": self.reflection_lod_range_end,
+            "ReflectionSLodRangeStart": self.reflection_slod_range_start,
+            "ReflectionSLodRangeEnd": self.reflection_slod_range_end,
+            "LodMultHD": self.lod_mult_hd,
+            "LodMultOrphanedHD": self.lod_mult_orphaned_hd,
+            "LodMultLod": self.lod_mult_lod,
+            "LodMultSLod1": self.lod_mult_slod1,
+            "LodMultSLod2": self.lod_mult_slod2,
+            "LodMultSLod3": self.lod_mult_slod3,
+            "LodMultSLod4": self.lod_mult_slod4,
+            "WaterReflectionFarClip": self.water_reflection_far_clip,
+            "SSAOLightInten": self.ssao_light_intensity,
+            "ExposurePush": self.exposure_push,
+            "LightFadeDistanceMult": self.light_fade_distance_mult,
+            "LightShadowFadeDistanceMult": self.light_shadow_fade_distance_mult,
+            "LightSpecularFadeDistMult": self.light_specular_fade_distance_mult,
+            "LightVolumetricFadeDistanceMult": self.light_volumetric_fade_distance_mult,
+            "DirectionalLightMultiplier": self.directional_light_multiplier,
+            "LensArtefactMultiplier": self.lens_artefact_multiplier,
+            "BloomMax": self.bloom_max,
+            "DisableHighQualityDof": self.disable_high_quality_dof,
+            "FreezeReflectionMap": self.freeze_reflection_map,
+            "DisableDirectionalLighting": self.disable_directional_lighting,
+            "AbsoluteIntensityEnabled": self.absolute_intensity_enabled,
+            "CharacterLight": self.character_light.to_fields(),
+            "TimeOfDayDofModifers": [
+                item.to_fields() for item in self.time_of_day_dof_modifiers
+            ],
         }
 
     @property
