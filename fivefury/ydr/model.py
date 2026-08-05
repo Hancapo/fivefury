@@ -900,9 +900,13 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
 
         material_name = self.name or f"material_{self.index}"
         textures = {
-            parameter.name: parameter.texture.to_input()
+            parameter.name: (
+                parameter.texture.to_input()
+                if parameter.texture is not None
+                else None
+            )
             for parameter in self.parameters
-            if parameter.is_texture and parameter.texture is not None
+            if parameter.is_texture
         }
         numeric_parameters: dict[str, NumericParameterValue] = {}
         for parameter in self.parameters:

@@ -32,6 +32,17 @@ LEGACY_YDD_RUNTIME_PROFILE = YddRuntimeProfile(
     ),
 )
 
+LEGACY_YDD_CUTSCENE_PED_RUNTIME_PROFILE = YddRuntimeProfile(
+    game=GameTarget.GTA5,
+    version=YDD_VERSION_LEGACY,
+    dictionary_vft=0x40573568,
+    drawable_headers=dataclasses.replace(
+        LEGACY_DRAWABLE_HEADERS,
+        drawable=0x40573158,
+        texture_base=0x4061A7F8,
+    ),
+)
+
 GEN9_YDD_RUNTIME_PROFILE = YddRuntimeProfile(
     game=GameTarget.GTA5_ENHANCED,
     version=YDD_VERSION_GEN9,
@@ -74,6 +85,7 @@ def resolve_ydd_version(
 
 __all__ = [
     "GEN9_YDD_RUNTIME_PROFILE",
+    "LEGACY_YDD_CUTSCENE_PED_RUNTIME_PROFILE",
     "LEGACY_YDD_RUNTIME_PROFILE",
     "YDD_VERSION_GEN9",
     "YDD_VERSION_LEGACY",

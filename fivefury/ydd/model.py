@@ -10,6 +10,7 @@ from ..hashing import jenk_hash
 from ..ydr import Ydr, YdrBuild
 from .runtime_headers import (
     YDD_VERSION_LEGACY,
+    YddRuntimeProfile,
     get_ydd_runtime_profile_for_version,
     resolve_ydd_version,
 )
@@ -69,6 +70,7 @@ class Ydd:
     version: int = YDD_VERSION_LEGACY
     path: str = ""
     drawables: list[YddDrawable] = dataclasses.field(default_factory=list)
+    runtime_profile: YddRuntimeProfile | None = None
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> Ydd:
@@ -102,8 +104,22 @@ class Ydd:
         name: str = "",
         game: str | GameTarget | None = None,
         version: int | None = None,
+        runtime_profile: YddRuntimeProfile | None = None,
     ) -> Ydd:
-        ydd = cls(version=resolve_ydd_version(game=game, version=version), path=name)
+        resolved_version = resolve_ydd_version(
+            game=runtime_profile.game if game is None and runtime_profile is not None else game,
+            version=runtime_profile.version if version is None and runtime_profile is not None else version,
+        )
+        if runtime_profile is not None and int(runtime_profile.version) != resolved_version:
+            raise ValueError(
+                f"YDD runtime profile version {runtime_profile.version} does not "
+                f"match resource version {resolved_version}"
+            )
+        ydd = cls(
+            version=resolved_version,
+            path=name,
+            runtime_profile=runtime_profile,
+        )
         for index, (drawable_name, drawable) in enumerate(_iter_drawable_inputs(drawables)):
             ydd.drawables.append(_coerce_drawable_input(drawable, index, name=drawable_name))
         return ydd

@@ -89,7 +89,7 @@ class PreparedMaterial:
     shader_definition: ShaderDefinition
     shader_file_name: str
     render_bucket: int
-    textures: dict[str, YdrTextureInput]
+    textures: dict[str, YdrTextureInput | None]
     parameters: dict[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str]
     gen9_definition: ShaderGen9Definition | None = None
 
@@ -143,14 +143,20 @@ def coerce_texture_name(value: str | Path) -> str:
     return stem or candidate.name or text
 
 
-def coerce_texture_input(value: str | Path | YdrTextureInput) -> YdrTextureInput:
+def coerce_texture_input(
+    value: str | Path | YdrTextureInput | None,
+) -> YdrTextureInput | None:
+    if value is None:
+        return None
     if isinstance(value, YdrTextureInput):
         return YdrTextureInput(name=coerce_texture_name(value.name), embedded=bool(value.embedded), source=value.source)
     return YdrTextureInput(name=coerce_texture_name(value))
 
 
-def normalize_material_textures(textures: Mapping[str, str | YdrTextureInput]) -> dict[str, YdrTextureInput]:
-    normalized: dict[str, YdrTextureInput] = {}
+def normalize_material_textures(
+    textures: Mapping[str, str | Path | YdrTextureInput | None],
+) -> dict[str, YdrTextureInput | None]:
+    normalized: dict[str, YdrTextureInput | None] = {}
     for slot, value in textures.items():
         slot_name = str(slot).strip()
         slot_name = _TEXTURE_SLOT_ALIASES.get(slot_name.upper(), slot_name)
@@ -166,7 +172,7 @@ def normalize_materials(
     materials: Sequence[YdrMaterialInput] | None,
     *,
     shader: str | YdrShader | YdrGen9Shader,
-    material_textures: Mapping[str, str | YdrTextureInput] | None,
+    material_textures: Mapping[str, str | Path | YdrTextureInput | None] | None,
 ) -> list[YdrMaterialInput]:
     if materials is not None and material_textures is not None:
         raise ValueError('Pass either materials= or material_textures=, not both')
@@ -184,7 +190,7 @@ def normalize_materials(
             for material in materials
         ]
 
-    default_textures: dict[str, str | YdrTextureInput] = {}
+    default_textures: dict[str, str | Path | YdrTextureInput | None] = {}
     if material_textures is not None:
         default_textures.update(dict(material_textures))
     return [YdrMaterialInput(name='default', shader=shader, textures=default_textures)]
@@ -661,7 +667,11 @@ def _prepare_meshes(
             if len(normals) != len(positions):
                 raise ValueError('Mesh normals length must match positions length')
 
-            material_texture_slots = {slot.lower() for slot in material.textures}
+            material_texture_slots = {
+                slot.lower()
+                for slot, texture in material.textures.items()
+                if texture is not None
+            }
             used_uv_indices = {
                 int(parameter.uv_index or 0)
                 for parameter in material.shader_definition.texture_parameters

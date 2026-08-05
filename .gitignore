@@ -30,6 +30,7 @@ tests/*
 !tests/test_cdr.py
 !tests/test_drawable.py
 !tests/test_yft.py
+!tests/test_yft_tune_name.py
 !tests/test_yft_glass_authoring.py
 !tests/test_yft_glass_builder.py
 !tests/test_yft_glass_validation.py

@@ -25,7 +25,7 @@ class YdrTextureInput:
     source: str | Path | bytes | None = None
 
 
-TextureInputValue = str | Path | YdrTextureInput
+TextureInputValue = str | Path | YdrTextureInput | None
 
 
 @dataclasses.dataclass(slots=True)

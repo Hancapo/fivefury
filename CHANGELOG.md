@@ -7,6 +7,23 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-08-05
+
+### Added
+- Runtime profiles for Legacy cutscene-ped YDD dictionaries.
+- Safe in-place rewriting of YFT tune names.
+
+### Changed
+- YDD writers now order drawable hashes and reject duplicates.
+- YCD writers now reject hashes that collide with the resource pointer range.
+
+### Fixed
+- YDD runtime headers are preserved across binary round-trips.
+- External texture references in cutscene-ped YDDs use their matching runtime class.
+- Mixed YDD runtime profiles are rejected instead of being silently rewritten.
+- Explicit null texture parameters survive YDR read and write operations.
+- Cutscene YCDs preserve final-frame samples and static quaternion orientation.
+
 ## [0.3.3] - 2026-08-04
 
 ### Breaking Changes

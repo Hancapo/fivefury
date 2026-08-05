@@ -120,6 +120,8 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     cam1_start = cam1.evaluate_camera_animation_at_time(0.0)
     prop0_start = prop0.evaluate_object_animation_at_time(0.0)
     prop1_start = prop1.evaluate_object_animation_at_time(0.0)
+    prop0_end = prop0.evaluate_object_animation_at_time(0.5)
+    prop1_end = prop1.evaluate_object_animation_at_time(0.5)
     prop1_root = prop1.evaluate_root_motion_at_time(0.0)
 
     assert cam0_start.position == pytest.approx((0.0, 0.0, 0.0))
@@ -129,6 +131,8 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
 
     assert prop0_start.position == pytest.approx((1.0, 0.0, 0.0))
     assert prop1_start.position == pytest.approx((1.0, 5.0, 0.0), abs=0.2)
+    assert prop0_end.position == pytest.approx((1.0, 5.0, 0.0), abs=0.2)
+    assert prop1_end.position == pytest.approx((1.0, 10.0, 0.0), abs=0.2)
     assert prop1_root.position == pytest.approx((0.0, 1.0, 0.0), abs=0.2)
 
     assert any(int(bone.track) == int(YcdAnimationTrack.MOVER_TRANSLATION) for bone in prop1.animation.bone_ids)
@@ -204,6 +208,36 @@ def test_cutscene_builder_returns_empty_when_no_animated_clips() -> None:
     builder = YcdCutsceneBuilder.create("empty_scene", duration=5.0)
 
     assert builder.build_ycds() == []
+
+
+def test_cutscene_builder_preserves_static_negative_w_quaternion() -> None:
+    authored = (0.752974, 0.058145, -0.440166, -0.485699)
+    builder = YcdCutsceneBuilder.create("negative_w", duration=0.1, fps=30.0)
+    builder.add_prop("actor_q", rotation=authored)
+
+    rebuilt = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
+    clip = rebuilt.get_clip("actor_q-0")
+    assert clip is not None and clip.animation is not None
+    actual = clip.animation.evaluate_tracks(0)[
+        (0, int(YcdAnimationTrack.BONE_ROTATION))
+    ]
+    dot = abs(sum(left * right for left, right in zip(authored, actual, strict=True)))
+    authored_length = sum(value * value for value in authored) ** 0.5
+    actual_length = sum(value * value for value in actual) ** 0.5
+
+    assert dot / (authored_length * actual_length) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_cutscene_builder_rejects_hashes_that_look_like_pointers() -> None:
+    builder = YcdCutsceneBuilder.create("pointer_hash", duration=0.1, fps=30.0)
+    builder.add_prop(
+        "cc_cscakebox_i14__q012",
+        position=(0.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+
+    with pytest.raises(ValueError, match="indistinguishable from a RAGE virtual pointer"):
+        build_ycd_bytes(builder.build_ycds()[0])
 
 
 def test_cutscene_builder_supports_multi_bone_object_animation() -> None:

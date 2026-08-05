@@ -72,7 +72,10 @@ def _normalize_quaternion(value: tuple[float, float, float, float]) -> tuple[flo
     if length <= 0.0:
         return (0.0, 0.0, 0.0, 1.0)
     scale = length ** -0.5
-    return (x * scale, y * scale, z * scale, w * scale)
+    normalized = (x * scale, y * scale, z * scale, w * scale)
+    if normalized[3] < 0.0:
+        return tuple(-component for component in normalized)  # type: ignore[return-value]
+    return normalized
 
 
 def _nlerp_quaternion(
@@ -634,7 +637,10 @@ class YcdCutsceneBuilder:
             animation_hash = MetaHash(short_name)
             bone_ids: list[YcdAnimationBoneId] = []
             track_windows: list[tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]] = []
-            sequence_limit = min(YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT, max(section.frame_count - 1, 0))
+            sequence_limit = min(
+                YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+                max(section.frame_count, 1),
+            )
             sample_frame_limit = sequence_limit
             uses_camera_tracks = any(_is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks)
             sorted_tracks = list(clip_spec.tracks)

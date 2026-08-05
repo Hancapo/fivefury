@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Sequence
+from itertools import pairwise
 from pathlib import Path
 
 from ..binary import align
@@ -177,8 +178,22 @@ def create_ydd(
     name: str = "",
     game: str | GameTarget | None = None,
     version: int | None = None,
+    runtime_profile: YddRuntimeProfile | None = None,
 ) -> Ydd:
-    ydd = Ydd(version=resolve_ydd_version(game=game, version=version), path=name)
+    resolved_version = resolve_ydd_version(
+        game=runtime_profile.game if game is None and runtime_profile is not None else game,
+        version=runtime_profile.version if version is None and runtime_profile is not None else version,
+    )
+    if runtime_profile is not None and int(runtime_profile.version) != resolved_version:
+        raise ValueError(
+            f"YDD runtime profile version {runtime_profile.version} does not "
+            f"match resource version {resolved_version}"
+        )
+    ydd = Ydd(
+        version=resolved_version,
+        path=name,
+        runtime_profile=runtime_profile,
+    )
     ydd.with_drawables(drawables)
     return ydd
 
@@ -195,7 +210,12 @@ def build_ydd_bytes(
     if not ydd.drawables:
         raise ValueError("YDD writer requires at least one drawable")
 
-    profile = get_ydd_runtime_profile_for_version(ydd.version)
+    profile = ydd.runtime_profile or get_ydd_runtime_profile_for_version(ydd.version)
+    if int(profile.version) != int(ydd.version):
+        raise ValueError(
+            f"YDD runtime profile version {profile.version} does not match "
+            f"resource version {ydd.version}"
+        )
     enhanced = profile.game is GameTarget.GTA5_ENHANCED
     active_shader_library = shader_library if shader_library is not None else load_shader_library()
     gen9_library = load_gen9_shader_library() if enhanced else None
@@ -209,6 +229,13 @@ def build_ydd_bytes(
         generate_tangents=generate_tangents,
         fill_vertex_colours=fill_vertex_colours,
     )
+    prepared.sort(key=lambda item: item.name_hash)
+    for previous, current in pairwise(prepared):
+        if previous.name_hash == current.name_hash:
+            raise ValueError(
+                f"YDD writer requires unique drawable hashes; "
+                f"0x{current.name_hash:08X} is duplicated"
+            )
 
     page_counts = (0, 0)
     system_flags = None

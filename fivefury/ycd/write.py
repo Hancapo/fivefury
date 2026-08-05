@@ -34,6 +34,7 @@ from .sequence_tracks import get_ycd_track_format
 from .sequences import build_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
+DAT_VIRTUAL_LIMIT = 0x70000000
 _DEFAULT_CLIP_UNKNOWN_04H = 1
 _DEFAULT_CLIP_UNKNOWN_48H = 1
 _DEFAULT_ROOT_UNKNOWN_20H = 0x00000101
@@ -60,6 +61,34 @@ def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
     if resolved.uint:
         return resolved
     return MetaHash(clip.short_name or clip_short_name(clip.name))
+
+
+def _validate_hash_map_keys(ycd: Ycd) -> None:
+    """Reject map keys the native page layout cannot distinguish from pointers."""
+    keys: list[tuple[str, int]] = []
+    keys.extend(
+        (
+            f"animation {animation.name!r}",
+            _resolve_hash(animation.hash, fallback_text=animation.name).uint,
+        )
+        for animation in ycd.animations
+    )
+    for clip in ycd.clips:
+        keys.append((f"clip {clip.name!r}", _resolve_clip_hash(clip).uint))
+        keys.extend(
+            (
+                f"clip property {prop.name!r}",
+                _resolve_hash(prop.name_hash).uint,
+            )
+            for prop in clip.properties
+        )
+    for label, value in keys:
+        if DAT_VIRTUAL_BASE <= value < DAT_VIRTUAL_LIMIT:
+            raise ValueError(
+                f"YCD hash-map key 0x{value:08X} for {label} is "
+                "indistinguishable from a RAGE virtual pointer; choose a "
+                "different name or explicit hash"
+            )
 
 
 class _YcdWriter:
@@ -666,6 +695,7 @@ def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
     source = ycd.build()
     if source.header.version != YCD_VERSION:
         raise ValueError(f"YCD resources require version {YCD_VERSION}, got {source.header.version}")
+    _validate_hash_map_keys(source)
     target = coerce_game_target(source.game if game is None else game)
     profile = get_ycd_runtime_profile(target)
     page_counts = (0, 0)

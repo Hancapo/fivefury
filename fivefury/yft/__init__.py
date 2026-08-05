@@ -95,6 +95,7 @@ from .physics_authoring import (
     simple_physics_bound,
 )
 from .reader import read_yft
+from .tune_name import rewrite_yft_tune_name
 from .writer import build_yft_bytes, create_yft, save_yft
 
 __all__ = [
@@ -185,6 +186,7 @@ __all__ = [
     "normalize_physics_lod",
     "prepare_physics_bound",
     "read_yft",
+    "rewrite_yft_tune_name",
     "save_yft",
     "scan_yft_corpus",
     "simple_physics_bound",

@@ -1695,6 +1695,50 @@ def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     assert [bone.name for bone in ydr2.skeleton.bones] == ["root", "child"]
 
 
+def test_to_build_preserves_explicit_null_texture_parameters(tmp_path: Path) -> None:
+    mesh = _triangle_mesh(material="main")
+    mesh.texcoords = [list(mesh.texcoords[0]), list(mesh.texcoords[0])]
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[mesh])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="ped.sps",
+                textures={
+                    "DiffuseSampler": "ped_diffuse",
+                    "TextureSamplerDiffPal": None,
+                    "VolumeSampler": None,
+                },
+            )
+        ],
+        name="null_texture_parameters",
+    )
+
+    path1 = tmp_path / "null_texture_parameters_1.ydr"
+    build.save(path1)
+    ydr1 = read_ydr(path1)
+    material1 = ydr1.materials[0]
+
+    null_slots1 = {
+        parameter.name
+        for parameter in material1.parameters
+        if parameter.is_texture and parameter.texture is None
+    }
+    assert {"TextureSamplerDiffPal", "VolumeSampler"} <= null_slots1
+    assert material1.to_input().textures["TextureSamplerDiffPal"] is None
+    assert material1.to_input().textures["VolumeSampler"] is None
+
+    path2 = tmp_path / "null_texture_parameters_2.ydr"
+    ydr1.to_build().save(path2)
+    ydr2 = read_ydr(path2)
+    null_slots2 = {
+        parameter.name
+        for parameter in ydr2.materials[0].parameters
+        if parameter.is_texture and parameter.texture is None
+    }
+    assert {"TextureSamplerDiffPal", "VolumeSampler"} <= null_slots2
+
+
 def test_skinned_model_writes_formal_skeleton_binding_bytes(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(

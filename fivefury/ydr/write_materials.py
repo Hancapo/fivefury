@@ -256,8 +256,17 @@ def build_parameter_entries(
     for definition in material.shader_definition.parameters:
         key = definition.name.lower()
         if definition.is_texture:
-            texture_input = texture_slots.get(key)
+            if key not in texture_slots:
+                continue
+            texture_input = texture_slots[key]
             if texture_input is None:
+                entries.append(
+                    shader_parameter_entry_cls(
+                        definition=definition,
+                        data_type=0,
+                        data_pointer=0,
+                    )
+                )
                 continue
             texture_name_off = system.c_string(texture_input.name)
             texture_base_off = system.alloc(0x50, 16)
