@@ -25,9 +25,10 @@ from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_materials import prepare_materials
 from .model import Ydd, YddDrawable, YddDrawableCollection, _coerce_drawable_input
 from .runtime_headers import (
+    YddRuntimeContext,
     YddRuntimeProfile,
     get_ydd_runtime_profile_for_version,
-    resolve_ydd_version,
+    resolve_ydd_runtime_profile,
 )
 
 _DAT_VIRTUAL_BASE = 0x50000000
@@ -178,21 +179,19 @@ def create_ydd(
     name: str = "",
     game: str | GameTarget | None = None,
     version: int | None = None,
+    runtime_context: str | YddRuntimeContext | None = None,
     runtime_profile: YddRuntimeProfile | None = None,
 ) -> Ydd:
-    resolved_version = resolve_ydd_version(
-        game=runtime_profile.game if game is None and runtime_profile is not None else game,
-        version=runtime_profile.version if version is None and runtime_profile is not None else version,
-    )
-    if runtime_profile is not None and int(runtime_profile.version) != resolved_version:
-        raise ValueError(
-            f"YDD runtime profile version {runtime_profile.version} does not "
-            f"match resource version {resolved_version}"
-        )
-    ydd = Ydd(
-        version=resolved_version,
-        path=name,
+    profile = resolve_ydd_runtime_profile(
+        game=game,
+        version=version,
+        context=runtime_context,
         runtime_profile=runtime_profile,
+    )
+    ydd = Ydd(
+        version=profile.version,
+        path=name,
+        runtime_profile=profile,
     )
     ydd.with_drawables(drawables)
     return ydd

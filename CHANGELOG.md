@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Context-aware runtime profiles for full-ped and cutscene-component YDD dictionaries.
+
 ## [0.3.4] - 2026-08-05
 
 ### Added
