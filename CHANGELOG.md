@@ -7,6 +7,20 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-08-06
+
+### Added
+- Public Legacy-to-Enhanced shader adaptation for drawable authoring.
+- Native Enhanced shader parameter defaults.
+
+### Changed
+- Enhanced materials preserve their source render behavior while using native shader families.
+- YDR validation issues expose a consistent severity value.
+
+### Fixed
+- Reflective Enhanced materials preserve environment texture bindings.
+- Enhanced alpha and cutout materials retain their intended rendering behavior.
+
 ## [0.3.5] - 2026-08-06
 
 ### Added

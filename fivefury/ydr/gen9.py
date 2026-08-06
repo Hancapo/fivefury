@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import json
 import re
 import struct
 from collections.abc import Sequence
@@ -13,6 +14,7 @@ from .defs import COMPONENT_SIZES, VertexComponentType
 from .gen9_shader_enums import YdrGen9Shader, coerce_gen9_shader_name
 
 _G9_XML_PATH = Path(__file__).with_name('ShadersGen9Conversion.xml')
+_G9_DEFAULTS_PATH = Path(__file__).with_name('ShaderGen9Defaults.json')
 _G9_SHADER_PRESET_META = 0x6D657461
 _G9_PARAM_MULTIPLIER = 12
 _G9_SRV_VFT = 0x00000001406B77D8
@@ -62,6 +64,7 @@ class ShaderGen9ParameterDefinition:
     buffer_index: int | None = None
     param_offset: int | None = None
     param_length: int | None = None
+    default_value: tuple[float, ...] | None = None
 
     @property
     def kind_enum(self) -> ShaderParamTypeG9:
@@ -257,6 +260,7 @@ def build_runtime_gen9_shader_definition(
                 buffer_index=int(index) if kind is ShaderParamTypeG9.CBUFFER else None,
                 param_offset=int(offset) if kind is ShaderParamTypeG9.CBUFFER else None,
                 param_length=int(length) if kind is ShaderParamTypeG9.CBUFFER else None,
+                default_value=known.default_value if known is not None else None,
             )
         )
     return ShaderGen9Definition(
@@ -276,22 +280,50 @@ def resolve_gen9_shader_reference(
     return shader_definition, shader_definition.file_name
 
 
-def _parse_shader_parameter(node: ET.Element) -> ShaderGen9ParameterDefinition:
+def _parse_shader_parameter(
+    node: ET.Element,
+    defaults: dict[str, tuple[float, ...]],
+) -> ShaderGen9ParameterDefinition:
     kind = str(node.attrib.get('type') or '').strip()
+    name = str(node.attrib.get('name') or '').strip()
+    legacy_name = (str(node.attrib.get('old')).strip() or None) if node.attrib.get('old') is not None else None
+    default_value = defaults.get(name.lower())
+    if default_value is None and legacy_name is not None:
+        default_value = defaults.get(legacy_name.lower())
     return ShaderGen9ParameterDefinition(
-        name=str(node.attrib.get('name') or '').strip(),
+        name=name,
         kind=kind,
         index=int(node.attrib.get('index') or 0),
-        legacy_name=(str(node.attrib.get('old')).strip() or None) if node.attrib.get('old') is not None else None,
+        legacy_name=legacy_name,
         sampler_value=int(node.attrib.get('sampler')) if node.attrib.get('sampler') is not None else None,
         buffer_index=int(node.attrib.get('buffer')) if node.attrib.get('buffer') is not None else None,
         param_offset=int(node.attrib.get('offset')) if node.attrib.get('offset') is not None else None,
         param_length=int(node.attrib.get('length')) if node.attrib.get('length') is not None else None,
+        default_value=default_value,
     )
 
 
-def read_gen9_shader_library(path: str | Path | None = None) -> ShaderGen9Library:
+def _read_gen9_parameter_defaults(path: str | Path | None = None) -> dict[str, dict[str, tuple[float, ...]]]:
+    defaults_path = Path(path) if path is not None else _G9_DEFAULTS_PATH
+    if not defaults_path.is_file():
+        return {}
+    raw = json.loads(defaults_path.read_text(encoding='utf-8'))
+    return {
+        str(shader_name).lower(): {
+            str(parameter_name).lower(): tuple(float(component) for component in value)
+            for parameter_name, value in parameters.items()
+        }
+        for shader_name, parameters in raw.items()
+    }
+
+
+def read_gen9_shader_library(
+    path: str | Path | None = None,
+    *,
+    defaults_path: str | Path | None = None,
+) -> ShaderGen9Library:
     xml_path = Path(path) if path is not None else _G9_XML_PATH
+    defaults_by_shader = _read_gen9_parameter_defaults(defaults_path)
     root = ET.fromstring(xml_path.read_text(encoding='utf-8'))
     shaders: list[ShaderGen9Definition] = []
     for item in root.findall('Item'):
@@ -303,7 +335,12 @@ def read_gen9_shader_library(path: str | Path | None = None) -> ShaderGen9Librar
         else:
             buffer_sizes = ()
         parameters_node = item.find('Parameters')
-        parameters = tuple(_parse_shader_parameter(node) for node in parameters_node.findall('Item')) if parameters_node is not None else ()
+        shader_defaults = defaults_by_shader.get(name.lower(), {})
+        parameters = (
+            tuple(_parse_shader_parameter(node, shader_defaults) for node in parameters_node.findall('Item'))
+            if parameters_node is not None
+            else ()
+        )
         shaders.append(
             ShaderGen9Definition(
                 name=name,

@@ -1,3 +1,4 @@
 include LICENSE
 include native/*.h
 recursive-include fivefury/ydr *.xml
+recursive-include fivefury/ydr *.json

@@ -43,6 +43,10 @@ class YdrValidationIssue:
     message: str
     context: str = ""
 
+    @property
+    def severity(self) -> str:
+        return self.level
+
 
 class YdrLightType(enum.IntEnum):
     POINT = 1
@@ -736,6 +740,15 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
     parameters: list[YdrMaterialParameterRef] = dataclasses.field(default_factory=list)
     shader_definition: ShaderDefinition | None = None
     gen9_definition: ShaderGen9Definition | None = None
+
+    def get_parameter(self, value: str | int) -> YdrMaterialParameterRef | None:
+        parameter = DrawableMaterial.get_parameter(self, value)
+        if parameter is not None or self.gen9_definition is None:
+            return parameter
+        definition = self.gen9_definition.get_parameter(value)
+        if definition is None:
+            return None
+        return DrawableMaterial.get_parameter(self, definition.legacy_name or definition.name)
 
     @property
     def resolved_shader_file_name(self) -> str | None:

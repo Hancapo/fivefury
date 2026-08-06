@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fivefury"
-version = "0.3.5"
+version = "0.3.6"
 description = "Python library for GTA V asset workflows including YMAP, YTYP, RPF, YTD and GameFileCache utilities."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ authors = [
   { name = "Codex" },
 ]
 license = "Unlicense"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
   "miniaudio>=1.71",
   "numpy>=1.26",
@@ -25,7 +25,7 @@ include-package-data = true
 include = ["fivefury*"]
 
 [tool.setuptools.package-data]
-fivefury = ["data/*.dat", "drawable/*.xml", "ydr/*.xml"]
+fivefury = ["data/*.dat", "drawable/*.xml", "ydr/*.json", "ydr/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

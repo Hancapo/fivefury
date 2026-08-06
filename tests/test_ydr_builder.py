@@ -46,6 +46,43 @@ from tests.helpers import configured_path, reference_root
 
 _TEXTURE_BASE_VFT = 0x40617568
 
+_LEGACY_GEN9_ADAPTATION_CASES = (
+    ("alpha.sps", "default.sps", 1),
+    ("cutout.sps", "default.sps", 3),
+    ("emissive_alpha.sps", "emissive.sps", 1),
+    ("emissivenight_alpha.sps", "emissivenight.sps", 1),
+    ("emissivestrong_alpha.sps", "emissivestrong.sps", 1),
+    ("glass_emissive_alpha.sps", "glass_emissive.sps", 1),
+    ("glass_emissivenight_alpha.sps", "glass_emissivenight.sps", 1),
+    ("normal_alpha.sps", "normal.sps", 1),
+    ("normal_cutout.sps", "normal.sps", 3),
+    ("normal_reflect_alpha.sps", "normal_reflect.sps", 1),
+    ("normal_spec_alpha.sps", "normal_spec.sps", 1),
+    ("normal_spec_reflect_alpha.sps", "normal_spec_reflect.sps", 1),
+    ("normal_spec_reflect_emissivenight_alpha.sps", "normal_spec_reflect_emissivenight.sps", 1),
+    ("ped_default_cutout.sps", "ped_default.sps", 3),
+    ("reflect_alpha.sps", "reflect.sps", 1),
+    ("spec_alpha.sps", "spec.sps", 1),
+    ("spec_const.sps", "default_spec.sps", 0),
+    ("spec_reflect_alpha.sps", "spec_reflect.sps", 1),
+)
+
+_GEN9_ENVIRONMENT_SHADER_FAMILIES = (
+    "spec_reflect.sps",
+    "reflect.sps",
+    "glass.sps",
+    "normal_spec_reflect.sps",
+    "normal_reflect.sps",
+    "glass_emissivenight.sps",
+    "glass_reflect.sps",
+    "glass_emissive.sps",
+    "reflect_decal.sps",
+    "glass_normal_spec_reflect.sps",
+    "spec_reflect_decal.sps",
+    "normal_spec_reflect_decal.sps",
+    "normal_reflect_decal.sps",
+)
+
 
 def _triangle_mesh(material: str = "default") -> YdrMeshInput:
     return YdrMeshInput(
@@ -1263,6 +1300,90 @@ def test_build_and_read_ydr_gen9_accepts_shader_enum(tmp_path: Path) -> None:
     assert ydr.materials[0].resolved_shader_file_name == YdrGen9Shader.DEFAULT.value
     assert ydr.materials[0].texture_names == ["enum_diffuse"]
     assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.6, 0.4, 0.2, 1.0))
+
+
+@pytest.mark.parametrize(("legacy_shader", "gen9_shader", "render_bucket"), _LEGACY_GEN9_ADAPTATION_CASES)
+def test_build_and_read_ydr_gen9_adapts_legacy_shader_variants(
+    tmp_path: Path,
+    legacy_shader: str,
+    gen9_shader: str,
+    render_bucket: int,
+) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader=legacy_shader,
+                textures={"DiffuseSampler": "adapted_diffuse"},
+            )
+        ],
+        version=159,
+        name="gen9_legacy_adaptation",
+    )
+
+    ydr_path = tmp_path / f"{legacy_shader}.ydr"
+    build.save(ydr_path)
+    material = read_ydr(ydr_path).materials[0]
+
+    assert material.resolved_shader_file_name == gen9_shader
+    assert material.render_bucket == render_bucket
+    if render_bucket in {1, 3} and material.get_parameter("HardAlphaBlend") is not None:
+        assert material.get_numeric_parameter("HardAlphaBlend") == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("shader", _GEN9_ENVIRONMENT_SHADER_FAMILIES)
+def test_build_and_read_ydr_gen9_preserves_environment_sampler_binding(tmp_path: Path, shader: str) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader=shader,
+                textures={
+                    "DiffuseSampler": "reflect_diffuse",
+                    "EnvironmentSampler": "reflect_environment",
+                },
+            )
+        ],
+        version=159,
+        name="gen9_environment_binding",
+    )
+
+    ydr_path = tmp_path / f"{shader}.ydr"
+    build.save(ydr_path)
+    material = read_ydr(ydr_path).materials[0]
+
+    assert material.get_texture("EnvironmentSampler").name == "reflect_environment"
+    assert material.get_texture("EnvironmentTex2D").name == "reflect_environment"
+
+
+@pytest.mark.parametrize(("value", "expected"), ((None, 1.0), (0.0, 0.0)))
+def test_build_and_read_ydr_gen9_applies_defaults_before_material_values(
+    tmp_path: Path,
+    value: float | None,
+    expected: float,
+) -> None:
+    parameters = {} if value is None else {"hardalphablend": value}
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="glass.sps",
+                textures={"DiffuseSampler": "glass_diffuse"},
+                parameters=parameters,
+            )
+        ],
+        version=159,
+        name="gen9_material_defaults",
+    )
+
+    ydr_path = tmp_path / f"gen9_material_defaults_{expected}.ydr"
+    build.save(ydr_path)
+    material = read_ydr(ydr_path).materials[0]
+
+    assert material.get_numeric_parameter("hardalphablend") == pytest.approx(expected)
 
 
 def test_build_and_read_ydr_embedded_bound(tmp_path: Path) -> None:
