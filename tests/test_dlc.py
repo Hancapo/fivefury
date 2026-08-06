@@ -29,6 +29,7 @@ from fivefury import (
     read_dlc_pack,
     read_dlc_setup,
     validate_dlc_asset_targets,
+    validate_dlc_folder,
     validate_dlc_pack,
     write_dlc_folder_metadata,
 )
@@ -337,6 +338,81 @@ def test_folder_metadata_can_use_custom_dat_file_name(tmp_path) -> None:
     assert metadata.setup.dat_file == "context.xml"
     assert (folder / "context.xml").exists()
     assert read_dlc_setup((folder / "setup2.xml").read_bytes()).dat_file == "context.xml"
+
+
+def test_folder_metadata_rejects_wrong_target_before_writing(tmp_path) -> None:
+    folder = tmp_path / "enhanced_pack"
+    folder.mkdir()
+    (folder / "legacy.ydr").write_bytes(build_rsc7(b"\0" * 16, version=165))
+
+    with pytest.raises(DlcValidationError, match="asset targets gta5"):
+        write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
+
+    assert not (folder / "setup2.xml").exists()
+    assert not (folder / "content.xml").exists()
+
+
+def test_folder_metadata_validates_loose_enhanced_assets(tmp_path) -> None:
+    folder = tmp_path / "enhanced_pack"
+    folder.mkdir()
+    (folder / "enhanced.ydr").write_bytes(build_rsc7(b"\0" * 16, version=159))
+
+    metadata = write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
+    issues = validate_dlc_folder(folder, game=GameTarget.GTA5_ENHANCED)
+
+    assert metadata.game is GameTarget.GTA5_ENHANCED
+    assert not [issue for issue in issues if issue.severity == "error"]
+
+
+def test_folder_asset_validation_ignores_dot_directories(tmp_path) -> None:
+    folder = tmp_path / "enhanced_pack"
+    hidden = folder / ".cache"
+    hidden.mkdir(parents=True)
+    (hidden / "legacy.ydr").write_bytes(build_rsc7(b"\0" * 16, version=165))
+
+    write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
+
+    assert (folder / "setup2.xml").exists()
+
+
+def test_folder_asset_validation_checks_nested_rpfs(tmp_path) -> None:
+    folder = tmp_path / "enhanced_pack"
+    folder.mkdir()
+    archive = RpfArchive.empty("models.rpf")
+    archive.add_file("legacy.ydr", build_rsc7(b"\0" * 16, version=165))
+    archive.save(folder / "models.rpf")
+
+    with pytest.raises(DlcValidationError, match="models.rpf/legacy.ydr"):
+        write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
+
+
+def test_folder_asset_validation_rejects_unreadable_rpfs(tmp_path) -> None:
+    folder = tmp_path / "enhanced_pack"
+    folder.mkdir()
+    (folder / "broken.rpf").write_bytes(b"not an rpf")
+
+    with pytest.raises(DlcValidationError, match="broken.rpf"):
+        write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
+
+
+def test_folder_asset_validation_rejects_unreadable_nested_rpfs(tmp_path) -> None:
+    folder = tmp_path / "enhanced_pack"
+    folder.mkdir()
+    archive = RpfArchive.empty("outer.rpf")
+    archive.add_file("broken.rpf", b"not an rpf")
+    archive.save(folder / "outer.rpf")
+
+    with pytest.raises(DlcValidationError, match="outer.rpf/broken.rpf"):
+        write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
+
+
+def test_folder_asset_validation_requires_explicit_target(tmp_path) -> None:
+    folder = tmp_path / "pack"
+    folder.mkdir()
+    metadata = create_dlc_folder_metadata("pack", folder)
+
+    with pytest.raises(DlcValidationError, match="explicit game target"):
+        metadata.write(folder, validate_assets=True)
 
 
 def test_read_dlc_pack_uses_setup_dat_file_and_validation_reports_missing_references() -> None:
