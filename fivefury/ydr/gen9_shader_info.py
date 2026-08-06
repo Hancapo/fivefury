@@ -3,7 +3,13 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from .gen9 import ShaderGen9Definition, ShaderGen9Library, ShaderGen9ParameterDefinition, load_gen9_shader_library, resolve_gen9_shader_reference
+from .gen9 import (
+    ShaderGen9Definition,
+    ShaderGen9Library,
+    ShaderGen9ParameterDefinition,
+    load_gen9_shader_library,
+    resolve_gen9_shader_reference,
+)
 from .gen9_shader_enums import YdrGen9Shader, coerce_gen9_shader_name
 
 
@@ -17,6 +23,7 @@ class YdrGen9ShaderParameterInfo:
     buffer_index: int | None = None
     param_offset: int | None = None
     param_length: int | None = None
+    default_value: tuple[float, ...] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -28,6 +35,7 @@ class YdrGen9ShaderParameterInfo:
             "buffer_index": self.buffer_index,
             "param_offset": self.param_offset,
             "param_length": self.param_length,
+            "default_value": self.default_value,
         }
 
 
@@ -83,6 +91,7 @@ def _parameter_info(definition: ShaderGen9ParameterDefinition) -> YdrGen9ShaderP
         buffer_index=definition.buffer_index,
         param_offset=definition.param_offset,
         param_length=definition.param_length,
+        default_value=definition.default_value,
     )
 
 
@@ -123,6 +132,8 @@ def _format_parameter(parameter: YdrGen9ShaderParameterInfo) -> str:
         suffix.append(f"offset={parameter.param_offset}")
     if parameter.param_length is not None:
         suffix.append(f"length={parameter.param_length}")
+    if parameter.default_value is not None:
+        suffix.append(f"default={parameter.default_value}")
     return f"{parameter.name} ({', '.join(suffix)})"
 
 

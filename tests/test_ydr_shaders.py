@@ -3,6 +3,7 @@ from __future__ import annotations
 from fivefury import (
     YdrGen9Shader,
     YdrShader,
+    adapt_shader_to_gen9,
     format_ydr_gen9_shader_info,
     format_ydr_shader_info,
     get_ydr_gen9_shader_info,
@@ -12,6 +13,70 @@ from fivefury.ydr.gen9 import (
     ShaderParamTypeG9,
     build_runtime_gen9_shader_definition,
     read_gen9_shader_library,
+)
+
+_CANONICAL_CONVERSION_SHADERS = (
+    "alpha.sps",
+    "cable.sps",
+    "cutout.sps",
+    "cutout_fence.sps",
+    "decal.sps",
+    "decal_amb_only.sps",
+    "decal_dirt.sps",
+    "decal_glue.sps",
+    "decal_normal_only.sps",
+    "default.sps",
+    "emissive.sps",
+    "emissive_alpha.sps",
+    "emissivenight.sps",
+    "emissivenight_alpha.sps",
+    "emissivestrong.sps",
+    "emissivestrong_alpha.sps",
+    "glass.sps",
+    "glass_emissive.sps",
+    "glass_emissive_alpha.sps",
+    "glass_emissivenight.sps",
+    "glass_emissivenight_alpha.sps",
+    "glass_normal_spec_reflect.sps",
+    "glass_reflect.sps",
+    "glass_spec.sps",
+    "normal.sps",
+    "normal_alpha.sps",
+    "normal_cubemap_reflect.sps",
+    "normal_cutout.sps",
+    "normal_decal.sps",
+    "normal_reflect.sps",
+    "normal_reflect_alpha.sps",
+    "normal_reflect_decal.sps",
+    "normal_spec.sps",
+    "normal_spec_alpha.sps",
+    "normal_spec_cubemap_reflect.sps",
+    "normal_spec_decal.sps",
+    "normal_spec_emissive.sps",
+    "normal_spec_reflect.sps",
+    "normal_spec_reflect_alpha.sps",
+    "normal_spec_reflect_decal.sps",
+    "normal_spec_reflect_emissivenight.sps",
+    "normal_spec_reflect_emissivenight_alpha.sps",
+    "parallax.sps",
+    "parallax_specmap.sps",
+    "ped_default.sps",
+    "ped_default_cutout.sps",
+    "ped_default_enveff.sps",
+    "radar.sps",
+    "reflect.sps",
+    "reflect_alpha.sps",
+    "reflect_decal.sps",
+    "spec.sps",
+    "spec_alpha.sps",
+    "spec_const.sps",
+    "spec_decal.sps",
+    "spec_reflect.sps",
+    "spec_reflect_alpha.sps",
+    "spec_reflect_decal.sps",
+    "terrain_cb_4lyr_2tex.sps",
+    "terrain_cb_w_4lyr_2tex_blend_pxm_spm.sps",
+    "trees.sps",
 )
 
 
@@ -94,3 +159,35 @@ def test_gen9_runtime_layout_preserves_and_resolves_semantic_hashes() -> None:
     assert (anisotropic.semantic_hash, anisotropic.index, anisotropic.sampler_value) == (0x49C32B64, 5, 4)
     assert trilinear.pack_info() == bytes.fromhex("BB9046E406000000")
     assert library.require_shader("default").get_parameter(0xBABE4DBA) is None
+
+
+def test_all_canonical_conversion_shaders_adapt_to_native_gen9() -> None:
+    adaptations = [adapt_shader_to_gen9(shader) for shader in _CANONICAL_CONVERSION_SHADERS]
+
+    assert len(adaptations) == 61
+    assert all(adaptation.gen9_definition.file_name.endswith(".sps") for adaptation in adaptations)
+
+
+def test_gen9_environment_texture_names_preserve_legacy_binding() -> None:
+    library = read_gen9_shader_library()
+
+    for shader_name in ("glass", "normal_reflect", "normal_spec_reflect", "reflect", "spec_reflect"):
+        parameter = library.require_shader(shader_name).require_parameter("EnvironmentSampler")
+        assert parameter.name == "EnvironmentTex2D"
+        assert parameter.semantic_hash == 0x6572309A
+
+    for shader_name in ("normal_cubemap_reflect", "normal_spec_cubemap_reflect"):
+        parameter = library.require_shader(shader_name).require_parameter("EnvironmentSampler")
+        assert parameter.name == "EnvironmentTex"
+        assert parameter.semantic_hash == 0x757E2A27
+
+
+def test_gen9_library_exposes_asset_derived_parameter_defaults() -> None:
+    parameter = read_gen9_shader_library().require_shader("glass_emissive").require_parameter("hardalphablend")
+
+    assert parameter.default_value == (1.0, 0.0, 0.0, 0.0)
+
+    info = get_ydr_gen9_shader_info("glass_emissive.sps")
+    hard_alpha = next(parameter for parameter in info.cbuffer_parameters if parameter.name == "hardalphablend")
+    assert hard_alpha.default_value == (1.0, 0.0, 0.0, 0.0)
+    assert "default=(1.0, 0.0, 0.0, 0.0)" in format_ydr_gen9_shader_info(info)

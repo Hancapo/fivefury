@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import struct
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from ..binary import align
 from ..hashing import jenk_hash
 from .gen9 import (
-    ShaderGen9Library,
-    ShaderGen9ParameterDefinition,
-    ShaderParamTypeG9,
     _G9_PARAM_MULTIPLIER,
     _G9_SHADER_PRESET_META,
     _G9_TEXTURE_BLOCK_UNKNOWN_44,
@@ -16,8 +13,12 @@ from .gen9 import (
     _G9_TEXTURE_FLAGS,
     _G9_TEXTURE_TILE_AUTO,
     _G9_TEXTURE_USAGE_COUNT,
+    ShaderGen9Library,
+    ShaderGen9ParameterDefinition,
+    ShaderParamTypeG9,
     build_shader_param_infos_g9,
 )
+from .gen9_adaptation import adapt_shader_to_gen9
 
 
 def normalize_parameter_key(value: str) -> str:
@@ -93,31 +94,6 @@ def merge_shader_parameter_defaults(
     return merged
 
 
-def _resolve_legacy_shader_for_gen9(material, shader_library, resolve_shader: Callable, gen9_definition) -> tuple[object, str, int]:
-    candidates = [
-        material.layout_shader,
-        gen9_definition.file_name,
-        gen9_definition.name,
-        str(material.shader),
-    ]
-    last_error: Exception | None = None
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        try:
-            shader_definition, shader_file_name, resolved_render_bucket = resolve_shader(
-                candidate,
-                int(material.render_bucket),
-                shader_library,
-            )
-            return shader_definition, shader_file_name, resolved_render_bucket
-        except Exception as exc:  # noqa: BLE001
-            last_error = exc
-    if last_error is not None:
-        raise last_error
-    raise ValueError(f"Unable to resolve legacy shader layout for Gen9 shader '{gen9_definition.name}'")
-
-
 def _normalize_gen9_textures(gen9_definition, normalized_textures) -> dict[str, object]:
     textures: dict[str, object] = {}
     for slot_name, texture in normalized_textures.items():
@@ -139,8 +115,11 @@ def _normalize_gen9_textures(gen9_definition, normalized_textures) -> dict[str, 
     return textures
 
 
-def _merge_gen9_defaults(shader_definition, gen9_definition, parameters) -> dict[str, object]:
+def _merge_gen9_defaults(shader_definition, gen9_definition, parameters, *, render_bucket: int) -> dict[str, object]:
     merged: dict[str, object] = {}
+    for definition in gen9_definition.cbuffer_parameters:
+        if definition.default_value is not None:
+            merged[definition.name] = definition.default_value
     for definition in shader_definition.parameters:
         if definition.is_texture or definition.default_value is None:
             continue
@@ -148,6 +127,11 @@ def _merge_gen9_defaults(shader_definition, gen9_definition, parameters) -> dict
         if gen9_parameter is None or gen9_parameter.kind_enum is not ShaderParamTypeG9.CBUFFER:
             continue
         merged[gen9_parameter.name] = definition.default_value
+    if int(render_bucket) in {1, 3}:
+        for definition in gen9_definition.cbuffer_parameters:
+            names = {name.lower() for name in definition.candidate_names}
+            if "hardalphablend" in names and not any(key.lower() in names for key in merged):
+                merged[definition.name] = 1.0
     for name, value in parameters.items():
         merged[str(name)] = value
     return merged
@@ -185,13 +169,17 @@ def prepare_materials(
         if enhanced:
             if gen9_library is None:
                 raise ValueError('Gen9 YDR writing requires a Gen9 shader library')
-            gen9_definition = material.gen9_definition or gen9_library.require_shader(material.shader)
-            shader_definition, _legacy_shader_file_name, resolved_render_bucket = _resolve_legacy_shader_for_gen9(
-                material,
-                shader_library,
-                resolve_shader,
-                gen9_definition,
+            adaptation = adapt_shader_to_gen9(
+                material.shader,
+                int(material.render_bucket),
+                layout_shader=material.layout_shader,
+                gen9_definition=material.gen9_definition,
+                shader_library=shader_library,
+                gen9_library=gen9_library,
+                resolve_shader=resolve_shader,
             )
+            gen9_definition = adaptation.gen9_definition
+            shader_definition = adaptation.legacy_definition
             normalized_textures = _normalize_gen9_textures(gen9_definition, normalize_material_textures(material.textures))
             normalized_parameters = _normalize_gen9_parameters(
                 gen9_definition,
@@ -199,6 +187,7 @@ def prepare_materials(
                     shader_definition,
                     gen9_definition,
                     {str(name): value for name, value in material.parameters.items()},
+                    render_bucket=adaptation.render_bucket,
                 ),
             )
             prepared.append(
@@ -207,7 +196,7 @@ def prepare_materials(
                     name=material.name,
                     shader_definition=shader_definition,
                     shader_file_name=gen9_definition.file_name,
-                    render_bucket=int(resolved_render_bucket),
+                    render_bucket=adaptation.render_bucket,
                     textures=normalized_textures,
                     parameters=normalized_parameters,
                     gen9_definition=gen9_definition,

@@ -1,0 +1,393 @@
+{
+  "clouds_altitude": {
+    "hash_D02B61DF": [0.75, 0.0, 0.0, 0.0]
+  },
+  "clouds_anim": {
+    "hash_D02B61DF": [0.75, 0.0, 0.0, 0.0]
+  },
+  "clouds_animsoft": {
+    "hash_D02B61DF": [0.75, 0.0, 0.0, 0.0]
+  },
+  "clouds_fast": {
+    "hash_5A64DD6F": [1.0, 1.0, 1.0, 0.0],
+    "hash_710292B6": [0.0, 0.0, 0.0, 0.0],
+    "hash_877E62AA": [1.0, 0.0, 0.0, 0.0],
+    "hash_C02F95F1": [175.0, 0.0, 0.0, 0.0],
+    "hash_D02B61DF": [0.75, 0.0, 0.0, 0.0],
+    "hash_D22FA8BD": [0.0, 0.0, 0.0, 0.0]
+  },
+  "clouds_fog": {
+    "hash_5A64DD6F": [1.0, 1.0, 1.0, 0.0],
+    "hash_877E62AA": [1.0, 0.0, 0.0, 0.0],
+    "hash_D02B61DF": [0.75, 0.0, 0.0, 0.0],
+    "hash_D22FA8BD": [0.0, 0.0, 0.0, 0.0],
+    "hash_ED193A87": [-0.75, 0.5625, 2.1, 1.0]
+  },
+  "clouds_soft": {
+    "hash_5A64DD6F": [1.0, 1.0, 1.0, 0.0],
+    "hash_877E62AA": [1.0, 0.0, 0.0, 0.0],
+    "hash_D02B61DF": [0.75, 0.0, 0.0, 0.0],
+    "hash_D22FA8BD": [0.0, 0.0, 0.0, 0.0]
+  },
+  "emissive_additive_alpha": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "emissive_additive_uv_alpha": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_breakable": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_displacement": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_emissive": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_emissivenight": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_env": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_normal_spec_reflect": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_pv": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0],
+    "hash_92DB11FB": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_pv_env": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0],
+    "hash_92DB11FB": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_reflect": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "glass_spec": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "grass_batch": {
+    "hash_3F66946B": [0.0, 0.0, 0.0, 0.0],
+    "hash_92E7D306": [0.0, 0.0, 1.0, 0.0],
+    "hash_DC71D41C": [0.0, 0.0, 0.0, 0.0]
+  },
+  "grass_fur": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "grass_fur_mask": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "mirror_crack": {
+    "fresnel": [0.97, 0.0, 0.0, 0.0],
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0],
+    "hash_4DC15BF2": [0.45, 0.0, 0.0, 0.0],
+    "hash_C9B1E47E": [0.0, 0.0, 0.0, 0.0],
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "mirror_decal": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0],
+    "hash_C9B1E47E": [0.0, 0.0, 0.0, 0.0]
+  },
+  "mirror_default": {
+    "fresnel": [0.97, 0.0, 0.0, 0.0],
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0],
+    "hash_4DC15BF2": [0.45, 0.0, 0.0, 0.0],
+    "hash_C9B1E47E": [0.0, 0.0, 0.0, 0.0],
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_diffspec": {
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_diffspec_detail": {
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_diffspec_detail_dpm": {
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_diffspec_detail_dpm_tnt": {
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_diffspec_detail_tnt": {
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_diffspec_tnt": {
+    "specular": [100.0, 0.0, 0.0, 0.0]
+  },
+  "normal_spec_batch": {
+    "hash_92E7D306": [0.0, 0.0, 1.0, 0.0],
+    "hash_DC71D41C": [0.0, 0.0, 0.0, 0.0]
+  },
+  "normal_um_tnt": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "parallax": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "parallax_specmap": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "ped": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_cloth": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_cloth_enveff": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_decal": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_decal_decoration": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_decal_exp": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_default_mp": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_emissive": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_enveff": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_nopeddamagedecals": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_palette": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_wrinkle": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_wrinkle_cloth": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_wrinkle_cloth_enveff": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_wrinkle_cs": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ped_wrinkle_enveff": {
+    "bloodzoneadjust": [0.4, 0.0, 1.0, 1.0, 0.2, 0.4, 1.0, 1.0, 0.1, 0.6, -1.0, 1.0, 0.1, 0.7, 1.0, -1.0, 0.1, 0.8, 1.0, 1.0, 0.1, 0.9, 1.0, 1.0]
+  },
+  "ptfx_model": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "reflect": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_lod": {
+    "hash_1C6524CB": [0.025, 0.02, 1.0, 0.5],
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_lod2": {
+    "hash_1C6524CB": [0.025, 0.02, 1.0, 0.5],
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0],
+    "selfshadowing": [0.8, 0.0, 0.0, 0.0]
+  },
+  "trees_lod_tnt": {
+    "hash_1C6524CB": [0.025, 0.02, 1.0, 0.5],
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_normal": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_normal_diffspec": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_normal_diffspec_tnt": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_normal_spec": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_normal_spec_tnt": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_shadow_proxy": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "trees_tnt": {
+    "hash_376B767A": [1.0, 0.0, 0.0, 0.0],
+    "hash_8406DB66": [1.0, 0.0, 0.0, 0.0]
+  },
+  "vehicle_badges": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0],
+    "matdiffusespecularrampenabled": [-1.0, 0.0, 0.0, 0.0]
+  },
+  "vehicle_basic": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_blurredrotor": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_blurredrotor_emissive": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_cloth": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_cutout": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_dash_emissive": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_dash_emissive_opaque": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_decal": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_decal2": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_detail": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_detail2": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_emissive_alpha": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_emissive_opaque": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_generic": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_interior": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0],
+    "dirtlevelmod": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_interior2": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0],
+    "dirtlevelmod": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_licenseplate": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0],
+    "hash_5A6F9A63": [0.475, 0.5, 0.0, 0.0],
+    "hash_B1880B3B": [0.0, 0.0, 0.0, 0.0]
+  },
+  "vehicle_lightsemissive": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_lightsemissive_siren": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_mesh": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_mesh2_enveff": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_mesh_enveff": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_paint1": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_paint1_enveff": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_paint2": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_paint2_enveff": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_shuts": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_tire": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0],
+    "matwheelprevworldviewproj0": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "vehicle_tire_emissive": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0],
+    "matwheelprevworldviewproj0": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "vehicle_track": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_track2": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_track2_emissive": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_track_ammo": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_track_emissive": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_track_siren": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_vehglass": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "vehicle_vehglass_inner": {
+    "diffusecolor2": [1.0, 1.0, 1.0, 1.0]
+  },
+  "water_fountain": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0],
+    "ripplespeed": [0.0, 0.0, 0.0, 0.0]
+  },
+  "water_poolenv": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0],
+    "ripplespeed": [0.0, 0.0, 0.0, 0.0]
+  },
+  "water_river": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0]
+  },
+  "water_riverfoam": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0],
+    "ripplebumpiness": [0.356, 0.0, 0.0, 0.0],
+    "ripplescale": [0.04, 0.0, 0.0, 0.0],
+    "specularfalloff": [1118.0, 0.0, 0.0, 0.0],
+    "specularintensity": [1.0, 0.0, 0.0, 0.0]
+  },
+  "water_riverlod": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0]
+  },
+  "water_riverocean": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0],
+    "ripplespeed": [0.0, 0.0, 0.0, 0.0]
+  },
+  "water_rivershallow": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0]
+  },
+  "water_shallow": {
+    "hash_C34FF240": [0.3, 0.0, 0.0, 0.0]
+  },
+  "weapon_emissivestrong_alpha": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  },
+  "weapon_normal_spec_alpha": {
+    "hardalphablend": [1.0, 0.0, 0.0, 0.0]
+  }
+}

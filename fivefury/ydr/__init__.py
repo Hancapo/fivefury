@@ -11,6 +11,7 @@ from .gen9 import (
     read_gen9_shader_library,
     resolve_gen9_shader_reference,
 )
+from .gen9_adaptation import Gen9ShaderAdaptation, adapt_shader_to_gen9
 from .gen9_shader_enums import YdrGen9Shader, coerce_gen9_shader_name
 from .gen9_shader_info import (
     YdrGen9ShaderInfo,
@@ -83,6 +84,7 @@ __all__ = [
     "AssimpScene",
     "ShaderDefinition",
     "ShaderGen9Definition",
+    "Gen9ShaderAdaptation",
     "ShaderGen9Library",
     "ShaderGen9ParameterDefinition",
     "ShaderLayoutDefinition",
@@ -134,6 +136,7 @@ __all__ = [
     "build_material_descriptor",
     "build_ydr_bytes",
     "assimp_to_ydr",
+    "adapt_shader_to_gen9",
     "coerce_gen9_shader_name",
     "coerce_shader_name",
     "compose_bone_local_transform",
