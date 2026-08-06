@@ -1,25 +1,27 @@
 from __future__ import annotations
 
 from fivefury import (
+    DlcContentFileArray,
     DlcContentGroup,
     DlcDataFileContents,
     DlcDataFileType,
     DlcExtraTitleUpdateData,
+    DlcInstallPartition,
     DlcList,
+    DlcLoadingScreenContext,
     DlcPack,
     DlcPatch,
     DlcSetupData,
     RpfArchive,
     create_dlc_folder_metadata,
-    read_dlc_pack,
     read_dlc_content,
     read_dlc_extra_title_update_data,
     read_dlc_list,
+    read_dlc_pack,
     read_dlc_setup,
     validate_dlc_pack,
     write_dlc_folder_metadata,
 )
-
 
 SETUP_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <SSetupData>
@@ -94,6 +96,83 @@ CONTENT_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+COMPLETE_CONTENT_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<CDataFileMgr__ContentsOfDataFileXml>
+  <disabledFiles><Item>platform:/disabled.meta</Item></disabledFiles>
+  <includedXmlFiles>
+    <Item>
+      <dataFiles>
+        <Item platform="ps5|xbsx">
+          <filename>dlc_test:/common/data/included.meta</filename>
+          <fileType>EXTRA_TITLE_UPDATE_DATA</fileType>
+          <registerAs>included</registerAs>
+          <locked value="true" />
+          <loadCompletely value="true" />
+          <overlay value="false" />
+          <patchFile value="true" />
+          <disabled value="false" />
+          <persistent value="true" />
+          <enforceLsnSorting value="false" />
+          <contents>CONTENTS_DEFAULT</contents>
+          <installPartition>PARTITION_1</installPartition>
+        </Item>
+      </dataFiles>
+    </Item>
+  </includedXmlFiles>
+  <includedDataFiles><Item>common:/data/base.meta</Item></includedDataFiles>
+  <dataFiles>
+    <Item>
+      <filename>dlc_test:/x64/levels/gta5/navmeshes.rpf</filename>
+      <fileType>RPF_FILE</fileType>
+      <disabled value="true" />
+      <persistent value="true" />
+    </Item>
+  </dataFiles>
+  <contentChangeSets>
+    <Item>
+      <changeSetName>TEST_MAP</changeSetName>
+      <mapChangeSetData>
+        <Item>
+          <associatedMap>MO_JIM_L11</associatedMap>
+          <filesToInvalidate><Item>platform:/old.rpf</Item></filesToInvalidate>
+          <filesToDisable />
+          <filesToEnable><Item>dlc_test:/x64/levels/gta5/navmeshes.rpf</Item></filesToEnable>
+          <txdToLoad><Item>test_txd</Item></txdToLoad>
+          <txdToUnload />
+          <residentResources>
+            <Item><AssetName>test_asset</AssetName><Extension>ydr</Extension></Item>
+          </residentResources>
+          <unregisterResources />
+          <dataFilesToLoad><Item>test_data</Item></dataFilesToLoad>
+        </Item>
+      </mapChangeSetData>
+      <filesToInvalidate />
+      <filesToDisable />
+      <filesToEnable />
+      <txdToLoad><Item>global_txd</Item></txdToLoad>
+      <txdToUnload />
+      <residentResources />
+      <unregisterResources>
+        <Item><AssetName>old_asset</AssetName><Extension>ydd</Extension></Item>
+      </unregisterResources>
+      <dataFilesToLoad><Item>global_data</Item></dataFilesToLoad>
+      <requiresLoadingScreen value="true" />
+      <loadingScreenContext>LOADINGSCREEN_CONTEXT_LAST_FRAME</loadingScreenContext>
+      <executionConditions>
+        <activeChangesetConditions>
+          <Item><name>BASE_MAP</name><condition value="true" /></Item>
+        </activeChangesetConditions>
+        <genericConditions>$level=MO_JIM_L11</genericConditions>
+      </executionConditions>
+      <useCacheLoader value="true" />
+    </Item>
+  </contentChangeSets>
+  <patchFiles><Item>update:/patch.rpf</Item></patchFiles>
+  <allowedFolders><Item>dlc_test:/</Item></allowedFolders>
+</CDataFileMgr__ContentsOfDataFileXml>
+"""
+
+
 def test_dlc_setup_parses_and_writes_change_set_groups() -> None:
     setup = read_dlc_setup(SETUP_XML)
 
@@ -121,6 +200,46 @@ def test_dlc_content_parses_and_writes_files_and_change_sets() -> None:
 
     assert reparsed.data_files[1].file_type == "DLC_ITYP_REQUEST"
     assert reparsed.content_change_sets[0].files_to_enable[-1].endswith("extra.meta")
+
+
+def test_dlc_content_preserves_complete_runtime_metadata() -> None:
+    content = read_dlc_content(COMPLETE_CONTENT_XML)
+
+    assert content.disabled_files == ["platform:/disabled.meta"]
+    assert content.allowed_folders == ["dlc_test:/"]
+    assert isinstance(content.included_xml_files[0], DlcContentFileArray)
+    included = content.included_xml_files[0].data_files[0]
+    assert included.platform == "ps5|xbsx"
+    assert included.locked is True
+    assert included.patch_file is True
+    assert included.install_partition == DlcInstallPartition.PARTITION_1
+
+    change_set = content.content_change_sets[0]
+    assert change_set.map_change_set_data[0].associated_map == "MO_JIM_L11"
+    assert change_set.map_change_set_data[0].resident_resources[0].asset_name == "test_asset"
+    assert change_set.data_files_to_load == ["global_data"]
+    assert change_set.loading_screen_context == DlcLoadingScreenContext.LAST_FRAME
+    assert change_set.execution_conditions is not None
+    assert change_set.execution_conditions.generic_conditions == "$level=MO_JIM_L11"
+
+    assert read_dlc_content(content.to_xml_bytes()) == content
+
+
+def test_dlc_content_preserves_absent_optional_file_fields() -> None:
+    content = read_dlc_content(
+        b"""<CDataFileMgr__ContentsOfDataFileXml><dataFiles><Item>
+        <filename>dlc_test:/minimal.meta</filename><fileType>EXTRA_TITLE_UPDATE_DATA</fileType>
+        </Item></dataFiles></CDataFileMgr__ContentsOfDataFileXml>"""
+    )
+
+    data_file = content.data_files[0]
+    assert data_file.overlay is None
+    assert data_file.disabled is None
+    assert data_file.persistent is None
+    serialized = data_file.to_xml_element()
+    assert serialized.find("overlay") is None
+    assert serialized.find("disabled") is None
+    assert serialized.find("persistent") is None
 
 
 def test_dlc_list_and_extra_title_update_data_roundtrip() -> None:
