@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import struct
+from types import SimpleNamespace
+
+import pytest
+
 from fivefury import (
     DlcContentFileArray,
     DlcContentGroup,
@@ -11,14 +16,19 @@ from fivefury import (
     DlcLoadingScreenContext,
     DlcPack,
     DlcPatch,
+    DlcRpfEncryption,
     DlcSetupData,
+    DlcValidationError,
+    GameTarget,
     RpfArchive,
+    build_rsc7,
     create_dlc_folder_metadata,
     read_dlc_content,
     read_dlc_extra_title_update_data,
     read_dlc_list,
     read_dlc_pack,
     read_dlc_setup,
+    validate_dlc_asset_targets,
     validate_dlc_pack,
     write_dlc_folder_metadata,
 )
@@ -257,7 +267,7 @@ def test_dlc_list_and_extra_title_update_data_roundtrip() -> None:
 def test_declarative_dlc_pack_builds_dlc_rpf() -> None:
     pack = DlcPack("my_pack", setup=DlcSetupData.compat_pack("my_pack", order=60))
     nested = RpfArchive.empty("props.rpf")
-    nested.add_file("my_prop.ydr", b"fake")
+    nested.add_file("my_prop.bin", b"fake")
 
     pack.rpf("x64/levels/gta5/props/props.rpf", nested, map_data=True)
     pack.ityp("x64/levels/gta5/props/my_pack.ityp")
@@ -345,3 +355,61 @@ def test_read_dlc_pack_uses_setup_dat_file_and_validation_reports_missing_refere
 
     assert parsed.setup.dat_file == "context.xml"
     assert any(issue.code == "content.change_set.unknown_file" for issue in issues)
+
+
+def test_dlc_setup_allows_external_change_sets_unless_local_resolution_is_required() -> None:
+    setup = DlcSetupData.compat_pack("my_pack")
+    setup.startup("BASE_GAME_CHANGE_SET")
+    pack = DlcPack("my_pack", setup=setup)
+
+    assert not any(issue.code == "setup.group.missing_change_set" for issue in pack.validate())
+    strict = pack.validate(require_local_change_sets=True)
+    assert any(issue.code == "setup.group.missing_change_set" for issue in strict)
+
+    resolved = validate_dlc_pack(
+        pack,
+        require_local_change_sets=True,
+        external_change_sets={"BASE_GAME_CHANGE_SET"},
+    )
+    assert not any(issue.code == "setup.group.missing_change_set" for issue in resolved)
+
+
+def test_dlc_pack_rejects_resource_target_mismatches_before_writing() -> None:
+    legacy_ydr = build_rsc7(b"\0" * 16, version=165)
+    pack = DlcPack("enhanced_pack", game=GameTarget.GTA5_ENHANCED)
+    pack.file("x64/models/legacy.ydr", legacy_ydr)
+
+    with pytest.raises(DlcValidationError, match="asset targets gta5"):
+        pack.to_rpf()
+
+
+def test_enhanced_dlc_accepts_legacy_ycd_layouts() -> None:
+    pack = DlcPack("enhanced_pack")
+    pack.file("x64/anim/legacy.ycd", SimpleNamespace(game=GameTarget.GTA5))
+
+    assert validate_dlc_asset_targets(pack, GameTarget.GTA5_ENHANCED) == []
+
+
+def test_dlc_pack_writes_target_compatible_assets_with_explicit_open_encryption() -> None:
+    enhanced_ydr = build_rsc7(b"\0" * 16, version=159)
+    pack = DlcPack(
+        "enhanced_pack",
+        game=GameTarget.GTA5_ENHANCED,
+        rpf_encryption=DlcRpfEncryption.OPEN,
+    )
+    pack.file("x64/models/enhanced.ydr", enhanced_ydr)
+
+    archive = pack.to_rpf()
+    raw = archive.to_bytes()
+
+    assert archive.encryption == DlcRpfEncryption.OPEN
+    assert struct.unpack_from("<I", raw, 12)[0] == DlcRpfEncryption.OPEN
+
+
+def test_read_dlc_pack_preserves_non_metadata_payloads() -> None:
+    pack = DlcPack("my_pack")
+    pack.file("common/data/custom.meta", b"payload")
+
+    parsed = read_dlc_pack(pack.to_rpf(), load_files=True)
+
+    assert parsed.files == {"common/data/custom.meta": b"payload"}

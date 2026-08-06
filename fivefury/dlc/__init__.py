@@ -7,19 +7,16 @@ from .enums import (
     DlcInstallPartition,
     DlcLoadingScreenContext,
     DlcPackType,
+    DlcRpfEncryption,
 )
 from .highlevel import (
     DlcFolderMetadata,
-    DlcValidationIssue,
     create_dlc_folder_metadata,
     create_dlc_list_for_packs,
     create_dlc_patch_manifest,
     infer_dlc_content_from_folder,
     iter_dlc_content_candidates,
     read_dlc_pack,
-    validate_dlc_content,
-    validate_dlc_pack,
-    validate_dlc_setup,
     write_dlc_folder_metadata,
 )
 from .model import (
@@ -47,6 +44,15 @@ from .model import (
     read_dlc_list,
     read_dlc_setup,
 )
+from .validation import (
+    DlcValidationError,
+    DlcValidationIssue,
+    assert_valid_dlc_pack,
+    validate_dlc_asset_targets,
+    validate_dlc_content,
+    validate_dlc_pack,
+    validate_dlc_setup,
+)
 
 __all__ = [
     "DlcChangeSetData",
@@ -70,8 +76,11 @@ __all__ = [
     "DlcPatch",
     "DlcPatchMount",
     "DlcResourceReference",
+    "DlcRpfEncryption",
     "DlcSetupData",
+    "DlcValidationError",
     "DlcValidationIssue",
+    "assert_valid_dlc_pack",
     "build_dlc_content_xml",
     "build_dlc_extra_title_update_data_xml",
     "build_dlc_list_xml",
@@ -86,6 +95,7 @@ __all__ = [
     "read_dlc_list",
     "read_dlc_pack",
     "read_dlc_setup",
+    "validate_dlc_asset_targets",
     "validate_dlc_content",
     "validate_dlc_pack",
     "validate_dlc_setup",

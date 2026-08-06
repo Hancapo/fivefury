@@ -4,7 +4,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..game_target import GameTarget
 from ..rpf import RpfArchive, RpfFileEntry
+from ..rpf.entries import RpfResourceFileEntry
 from .enums import DlcContentGroup, DlcDataFileContents, DlcDataFileType
 from .model import (
     DlcContentFile,
@@ -18,14 +20,6 @@ from .model import (
 
 
 @dataclass(slots=True)
-class DlcValidationIssue:
-    code: str
-    message: str
-    severity: str = "error"
-    path: str = ""
-
-
-@dataclass(slots=True)
 class DlcFolderMetadata:
     setup: DlcSetupData
     content: DlcContentXml
@@ -34,7 +28,9 @@ class DlcFolderMetadata:
     def to_pack(self) -> DlcPack:
         return DlcPack(self.setup.name_hash, setup=self.setup, content=self.content)
 
-    def write(self, folder: str | Path, *, write_dlc_list: bool = False) -> dict[str, Path]:
+    def write(
+        self, folder: str | Path, *, write_dlc_list: bool = False
+    ) -> dict[str, Path]:
         root = Path(folder)
         root.mkdir(parents=True, exist_ok=True)
         written: dict[str, Path] = {}
@@ -64,7 +60,9 @@ def _device_path(pack_name: str, device_name: str | None = None) -> str:
     return name if name.endswith(":/") else f"{name}:/"
 
 
-def _virtual_path(pack_name: str, rel_path: str, *, device_name: str | None = None) -> str:
+def _virtual_path(
+    pack_name: str, rel_path: str, *, device_name: str | None = None
+) -> str:
     return f"{_device_path(pack_name, device_name)}{rel_path}"
 
 
@@ -78,7 +76,14 @@ def _is_map_data_rpf(rel_path: str) -> bool:
         return False
     if "levels/gta5" not in lowered:
         return False
-    map_tokens = ("metadata", "placement", "ymap", "navmesh", "lodlights", "distantlights")
+    map_tokens = (
+        "metadata",
+        "placement",
+        "ymap",
+        "navmesh",
+        "lodlights",
+        "distantlights",
+    )
     return any(token in lowered for token in map_tokens)
 
 
@@ -100,7 +105,9 @@ def _audio_file_type(rel_path: str) -> DlcDataFileType | None:
     return None
 
 
-def _infer_content_file(pack_name: str, rel_path: str, *, device_name: str | None = None) -> DlcContentFile | None:
+def _infer_content_file(
+    pack_name: str, rel_path: str, *, device_name: str | None = None
+) -> DlcContentFile | None:
     lowered = rel_path.lower()
     filename = _virtual_path(pack_name, rel_path, device_name=device_name)
     if lowered.endswith(".rpf"):
@@ -109,30 +116,46 @@ def _infer_content_file(pack_name: str, rel_path: str, *, device_name: str | Non
             file_type=DlcDataFileType.RPF,
             overlay=_is_map_data_rpf(rel_path) and "navmesh" in lowered,
             persistent=True,
-            contents=DlcDataFileContents.DLC_MAP_DATA if _is_map_data_rpf(rel_path) else None,
+            contents=DlcDataFileContents.DLC_MAP_DATA
+            if _is_map_data_rpf(rel_path)
+            else None,
             load_completely=True if "metadata" in lowered else None,
         )
     if lowered.endswith(".ityp"):
-        return DlcContentFile(filename=filename, file_type=DlcDataFileType.DLC_ITYP_REQUEST)
+        return DlcContentFile(
+            filename=filename, file_type=DlcDataFileType.DLC_ITYP_REQUEST
+        )
     audio_type = _audio_file_type(rel_path)
     if audio_type is not None:
         return DlcContentFile(filename=filename, file_type=audio_type)
     if lowered.endswith("/audio/sfx") or "/audio/sfx/" in lowered:
-        return DlcContentFile(filename=filename, file_type=DlcDataFileType.AUDIO_WAVEPACK)
+        return DlcContentFile(
+            filename=filename, file_type=DlcDataFileType.AUDIO_WAVEPACK
+        )
     if lowered.endswith("overlayinfo.xml"):
         return DlcContentFile(filename=filename, file_type=DlcDataFileType.OVERLAY_INFO)
     if lowered.endswith("interiorproxies.meta"):
-        return DlcContentFile(filename=filename, file_type=DlcDataFileType.INTERIOR_PROXY_ORDER)
+        return DlcContentFile(
+            filename=filename, file_type=DlcDataFileType.INTERIOR_PROXY_ORDER
+        )
     if lowered.endswith("dlctext.meta"):
-        return DlcContentFile(filename=filename, file_type=DlcDataFileType.TEXTFILE_META)
+        return DlcContentFile(
+            filename=filename, file_type=DlcDataFileType.TEXTFILE_META
+        )
     if lowered.endswith("gtxd.meta"):
-        return DlcContentFile(filename=filename, file_type=DlcDataFileType.GTXD_PARENTING_DATA)
+        return DlcContentFile(
+            filename=filename, file_type=DlcDataFileType.GTXD_PARENTING_DATA
+        )
     return None
 
 
-def iter_dlc_content_candidates(folder: str | Path, *, include_dot_dirs: bool = False) -> Iterable[str]:
+def iter_dlc_content_candidates(
+    folder: str | Path, *, include_dot_dirs: bool = False
+) -> Iterable[str]:
     root = Path(folder)
-    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().lower()):
+    for path in sorted(
+        root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().lower()
+    ):
         if not path.is_file():
             continue
         if not include_dot_dirs and _is_dot_path(path, root):
@@ -186,7 +209,9 @@ def create_dlc_folder_metadata(
         group=group,
     )
     setup.order = int(order)
-    return DlcFolderMetadata(setup=setup, content=content, dlc_list=DlcList().include(pack_name, mount=mount))
+    return DlcFolderMetadata(
+        setup=setup, content=content, dlc_list=DlcList().include(pack_name, mount=mount)
+    )
 
 
 def write_dlc_folder_metadata(
@@ -217,14 +242,23 @@ def create_dlc_list_for_packs(*pack_names: str, mount: str = "dlcpacks") -> DlcL
     return dlc_list
 
 
-def create_dlc_patch_manifest(*pack_names: str, device_prefix: str = "dlc_") -> DlcExtraTitleUpdateData:
+def create_dlc_patch_manifest(
+    *pack_names: str, device_prefix: str = "dlc_"
+) -> DlcExtraTitleUpdateData:
     data = DlcExtraTitleUpdateData()
     for pack_name in pack_names:
-        data.mounts.append(DlcPatchMount.for_pack(pack_name, device_name=f"{device_prefix}{pack_name}"))
+        data.mounts.append(
+            DlcPatchMount.for_pack(pack_name, device_name=f"{device_prefix}{pack_name}")
+        )
     return data
 
 
-def read_dlc_pack(source: str | Path | bytes | RpfArchive) -> DlcPack:
+def read_dlc_pack(
+    source: str | Path | bytes | RpfArchive,
+    *,
+    game: str | GameTarget | None = None,
+    load_files: bool = False,
+) -> DlcPack:
     if isinstance(source, RpfArchive):
         archive = source
     elif isinstance(source, bytes):
@@ -242,65 +276,46 @@ def read_dlc_pack(source: str | Path | bytes | RpfArchive) -> DlcPack:
     if setup_entry is None:
         raise ValueError("DLC archive does not contain setup2.xml")
     setup = DlcSetupData.from_xml(archive.read_entry_bytes(setup_entry, logical=True))
-    content_entry = entries.get((setup.dat_file or "content.xml").lower().replace("\\", "/"))
+    content_entry = entries.get(
+        (setup.dat_file or "content.xml").lower().replace("\\", "/")
+    )
     if content_entry is None:
-        raise ValueError(f"DLC archive does not contain {setup.dat_file or 'content.xml'}")
-    content = DlcContentXml.from_xml(archive.read_entry_bytes(content_entry, logical=True))
-    return DlcPack(setup.name_hash, setup=setup, content=content)
+        raise ValueError(
+            f"DLC archive does not contain {setup.dat_file or 'content.xml'}"
+        )
+    content = DlcContentXml.from_xml(
+        archive.read_entry_bytes(content_entry, logical=True)
+    )
+    metadata_paths = {
+        "setup2.xml",
+        (setup.dat_file or "content.xml").lower().replace("\\", "/"),
+    }
+    files: dict[str, bytes] = {}
+    if load_files:
+        for normalized, entry in entries.items():
+            if normalized in metadata_paths:
+                continue
+            files[entry.path] = (
+                archive.read_entry_standalone(entry)
+                if isinstance(entry, RpfResourceFileEntry)
+                else archive.read_entry_bytes(entry, logical=True)
+            )
+    return DlcPack(
+        setup.name_hash,
+        setup=setup,
+        content=content,
+        files=files,
+        game=game,
+    )
 
 
-def validate_dlc_setup(setup: DlcSetupData, content: DlcContentXml | None = None) -> list[DlcValidationIssue]:
-    issues: list[DlcValidationIssue] = []
-    if not setup.device_name:
-        issues.append(DlcValidationIssue("setup.device_name.empty", "setup2.xml requires deviceName"))
-    if not setup.name_hash:
-        issues.append(DlcValidationIssue("setup.name_hash.empty", "setup2.xml requires nameHash"))
-    if not setup.dat_file:
-        issues.append(DlcValidationIssue("setup.dat_file.empty", "setup2.xml requires datFile"))
-    if content is not None:
-        defined = {change_set.name.lower() for change_set in content.content_change_sets}
-        for group in setup.content_change_set_groups:
-            for change_set in group.change_sets:
-                if change_set.lower() not in defined:
-                    issues.append(
-                        DlcValidationIssue(
-                            "setup.group.missing_change_set",
-                            f"setup group {group.name!r} references undefined content change set {change_set!r}",
-                            path=str(group.name),
-                        )
-                    )
-    return issues
-
-
-def validate_dlc_content(content: DlcContentXml) -> list[DlcValidationIssue]:
-    issues: list[DlcValidationIssue] = []
-    if not content.data_files:
-        issues.append(DlcValidationIssue("content.files.empty", "content.xml has no dataFiles", severity="warning"))
-    seen: set[str] = set()
-    for data_file in content.data_files:
-        key = data_file.filename.lower()
-        if not data_file.filename:
-            issues.append(DlcValidationIssue("content.file.empty_filename", "dataFiles item requires filename"))
-        if not data_file.file_type:
-            issues.append(DlcValidationIssue("content.file.empty_type", "dataFiles item requires fileType", path=data_file.filename))
-        if key in seen:
-            issues.append(DlcValidationIssue("content.file.duplicate", f"duplicate data file {data_file.filename!r}", path=data_file.filename))
-        seen.add(key)
-    for change_set in content.content_change_sets:
-        for filename in change_set.files_to_enable + change_set.files_to_disable + change_set.files_to_invalidate:
-            if filename.lower() not in seen:
-                issues.append(
-                    DlcValidationIssue(
-                        "content.change_set.unknown_file",
-                        f"change set {change_set.name!r} references unregistered file {filename!r}",
-                        severity="warning",
-                        path=filename,
-                    )
-                )
-    return issues
-
-
-def validate_dlc_pack(pack: DlcPack) -> list[DlcValidationIssue]:
-    if pack.setup is None:
-        return [DlcValidationIssue("pack.setup.missing", "DLC pack has no setup metadata")]
-    return validate_dlc_setup(pack.setup, pack.content) + validate_dlc_content(pack.content)
+__all__ = [
+    "DlcFolderMetadata",
+    "create_dlc_folder_metadata",
+    "create_dlc_list_for_packs",
+    "create_dlc_patch_manifest",
+    "infer_dlc_content_from_folder",
+    "iter_dlc_content_candidates",
+    "read_dlc_pack",
+    "write_dlc_folder_metadata",
+]
