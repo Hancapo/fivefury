@@ -17,6 +17,7 @@ from .content import (
     DlcResourceReference,
 )
 from .enums import DlcContentGroup, DlcDataFileType
+from .paths import iter_dlc_folder_files
 from .setup import DlcSetupData
 
 _TARGET_AWARE_EXTENSIONS = frozenset(
@@ -47,6 +48,16 @@ class DlcValidationError(ValueError):
             for issue in self.issues
         )
         super().__init__(details or "Invalid DLC pack")
+
+
+@dataclass(slots=True)
+class _DlcFolderAssets:
+    files: dict[str, bytes | RpfArchive]
+
+
+@dataclass(slots=True)
+class _UnreadableAsset:
+    error: Exception
 
 
 def _enum_value_is_valid(enum_type: type[Any], value: object) -> bool:
@@ -172,7 +183,9 @@ def validate_dlc_setup(
                 )
             )
     if content is not None and require_local_change_sets:
-        defined = {change_set.name.lower() for change_set in content.content_change_sets}
+        defined = {
+            change_set.name.lower() for change_set in content.content_change_sets
+        }
         defined.update(str(name).lower() for name in external_change_sets)
         for group in setup.content_change_set_groups:
             for change_set in group.change_sets:
@@ -326,17 +339,29 @@ def _iter_archive_assets(
     archive: RpfArchive,
     *,
     prefix: str,
-) -> Iterator[tuple[str, bytes]]:
+) -> Iterator[tuple[str, bytes | _UnreadableAsset]]:
     for entry in archive.iter_entries():
         if not isinstance(entry, RpfFileEntry):
             continue
         path = f"{prefix}/{entry.path}".strip("/")
-        if isinstance(entry, RpfResourceFileEntry):
-            data = archive.read_entry_standalone(entry)
-        else:
-            data = archive.read_entry_bytes(entry, logical=True)
+        try:
+            if isinstance(entry, RpfResourceFileEntry):
+                data = archive.read_entry_standalone(entry)
+            else:
+                data = archive.read_entry_bytes(entry, logical=True)
+        except (OSError, TypeError, ValueError) as exc:
+            yield path, _UnreadableAsset(exc)
+            continue
         if Path(path).suffix.lower() == ".rpf":
-            nested = RpfArchive.from_bytes(data, name=entry.name, crypto=archive.crypto)
+            try:
+                nested = RpfArchive.from_bytes(
+                    data,
+                    name=entry.name,
+                    crypto=archive.crypto,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                yield path, _UnreadableAsset(exc)
+                continue
             yield from _iter_archive_assets(nested, prefix=path)
         else:
             yield path, data
@@ -350,8 +375,12 @@ def _iter_pack_assets(pack: object) -> Iterator[tuple[str, object]]:
             yield from _iter_archive_assets(value, prefix=normalized)
             continue
         if Path(normalized).suffix.lower() == ".rpf":
-            data = _coerce_asset_bytes(value)
-            nested = RpfArchive.from_bytes(data, name=Path(normalized).name)
+            try:
+                data = _coerce_asset_bytes(value)
+                nested = RpfArchive.from_bytes(data, name=Path(normalized).name)
+            except (OSError, TypeError, ValueError) as exc:
+                yield normalized, _UnreadableAsset(exc)
+                continue
             yield from _iter_archive_assets(nested, prefix=normalized)
             continue
         yield normalized, value
@@ -364,6 +393,15 @@ def validate_dlc_asset_targets(
     target = coerce_game_target(game)
     issues: list[DlcValidationIssue] = []
     for path, value in _iter_pack_assets(pack):
+        if isinstance(value, _UnreadableAsset):
+            issues.append(
+                DlcValidationIssue(
+                    "pack.asset.invalid_resource",
+                    str(value.error),
+                    path=path,
+                )
+            )
+            continue
         if Path(path).suffix.lower() not in _TARGET_AWARE_EXTENSIONS:
             continue
         try:
@@ -398,6 +436,106 @@ def validate_dlc_asset_targets(
                     path=path,
                 )
             )
+    return issues
+
+
+def validate_dlc_folder_assets(
+    folder: str | Path,
+    game: str | GameTarget,
+    *,
+    include_dot_dirs: bool = False,
+) -> list[DlcValidationIssue]:
+    files: dict[str, bytes | RpfArchive] = {}
+    issues: list[DlcValidationIssue] = []
+    for relative, path in iter_dlc_folder_files(
+        folder,
+        include_dot_dirs=include_dot_dirs,
+    ):
+        extension = path.suffix.lower()
+        if extension not in _TARGET_AWARE_EXTENSIONS and extension != ".rpf":
+            continue
+        try:
+            files[relative] = (
+                RpfArchive.from_path(path) if extension == ".rpf" else path.read_bytes()
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            issues.append(
+                DlcValidationIssue(
+                    "folder.asset.unreadable",
+                    str(exc),
+                    path=relative,
+                )
+            )
+    if files:
+        issues.extend(validate_dlc_asset_targets(_DlcFolderAssets(files), game))
+    return issues
+
+
+def validate_dlc_folder(
+    folder: str | Path,
+    *,
+    game: str | GameTarget | None = None,
+    external_change_sets: Iterable[str] = (),
+    require_local_change_sets: bool = False,
+    include_dot_dirs: bool = False,
+) -> list[DlcValidationIssue]:
+    root = Path(folder)
+    setup_path = root / "setup2.xml"
+    if not setup_path.is_file():
+        return [
+            DlcValidationIssue(
+                "folder.setup.missing",
+                "DLC folder does not contain setup2.xml",
+                path="setup2.xml",
+            )
+        ]
+    try:
+        setup = DlcSetupData.from_xml(setup_path.read_bytes())
+    except (OSError, TypeError, ValueError) as exc:
+        return [
+            DlcValidationIssue(
+                "folder.setup.invalid",
+                str(exc),
+                path="setup2.xml",
+            )
+        ]
+
+    content_name = setup.dat_file or "content.xml"
+    content_path = root / content_name
+    if not content_path.is_file():
+        return [
+            DlcValidationIssue(
+                "folder.content.missing",
+                f"DLC folder does not contain {content_name}",
+                path=content_name,
+            )
+        ]
+    try:
+        content = DlcContentXml.from_xml(content_path.read_bytes())
+    except (OSError, TypeError, ValueError) as exc:
+        return [
+            DlcValidationIssue(
+                "folder.content.invalid",
+                str(exc),
+                path=content_name,
+            )
+        ]
+
+    issues = validate_dlc_setup(
+        setup,
+        content,
+        external_change_sets=external_change_sets,
+        require_local_change_sets=require_local_change_sets,
+    )
+    issues.extend(validate_dlc_content(content))
+    if game is not None:
+        issues.extend(
+            validate_dlc_folder_assets(
+                root,
+                game,
+                include_dot_dirs=include_dot_dirs,
+            )
+        )
     return issues
 
 
@@ -461,6 +599,8 @@ __all__ = [
     "assert_valid_dlc_pack",
     "validate_dlc_asset_targets",
     "validate_dlc_content",
+    "validate_dlc_folder",
+    "validate_dlc_folder_assets",
     "validate_dlc_pack",
     "validate_dlc_setup",
 ]

@@ -50,6 +50,8 @@ from .validation import (
     assert_valid_dlc_pack,
     validate_dlc_asset_targets,
     validate_dlc_content,
+    validate_dlc_folder,
+    validate_dlc_folder_assets,
     validate_dlc_pack,
     validate_dlc_setup,
 )
@@ -97,6 +99,8 @@ __all__ = [
     "read_dlc_setup",
     "validate_dlc_asset_targets",
     "validate_dlc_content",
+    "validate_dlc_folder",
+    "validate_dlc_folder_assets",
     "validate_dlc_pack",
     "validate_dlc_setup",
     "write_dlc_folder_metadata",

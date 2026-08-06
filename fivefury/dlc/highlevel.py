@@ -4,7 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..game_target import GameTarget
+from ..common import atomic_write_bytes
+from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive, RpfFileEntry
 from ..rpf.entries import RpfResourceFileEntry
 from .enums import DlcContentGroup, DlcDataFileContents, DlcDataFileType
@@ -17,6 +18,13 @@ from .model import (
     DlcPatchMount,
     DlcSetupData,
 )
+from .paths import iter_dlc_folder_files
+from .validation import (
+    DlcValidationError,
+    DlcValidationIssue,
+    validate_dlc_folder_assets,
+    validate_dlc_pack,
+)
 
 
 @dataclass(slots=True)
@@ -24,31 +32,82 @@ class DlcFolderMetadata:
     setup: DlcSetupData
     content: DlcContentXml
     dlc_list: DlcList
+    game: GameTarget | None = None
+
+    def __post_init__(self) -> None:
+        if self.game is not None:
+            self.game = coerce_game_target(self.game)
 
     def to_pack(self) -> DlcPack:
-        return DlcPack(self.setup.name_hash, setup=self.setup, content=self.content)
+        return DlcPack(
+            self.setup.name_hash,
+            setup=self.setup,
+            content=self.content,
+            game=self.game,
+        )
+
+    def validate(
+        self,
+        folder: str | Path | None = None,
+        *,
+        validate_assets: bool | None = None,
+    ) -> list[DlcValidationIssue]:
+        issues = validate_dlc_pack(self.to_pack())
+        check_assets = (
+            self.game is not None if validate_assets is None else validate_assets
+        )
+        if check_assets:
+            if self.game is None:
+                issues.append(
+                    DlcValidationIssue(
+                        "folder.game.missing",
+                        "asset validation requires an explicit game target",
+                    )
+                )
+            elif folder is None:
+                issues.append(
+                    DlcValidationIssue(
+                        "folder.path.missing",
+                        "asset validation requires the DLC folder path",
+                    )
+                )
+            else:
+                issues.extend(validate_dlc_folder_assets(folder, self.game))
+        return issues
 
     def write(
-        self, folder: str | Path, *, write_dlc_list: bool = False
+        self,
+        folder: str | Path,
+        *,
+        write_dlc_list: bool = False,
+        validate: bool = True,
+        validate_assets: bool | None = None,
     ) -> dict[str, Path]:
         root = Path(folder)
-        root.mkdir(parents=True, exist_ok=True)
+        if validate:
+            errors = [
+                issue
+                for issue in self.validate(root, validate_assets=validate_assets)
+                if issue.severity == "error"
+            ]
+            if errors:
+                raise DlcValidationError(errors)
+
+        setup_data = self.setup.to_xml_bytes()
+        content_data = self.content.to_xml_bytes()
+        dlc_list_data = self.dlc_list.to_xml_bytes() if write_dlc_list else None
         written: dict[str, Path] = {}
         setup_path = root / "setup2.xml"
         content_path = root / (self.setup.dat_file or "content.xml")
-        setup_path.write_bytes(self.setup.to_xml_bytes())
-        content_path.write_bytes(self.content.to_xml_bytes())
+        atomic_write_bytes(setup_path, setup_data)
+        atomic_write_bytes(content_path, content_data)
         written["setup"] = setup_path
         written["content"] = content_path
-        if write_dlc_list:
+        if dlc_list_data is not None:
             dlc_list_path = root / "dlclist.xml"
-            dlc_list_path.write_bytes(self.dlc_list.to_xml_bytes())
+            atomic_write_bytes(dlc_list_path, dlc_list_data)
             written["dlclist"] = dlc_list_path
         return written
-
-
-def _normalize_rel(path: str | Path) -> str:
-    return str(path).replace("\\", "/").lstrip("/")
 
 
 def _device_name(pack_name: str) -> str:
@@ -64,10 +123,6 @@ def _virtual_path(
     pack_name: str, rel_path: str, *, device_name: str | None = None
 ) -> str:
     return f"{_device_path(pack_name, device_name)}{rel_path}"
-
-
-def _is_dot_path(path: Path, root: Path) -> bool:
-    return any(part.startswith(".") for part in path.relative_to(root).parts)
 
 
 def _is_map_data_rpf(rel_path: str) -> bool:
@@ -152,15 +207,10 @@ def _infer_content_file(
 def iter_dlc_content_candidates(
     folder: str | Path, *, include_dot_dirs: bool = False
 ) -> Iterable[str]:
-    root = Path(folder)
-    for path in sorted(
-        root.rglob("*"), key=lambda item: item.relative_to(root).as_posix().lower()
+    for rel, _path in iter_dlc_folder_files(
+        folder,
+        include_dot_dirs=include_dot_dirs,
     ):
-        if not path.is_file():
-            continue
-        if not include_dot_dirs and _is_dot_path(path, root):
-            continue
-        rel = path.relative_to(root).as_posix()
         if rel.lower() in {"setup2.xml", "content.xml"}:
             continue
         yield rel
@@ -199,6 +249,7 @@ def create_dlc_folder_metadata(
     mount: str = "dlcpacks",
     change_set_name: str | None = None,
     group: DlcContentGroup | str = DlcContentGroup.STARTUP,
+    game: str | GameTarget | None = None,
 ) -> DlcFolderMetadata:
     content, setup = infer_dlc_content_from_folder(
         pack_name,
@@ -210,7 +261,10 @@ def create_dlc_folder_metadata(
     )
     setup.order = int(order)
     return DlcFolderMetadata(
-        setup=setup, content=content, dlc_list=DlcList().include(pack_name, mount=mount)
+        setup=setup,
+        content=content,
+        dlc_list=DlcList().include(pack_name, mount=mount),
+        game=game,
     )
 
 
@@ -222,6 +276,9 @@ def write_dlc_folder_metadata(
     device_name: str | None = None,
     dat_file: str = "content.xml",
     write_dlc_list: bool = False,
+    game: str | GameTarget | None = None,
+    validate: bool = True,
+    validate_assets: bool | None = None,
 ) -> DlcFolderMetadata:
     root = Path(folder)
     metadata = create_dlc_folder_metadata(
@@ -230,8 +287,14 @@ def write_dlc_folder_metadata(
         order=order,
         device_name=device_name,
         dat_file=dat_file,
+        game=game,
     )
-    metadata.write(root, write_dlc_list=write_dlc_list)
+    metadata.write(
+        root,
+        write_dlc_list=write_dlc_list,
+        validate=validate,
+        validate_assets=validate_assets,
+    )
     return metadata
 
 

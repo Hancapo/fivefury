@@ -11,6 +11,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Context-aware runtime profiles for full-ped and cutscene-component YDD dictionaries.
 - Complete DLC content metadata, change-set conditions, resource references, and content groups.
 - Target-aware DLC validation for embedded Legacy and Enhanced assets.
+- Target-aware validation for loose DLC folders.
 
 ### Changed
 - DLC metadata is split into focused content and setup modules.
