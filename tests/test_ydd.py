@@ -6,20 +6,23 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    LEGACY_YDD_CUTSCENE_PED_RUNTIME_PROFILE,
+    LEGACY_YDD_FULL_PED_RUNTIME_PROFILE,
     GameFileCache,
     GameFileType,
     GameTarget,
-    LEGACY_YDD_CUTSCENE_PED_RUNTIME_PROFILE,
     Ydd,
+    YddRuntimeContext,
     YdrGen9Shader,
     YdrMaterialInput,
     YdrMeshInput,
     YdrShader,
+    YdrSkeleton,
     create_ydr,
     read_ydd,
 )
 from fivefury.resource import build_rsc7, split_rsc7_sections, virtual_to_offset
-from fivefury.ydd import YDD_VERSION_GEN9
+from fivefury.ydd import GEN9_YDD_RUNTIME_PROFILE, YDD_VERSION_GEN9
 from tests.helpers import reference_root
 
 
@@ -177,7 +180,7 @@ def test_ydd_rejects_mismatched_game_and_version() -> None:
         )
 
 
-def _simple_drawable(name: str):
+def _simple_drawable(name: str, *, skeleton=None):
     return create_ydr(
         meshes=[
             YdrMeshInput(
@@ -197,6 +200,7 @@ def _simple_drawable(name: str):
                 textures={"DiffuseSampler": "test_diffuse"},
             )
         ],
+        skeleton=skeleton,
         name=name,
     )
 
@@ -263,7 +267,7 @@ def test_cutscene_ped_profile_writes_and_roundtrips_root_classes() -> None:
     source = Ydd.from_drawables(
         {"head_000_r": _simple_drawable("head_000_r")},
         name="cutscene_ped",
-        runtime_profile=profile,
+        runtime_context=YddRuntimeContext.CUTSCENE_PED_COMPONENT,
     )
 
     raw = source.to_bytes()
@@ -282,6 +286,49 @@ def test_cutscene_ped_profile_writes_and_roundtrips_root_classes() -> None:
     assert _texture_reference_vfts(rebuilt.to_bytes()) == (
         _texture_reference_vfts(raw)
     )
+
+
+def test_full_ped_profile_writes_and_roundtrips_runtime_classes() -> None:
+    profile = LEGACY_YDD_FULL_PED_RUNTIME_PROFILE
+    skeleton = YdrSkeleton.create()
+    skeleton.add_bone("root", tag=0)
+    source = Ydd.from_drawables(
+        {
+            "head_000_r": _simple_drawable(
+                "head_000_r",
+                skeleton=skeleton.build(),
+            )
+        },
+        name="full_ped",
+        runtime_context=YddRuntimeContext.FULL_PED_DICTIONARY,
+    )
+
+    raw = source.to_bytes()
+
+    assert _root_vfts(raw) == (
+        profile.dictionary_vft,
+        {profile.drawable_headers.drawable},
+    )
+    assert _texture_reference_vfts(raw) == {
+        profile.drawable_headers.texture_base
+    }
+    rebuilt = read_ydd(raw)
+    assert rebuilt.runtime_profile is not None
+    assert rebuilt.runtime_profile == profile
+    assert _root_vfts(rebuilt.to_bytes()) == _root_vfts(raw)
+    assert _texture_reference_vfts(rebuilt.to_bytes()) == (
+        _texture_reference_vfts(raw)
+    )
+
+
+def test_enhanced_ped_context_uses_gen9_runtime_profile() -> None:
+    source = Ydd.from_drawables(
+        {"head_000_r": _simple_drawable("head_000_r")},
+        game=GameTarget.GTA5_ENHANCED,
+        runtime_context=YddRuntimeContext.FULL_PED_DICTIONARY,
+    )
+
+    assert source.runtime_profile == GEN9_YDD_RUNTIME_PROFILE
 
 
 def _replace_system_section(raw: bytes, system_data: bytes) -> bytes:
