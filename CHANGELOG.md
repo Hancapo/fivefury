@@ -10,9 +10,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - Context-aware runtime profiles for full-ped and cutscene-component YDD dictionaries.
 - Complete DLC content metadata, change-set conditions, resource references, and content groups.
+- Target-aware DLC validation for embedded Legacy and Enhanced assets.
 
 ### Changed
 - DLC metadata is split into focused content and setup modules.
+- DLC RPF output validates its contents and exposes the supported encryption markers.
 
 ## [0.3.4] - 2026-08-05
 

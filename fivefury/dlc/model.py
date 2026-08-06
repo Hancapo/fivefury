@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive
 from ..xml import (
     add_items,
@@ -25,8 +27,11 @@ from .content import (
     DlcExecutionConditions,
     DlcResourceReference,
 )
-from .enums import DlcContentGroup
+from .enums import DlcContentGroup, DlcRpfEncryption
 from .setup import DlcContentChangeSetGroup, DlcSetupData
+
+if TYPE_CHECKING:
+    from .validation import DlcValidationIssue
 
 
 def _device_name(pack_name: str) -> str:
@@ -131,10 +136,15 @@ class DlcPack:
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
     files: dict[str, bytes | bytearray | memoryview | Any] = field(default_factory=dict)
+    game: GameTarget | None = None
+    rpf_encryption: DlcRpfEncryption = DlcRpfEncryption.OPEN
 
     def __post_init__(self) -> None:
         if self.setup is None:
             self.setup = DlcSetupData.compat_pack(self.name)
+        if self.game is not None:
+            self.game = coerce_game_target(self.game)
+        self.rpf_encryption = DlcRpfEncryption(self.rpf_encryption)
 
     @property
     def device_path(self) -> str:
@@ -175,8 +185,37 @@ class DlcPack:
         self.setup.group(group, name)
         return change_set
 
-    def to_rpf(self) -> RpfArchive:
+    def validate(
+        self,
+        *,
+        game: str | GameTarget | None = None,
+        external_change_sets: Iterable[str] = (),
+        require_local_change_sets: bool = False,
+    ) -> list[DlcValidationIssue]:
+        from .validation import validate_dlc_pack
+
+        return validate_dlc_pack(
+            self,
+            game=game,
+            external_change_sets=external_change_sets,
+            require_local_change_sets=require_local_change_sets,
+        )
+
+    def to_rpf(
+        self,
+        *,
+        game: str | GameTarget | None = None,
+        encryption: DlcRpfEncryption | int | None = None,
+        validate: bool = True,
+    ) -> RpfArchive:
+        if validate:
+            from .validation import assert_valid_dlc_pack
+
+            assert_valid_dlc_pack(self, game=game)
         archive = RpfArchive.empty("dlc.rpf")
+        archive.encryption = int(
+            self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)
+        )
         assert self.setup is not None
         archive.add_file("setup2.xml", self.setup.to_xml_bytes())
         archive.add_file(self.setup.dat_file or "content.xml", self.content.to_xml_bytes())
@@ -184,15 +223,36 @@ class DlcPack:
             archive.add_file(path, value)
         return archive
 
-    def to_bytes(self) -> bytes:
-        return self.to_rpf().to_bytes()
+    def to_bytes(
+        self,
+        *,
+        game: str | GameTarget | None = None,
+        encryption: DlcRpfEncryption | int | None = None,
+        validate: bool = True,
+    ) -> bytes:
+        return self.to_rpf(
+            game=game,
+            encryption=encryption,
+            validate=validate,
+        ).to_bytes()
 
-    def save_dlc_rpf(self, path: str | Path) -> Path:
+    def save_dlc_rpf(
+        self,
+        path: str | Path,
+        *,
+        game: str | GameTarget | None = None,
+        encryption: DlcRpfEncryption | int | None = None,
+        validate: bool = True,
+    ) -> Path:
         target = Path(path)
         if target.is_dir() or not target.suffix:
             target = target / self.name / "dlc.rpf"
         target.parent.mkdir(parents=True, exist_ok=True)
-        self.to_rpf().save(target)
+        self.to_rpf(
+            game=game,
+            encryption=encryption,
+            validate=validate,
+        ).save(target)
         return target
 
 
@@ -203,12 +263,17 @@ class DlcPatch:
     content: DlcContentXml = field(default_factory=DlcContentXml)
     files: dict[str, bytes | bytearray | memoryview | Any] = field(default_factory=dict)
     device_name: str | None = None
+    game: GameTarget | None = None
+    rpf_encryption: DlcRpfEncryption = DlcRpfEncryption.OPEN
 
     def __post_init__(self) -> None:
         if self.setup is None:
             self.setup = DlcSetupData.compat_pack(self.name, device_name=self.device_name)
         if self.device_name is None and self.setup is not None:
             self.device_name = self.setup.device_name
+        if self.game is not None:
+            self.game = coerce_game_target(self.game)
+        self.rpf_encryption = DlcRpfEncryption(self.rpf_encryption)
 
     @property
     def patch_mount(self) -> DlcPatchMount:
@@ -257,18 +322,68 @@ class DlcPatch:
             )
         return archive
 
-    def to_update_rpf(self) -> RpfArchive:
+    def validate(
+        self,
+        *,
+        game: str | GameTarget | None = None,
+        external_change_sets: Iterable[str] = (),
+        require_local_change_sets: bool = False,
+    ) -> list[DlcValidationIssue]:
+        from .validation import validate_dlc_pack
+
+        return validate_dlc_pack(
+            self,
+            game=game,
+            external_change_sets=external_change_sets,
+            require_local_change_sets=require_local_change_sets,
+        )
+
+    def to_update_rpf(
+        self,
+        *,
+        game: str | GameTarget | None = None,
+        encryption: DlcRpfEncryption | int | None = None,
+        validate: bool = True,
+    ) -> RpfArchive:
+        if validate:
+            from .validation import assert_valid_dlc_pack
+
+            assert_valid_dlc_pack(self, game=game)
         archive = RpfArchive.empty("update.rpf")
+        archive.encryption = int(
+            self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)
+        )
         self.install_into(archive)
         return archive
 
-    def to_bytes(self) -> bytes:
-        return self.to_update_rpf().to_bytes()
+    def to_bytes(
+        self,
+        *,
+        game: str | GameTarget | None = None,
+        encryption: DlcRpfEncryption | int | None = None,
+        validate: bool = True,
+    ) -> bytes:
+        return self.to_update_rpf(
+            game=game,
+            encryption=encryption,
+            validate=validate,
+        ).to_bytes()
 
-    def save_update_rpf(self, path: str | Path) -> Path:
+    def save_update_rpf(
+        self,
+        path: str | Path,
+        *,
+        game: str | GameTarget | None = None,
+        encryption: DlcRpfEncryption | int | None = None,
+        validate: bool = True,
+    ) -> Path:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        self.to_update_rpf().save(target)
+        self.to_update_rpf(
+            game=game,
+            encryption=encryption,
+            validate=validate,
+        ).save(target)
         return target
 
 
