@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from .enums import DlcContentGroup, DlcDataFileContents, DlcDataFileType, DlcPackType
+from .enums import (
+    DlcContentGroup,
+    DlcDataFileContents,
+    DlcDataFileType,
+    DlcInstallPartition,
+    DlcLoadingScreenContext,
+    DlcPackType,
+)
 from .highlevel import (
     DlcFolderMetadata,
     DlcValidationIssue,
@@ -16,15 +23,20 @@ from .highlevel import (
     write_dlc_folder_metadata,
 )
 from .model import (
+    DlcChangeSetData,
     DlcContentChangeSet,
     DlcContentChangeSetGroup,
     DlcContentFile,
+    DlcContentFileArray,
     DlcContentXml,
+    DlcExecutionCondition,
+    DlcExecutionConditions,
     DlcExtraTitleUpdateData,
     DlcList,
     DlcPack,
     DlcPatch,
     DlcPatchMount,
+    DlcResourceReference,
     DlcSetupData,
     build_dlc_content_xml,
     build_dlc_extra_title_update_data_xml,
@@ -37,20 +49,27 @@ from .model import (
 )
 
 __all__ = [
+    "DlcChangeSetData",
     "DlcContentChangeSet",
     "DlcContentChangeSetGroup",
     "DlcContentFile",
+    "DlcContentFileArray",
     "DlcContentGroup",
     "DlcContentXml",
     "DlcDataFileContents",
     "DlcDataFileType",
-    "DlcFolderMetadata",
+    "DlcExecutionCondition",
+    "DlcExecutionConditions",
     "DlcExtraTitleUpdateData",
+    "DlcFolderMetadata",
+    "DlcInstallPartition",
     "DlcList",
+    "DlcLoadingScreenContext",
     "DlcPack",
-    "DlcPatch",
     "DlcPackType",
+    "DlcPatch",
     "DlcPatchMount",
+    "DlcResourceReference",
     "DlcSetupData",
     "DlcValidationIssue",
     "build_dlc_content_xml",
