@@ -9,8 +9,10 @@ from .gen9 import (
     _G9_PARAM_MULTIPLIER,
     _G9_SHADER_PRESET_META,
     _G9_TEXTURE_BLOCK_UNKNOWN_44,
+    _G9_TEXTURE_DEPTH,
     _G9_TEXTURE_DIMENSION_2D,
     _G9_TEXTURE_FLAGS,
+    _G9_TEXTURE_LEVELS,
     _G9_TEXTURE_TILE_AUTO,
     _G9_TEXTURE_USAGE_COUNT,
     ShaderGen9Library,
@@ -319,15 +321,20 @@ def write_shader_parameters_block(
 
 
 def _write_gen9_texture_base(system, texture_name: str, *, virtual: Callable[[int], int]) -> int:
+    # Layout is rage::sga::Texture: the name pointer sits at 0x28 and the usage count at 0x26.
+    # Shipped drawables always leave the shader resource view pointer (0x30) null for shader
+    # parameter texture references -- the view is only built for embedded textures in a YTD.
     name_off = system.c_string(texture_name)
     texture_base_off = system.alloc(0x50, 16)
     system.pack_into('I', texture_base_off + 0x00, 0)
     system.pack_into('I', texture_base_off + 0x04, 1)
     system.pack_into('I', texture_base_off + 0x10, _G9_TEXTURE_FLAGS)
+    system.pack_into('H', texture_base_off + 0x1C, _G9_TEXTURE_DEPTH)
     system.data[texture_base_off + 0x1E] = _G9_TEXTURE_DIMENSION_2D & 0xFF
     system.data[texture_base_off + 0x20] = _G9_TEXTURE_TILE_AUTO & 0xFF
+    system.data[texture_base_off + 0x22] = _G9_TEXTURE_LEVELS & 0xFF
+    system.pack_into('H', texture_base_off + 0x26, _G9_TEXTURE_USAGE_COUNT)
     system.pack_into('Q', texture_base_off + 0x28, virtual(name_off))
-    system.pack_into('H', texture_base_off + 0x30, _G9_TEXTURE_USAGE_COUNT)
     system.pack_into('I', texture_base_off + 0x44, _G9_TEXTURE_BLOCK_UNKNOWN_44)
     return texture_base_off
 
@@ -469,7 +476,7 @@ def write_shader_blocks_gen9(
         system.pack_into('H', shader_group_off + 0x1A, len(materials))
     system.pack_into('I', shader_group_off + 0x00, shader_group_vft)
     system.pack_into('I', shader_group_off + 0x04, 1)
-    system.pack_into('I', shader_group_off + 0x30, 4)
+    # ShaderGroupBlocksSize is a Legacy-only field; shipped Gen9 drawables leave it zero.
 
     for material in materials:
         shader = material.gen9_definition

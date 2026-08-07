@@ -78,7 +78,9 @@ def build_mesh_buffer_pack(
             int(mesh.declaration_flags),
             int(mesh.declaration_types),
             int(mesh.vertex_stride),
-            len(mesh.positions),
+            # Shipped drawables always leave the declaration's packed vertex count at zero and
+            # carry the real count on the vertex buffer.
+            0,
         )
         declaration_off = system.alloc(len(declaration_bytes), 16)
         system.write(declaration_off, declaration_bytes)
