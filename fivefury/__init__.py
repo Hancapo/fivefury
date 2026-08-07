@@ -954,7 +954,7 @@ from .yed import (
     set_ped_expression_binding,
     validate_yed,
 )
-from .ytd import Texture, TextureFormat, Ytd, read_ytd, save_ytd
+from .ytd import Texture, TextureFormat, TextureUsage, Ytd, read_ytd, save_ytd
 from .ymf import (
     YMF_HOURS_ON_OFF_MASK,
     YMF_MAX_ARRAY_ITEMS,
@@ -1494,6 +1494,7 @@ __all__ = [
     "SwayableEffectExtension",
     "Texture",
     "TextureFormat",
+    "TextureUsage",
     "TimeArchetypeFlags",
     "TimeArchetype",
     "TimeArchetypeDef",

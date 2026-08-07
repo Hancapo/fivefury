@@ -1938,6 +1938,70 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertEqual(legacy.textures[0].mip_count, 1)
         self.assertEqual(enhanced.textures[0].mip_count, 1)
 
+    def test_ytd_texture_usage_survives_a_round_trip(self) -> None:
+        from fivefury.texture import BCFormat, Texture, TextureUsage, total_mip_data_size
+        from fivefury.ytd.model import Ytd
+
+        data = bytes(total_mip_data_size(64, 64, BCFormat.BC1, 1))
+        for game in ("gta5", "gta5_enhanced"):
+            ytd = Ytd(
+                textures=[
+                    Texture.from_raw(
+                        data,
+                        64,
+                        64,
+                        BCFormat.BC1,
+                        1,
+                        name="spec_map",
+                        usage=TextureUsage.SPECULAR,
+                        usage_flags=0x1001580,
+                    )
+                ],
+                game=game,
+            )
+
+            rebuilt = Ytd.from_bytes(ytd.to_bytes())
+
+            self.assertEqual(rebuilt.textures[0].usage, TextureUsage.SPECULAR)
+            self.assertEqual(rebuilt.textures[0].usage_flags, 0x1001580)
+
+    def test_legacy_ytd_stores_usage_data_rather_than_a_byte_size(self) -> None:
+        """The 0x40 word is UsageData, not a payload size.
+
+        Shipped dictionaries keep the texture usage in its low 5 bits and streaming flags
+        above them; writing a mip byte size there leaves an UNKNOWN usage and junk flags.
+        """
+        import struct
+
+        from fivefury.resource import split_rsc7_sections
+        from fivefury.texture import BCFormat, Texture, TextureUsage, total_mip_data_size
+        from fivefury.ytd.defs import DAT_VIRTUAL_BASE
+        from fivefury.ytd.model import Ytd
+
+        data = bytes(total_mip_data_size(2048, 2048, BCFormat.BC1, 1))
+        ytd = Ytd(
+            textures=[
+                Texture.from_raw(
+                    data,
+                    2048,
+                    2048,
+                    BCFormat.BC1,
+                    1,
+                    name="big_diffuse",
+                    usage=TextureUsage.DIFFUSE,
+                )
+            ],
+            game="gta5",
+        )
+
+        _header, virtual_data, _physical = split_rsc7_sections(ytd.to_bytes())
+        items_ptr = struct.unpack_from("<Q", virtual_data, 0x30)[0]
+        tex_ptr = struct.unpack_from("<Q", virtual_data, items_ptr - DAT_VIRTUAL_BASE)[0]
+        usage_data = struct.unpack_from("<I", virtual_data, (tex_ptr - DAT_VIRTUAL_BASE) + 0x40)[0]
+
+        self.assertEqual(usage_data & 0x1F, int(TextureUsage.DIFFUSE))
+        self.assertNotEqual(usage_data, len(data))
+
     def test_build_rsc7_adapts_page_size_for_large_graphics_sections(self) -> None:
         from fivefury.resource import (
             get_resource_flags_from_size_adaptive,

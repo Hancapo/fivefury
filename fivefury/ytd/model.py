@@ -3,7 +3,13 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from .defs import TextureFormat, _build_dds_bytes, _build_mip_info
+from .defs import (
+    TextureFormat,
+    TextureUsage,
+    _build_dds_bytes,
+    _build_mip_info,
+    coerce_texture_usage,
+)
 
 
 @dataclasses.dataclass(slots=True)
@@ -16,6 +22,8 @@ class Texture:
     data: bytes
     mip_offsets: tuple[int, ...]
     mip_sizes: tuple[int, ...]
+    usage: TextureUsage = TextureUsage.DEFAULT
+    usage_flags: int = 0
 
     @classmethod
     def from_raw(
@@ -29,6 +37,8 @@ class Texture:
         name: str = "",
         mip_offsets: list[int] | tuple[int, ...] | None = None,
         mip_sizes: list[int] | tuple[int, ...] | None = None,
+        usage: TextureUsage | int | str = TextureUsage.DEFAULT,
+        usage_flags: int = 0,
     ) -> "Texture":
         offsets, sizes = _build_mip_info(width, height, format, mip_count)
         if mip_offsets is not None:
@@ -44,6 +54,8 @@ class Texture:
             data=bytes(data),
             mip_offsets=tuple(int(value) for value in offsets),
             mip_sizes=tuple(int(value) for value in sizes),
+            usage=coerce_texture_usage(usage),
+            usage_flags=int(usage_flags),
         )
 
     @property

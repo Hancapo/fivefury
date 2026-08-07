@@ -17,6 +17,7 @@ from .defs import (
     DAT_PHYSICAL_BASE,
     DAT_VIRTUAL_BASE,
     TextureFormat,
+    TextureUsage,
     _BLOCK_BYTES,
     _ENHANCED_DIM_2D,
     _ENHANCED_FLAGS,
@@ -39,6 +40,9 @@ from .defs import (
     _resolve_legacy_format,
     _row_pitch,
     _total_mip_data_size,
+    coerce_texture_usage,
+    pack_usage_data,
+    unpack_usage_data,
 )
 from .model import Texture, Ytd
 
@@ -113,6 +117,9 @@ def _parse_legacy_texture_dictionary_at(virtual_data: bytes, physical_data: byte
         height = struct.unpack_from("<h", virtual_data, tex_off + 0x52)[0]
         format_value = struct.unpack_from("<I", virtual_data, tex_off + 0x58)[0]
         mip_count = virtual_data[tex_off + 0x5D]
+        usage, usage_flags = unpack_usage_data(
+            struct.unpack_from("<I", virtual_data, tex_off + 0x40)[0]
+        )
         data_ptr = struct.unpack_from("<Q", virtual_data, tex_off + 0x70)[0]
         if width <= 0 or height <= 0 or mip_count <= 0:
             raise ValueError("Legacy texture dictionary contains invalid texture metadata")
@@ -131,7 +138,18 @@ def _parse_legacy_texture_dictionary_at(virtual_data: bytes, physical_data: byte
             pixel_data = virtual_data[-data_size:]
         else:
             raise ValueError("Legacy texture pixel data is out of range")
-        ytd.textures.append(Texture.from_raw(pixel_data, width, height, texture_format, mip_count, name=name))
+        ytd.textures.append(
+            Texture.from_raw(
+                pixel_data,
+                width,
+                height,
+                texture_format,
+                mip_count,
+                name=name,
+                usage=usage,
+                usage_flags=usage_flags,
+            )
+        )
     return ytd
 
 
@@ -160,6 +178,9 @@ def _parse_gen9_texture_dictionary_at(virtual_data: bytes, physical_data: bytes,
         height = struct.unpack_from("<H", virtual_data, tex_off + 0x1A)[0]
         format_value = virtual_data[tex_off + 0x1F]
         mip_count = virtual_data[tex_off + 0x22]
+        usage, usage_flags = unpack_usage_data(
+            struct.unpack_from("<I", virtual_data, tex_off + 0x40)[0]
+        )
         data_ptr = struct.unpack_from("<Q", virtual_data, tex_off + 0x38)[0]
         if width <= 0 or height <= 0 or mip_count <= 0:
             raise ValueError("Gen9 texture dictionary contains invalid texture metadata")
@@ -178,7 +199,18 @@ def _parse_gen9_texture_dictionary_at(virtual_data: bytes, physical_data: bytes,
             pixel_data = virtual_data[-data_size:]
         else:
             raise ValueError("Gen9 texture pixel data is out of range")
-        ytd.textures.append(Texture.from_raw(pixel_data, width, height, texture_format, mip_count, name=name))
+        ytd.textures.append(
+            Texture.from_raw(
+                pixel_data,
+                width,
+                height,
+                texture_format,
+                mip_count,
+                name=name,
+                usage=usage,
+                usage_flags=usage_flags,
+            )
+        )
     return ytd
 
 
@@ -240,16 +272,10 @@ def _build_legacy_ytd(textures: list[Texture]) -> bytes:
         off = textures_offset + (_GTAV_TEX_SIZE * index)
         format_value = _FORMAT_TO_DX9[texture.format]
         stride = _row_pitch(texture.width, texture.format)
-        data_size_large = 0
-        for level in range(texture.mip_count):
-            width = max(1, texture.width >> level)
-            height = max(1, texture.height >> level)
-            if width >= 16 and height >= 16:
-                data_size_large += _mip_data_size(width, height, texture.format)
 
         struct.pack_into("<Q", vbuf, off + 0x28, DAT_VIRTUAL_BASE + name_offsets[index])
         struct.pack_into("<h", vbuf, off + 0x30, 1)
-        struct.pack_into("<I", vbuf, off + 0x40, data_size_large)
+        struct.pack_into("<I", vbuf, off + 0x40, pack_usage_data(texture.usage, texture.usage_flags))
         struct.pack_into("<h", vbuf, off + 0x50, texture.width)
         struct.pack_into("<h", vbuf, off + 0x52, texture.height)
         struct.pack_into("<h", vbuf, off + 0x54, 1)
@@ -342,7 +368,13 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
         struct.pack_into("<Q", vbuf, off + 0x28, DAT_VIRTUAL_BASE + name_offsets[index])
         struct.pack_into("<Q", vbuf, off + 0x30, DAT_VIRTUAL_BASE + off + 0x58)
         struct.pack_into("<Q", vbuf, off + 0x38, DAT_PHYSICAL_BASE + physical_offsets[index])
-        struct.pack_into("<II", vbuf, off + 0x40, 0, _ENHANCED_UNK_44H)
+        struct.pack_into(
+            "<II",
+            vbuf,
+            off + 0x40,
+            pack_usage_data(texture.usage, texture.usage_flags),
+            _ENHANCED_UNK_44H,
+        )
         struct.pack_into("<Q", vbuf, off + 0x58, _ENHANCED_SRV_VFT)
         struct.pack_into("<HHI", vbuf, off + 0x68, _ENHANCED_SRV_DIM_2D, 0xFFFF, 0xFFFFFFFF)
 
@@ -402,10 +434,14 @@ def save_ytd(ytd: Ytd, path: str | Path, *, game: str | None = None) -> Path:
 __all__ = [
     "Texture",
     "TextureFormat",
+    "TextureUsage",
     "Ytd",
+    "coerce_texture_usage",
+    "pack_usage_data",
     "read_embedded_texture_dictionary",
     "read_ytd",
     "save_ytd",
+    "unpack_usage_data",
 ]
 
 
