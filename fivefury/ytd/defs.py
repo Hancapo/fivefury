@@ -72,6 +72,71 @@ class TextureFormat(IntEnum):
     R32G32B32A32_FLOAT = 34
 
 
+class TextureUsage(IntEnum):
+    """How the runtime treats a texture, stored in the low 5 bits of UsageData."""
+
+    UNKNOWN = 0
+    DEFAULT = 1
+    TERRAIN = 2
+    CLOUDDENSITY = 3
+    CLOUDNORMAL = 4
+    CABLE = 5
+    FENCE = 6
+    ENVEFF = 7
+    SCRIPT = 8
+    WATERFLOW = 9
+    WATERFOAM = 10
+    WATERFOG = 11
+    WATEROCEAN = 12
+    WATER = 13
+    FOAMOPACITY = 14
+    FOAM = 15
+    DIFFUSEMIPSHARPEN = 16
+    DIFFUSEDETAIL = 17
+    DIFFUSEDARK = 18
+    DIFFUSEALPHAOPAQUE = 19
+    DIFFUSE = 20
+    DETAIL = 21
+    NORMAL = 22
+    SPECULAR = 23
+    EMISSIVE = 24
+    TINTPALETTE = 25
+    SKIPPROCESSING = 26
+    DONOTOPTIMIZE = 27
+    TEST = 28
+
+
+_USAGE_MASK = 0x1F
+_USAGE_FLAGS_SHIFT = 5
+
+
+def pack_usage_data(usage: "TextureUsage | int", usage_flags: int) -> int:
+    """Combine a usage and its flags into the UsageData word stored at 0x40."""
+    return ((int(usage_flags) << _USAGE_FLAGS_SHIFT) | (int(usage) & _USAGE_MASK)) & 0xFFFFFFFF
+
+
+def unpack_usage_data(usage_data: int) -> tuple["TextureUsage", int]:
+    """Split a UsageData word into its usage and flag halves."""
+    value = int(usage_data) & 0xFFFFFFFF
+    raw_usage = value & _USAGE_MASK
+    try:
+        usage = TextureUsage(raw_usage)
+    except ValueError:
+        usage = TextureUsage.UNKNOWN
+    return usage, value >> _USAGE_FLAGS_SHIFT
+
+
+def coerce_texture_usage(value: "TextureUsage | int | str") -> "TextureUsage":
+    if isinstance(value, TextureUsage):
+        return value
+    if isinstance(value, str):
+        try:
+            return TextureUsage[value.strip().upper()]
+        except KeyError as exc:
+            raise ValueError(f"Unknown texture usage: {value}") from exc
+    return TextureUsage(int(value) & _USAGE_MASK)
+
+
 class DxgiFormat(IntEnum):
     R32G32B32A32_FLOAT = 2
     R16G16B16A16_FLOAT = 10
@@ -363,6 +428,7 @@ __all__ = [
     "DxgiFormat",
     "Rsc8TextureFormat",
     "TextureFormat",
+    "TextureUsage",
     "_BLOCK_BYTES",
     "_ENHANCED_DIM_2D",
     "_ENHANCED_FLAGS",
@@ -387,5 +453,8 @@ __all__ = [
     "_resolve_legacy_format",
     "_row_pitch",
     "_total_mip_data_size",
+    "coerce_texture_usage",
+    "pack_usage_data",
+    "unpack_usage_data",
 ]
 

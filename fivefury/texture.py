@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .ytd.defs import (
     TextureFormat as BCFormat,
+    TextureUsage,
     _FORMAT_TO_DX9 as BC_TO_DX9,
     _FORMAT_TO_RSC8 as BC_TO_RSC8,
     _mip_data_size as mip_data_size,
@@ -15,6 +16,7 @@ __all__ = [
     "BC_TO_DX9",
     "BC_TO_RSC8",
     "Texture",
+    "TextureUsage",
     "mip_data_size",
     "row_pitch",
     "total_mip_data_size",
