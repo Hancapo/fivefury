@@ -1240,7 +1240,10 @@ def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_pat
     declaration_data = model_data[declaration_off : declaration_off + 320]
     declaration_flags, declaration_types, declaration_stride, declaration_count = decode_gen9_vertex_declaration(declaration_data)
     assert declaration_stride == int.from_bytes(model_data[vertex_buffer_off + 0x0C : vertex_buffer_off + 0x0E], "little")
-    assert declaration_count == 3
+    # Shipped Gen9 drawables leave the declaration's packed vertex count at zero; the real count
+    # lives on the vertex buffer at +0x08.
+    assert declaration_count == 0
+    assert int.from_bytes(model_data[vertex_buffer_off + 0x08 : vertex_buffer_off + 0x0C], "little") == 3
     assert declaration_flags != 0
     assert declaration_types != 0
     assert params_off < len(system_data)
@@ -1253,6 +1256,52 @@ def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_pat
     assert ydr.materials[0].texture_names == ["embedded_diffuse"]
     assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.25, 0.5, 0.75, 1.0))
     assert len(ydr.meshes[0].positions) == 3
+
+
+def test_build_ydr_gen9_texture_reference_matches_shipped_layout(tmp_path: Path) -> None:
+    """Gen9 shader texture references must match the layout used by shipped drawables.
+
+    The values here were taken from the drawables shipped with GTA V Enhanced: every shader
+    parameter texture reference stores its usage count at 0x26 and its name pointer at 0x28,
+    keeps depth and mip level at 1, and leaves the shader resource view pointer at 0x30 null.
+    Writing the usage count over the view pointer leaves a bogus non-null pointer that the
+    runtime then follows.
+    """
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "layout_diffuse"},
+            )
+        ],
+        version=159,
+        name="gen9_texture_layout",
+    )
+
+    ydr_path = tmp_path / "gen9_texture_layout.ydr"
+    build.save(ydr_path)
+    system_data, shader_off, _params_off, _infos_off = _first_gen9_shader_offsets(ydr_path.read_bytes())
+
+    texture_refs_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x10 : shader_off + 0x18], "little"))
+    texture_off = _virtual_to_offset(int.from_bytes(system_data[texture_refs_off : texture_refs_off + 8], "little"))
+
+    assert int.from_bytes(system_data[texture_off + 0x04 : texture_off + 0x08], "little") == 1
+    assert int.from_bytes(system_data[texture_off + 0x10 : texture_off + 0x14], "little") == 0x00260000
+    assert int.from_bytes(system_data[texture_off + 0x1C : texture_off + 0x1E], "little") == 1  # depth
+    assert system_data[texture_off + 0x1E] == 1  # dimension: 2D
+    assert system_data[texture_off + 0x20] == 255  # tile mode: auto
+    assert system_data[texture_off + 0x22] == 1  # mip levels
+    assert int.from_bytes(system_data[texture_off + 0x26 : texture_off + 0x28], "little") == 1  # usage count
+    assert int.from_bytes(system_data[texture_off + 0x30 : texture_off + 0x38], "little") == 0  # no SRV
+    assert int.from_bytes(system_data[texture_off + 0x38 : texture_off + 0x40], "little") == 0  # no pixel data
+
+    name_off = _virtual_to_offset(int.from_bytes(system_data[texture_off + 0x28 : texture_off + 0x30], "little"))
+    assert system_data[name_off : name_off + len(b"layout_diffuse")] == b"layout_diffuse"
+
+    shader_group_off = _virtual_to_offset(int.from_bytes(system_data[0x10:0x18], "little"))
+    assert int.from_bytes(system_data[shader_group_off + 0x30 : shader_group_off + 0x34], "little") == 0
 
 
 def test_build_and_read_ydr_gen9_accepts_native_texture_slot_names(tmp_path: Path) -> None:
