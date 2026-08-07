@@ -7,6 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-07
+
+### Added
+- Texture usage and usage flags on texture dictionary entries.
+
+### Fixed
+- Enhanced shader texture references use the layout the runtime expects, so Enhanced YDR, YDD, and YFT assets load correctly.
+- Enhanced shader groups, shader parameter info, and vertex declarations match shipped drawables.
+- Texture usage is preserved when reading and rewriting Legacy and Enhanced texture dictionaries.
+
 ## [0.3.6] - 2026-08-06
 
 ### Added
