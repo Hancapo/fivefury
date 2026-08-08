@@ -3,8 +3,30 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from ..binary import pack_i32_be as _i32, pack_u16_be as _u16, pack_u32_be as _u32
+from ..binary import pack_i32_be as _i32
+from ..binary import pack_u16_be as _u16
+from ..binary import pack_u32_be as _u32
 from .codec import joaat_checksum
+
+PSO_BLOCK_ALIGNMENT = 16
+
+
+def _block_offsets(
+    blocks: Sequence[PsoBlockBuilder],
+    *,
+    block_alignment: int = PSO_BLOCK_ALIGNMENT,
+) -> list[int]:
+    alignment = int(block_alignment)
+    if alignment <= 0 or alignment & (alignment - 1):
+        raise ValueError("PSO block alignment must be a positive power of two")
+
+    offsets: list[int] = []
+    current_offset = 16
+    for block in blocks:
+        current_offset = (current_offset + alignment - 1) & ~(alignment - 1)
+        offsets.append(current_offset)
+        current_offset += len(block.data)
+    return offsets
 
 
 @dataclass(slots=True)
@@ -36,21 +58,38 @@ def patch_pointers(patches: Sequence[PsoPointerPatch], block_ids: dict[int, int]
         patch.buffer[patch.offset : patch.offset + 4] = _u32(encode_pointer_word(block_id, patch.relative_offset))
 
 
-def build_psin_section(blocks: Sequence[PsoBlockBuilder], prefix: bytes = b"\x70" * 8) -> bytes:
+def build_psin_section(
+    blocks: Sequence[PsoBlockBuilder],
+    prefix: bytes = b"\x70" * 8,
+    *,
+    block_alignment: int = PSO_BLOCK_ALIGNMENT,
+) -> bytes:
     psin_body = bytearray(prefix)
     while len(psin_body) < 8:
         psin_body.append(0x70)
 
     payload = bytearray()
     payload.extend(b"PSIN")
-    payload.extend(_u32(16 + sum(len(block.data) for block in blocks)))
+    block_offsets = _block_offsets(blocks, block_alignment=block_alignment)
+    section_length = max(
+        (offset + len(block.data) for offset, block in zip(block_offsets, blocks)),
+        default=16,
+    )
+    payload.extend(_u32(section_length))
     payload.extend(psin_body[:8])
-    for block in blocks:
+    for offset, block in zip(block_offsets, blocks):
+        payload.extend(b"\x00" * (offset - len(payload)))
         payload.extend(block.data)
     return bytes(payload)
 
 
-def build_pmap_section(blocks: Sequence[PsoBlockBuilder], root_block_id: int, pmap_unknown: int = 0x7070) -> bytes:
+def build_pmap_section(
+    blocks: Sequence[PsoBlockBuilder],
+    root_block_id: int,
+    pmap_unknown: int = 0x7070,
+    *,
+    block_alignment: int = PSO_BLOCK_ALIGNMENT,
+) -> bytes:
     payload = bytearray()
     payload.extend(b"PMAP")
     payload.extend(_u32(16 + len(blocks) * 16))
@@ -58,13 +97,14 @@ def build_pmap_section(blocks: Sequence[PsoBlockBuilder], root_block_id: int, pm
     payload.extend(_u16(len(blocks)))
     payload.extend(_u16(int(pmap_unknown)))
 
-    current_offset = 16
-    for block in blocks:
+    for block, current_offset in zip(
+        blocks,
+        _block_offsets(blocks, block_alignment=block_alignment),
+    ):
         payload.extend(_u32(block.name_hash))
         payload.extend(_i32(current_offset))
         payload.extend(_i32(0))
         payload.extend(_i32(len(block.data)))
-        current_offset += len(block.data)
     return bytes(payload)
 
 
@@ -90,6 +130,7 @@ def finalize_sections_with_checksum(sections: Sequence[bytes]) -> bytes:
 
 
 __all__ = [
+    "PSO_BLOCK_ALIGNMENT",
     "PsoBlockBuilder",
     "PsoPointerPatch",
     "build_chks_section",

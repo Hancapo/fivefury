@@ -20,17 +20,20 @@ from fivefury import (
     CutPropAnimationPreset,
     CutScene,
     CutSceneFlags,
+    CutsceneProject,
     CutSceneValidationError,
     CutSubtitle,
     CutSubtitleCue,
     CutSubtitlePayload,
     build_cut_bytes,
     read_cut,
+    read_cut_scene,
+    read_ycd,
     scene_to_cut,
     validate_cut_scene,
 )
-from fivefury.cut.limits import CUT_MAX_CONCATENATED_SCENES, CUT_MAX_PSO_ARRAY_ITEMS
 from fivefury.cache.io import _decode_payload
+from fivefury.cut.limits import CUT_MAX_CONCATENATED_SCENES, CUT_MAX_PSO_ARRAY_ITEMS
 from fivefury.gamefile import GameFileType
 from fivefury.hashing import jenk_hash
 
@@ -45,7 +48,9 @@ def test_cut_scene_builder_writes_without_template() -> None:
     scene.load_scene(0.0, CutLoadScenePayload("intro_scene"), target=asset_manager)
     scene.load_models(0.0, [actor.object_id], target=asset_manager)
     camera_event = scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_orbit"))
-    subtitle_event = scene.show_subtitle(0.0, subtitle, CutSubtitlePayload("hola amigos", duration=15.0))
+    subtitle_event = scene.show_subtitle(
+        0.0, subtitle, CutSubtitlePayload("hola amigos", duration=15.0)
+    )
 
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
 
@@ -62,14 +67,20 @@ def test_cut_scene_builder_writes_without_template() -> None:
     assert len(rebuilt.event_args) == 4
     assert rebuilt.objects[1].type_name == "rage__cutfCameraObject"
     assert any(event.fields["iEventId"] == 43 for event in rebuilt.events)
-    camera_args = next(args for args in rebuilt.event_args if args.type_name == "rage__cutfCameraCutEventArgs")
+    camera_args = next(
+        args
+        for args in rebuilt.event_args
+        if args.type_name == "rage__cutfCameraCutEventArgs"
+    )
     assert camera_args.fields["cName"].hash != 0
 
 
 def test_cut_writer_preserves_fields_after_dynamic_structure_pointer() -> None:
     scene = CutScene.create(duration=5.0)
     asset_manager = scene.add_asset_manager()
-    scene.load_scene(0.0, CutLoadScenePayload("nested_attributes"), target=asset_manager)
+    scene.load_scene(
+        0.0, CutLoadScenePayload("nested_attributes"), target=asset_manager
+    )
     cut = scene_to_cut(scene)
     args = cut.event_args[0]
     args.fields["cutfAttributes"] = CutNode(
@@ -88,10 +99,16 @@ def test_cut_writer_preserves_fields_after_dynamic_structure_pointer() -> None:
 
 def test_cut_writer_roundtrips_atstring_arrays() -> None:
     scene = CutScene.create(duration=5.0)
-    vehicle = scene.add_vehicle("car", fields={"cRemoveBoneNameList": ["door_dside_f", "wheel_lf"]})
+    vehicle = scene.add_vehicle(
+        "car", fields={"cRemoveBoneNameList": ["door_dside_f", "wheel_lf"]}
+    )
 
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
-    rebuilt_vehicle = next(node for node in rebuilt.objects if node.fields["iObjectId"] == vehicle.object_id)
+    rebuilt_vehicle = next(
+        node
+        for node in rebuilt.objects
+        if node.fields["iObjectId"] == vehicle.object_id
+    )
 
     assert rebuilt_vehicle.fields["cRemoveBoneNameList"] == ["door_dside_f", "wheel_lf"]
 
@@ -99,7 +116,9 @@ def test_cut_writer_roundtrips_atstring_arrays() -> None:
 def test_cut_decoder_uses_logical_pso_instead_of_stored_archive_bytes() -> None:
     logical = scene_to_cut(CutScene.create(duration=5.0)).to_bytes()
 
-    parsed, kind = _decode_payload("example.cut", logical, raw=b"compressed archive payload")
+    parsed, kind = _decode_payload(
+        "example.cut", logical, raw=b"compressed archive payload"
+    )
 
     assert kind is GameFileType.CUT
     assert parsed.root.type_name == "rage__cutfCutsceneFile2"
@@ -111,13 +130,23 @@ def test_cut_scene_save_validation_allows_playable_minimal_scene() -> None:
     camera = scene.add_camera("cam_main")
     prop = scene.add_prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
 
+    scene.load_scene(0.0, CutLoadScenePayload("playable"), target=asset_manager)
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
-    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_main", near_draw_distance=0.05, far_draw_distance=1000.0))
+    scene.camera_cut(
+        0.0,
+        camera,
+        CutCameraCutPayload(
+            "cam_main", near_draw_distance=0.05, far_draw_distance=1000.0
+        ),
+    )
 
     rebuilt = read_cut(scene.to_bytes())
 
     assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(5.0)
-    assert any(event.fields["iEventId"] == int(CutEventType.CAMERA_CUT) for event in rebuilt.events)
+    assert any(
+        event.fields["iEventId"] == int(CutEventType.CAMERA_CUT)
+        for event in rebuilt.events
+    )
 
 
 def test_cut_scene_save_validation_reports_missing_type_file() -> None:
@@ -127,12 +156,20 @@ def test_cut_scene_save_validation_reports_missing_type_file() -> None:
     prop = scene.add_prop("prop_a", model_name="prop_a")
 
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
-    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_main", near_draw_distance=0.05, far_draw_distance=1000.0))
+    scene.camera_cut(
+        0.0,
+        camera,
+        CutCameraCutPayload(
+            "cam_main", near_draw_distance=0.05, far_draw_distance=1000.0
+        ),
+    )
 
     with pytest.raises(CutSceneValidationError) as excinfo:
         scene.to_bytes()
 
-    assert any(issue.code == "object.type_file.missing" for issue in excinfo.value.issues)
+    assert any(
+        issue.code == "object.type_file.missing" for issue in excinfo.value.issues
+    )
     assert "object.type_file.missing" in str(excinfo.value)
 
 
@@ -146,12 +183,21 @@ def test_cut_scene_save_validation_reports_bad_animation_binding() -> None:
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
     scene.load_anim_dict(0.0, "bad_anim", target=animation_manager)
     scene.set_anim(0.0, prop, target=animation_manager)
-    scene.camera_cut(0.0, camera, CutCameraCutPayload("cam_main", near_draw_distance=0.05, far_draw_distance=1000.0))
+    scene.camera_cut(
+        0.0,
+        camera,
+        CutCameraCutPayload(
+            "cam_main", near_draw_distance=0.05, far_draw_distance=1000.0
+        ),
+    )
 
     with pytest.raises(CutSceneValidationError) as excinfo:
         scene.to_bytes()
 
-    assert any(issue.code == "set_anim.streaming_base.mismatch" for issue in excinfo.value.issues)
+    assert any(
+        issue.code == "set_anim.streaming_base.mismatch"
+        for issue in excinfo.value.issues
+    )
 
 
 def test_cut_scene_installs_subtitle_track_and_gxt2() -> None:
@@ -171,8 +217,13 @@ def test_cut_scene_installs_subtitle_track_and_gxt2() -> None:
 
     assert gxt.get("TEST_SUB_001") == "First line"
     assert gxt.get("TEST_SUB_002") == "Second line"
-    assert sum(1 for obj in rebuilt.objects if obj.type_name == "rage__cutfSubtitleObject") == 1
-    assert sum(1 for event in rebuilt.load_events if event.fields["iEventId"] == 12) == 1
+    assert (
+        sum(1 for obj in rebuilt.objects if obj.type_name == "rage__cutfSubtitleObject")
+        == 1
+    )
+    assert (
+        sum(1 for event in rebuilt.load_events if event.fields["iEventId"] == 12) == 1
+    )
     show_events = [event for event in rebuilt.events if event.fields["iEventId"] == 30]
     assert len(show_events) == 2
     args = rebuilt.get_event_args(show_events[0].fields["iEventArgsIndex"])
@@ -223,15 +274,31 @@ def test_cut_scene_animation_manager_writes_without_template() -> None:
     assert len(rebuilt.load_events) == 2
     assert len(rebuilt.events) == 2
     assert len(rebuilt.event_args) == 4
-    animation_object = next(node for node in rebuilt.objects if node.type_name == "rage__cutfAnimationManagerObject")
+    animation_object = next(
+        node
+        for node in rebuilt.objects
+        if node.type_name == "rage__cutfAnimationManagerObject"
+    )
     assert animation_object.fields["iObjectId"] == animation_manager.object_id
-    name_args = [args for args in rebuilt.event_args if args.type_name == "rage__cutfNameEventArgs"]
-    object_args = [args for args in rebuilt.event_args if args.type_name == "rage__cutfObjectIdEventArgs"]
+    name_args = [
+        args
+        for args in rebuilt.event_args
+        if args.type_name == "rage__cutfNameEventArgs"
+    ]
+    object_args = [
+        args
+        for args in rebuilt.event_args
+        if args.type_name == "rage__cutfObjectIdEventArgs"
+    ]
     assert len(name_args) == 2
     assert len(object_args) == 2
-    assert all(args.fields["cName"].hash == jenk_hash("intro_dict") for args in name_args)
+    assert all(
+        args.fields["cName"].hash == jenk_hash("intro_dict") for args in name_args
+    )
     assert all(args.fields["iObjectId"] == actor.object_id for args in object_args)
-    assert {event.fields["iEventId"] for event in rebuilt.load_events + rebuilt.events} == {
+    assert {
+        event.fields["iEventId"] for event in rebuilt.load_events + rebuilt.events
+    } == {
         int(CutEventType.LOAD_ANIM_DICT),
         int(CutEventType.SET_ANIM),
         int(CutEventType.CLEAR_ANIM),
@@ -245,11 +312,13 @@ def test_cut_scene_preserves_authored_prop_startup_time() -> None:
     animation_manager = scene.add(CutAnimationManager())
     camera = scene.add(CutCamera("cam"))
     prop = scene.add(
-        CutProp("prop_local").configure_model_asset(
+        CutProp("prop_local")
+        .configure_model_asset(
             streaming_name="prop_stream",
             animation_clip_base="prop_stream",
             type_file="prop_pack",
-        ).apply_animation_preset(CutPropAnimationPreset.COMMON_PROP)
+        )
+        .apply_animation_preset(CutPropAnimationPreset.COMMON_PROP)
     )
 
     scene.load_anim_dict(0.0, "scene-0", target=animation_manager)
@@ -265,11 +334,18 @@ def test_cut_scene_preserves_authored_prop_startup_time() -> None:
         int(CutEventType.LOAD_MODELS),
         int(CutEventType.LOAD_ANIM_DICT),
     ]
-    assert [(event.fields["fTime"], event.fields["iEventId"]) for event in rebuilt.events[:2]] == [
+    assert [
+        (event.fields["fTime"], event.fields["iEventId"])
+        for event in rebuilt.events[:2]
+    ] == [
         (0.0, int(CutEventType.CAMERA_CUT)),
         (pytest.approx(1.0 / 240.0), int(CutEventType.SET_ANIM)),
     ]
-    rebuilt_prop = next(node for node in rebuilt.objects if node.type_name == "rage__cutfPropModelObject")
+    rebuilt_prop = next(
+        node
+        for node in rebuilt.objects
+        if node.type_name == "rage__cutfPropModelObject"
+    )
     assert rebuilt_prop.fields["cHandle"].hash == 0
 
 
@@ -308,7 +384,9 @@ def test_cut_event_args_use_complete_runtime_layouts() -> None:
     camera_args = args_by_type["rage__cutfCameraCutEventArgs"]
     assert camera_args.fields["fNearDrawDistance"] == pytest.approx(-1.0)
     assert camera_args.fields["AbsoluteIntensityEnabled"] is True
-    assert camera_args.fields["CharacterLight"].fields["fIntensity"] == pytest.approx(0.25)
+    assert camera_args.fields["CharacterLight"].fields["fIntensity"] == pytest.approx(
+        0.25
+    )
     dof_modifier = camera_args.fields["TimeOfDayDofModifers"][0]
     assert dof_modifier.fields["TimeOfDayFlags"] == 0x3F
     assert dof_modifier.fields["DofStrengthModifier"] == 4
@@ -321,15 +399,24 @@ def test_cut_camera_validation_accepts_minus_one_overrides() -> None:
 
     issues = validate_cut_scene(scene, strict=True)
 
-    assert not any(issue.code.startswith("camera_cut.clip") and issue.severity == "error" for issue in issues)
+    assert not any(
+        issue.code.startswith("camera_cut.clip") and issue.severity == "error"
+        for issue in issues
+    )
 
 
 def test_cut_validation_rejects_runtime_duration_and_range_errors() -> None:
     too_short = CutScene.create(duration=0.5)
     bad_range = CutScene.create(duration=5.0, range_start=30, range_end=150)
 
-    assert any(issue.code == "cut.duration.too_short" for issue in validate_cut_scene(too_short))
-    assert any(issue.code == "cut.range.duration_mismatch" for issue in validate_cut_scene(bad_range))
+    assert any(
+        issue.code == "cut.duration.too_short"
+        for issue in validate_cut_scene(too_short)
+    )
+    assert any(
+        issue.code == "cut.range.duration_mismatch"
+        for issue in validate_cut_scene(bad_range)
+    )
 
 
 def test_cut_validation_rejects_unsafe_section_layouts() -> None:
@@ -352,25 +439,40 @@ def test_cut_validation_rejects_unsafe_section_layouts() -> None:
         ),
     )
 
-    assert any(issue.code == "cut.section.duration.too_short" for issue in validate_cut_scene(duration_sections))
-    assert any(issue.code == "cut.section.split.order" for issue in validate_cut_scene(split_sections))
-    assert any(issue.code == "cut.section.mode.multiple" for issue in validate_cut_scene(conflicting_modes))
+    assert any(
+        issue.code == "cut.section.duration.too_short"
+        for issue in validate_cut_scene(duration_sections)
+    )
+    assert any(
+        issue.code == "cut.section.split.order"
+        for issue in validate_cut_scene(split_sections)
+    )
+    assert any(
+        issue.code == "cut.section.mode.multiple"
+        for issue in validate_cut_scene(conflicting_modes)
+    )
 
 
 def test_cut_validation_accepts_retail_camera_cut_precision() -> None:
     scene = CutScene.create(
         duration=2.0,
-        cutscene_flags=CutSceneFlags.IS_SECTIONED | CutSceneFlags.SECTION_BY_CAMERA_CUTS,
+        cutscene_flags=CutSceneFlags.IS_SECTIONED
+        | CutSceneFlags.SECTION_BY_CAMERA_CUTS,
         camera_cut_list=[0.9999964],
     )
 
-    assert not any(issue.code == "cut.section.interval.too_short" for issue in validate_cut_scene(scene))
+    assert not any(
+        issue.code == "cut.section.interval.too_short"
+        for issue in validate_cut_scene(scene)
+    )
 
 
 def test_cut_writer_rejects_fixed_and_dynamic_array_overflow() -> None:
     cut = scene_to_cut(CutScene.create(duration=1.0))
     concat_item = cut.root.fields["concatDataList"][0]
-    cut.root.fields["concatDataList"] = [concat_item] * (CUT_MAX_CONCATENATED_SCENES + 1)
+    cut.root.fields["concatDataList"] = [concat_item] * (
+        CUT_MAX_CONCATENATED_SCENES + 1
+    )
 
     with pytest.raises(ValueError, match="concatDataList"):
         build_cut_bytes(cut)
@@ -380,3 +482,132 @@ def test_cut_writer_rejects_fixed_and_dynamic_array_overflow() -> None:
 
     with pytest.raises(ValueError, match="cameraCutList"):
         build_cut_bytes(cut)
+
+
+def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
+    project = CutsceneProject.create(
+        "demo_scene", duration=2.0, camera_cuts=[1.0]
+    )
+    prop = project.scene.add_prop(
+        "box", model_name="prop_box", ytyp_name="demo_props"
+    )
+    project.animate(
+        prop,
+        mover_position={0.0: (0.0, 0.0, 0.0), 2.0: (1.0, 0.0, 0.0)},
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    project.camera(
+        position={0.0: (0.0, -4.0, 1.0), 2.0: (0.0, -3.0, 1.0)},
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        field_of_view=45.0,
+    )
+
+    files = project.build().build_files()
+
+    assert set(files) == {
+        "demo_scene.cut",
+        "demo_scene-0.ycd",
+        "demo_scene-1.ycd",
+    }
+    rebuilt_ycds = []
+    for name in ("demo_scene-0.ycd", "demo_scene-1.ycd"):
+        ycd = read_ycd(files[name])
+        ycd.path = name
+        rebuilt_ycds.append(ycd)
+    rebuilt = read_cut_scene(files["demo_scene.cut"])
+    rebuilt.clip_dicts = rebuilt_ycds
+    rebuilt.assert_valid(strict=True)
+
+
+def test_cutscene_assets_do_not_write_files_when_validation_fails(tmp_path) -> None:
+    project = CutsceneProject.create("broken_scene", duration=1.0)
+
+    with pytest.raises(CutSceneValidationError) as excinfo:
+        project.build().save(tmp_path)
+
+    assert any(issue.code == "camera_cut.missing" for issue in excinfo.value.issues)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cutscene_high_level_save_cannot_skip_validation() -> None:
+    scene = CutScene.create(scene_name="broken_scene", duration=1.0)
+
+    with pytest.raises(TypeError):
+        scene.to_bytes(validate=False)  # type: ignore[call-arg]
+
+
+def test_cutscene_rejects_wrong_event_target_role() -> None:
+    scene = CutScene.create(scene_name="wrong_target", duration=1.0)
+    asset_manager = scene.add_asset_manager()
+    camera = scene.add_camera("camera")
+    scene.load_scene(0.0, {"cName": "wrong_target"}, target=asset_manager)
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("camera"))
+    scene.load_models(0.0, [], target=camera)
+
+    with pytest.raises(CutSceneValidationError) as excinfo:
+        scene.to_bytes()
+
+    assert any(issue.code == "event.target.role" for issue in excinfo.value.issues)
+
+
+def test_cutscene_rejects_attachment_cycles() -> None:
+    scene = CutScene.create(scene_name="attachment_cycle", duration=1.0)
+    first = scene.add_prop("first", model_name="first", ytyp_name="props")
+    second = scene.add_prop("second", model_name="second", ytyp_name="props")
+    scene.set_attachment(0.0, first, second, "root")
+    scene.set_attachment(0.0, second, first, "root")
+
+    issues = scene.validation_report(strict=True)
+
+    assert any(issue.code == "attachment.cycle" for issue in issues)
+
+
+def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None:
+    project = CutsceneProject.create("dict_mismatch", duration=1.0)
+    prop = project.scene.add_prop(
+        "box", model_name="prop_box", ytyp_name="demo_props"
+    )
+    project.animate(
+        prop,
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    project.camera()
+    load_event = next(
+        event
+        for event in project.scene.timeline
+        if event.event_name == "load_anim_dict"
+    )
+    load_event.label = "wrong_dictionary"
+    load_event.payload["cName"] = "wrong_dictionary"
+
+    with pytest.raises(CutSceneValidationError) as excinfo:
+        project.build().build_files()
+
+    assert any(
+        issue.code == "set_anim.dict.mismatch" for issue in excinfo.value.issues
+    )
+
+
+def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
+    project = CutsceneProject.create("unloaded_model", duration=1.0)
+    prop = project.scene.add_prop(
+        "box", model_name="prop_box", ytyp_name="demo_props"
+    )
+    project.animate(
+        prop,
+        start=0.5,
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    project.camera()
+    project.scene.unload_models(
+        0.25, [prop.object_id], target=project.asset_manager
+    )
+
+    with pytest.raises(CutSceneValidationError) as excinfo:
+        project.build().build_files()
+
+    assert any(
+        issue.code == "set_anim.model.not_loaded" for issue in excinfo.value.issues
+    )

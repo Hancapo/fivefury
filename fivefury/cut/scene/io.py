@@ -306,7 +306,14 @@ def scene_to_cut(scene: CutScene) -> CutFile:
     base_cut = scene.raw
     root = _default_root(base_cut)
     scene_name = _infer_scene_name(scene)
-    camera_cut_list = _timeline_camera_cut_list(scene)
+    # A CUT's cameraCutList is its technical YCD/streaming segmentation, not
+    # necessarily the authored CAMERA_CUT event times. Retail files often
+    # contain several shots inside one segment.
+    camera_cut_list = (
+        list(scene.camera_cut_list)
+        if scene.camera_cut_list is not None
+        else _timeline_camera_cut_list(scene)
+    )
     range_start = int(scene.range_start or 0)
     range_end = _range_end(scene)
     scene_offset = _scene_offset(scene)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterable
+from bisect import bisect_right
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ...common import hash_value
 from ..model import CutHashedString, CutNode, CutResolvedEvent
@@ -207,6 +209,17 @@ def _object_role(type_name: str) -> str:
 
 def _is_scene_entity(role: str | None) -> bool:
     return role in {"ped", "prop", "vehicle", "weapon", "hidden_object", "overlay", "particle_fx", "rayfire"}
+
+
+def _technical_cut_index(
+    camera_cut_list: Sequence[float] | None,
+    time: float,
+    *,
+    default: int = 0,
+) -> int:
+    if not camera_cut_list:
+        return int(default)
+    return bisect_right(camera_cut_list, float(time))
 
 
 def _event_category(resolved: CutResolvedEvent) -> str:

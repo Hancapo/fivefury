@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..colors import parse_css_argb, parse_css_rgb_unit
+from ..hashing import jenk_partial_hash
 from ..resolver import HashResolver, get_hash_resolver
-from .flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS
+from .flags import DEFAULT_PLAYABLE_CUTSCENE_FLAGS, CutSceneFlags
 from .lights import CutLightFlag, CutLightProperty, CutLightType
 from .model import CutFile, CutHashedString, CutNode
 from .payloads import (
@@ -1328,10 +1329,21 @@ def _write_streamed_model(
     else:
         command = "ANIMATED_PROP" if animated else "STATIC_PROP"
     lines.append(f"  {command} {alias}:")
+    model_name = _binding_value(binding, "StreamingName", resolver)
+    anim_streaming_base = binding.fields.get("AnimStreamingBase")
+    animation_base = None
+    if (
+        model_name
+        and not model_name.lower().startswith("0x")
+        and anim_streaming_base is not None
+        and jenk_partial_hash(model_name) == int(anim_streaming_base)
+    ):
+        animation_base = model_name
     properties = [
-        ("MODEL", _binding_value(binding, "StreamingName", resolver)),
+        ("MODEL", model_name),
         ("YTYP", _binding_value(binding, "typeFile", resolver)),
         ("CNAME", _binding_value(binding, "cName", resolver)),
+        ("ANIM_BASE", animation_base),
         (
             "ANIM_STREAMING_BASE",
             f"0x{int(binding.fields['AnimStreamingBase']) & 0xFFFFFFFF:08X}"
@@ -1717,13 +1729,24 @@ def read_cutscript(path: str | Path) -> CutScriptResult:
 
 
 def save_cutscript(
-    path: str | Path, *, destination: str | Path | None = None, validate: bool = True
+    path: str | Path,
+    *,
+    destination: str | Path | None = None,
+    ycds: Iterable[object] = (),
 ) -> Path:
     result = read_cutscript(path)
     target = Path(destination) if destination is not None else result.save_path
     if target is None:
         raise ValueError("CUT script has no SAVE path and no destination was provided")
-    result.scene.save(target, validate=validate)
+    attached = list(ycds)
+    source_directory = Path(path).parent
+    if not attached and source_directory.is_dir():
+        from ..ycd.reader import read_ycd
+
+        attached.extend(read_ycd(candidate) for candidate in source_directory.glob("*.ycd"))
+    for ycd in attached:
+        result.scene.attach_clip_dict(ycd)
+    result.scene.save(target)
     return target
 
 

@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from ...ycd.cutscene import YcdCutsceneBuilder
     from ...ycd.model import Ycd, YcdAnimation, YcdClip
+    from .authoring import CutsceneAssets
 
-from ...metahash import MetaHash
 from ...hashing import jenk_finalize_hash, jenk_partial_hash
+from ...metahash import MetaHash
 from ..events import CutEventType, get_cut_event_sort_rank, get_cut_event_spec
 from ..flags import CutSceneFlags
 from ..model import CutFile
@@ -17,13 +19,18 @@ from .bindings import (
     _BINDING_ADDERS,
     _BINDING_CLASS_BY_TYPE,
     _ROLE_PROPERTY_NAMES,
-    _TypedCutBinding,
     CutBinding,
     CutProp,
     CutPropAnimationPreset,
     CutTypeFileStrategy,
+    _TypedCutBinding,
 )
-from .shared import _ROLE_DEFAULT_OBJECT_TYPE, _is_scene_entity, _object_role
+from .shared import (
+    _ROLE_DEFAULT_OBJECT_TYPE,
+    _is_scene_entity,
+    _object_role,
+    _technical_cut_index,
+)
 from .timeline import CutTimelineEvent, CutTrack
 
 
@@ -118,7 +125,9 @@ class CutScene:
         values: list[CutTimelineEvent] = []
         for track in self.tracks:
             values.extend(track.events)
-        return sorted(values, key=lambda item: (item.start, item.track, item.label or ""))
+        return sorted(
+            values, key=lambda item: (item.start, item.track, item.label or "")
+        )
 
     @property
     def state_events(self) -> list[CutTimelineEvent]:
@@ -146,19 +155,75 @@ class CutScene:
 
         assert_cut_scene_valid(self, strict=strict)
 
-    def to_cut(self, *, validate: bool = True) -> CutFile:
+    def to_cut(self) -> CutFile:
         from .io import scene_to_cut
 
         self.build()
-        if validate:
-            self.assert_valid(strict=True)
+        self.assert_valid(strict=True)
         return scene_to_cut(self)
 
-    def to_bytes(self, *, template: CutFile | bytes | str | Path | None = None, validate: bool = True) -> bytes:
-        return self.to_cut(validate=validate).to_bytes(template=template)
+    def to_bytes(
+        self, *, template: CutFile | bytes | str | Path | None = None
+    ) -> bytes:
+        from .io import read_cut_scene
 
-    def save(self, destination: str | Path, *, template: CutFile | bytes | str | Path | None = None, validate: bool = True) -> None:
-        self.to_cut(validate=validate).save(str(destination), template=template)
+        data = self.to_cut().to_bytes(template=template)
+        rebuilt = read_cut_scene(data)
+        rebuilt.clip_dicts = list(self.clip_dicts)
+        rebuilt.assert_valid(strict=True)
+        return data
+
+    def save(
+        self,
+        destination: str | Path,
+        *,
+        template: CutFile | bytes | str | Path | None = None,
+    ) -> None:
+        from ...common import atomic_write_bytes
+
+        if self.clip_dicts:
+            if template is not None:
+                raise ValueError(
+                    "Template-based CUT output with attached YCDs is not supported; "
+                    "build the low-level CutFile explicitly"
+                )
+            from .authoring import CutsceneAssets
+
+            target = Path(destination)
+            CutsceneAssets(
+                scene=self,
+                ycds=tuple(self.clip_dicts),
+                cut_name=target.name,
+            ).save(target.parent)
+            return
+        atomic_write_bytes(destination, self.to_bytes(template=template))
+
+    def animation_builder(
+        self, *, name: str | None = None, **kwargs: Any
+    ) -> YcdCutsceneBuilder:
+        from ...ycd.cutscene import YcdCutsceneBuilder
+
+        return YcdCutsceneBuilder.from_cut(self, name=name or self.scene_name, **kwargs)
+
+    def build_assets(
+        self,
+        animations: YcdCutsceneBuilder | None = None,
+        *,
+        cut_name: str | None = None,
+    ) -> CutsceneAssets:
+        from .authoring import CutsceneAssets
+
+        if animations is None:
+            ycds = tuple(self.clip_dicts)
+        else:
+            from ...ycd.cutscene import YcdCutsceneBuilder
+
+            if not isinstance(animations, YcdCutsceneBuilder):
+                raise TypeError(
+                    f"expected YcdCutsceneBuilder, got {type(animations).__name__}"
+                )
+            ycds = tuple(animations.build_ycds())
+        return CutsceneAssets(scene=self, ycds=ycds, cut_name=cut_name)
 
     @classmethod
     def create(
@@ -186,13 +251,19 @@ class CutScene:
             cutscene_flags=cutscene_flags,
             offset=resolved_offset,
             rotation=float(rotation),
-            trigger_offset=trigger_offset if trigger_offset is not None else (0.0, 0.0, 0.0),
+            trigger_offset=trigger_offset
+            if trigger_offset is not None
+            else (0.0, 0.0, 0.0),
             range_start=range_start,
             range_end=range_end,
             alt_range_end=alt_range_end,
             section_by_time_slice_duration=section_by_time_slice_duration,
-            camera_cut_list=list(camera_cut_list) if camera_cut_list is not None else None,
-            section_split_list=list(section_split_list) if section_split_list is not None else None,
+            camera_cut_list=list(camera_cut_list)
+            if camera_cut_list is not None
+            else None,
+            section_split_list=list(section_split_list)
+            if section_split_list is not None
+            else None,
             bindings=[],
             tracks=[],
             raw=None,
@@ -206,15 +277,25 @@ class CutScene:
     def build(self) -> "CutScene":
         next_id = 0
         normalized: list[CutBinding] = []
-        for binding in sorted(self.bindings, key=lambda item: (item.object_id if item.object_id >= 0 else 10**9, item.display_name)):
+        for binding in sorted(
+            self.bindings,
+            key=lambda item: (
+                item.object_id if item.object_id >= 0 else 10**9,
+                item.display_name,
+            ),
+        ):
             if binding.object_id < 0:
                 binding.object_id = next_id
             next_id = max(next_id, binding.object_id + 1)
-            normalized = [item for item in normalized if item.object_id != binding.object_id] + [binding]
+            normalized = [
+                item for item in normalized if item.object_id != binding.object_id
+            ] + [binding]
         self.bindings = sorted(normalized, key=lambda item: item.object_id)
         self.tracks = sorted(self.tracks, key=lambda item: item.key)
         for track in self.tracks:
-            track.events.sort(key=lambda item: (item.start, item.event_id or -1, item.display_name))
+            track.events.sort(
+                key=lambda item: (item.start, item.event_id or -1, item.display_name)
+            )
         return self
 
     def validate(self, *, strict: bool = False) -> list[str]:
@@ -223,7 +304,9 @@ class CutScene:
     def add(self, binding: CutBinding) -> CutBinding:
         if binding.object_id < 0:
             binding.object_id = self.next_object_id()
-        self.bindings = [item for item in self.bindings if item.object_id != binding.object_id] + [binding]
+        self.bindings = [
+            item for item in self.bindings if item.object_id != binding.object_id
+        ] + [binding]
         self.bindings.sort(key=lambda item: item.object_id)
         return binding
 
@@ -238,10 +321,22 @@ class CutScene:
         object_id: int | None = None,
         fields: dict[str, Any] | None = None,
     ) -> CutBinding:
-        resolved_object_id = self.next_object_id() if object_id is None else int(object_id)
+        resolved_object_id = (
+            self.next_object_id() if object_id is None else int(object_id)
+        )
         if issubclass(binding_cls, _TypedCutBinding):
-            return self.add(binding_cls(name=name, object_id=resolved_object_id, fields=fields))
-        return self.add(binding_cls(object_id=resolved_object_id, type_name="", role="", name=name, fields=fields))
+            return self.add(
+                binding_cls(name=name, object_id=resolved_object_id, fields=fields)
+            )
+        return self.add(
+            binding_cls(
+                object_id=resolved_object_id,
+                type_name="",
+                role="",
+                name=name,
+                fields=fields,
+            )
+        )
 
     def add_object(
         self,
@@ -252,19 +347,33 @@ class CutScene:
         type_name: str | None = None,
         fields: dict[str, Any] | None = None,
     ) -> CutBinding:
-        resolved_type = type_name or _ROLE_DEFAULT_OBJECT_TYPE.get(role_or_type, role_or_type)
+        resolved_type = type_name or _ROLE_DEFAULT_OBJECT_TYPE.get(
+            role_or_type, role_or_type
+        )
         object_id = self.next_object_id() if object_id is None else int(object_id)
         binding_class = _BINDING_CLASS_BY_TYPE.get(resolved_type)
         if binding_class is not None:
-            return self.add(binding_class(name=name, object_id=object_id, fields=fields))
-        binding = CutBinding.new(object_id=object_id, type_name=resolved_type, name=name, role=_object_role(resolved_type), fields=fields)
+            return self.add(
+                binding_class(name=name, object_id=object_id, fields=fields)
+            )
+        binding = CutBinding.new(
+            object_id=object_id,
+            type_name=resolved_type,
+            name=name,
+            role=_object_role(resolved_type),
+            fields=fields,
+        )
         return self.add(binding)
 
-    def add_track(self, key: str, *, name: str | None = None, kind: str | None = None) -> CutTrack:
+    def add_track(
+        self, key: str, *, name: str | None = None, kind: str | None = None
+    ) -> CutTrack:
         existing = self.get_track(key)
         if existing is not None:
             return existing
-        track = CutTrack(key=key, name=name or key.replace("_", " ").title(), kind=kind or key)
+        track = CutTrack(
+            key=key, name=name or key.replace("_", " ").title(), kind=kind or key
+        )
         self.tracks.append(track)
         self.tracks.sort(key=lambda item: item.key)
         return track
@@ -273,10 +382,16 @@ class CutScene:
         track = self.get_track(timeline_event.track)
         if track is None:
             track = self.add_track(timeline_event.track, kind=timeline_event.kind)
-        if timeline_event.kind and track.kind != timeline_event.kind and track.kind == track.key:
+        if (
+            timeline_event.kind
+            and track.kind != timeline_event.kind
+            and track.kind == track.key
+        ):
             track.kind = timeline_event.kind
         track.events.append(timeline_event)
-        track.events.sort(key=lambda item: (item.start, get_cut_event_sort_rank(item.event_id)))
+        track.events.sort(
+            key=lambda item: (item.start, get_cut_event_sort_rank(item.event_id))
+        )
         return timeline_event
 
     def create_event(
@@ -302,8 +417,19 @@ class CutScene:
         elif isinstance(target, int):
             target_id = target
             target_binding = self.get_binding(target)
-        if target_binding is None and spec is not None and spec.default_target_role is not None:
-            target_binding = next((item for item in self.bindings if item.role == spec.default_target_role), None)
+        if (
+            target_binding is None
+            and spec is not None
+            and spec.default_target_role is not None
+        ):
+            target_binding = next(
+                (
+                    item
+                    for item in self.bindings
+                    if item.role == spec.default_target_role
+                ),
+                None,
+            )
             if target_binding is not None:
                 target_id = target_binding.object_id
         timeline_event = CutTimelineEvent.new(
@@ -311,7 +437,9 @@ class CutScene:
             start=start,
             target_id=target_id,
             target_name=target_binding.name if target_binding is not None else None,
-            target_role=target_binding.role if target_binding is not None else (spec.default_target_role if spec is not None else None),
+            target_role=target_binding.role
+            if target_binding is not None
+            else (spec.default_target_role if spec is not None else None),
             track=track,
             label=label,
             duration=duration,
@@ -327,12 +455,13 @@ class CutScene:
             return []
         warnings: list[str] = []
         known_stems = {ycd.stem.lower() for ycd in self.clip_dicts if ycd.stem}
-        clip_map = self.available_clips(cut_index=cut_index)
         for event in self.timeline:
             if event.event_name == "load_anim_dict" and event.label:
                 name = event.label.lower()
                 if not any(name in stem or stem in name for stem in known_stems):
-                    warnings.append(f"load_anim_dict references unknown dict '{event.label}'")
+                    warnings.append(
+                        f"load_anim_dict references unknown dict '{event.label}'"
+                    )
             if event.event_name == "set_anim" and event.payload:
                 oid = event.payload.get("iObjectId")
                 if oid is not None:
@@ -342,10 +471,13 @@ class CutScene:
                     candidate_hashes: list[int] = []
                     candidate_labels: list[str] = []
                     animation_clip_base = getattr(bound, "animation_clip_base", None)
+                    active_cut_index = _technical_cut_index(
+                        self.camera_cut_list,
+                        float(event.start),
+                        default=cut_index,
+                    )
                     if animation_clip_base:
-                        expected_clip_name = f"{animation_clip_base}-{int(cut_index)}"
-                        candidate_hashes.append(MetaHash(animation_clip_base).uint)
-                        candidate_hashes.append(MetaHash(expected_clip_name).uint)
+                        expected_clip_name = f"{animation_clip_base}-{active_cut_index}"
                         candidate_labels.append(expected_clip_name)
                     if not animation_clip_base and bound.name:
                         candidate_hashes.append(MetaHash(bound.name).uint)
@@ -353,12 +485,20 @@ class CutScene:
                     cutscene_name = getattr(bound, "cutscene_name", None)
                     if not animation_clip_base and cutscene_name:
                         candidate_hashes.append(MetaHash(cutscene_name).uint)
-                        candidate_hashes.append(MetaHash(f"{cutscene_name}-{int(cut_index)}").uint)
+                        candidate_hashes.append(
+                            MetaHash(f"{cutscene_name}-{active_cut_index}").uint
+                        )
                         candidate_labels.append(cutscene_name)
-                    anim_streaming_base = getattr(bound, "animation_streaming_base", None)
+                    anim_streaming_base = getattr(
+                        bound, "animation_streaming_base", None
+                    )
                     if anim_streaming_base not in (None, "", 0):
-                        candidate_hashes.append(jenk_finalize_hash(int(anim_streaming_base)))
-                        candidate_labels.append(f"AnimStreamingBase=0x{int(anim_streaming_base):08X}")
+                        candidate_hashes.append(
+                            jenk_finalize_hash(int(anim_streaming_base))
+                        )
+                        candidate_labels.append(
+                            f"AnimStreamingBase=0x{int(anim_streaming_base):08X}"
+                        )
                     if animation_clip_base and anim_streaming_base not in (None, "", 0):
                         expected_base = jenk_partial_hash(animation_clip_base)
                         if int(anim_streaming_base) != expected_base:
@@ -366,9 +506,23 @@ class CutScene:
                                 f"set_anim target '{animation_clip_base}' (id={oid}) has AnimStreamingBase=0x{int(anim_streaming_base):08X}, "
                                 f"expected 0x{expected_base:08X}"
                             )
-                    if candidate_hashes and not any(key in clip_map for key in candidate_hashes):
-                        label = " / ".join(dict.fromkeys(candidate_labels)) or f"id={oid}"
-                        warnings.append(f"set_anim target '{label}' (id={oid}) has no matching clip in attached YCDs")
+                    exact_clip_missing = animation_clip_base and not any(
+                        ycd.get_clip(expected_clip_name) is not None
+                        for ycd in self.clip_dicts
+                    )
+                    clip_map = self.available_clips(cut_index=active_cut_index)
+                    hashed_clip_missing = candidate_hashes and not any(
+                        key in clip_map for key in candidate_hashes
+                    )
+                    if exact_clip_missing or (
+                        not animation_clip_base and hashed_clip_missing
+                    ):
+                        label = (
+                            " / ".join(dict.fromkeys(candidate_labels)) or f"id={oid}"
+                        )
+                        warnings.append(
+                            f"set_anim target '{label}' (id={oid}) has no matching clip in attached YCDs"
+                        )
         return warnings
 
     def ensure_ydr_embedded_lights(
@@ -380,7 +534,9 @@ class CutScene:
     ) -> list[CutBinding]:
         from ..lights import ensure_ydr_embedded_lights
 
-        return ensure_ydr_embedded_lights(self, source, name_prefix=name_prefix, start=start)
+        return ensure_ydr_embedded_lights(
+            self, source, name_prefix=name_prefix, start=start
+        )
 
 
 def _make_role_property(role: str):
@@ -388,8 +544,16 @@ def _make_role_property(role: str):
 
 
 def _make_binding_adder(binding_cls: type[CutBinding]):
-    def _adder(self: CutScene, name: str | None = None, *, object_id: int | None = None, fields: dict[str, Any] | None = None):
-        return self.add_typed_binding(binding_cls, name, object_id=object_id, fields=fields)
+    def _adder(
+        self: CutScene,
+        name: str | None = None,
+        *,
+        object_id: int | None = None,
+        fields: dict[str, Any] | None = None,
+    ):
+        return self.add_typed_binding(
+            binding_cls, name, object_id=object_id, fields=fields
+        )
 
     return _adder
 
@@ -446,14 +610,26 @@ def add_prop(
         cutscene_name=cutscene_name if cutscene_name is not None else scene_name,
         streaming_name=streaming_name if streaming_name is not None else model_name,
         animation_clip_base=animation_clip_base,
-        anim_streaming_base=anim_streaming_base if anim_streaming_base is not None else animation_streaming_base,
-        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file if anim_export_ctrl_spec_file is not None else animation_export_spec_file,
-        face_export_ctrl_spec_file=face_export_ctrl_spec_file if face_export_ctrl_spec_file is not None else face_animation_export_spec_file,
-        anim_compression_file=anim_compression_file if anim_compression_file is not None else animation_compression_filename,
+        anim_streaming_base=anim_streaming_base
+        if anim_streaming_base is not None
+        else animation_streaming_base,
+        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file
+        if anim_export_ctrl_spec_file is not None
+        else animation_export_spec_file,
+        face_export_ctrl_spec_file=face_export_ctrl_spec_file
+        if face_export_ctrl_spec_file is not None
+        else face_animation_export_spec_file,
+        anim_compression_file=anim_compression_file
+        if anim_compression_file is not None
+        else animation_compression_filename,
         handle=handle if handle is not None else object_handle,
         type_file=type_file if type_file is not None else ytyp_name,
     )
-    if animation_clip_base is None and animation_preset is not None and (anim_streaming_base is None and animation_streaming_base is None):
+    if (
+        animation_clip_base is None
+        and animation_preset is not None
+        and (anim_streaming_base is None and animation_streaming_base is None)
+    ):
         inferred_clip_base = prop.model_name
         if inferred_clip_base:
             prop.animation_clip_base = inferred_clip_base
@@ -501,10 +677,18 @@ def add_prop_from_runtime_asset(
         type_source=type_source,
         type_file_strategy=type_file_strategy,
         animation_clip_base=animation_clip_base,
-        anim_streaming_base=anim_streaming_base if anim_streaming_base is not None else animation_streaming_base,
-        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file if anim_export_ctrl_spec_file is not None else animation_export_spec_file,
-        face_export_ctrl_spec_file=face_export_ctrl_spec_file if face_export_ctrl_spec_file is not None else face_animation_export_spec_file,
-        anim_compression_file=anim_compression_file if anim_compression_file is not None else animation_compression_filename,
+        anim_streaming_base=anim_streaming_base
+        if anim_streaming_base is not None
+        else animation_streaming_base,
+        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file
+        if anim_export_ctrl_spec_file is not None
+        else animation_export_spec_file,
+        face_export_ctrl_spec_file=face_export_ctrl_spec_file
+        if face_export_ctrl_spec_file is not None
+        else face_animation_export_spec_file,
+        anim_compression_file=anim_compression_file
+        if anim_compression_file is not None
+        else animation_compression_filename,
         handle=handle if handle is not None else object_handle,
         fields=fields,
     )

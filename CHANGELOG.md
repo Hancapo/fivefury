@@ -7,6 +7,26 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-08-08
+
+### Added
+- Coordinated high-level authoring and package output for CUT scenes and their YCD sections.
+- YCD cutscene builders support explicit starting section indices.
+- YFT tune-name rewrites can opt into trailing page padding.
+
+### Changed
+- Authored cutscenes now require semantic validation and a successful binary round-trip before saving.
+- PSO block alignment can be selected per format while preserving YMF layouts.
+
+### Fixed
+- Cutscene validation rejects invalid target roles, attachment cycles, non-finite values, and unresolved animation dictionaries.
+- Cutscene YCD sections follow technical streaming cuts independently of camera shots.
+- Cutscene ped validation permits streaming without a type file.
+- Path-backed RPF entries remain readable before packaging.
+- Path-based DLC reads release their archive handles.
+- Enhanced shader constant buffers accept flat multi-vector values.
+- YCD dictionaries preserve valid hash keys that overlap resource address ranges.
+
 ## [0.3.8] - 2026-08-08
 
 ### Fixed

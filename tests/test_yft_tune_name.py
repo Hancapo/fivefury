@@ -43,12 +43,30 @@ def test_rewrite_yft_tune_name_reuses_existing_string_slot() -> None:
     assert after_system[slot_end:] == before_system[slot_end:]
 
 
-def test_rewrite_yft_tune_name_rejects_names_larger_than_existing_slot() -> None:
+def test_rewrite_yft_tune_name_requires_opt_in_for_larger_names() -> None:
     raw = _simple_yft("x")
     tune_name = "pack:/fragment_with_a_name_longer_than_the_original_slot"
 
-    with pytest.raises(ValueError, match="exceeds the existing string capacity"):
+    with pytest.raises(ValueError, match="allow_padding_relocation"):
         rewrite_yft_tune_name(raw, tune_name)
+
+
+def test_rewrite_yft_tune_name_relocates_names_into_padding() -> None:
+    raw = _simple_yft("x")
+    tune_name = "pack:/fragment_with_a_name_longer_than_the_original_slot"
+
+    before = read_yft(raw)
+    rewritten = rewrite_yft_tune_name(
+        raw,
+        tune_name,
+        allow_padding_relocation=True,
+    )
+    after = read_yft(rewritten)
+
+    assert after.tune_name == tune_name
+    assert after.pointers.tune_name != before.pointers.tune_name
+    assert after.pointers.common_drawable == before.pointers.common_drawable
+    assert after.pointers.physics_lod_group == before.pointers.physics_lod_group
 
 
 def test_rewrite_yft_tune_name_is_exact_when_name_is_unchanged() -> None:

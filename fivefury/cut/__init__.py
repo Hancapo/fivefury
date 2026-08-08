@@ -1,13 +1,4 @@
 from .analysis import analyze_cut
-from .events import (
-    CutEventBehavior,
-    CutEventSpec,
-    CutEventType,
-    get_cut_event_enum_name,
-    get_cut_event_id,
-    get_cut_event_name,
-    get_cut_event_spec,
-)
 from .dsl import (
     CutScriptError,
     CutScriptHashResolver,
@@ -20,7 +11,16 @@ from .dsl import (
     save_cut_as_cutscript,
     save_cutscript,
 )
-from .flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS
+from .events import (
+    CutEventBehavior,
+    CutEventSpec,
+    CutEventType,
+    get_cut_event_enum_name,
+    get_cut_event_id,
+    get_cut_event_name,
+    get_cut_event_spec,
+)
+from .flags import DEFAULT_PLAYABLE_CUTSCENE_FLAGS, CutSceneFlags
 from .lights import (
     CutLightFlag,
     CutLightProperty,
@@ -41,12 +41,12 @@ from .limits import (
 )
 from .model import CutFile, CutHashedString, CutNode
 from .payloads import (
-    CutAttachmentPayload,
     CutAnimationDictPayload,
     CutAnimationTargetPayload,
+    CutAttachmentPayload,
     CutBoolValuePayload,
-    CutCameraCutPayload,
     CutCameraCharacterLightPayload,
+    CutCameraCutPayload,
     CutCameraDofModifierPayload,
     CutCascadeShadowPayload,
     CutDecalPayload,
@@ -56,9 +56,9 @@ from .payloads import (
     CutFloatValuePayload,
     CutLoadScenePayload,
     CutNamePayload,
+    CutObjectIdListPayload,
     CutObjectNamePayload,
     CutObjectTargetPayload,
-    CutObjectIdListPayload,
     CutObjectVariationPayload,
     CutPlayParticleEffectPayload,
     CutScreenFadePayload,
@@ -68,10 +68,10 @@ from .payloads import (
 )
 from .pso import read_cut
 from .scene import (
-    CutAssetManager,
-    CutAnimationManager,
     CutAnimatedLight,
     CutAnimatedParticleEffect,
+    CutAnimationManager,
+    CutAssetManager,
     CutAudio,
     CutBinding,
     CutBlockingBounds,
@@ -89,8 +89,9 @@ from .scene import (
     CutPropAnimationPreset,
     CutRayfire,
     CutRemovalBounds,
-    CutTypeFileStrategy,
     CutScene,
+    CutsceneAssets,
+    CutsceneProject,
     CutSceneValidationError,
     CutSceneValidationIssue,
     CutSubtitle,
@@ -98,6 +99,7 @@ from .scene import (
     CutSubtitleTrack,
     CutTimelineEvent,
     CutTrack,
+    CutTypeFileStrategy,
     CutVehicle,
     CutWeapon,
     build_subtitle_gxt2,
@@ -169,6 +171,8 @@ __all__ = [
     "CutTypeFileStrategy",
     "CutScreenFadePayload",
     "CutScene",
+    "CutsceneAssets",
+    "CutsceneProject",
     "CutSceneValidationError",
     "CutSceneValidationIssue",
     "CutScriptError",

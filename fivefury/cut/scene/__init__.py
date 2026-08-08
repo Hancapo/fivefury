@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from ..lights import (
+    CutLightFlag,
+    CutLightProperty,
+    CutLightType,
+    cut_light_fields_from_ydr_light,
+    cut_light_flags_from_ydr_flags,
+    cut_light_property_from_ydr_flags,
+    cut_light_type_from_ydr_light_type,
+    ensure_ydr_embedded_lights,
+)
+from .authoring import CutsceneAssets, CutsceneProject
 from .bindings import (
-    CutAssetManager,
-    CutAnimationManager,
     CutAnimatedLight,
     CutAnimatedParticleEffect,
+    CutAnimationManager,
+    CutAssetManager,
     CutAudio,
     CutBinding,
     CutBlockingBounds,
@@ -22,24 +33,29 @@ from .bindings import (
     CutPropAnimationPreset,
     CutRayfire,
     CutRemovalBounds,
-    CutTypeFileStrategy,
     CutSubtitle,
+    CutTypeFileStrategy,
     CutVehicle,
     CutWeapon,
 )
-from .core import CutScene, cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
-from .subtitles import CutSubtitleCue, CutSubtitleTrack, build_subtitle_gxt2, subtitle_cues_from_text
+from .core import (
+    CutScene,
+    cut_to_scene,
+    read_cut_scene,
+    read_cutxml_scene,
+    scene_to_cut,
+)
+from .subtitles import (
+    CutSubtitleCue,
+    CutSubtitleTrack,
+    build_subtitle_gxt2,
+    subtitle_cues_from_text,
+)
 from .timeline import CutTimelineEvent, CutTrack
-from .validation import CutSceneValidationError, CutSceneValidationIssue, validate_cut_scene
-from ..lights import (
-    CutLightFlag,
-    CutLightProperty,
-    CutLightType,
-    cut_light_fields_from_ydr_light,
-    cut_light_flags_from_ydr_flags,
-    cut_light_property_from_ydr_flags,
-    cut_light_type_from_ydr_light_type,
-    ensure_ydr_embedded_lights,
+from .validation import (
+    CutSceneValidationError,
+    CutSceneValidationIssue,
+    validate_cut_scene,
 )
 
 __all__ = [
@@ -68,6 +84,8 @@ __all__ = [
     "CutRayfire",
     "CutRemovalBounds",
     "CutScene",
+    "CutsceneAssets",
+    "CutsceneProject",
     "CutSceneValidationError",
     "CutSceneValidationIssue",
     "CutSubtitle",

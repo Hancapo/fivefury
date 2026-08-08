@@ -78,6 +78,14 @@ def _coerce_gen9_cbuffer_bytes(
         if len(payload) != length:
             payload = payload[:length].ljust(length, b'\x00')
         return payload
+    if isinstance(value, tuple) and len(value) > 4:
+        expected_components = length // 4
+        if len(value) != expected_components:
+            raise ValueError(
+                f"Gen9 shader parameter '{parameter.name}' expects "
+                f'{expected_components} floats, got {len(value)}'
+            )
+        return struct.pack(f'<{expected_components}f', *(float(item) for item in value))
     vector = _coerce_parameter_vector(value)
     return struct.pack('<4f', *vector)[:length].ljust(length, b'\x00')
 

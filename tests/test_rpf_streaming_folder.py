@@ -20,6 +20,7 @@ def test_from_folder_keeps_payloads_path_backed_until_save(tmp_path: Path) -> No
     assert entry is not None
     assert entry._source_path == asset.resolve()
     assert getattr(entry, "_data", None) is None
+    assert entry.read() == b"path-backed payload"
 
     destination = tmp_path / "resource.rpf"
     archive.save(destination)
@@ -84,6 +85,8 @@ def test_from_folder_roundtrips_resource_and_raw_ymap_files(tmp_path: Path) -> N
 
     assert isinstance(resource_entry, RpfResourceFileEntry)
     assert resource_entry._source_path == (source / "asset.ydr").resolve()
+    assert resource_entry.read() == b"resource payload"
+    assert archive.read_entry_standalone(resource_entry) == resource
     assert isinstance(ymap_entry, RpfResourceFileEntry)
 
     destination = tmp_path / "archive.rpf"

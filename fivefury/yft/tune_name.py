@@ -9,12 +9,18 @@ from .constants import TUNE_NAME_POINTER_OFFSET
 from .reader import read_yft
 
 
-def rewrite_yft_tune_name(source: ByteSource, tune_name: str) -> bytes:
+def rewrite_yft_tune_name(
+    source: ByteSource,
+    tune_name: str,
+    *,
+    allow_padding_relocation: bool = False,
+) -> bytes:
     """Rewrite ``fragType::m_TuneName`` without rebuilding the YFT graph.
 
-    The existing string slot is reused when it has enough room. Resource flags,
-    page sizes, drawables, skeletons, shared matrices, physics data, and every
-    other byte remain in their original uncompressed positions.
+    The existing string slot is reused when it has enough room. A longer string
+    can be relocated into trailing system-page padding when explicitly enabled.
+    Resource flags, page sizes, drawables, skeletons, shared matrices, physics
+    data, and every other byte remain in their original uncompressed positions.
     """
     raw = read_source_bytes(source)
     assert_valid_yft_bytes(raw)
@@ -49,9 +55,25 @@ def rewrite_yft_tune_name(source: ByteSource, tune_name: str) -> bytes:
         replacement = desired + bytes(existing_capacity - len(desired) + 1)
         system[tune_offset : tune_end + 1] = replacement
     else:
-        raise ValueError(
-            "YFT tune name exceeds the existing string capacity; rebuilding "
-            "the resource is required"
+        if not allow_padding_relocation:
+            raise ValueError(
+                "YFT tune name exceeds the existing string capacity; "
+                "enable allow_padding_relocation to use trailing zero padding"
+            )
+        required = len(desired) + 1
+        trailing_padding = len(system) - len(system.rstrip(b"\0"))
+        if trailing_padding < required:
+            raise ValueError(
+                "YFT tune name exceeds both the existing string capacity and "
+                "the available trailing system-page padding"
+            )
+        relocated_offset = len(system) - required
+        system[relocated_offset:] = desired + b"\0"
+        struct.pack_into(
+            "<Q",
+            system,
+            TUNE_NAME_POINTER_OFFSET,
+            RSC7_VIRTUAL_BASE + relocated_offset,
         )
 
     rewritten = build_rsc7(

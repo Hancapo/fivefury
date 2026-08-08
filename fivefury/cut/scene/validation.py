@@ -4,10 +4,13 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
 
-from ...hashing import jenk_finalize_hash, jenk_partial_hash
-from ...metahash import MetaHash
-from ..events import get_cut_event_name, get_cut_event_spec
-from ..flags import DEFAULT_PLAYABLE_CUTSCENE_FLAGS, CutSceneFlags, unpack_cutscene_flags
+from ...hashing import jenk_finalize_hash, jenk_hash, jenk_partial_hash
+from ..events import get_cut_event_name, get_cut_event_sort_rank, get_cut_event_spec
+from ..flags import (
+    DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
+    CutSceneFlags,
+    unpack_cutscene_flags,
+)
 from ..limits import (
     CUT_FPS,
     CUT_MAX_CONCATENATED_SCENES,
@@ -16,7 +19,12 @@ from ..limits import (
     CUT_MINIMUM_SECTION_DURATION,
 )
 from .bindings import CutBinding
-from .shared import _coerce_name, _is_scene_entity
+from .shared import (
+    _coerce_name,
+    _is_scene_entity,
+    _parse_hex_hash,
+    _technical_cut_index,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from .base import CutScene
@@ -54,7 +62,11 @@ def _issue(
     *,
     hint: str | None = None,
 ) -> None:
-    issues.append(CutSceneValidationIssue(severity=severity, code=code, message=message, hint=hint))
+    issues.append(
+        CutSceneValidationIssue(
+            severity=severity, code=code, message=message, hint=hint
+        )
+    )
 
 
 def _name(value: Any) -> str | None:
@@ -105,19 +117,83 @@ def _event_object_id_list(event: "CutTimelineEvent") -> list[int]:
     return [int(item) for item in value]
 
 
+def _find_non_finite(value: Any, path: str) -> list[str]:
+    if isinstance(value, float):
+        return [] if isfinite(value) else [path]
+    if isinstance(value, dict):
+        result: list[str] = []
+        for key, item in value.items():
+            result.extend(_find_non_finite(item, f"{path}.{key}"))
+        return result
+    if isinstance(value, (list, tuple)):
+        result = []
+        for index, item in enumerate(value):
+            result.extend(_find_non_finite(item, f"{path}[{index}]"))
+        return result
+    fields = getattr(value, "fields", None)
+    return _find_non_finite(fields, path) if isinstance(fields, dict) else []
+
+
 def _events_by_name(scene: "CutScene", name: str) -> list["CutTimelineEvent"]:
     return [event for event in scene.timeline if _event_name(event) == name]
 
 
-def _has_event_at_or_before(events: list["CutTimelineEvent"], name: str, time: float) -> bool:
-    return any(_event_name(event) == name and float(event.start) <= time for event in events)
-
-
 def _has_loaded_model(scene: "CutScene", object_id: int, time: float) -> bool:
-    for event in _events_by_name(scene, "load_models"):
-        if float(event.start) <= time and object_id in _event_object_id_list(event):
-            return True
-    return False
+    loaded = False
+    events = sorted(
+        (
+            event
+            for event in scene.timeline
+            if event.event_name in {"load_models", "unload_models"}
+            and float(event.start) <= time
+        ),
+        key=lambda event: (
+            float(event.start),
+            get_cut_event_sort_rank(event.event_id),
+        ),
+    )
+    for event in events:
+        if object_id in _event_object_id_list(event):
+            loaded = event.event_name == "load_models"
+    return loaded
+
+
+def _active_animation_dicts(scene: "CutScene", time: float) -> set[str]:
+    active: set[str] = set()
+    events = sorted(
+        (
+            event
+            for event in scene.timeline
+            if event.event_name in {"load_anim_dict", "unload_anim_dict"}
+            and float(event.start) <= time
+        ),
+        key=lambda event: (
+            float(event.start),
+            get_cut_event_sort_rank(event.event_id),
+        ),
+    )
+    for event in events:
+        name = (event.label or _name(event.payload.get("cName")) or "").lower()
+        if not name:
+            continue
+        if event.event_name == "load_anim_dict":
+            active.add(name)
+        else:
+            active.discard(name)
+    return active
+
+
+def _dictionary_matches_ycd(name: str, ycd_stem: str) -> bool:
+    if name == ycd_stem or ycd_stem.startswith(f"{name}-"):
+        return True
+    name_hash = _parse_hex_hash(name)
+    if name_hash is None:
+        return False
+    candidates = {ycd_stem}
+    base, separator, suffix = ycd_stem.rpartition("-")
+    if separator and suffix.isdigit():
+        candidates.add(base)
+    return any(jenk_hash(candidate) == name_hash for candidate in candidates)
 
 
 def _binding_text_field(binding: CutBinding, field_name: str) -> str | None:
@@ -128,6 +204,11 @@ def _binding_text_field(binding: CutBinding, field_name: str) -> str | None:
 def _binding_int_field(binding: CutBinding, field_name: str) -> int:
     value = binding.fields.get(field_name)
     return int(value) if value not in (None, "") else 0
+
+
+def _has_segmented_clip(scene: "CutScene", clip_base: str, cut_index: int) -> bool:
+    expected_name = f"{clip_base}-{cut_index}"
+    return scene.get_clip(expected_name) is not None
 
 
 def _scene_flags(scene: "CutScene") -> CutSceneFlags:
@@ -143,15 +224,27 @@ def _scene_flags(scene: "CutScene") -> CutSceneFlags:
     return flags
 
 
-def _validate_root(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_root(
+    scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool
+) -> None:
     if scene.duration is None:
         _issue(issues, "error", "cut.duration.missing", "CutScene duration is missing")
     else:
         duration = float(scene.duration)
         if not isfinite(duration):
-            _issue(issues, "error", "cut.duration.invalid", "CutScene duration must be finite")
+            _issue(
+                issues,
+                "error",
+                "cut.duration.invalid",
+                "CutScene duration must be finite",
+            )
         elif duration <= 0.0:
-            _issue(issues, "error", "cut.duration.non_positive", "CutScene duration must be greater than zero")
+            _issue(
+                issues,
+                "error",
+                "cut.duration.non_positive",
+                "CutScene duration must be greater than zero",
+            )
         elif duration < CUT_MINIMUM_DURATION:
             _issue(
                 issues,
@@ -160,17 +253,50 @@ def _validate_root(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> 
                 f"CutScene duration must be at least {CUT_MINIMUM_DURATION:g} second",
             )
     if scene.playback_rate <= 0.0 or not isfinite(float(scene.playback_rate)):
-        _issue(issues, "error", "cut.playback_rate.invalid", "CutScene playback_rate must be finite and greater than zero")
+        _issue(
+            issues,
+            "error",
+            "cut.playback_rate.invalid",
+            "CutScene playback_rate must be finite and greater than zero",
+        )
+    for path in _find_non_finite(
+        {
+            "offset": scene.offset,
+            "rotation": scene.rotation,
+            "trigger_offset": scene.trigger_offset,
+        },
+        "cut",
+    ):
+        _issue(issues, "error", "cut.value.non_finite", f"{path} must be finite")
     if scene.section_by_time_slice_duration is not None:
         section_duration = float(scene.section_by_time_slice_duration)
         if not isfinite(section_duration) or section_duration <= 0.0:
-            _issue(issues, "error", "cut.section_duration.invalid", "section_by_time_slice_duration must be finite and greater than zero")
+            _issue(
+                issues,
+                "error",
+                "cut.section_duration.invalid",
+                "section_by_time_slice_duration must be finite and greater than zero",
+            )
     range_start = int(scene.range_start or 0)
-    range_end = int(scene.range_end) if scene.range_end is not None else round(float(scene.duration or 0.0) * CUT_FPS)
+    range_end = (
+        int(scene.range_end)
+        if scene.range_end is not None
+        else round(float(scene.duration or 0.0) * CUT_FPS)
+    )
     if range_start < 0:
-        _issue(issues, "error", "cut.range.start_negative", "range_start cannot be negative")
+        _issue(
+            issues,
+            "error",
+            "cut.range.start_negative",
+            "range_start cannot be negative",
+        )
     if range_end < range_start:
-        _issue(issues, "error", "cut.range.invalid", "range_end cannot be lower than range_start")
+        _issue(
+            issues,
+            "error",
+            "cut.range.invalid",
+            "range_end cannot be lower than range_start",
+        )
     elif scene.duration is not None and isfinite(float(scene.duration)):
         expected_frames = round(float(scene.duration) * CUT_FPS)
         if abs((range_end - range_start) - expected_frames) > 1:
@@ -180,9 +306,19 @@ def _validate_root(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> 
                 "cut.range.duration_mismatch",
                 "range_start/range_end do not describe the authored cutscene duration",
             )
+    if strict and not _events_by_name(scene, "load_scene"):
+        _issue(
+            issues,
+            "error",
+            "load_scene.missing",
+            "CutScene has no LOAD_SCENE event",
+            hint="A playable authored cutscene must load its scene before playback.",
+        )
 
 
-def _validate_binary_capacities(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_binary_capacities(
+    scene: "CutScene", issues: list[CutSceneValidationIssue]
+) -> None:
     counts = {
         "objects": len(scene.bindings),
         "load events": sum(event.is_load_event for event in scene.timeline),
@@ -225,10 +361,20 @@ def _validate_section_list(
         try:
             value = float(raw_value)
         except (TypeError, ValueError):
-            _issue(issues, "error", f"cut.section.{label}.invalid", f"{label} entry {index} must be numeric")
+            _issue(
+                issues,
+                "error",
+                f"cut.section.{label}.invalid",
+                f"{label} entry {index} must be numeric",
+            )
             continue
         if not isfinite(value):
-            _issue(issues, "error", f"cut.section.{label}.invalid", f"{label} entry {index} must be finite")
+            _issue(
+                issues,
+                "error",
+                f"cut.section.{label}.invalid",
+                f"{label} entry {index} must be finite",
+            )
             continue
         if value <= range_start or value >= range_end:
             _issue(
@@ -249,7 +395,9 @@ def _validate_section_list(
     return result
 
 
-def _validate_sections(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_sections(
+    scene: "CutScene", issues: list[CutSceneValidationIssue]
+) -> None:
     flags = _scene_flags(scene)
     modes = flags & (
         CutSceneFlags.SECTION_BY_CAMERA_CUTS
@@ -257,12 +405,26 @@ def _validate_sections(scene: "CutScene", issues: list[CutSceneValidationIssue])
         | CutSceneFlags.SECTION_BY_SPLIT
     )
     if int(modes).bit_count() > 1:
-        _issue(issues, "error", "cut.section.mode.multiple", "CutScene can use only one sectioning mode")
+        _issue(
+            issues,
+            "error",
+            "cut.section.mode.multiple",
+            "CutScene can use only one sectioning mode",
+        )
     if modes and not flags & CutSceneFlags.IS_SECTIONED:
-        _issue(issues, "error", "cut.section.mode.unsectioned", "A sectioning mode requires IS_SECTIONED")
+        _issue(
+            issues,
+            "error",
+            "cut.section.mode.unsectioned",
+            "A sectioning mode requires IS_SECTIONED",
+        )
 
     range_start = int(scene.range_start or 0) / CUT_FPS
-    range_end_frames = int(scene.range_end) if scene.range_end is not None else round(float(scene.duration or 0.0) * CUT_FPS)
+    range_end_frames = (
+        int(scene.range_end)
+        if scene.range_end is not None
+        else round(float(scene.duration or 0.0) * CUT_FPS)
+    )
     range_end = range_end_frames / CUT_FPS
     if range_end <= range_start:
         return
@@ -312,21 +474,45 @@ def _validate_sections(scene: "CutScene", issues: list[CutSceneValidationIssue])
             )
 
 
-def _validate_bindings(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_bindings(
+    scene: "CutScene", issues: list[CutSceneValidationIssue]
+) -> None:
     ids = [binding.object_id for binding in scene.bindings]
     if len(ids) != len(set(ids)):
-        _issue(issues, "error", "object.id.duplicate", "CutScene has duplicate object ids")
+        _issue(
+            issues, "error", "object.id.duplicate", "CutScene has duplicate object ids"
+        )
     for binding in scene.bindings:
         if binding.object_id < 0:
-            _issue(issues, "error", "object.id.invalid", f"{_binding_name(binding)} has a negative object id")
+            _issue(
+                issues,
+                "error",
+                "object.id.invalid",
+                f"{_binding_name(binding)} has a negative object id",
+            )
         if not binding.type_name:
-            _issue(issues, "error", "object.type.missing", f"{_binding_name(binding)} has no cutscene object type")
+            _issue(
+                issues,
+                "error",
+                "object.type.missing",
+                f"{_binding_name(binding)} has no cutscene object type",
+            )
+        for path in _find_non_finite(binding.fields, f"object[{binding.object_id}]"):
+            _issue(issues, "error", "object.value.non_finite", f"{path} must be finite")
         if _is_streamed_model(binding):
             streaming_name = _binding_text_field(binding, "StreamingName")
             type_file = _binding_text_field(binding, "typeFile")
             if not streaming_name:
-                _issue(issues, "error", "object.streaming_name.missing", f"{_binding_name(binding)} has no StreamingName")
-            if not type_file:
+                _issue(
+                    issues,
+                    "error",
+                    "object.streaming_name.missing",
+                    f"{_binding_name(binding)} has no StreamingName",
+                )
+            # Retail cutscene peds commonly leave typeFile at zero and resolve
+            # their model through StreamingName plus the mounted PEDSTREAM_FILE.
+            # Props and vehicles still require a YTYP/container reference.
+            if not type_file and binding.role != "ped":
                 _issue(
                     issues,
                     "error",
@@ -343,19 +529,48 @@ def _validate_events(scene: "CutScene", issues: list[CutSceneValidationIssue]) -
         name = _event_name(event)
         event_id = _event_id(event)
         if event_id is None or get_cut_event_name(event_id) is None:
-            _issue(issues, "error", "event.id.unknown", f"Unknown cutscene event id/name for event '{name}'")
+            _issue(
+                issues,
+                "error",
+                "event.id.unknown",
+                f"Unknown cutscene event id/name for event '{name}'",
+            )
             continue
         spec = get_cut_event_spec(event_id)
+        for path in _find_non_finite(
+            {"payload": event.payload, "event_payload": event.event_payload},
+            f"event[{name}]",
+        ):
+            _issue(issues, "error", "event.value.non_finite", f"{path} must be finite")
         if not isfinite(float(event.start)):
-            _issue(issues, "error", "event.time.invalid", f"{name} has a non-finite start time")
+            _issue(
+                issues,
+                "error",
+                "event.time.invalid",
+                f"{name} has a non-finite start time",
+            )
         elif float(event.start) < 0.0:
             _issue(issues, "error", "event.time.negative", f"{name} starts before 0.0")
         elif duration > 0.0 and float(event.start) > duration + (1.0 / 30.0):
-            _issue(issues, "warning", "event.time.after_duration", f"{name} starts after the cutscene duration")
+            _issue(
+                issues,
+                "warning",
+                "event.time.after_duration",
+                f"{name} starts after the cutscene duration",
+            )
         target_id = _event_target_id(event)
         if target_id is not None and target_id not in bindings_by_id:
-            _issue(issues, "error", "event.target.missing", f"{name} targets missing object id {target_id}")
-        if spec is not None and spec.default_target_role is not None and target_id is None:
+            _issue(
+                issues,
+                "error",
+                "event.target.missing",
+                f"{name} targets missing object id {target_id}",
+            )
+        if (
+            spec is not None
+            and spec.default_target_role is not None
+            and target_id is None
+        ):
             _issue(
                 issues,
                 "error",
@@ -363,19 +578,104 @@ def _validate_events(scene: "CutScene", issues: list[CutSceneValidationIssue]) -
                 f"{name} requires a target {spec.default_target_role} object",
                 hint=f"Create scene.add_{spec.default_target_role}() or pass target=...",
             )
+        elif (
+            spec is not None
+            and spec.default_target_role is not None
+            and target_id is not None
+        ):
+            target = bindings_by_id.get(target_id)
+            if target is not None and target.role != spec.default_target_role:
+                _issue(
+                    issues,
+                    "error",
+                    "event.target.role",
+                    f"{name} targets {_binding_name(target)}, but requires role '{spec.default_target_role}'",
+                )
+        if event.duration is not None:
+            event_duration = float(event.duration)
+            if not isfinite(event_duration) or event_duration < 0.0:
+                _issue(
+                    issues,
+                    "error",
+                    "event.duration.invalid",
+                    f"{name} has an invalid duration",
+                )
         payload_id = _event_object_payload_id(event)
         if payload_id is not None and payload_id not in bindings_by_id:
-            _issue(issues, "error", "event.payload_object.missing", f"{name} references missing object id {payload_id}")
+            _issue(
+                issues,
+                "error",
+                "event.payload_object.missing",
+                f"{name} references missing object id {payload_id}",
+            )
         for object_id in _event_object_id_list(event):
             if object_id not in bindings_by_id:
-                _issue(issues, "error", "event.payload_list_object.missing", f"{name} references missing object id {object_id}")
+                _issue(
+                    issues,
+                    "error",
+                    "event.payload_list_object.missing",
+                    f"{name} references missing object id {object_id}",
+                )
+
+
+def _validate_attachments(
+    scene: "CutScene", issues: list[CutSceneValidationIssue]
+) -> None:
+    parents: dict[int, int] = {}
+    events = sorted(
+        _events_by_name(scene, "set_attachment"),
+        key=lambda event: (float(event.start), int(event.event_id or -1)),
+    )
+    for event in events:
+        child_id = _event_target_id(event)
+        parent_id = _event_object_payload_id(event)
+        bone_name = _name(event.payload.get("cBoneName"))
+        if child_id is None or parent_id is None:
+            continue
+        if child_id == parent_id:
+            _issue(
+                issues,
+                "error",
+                "attachment.self",
+                f"Object id {child_id} cannot attach to itself",
+            )
+            continue
+        if not bone_name:
+            _issue(
+                issues,
+                "error",
+                "attachment.bone.missing",
+                f"Attachment for object id {child_id} has no bone name",
+            )
+        parents[child_id] = parent_id
+        visited = {child_id}
+        current = parent_id
+        while current in parents:
+            if current in visited:
+                _issue(
+                    issues,
+                    "error",
+                    "attachment.cycle",
+                    f"Attachment at {event.start:g}s creates an object cycle",
+                )
+                break
+            visited.add(current)
+            current = parents[current]
 
 
 def _validate_loading(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
     load_model_events = _events_by_name(scene, "load_models")
-    loaded_ids = {object_id for event in load_model_events for object_id in _event_object_id_list(event)}
+    loaded_ids = {
+        object_id
+        for event in load_model_events
+        for object_id in _event_object_id_list(event)
+    }
     for binding in scene.entities:
-        if _is_scene_entity(binding.role) and binding.role in {"ped", "prop", "vehicle"} and binding.object_id not in loaded_ids:
+        if (
+            _is_scene_entity(binding.role)
+            and binding.role in {"ped", "prop", "vehicle"}
+            and binding.object_id not in loaded_ids
+        ):
             _issue(
                 issues,
                 "error",
@@ -385,11 +685,26 @@ def _validate_loading(scene: "CutScene", issues: list[CutSceneValidationIssue]) 
             )
     for object_id in loaded_ids:
         binding = scene.get_binding(object_id)
-        if binding is not None and binding.role not in {"ped", "prop", "vehicle", "hidden_object", "fixup_object", "overlay", "particle_fx"}:
-            _issue(issues, "warning", "load_models.non_model", f"LOAD_MODELS includes non-model object {_binding_name(binding)}")
+        if binding is not None and binding.role not in {
+            "ped",
+            "prop",
+            "vehicle",
+            "hidden_object",
+            "fixup_object",
+            "overlay",
+            "particle_fx",
+        }:
+            _issue(
+                issues,
+                "warning",
+                "load_models.non_model",
+                f"LOAD_MODELS includes non-model object {_binding_name(binding)}",
+            )
 
 
-def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool) -> None:
+def _validate_cameras(
+    scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool
+) -> None:
     camera_events = _events_by_name(scene, "camera_cut")
     if strict and not camera_events:
         _issue(
@@ -402,7 +717,9 @@ def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], 
     for event in camera_events:
         name = _name(event.payload.get("cName")) or event.label
         if not name:
-            _issue(issues, "error", "camera_cut.name.missing", "CAMERA_CUT has no cName")
+            _issue(
+                issues, "error", "camera_cut.name.missing", "CAMERA_CUT has no cName"
+            )
         near_clip = float(event.payload.get("fNearDrawDistance") or 0.0)
         far_clip = float(event.payload.get("fFarDrawDistance") or 0.0)
         invalid_negative = any(
@@ -416,11 +733,7 @@ def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], 
                 f"CAMERA_CUT '{name or event.start}' near/far draw distance "
                 "must be non-negative or -1",
             )
-        elif (
-            far_clip > 0.0
-            and near_clip > 0.0
-            and far_clip <= near_clip
-        ):
+        elif far_clip > 0.0 and near_clip > 0.0 and far_clip <= near_clip:
             _issue(
                 issues,
                 "error",
@@ -437,7 +750,12 @@ def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], 
                 hint="Use a sane far clip such as 1000.0 to avoid invisible scenes in-game.",
             )
         if far_clip > 100000.0:
-            _issue(issues, "warning", "camera_cut.far_clip.huge", f"CAMERA_CUT '{name or event.start}' has a very large far clip")
+            _issue(
+                issues,
+                "warning",
+                "camera_cut.far_clip.huge",
+                f"CAMERA_CUT '{name or event.start}' has a very large far clip",
+            )
         used_hours = 0
         modifiers = event.payload.get("TimeOfDayDofModifers") or []
         for index, modifier in enumerate(modifiers):
@@ -471,28 +789,79 @@ def _validate_cameras(scene: "CutScene", issues: list[CutSceneValidationIssue], 
             used_hours |= hour_flags
 
 
-def _validate_animations(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
-    timeline = scene.timeline
+def _validate_animations(
+    scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool
+) -> None:
     load_anim_events = _events_by_name(scene, "load_anim_dict")
-    clip_map = scene.available_clips(cut_index=0) if scene.clip_dicts else {}
-    for event in _events_by_name(scene, "set_anim"):
+    set_anim_events = _events_by_name(scene, "set_anim")
+    if strict and set_anim_events and not scene.clip_dicts:
+        _issue(
+            issues,
+            "error",
+            "set_anim.ycd.missing",
+            "CutScene contains SET_ANIM events but has no attached YCD dictionaries",
+            hint="Attach the YCDs or build the scene through CutsceneProject.",
+        )
+    for event in set_anim_events:
         payload_id = _event_object_payload_id(event)
         if payload_id is None:
-            _issue(issues, "error", "set_anim.object.missing", "SET_ANIM has no target iObjectId in its payload")
+            _issue(
+                issues,
+                "error",
+                "set_anim.object.missing",
+                "SET_ANIM has no target iObjectId in its payload",
+            )
             continue
         binding = scene.get_binding(payload_id)
         if binding is None:
             continue
         if not _is_animation_capable(binding):
-            _issue(issues, "error", "set_anim.object.invalid", f"SET_ANIM references non-animatable object {_binding_name(binding)}")
+            _issue(
+                issues,
+                "error",
+                "set_anim.object.invalid",
+                f"SET_ANIM references non-animatable object {_binding_name(binding)}",
+            )
             continue
-        if not _has_event_at_or_before(timeline, "load_anim_dict", float(event.start)):
-            _issue(issues, "error", "set_anim.dict.not_loaded", f"SET_ANIM for {_binding_name(binding)} has no previous LOAD_ANIM_DICT")
-        if _is_streamed_model(binding) and not _has_loaded_model(scene, binding.object_id, float(event.start)):
-            _issue(issues, "error", "set_anim.model.not_loaded", f"SET_ANIM for {_binding_name(binding)} happens before LOAD_MODELS")
+        active_dicts = _active_animation_dicts(scene, float(event.start))
+        if not active_dicts:
+            _issue(
+                issues,
+                "error",
+                "set_anim.dict.not_loaded",
+                f"SET_ANIM for {_binding_name(binding)} has no active LOAD_ANIM_DICT",
+            )
+        elif scene.clip_dicts:
+            known_stems = {
+                ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem
+            }
+            if known_stems and not any(
+                _dictionary_matches_ycd(name, stem)
+                for name in active_dicts
+                for stem in known_stems
+            ):
+                _issue(
+                    issues,
+                    "error",
+                    "set_anim.dict.mismatch",
+                    f"SET_ANIM for {_binding_name(binding)} has no active dictionary matching the attached YCDs",
+                )
+        if _is_streamed_model(binding) and not _has_loaded_model(
+            scene, binding.object_id, float(event.start)
+        ):
+            _issue(
+                issues,
+                "error",
+                "set_anim.model.not_loaded",
+                f"SET_ANIM for {_binding_name(binding)} happens before LOAD_MODELS",
+            )
         animation_clip_base = getattr(binding, "animation_clip_base", None)
         anim_streaming_base = _binding_int_field(binding, "AnimStreamingBase")
-        if _is_streamed_model(binding) and not animation_clip_base and anim_streaming_base == 0:
+        if (
+            _is_streamed_model(binding)
+            and not animation_clip_base
+            and anim_streaming_base == 0
+        ):
             _issue(
                 issues,
                 "error",
@@ -508,60 +877,145 @@ def _validate_animations(scene: "CutScene", issues: list[CutSceneValidationIssue
                     "set_anim.streaming_base.mismatch",
                     f"{_binding_name(binding)} AnimStreamingBase=0x{anim_streaming_base:08X}, expected 0x{expected_base:08X}",
                 )
-            if clip_map:
-                expected_clip_name = f"{animation_clip_base}-0"
-                candidates = {
-                    MetaHash(animation_clip_base).uint,
-                    MetaHash(expected_clip_name).uint,
-                    jenk_finalize_hash(expected_base),
-                }
-                if not any(key in clip_map for key in candidates):
+            if scene.clip_dicts:
+                cut_index = _technical_cut_index(
+                    scene.camera_cut_list, float(event.start)
+                )
+                expected_clip_name = f"{animation_clip_base}-{cut_index}"
+                if not _has_segmented_clip(scene, animation_clip_base, cut_index):
                     _issue(
                         issues,
                         "error",
                         "set_anim.clip.missing",
-                        f"{_binding_name(binding)} has no matching clip in attached YCDs",
-                        hint=f"Expected a clip hash compatible with '{animation_clip_base}' or '{expected_clip_name}'.",
+                        f"{_binding_name(binding)} has no matching clip in technical YCD segment {cut_index}",
+                        hint=f"Expected the exact segmented clip '{expected_clip_name}'.",
                     )
+        elif anim_streaming_base and scene.clip_dicts:
+            active_cut_index = _technical_cut_index(
+                scene.camera_cut_list, float(event.start)
+            )
+            clip_map = scene.available_clips(cut_index=active_cut_index)
+            expected_hash = jenk_finalize_hash(anim_streaming_base)
+            if expected_hash not in clip_map:
+                _issue(
+                    issues,
+                    "error",
+                    "set_anim.clip_hash.missing",
+                    f"{_binding_name(binding)} has no clip matching AnimStreamingBase in technical YCD segment {active_cut_index}",
+                )
+        explicit_clip = _name(event.payload.get("cName"))
+        explicit_clip_key = _parse_hex_hash(explicit_clip) or explicit_clip
+        if (
+            explicit_clip
+            and scene.clip_dicts
+            and scene.get_clip(explicit_clip_key) is None
+        ):
+            _issue(
+                issues,
+                "error",
+                "set_anim.explicit_clip.missing",
+                f"SET_ANIM references missing explicit clip '{explicit_clip}'",
+            )
     for event in load_anim_events:
         label = event.label or _name(event.payload.get("cName"))
         if not label:
-            _issue(issues, "error", "load_anim_dict.name.missing", "LOAD_ANIM_DICT has no dictionary name")
+            _issue(
+                issues,
+                "error",
+                "load_anim_dict.name.missing",
+                "LOAD_ANIM_DICT has no dictionary name",
+            )
+        elif strict and scene.clip_dicts:
+            known_stems = {
+                ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem
+            }
+            if known_stems and not any(
+                _dictionary_matches_ycd(label.lower(), stem) for stem in known_stems
+            ):
+                _issue(
+                    issues,
+                    "error",
+                    "load_anim_dict.ycd.missing",
+                    f"LOAD_ANIM_DICT '{label}' does not match any attached YCD",
+                )
 
 
 def _validate_assets(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
-    for event_name in ("load_scene", "unload_scene", "load_audio", "unload_audio", "play_audio", "stop_audio", "load_subtitles", "unload_subtitles"):
+    for event_name in (
+        "load_scene",
+        "unload_scene",
+        "load_audio",
+        "unload_audio",
+        "play_audio",
+        "stop_audio",
+        "load_subtitles",
+        "unload_subtitles",
+    ):
         for event in _events_by_name(scene, event_name):
             label = event.label or _name(event.payload.get("cName"))
             if not label:
-                _issue(issues, "error", f"{event_name}.name.missing", f"{event_name.upper()} has no name")
+                _issue(
+                    issues,
+                    "error",
+                    f"{event_name}.name.missing",
+                    f"{event_name.upper()} has no name",
+                )
     for event in _events_by_name(scene, "show_subtitle"):
         if not (event.label or _name(event.payload.get("cName"))):
-            _issue(issues, "error", "show_subtitle.name.missing", "SHOW_SUBTITLE has no text/key name")
-        if float(event.payload.get("fSubtitleDuration") or event.duration or 0.0) <= 0.0:
-            _issue(issues, "warning", "show_subtitle.duration.zero", "SHOW_SUBTITLE duration is zero or missing")
+            _issue(
+                issues,
+                "error",
+                "show_subtitle.name.missing",
+                "SHOW_SUBTITLE has no text/key name",
+            )
+        if (
+            float(event.payload.get("fSubtitleDuration") or event.duration or 0.0)
+            <= 0.0
+        ):
+            _issue(
+                issues,
+                "warning",
+                "show_subtitle.duration.zero",
+                "SHOW_SUBTITLE duration is zero or missing",
+            )
 
 
 def _validate_flags(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
     flags = _scene_flags(scene)
     if CutSceneFlags.IS_SECTIONED in flags:
-        if scene.section_by_time_slice_duration is not None and float(scene.section_by_time_slice_duration) <= 0.0:
-            _issue(issues, "error", "flags.sectioned.invalid_duration", "IS_SECTIONED requires a positive section duration")
+        if (
+            scene.section_by_time_slice_duration is not None
+            and float(scene.section_by_time_slice_duration) <= 0.0
+        ):
+            _issue(
+                issues,
+                "error",
+                "flags.sectioned.invalid_duration",
+                "IS_SECTIONED requires a positive section duration",
+            )
     if CutSceneFlags.NO_AMBIENT_LIGHTS in flags and scene.lights:
-        _issue(issues, "warning", "flags.lights.no_ambient", "NO_AMBIENT_LIGHTS is set while the cutscene contains light objects")
+        _issue(
+            issues,
+            "warning",
+            "flags.lights.no_ambient",
+            "NO_AMBIENT_LIGHTS is set while the cutscene contains light objects",
+        )
 
 
-def validate_cut_scene(scene: "CutScene", *, strict: bool = False) -> list[CutSceneValidationIssue]:
+def validate_cut_scene(
+    scene: "CutScene", *, strict: bool = False
+) -> list[CutSceneValidationIssue]:
     scene.build()
     issues: list[CutSceneValidationIssue] = []
-    _validate_root(scene, issues)
+    _validate_root(scene, issues, strict=strict)
     _validate_binary_capacities(scene, issues)
     _validate_sections(scene, issues)
     _validate_bindings(scene, issues)
     _validate_events(scene, issues)
+    _validate_attachments(scene, issues)
     _validate_loading(scene, issues)
     _validate_cameras(scene, issues, strict=strict)
-    _validate_animations(scene, issues)
+    _validate_animations(scene, issues, strict=strict)
     _validate_assets(scene, issues)
     _validate_flags(scene, issues)
     for warning in scene.validate_animations():

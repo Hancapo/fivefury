@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 import pytest
@@ -40,8 +41,9 @@ from fivefury import (
     skeleton_bone_flag_names,
 )
 from fivefury.resource import split_rsc7_sections
-from fivefury.ydr.gen9 import decode_gen9_vertex_declaration
+from fivefury.ydr.gen9 import ShaderGen9ParameterDefinition, decode_gen9_vertex_declaration
 from fivefury.ydr.resource_headers import GEN9_DRAWABLE_HEADERS
+from fivefury.ydr.write_materials import _coerce_gen9_cbuffer_bytes
 from tests.helpers import configured_path, reference_root
 
 _TEXTURE_BASE_VFT = 0x40617568
@@ -66,6 +68,20 @@ _LEGACY_GEN9_ADAPTATION_CASES = (
     ("spec_const.sps", "default_spec.sps", 0),
     ("spec_reflect_alpha.sps", "spec_reflect.sps", 1),
 )
+
+
+def test_gen9_cbuffer_accepts_exact_flat_multi_vector_values() -> None:
+    parameter = ShaderGen9ParameterDefinition(
+        name='bloodzoneadjust',
+        kind='CBuffer',
+        param_length=96,
+    )
+    values = tuple(float(index) for index in range(24))
+
+    payload = _coerce_gen9_cbuffer_bytes(values, parameter=parameter)
+
+    assert len(payload) == 96
+    assert payload == struct.pack('<24f', *values)
 
 _GEN9_ENVIRONMENT_SHADER_FAMILIES = (
     "spec_reflect.sps",

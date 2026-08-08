@@ -489,3 +489,15 @@ def test_read_dlc_pack_preserves_non_metadata_payloads() -> None:
     parsed = read_dlc_pack(pack.to_rpf(), load_files=True)
 
     assert parsed.files == {"common/data/custom.meta": b"payload"}
+
+
+def test_read_dlc_pack_closes_path_source(tmp_path) -> None:
+    source = tmp_path / "dlc.rpf"
+    destination = tmp_path / "moved.rpf"
+    DlcPack("my_pack").to_rpf().save(source)
+
+    parsed = read_dlc_pack(source)
+    source.rename(destination)
+
+    assert parsed.name == "my_pack"
+    assert destination.is_file()
