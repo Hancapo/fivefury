@@ -7,6 +7,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-08-08
+
+### Fixed
+- Enhanced drawables with embedded textures now serialize with valid resource ownership.
+
 ## [0.3.7] - 2026-08-07
 
 ### Added

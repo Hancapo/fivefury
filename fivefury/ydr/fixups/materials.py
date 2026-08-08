@@ -82,11 +82,20 @@ def audit_shader_group(
         return
     texture_dictionary = validator.u64(offset + 0x08)
     if texture_dictionary:
-        validator.pointer(
+        texture_dictionary_offset = validator.pointer(
             texture_dictionary,
             f"{path}.texture_dictionary",
+            size=0x40,
             nullable=False,
         )
+        if (
+            texture_dictionary_offset is not None
+            and validator.u64(texture_dictionary_offset + 0x08)
+        ):
+            validator.error(
+                f"{path}.texture_dictionary.page_map",
+                "embedded texture dictionaries cannot own a resource page map",
+            )
     shader_count = validator.u16(offset + 0x18)
     shader_array = validator.u64(offset + 0x10)
     array_offset = validator.pointer(

@@ -154,6 +154,20 @@ def _first_gen9_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int, 
     return system_data, shader_off, params_off, infos_off
 
 
+def _embedded_texture_dictionary_offset(resource_bytes: bytes) -> tuple[bytes, int]:
+    _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
+    shader_group_off = _virtual_to_offset(
+        int.from_bytes(system_data[0x10:0x18], "little")
+    )
+    texture_dictionary_off = _virtual_to_offset(
+        int.from_bytes(
+            system_data[shader_group_off + 0x08 : shader_group_off + 0x10],
+            "little",
+        )
+    )
+    return system_data, texture_dictionary_off
+
+
 def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     build = create_ydr(
         meshes=[_triangle_mesh()],
@@ -1166,8 +1180,15 @@ def test_build_and_read_ydr_embedded_textures(tmp_path: Path) -> None:
 
     ydr_path = tmp_path / "with_embedded_textures.ydr"
     build.save(ydr_path)
+    system_data, texture_dictionary_off = _embedded_texture_dictionary_offset(
+        ydr_path.read_bytes()
+    )
     ydr = read_ydr(ydr_path)
 
+    assert (
+        system_data[texture_dictionary_off + 0x08 : texture_dictionary_off + 0x10]
+        == b"\0" * 8
+    )
     assert ydr.embedded_textures is not None
     assert ydr.embedded_textures.names() == ["embedded_diffuse"]
     assert ydr.embedded_textures.get("embedded_diffuse").width == 4
@@ -1191,8 +1212,15 @@ def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
 
     ydr_path = tmp_path / "with_embedded_textures_enhanced.ydr"
     build.save(ydr_path)
+    system_data, texture_dictionary_off = _embedded_texture_dictionary_offset(
+        ydr_path.read_bytes()
+    )
     ydr = read_ydr(ydr_path)
 
+    assert (
+        system_data[texture_dictionary_off + 0x08 : texture_dictionary_off + 0x10]
+        == b"\0" * 8
+    )
     assert ydr.embedded_textures is not None
     assert ydr.embedded_textures.game == "gta5_enhanced"
 
