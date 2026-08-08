@@ -7,6 +7,7 @@ import pytest
 from fivefury import (
     GEN9_YCD_RUNTIME_PROFILE,
     YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
+    CutCameraCutPayload,
     CutScene,
     GameTarget,
     MetaHash,
@@ -139,6 +140,36 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     assert any(int(bone.track) == int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW) for bone in cam1.animation.bone_ids)
 
 
+def test_cutscene_builder_can_emit_one_late_streaming_section() -> None:
+    builder = YcdCutsceneBuilder.create(
+        "demo_scene",
+        duration=1.0,
+        section_index_start=12,
+        fps=30.0,
+    )
+    builder.add_camera(
+        position=(0.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        field_of_view=45.0,
+    )
+
+    ycd = builder.build_ycds()[0]
+
+    assert ycd.path == "demo_scene-12.ycd"
+    assert [clip.short_name for clip in ycd.clips] == ["exportcamera-12"]
+
+
+def test_cutscene_builder_uses_explicit_streaming_cuts_from_scene() -> None:
+    scene = CutScene.create(duration=6.0, camera_cut_list=[2.0, 4.0])
+    camera = scene.add_camera("exportcamera")
+    scene.camera_cut(1.0, camera, CutCameraCutPayload("shot_0"))
+    scene.camera_cut(3.0, camera, CutCameraCutPayload("shot_1"))
+
+    builder = YcdCutsceneBuilder.from_cut(scene)
+
+    assert builder.camera_cuts == [2.0, 4.0]
+
+
 def test_cutscene_builder_writes_enhanced_runtime_headers() -> None:
     profile = GEN9_YCD_RUNTIME_PROFILE
     builder = YcdCutsceneBuilder.create(
@@ -228,7 +259,7 @@ def test_cutscene_builder_preserves_static_negative_w_quaternion() -> None:
     assert dot / (authored_length * actual_length) == pytest.approx(1.0, abs=1e-6)
 
 
-def test_cutscene_builder_rejects_hashes_that_look_like_pointers() -> None:
+def test_cutscene_builder_preserves_hashes_that_look_like_pointers() -> None:
     builder = YcdCutsceneBuilder.create("pointer_hash", duration=0.1, fps=30.0)
     builder.add_prop(
         "cc_cscakebox_i14__q012",
@@ -236,8 +267,14 @@ def test_cutscene_builder_rejects_hashes_that_look_like_pointers() -> None:
         rotation=(0.0, 0.0, 0.0, 1.0),
     )
 
-    with pytest.raises(ValueError, match="indistinguishable from a RAGE virtual pointer"):
-        build_ycd_bytes(builder.build_ycds()[0])
+    source = builder.build_ycds()[0]
+    expected_animation_hashes = [animation.hash.uint for animation in source.animations]
+    expected_clip_hashes = [clip.hash.uint for clip in source.clips]
+
+    rebuilt = read_ycd(build_ycd_bytes(source))
+
+    assert [animation.hash.uint for animation in rebuilt.animations] == expected_animation_hashes
+    assert [clip.hash.uint for clip in rebuilt.clips] == expected_clip_hashes
 
 
 def test_cutscene_builder_supports_multi_bone_object_animation() -> None:

@@ -12,6 +12,8 @@ struct ResourceBlockSpan {
     std::uint64_t offset = 0;
     std::uint64_t size = 0;
     bool relocate_pointers = true;
+    bool has_explicit_pointer_offsets = false;
+    std::vector<std::uint64_t> pointer_offsets;
 };
 
 struct ResourceSectionLayout {

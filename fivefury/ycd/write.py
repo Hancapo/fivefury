@@ -34,7 +34,6 @@ from .sequence_tracks import get_ycd_track_format
 from .sequences import build_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
-DAT_VIRTUAL_LIMIT = 0x70000000
 _DEFAULT_CLIP_UNKNOWN_04H = 1
 _DEFAULT_CLIP_UNKNOWN_48H = 1
 _DEFAULT_ROOT_UNKNOWN_20H = 0x00000101
@@ -63,39 +62,14 @@ def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
     return MetaHash(clip.short_name or clip_short_name(clip.name))
 
 
-def _validate_hash_map_keys(ycd: Ycd) -> None:
-    """Reject map keys the native page layout cannot distinguish from pointers."""
-    keys: list[tuple[str, int]] = []
-    keys.extend(
-        (
-            f"animation {animation.name!r}",
-            _resolve_hash(animation.hash, fallback_text=animation.name).uint,
-        )
-        for animation in ycd.animations
-    )
-    for clip in ycd.clips:
-        keys.append((f"clip {clip.name!r}", _resolve_clip_hash(clip).uint))
-        keys.extend(
-            (
-                f"clip property {prop.name!r}",
-                _resolve_hash(prop.name_hash).uint,
-            )
-            for prop in clip.properties
-        )
-    for label, value in keys:
-        if DAT_VIRTUAL_BASE <= value < DAT_VIRTUAL_LIMIT:
-            raise ValueError(
-                f"YCD hash-map key 0x{value:08X} for {label} is "
-                "indistinguishable from a RAGE virtual pointer; choose a "
-                "different name or explicit hash"
-            )
-
-
 class _YcdWriter:
     def __init__(self, ycd: Ycd, profile: YcdRuntimeProfile) -> None:
         self.ycd = ycd
         self.profile = profile
-        self.writer = ResourceWriter(0x80)
+        self.writer = ResourceWriter(
+            0x80,
+            initial_pointer_offsets=(0x08, 0x18, 0x28),
+        )
         self.string_offsets: dict[str, int] = {}
         self.sequence_offsets: dict[int, int] = {}
         self.animation_offsets: dict[int, int] = {}
@@ -203,7 +177,11 @@ class _YcdWriter:
     def write_pointer_array(self, offsets: list[int], *, alignment: int = 16) -> int:
         if not offsets:
             return 0
-        array_offset = self.writer.alloc(len(offsets) * 8, alignment)
+        array_offset = self.writer.alloc(
+            len(offsets) * 8,
+            alignment,
+            pointer_offsets=tuple(index * 8 for index in range(len(offsets))),
+        )
         for index, item_offset in enumerate(offsets):
             self.writer.pack_into("Q", array_offset + (index * 8), self.vptr(item_offset) if item_offset else 0)
         return array_offset
@@ -260,7 +238,7 @@ class _YcdWriter:
                     int(bone_id.track),
                 )
 
-        offset = self.writer.alloc(0x60, 16)
+        offset = self.writer.alloc(0x60, 16, pointer_offsets=(0x40, 0x50))
         max_seq_block_length = max((0x20 + len(sequence.raw_data) for sequence in animation.sequences), default=0)
         animation.max_seq_block_length = max_seq_block_length
         animation_hash = _resolve_hash(animation.hash, fallback_text=animation.name)
@@ -310,7 +288,7 @@ class _YcdWriter:
         offset = self.writer.alloc(
             0x30,
             16,
-            relocate_pointers=attribute.attribute_type is YcdClipPropertyAttributeType.STRING,
+            pointer_offsets=(0x20,) if attribute.attribute_type is YcdClipPropertyAttributeType.STRING else (),
         )
         self.writer.pack_into(
             "IIBBHIIIII",
@@ -358,7 +336,7 @@ class _YcdWriter:
             return cached
         attribute_offsets = [self.write_clip_property_attribute(attribute) for attribute in prop.attributes]
         attributes_array_offset = self.write_pointer_array(attribute_offsets)
-        offset = self.writer.alloc(0x40, 16)
+        offset = self.writer.alloc(0x40, 16, pointer_offsets=(0x20,))
         self.writer.pack_into(
             "IIIIIIIIQHHIIIII",
             offset,
@@ -393,7 +371,7 @@ class _YcdWriter:
         for bucket in buckets:
             next_offset = 0
             for prop in reversed(bucket):
-                entry_offset = self.writer.alloc(0x20, 16)
+                entry_offset = self.writer.alloc(0x20, 16, pointer_offsets=(0x08, 0x10))
                 self.writer.pack_into(
                     "IIQQII",
                     entry_offset,
@@ -408,7 +386,7 @@ class _YcdWriter:
             bucket_head_offsets.append(next_offset)
 
         buckets_array_offset = self.write_pointer_array(bucket_head_offsets)
-        offset = self.writer.alloc(0x10, 16)
+        offset = self.writer.alloc(0x10, 16, pointer_offsets=(0x00,))
         self.writer.pack_into(
             "QHHI",
             offset,
@@ -434,7 +412,7 @@ class _YcdWriter:
             reserved_18h=tag.tag_list_reserved_18h,
             reserved_1ch=tag.tag_list_reserved_1ch,
         )
-        offset = self.writer.alloc(0x50, 16)
+        offset = self.writer.alloc(0x50, 16, pointer_offsets=(0x20, 0x48))
         self.writer.pack_into(
             "IIIIIIIIQHHIIIIIffQ",
             offset,
@@ -475,7 +453,7 @@ class _YcdWriter:
         tags_array_offset = self.write_pointer_array(tag_offsets)
         if has_block_tag is None:
             has_block_tag = any(_resolve_hash(tag.name_hash).uint == MetaHash("block").uint for tag in tags)
-        offset = self.writer.alloc(0x20, 16)
+        offset = self.writer.alloc(0x20, 16, pointer_offsets=(0x00,))
         self.writer.pack_into(
             "QHHIIIII",
             offset,
@@ -493,7 +471,11 @@ class _YcdWriter:
     def write_clip_animation_entry_array(self, entries: list[YcdClipAnimationEntry]) -> int:
         if not entries:
             return 0
-        offset = self.writer.alloc(len(entries) * 24, 16)
+        offset = self.writer.alloc(
+            len(entries) * 24,
+            16,
+            pointer_offsets=tuple((index * 24) + 0x10 for index in range(len(entries))),
+        )
         for index, entry in enumerate(entries):
             animation = entry.animation
             animation_offset = self.write_animation(animation) if animation is not None else 0
@@ -526,7 +508,11 @@ class _YcdWriter:
         property_map_offset = self.write_clip_property_map(clip.properties, reserved_0ch=clip.property_map_reserved_0ch)
         name_offset = self.write_string(name) if name else 0
 
-        offset = self.writer.alloc(0x70, 16)
+        offset = self.writer.alloc(
+            0x70,
+            16,
+            pointer_offsets=(0x18, 0x28, 0x38, 0x40, 0x50),
+        )
         if isinstance(clip, YcdClipAnimation):
             clip_vft = self.profile.clip_animation_vft
         elif isinstance(clip, YcdClipAnimationList):
@@ -596,7 +582,7 @@ class _YcdWriter:
             next_offset = 0
             for animation in reversed(bucket):
                 animation_offset = self.write_animation(animation)
-                entry_offset = self.writer.alloc(0x20, 16)
+                entry_offset = self.writer.alloc(0x20, 16, pointer_offsets=(0x08, 0x10))
                 self.writer.pack_into(
                     "IIQQII",
                     entry_offset,
@@ -611,7 +597,7 @@ class _YcdWriter:
             bucket_head_offsets.append(next_offset)
 
         buckets_array_offset = self.write_pointer_array(bucket_head_offsets)
-        offset = self.writer.alloc(0x30, 16)
+        offset = self.writer.alloc(0x30, 16, pointer_offsets=(0x18,))
         self.writer.pack_into(
             "IIIIIIQHHIII",
             offset,
@@ -641,7 +627,7 @@ class _YcdWriter:
             next_offset = 0
             for clip in reversed(bucket):
                 clip_offset = self.write_clip(clip)
-                entry_offset = self.writer.alloc(0x20, 16)
+                entry_offset = self.writer.alloc(0x20, 16, pointer_offsets=(0x08, 0x10))
                 self.writer.pack_into(
                     "IIQQII",
                     entry_offset,
@@ -688,6 +674,7 @@ class _YcdWriter:
             0,
             0,
         )
+        self.writer.require_explicit_pointer_fields()
         return self.writer.finish(), self.writer.block_spans
 
 
@@ -695,7 +682,6 @@ def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
     source = ycd.build()
     if source.header.version != YCD_VERSION:
         raise ValueError(f"YCD resources require version {YCD_VERSION}, got {source.header.version}")
-    _validate_hash_map_keys(source)
     target = coerce_game_target(source.game if game is None else game)
     profile = get_ycd_runtime_profile(target)
     page_counts = (0, 0)

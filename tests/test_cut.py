@@ -6,13 +6,14 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    CutCameraCutPayload,
     CutCascadeShadowPayload,
     CutDecalPayload,
     CutEventType,
     CutFile,
     CutFinalNamePayload,
-    CutHashedString,
     CutFloatValuePayload,
+    CutHashedString,
     CutLightFlag,
     CutLightProperty,
     CutLightType,
@@ -87,11 +88,20 @@ def test_read_cut_matches_cutxml_shape() -> None:
     cutxml = read_cutxml(CUTXML_PATH)
 
     assert cut.root.type_name == cutxml.root.type_name
-    assert isclose(cut.root.fields["fTotalDuration"], 64.36666870117188, rel_tol=0.0, abs_tol=1e-6)
-    assert cut.root.fields["cFaceDir"] == r"x:/gta5/assets_ng\cuts\MP_INT_MCS_18_A1\faces"
+    assert isclose(
+        cut.root.fields["fTotalDuration"], 64.36666870117188, rel_tol=0.0, abs_tol=1e-6
+    )
+    assert (
+        cut.root.fields["cFaceDir"] == r"x:/gta5/assets_ng\cuts\MP_INT_MCS_18_A1\faces"
+    )
     assert _counts(cut) == _counts(cutxml)
-    assert cut.root.fields["pCutsceneObjects"][0].type_name == cutxml.root.fields["pCutsceneObjects"][0].type_name
-    assert cut.root.fields["concatDataList"][0].fields["cSceneName"] == CutHashedString(hash=972297886)
+    assert (
+        cut.root.fields["pCutsceneObjects"][0].type_name
+        == cutxml.root.fields["pCutsceneObjects"][0].type_name
+    )
+    assert cut.root.fields["concatDataList"][0].fields["cSceneName"] == CutHashedString(
+        hash=972297886
+    )
 
 
 def test_cut_game_file_type_mapping() -> None:
@@ -123,10 +133,15 @@ def test_cut_roundtrip_binary_writer() -> None:
 
     rebuilt = read_cut(build_cut_bytes(cut))
 
-    assert isclose(rebuilt.root.fields["fTotalDuration"], 12.5, rel_tol=0.0, abs_tol=1e-6)
+    assert isclose(
+        rebuilt.root.fields["fTotalDuration"], 12.5, rel_tol=0.0, abs_tol=1e-6
+    )
     assert rebuilt.root.fields["cFaceDir"] == r"x:/gta5/assets_ng\cuts\TEST\faces"
     assert _counts(rebuilt) == _counts(cut)
-    assert rebuilt.root.fields["pCutsceneObjects"][0].type_name == cut.root.fields["pCutsceneObjects"][0].type_name
+    assert (
+        rebuilt.root.fields["pCutsceneObjects"][0].type_name
+        == cut.root.fields["pCutsceneObjects"][0].type_name
+    )
 
 
 @pytest.mark.parametrize("path", [CUT_PATH, EF_CUT_PATH, LAMAR_CUT_PATH])
@@ -193,9 +208,21 @@ def test_cut_scene_builder_from_scratch() -> None:
     subtitle = scene.add_subtitle("subtitle_track")
 
     scene.create_event("load_scene", start=0.0, target=asset_manager)
-    scene.create_event("load_models", start=0.0, target=asset_manager, payload={"iObjectIdList": [actor.object_id]})
+    scene.create_event(
+        "load_models",
+        start=0.0,
+        target=asset_manager,
+        payload={"iObjectIdList": [actor.object_id]},
+    )
     scene.create_event("camera_cut", start=0.0, target=camera, label="cam_orbit")
-    scene.create_event("show_subtitle", start=0.0, target=subtitle, label="hola amigos", duration=15.0, payload={"iLanguageID": 0})
+    scene.create_event(
+        "show_subtitle",
+        start=0.0,
+        target=subtitle,
+        label="hola amigos",
+        duration=15.0,
+        payload={"iLanguageID": 0},
+    )
 
     cut = scene_to_cut(scene)
     rebuilt = read_cut(build_cut_bytes(cut))
@@ -227,8 +254,14 @@ def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
     assert root["fSectionByTimeSliceDuration"] == pytest.approx(4.0)
     assert root["cameraCutList"] == []
     assert len(root["concatDataList"]) == 1
-    assert root["concatDataList"][0].fields["cSceneName"].hash == jenk_hash("sample_scene")
-    load_scene = next(event for event in cut.load_events if event.fields["iEventId"] == int(CutEventType.LOAD_SCENE))
+    assert root["concatDataList"][0].fields["cSceneName"].hash == jenk_hash(
+        "sample_scene"
+    )
+    load_scene = next(
+        event
+        for event in cut.load_events
+        if event.fields["iEventId"] == int(CutEventType.LOAD_SCENE)
+    )
     load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
     assert load_scene_args.fields["cName"].hash == 0
     assert flags & CutSceneFlags.IS_SECTIONED
@@ -247,14 +280,20 @@ def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
 
 
 def test_cut_scene_builder_propagates_relocation_offset() -> None:
-    scene = CutScene.create(scene_name="offset_scene", duration=2.5, offset=(10.0, 20.0, 100.0))
+    scene = CutScene.create(
+        scene_name="offset_scene", duration=2.5, offset=(10.0, 20.0, 100.0)
+    )
     asset_manager = scene.add_asset_manager()
 
     scene.load_scene(0.0, payload={"cName": "offset_scene"}, target=asset_manager)
 
     cut = scene_to_cut(scene)
     root = cut.root.fields
-    load_scene = next(event for event in cut.load_events if event.fields["iEventId"] == int(CutEventType.LOAD_SCENE))
+    load_scene = next(
+        event
+        for event in cut.load_events
+        if event.fields["iEventId"] == int(CutEventType.LOAD_SCENE)
+    )
     load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
 
     assert root["vOffset"] == (10.0, 20.0, 100.0)
@@ -264,7 +303,9 @@ def test_cut_scene_builder_propagates_relocation_offset() -> None:
 
 
 def test_cut_scene_builder_only_sections_by_camera_cuts_when_explicit() -> None:
-    scene = CutScene.create(scene_name="sample_scene", duration=2.5, camera_cut_list=[1.0])
+    scene = CutScene.create(
+        scene_name="sample_scene", duration=2.5, camera_cut_list=[1.0]
+    )
     asset_manager = scene.add_asset_manager()
     camera = scene.add_camera("cam_main")
 
@@ -277,6 +318,21 @@ def test_cut_scene_builder_only_sections_by_camera_cuts_when_explicit() -> None:
 
     assert root["cameraCutList"] == [1.0]
     assert flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+
+
+def test_cut_scene_builder_keeps_explicit_streaming_cuts_separate_from_shots() -> None:
+    scene = CutScene.create(
+        scene_name="sample_scene",
+        duration=6.0,
+        camera_cut_list=[2.0, 4.0],
+    )
+    camera = scene.add_camera("exportcamera")
+    scene.camera_cut(1.0, camera, CutCameraCutPayload("shot_0"))
+    scene.camera_cut(3.0, camera, CutCameraCutPayload("shot_1"))
+
+    cut = scene_to_cut(scene)
+
+    assert cut.root.fields["cameraCutList"] == [2.0, 4.0]
 
 
 def test_cut_scene_builder_uses_external_concat_for_streamed_props() -> None:
@@ -329,7 +385,9 @@ def test_cut_scene_builder_writes_initial_anim_events_before_camera_cut() -> Non
 
 
 def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> None:
-    scene = CutScene.create(duration=20.0, face_dir="x:/gta5/assets_ng/cuts/test_plus/faces")
+    scene = CutScene.create(
+        duration=20.0, face_dir="x:/gta5/assets_ng/cuts/test_plus/faces"
+    )
     asset_manager = scene.add_asset_manager()
     overlay = scene.add_object("overlay", name="overlay_track")
     particle_fx = scene.add_object("rage__cutfParticleEffectObject", name="core_fx")
@@ -346,28 +404,70 @@ def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> Non
     assert rebuilt.root.fields["fTotalDuration"] == pytest.approx(20.0)
     assert len(rebuilt.load_events) == 4
     assert len(rebuilt.events) == 2
-    assert any(event.fields["iEventId"] == 8 for event in rebuilt.load_events)  # load_particle_effects
-    assert any(event.fields["iEventId"] == 10 for event in rebuilt.load_events)  # load_overlays
-    assert any(event.fields["iEventId"] == 12 for event in rebuilt.load_events)  # load_subtitles
-    assert any(event.fields["iEventId"] == 26 for event in rebuilt.events)  # show_overlay
-    assert any(event.fields["iEventId"] == 27 for event in rebuilt.events)  # hide_overlay
-    load_fx_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.load_events if event.fields["iEventId"] == 8)
-    load_overlay_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.load_events if event.fields["iEventId"] == 10)
-    subtitle_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.load_events if event.fields["iEventId"] == 12)
-    show_overlay_args = next(rebuilt.get_event_args(event.fields["iEventArgsIndex"]) for event in rebuilt.events if event.fields["iEventId"] == 26)
-    hide_overlay_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 27)
-    assert load_fx_args is not None and load_fx_args.type_name == "rage__cutfObjectIdListEventArgs"
+    assert any(
+        event.fields["iEventId"] == 8 for event in rebuilt.load_events
+    )  # load_particle_effects
+    assert any(
+        event.fields["iEventId"] == 10 for event in rebuilt.load_events
+    )  # load_overlays
+    assert any(
+        event.fields["iEventId"] == 12 for event in rebuilt.load_events
+    )  # load_subtitles
+    assert any(
+        event.fields["iEventId"] == 26 for event in rebuilt.events
+    )  # show_overlay
+    assert any(
+        event.fields["iEventId"] == 27 for event in rebuilt.events
+    )  # hide_overlay
+    load_fx_args = next(
+        rebuilt.get_event_args(event.fields["iEventArgsIndex"])
+        for event in rebuilt.load_events
+        if event.fields["iEventId"] == 8
+    )
+    load_overlay_args = next(
+        rebuilt.get_event_args(event.fields["iEventArgsIndex"])
+        for event in rebuilt.load_events
+        if event.fields["iEventId"] == 10
+    )
+    subtitle_args = next(
+        rebuilt.get_event_args(event.fields["iEventArgsIndex"])
+        for event in rebuilt.load_events
+        if event.fields["iEventId"] == 12
+    )
+    show_overlay_args = next(
+        rebuilt.get_event_args(event.fields["iEventArgsIndex"])
+        for event in rebuilt.events
+        if event.fields["iEventId"] == 26
+    )
+    hide_overlay_event = next(
+        event for event in rebuilt.events if event.fields["iEventId"] == 27
+    )
+    assert (
+        load_fx_args is not None
+        and load_fx_args.type_name == "rage__cutfObjectIdListEventArgs"
+    )
     assert load_fx_args.fields["iObjectIdList"] == [particle_fx.object_id]
-    assert load_overlay_args is not None and load_overlay_args.type_name == "rage__cutfObjectIdListEventArgs"
+    assert (
+        load_overlay_args is not None
+        and load_overlay_args.type_name == "rage__cutfObjectIdListEventArgs"
+    )
     assert load_overlay_args.fields["iObjectIdList"] == [overlay.object_id]
-    assert subtitle_args is not None and subtitle_args.type_name == "rage__cutfFinalNameEventArgs"
+    assert (
+        subtitle_args is not None
+        and subtitle_args.type_name == "rage__cutfFinalNameEventArgs"
+    )
     assert subtitle_args.fields["cName"] == "TEST_PLUS"
-    assert show_overlay_args is not None and show_overlay_args.type_name == "rage__cutfEventArgs"
+    assert (
+        show_overlay_args is not None
+        and show_overlay_args.type_name == "rage__cutfEventArgs"
+    )
     assert hide_overlay_event.fields["iEventArgsIndex"] == -1
 
 
 def test_cut_scene_builder_supports_variation_events_with_real_template() -> None:
-    scene = CutScene.create(duration=8.0, face_dir="x:/gta5/assets_ng/cuts/test_variation/faces")
+    scene = CutScene.create(
+        duration=8.0, face_dir="x:/gta5/assets_ng/cuts/test_variation/faces"
+    )
     asset_manager = scene.add_asset_manager()
     ped = scene.add_ped("ped_plus")
 
@@ -392,8 +492,12 @@ def test_cut_scene_builder_supports_variation_events_with_real_template() -> Non
 @pytest.mark.skipif(
     not LAMAR_CUT_PATH.is_file(), reason="blocking-bounds CUT template not available"
 )
-def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templates() -> None:
-    scene = CutScene.create(duration=12.0, face_dir="x:/gta5/assets_ng/cuts/test_fx/faces")
+def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templates() -> (
+    None
+):
+    scene = CutScene.create(
+        duration=12.0, face_dir="x:/gta5/assets_ng/cuts/test_fx/faces"
+    )
     asset_manager = scene.add_asset_manager()
     camera = scene.add_camera("cam_fx")
     hidden = scene.add_object("hidden_object", name="hidden_target")
@@ -434,7 +538,9 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     assert 51 in event_ids  # blendout_camera
     assert 79 in event_ids  # first_person_blendout_camera
 
-    cascade_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 54)
+    cascade_event = next(
+        event for event in rebuilt.events if event.fields["iEventId"] == 54
+    )
     cascade_args = rebuilt.get_event_args(cascade_event.fields["iEventArgsIndex"])
     assert cascade_args is not None
     assert cascade_args.type_name == "rage__cutfCascadeShadowEventArgs"
@@ -446,7 +552,9 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     assert cascade_args.fields["enabled"] is True
     assert cascade_args.fields["interpolateToDisabled"] is False
 
-    depth_event = next(event for event in rebuilt.events if event.fields["iEventId"] == 73)
+    depth_event = next(
+        event for event in rebuilt.events if event.fields["iEventId"] == 73
+    )
     depth_args = rebuilt.get_event_args(depth_event.fields["iEventArgsIndex"])
     assert depth_args is not None
     assert depth_args.type_name == "rage__cutfFloatValueEventArgs"
@@ -454,10 +562,16 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
 
 
 def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> None:
-    scene = CutScene.create(duration=6.0, face_dir="x:/gta5/assets_ng/cuts/test_decal/faces")
+    scene = CutScene.create(
+        duration=6.0, face_dir="x:/gta5/assets_ng/cuts/test_decal/faces"
+    )
     decal = scene.add_decal("blood_mark")
     light = scene.add_light("fx_light")
-    hidden = scene.add_object("hidden_object", name="hidden_target", fields={"vPosition": (0.0, 0.0, 0.0), "fRadius": 1.5})
+    hidden = scene.add_object(
+        "hidden_object",
+        name="hidden_target",
+        fields={"vPosition": (0.0, 0.0, 0.0), "fRadius": 1.5},
+    )
 
     scene.trigger_decal(
         0.0,
@@ -479,7 +593,9 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
 
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
 
-    event_names = [get_cut_event_name(event.fields["iEventId"]) for event in rebuilt.events]
+    event_names = [
+        get_cut_event_name(event.fields["iEventId"]) for event in rebuilt.events
+    ]
     assert "trigger_decal" in event_names
     assert "remove_decal" in event_names
     assert "set_light" in event_names
@@ -487,7 +603,11 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     assert "hide_hidden_object" in event_names
     assert "show_hidden_object" in event_names
 
-    trigger_decal_event = next(event for event in rebuilt.events if get_cut_event_name(event.fields["iEventId"]) == "trigger_decal")
+    trigger_decal_event = next(
+        event
+        for event in rebuilt.events
+        if get_cut_event_name(event.fields["iEventId"]) == "trigger_decal"
+    )
     decal_args = rebuilt.get_event_args(trigger_decal_event.fields["iEventArgsIndex"])
     assert decal_args is not None
     assert decal_args.type_name == "rage__cutfDecalEventArgs"
@@ -499,7 +619,9 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
 
 
 def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
-    scene = CutScene.create(duration=2.0, face_dir="x:/gta5/assets_ng/cuts/test_lights/faces")
+    scene = CutScene.create(
+        duration=2.0, face_dir="x:/gta5/assets_ng/cuts/test_lights/faces"
+    )
     ydr = type(
         "FakeYdr",
         (),
@@ -529,7 +651,9 @@ def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
 
     assert len(lights) == 1
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
-    cut_light = next(obj for obj in rebuilt.objects if obj.type_name == "rage__cutfLightObject")
+    cut_light = next(
+        obj for obj in rebuilt.objects if obj.type_name == "rage__cutfLightObject"
+    )
     assert cut_light.fields["iLightType"] == int(CutLightType.SPOT)
     assert cut_light.fields["iLightProperty"] == int(CutLightProperty.CASTS_SHADOWS)
     assert cut_light.fields["uLightFlags"] == int(
@@ -541,11 +665,17 @@ def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
     assert cut_light.fields["vColour"] == pytest.approx((1.0, 128.0 / 255.0, 0.0))
     assert cut_light.fields["vPosition"] == pytest.approx((1.0, 2.0, 3.0))
     assert cut_light.fields["fFallOff"] == pytest.approx(40.0)
-    assert any(event.fields["iEventId"] == 74 and event.fields["iObjectId"] == cut_light.fields["iObjectId"] for event in rebuilt.events)
+    assert any(
+        event.fields["iEventId"] == 74
+        and event.fields["iObjectId"] == cut_light.fields["iObjectId"]
+        for event in rebuilt.events
+    )
 
 
 def test_cut_prop_binding_exposes_real_streaming_fields() -> None:
-    scene = CutScene.create(duration=4.0, face_dir="x:/gta5/assets_ng/cuts/test_prop/faces")
+    scene = CutScene.create(
+        duration=4.0, face_dir="x:/gta5/assets_ng/cuts/test_prop/faces"
+    )
     prop = scene.add_prop(
         "prop_stream",
         cutscene_name="prop_local",
@@ -589,6 +719,20 @@ def test_cut_prop_binding_exposes_real_streaming_fields() -> None:
     assert roundtrip_prop.anim_compression_file == "anim_comp"
     assert roundtrip_prop.handle == "prop_handle"
     assert roundtrip_prop.type_file == "prop_type"
+
+
+def test_cut_ped_does_not_require_type_file() -> None:
+    scene = CutScene.create(duration=4.0)
+    scene.add_ped("cs_test")
+
+    issues = scene.validation_report(strict=True)
+
+    assert not [issue for issue in issues if issue.code == "object.type_file.missing"]
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+    ped = next(
+        obj for obj in rebuilt.objects if obj.type_name == "rage__cutfPedModelObject"
+    )
+    assert ped.fields["typeFile"].hash == 0
 
 
 def test_cut_prop_binding_supports_clear_aliases_for_real_fields() -> None:
@@ -660,11 +804,45 @@ def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
         animation_preset=CutPropAnimationPreset.COMMON_PROP,
     )
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
-    builder.add_prop("miku_hatsune_metal", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0))
+    builder.add_prop(
+        "miku_hatsune_metal",
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
     scene.attach_clip_dict(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)
 
     assert scene.validate_animations() == []
+
+
+def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None:
+    scene = CutScene.create(duration=2.0, camera_cut_list=[1.0])
+    manager = scene.add_animation_manager()
+    prop = scene.add_prop(
+        name="target",
+        model=r"assets/target.ydr",
+        scene_name="target",
+        animation_preset=CutPropAnimationPreset.COMMON_PROP,
+    )
+
+    first = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=0)
+    first.add_prop(
+        "decoy", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0)
+    )
+    second = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=1)
+    second.add_prop(
+        "target", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0)
+    )
+    scene.attach_clip_dict(first.build_ycds()[0])
+    scene.attach_clip_dict(second.build_ycds()[0])
+    scene.set_anim(1.0, prop, target=manager)
+
+    assert scene.validate_animations() == []
+    assert not any("set_anim.clip.missing" in issue for issue in scene.validate())
+
+    scene.timeline[-1].start = 0.0
+    assert any("target-0" in warning for warning in scene.validate_animations())
+    assert any("set_anim.clip.missing" in issue for issue in scene.validate())
 
 
 def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
@@ -677,11 +855,17 @@ def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
         animation_preset=CutPropAnimationPreset.COMMON_PROP,
     )
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
-    builder.add_prop("mmd_model_001", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0))
+    builder.add_prop(
+        "mmd_model_001",
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
     scene.attach_clip_dict(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)
 
-    assert any("miku_hatsune_metal-0" in warning for warning in scene.validate_animations())
+    assert any(
+        "miku_hatsune_metal-0" in warning for warning in scene.validate_animations()
+    )
 
 
 @pytest.mark.parametrize(
@@ -748,7 +932,11 @@ def test_cut_all_event_ids_have_serializable_specs() -> None:
     scene.add_object("subtitle", name="subtitle")
     scene.add_prop("prop", model_name="prop")
 
-    missing_specs = [name for name in CUT_EVENT_ID_TO_NAME.values() if get_cut_event_spec(name) is None]
+    missing_specs = [
+        name
+        for name in CUT_EVENT_ID_TO_NAME.values()
+        if get_cut_event_spec(name) is None
+    ]
     assert missing_specs == []
 
     for name in CUT_EVENT_ID_TO_NAME.values():
@@ -759,5 +947,5 @@ def test_cut_all_event_ids_have_serializable_specs() -> None:
         else:
             scene.create_event(name, start=0.0)
 
-    summary = read_cut(scene.to_bytes(validate=False)).summary()
+    summary = read_cut(build_cut_bytes(scene_to_cut(scene))).summary()
     assert summary.load_event_count + summary.event_count == len(CUT_EVENT_ID_TO_NAME)

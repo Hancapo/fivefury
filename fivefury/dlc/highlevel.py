@@ -322,13 +322,20 @@ def read_dlc_pack(
     game: str | GameTarget | None = None,
     load_files: bool = False,
 ) -> DlcPack:
+    if not isinstance(source, (RpfArchive, bytes)):
+        path = Path(source)
+        with RpfArchive.from_path(
+            path / "dlc.rpf" if path.is_dir() else path
+        ) as archive:
+            return read_dlc_pack(
+                archive,
+                game=game,
+                load_files=load_files,
+            )
     if isinstance(source, RpfArchive):
         archive = source
-    elif isinstance(source, bytes):
-        archive = RpfArchive.from_bytes(source, name="dlc.rpf")
     else:
-        path = Path(source)
-        archive = RpfArchive.from_path(path / "dlc.rpf" if path.is_dir() else path)
+        archive = RpfArchive.from_bytes(source, name="dlc.rpf")
     entries: dict[str, RpfFileEntry] = {}
     for entry in archive.iter_entries():
         if not isinstance(entry, RpfFileEntry):

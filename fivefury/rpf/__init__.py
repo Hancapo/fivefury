@@ -506,6 +506,8 @@ class RpfArchive:
     def read_entry_raw(self, entry: RpfFileEntry) -> bytes:
         if getattr(entry, "_data", None) is not None:
             return bytes(entry._data)  # type: ignore[attr-defined]
+        if entry._source_path is not None:
+            return entry._source_path.read_bytes()
         size = entry.get_file_size()
         if size <= 0:
             return b""

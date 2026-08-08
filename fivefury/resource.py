@@ -206,9 +206,31 @@ class ResourceBlockSpan:
     offset: int
     size: int
     relocate_pointers: bool = True
+    pointer_offsets: tuple[int, ...] | None = None
+
+    def __post_init__(self) -> None:
+        offset = int(self.offset)
+        size = int(self.size)
+        if offset < 0 or size < 0:
+            raise ValueError("resource block offset and size must be non-negative")
+        pointer_offsets = self.pointer_offsets
+        if pointer_offsets is not None:
+            normalized = tuple(sorted({int(pointer_offset) for pointer_offset in pointer_offsets}))
+            if any(pointer_offset < 0 or pointer_offset + 8 > size for pointer_offset in normalized):
+                raise ValueError("resource pointer field is outside its block")
+            if not self.relocate_pointers and normalized:
+                raise ValueError("non-relocatable resource blocks cannot declare pointer fields")
+            object.__setattr__(self, "pointer_offsets", normalized)
+        object.__setattr__(self, "offset", offset)
+        object.__setattr__(self, "size", size)
 
 
-def _coerce_resource_block_spans(blocks: list[ResourceBlockSpan] | list[tuple[int, int]] | list[tuple[int, int, bool]]) -> list[ResourceBlockSpan]:
+def _coerce_resource_block_spans(
+    blocks: list[ResourceBlockSpan]
+    | list[tuple[int, int]]
+    | list[tuple[int, int, bool]]
+    | list[tuple[int, int, bool, tuple[int, ...] | None]],
+) -> list[ResourceBlockSpan]:
     spans: list[ResourceBlockSpan] = []
     for block in blocks:
         if isinstance(block, ResourceBlockSpan):
@@ -217,9 +239,19 @@ def _coerce_resource_block_spans(blocks: list[ResourceBlockSpan] | list[tuple[in
         if len(block) == 2:
             offset, size = block
             spans.append(ResourceBlockSpan(int(offset), int(size), True))
-        else:
+        elif len(block) == 3:
             offset, size, relocate_pointers = block
             spans.append(ResourceBlockSpan(int(offset), int(size), bool(relocate_pointers)))
+        else:
+            offset, size, relocate_pointers, pointer_offsets = block
+            spans.append(
+                ResourceBlockSpan(
+                    int(offset),
+                    int(size),
+                    bool(relocate_pointers),
+                    None if pointer_offsets is None else tuple(pointer_offsets),
+                )
+            )
     return spans
 
 
@@ -238,9 +270,9 @@ def layout_resource_sections(
     graphics_spans = _coerce_resource_block_spans(list(graphics_blocks or []))
     return _native_backend.resource_layout_sections(
         bytes(system_data),
-        [(span.offset, span.size, span.relocate_pointers) for span in system_spans],
+        [(span.offset, span.size, span.relocate_pointers, span.pointer_offsets) for span in system_spans],
         bytes(graphics_data),
-        [(span.offset, span.size, span.relocate_pointers) for span in graphics_spans],
+        [(span.offset, span.size, span.relocate_pointers, span.pointer_offsets) for span in graphics_spans],
         version=version,
         max_page_count=max_page_count,
         virtual_base=virtual_base,
@@ -549,25 +581,36 @@ def read_virtual_pointer_array(
 
 
 class ResourceWriter:
-    def __init__(self, initial_size: int = 0x80):
+    def __init__(self, initial_size: int = 0x80, *, initial_pointer_offsets: tuple[int, ...] | None = None):
+        initial_span = ResourceBlockSpan(0, initial_size, pointer_offsets=initial_pointer_offsets)
         self.data = bytearray(initial_size)
         self.cursor = align(initial_size, 16)
         self.block_sizes: list[int] = [initial_size]
         self.block_offsets: list[int] = [0]
         self.block_relocate_pointers: list[bool] = [True]
+        self.block_pointer_offsets: list[tuple[int, ...] | None] = [initial_span.pointer_offsets]
 
     def ensure(self, size: int) -> None:
         if size > len(self.data):
             self.data.extend(bytes(size - len(self.data)))
 
-    def alloc(self, size: int, alignment: int = 16, *, relocate_pointers: bool = True) -> int:
+    def alloc(
+        self,
+        size: int,
+        alignment: int = 16,
+        *,
+        relocate_pointers: bool = True,
+        pointer_offsets: tuple[int, ...] | None = None,
+    ) -> int:
         offset = align(self.cursor, alignment)
+        span = ResourceBlockSpan(offset, size, relocate_pointers, pointer_offsets)
         end = offset + size
         self.ensure(end)
         self.cursor = end
         self.block_sizes.append(size)
         self.block_offsets.append(offset)
         self.block_relocate_pointers.append(bool(relocate_pointers))
+        self.block_pointer_offsets.append(span.pointer_offsets)
         return offset
 
     def write(self, offset: int, value: bytes) -> None:
@@ -588,9 +631,27 @@ class ResourceWriter:
     @property
     def block_spans(self) -> list[ResourceBlockSpan]:
         return [
-            ResourceBlockSpan(offset=offset, size=size, relocate_pointers=relocate_pointers)
-            for offset, size, relocate_pointers in zip(self.block_offsets, self.block_sizes, self.block_relocate_pointers, strict=True)
+            ResourceBlockSpan(
+                offset=offset,
+                size=size,
+                relocate_pointers=relocate_pointers,
+                pointer_offsets=pointer_offsets,
+            )
+            for offset, size, relocate_pointers, pointer_offsets in zip(
+                self.block_offsets,
+                self.block_sizes,
+                self.block_relocate_pointers,
+                self.block_pointer_offsets,
+                strict=True,
+            )
         ]
+
+    def require_explicit_pointer_fields(self) -> None:
+        for index, span in enumerate(self.block_spans):
+            if span.relocate_pointers and span.pointer_offsets is None:
+                raise ValueError(
+                    f"resource block {index} at 0x{span.offset:X} does not declare its pointer fields"
+                )
 
     def finish(self) -> bytes:
         return bytes(self.data[: self.cursor])

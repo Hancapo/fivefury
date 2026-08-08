@@ -394,6 +394,7 @@ class YcdCutsceneBuilder:
         *,
         duration: float,
         camera_cuts: Sequence[float] | None = None,
+        section_index_start: int = 0,
         fps: float = YCD_CUTSCENE_DEFAULT_FPS,
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
         game: str | GameTarget = GameTarget.GTA5,
@@ -403,6 +404,9 @@ class YcdCutsceneBuilder:
         self.fps = float(fps)
         self.version = int(version)
         self.game = coerce_game_target(game)
+        self.section_index_start = int(section_index_start)
+        if self.section_index_start < 0:
+            raise ValueError("section_index_start cannot be negative")
         self.camera_cuts = self._normalize_camera_cuts(camera_cuts or [])
         self._clips: dict[str, YcdCutsceneClip] = {}
 
@@ -413,11 +417,20 @@ class YcdCutsceneBuilder:
         *,
         duration: float,
         camera_cuts: Sequence[float] | None = None,
+        section_index_start: int = 0,
         fps: float = YCD_CUTSCENE_DEFAULT_FPS,
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
         game: str | GameTarget = GameTarget.GTA5,
     ) -> YcdCutsceneBuilder:
-        return cls(name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version, game=game)
+        return cls(
+            name,
+            duration=duration,
+            camera_cuts=camera_cuts,
+            section_index_start=section_index_start,
+            fps=fps,
+            version=version,
+            game=game,
+        )
 
     @classmethod
     def from_cut(
@@ -431,7 +444,15 @@ class YcdCutsceneBuilder:
     ) -> YcdCutsceneBuilder:
         if isinstance(source, CutScene):
             resolved_name = name or "cutscene"
-            camera_cuts = [event.start for event in source.timeline if event.event_name == "camera_cut" and event.start > 0.0]
+            camera_cuts = (
+                list(source.camera_cut_list)
+                if source.camera_cut_list is not None
+                else [
+                    event.start
+                    for event in source.timeline
+                    if event.event_name == "camera_cut" and event.start > 0.0
+                ]
+            )
             return cls(
                 resolved_name,
                 duration=source.duration,
@@ -628,12 +649,13 @@ class YcdCutsceneBuilder:
 
     def build_section(self, index: int) -> Ycd:
         section = self.sections[int(index)]
+        output_index = self.section_index_start + section.index
         clips: list[YcdClipAnimation] = []
         animations: list[YcdAnimation] = []
         for clip_spec in self._clips.values():
             if not clip_spec.tracks:
                 continue
-            short_name = f"{clip_spec.name}-{section.index}"
+            short_name = f"{clip_spec.name}-{output_index}"
             animation_hash = MetaHash(short_name)
             bone_ids: list[YcdAnimationBoneId] = []
             track_windows: list[tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]] = []
@@ -724,7 +746,7 @@ class YcdCutsceneBuilder:
             clips=clips,
             animations=animations,
             game=self.game,
-            path=f"{self.name}-{section.index}.ycd",
+            path=f"{self.name}-{output_index}.ycd",
         )
         return ycd.build()
 

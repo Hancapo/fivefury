@@ -197,6 +197,29 @@ OffsetMap sorted_offset_map(const OffsetMap& offset_map) {
     return sorted;
 }
 
+bool points_into_offset_map(
+    std::uint64_t value,
+    std::uint64_t base,
+    const OffsetMap& sorted_offset_map
+) {
+    if (value < base) {
+        return false;
+    }
+    const auto relative = value - base;
+    auto it = std::upper_bound(
+        sorted_offset_map.begin(),
+        sorted_offset_map.end(),
+        relative,
+        [](std::uint64_t lhs, const auto& rhs) { return lhs < std::get<0>(rhs); }
+    );
+    if (it == sorted_offset_map.begin()) {
+        return false;
+    }
+    const auto& [old_offset, size, new_offset] = *std::prev(it);
+    static_cast<void>(new_offset);
+    return relative < old_offset + size;
+}
+
 std::uint64_t remap_resource_pointer(
     std::uint64_t value,
     std::uint64_t system_base,
@@ -265,6 +288,33 @@ std::string rewrite_resource_pointers(
             throw std::invalid_argument("resource block is out of range");
         }
         if (!block.relocate_pointers) {
+            continue;
+        }
+        if (block.has_explicit_pointer_offsets) {
+            for (const auto pointer_offset : block.pointer_offsets) {
+                if (pointer_offset > block.size || block.size - pointer_offset < 8U) {
+                    throw std::invalid_argument("resource pointer field is outside its block");
+                }
+                const auto offset = block.offset + pointer_offset;
+                const auto value = read_u64_le(data, offset);
+                if (
+                    value != 0U &&
+                    !points_into_offset_map(value, system_base, sorted_system_map) &&
+                    !points_into_offset_map(value, graphics_base, sorted_graphics_map)
+                ) {
+                    throw std::invalid_argument("declared resource pointer does not target a resource block");
+                }
+                const auto remapped = remap_resource_pointer(
+                    value,
+                    system_base,
+                    sorted_system_map,
+                    graphics_base,
+                    sorted_graphics_map
+                );
+                if (remapped != value) {
+                    write_u64_le(data, offset, remapped);
+                }
+            }
             continue;
         }
         // RAGE resource structs may pack 64-bit pointers on 4-byte boundaries.

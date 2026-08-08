@@ -8,7 +8,15 @@ from typing import Any
 from ...common import hash_value
 from ...hashing import jenk_partial_hash
 from ..model import CutHashedString, CutNode
-from .shared import _clone_value, _coerce_name, _hashed_string, _node_type_hash, _object_name_field, _object_role
+from .shared import (
+    _clone_value,
+    _coerce_name,
+    _hashed_string,
+    _node_type_hash,
+    _object_name_field,
+    _object_role,
+    _parse_hex_hash,
+)
 
 
 @dataclass(slots=True)
@@ -43,11 +51,24 @@ class CutBinding:
                 field_values[name_field] = name
             else:
                 field_values[name_field] = _hashed_string(name)
-        raw = CutNode(type_name=type_name, type_hash=_node_type_hash(type_name), fields={})
-        return cls(object_id=object_id, type_name=type_name, role=role_name, name=name, fields=field_values, raw=raw)
+        raw = CutNode(
+            type_name=type_name, type_hash=_node_type_hash(type_name), fields={}
+        )
+        return cls(
+            object_id=object_id,
+            type_name=type_name,
+            role=role_name,
+            name=name,
+            fields=field_values,
+            raw=raw,
+        )
 
     def to_node(self) -> CutNode:
-        node = _clone_value(self.raw) if self.raw is not None else CutNode(type_name=self.type_name)
+        node = (
+            _clone_value(self.raw)
+            if self.raw is not None
+            else CutNode(type_name=self.type_name)
+        )
         node.type_name = self.type_name
         node.type_hash = _node_type_hash(self.type_name, node.type_hash)
         node.fields["iObjectId"] = self.object_id
@@ -60,7 +81,12 @@ class CutBinding:
                     node.fields[field_name] = self.name
                 else:
                     current = node.fields[field_name]
-                    node.fields[field_name] = CutHashedString(hash=current.hash if isinstance(current, CutHashedString) and current.hash else hash_value(self.name), text=self.name)
+                    node.fields[field_name] = CutHashedString(
+                        hash=current.hash
+                        if isinstance(current, CutHashedString) and current.hash
+                        else hash_value(self.name),
+                        text=self.name,
+                    )
         return node
 
 
@@ -112,13 +138,17 @@ _CUT_PROP_ANIMATION_PRESETS: dict[CutPropAnimationPreset, dict[str, Any | None]]
 }
 
 
-def _coerce_cut_prop_animation_preset(value: "CutPropAnimationPreset | str | None") -> "CutPropAnimationPreset | None":
+def _coerce_cut_prop_animation_preset(
+    value: "CutPropAnimationPreset | str | None",
+) -> "CutPropAnimationPreset | None":
     if value is None or isinstance(value, CutPropAnimationPreset):
         return value
     return CutPropAnimationPreset(str(value).strip().lower())
 
 
-def _coerce_cut_type_file_strategy(value: "CutTypeFileStrategy | str | None") -> "CutTypeFileStrategy":
+def _coerce_cut_type_file_strategy(
+    value: "CutTypeFileStrategy | str | None",
+) -> "CutTypeFileStrategy":
     if value is None:
         return CutTypeFileStrategy.AUTO
     if isinstance(value, CutTypeFileStrategy):
@@ -200,14 +230,22 @@ class _TypedCutBinding(CutBinding):
         if name is not None:
             name_field = _object_name_field(type_name)
             if name_field not in field_values:
-                field_values[name_field] = name if type_name == "rage__cutfAudioObject" else _hashed_string(name)
+                field_values[name_field] = (
+                    name
+                    if type_name == "rage__cutfAudioObject"
+                    else _hashed_string(name)
+                )
         super().__init__(
             object_id=object_id,
             type_name=type_name,
             role=role,
             name=name,
             fields=field_values,
-            raw=raw if raw is not None else CutNode(type_name=type_name, type_hash=_node_type_hash(type_name), fields={}),
+            raw=raw
+            if raw is not None
+            else CutNode(
+                type_name=type_name, type_hash=_node_type_hash(type_name), fields={}
+            ),
         )
 
     def _get_hashed_text_field(self, field_name: str) -> str | None:
@@ -363,7 +401,9 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         elif strategy is CutTypeFileStrategy.CONTAINER:
             resolved_type_file = _extract_container_stem(model)
         else:
-            resolved_type_file = _extract_source_stem(type_source) or _extract_container_stem(model)
+            resolved_type_file = _extract_source_stem(
+                type_source
+            ) or _extract_container_stem(model)
 
         if resolved_type_file is None:
             if strategy is CutTypeFileStrategy.NONE:
@@ -373,7 +413,9 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         self.type_file = resolved_type_file
         return self
 
-    def apply_animation_preset(self, preset: "CutPropAnimationPreset | str") -> "_CutStreamedModelBinding":
+    def apply_animation_preset(
+        self, preset: "CutPropAnimationPreset | str"
+    ) -> "_CutStreamedModelBinding":
         resolved = _coerce_cut_prop_animation_preset(preset)
         assert resolved is not None
         values = _CUT_PROP_ANIMATION_PRESETS[resolved]
@@ -413,7 +455,15 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         value = self.metadata.get("animation_clip_base")
         if isinstance(value, str) and value:
             return value
-        return self.model_name
+        model_name = self.model_name
+        if not model_name or _parse_hex_hash(model_name) is not None:
+            return None
+        streaming_base = self.anim_streaming_base
+        if streaming_base not in (None, 0) and streaming_base != jenk_partial_hash(
+            model_name
+        ):
+            return None
+        return model_name
 
     @animation_clip_base.setter
     def animation_clip_base(self, value: str | None) -> None:
@@ -615,13 +665,18 @@ class CutBlockingBounds(_TypedCutBinding):
 
     @property
     def corners(self) -> tuple[tuple[float, float, float], ...]:
-        return tuple(tuple(float(axis) for axis in corner) for corner in self.fields.get("vCorners", ()))
+        return tuple(
+            tuple(float(axis) for axis in corner)
+            for corner in self.fields.get("vCorners", ())
+        )
 
     @corners.setter
     def corners(self, value: tuple[tuple[float, float, float], ...]) -> None:
         if len(value) != 4 or any(len(corner) != 3 for corner in value):
             raise ValueError("blocking bounds require exactly four 3D corners")
-        self.fields["vCorners"] = [tuple(float(axis) for axis in corner) for corner in value]
+        self.fields["vCorners"] = [
+            tuple(float(axis) for axis in corner) for corner in value
+        ]
 
     @property
     def height(self) -> float:
@@ -643,7 +698,9 @@ class CutRayfire(_CutNamedStreamedBinding):
 
     @property
     def start_position(self) -> tuple[float, float, float]:
-        return tuple(float(value) for value in self.fields.get("vStartPosition", (0.0, 0.0, 0.0)))
+        return tuple(
+            float(value) for value in self.fields.get("vStartPosition", (0.0, 0.0, 0.0))
+        )
 
     @start_position.setter
     def start_position(self, value: tuple[float, float, float]) -> None:
@@ -724,7 +781,11 @@ _BINDING_ADDERS = {
 
 
 def _binding_from_node(node: CutNode) -> CutBinding:
-    fields = {key: _clone_value(value) for key, value in node.fields.items() if key != "iObjectId"}
+    fields = {
+        key: _clone_value(value)
+        for key, value in node.fields.items()
+        if key != "iObjectId"
+    }
     if node.type_name in {
         CutPed.TYPE_NAME,
         CutProp.TYPE_NAME,
@@ -734,9 +795,13 @@ def _binding_from_node(node: CutNode) -> CutBinding:
         CutAnimatedParticleEffect.TYPE_NAME,
         CutRayfire.TYPE_NAME,
     }:
-        name = _coerce_name(node.fields.get("StreamingName")) or _coerce_name(node.fields.get("cName"))
+        name = _coerce_name(node.fields.get("StreamingName")) or _coerce_name(
+            node.fields.get("cName")
+        )
     else:
-        name = _coerce_name(node.fields.get("cName")) or _coerce_name(node.fields.get("StreamingName"))
+        name = _coerce_name(node.fields.get("cName")) or _coerce_name(
+            node.fields.get("StreamingName")
+        )
     binding_class = _BINDING_CLASS_BY_TYPE.get(node.type_name)
     if binding_class is not None:
         return binding_class(

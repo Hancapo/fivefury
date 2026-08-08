@@ -5,6 +5,7 @@ import math
 import pytest
 
 from fivefury import (
+    GameTarget,
     MetaHash,
     Ycd,
     YcdAnimation,
@@ -15,6 +16,7 @@ from fivefury import (
     YcdChannelType,
     YcdClipAnimation,
     YcdClipPropertyAttributeType,
+    YcdClipType,
     YcdCutsceneBoneAnimation,
     YcdCutsceneBuilder,
     YcdFacialAnimationSample,
@@ -41,6 +43,7 @@ from fivefury.ycd.sequence_channels import (
     YcdQuantizeFloatChannel,
     YcdStaticFloatChannel,
 )
+from fivefury.ycd.write import _YcdWriter
 from tests.helpers import reference_root
 
 REFERENCE_YCD_DIR = reference_root() / "ycd"
@@ -54,6 +57,84 @@ requires_ycd_sample = pytest.mark.skipif(
 
 def _ycd_header() -> ResourceHeader:
     return ResourceHeader(version=46, system_flags=0, graphics_flags=0)
+
+
+YCD_ADDRESS_SHAPED_HASHES = (
+    0x5AAFBA9B,
+    0x6EA3EE2F,
+    0x5F255849,
+    0x5988EF96,
+    0x6210B09D,
+    0x508433F1,
+    0x5B131877,
+    0x5160F0CF,
+    0x626CDF14,
+    0x50000000,
+    0x6FFFFFFF,
+    0x4FFFFFFF,
+    0x70000000,
+)
+
+
+def _minimal_ycd_with_hash(hash_value: int, game: GameTarget) -> Ycd:
+    animation = YcdAnimation(
+        hash=MetaHash(hash_value),
+        frames=1,
+        sequence_frame_limit=64,
+        duration=0.0,
+        usage_count=1,
+        sequence_count=0,
+        bone_id_count=0,
+    )
+    clip = YcdClipAnimation(
+        hash=MetaHash(hash_value),
+        name=f"hash_{hash_value:08x}.clip",
+        short_name=f"hash_{hash_value:08x}",
+        clip_type=YcdClipType.ANIMATION,
+        animation_hash=MetaHash(hash_value),
+        animation=animation,
+    )
+    return Ycd(
+        header=_ycd_header(),
+        clips=[clip],
+        animations=[animation],
+        game=game,
+    )
+
+
+@pytest.mark.parametrize("game", (GameTarget.GTA5, GameTarget.GTA5_ENHANCED))
+@pytest.mark.parametrize("hash_value", YCD_ADDRESS_SHAPED_HASHES)
+def test_ycd_writer_preserves_address_shaped_hash_map_keys(
+    hash_value: int,
+    game: GameTarget,
+) -> None:
+    source = _minimal_ycd_with_hash(hash_value, game)
+    prepared = source.build()
+    raw_system, spans = _YcdWriter(
+        prepared,
+        get_ycd_runtime_profile(game),
+    ).build_system_data()
+    matching_entries = [
+        span
+        for span in spans
+        if span.size == 0x20
+        and int.from_bytes(raw_system[span.offset : span.offset + 4], "little")
+        == hash_value
+    ]
+
+    assert matching_entries
+    assert all(
+        not span.relocate_pointers or span.pointer_offsets is not None
+        for span in spans
+    )
+    assert all(span.pointer_offsets == (0x08, 0x10) for span in matching_entries)
+
+    rebuilt = read_ycd(build_ycd_bytes(source, game=game))
+
+    assert rebuilt.animations[0].hash.uint == hash_value
+    assert rebuilt.clips[0].hash.uint == hash_value
+    assert rebuilt.clips[0].animation_hash.uint == hash_value
+    assert rebuilt.validate() is rebuilt
 
 
 @requires_ycd_sample

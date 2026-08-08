@@ -316,8 +316,8 @@ def build_ymf_pso(
     root_block_id = block_ids[YMF_PSO_ROOT]
 
     sections = [
-        build_psin_section(blocks, prefix=b"\x00" * 8),
-        build_pmap_section(blocks, root_block_id=root_block_id),
+        build_psin_section(blocks, prefix=b"\x00" * 8, block_alignment=1),
+        build_pmap_section(blocks, root_block_id=root_block_id, block_alignment=1),
         serialize_psch(used_structs, used_enums),
     ]
     template_sections: Mapping[int, bytes] = (

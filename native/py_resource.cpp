@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "resource_layout.h"
@@ -42,26 +43,31 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
             Py_DECREF(sequence);
             return false;
         }
-        PyObject* block = PySequence_Fast(item, "resource block must contain offset, size and relocate flag");
+        PyObject* block = PySequence_Fast(item, "resource block must contain offset, size, relocate flag and pointer offsets");
         Py_DECREF(item);
         if (block == nullptr) {
             Py_DECREF(sequence);
             return false;
         }
         const auto block_size = PySequence_Size(block);
-        if (block_size != 3) {
+        if (block_size != 3 && block_size != 4) {
             Py_DECREF(block);
             Py_DECREF(sequence);
-            PyErr_SetString(PyExc_ValueError, "resource block must contain exactly 3 values");
+            PyErr_SetString(PyExc_ValueError, "resource block must contain 3 or 4 values");
             return false;
         }
         PyObject* offset_object = PySequence_GetItem(block, 0);
         PyObject* size_object = PySequence_GetItem(block, 1);
         PyObject* relocate_object = PySequence_GetItem(block, 2);
-        if (offset_object == nullptr || size_object == nullptr || relocate_object == nullptr) {
+        PyObject* pointer_offsets_object = block_size == 4 ? PySequence_GetItem(block, 3) : nullptr;
+        if (
+            offset_object == nullptr || size_object == nullptr || relocate_object == nullptr ||
+            (block_size == 4 && pointer_offsets_object == nullptr)
+        ) {
             Py_XDECREF(offset_object);
             Py_XDECREF(size_object);
             Py_XDECREF(relocate_object);
+            Py_XDECREF(pointer_offsets_object);
             Py_DECREF(block);
             Py_DECREF(sequence);
             return false;
@@ -74,14 +80,56 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
         Py_DECREF(relocate_object);
         Py_DECREF(block);
         if (PyErr_Occurred() != nullptr || relocate < 0) {
+            Py_XDECREF(pointer_offsets_object);
             Py_DECREF(sequence);
             return false;
         }
-        out.push_back(fivefury_native::resource::ResourceBlockSpan{
+        fivefury_native::resource::ResourceBlockSpan parsed{
             static_cast<std::uint64_t>(offset),
             static_cast<std::uint64_t>(size),
             relocate != 0,
-        });
+        };
+        if (block_size == 4) {
+            if (pointer_offsets_object != Py_None) {
+                PyObject* pointer_offsets = PySequence_Fast(
+                    pointer_offsets_object,
+                    "resource pointer offsets must be a sequence or None"
+                );
+                Py_DECREF(pointer_offsets_object);
+                if (pointer_offsets == nullptr) {
+                    Py_DECREF(sequence);
+                    return false;
+                }
+                const auto pointer_count = PySequence_Size(pointer_offsets);
+                if (pointer_count < 0) {
+                    Py_DECREF(pointer_offsets);
+                    Py_DECREF(sequence);
+                    return false;
+                }
+                parsed.has_explicit_pointer_offsets = true;
+                parsed.pointer_offsets.reserve(static_cast<std::size_t>(pointer_count));
+                for (Py_ssize_t pointer_index = 0; pointer_index < pointer_count; ++pointer_index) {
+                    PyObject* pointer_offset_object = PySequence_GetItem(pointer_offsets, pointer_index);
+                    if (pointer_offset_object == nullptr) {
+                        Py_DECREF(pointer_offsets);
+                        Py_DECREF(sequence);
+                        return false;
+                    }
+                    const auto pointer_offset = PyLong_AsUnsignedLongLong(pointer_offset_object);
+                    Py_DECREF(pointer_offset_object);
+                    if (PyErr_Occurred() != nullptr) {
+                        Py_DECREF(pointer_offsets);
+                        Py_DECREF(sequence);
+                        return false;
+                    }
+                    parsed.pointer_offsets.push_back(static_cast<std::uint64_t>(pointer_offset));
+                }
+                Py_DECREF(pointer_offsets);
+            } else {
+                Py_DECREF(pointer_offsets_object);
+            }
+        }
+        out.push_back(std::move(parsed));
     }
     Py_DECREF(sequence);
     return true;

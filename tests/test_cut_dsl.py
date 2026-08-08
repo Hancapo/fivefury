@@ -8,12 +8,14 @@ from fivefury import (
     CutSceneFlags,
     CutScreenFadePayload,
     CutScriptError,
-    cut_to_cutscript,
     GrassInstance,
     HashResolver,
     LightAttrDef,
     LodLight,
+    YcdCutsceneBuilder,
     YdrLight,
+    build_ycd_bytes,
+    cut_to_cutscript,
     parse_bound_material_names,
     parse_css_argb,
     parse_css_rgb,
@@ -24,9 +26,9 @@ from fivefury import (
     read_cut_scene,
     save_cut_as_cutscript,
     save_cutscript,
+    scene_to_cut,
 )
 from fivefury.ydr import YdrMeshInput, paint_mesh
-
 
 DSL_SAMPLE = """
 CUTSCENE "miku_test"
@@ -141,6 +143,16 @@ SAVE "miku_test.cut"
 """
 
 
+def _sample_ycds():
+    builder = YcdCutsceneBuilder.create("miku_test", duration=14.0)
+    builder.add_prop(
+        "miku_hatsune",
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    return builder.build_ycds()
+
+
 def test_cutscript_parses_video_editor_style_script() -> None:
     result = parse_cutscript(DSL_SAMPLE)
     scene = result.scene
@@ -160,6 +172,8 @@ def test_cutscript_parses_video_editor_style_script() -> None:
 
 def test_cutscript_writes_valid_cut_bytes() -> None:
     scene = parse_cutscript(DSL_SAMPLE).scene
+    for ycd in _sample_ycds():
+        scene.attach_clip_dict(ycd)
 
     cut = read_cut(scene.to_bytes())
 
@@ -210,11 +224,23 @@ def test_cutscript_writes_valid_cut_bytes() -> None:
 def test_cutscript_save_uses_script_save_path(tmp_path) -> None:
     script = tmp_path / "sample.cuts"
     script.write_text(DSL_SAMPLE, encoding="utf-8")
+    for ycd in _sample_ycds():
+        (tmp_path / ycd.path).write_bytes(build_ycd_bytes(ycd))
 
     output = save_cutscript(script)
 
     assert output == tmp_path / "miku_test.cut"
     assert output.is_file()
+
+
+def test_cutscript_rejects_animation_without_neighboring_ycd(tmp_path) -> None:
+    script = tmp_path / "sample.cuts"
+    script.write_text(DSL_SAMPLE, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="no attached YCD"):
+        save_cutscript(script)
+
+    assert not (tmp_path / "miku_test.cut").exists()
 
 
 def test_cutscript_reports_line_errors() -> None:
@@ -301,8 +327,23 @@ END
 
 def test_cut_can_export_to_cutscript_and_compile_back(tmp_path) -> None:
     scene = parse_cutscript(DSL_SAMPLE).scene
-    source_cut = scene.to_bytes(validate=False)
-    script = cut_to_cutscript(source_cut, save_path="roundtrip.cut")
+    source_cut = scene_to_cut(scene).to_bytes()
+    resolver = HashResolver()
+    for name in (
+        "miku_test",
+        "stage01",
+        "miku_hatsune",
+        "miku_pack",
+        "mic_01",
+        "stage_props",
+        "miku_test-0",
+    ):
+        resolver.register_name(name)
+    script = cut_to_cutscript(
+        source_cut,
+        save_path="roundtrip.cut",
+        resolver=resolver,
+    )
 
     assert "CUTSCENE" in script
     assert "TRACK CAMERA" in script
@@ -315,7 +356,9 @@ def test_cut_can_export_to_cutscript_and_compile_back(tmp_path) -> None:
 
     script_path = tmp_path / "roundtrip.cuts"
     script_path.write_text(script, encoding="utf-8")
-    output = save_cutscript(script_path, validate=False)
+    for ycd in _sample_ycds():
+        (tmp_path / ycd.path).write_bytes(build_ycd_bytes(ycd))
+    output = save_cutscript(script_path)
 
     assert output == tmp_path / "roundtrip.cut"
     assert read_cut_scene(output).duration == pytest.approx(scene.duration)
@@ -345,7 +388,7 @@ END
     resolver.register_name("sample-0")
 
     script = cut_to_cutscript(
-        scene.to_bytes(validate=False),
+        scene_to_cut(scene).to_bytes(),
         save_path="resolved.cut",
         resolver=resolver,
     )
@@ -357,9 +400,8 @@ END
 
 def test_save_cut_as_cutscript_resolves_hashes_from_sibling_files(tmp_path) -> None:
     cut_path = tmp_path / "sample.cut"
-    cut_path.write_bytes(
-        parse_cutscript(
-            """
+    scene = parse_cutscript(
+        """
 CUTSCENE sample
 DURATION 1
 ASSETS
@@ -371,8 +413,8 @@ TRACK LOAD
   0 MODELS prop
 END
 """
-        ).scene.to_bytes(validate=False)
-    )
+    ).scene
+    cut_path.write_bytes(scene_to_cut(scene).to_bytes())
     (tmp_path / "stage01.ydr").write_bytes(b"")
 
     script_path = save_cut_as_cutscript(cut_path)
@@ -382,7 +424,8 @@ END
 
 def test_save_cut_as_cutscript_writes_neighbor_file(tmp_path) -> None:
     cut_path = tmp_path / "sample.cut"
-    cut_path.write_bytes(parse_cutscript(DSL_SAMPLE).scene.to_bytes(validate=False))
+    scene = parse_cutscript(DSL_SAMPLE).scene
+    cut_path.write_bytes(scene_to_cut(scene).to_bytes())
 
     script_path = save_cut_as_cutscript(cut_path)
 

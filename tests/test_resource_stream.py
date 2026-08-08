@@ -7,8 +7,11 @@ import pytest
 
 from fivefury.resource import (
     RSC7_MAGIC,
+    ResourceBlockSpan,
+    ResourceWriter,
     decompress_resource_stream,
     get_resource_flags_from_size,
+    layout_resource_sections,
     parse_rsc7,
 )
 
@@ -39,3 +42,44 @@ def test_resource_stream_rejects_trailing_data():
 
     with pytest.raises(ValueError, match="trailing data"):
         decompress_resource_stream(compressed + b"extra")
+
+
+def test_resource_layout_relocates_only_declared_pointer_fields():
+    data = bytearray(0x140)
+    address_shaped_scalar = 0x50000020
+    struct.pack_into("Q", data, 0x00, address_shaped_scalar)
+    struct.pack_into("Q", data, 0x08, 0x50000020)
+
+    system, _, _, _ = layout_resource_sections(
+        data,
+        [
+            ResourceBlockSpan(0x00, 0x20, pointer_offsets=(0x08,)),
+            ResourceBlockSpan(0x40, 0x100, relocate_pointers=False),
+            ResourceBlockSpan(0x20, 0x20, relocate_pointers=False),
+        ],
+        version=46,
+    )
+
+    assert struct.unpack_from("Q", system, 0x00)[0] == address_shaped_scalar
+    assert struct.unpack_from("Q", system, 0x08)[0] == 0x50000120
+
+
+def test_resource_layout_rejects_invalid_declared_pointer():
+    data = bytearray(0x20)
+    struct.pack_into("Q", data, 0x08, 0x50001000)
+
+    with pytest.raises(ValueError, match="does not target a resource block"):
+        layout_resource_sections(
+            data,
+            [ResourceBlockSpan(0x00, 0x20, pointer_offsets=(0x08,))],
+            version=46,
+        )
+
+
+def test_resource_writer_can_require_explicit_pointer_fields():
+    writer = ResourceWriter(0x10)
+    with pytest.raises(ValueError, match="does not declare its pointer fields"):
+        writer.require_explicit_pointer_fields()
+
+    classified = ResourceWriter(0x10, initial_pointer_offsets=())
+    classified.require_explicit_pointer_fields()
