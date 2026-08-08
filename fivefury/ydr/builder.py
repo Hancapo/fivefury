@@ -93,7 +93,7 @@ def _relocate_embedded_texture_dictionary(
         if value:
             output[dict_offset + relative_offset : dict_offset + relative_offset + 8] = (value + physical_delta).to_bytes(8, 'little')
 
-    add_virtual_ptr(0x08)
+    output[dict_offset + 0x08 : dict_offset + 0x10] = b'\0' * 8
     add_virtual_ptr(0x20)
     add_virtual_ptr(0x30)
     for index in range(count):
