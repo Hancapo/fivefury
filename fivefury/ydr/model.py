@@ -1487,9 +1487,19 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
                     YdrValidationIssue("error", "missing_shader_file", f"Material '{material.name or material.index}' has no shader file name", context=f"material:{material.index}")
                 )
             for parameter in material.parameters:
-                if parameter.is_texture and parameter.texture is None:
+                legacy_parameter = (
+                    material.shader_definition.get_parameter(parameter.name)
+                    if material.shader_definition is not None
+                    else None
+                )
+                if (
+                    parameter.is_texture
+                    and parameter.texture is None
+                    and legacy_parameter is not None
+                    and legacy_parameter.is_texture
+                ):
                     issues.append(
-                        YdrValidationIssue("warning", "unbound_texture_slot", f"Material '{material.name or material.index}' leaves texture slot '{parameter.name}' empty", context=f"material:{material.index}")
+                        YdrValidationIssue("info", "unbound_texture_slot", f"Material '{material.name or material.index}' leaves optional texture slot '{parameter.name}' empty", context=f"material:{material.index}")
                     )
                 if parameter.is_texture and parameter.texture is not None and embedded_names and parameter.texture.name.lower() not in embedded_names:
                     issues.append(
