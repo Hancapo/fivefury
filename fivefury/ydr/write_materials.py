@@ -218,8 +218,15 @@ def prepare_materials(
         shader_definition, shader_file_name, resolved_render_bucket = resolve_shader(material.shader, int(material.render_bucket), shader_library)
         normalized_textures = normalize_material_textures(material.textures)
         valid_texture_slots = {parameter.name.lower(): parameter for parameter in shader_definition.texture_parameters}
-        for slot_name in normalized_textures:
+        for slot_name, texture in tuple(normalized_textures.items()):
             if slot_name.lower() not in valid_texture_slots:
+                if texture is None:
+                    # Gen9 shader definitions can expose optional resource slots
+                    # that have no legacy equivalent.  An unbound slot carries no
+                    # resource to migrate and must not make a Gen9-to-legacy
+                    # round-trip fail.
+                    normalized_textures.pop(slot_name)
+                    continue
                 raise ValueError(
                     f"Material '{material.name}' uses texture slot '{slot_name}' which is not defined by shader '{shader_file_name}'"
                 )

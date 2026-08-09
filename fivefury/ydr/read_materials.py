@@ -333,6 +333,23 @@ def parse_material_gen9(
             if parameter_name is None:
                 parameter_name = f'hash_{parameter_hash:08X}' if parameter_hash else f'param_{param_index}'
             legacy_parameter_definition = shader_definition.get_parameter(parameter_name) if shader_definition is not None else None
+            if kind == int(ShaderParamTypeG9.TEXTURE):
+                if legacy_parameter_definition is not None and not legacy_parameter_definition.is_texture:
+                    legacy_parameter_definition = None
+                parameter_type_name = "Texture"
+            elif kind == int(ShaderParamTypeG9.CBUFFER):
+                if legacy_parameter_definition is not None and legacy_parameter_definition.is_texture:
+                    legacy_parameter_definition = None
+                parameter_type_name = (
+                    legacy_parameter_definition.type_name if legacy_parameter_definition is not None else None
+                )
+            else:
+                # Gen9 sampler-state and unknown resources are distinct from texture
+                # resources even when their names differ only by case.  The legacy
+                # shader library is case-insensitive, so carrying its metadata across
+                # kinds would turn e.g. ``diffusesampler`` into ``DiffuseSampler``.
+                legacy_parameter_definition = None
+                parameter_type_name = None
 
             texture_ref = None
             value = None
@@ -375,7 +392,7 @@ def parse_material_gen9(
                 YdrMaterialParameterRef(
                     name=parameter_name,
                     name_hash=parameter_hash,
-                    type_name=legacy_parameter_definition.type_name if legacy_parameter_definition is not None else None,
+                    type_name=parameter_type_name,
                     subtype=legacy_parameter_definition.subtype if legacy_parameter_definition is not None else None,
                     uv_index=legacy_parameter_definition.uv_index if legacy_parameter_definition is not None else None,
                     count=legacy_parameter_definition.count if legacy_parameter_definition is not None else 1,

@@ -1371,6 +1371,56 @@ def test_build_and_read_ydr_gen9_accepts_native_texture_slot_names(tmp_path: Pat
     assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.1, 0.2, 0.3, 1.0))
 
 
+def test_read_ydr_gen9_keeps_sampler_state_distinct_from_texture_resource(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[
+            YdrMaterialInput(
+                name="main",
+                shader="default.sps",
+                textures={"DiffuseSampler": "bound_diffuse"},
+            )
+        ],
+        version=159,
+        name="gen9_sampler_kind",
+    )
+
+    ydr_path = tmp_path / "gen9_sampler_kind.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+    material = ydr.materials[0]
+
+    texture_resource = next(parameter for parameter in material.parameters if parameter.name == "DiffuseSampler")
+    sampler_state = next(parameter for parameter in material.parameters if parameter.name == "diffusesampler")
+
+    assert texture_resource.is_texture
+    assert texture_resource.texture is not None
+    assert texture_resource.texture.name == "bound_diffuse"
+    assert not sampler_state.is_texture
+    assert sampler_state.value is not None
+    assert not any(
+        issue.code == "unbound_texture_slot" and "'diffusesampler'" in issue.message
+        for issue in ydr.validate()
+    )
+
+
+def test_validate_ydr_gen9_treats_null_texture_resource_as_informational(tmp_path: Path) -> None:
+    build = YdrBuild(
+        lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
+        materials=[YdrMaterialInput(name="main", shader="default.sps")],
+        version=159,
+        name="gen9_optional_texture",
+    )
+
+    ydr_path = tmp_path / "gen9_optional_texture.ydr"
+    build.save(ydr_path)
+    ydr = read_ydr(ydr_path)
+
+    issue = next(issue for issue in ydr.validate() if issue.code == "unbound_texture_slot")
+    assert issue.severity == "info"
+    assert "DiffuseSampler" in issue.message
+
+
 def test_build_and_read_ydr_gen9_accepts_shader_enum(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},

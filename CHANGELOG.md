@@ -7,6 +7,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- Enhanced sampler-state parameters no longer inherit colliding legacy texture metadata.
+- YDR validation reports genuinely null optional texture slots as informational instead of warnings.
+- Gen9-to-legacy drawable conversion ignores unbound Gen9-only texture resources.
+
 ## [0.3.9] - 2026-08-08
 
 ### Added
