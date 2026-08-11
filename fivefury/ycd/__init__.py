@@ -44,7 +44,7 @@ from .model import (
     get_ycd_track_format,
     parse_ycd_uv_clip_binding,
 )
-from .reader import read_ycd
+from .reader import read_ycd, read_ycd_embedded_resource
 from .runtime_headers import (
     GEN9_YCD_RUNTIME_PROFILE,
     LEGACY_YCD_RUNTIME_PROFILE,
@@ -52,7 +52,7 @@ from .runtime_headers import (
     YcdRuntimeProfile,
     get_ycd_runtime_profile,
 )
-from .write import build_ycd_bytes, save_ycd
+from .write import build_ycd_bytes, build_ycd_embedded_resource, save_ycd
 
 __all__ = [
     "Ycd",
@@ -103,6 +103,8 @@ __all__ = [
     "YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT",
     "YCD_CUTSCENE_DEFAULT_VERSION",
     "build_ycd_bytes",
+    "build_ycd_embedded_resource",
     "read_ycd",
+    "read_ycd_embedded_resource",
     "save_ycd",
 ]

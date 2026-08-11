@@ -4,6 +4,10 @@ import struct
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..ycd import Ycd
 
 from ..hashing import jenk_hash
 from ..metahash import HashLike, MetaHash, coerce_meta_hash
@@ -25,6 +29,7 @@ from .constants import (
     awc_chunk_name,
     chunk_alignment,
     chunk_sort_order,
+    is_lipsync_chunk_type,
 )
 
 
@@ -237,6 +242,9 @@ class AwcChunk:
     peaks: list[int] | None = None
     seek_table: list[int] | None = None
     seek_table_entry_size: int = 4
+    lipsync: Ycd | None = None
+    lipsync_error: str | None = None
+    lipsync_dirty: bool = False
 
     @classmethod
     def from_info(
@@ -286,6 +294,13 @@ class AwcChunk:
                 if data
                 else []
             )
+        elif is_lipsync_chunk_type(info.type_value) and data:
+            from ..ycd import read_ycd_embedded_resource
+
+            try:
+                chunk.lipsync = read_ycd_embedded_resource(data)
+            except (IndexError, ValueError, struct.error) as exc:
+                chunk.lipsync_error = str(exc)
         return chunk
 
     @property
@@ -309,6 +324,17 @@ class AwcChunk:
         return chunk_sort_order(self.type_value)
 
     def to_payload(self, endian: str = "<") -> bytes:
+        if (
+            is_lipsync_chunk_type(self.type_value)
+            and self.lipsync is not None
+            and (self.lipsync_dirty or not self.data)
+        ):
+            from ..ycd import build_ycd_embedded_resource
+            from .lipsync import require_valid_awc_lipsync
+
+            return build_ycd_embedded_resource(
+                require_valid_awc_lipsync(self.lipsync)
+            )
         if self.type_value == int(AwcChunkType.FORMAT) and self.format is not None:
             return self.format.to_bytes(endian)
         if (
@@ -422,6 +448,57 @@ class AwcStream:
             if chunk.type_value == int(AwcChunkType.DATA):
                 return chunk
         return None
+
+    @property
+    def lipsync_chunks(self) -> list[AwcChunk]:
+        return [
+            chunk
+            for chunk in self.chunks
+            if is_lipsync_chunk_type(chunk.type_value)
+        ]
+
+    @property
+    def lipsync_chunk(self) -> AwcChunk | None:
+        return next(iter(self.lipsync_chunks), None)
+
+    @property
+    def lipsync(self) -> Ycd | None:
+        chunk = self.lipsync_chunk
+        return chunk.lipsync if chunk is not None else None
+
+    def set_lipsync(
+        self,
+        lipsync: Ycd,
+        *,
+        kind: AwcChunkType | int = AwcChunkType.LIPSYNC64,
+    ) -> AwcChunk:
+        from ..ycd import Ycd
+
+        if not isinstance(lipsync, Ycd):
+            raise TypeError(f"expected Ycd, got {type(lipsync).__name__}")
+        if not is_lipsync_chunk_type(kind):
+            raise ValueError(f"AWC chunk type {int(kind):#04x} is not lipsync data")
+        from .lipsync import require_valid_awc_lipsync
+
+        require_valid_awc_lipsync(lipsync)
+        existing = self.lipsync_chunk
+        if existing is None:
+            existing = AwcChunk(kind)
+            self.chunks.append(existing)
+        else:
+            existing.type = kind
+        existing.lipsync = lipsync
+        existing.lipsync_error = None
+        existing.lipsync_dirty = True
+        existing.data = b""
+        return existing
+
+    def clear_lipsync(self) -> None:
+        self.chunks[:] = [
+            chunk
+            for chunk in self.chunks
+            if not is_lipsync_chunk_type(chunk.type_value)
+        ]
 
     @property
     def codec(self) -> AwcCodecType | None:

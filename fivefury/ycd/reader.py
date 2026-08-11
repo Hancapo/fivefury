@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 from ..binary import f32 as _f32
@@ -11,6 +12,7 @@ from ..common import clip_short_name
 from ..metahash import MetaHash
 from ..resolver import register_name
 from ..resource import (
+    ResourceHeader,
     checked_virtual_offset,
     read_virtual_pointer_array,
     split_rsc7_sections,
@@ -480,11 +482,13 @@ class _YcdReader:
         return clip_map
 
 
-def read_ycd(source: bytes | str | Path, *, path: str | Path | None = None) -> Ycd:
-    if isinstance(source, (str, Path)):
-        path = source
-        source = Path(source).read_bytes()
-    header, system_data, graphics_data = split_rsc7_sections(bytes(source))
+def _read_ycd_sections(
+    header: ResourceHeader,
+    system_data: bytes,
+    graphics_data: bytes,
+    *,
+    path: str | Path | None = None,
+) -> Ycd:
     if graphics_data:
         raise ValueError("graphics-backed YCD resources are not supported yet")
 
@@ -527,4 +531,39 @@ def read_ycd(source: bytes | str | Path, *, path: str | Path | None = None) -> Y
     )
 
 
-__all__ = ["read_ycd"]
+def read_ycd(source: bytes | str | Path, *, path: str | Path | None = None) -> Ycd:
+    if isinstance(source, (str, Path)):
+        path = source
+        source = Path(source).read_bytes()
+    header, system_data, graphics_data = split_rsc7_sections(bytes(source))
+    return _read_ycd_sections(
+        header,
+        system_data,
+        graphics_data,
+        path=path,
+    )
+
+
+def read_ycd_embedded_resource(
+    source: bytes | bytearray | memoryview,
+    *,
+    path: str | Path | None = None,
+) -> Ycd:
+    data = bytes(source)
+    if len(data) < 16 or data[:4] != b"RSC7":
+        raise ValueError("embedded YCD data must begin with an RSC7 header")
+    _magic, version, system_flags, graphics_flags = struct.unpack_from(
+        "<IIII", data
+    )
+    header = ResourceHeader(version, system_flags, graphics_flags)
+    if header.graphics_size:
+        raise ValueError("graphics-backed embedded YCD resources are not supported")
+    system_data = data[16:]
+    if len(system_data) < 0x40:
+        raise ValueError("embedded YCD system data is truncated")
+    if len(system_data) > header.system_size:
+        system_data = system_data[: header.system_size]
+    return _read_ycd_sections(header, system_data, b"", path=path)
+
+
+__all__ = ["read_ycd", "read_ycd_embedded_resource"]
