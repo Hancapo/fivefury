@@ -6,9 +6,19 @@ from .models import (
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
 )
+from .runtime import (
+    CutsceneResolutionCancellation,
+    CutsceneResolutionCancelled,
+    CutsceneResolutionSpan,
+    CutsceneResolutionTrace,
+)
 
 __all__ = [
     "CutsceneAssetBundle",
+    "CutsceneResolutionCancellation",
+    "CutsceneResolutionCancelled",
+    "CutsceneResolutionSpan",
+    "CutsceneResolutionTrace",
     "CutsceneResolveIssue",
     "ResolvedCutAudio",
     "ResolvedCutBinding",

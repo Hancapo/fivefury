@@ -8,6 +8,10 @@ from ...gamefile import GameFile, GameFileType
 from ..scene import CutScene
 from .common import _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutSubtitleDictionary
+from .runtime import (
+    CutsceneResolutionCancellation,
+    check_cutscene_resolution_cancelled,
+)
 from .values import field_reference, subtitle_hash
 
 if TYPE_CHECKING:
@@ -88,9 +92,11 @@ def _resolve_subtitle_dictionaries(
     issues: list[CutsceneResolveIssue],
     *,
     language: str,
+    cancellation: CutsceneResolutionCancellation | None = None,
 ) -> dict[str | int, ResolvedCutSubtitleDictionary]:
     result: dict[str | int, ResolvedCutSubtitleDictionary] = {}
     for reference, expected_hashes in _subtitle_requests(scene).items():
+        check_cutscene_resolution_cancelled(cancellation)
         candidates = _subtitle_candidates(cache, reference, language=language)
         if not candidates:
             issues.append(
@@ -108,6 +114,7 @@ def _resolve_subtitle_dictionaries(
         loaded: dict[int, GameFile] = {}
         groups: dict[str, list[AssetRecord]] = {}
         for asset in candidates:
+            check_cutscene_resolution_cancelled(cancellation)
             try:
                 game_file = cache.load_asset(asset)
             except Exception as exc:  # noqa: BLE001 - candidate selection is best effort

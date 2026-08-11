@@ -1,4 +1,10 @@
 from .analysis import analyze_cut
+from .audit import (
+    CutsceneAuditEntry,
+    CutsceneAuditReport,
+    audit_cutscene_resolution,
+    benchmark_cutscene_resolution,
+)
 from .dsl import (
     CutScriptError,
     CutScriptHashResolver,
@@ -70,6 +76,10 @@ from .pso import read_cut
 from .resolve import (
     CutsceneAssetBundle,
     CutsceneResolveIssue,
+    CutsceneResolutionCancellation,
+    CutsceneResolutionCancelled,
+    CutsceneResolutionSpan,
+    CutsceneResolutionTrace,
     ResolvedCutAudio,
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
@@ -123,6 +133,8 @@ from .xml import read_cutxml
 
 __all__ = [
     "analyze_cut",
+    "audit_cutscene_resolution",
+    "benchmark_cutscene_resolution",
     "build_cut_bytes",
     "build_subtitle_gxt2",
     "CutAssetManager",
@@ -181,7 +193,13 @@ __all__ = [
     "CutScene",
     "CutsceneAssets",
     "CutsceneAssetBundle",
+    "CutsceneAuditEntry",
+    "CutsceneAuditReport",
     "CutsceneResolveIssue",
+    "CutsceneResolutionCancellation",
+    "CutsceneResolutionCancelled",
+    "CutsceneResolutionSpan",
+    "CutsceneResolutionTrace",
     "CutsceneProject",
     "CutSceneValidationError",
     "CutSceneValidationIssue",
