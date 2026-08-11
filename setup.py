@@ -10,6 +10,8 @@ ext_modules = [
         [
             "native/py_bindings.cpp",
             "native/py_awc.cpp",
+            "native/py_yed.cpp",
+            "native/yed_vm.cpp",
             "native/py_bounds.cpp",
             "native/py_resource.cpp",
             "native/bounds_algorithms.cpp",

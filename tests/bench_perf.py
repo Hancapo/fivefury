@@ -21,16 +21,23 @@ from pathlib import Path
 
 import pytest
 
+from fivefury.cache import GameFileCache
+from fivefury.gamefile import guess_game_file_type
 from fivefury.hashing import jenk_hash
+from fivefury.meta import MetaBuilder
 from fivefury.metahash import MetaHash
 from fivefury.resolver import clear_hash_resolver, register_name, resolve_hash
-from fivefury.meta import MetaBuilder
-from fivefury.ymap import Ymap, Entity
-from fivefury.ytyp import Ytyp, Archetype
 from fivefury.rpf import create_rpf
-from fivefury.gamefile import guess_game_file_type
-from fivefury.cache import GameFileCache
-
+from fivefury.yed import (
+    YedExpression,
+    YedInstruction,
+    YedInstructionType,
+    YedStream,
+    create_yed,
+    evaluate_yed,
+)
+from fivefury.ymap import Entity, Ymap
+from fivefury.ytyp import Archetype, Ytyp
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -444,7 +451,7 @@ class TestGameCacheRealPerf:
             cache.scan(use_index_cache=False)
             assert cache.scan_ok
             assert cache.asset_count > 100_000
-        result = benchmark.pedantic(run, rounds=3, warmup_rounds=0)
+        benchmark.pedantic(run, rounds=3, warmup_rounds=0)
 
     @skip_no_gta
     def test_scan_game_cached(self, benchmark):
@@ -488,5 +495,33 @@ class TestGameCacheRealPerf:
                 jenk_hash(name)
         benchmark.pedantic(run, rounds=5, warmup_rounds=1)
 
+
+# ---------------------------------------------------------------------------
+# 14. YED facial VM - compiled execution hot path
+# ---------------------------------------------------------------------------
+
+class TestYedVmPerf:
+    def test_evaluate_3600_instructions(self, benchmark):
+        instructions = []
+        for _ in range(1800):
+            instructions.append(YedInstruction(YedInstructionType.PUSH1))
+            instructions.append(YedInstruction(YedInstructionType.POP))
+        instructions.append(YedInstruction(YedInstructionType.END))
+        expression = YedExpression.create("benchmark")
+        expression.streams = [
+            YedStream(
+                name_hash=MetaHash(jenk_hash("main")),
+                depth=1,
+                data1=b"",
+                data2=b"",
+                data3=b"",
+                instructions=instructions,
+            )
+        ]
+        yed = create_yed(expression)
+        names = ("benchmark",)
+        evaluate_yed(yed, names, {})
+        benchmark.extra_info["instruction_count"] = len(instructions)
+        benchmark(evaluate_yed, yed, names, {})
 
 

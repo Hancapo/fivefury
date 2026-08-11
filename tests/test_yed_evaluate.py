@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 import math
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -322,6 +324,77 @@ def test_variables_persist_only_through_explicit_caller_state() -> None:
     assert state[(variable_hash, 0)] == pytest.approx((0.75, 0.75, 0.75, 0.75))
     assert persisted.variables == state
     assert isolated.variables == {}
+
+
+def test_track_input_coercion_matches_the_public_vector_rules() -> None:
+    expression = YedExpression.create("coercion")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.TRACK_GET, bone_id=1, track=0),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=10, track=0),
+            _instruction(YedInstructionType.TRACK_GET, bone_id=2, track=0),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=20, track=0),
+            _instruction(YedInstructionType.TRACK_GET, bone_id=3, track=0),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=30, track=0),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+
+    result = evaluate_yed(
+        create_yed(expression),
+        ("coercion",),
+        {(1, 0): 2.0, (2, 0): (3.0,), (3, 0): (4.0, 5.0, 6.0)},
+    )
+
+    assert result.output_tracks[(10, 0)] == (2.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(20, 0)] == (3.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(30, 0)] == (4.0, 5.0, 6.0, 0.0)
+
+
+def test_compiled_program_is_reused_and_invalidated_by_stream_replacement() -> None:
+    evaluator = importlib.import_module("fivefury.yed.evaluate")
+    evaluator._PROGRAM_CACHE.clear()
+    expression = YedExpression.create("cached")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.PUSH1),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=1, track=0),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+    yed = create_yed(expression)
+
+    evaluate_yed(yed, ("cached",), {})
+    first = next(iter(evaluator._PROGRAM_CACHE.values())).program
+    evaluate_yed(yed, ("cached",), {})
+    assert next(iter(evaluator._PROGRAM_CACHE.values())).program is first
+
+    expression.streams[0].instructions = list(expression.streams[0].instructions)
+    evaluate_yed(yed, ("cached",), {})
+    assert next(iter(evaluator._PROGRAM_CACHE.values())).program is not first
+
+
+def test_compiled_program_can_evaluate_concurrent_frames() -> None:
+    expression = YedExpression.create("parallel")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.TRACK_GET, bone_id=1, track=0),
+            _instruction(YedInstructionType.PUSH_FLOAT, value=2.0),
+            _instruction(YedInstructionType.VECTOR_MUL),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=2, track=0),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+    yed = create_yed(expression)
+
+    def run(value: float) -> tuple[float, float, float, float]:
+        result = evaluate_yed(yed, ("parallel",), {(1, 0): value})
+        return result.output_tracks[(2, 0)]
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        values = list(executor.map(run, (float(index) for index in range(64))))
+
+    assert values == [(float(index * 2), 0.0, 0.0, 0.0) for index in range(64)]
 
 
 def _blend_operands(multiplier: float) -> dict[str, object]:

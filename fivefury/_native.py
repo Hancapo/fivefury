@@ -158,6 +158,28 @@ class NativeCryptoContext:
         )
 
 
+class NativeYedProgram:
+    __slots__ = ("_capsule",)
+
+    def __init__(self, expressions: tuple[object, ...], defaults: tuple[object, ...]) -> None:
+        self._capsule = _ffi.yed_compile(expressions, defaults)
+
+    def evaluate(
+        self,
+        tracks: object,
+        variables: object,
+        time: float,
+        delta_time: float,
+    ) -> tuple[dict, dict, dict, list]:
+        return _ffi.yed_evaluate(
+            self._capsule,
+            tracks,
+            variables,
+            float(time),
+            float(delta_time),
+        )
+
+
 def crypto_magic_mask(seed: int, length: int, rounds: int = 4) -> bytes:
     return _ffi.crypto_magic_mask(int(seed), int(length), int(rounds))
 

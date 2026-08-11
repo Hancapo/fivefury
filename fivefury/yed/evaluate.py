@@ -1,34 +1,18 @@
 from __future__ import annotations
 
-import math
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..vector import (
-    Vector4,
-    quat_from_euler_xyz,
-    quat_from_euler_xyz_raw,
-    quat_inverse,
-    quat_multiply,
-    quat_multiply_raw,
-    quat_nlerp,
-    quat_normalize,
-    quat_rotate_vector,
-    quat_to_euler_xyz,
-    vec4_map,
-    vec4_map2,
-)
-from .enums import YedInstructionType, YedTrackFormat
+from .._native import NativeYedProgram
+from ..vector import Vector4
+from .enums import YedInstructionType
 
 DofKey = tuple[int, int]
 VariableKey = tuple[int, int]
 
-_LINEAR_BLEND_CACHE_LIMIT = 2048
-_LINEAR_BLEND_CACHE: OrderedDict[tuple[int, int], tuple[Any, Any, tuple[Any, ...]]] = (
-    OrderedDict()
-)
+_PROGRAM_CACHE_LIMIT = 64
 
 
 @dataclass(slots=True, frozen=True)
@@ -49,150 +33,66 @@ class YedEvaluationResult:
     issues: list[YedEvaluationIssue] = field(default_factory=list)
 
 
-def _v(value: object, *, scalar: bool = False) -> Vector4:
+@dataclass(slots=True)
+class _CachedProgram:
+    yed: Any
+    skeleton: Any
+    names: tuple[str | int, ...]
+    signature: tuple[Any, ...]
+    program: NativeYedProgram
+
+
+_PROGRAM_CACHE: OrderedDict[tuple[int, int, tuple[str | int, ...]], _CachedProgram] = (
+    OrderedDict()
+)
+
+_TRACK_OPERATIONS = {
+    YedInstructionType.TRACK_GET,
+    YedInstructionType.TRACK_GET_COMP,
+    YedInstructionType.TRACK_GET_OFFSET,
+    YedInstructionType.TRACK_GET_OFFSET_COMP,
+    YedInstructionType.TRACK_GET_BONE_TRANSFORM,
+    YedInstructionType.TRACK_VALID,
+    YedInstructionType.UNKNOWN_23,
+    YedInstructionType.TRACK_SET,
+    YedInstructionType.TRACK_SET_COMP,
+    YedInstructionType.TRACK_SET_OFFSET,
+    YedInstructionType.TRACK_SET_OFFSET_COMP,
+    YedInstructionType.TRACK_SET_BONE_TRANSFORM,
+}
+_VARIABLE_OPERATIONS = {
+    YedInstructionType.GET_VARIABLE,
+    YedInstructionType.SET_VARIABLE,
+}
+_JUMP_OPERATIONS = {
+    YedInstructionType.JUMP,
+    YedInstructionType.JUMP_IF_FALSE,
+    YedInstructionType.JUMP_IF_TRUE,
+}
+_BLEND_OPERATIONS = {
+    YedInstructionType.BLEND_VECTOR,
+    YedInstructionType.BLEND_QUATERNION,
+}
+
+
+def _v(value: object) -> Vector4:
     if isinstance(value, (int, float)):
-        number = float(value)
-        return (number, number, number, number) if scalar else (number, 0.0, 0.0, 0.0)
+        return float(value), 0.0, 0.0, 0.0
     values = tuple(float(item) for item in value)  # type: ignore[arg-type]
     if len(values) >= 4:
         return values[:4]  # type: ignore[return-value]
     if len(values) == 3:
         return values[0], values[1], values[2], 0.0
     if len(values) == 1:
-        return _v(values[0], scalar=scalar)
-    return (0.0, 0.0, 0.0, 0.0)
+        return values[0], 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0
 
 
-def _quat_rotate(vector: Vector4, rotation: Vector4) -> Vector4:
-    rotated = quat_rotate_vector(rotation, vector[:3])
-    return (*rotated, vector[3])
-
-
-class _Frame:
-    def __init__(self, tracks: Mapping[DofKey, object], skeleton: object | None):
-        self.tracks = {key: _v(value) for key, value in tracks.items()}
-        self.outputs: dict[DofKey, Vector4] = {}
-        self.defaults: dict[DofKey, Vector4] = {}
-        self.bones = {
-            int(getattr(bone, "tag", -1)): bone
-            for bone in getattr(skeleton, "bones", ())
-        }
-
-    def default(self, key: DofKey) -> Vector4:
-        cached = self.defaults.get(key)
-        if cached is not None:
-            return cached
-        bone_id, track = key
-        bone = self.bones.get(bone_id)
-        if bone is not None and track == 0:
-            value = _v(getattr(bone, "translation", (0.0, 0.0, 0.0)))
-        elif bone is not None and track == 1:
-            value = _v(getattr(bone, "rotation", (0.0, 0.0, 0.0, 1.0)))
-        elif bone is not None and track == 2:
-            value = _v(getattr(bone, "scale", (1.0, 1.0, 1.0)))
-        elif track in (37, 38):
-            value = (1.0, 1.0, 1.0, 0.0)
-        else:
-            value = (0.0, 0.0, 0.0, 1.0)
-        self.defaults[key] = value
-        return value
-
-    def get(self, key: DofKey, force_default: bool = False) -> Vector4:
-        if not force_default and key in self.tracks:
-            return self.tracks[key]
-        return self.default(key)
-
-    def get_component(
-        self, key: DofKey, component: int, format_value: int, force_default: bool
-    ) -> Vector4:
-        value = self.get(key, force_default)
-        if int(format_value) == int(YedTrackFormat.QUATERNION):
-            value = (*quat_to_euler_xyz(value), 0.0)
-        component = min(max(int(component), 0), 3)
-        return _v(value[component], scalar=True)
-
-    def get_relative(self, key: DofKey, force_default: bool = False) -> Vector4:
-        if force_default or key not in self.tracks:
-            return (0.0, 0.0, 0.0, 1.0)
-        current = self.tracks[key]
-        default = self.default(key)
-        if key[1] == 1 and key[0] in self.bones:
-            return quat_multiply(quat_inverse(default), current)
-        if key[1] in (0, 2) and key[0] in self.bones:
-            return vec4_map2(current, default, lambda left, right: left - right)
-        return (0.0, 0.0, 0.0, 1.0)
-
-    def get_relative_component(
-        self, key: DofKey, component: int, format_value: int, force_default: bool
-    ) -> Vector4:
-        value = self.get_relative(key, force_default)
-        if int(format_value) == int(YedTrackFormat.QUATERNION):
-            value = (*quat_to_euler_xyz(value), 0.0)
-        component = min(max(int(component), 0), 3)
-        return _v(value[component], scalar=True)
-
-    def set(self, key: DofKey, value: Vector4) -> None:
-        self.tracks[key] = value
-        self.outputs[key] = value
-
-    def set_relative(self, key: DofKey, value: Vector4) -> None:
-        default = self.default(key)
-        if key[1] == 1 and key[0] in self.bones:
-            value = quat_multiply(default, value)
-        elif key[1] in (0, 2) and key[0] in self.bones:
-            value = vec4_map2(default, value, lambda left, right: left + right)
-        self.set(key, value)
-
-    def set_component(
-        self, key: DofKey, component: int, format_value: int, scalar: float
-    ) -> None:
-        current = list(self.get(key))
-        component = min(max(int(component), 0), 3)
-        if int(format_value) == int(YedTrackFormat.QUATERNION):
-            euler = list(quat_to_euler_xyz(tuple(current)))
-            euler[component] = scalar
-            self.set(key, quat_from_euler_xyz(tuple(euler)))
-            return
-        current[component] = scalar
-        self.set(key, tuple(current))  # type: ignore[arg-type]
-
-    def set_relative_component(
-        self, key: DofKey, component: int, format_value: int, scalar: float
-    ) -> None:
-        default = self.default(key)
-        if key[0] not in self.bones or key[1] not in (0, 1, 2):
-            return
-        component = min(max(int(component), 0), 3)
-        if key[1] == 1 or int(format_value) == int(YedTrackFormat.QUATERNION):
-            current_relative = list(
-                quat_to_euler_xyz(
-                    quat_multiply(quat_inverse(default), self.get(key))
-                )
-            )
-            default_euler = quat_to_euler_xyz(default)
-            current_relative[component] = scalar + default_euler[component]
-            self.set(
-                key,
-                quat_multiply(default, quat_from_euler_xyz(tuple(current_relative))),
-            )
-            return
-        current = list(self.get(key))
-        current[component] = scalar + default[component]
-        self.set(key, tuple(current))  # type: ignore[arg-type]
-
-
-def _compile_linear_blend(
-    expression: Any, operands: Mapping[str, Any]
-) -> tuple[Any, ...]:
-    cache_key = (id(expression), id(operands))
-    cached = _LINEAR_BLEND_CACHE.get(cache_key)
-    if cached is not None and cached[0] is expression and cached[1] is operands:
-        _LINEAR_BLEND_CACHE.move_to_end(cache_key)
-        return cached[2]
+def _compile_blend(expression: Any, operands: Mapping[str, Any]) -> tuple[Any, ...]:
     sources = list(operands.get("source_infos", ()))
     values = list(operands.get("values", ()))
     interval_count = max(int(operands.get("num_source_weights", 1)), 1)
-    compiled: list[Any] = []
+    compiled = []
     value_index = 0
     for group_start in range(0, len(sources), 4):
         group = sources[group_start : group_start + 4]
@@ -208,8 +108,8 @@ def _compile_linear_blend(
             if not 0 <= track_index < len(expression.tracks):
                 continue
             track = expression.tracks[track_index]
-            component = max(0, int(source.get("component_offset", 0)) // 4)
-            axes: list[Any] = []
+            component = min(max(int(source.get("component_offset", 0)) // 4, 0), 3)
+            axes = []
             for axis in range(3):
                 intervals = tuple(
                     (
@@ -228,323 +128,183 @@ def _compile_linear_blend(
                 )
             compiled.append(
                 (
-                    (int(track.bone_id), int(track.track)),
-                    min(component, 3),
+                    int(track.bone_id),
+                    int(track.track),
+                    component,
                     tuple(axes),
                 )
             )
-    result = tuple(compiled)
-    _LINEAR_BLEND_CACHE[cache_key] = (expression, operands, result)
-    _LINEAR_BLEND_CACHE.move_to_end(cache_key)
-    while len(_LINEAR_BLEND_CACHE) > _LINEAR_BLEND_CACHE_LIMIT:
-        _LINEAR_BLEND_CACHE.popitem(last=False)
-    return result
+    return tuple(compiled)
 
 
-def _linear_blend(
-    expression: Any,
-    operands: Mapping[str, Any],
-    frame: _Frame,
-    *,
-    quaternion: bool,
-) -> Vector4:
-    result = (0.0, 0.0, 0.0, 1.0) if quaternion else (0.0, 0.0, 0.0, 0.0)
-    for key, component, axes in _compile_linear_blend(expression, operands):
-        input_value = frame.get(key)[component]
-        partial = []
-        for multiplier, additive, intervals in axes:
-            value = additive + multiplier * input_value
-            for begin, multiplier, additive in intervals:
-                if input_value > begin:
-                    value = additive + multiplier * input_value
-            partial.append(value)
-        if quaternion:
-            result = quat_multiply_raw(
-                result, quat_from_euler_xyz_raw(tuple(partial))
-            )
-        else:
-            result = (
-                result[0] + partial[0],
-                result[1] + partial[1],
-                result[2] + partial[2],
-                0.0,
-            )
-    return quat_normalize(result) if quaternion else result
-
-
-def _frame_operand(instruction: Any) -> tuple[DofKey, int, int, bool]:
+def _instruction_payload(expression: Any, instruction: Any) -> tuple[str, object]:
+    try:
+        operation = YedInstructionType(instruction.opcode)
+    except ValueError:
+        return "", None
     operands = instruction.operands
+    try:
+        if operation is YedInstructionType.PUSH_FLOAT:
+            return "", float(operands["value"])
+        if operation is YedInstructionType.PUSH_VECTOR:
+            return "", _v(operands["value"])
+        if operation in _TRACK_OPERATIONS:
+            return "", (
+                int(operands.get("bone_id", 0)),
+                int(operands.get("track", 0)),
+                int(operands.get("component_index", 0)),
+                int(operands.get("format", 0)),
+                bool(operands.get("use_defaults", False)),
+            )
+        if operation in _VARIABLE_OPERATIONS:
+            return "", (
+                int(operands.get("variable", 0)),
+                int(operands.get("variable_index", 0)),
+            )
+        if operation in _JUMP_OPERATIONS:
+            return "", int(operands.get("instruction_offset", 0))
+        if operation in _BLEND_OPERATIONS:
+            return "", _compile_blend(expression, operands)
+    except (IndexError, KeyError, TypeError, ValueError, OverflowError) as exc:
+        return str(exc), None
+    return "", None
+
+
+def _compile_instruction(expression: Any, instruction: Any) -> tuple[Any, ...]:
+    operand_error, payload = _instruction_payload(expression, instruction)
     return (
-        (int(operands.get("bone_id", 0)), int(operands.get("track", 0))),
-        int(operands.get("component_index", 0)),
-        int(operands.get("format", 0)),
-        bool(operands.get("use_defaults", False)),
+        int(instruction.opcode),
+        int(getattr(instruction, "index", 0)),
+        bool(instruction.parsed),
+        str(getattr(instruction, "parse_error", "")),
+        operand_error,
+        payload,
     )
 
 
-def _run_stream(
-    expression: Any,
-    stream: Any,
-    frame: _Frame,
-    variables: MutableMapping[VariableKey, Vector4],
-    *,
-    time: float,
-    delta_time: float,
-) -> list[YedEvaluationIssue]:
-    issues: list[YedEvaluationIssue] = []
-    stack: list[Vector4] = []
-    instructions = stream.instructions
-    pc = 0
-    steps = 0
-    max_steps = max(1024, len(instructions) * 8)
+def _stream_name(stream: Any) -> str:
+    return str(
+        getattr(stream.name_hash, "text", None)
+        or getattr(stream.name_hash, "uint", "")
+    )
 
-    def fail(code: str, message: str, instruction: Any) -> None:
-        issues.append(
-            YedEvaluationIssue(
-                code,
-                message,
-                expression=expression.short_name,
-                stream=str(
-                    getattr(stream.name_hash, "text", None)
-                    or getattr(stream.name_hash, "uint", "")
+
+def _program_spec(expressions: tuple[Any, ...]) -> tuple[Any, ...]:
+    return tuple(
+        (
+            expression.short_name,
+            tuple(
+                (
+                    _stream_name(stream),
+                    tuple(
+                        _compile_instruction(expression, instruction)
+                        for instruction in stream.instructions
+                    ),
+                )
+                for stream in expression.streams
+            ),
+        )
+        for expression in expressions
+    )
+
+
+def _skeleton_defaults(skeleton: object | None) -> tuple[Any, ...]:
+    return tuple(
+        (
+            int(getattr(bone, "tag", -1)),
+            _v(getattr(bone, "translation", (0.0, 0.0, 0.0))),
+            _v(getattr(bone, "rotation", (0.0, 0.0, 0.0, 1.0))),
+            _v(getattr(bone, "scale", (1.0, 1.0, 1.0))),
+        )
+        for bone in getattr(skeleton, "bones", ())
+    )
+
+
+def _resolve_expressions(
+    yed: Any, names: tuple[str | int, ...]
+) -> tuple[tuple[Any, ...], list[YedEvaluationIssue]]:
+    expressions = []
+    issues = []
+    seen: set[int] = set()
+    for name in names:
+        expression = yed.get_expression(name)
+        if expression is None:
+            issues.append(
+                YedEvaluationIssue(
+                    "yed.expression_unresolved",
+                    f"expression {name!r} was not found",
+                    expression=str(name),
+                )
+            )
+            continue
+        identity = int(expression.name_hash.uint)
+        if identity not in seen:
+            seen.add(identity)
+            expressions.append(expression)
+    return tuple(expressions), issues
+
+
+def _program_signature(expressions: tuple[Any, ...], skeleton: object | None) -> tuple[Any, ...]:
+    bones = getattr(skeleton, "bones", ())
+    return (
+        tuple(
+            (
+                id(expression),
+                tuple(
+                    (id(stream), id(stream.instructions), len(stream.instructions))
+                    for stream in expression.streams
                 ),
-                instruction=int(getattr(instruction, "index", pc)),
             )
-        )
+            for expression in expressions
+        ),
+        id(bones),
+        len(bones),
+    )
 
-    while 0 <= pc < len(instructions) and steps < max_steps:
-        instruction = instructions[pc]
-        steps += 1
-        if not instruction.parsed:
-            fail("yed.vm.unparsed_instruction", instruction.parse_error, instruction)
-            break
-        try:
-            op = YedInstructionType(instruction.opcode)
-        except ValueError:
-            fail(
-                "yed.vm.unknown_opcode",
-                f"unsupported opcode 0x{instruction.opcode:02X}",
-                instruction,
-            )
-            break
-        operands = instruction.operands
-        next_pc = pc + 1
-        try:
-            if op is YedInstructionType.END:
-                break
-            if op is YedInstructionType.POP:
-                stack.pop()
-            elif op is YedInstructionType.DUP:
-                stack.append(stack[-1])
-            elif op is YedInstructionType.PUSH0:
-                stack.append((0.0, 0.0, 0.0, 0.0))
-            elif op is YedInstructionType.PUSH1:
-                stack.append((1.0, 1.0, 1.0, 1.0))
-            elif op is YedInstructionType.PUSH_FLOAT:
-                stack.append(_v(operands["value"], scalar=True))
-            elif op is YedInstructionType.PUSH_VECTOR:
-                stack.append(_v(operands["value"]))
-            elif op in {
-                YedInstructionType.TRACK_GET,
-                YedInstructionType.TRACK_GET_COMP,
-                YedInstructionType.TRACK_GET_OFFSET,
-                YedInstructionType.TRACK_GET_OFFSET_COMP,
-                YedInstructionType.TRACK_VALID,
-            }:
-                key, component, format_value, force_default = _frame_operand(
-                    instruction
-                )
-                if op is YedInstructionType.TRACK_GET:
-                    stack.append(frame.get(key, force_default))
-                elif op is YedInstructionType.TRACK_GET_COMP:
-                    stack.append(
-                        frame.get_component(key, component, format_value, force_default)
-                    )
-                elif op is YedInstructionType.TRACK_GET_OFFSET:
-                    stack.append(frame.get_relative(key, force_default))
-                elif op is YedInstructionType.TRACK_GET_OFFSET_COMP:
-                    stack.append(
-                        frame.get_relative_component(
-                            key, component, format_value, force_default
-                        )
-                    )
-                else:
-                    valid = key in frame.tracks
-                    stack.append(_v(1.0 if valid else 0.0, scalar=True))
-            elif op in {
-                YedInstructionType.TRACK_SET,
-                YedInstructionType.TRACK_SET_COMP,
-                YedInstructionType.TRACK_SET_OFFSET,
-                YedInstructionType.TRACK_SET_OFFSET_COMP,
-            }:
-                key, component, format_value, _ = _frame_operand(instruction)
-                value = stack.pop()
-                if op is YedInstructionType.TRACK_SET:
-                    frame.set(key, value)
-                elif op is YedInstructionType.TRACK_SET_COMP:
-                    frame.set_component(key, component, format_value, value[0])
-                elif op is YedInstructionType.TRACK_SET_OFFSET:
-                    frame.set_relative(key, value)
-                else:
-                    frame.set_relative_component(key, component, format_value, value[0])
-            elif op is YedInstructionType.DEFINE_SPRING:
-                pass
-            elif op is YedInstructionType.VECTOR_ABS:
-                stack[-1] = vec4_map(stack[-1], abs)
-            elif op is YedInstructionType.VECTOR_NEG:
-                stack[-1] = vec4_map(stack[-1], lambda value: -value)
-            elif op is YedInstructionType.VECTOR_RCP:
-                stack[-1] = vec4_map(
-                    stack[-1], lambda value: 1.0 / value if value else 0.0
-                )
-            elif op is YedInstructionType.VECTOR_SQRT:
-                stack[-1] = vec4_map(
-                    stack[-1], lambda value: math.sqrt(max(value, 0.0))
-                )
-            elif op is YedInstructionType.VECTOR_NEG3:
-                value = stack[-1]
-                stack[-1] = (-value[0], -value[1], -value[2], value[3])
-            elif op is YedInstructionType.VECTOR_SQUARE:
-                stack[-1] = vec4_map(stack[-1], lambda value: value * value)
-            elif op is YedInstructionType.VECTOR_DEG2RAD:
-                stack[-1] = vec4_map(stack[-1], math.radians)
-            elif op is YedInstructionType.VECTOR_RAD2DEG:
-                stack[-1] = vec4_map(stack[-1], math.degrees)
-            elif op is YedInstructionType.VECTOR_SATURATE:
-                stack[-1] = vec4_map(
-                    stack[-1], lambda value: max(0.0, min(1.0, value))
-                )
-            elif op is YedInstructionType.FROM_EULER:
-                stack[-1] = quat_from_euler_xyz(stack[-1][:3])
-            elif op is YedInstructionType.TO_EULER:
-                stack[-1] = (*quat_to_euler_xyz(stack[-1]), 0.0)
-            elif op in {
-                YedInstructionType.VECTOR_ADD,
-                YedInstructionType.VECTOR_SUB,
-                YedInstructionType.VECTOR_MUL,
-                YedInstructionType.VECTOR_MIN,
-                YedInstructionType.VECTOR_MAX,
-                YedInstructionType.VECTOR_GREATER_THAN,
-                YedInstructionType.VECTOR_LESS_THAN,
-                YedInstructionType.VECTOR_GREATER_EQUAL,
-                YedInstructionType.VECTOR_LESS_EQUAL,
-                YedInstructionType.VECTOR_EQUAL,
-                YedInstructionType.VECTOR_NOT_EQUAL,
-            }:
-                right, left = stack.pop(), stack.pop()
-                operations = {
-                    YedInstructionType.VECTOR_ADD: lambda a, b: a + b,
-                    YedInstructionType.VECTOR_SUB: lambda a, b: a - b,
-                    YedInstructionType.VECTOR_MUL: lambda a, b: a * b,
-                    YedInstructionType.VECTOR_MIN: min,
-                    YedInstructionType.VECTOR_MAX: max,
-                    YedInstructionType.VECTOR_GREATER_THAN: lambda a, b: (
-                        1.0 if a > b else 0.0
-                    ),
-                    YedInstructionType.VECTOR_LESS_THAN: lambda a, b: (
-                        1.0 if a < b else 0.0
-                    ),
-                    YedInstructionType.VECTOR_GREATER_EQUAL: lambda a, b: (
-                        1.0 if a >= b else 0.0
-                    ),
-                    YedInstructionType.VECTOR_LESS_EQUAL: lambda a, b: (
-                        1.0 if a <= b else 0.0
-                    ),
-                    YedInstructionType.VECTOR_EQUAL: lambda a, b: (
-                        1.0 if a == b else 0.0
-                    ),
-                    YedInstructionType.VECTOR_NOT_EQUAL: lambda a, b: (
-                        1.0 if a != b else 0.0
-                    ),
-                }
-                stack.append(vec4_map2(left, right, operations[op]))
-            elif op is YedInstructionType.QUAT_MUL:
-                right, left = stack.pop(), stack.pop()
-                stack.append(quat_multiply(left, right))
-            elif op is YedInstructionType.VECTOR_CLAMP:
-                maximum, minimum, value = stack.pop(), stack.pop(), stack.pop()
-                stack.append(
-                    tuple(max(minimum[i], min(maximum[i], value[i])) for i in range(4))
-                )  # type: ignore[arg-type]
-            elif op is YedInstructionType.VECTOR_LERP:
-                amount, end, start = stack.pop(), stack.pop(), stack.pop()
-                stack.append(
-                    tuple(start[i] + (end[i] - start[i]) * amount[i] for i in range(4))
-                )  # type: ignore[arg-type]
-            elif op is YedInstructionType.VECTOR_MAD:
-                add, multiplier, value = stack.pop(), stack.pop(), stack.pop()
-                stack.append(tuple(add[i] + value[i] * multiplier[i] for i in range(4)))  # type: ignore[arg-type]
-            elif op is YedInstructionType.QUAT_SLERP:
-                amount, end, start = stack.pop(), stack.pop(), stack.pop()
-                stack.append(quat_nlerp(start, end, amount[0]))
-            elif op is YedInstructionType.TO_VECTOR:
-                z, y, x = stack.pop(), stack.pop(), stack.pop()
-                stack.append((x[0], y[0], z[0], 0.0))
-            elif op is YedInstructionType.PUSH_TIME:
-                stack.append(_v(time, scalar=True))
-            elif op is YedInstructionType.PUSH_DELTA_TIME:
-                stack.append(_v(delta_time, scalar=True))
-            elif op is YedInstructionType.VECTOR_TRANSFORM:
-                rotation, vector = stack.pop(), stack.pop()
-                stack.append(_quat_rotate(vector, rotation))
-            elif op is YedInstructionType.GET_VARIABLE:
-                variable_hash = int(operands.get("variable", 0))
-                index = int(operands.get("variable_index", 0))
-                stack.append(
-                    variables.get(
-                        (variable_hash, index), (0.0, 0.0, 0.0, 0.0)
-                    )
-                )
-            elif op is YedInstructionType.SET_VARIABLE:
-                variable_hash = int(operands.get("variable", 0))
-                index = int(operands.get("variable_index", 0))
-                variables[(variable_hash, index)] = stack.pop()
-            elif op in {
-                YedInstructionType.BLEND_VECTOR,
-                YedInstructionType.BLEND_QUATERNION,
-            }:
-                stack.append(
-                    _linear_blend(
-                        expression,
-                        operands,
-                        frame,
-                        quaternion=op is YedInstructionType.BLEND_QUATERNION,
-                    )
-                )
-            elif op in {
-                YedInstructionType.JUMP,
-                YedInstructionType.JUMP_IF_TRUE,
-                YedInstructionType.JUMP_IF_FALSE,
-            }:
-                take = op is YedInstructionType.JUMP
-                if op is YedInstructionType.JUMP_IF_TRUE:
-                    take = not all(component == 0.0 for component in stack[-1])
-                elif op is YedInstructionType.JUMP_IF_FALSE:
-                    take = all(component == 0.0 for component in stack[-1])
-                if take:
-                    next_pc = pc + 1 + int(operands.get("instruction_offset", 0))
-                    if not 0 <= next_pc < len(instructions):
-                        raise ValueError(f"jump target {next_pc} is outside the stream")
-            else:
-                fail(
-                    "yed.vm.unsupported_instruction",
-                    f"{op.name} is not implemented",
-                    instruction,
-                )
-                break
-        except (IndexError, KeyError, TypeError, ValueError, OverflowError) as exc:
-            fail("yed.vm.execution_error", f"{op.name}: {exc}", instruction)
-            break
-        pc = next_pc
-    if 0 <= pc < len(instructions) and steps >= max_steps:
-        issues.append(
-            YedEvaluationIssue(
-                "yed.vm.step_limit",
-                "expression stream exceeded its deterministic instruction limit",
-                expression=expression.short_name,
-            )
+
+def _get_program(
+    yed: Any,
+    skeleton: object | None,
+    names: tuple[str | int, ...],
+    expressions: tuple[Any, ...],
+) -> NativeYedProgram:
+    cache_key = (id(yed), id(skeleton), names)
+    signature = _program_signature(expressions, skeleton)
+    cached = _PROGRAM_CACHE.get(cache_key)
+    if (
+        cached is not None
+        and cached.yed is yed
+        and cached.skeleton is skeleton
+        and cached.names == names
+        and cached.signature == signature
+    ):
+        _PROGRAM_CACHE.move_to_end(cache_key)
+        return cached.program
+    program = NativeYedProgram(_program_spec(expressions), _skeleton_defaults(skeleton))
+    _PROGRAM_CACHE[cache_key] = _CachedProgram(
+        yed=yed,
+        skeleton=skeleton,
+        names=names,
+        signature=signature,
+        program=program,
+    )
+    _PROGRAM_CACHE.move_to_end(cache_key)
+    while len(_PROGRAM_CACHE) > _PROGRAM_CACHE_LIMIT:
+        _PROGRAM_CACHE.popitem(last=False)
+    return program
+
+
+def _native_issues(values: Iterable[tuple[Any, ...]]) -> list[YedEvaluationIssue]:
+    return [
+        YedEvaluationIssue(
+            str(code),
+            str(message),
+            expression=str(expression) or None,
+            stream=str(stream) or None,
+            instruction=None if instruction is None else int(instruction),
         )
-    return issues
+        for code, message, expression, stream, instruction in values
+    ]
 
 
 def evaluate_yed(
@@ -557,50 +317,30 @@ def evaluate_yed(
     delta_time: float = 0.0,
     variables: MutableMapping[VariableKey, Vector4] | None = None,
 ) -> YedEvaluationResult:
-    """Evaluate selected serialized RAGE expression streams against typed DOFs.
+    """Evaluate selected serialized RAGE expression streams against typed DOFs."""
 
-    Expressions are processed in the supplied order. Unknown or unparsed VM
-    instructions stop only their containing stream and are reported; no pose is
-    guessed for unsupported operations.
-    """
-
-    frame = _Frame(tracks, skeleton)
+    names = tuple(expression_names)
+    expressions, resolution_issues = _resolve_expressions(yed, names)
+    program = _get_program(yed, skeleton, names, expressions)
     variable_values: MutableMapping[VariableKey, Vector4] = (
         variables if variables is not None else {}
     )
-    result = YedEvaluationResult(frame.tracks, variables=dict(variable_values))
-    seen: set[int] = set()
-    for name in expression_names:
-        expression = yed.get_expression(name)
-        if expression is None:
-            result.issues.append(
-                YedEvaluationIssue(
-                    "yed.expression_unresolved",
-                    f"expression {name!r} was not found",
-                    expression=str(name),
-                )
-            )
-            continue
-        identity = int(expression.name_hash.uint)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        result.evaluated_expressions.append(expression.short_name)
-        for stream in expression.streams:
-            result.issues.extend(
-                _run_stream(
-                    expression,
-                    stream,
-                    frame,
-                    variable_values,
-                    time=float(time),
-                    delta_time=float(delta_time),
-                )
-            )
-    result.tracks = frame.tracks
-    result.output_tracks = frame.outputs
-    result.variables = dict(variable_values)
-    return result
+    result_tracks, outputs, result_variables, native_issues = program.evaluate(
+        tracks,
+        variable_values,
+        time,
+        delta_time,
+    )
+    if variables is not None:
+        variables.clear()
+        variables.update(result_variables)
+    return YedEvaluationResult(
+        tracks=result_tracks,
+        output_tracks=outputs,
+        variables=result_variables,
+        evaluated_expressions=[expression.short_name for expression in expressions],
+        issues=[*resolution_issues, *_native_issues(native_issues)],
+    )
 
 
 __all__ = [

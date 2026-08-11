@@ -20,6 +20,7 @@ namespace fivefury_py {
 
 inline constexpr const char* INDEX_CAPSULE_NAME = "fivefury.CompactIndex";
 inline constexpr const char* CRYPTO_CAPSULE_NAME = "fivefury.NativeCryptoContext";
+inline constexpr const char* YED_PROGRAM_CAPSULE_NAME = "fivefury.YedProgram";
 
 void index_capsule_destructor(PyObject* capsule);
 void crypto_capsule_destructor(PyObject* capsule);
@@ -90,6 +91,8 @@ PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args);
 PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args);
 PyObject* mod_awc_build_pcm_wav(PyObject*, PyObject* args);
 PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args);
+PyObject* mod_yed_compile(PyObject*, PyObject* args);
+PyObject* mod_yed_evaluate(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;
