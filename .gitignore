@@ -24,6 +24,7 @@ tests/*
 !tests/test_awc_native.py
 !tests/test_cache_hot_paths.py
 !tests/test_cut_animation_resolution.py
+!tests/test_cut_audio_resolution.py
 !tests/test_cut_resolver.py
 !tests/test_cut_resolution_runtime.py
 !tests/test_gtxd.py
@@ -36,6 +37,7 @@ tests/*
 !tests/test_cdr.py
 !tests/test_drawable.py
 !tests/test_yft.py
+!tests/test_yed_evaluate.py
 !tests/test_yft_tune_name.py
 !tests/test_yft_glass_authoring.py
 !tests/test_yft_glass_builder.py

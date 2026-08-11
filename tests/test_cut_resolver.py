@@ -2,11 +2,26 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from fivefury import CutScene, CutTimelineEvent, GameFileCache
-from fivefury.cut.resolution.bindings import _ped_component_variations
+from fivefury import (
+    CutScene,
+    CutsceneResolutionCancellation,
+    CutsceneResolutionCancelled,
+    CutTimelineEvent,
+    GameFileCache,
+    MetaHash,
+    ResolvedCutBinding,
+    YmtPedInitData,
+    YmtPedMetadata,
+)
+from fivefury.cut.resolution.bindings import (
+    _MODEL_KINDS_BY_ROLE,
+    _ped_component_variations,
+    _resolve_ped_expression_resources,
+)
 from fivefury.gamefile import GameFileType
 
 
@@ -175,3 +190,265 @@ def test_resolve_cutscene_accepts_script_registered_ped_snapshot(
 def test_resolve_cutscene_rejects_non_cut_assets(game_cache: GameFileCache) -> None:
     with pytest.raises(FileNotFoundError):
         game_cache.resolve_cutscene("oracle.yft")
+
+
+def test_ped_expression_dictionary_follows_the_exact_ymt_init_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_hash = MetaHash("test_ped").uint
+    expression_hash = MetaHash("test_expression").uint
+    init_data = YmtPedInitData(
+        name=MetaHash(model_hash),
+        expression_dictionary_name=MetaHash(expression_hash),
+    )
+    ymt_asset = SimpleNamespace(path="x64/data/peds.ymt")
+    ymt_file = SimpleNamespace(
+        parsed=SimpleNamespace(
+            ped_metadata=YmtPedMetadata(init_datas=[init_data])
+        )
+    )
+    yed_asset = SimpleNamespace(path="test_expression.yed")
+    yed_file = SimpleNamespace(parsed=object())
+    binding = SimpleNamespace(
+        role="ped", display_name="test_ped", object_id=4
+    )
+    resolved = ResolvedCutBinding(
+        binding=binding,
+        reference_hash=model_hash,
+    )
+
+    class Cache:
+        @staticmethod
+        def find_assets(query, *, kind):
+            assert query == "peds.ymt"
+            assert kind is GameFileType.YMT
+            return [ymt_asset]
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._preferred_asset",
+        lambda _cache, value, kind: (
+            yed_asset
+            if value == expression_hash and kind is GameFileType.YED
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._load_file",
+        lambda _cache, asset, _issues, **_kwargs: (
+            ymt_file if asset is ymt_asset else yed_file if asset is yed_asset else None
+        ),
+    )
+
+    issues = []
+    _resolve_ped_expression_resources(Cache(), {4: resolved}, issues)
+
+    assert resolved.ped_init_data is init_data
+    assert resolved.ped_init_data_asset is ymt_asset
+    assert resolved.assets[GameFileType.YED] is yed_asset
+    assert resolved.expression_file is yed_file
+    assert not issues
+
+
+def _resolved_ped(name: str, *, object_id: int = 4) -> ResolvedCutBinding:
+    model_hash = MetaHash(name).uint
+    return ResolvedCutBinding(
+        binding=SimpleNamespace(
+            role="ped",
+            display_name=name,
+            object_id=object_id,
+        ),
+        reference_hash=model_hash,
+    )
+
+
+def _ped_metadata_file(*items: YmtPedInitData):
+    return SimpleNamespace(
+        parsed=SimpleNamespace(
+            ped_metadata=YmtPedMetadata(init_datas=list(items)),
+        )
+    )
+
+
+def test_ped_yed_is_not_guessed_from_the_model_hash() -> None:
+    assert GameFileType.YED not in _MODEL_KINDS_BY_ROLE["ped"]
+
+
+def test_ped_expression_resolution_uses_highest_source_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved = _resolved_ped("test_ped")
+    base_expression = MetaHash("base_expression").uint
+    mod_expression = MetaHash("mod_expression").uint
+    base_asset = SimpleNamespace(path="x64/data/peds.ymt")
+    mod_asset = SimpleNamespace(path="mods/update/data/peds.ymt")
+    base_file = _ped_metadata_file(
+        YmtPedInitData(
+            name=MetaHash(resolved.reference_hash),
+            expression_dictionary_name=MetaHash(base_expression),
+        )
+    )
+    mod_init = YmtPedInitData(
+        name=MetaHash(resolved.reference_hash),
+        expression_dictionary_name=MetaHash(mod_expression),
+    )
+    mod_file = _ped_metadata_file(mod_init)
+    yed_asset = SimpleNamespace(path="mods/update/data/mod_expression.yed")
+    yed_file = SimpleNamespace(parsed=object())
+    requested_hashes = []
+
+    class Cache:
+        @staticmethod
+        def find_assets(query, *, kind):
+            assert (query, kind) == ("peds.ymt", GameFileType.YMT)
+            return [base_asset, mod_asset]
+
+    def preferred(_cache, value, kind):
+        assert kind is GameFileType.YED
+        requested_hashes.append(value)
+        return yed_asset
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._preferred_asset",
+        preferred,
+    )
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._load_file",
+        lambda _cache, asset, _issues, **_kwargs: {
+            id(base_asset): base_file,
+            id(mod_asset): mod_file,
+            id(yed_asset): yed_file,
+        }[id(asset)],
+    )
+
+    issues = []
+    _resolve_ped_expression_resources(Cache(), {4: resolved}, issues)
+
+    assert resolved.ped_init_data is mod_init
+    assert resolved.ped_metadata_asset is mod_asset
+    assert requested_hashes == [mod_expression]
+    assert not issues
+
+
+def test_ped_expression_resolution_rejects_same_tier_ambiguity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved = _resolved_ped("test_ped")
+    first_asset = SimpleNamespace(path="mods/a/peds.ymt")
+    second_asset = SimpleNamespace(path="mods/b/peds.ymt")
+    first_init = YmtPedInitData(name=MetaHash(resolved.reference_hash))
+    second_init = YmtPedInitData(name=MetaHash(resolved.reference_hash))
+
+    class Cache:
+        @staticmethod
+        def find_assets(_query, *, kind):
+            assert kind is GameFileType.YMT
+            return [first_asset, second_asset]
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._load_file",
+        lambda _cache, asset, _issues, **_kwargs: (
+            _ped_metadata_file(first_init)
+            if asset is first_asset
+            else _ped_metadata_file(second_init)
+        ),
+    )
+
+    issues = []
+    _resolve_ped_expression_resources(Cache(), {4: resolved}, issues)
+
+    assert resolved.ped_init_data_candidates == (first_init, second_init)
+    assert resolved.ped_init_data is None
+    assert resolved.ped_metadata_asset is None
+    assert [issue.code for issue in issues] == ["binding.ymt_init_unresolved"]
+
+
+def test_ped_expression_resolution_reports_missing_init_and_yed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing_init = _resolved_ped("missing_init", object_id=1)
+    missing_yed = _resolved_ped("missing_yed", object_id=2)
+    expression_hash = MetaHash("not_installed").uint
+    metadata_asset = SimpleNamespace(path="x64/data/peds.ymt")
+    metadata_file = _ped_metadata_file(
+        YmtPedInitData(
+            name=MetaHash(missing_yed.reference_hash),
+            expression_dictionary_name=MetaHash(expression_hash),
+        )
+    )
+
+    class Cache:
+        @staticmethod
+        def find_assets(_query, *, kind):
+            assert kind is GameFileType.YMT
+            return [metadata_asset]
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._load_file",
+        lambda *_args, **_kwargs: metadata_file,
+    )
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._preferred_asset",
+        lambda _cache, value, kind: (
+            None
+            if value == expression_hash and kind is GameFileType.YED
+            else pytest.fail("unexpected dependency lookup")
+        ),
+    )
+
+    issues = []
+    _resolve_ped_expression_resources(
+        Cache(),
+        {1: missing_init, 2: missing_yed},
+        issues,
+    )
+
+    assert [issue.code for issue in issues] == [
+        "binding.ymt_init_unresolved",
+        "binding.yed_unresolved",
+    ]
+
+
+def test_ped_expression_resolution_honors_cancellation_before_and_during_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved = _resolved_ped("test_ped")
+    first_asset = SimpleNamespace(path="mods/a/peds.ymt")
+    second_asset = SimpleNamespace(path="mods/b/peds.ymt")
+    cancellation = CutsceneResolutionCancellation()
+
+    class Cache:
+        @staticmethod
+        def find_assets(_query, *, kind):
+            assert kind is GameFileType.YMT
+            return [first_asset, second_asset]
+
+    cancellation.cancel()
+    with pytest.raises(CutsceneResolutionCancelled):
+        _resolve_ped_expression_resources(
+            Cache(),
+            {4: resolved},
+            [],
+            cancellation=cancellation,
+        )
+
+    cancellation = CutsceneResolutionCancellation()
+
+    def cancel_after_first(_cache, asset, _issues, **_kwargs):
+        assert asset is first_asset
+        cancellation.cancel()
+        return _ped_metadata_file()
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.bindings._load_file",
+        cancel_after_first,
+    )
+    with pytest.raises(CutsceneResolutionCancelled):
+        _resolve_ped_expression_resources(
+            Cache(),
+            {4: resolved},
+            [],
+            cancellation=cancellation,
+        )
+
+    assert resolved.ped_init_data is None
+    assert resolved.expression_file is None

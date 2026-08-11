@@ -529,12 +529,11 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "invalid AWC multichannel block dimensions");
         return nullptr;
     }
-    if (block_count > source_size / block_size) {
+    if (
+        block_count > 0
+        && (block_count - 1) > source_size / block_size
+    ) {
         PyErr_SetString(PyExc_ValueError, "AWC multichannel data is truncated");
-        return nullptr;
-    }
-    if (channel_count > block_size / 24) {
-        PyErr_SetString(PyExc_ValueError, "AWC multichannel header table is truncated");
         return nullptr;
     }
 
@@ -552,7 +551,17 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
     }
 
     for (Py_ssize_t block_index = 0; block_index < block_count; ++block_index) {
-        const char* block = source + block_index * block_size;
+        const auto block_offset = block_index * block_size;
+        const auto current_block_size = std::min(
+            block_size,
+            source_size - block_offset
+        );
+        if (current_block_size < 0 || channel_count > current_block_size / 24) {
+            Py_DECREF(result);
+            PyErr_SetString(PyExc_ValueError, "AWC multichannel header table is truncated");
+            return nullptr;
+        }
+        const char* block = source + block_offset;
         Py_ssize_t cursor = channel_count * 24;
         std::vector<std::int32_t> counts(static_cast<std::size_t>(channel_count));
         std::vector<std::int32_t> samples(static_cast<std::size_t>(channel_count));
@@ -568,7 +577,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
                 return nullptr;
             }
             const auto table_bytes = static_cast<std::int64_t>(counts[static_cast<std::size_t>(channel)]) * 4LL;
-            if (table_bytes > block_size - cursor) {
+            if (table_bytes > current_block_size - cursor) {
                 Py_DECREF(result);
                 PyErr_SetString(PyExc_ValueError, "AWC multichannel offset table is truncated");
                 return nullptr;
@@ -576,7 +585,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
             cursor += static_cast<Py_ssize_t>(table_bytes);
         }
         cursor += (0x800 - (cursor % 0x800)) % 0x800;
-        if (cursor > block_size) {
+        if (cursor > current_block_size) {
             Py_DECREF(result);
             PyErr_SetString(PyExc_ValueError, "AWC multichannel payload alignment is invalid");
             return nullptr;
@@ -587,7 +596,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
                     counts[static_cast<std::size_t>(channel)]
                 ) * 2048LL;
             const auto encoded_size = encoded_sizes[static_cast<std::size_t>(channel)];
-            const auto available = block_size - cursor;
+            const auto available = current_block_size - cursor;
             auto stored_payload_size = declared_payload_size;
             if (declared_payload_size > available) {
                 const auto compact_last_payload =

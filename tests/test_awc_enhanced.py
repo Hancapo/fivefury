@@ -112,3 +112,18 @@ def test_enhanced_mp3_seek_table_preserves_uint16_entries() -> None:
     assert seek.seek_table_entry_size == 2
     assert seek.seek_table == [0, 2, 4]
     assert seek.to_payload() == struct.pack("<3H", 0, 2, 4)
+
+
+def test_multichannel_encryption_is_applied_per_large_block() -> None:
+    left = struct.pack("<6h", -1000, -500, 0, 500, 1000, 1500)
+    right = struct.pack("<6h", 1500, 1000, 500, 0, -500, -1000)
+    awc = Awc.from_channel_pcm("encrypted_stereo", [left, right], sample_rate=32000)
+    awc.multi_channel_encrypt_flag = True
+
+    encoded = build_awc_bytes(awc)
+    rebuilt = read_awc(encoded)
+
+    assert rebuilt.multi_channel_encrypt_flag
+    assert rebuilt.pcm_bytes() == Awc.from_channel_pcm(
+        "encrypted_stereo", [left, right], sample_rate=32000
+    ).pcm_bytes()

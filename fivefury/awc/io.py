@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Callable
 from pathlib import Path
 
 from .constants import (
@@ -13,6 +14,33 @@ from .constants import (
 )
 from .crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
 from .structures import Awc, AwcChunk, AwcChunkInfo, AwcStream
+
+
+def _transform_multichannel_data(
+    data: bytes,
+    *,
+    block_count: int,
+    block_size: int,
+    transform: Callable[[bytes], bytes],
+) -> bytes:
+    if block_count < 0 or block_size <= 0:
+        raise ValueError("Invalid encrypted AWC multichannel block layout")
+    if block_count == 0:
+        return data
+
+    output = bytearray(data)
+    for block_index in range(block_count):
+        start = block_index * block_size
+        if start >= len(data):
+            raise ValueError("Encrypted AWC multichannel data is truncated")
+        end = min(start + block_size, len(data))
+        block = data[start:end]
+        if len(block) % 4:
+            raise ValueError(
+                "Encrypted AWC multichannel block size must be divisible by 4"
+            )
+        output[start:end] = transform(block)
+    return bytes(output)
 
 
 def read_awc(
@@ -112,7 +140,8 @@ def read_awc(
             if (
                 decrypt
                 and not whole_file_encrypted
-                and (flags & (2 | 8))
+                and (flags & 2)
+                and not (flags & 4)
                 and chunk.type_value == int(AwcChunkType.DATA)
                 and len(chunk.data) % 4 == 0
             ):
@@ -139,6 +168,19 @@ def read_awc(
             None,
         )
         if source_stream is not None and source_stream.stream_format_chunk is not None:
+            if (
+                decrypt
+                and not whole_file_encrypted
+                and awc.multi_channel_encrypt_flag
+                and source_stream.data_chunk is not None
+            ):
+                stream_format = source_stream.stream_format_chunk
+                source_stream.data_chunk.data = _transform_multichannel_data(
+                    source_stream.data_chunk.data,
+                    block_count=int(stream_format.block_count),
+                    block_size=int(stream_format.block_size),
+                    transform=lambda block: decrypt_awc_rsxxtea(block, awc_key),
+                )
             channels_by_id = {
                 channel.id & AWC_STREAM_ID_MASK: channel
                 for channel in source_stream.stream_format_chunk.channels
@@ -172,6 +214,9 @@ def build_awc_bytes(awc: Awc) -> bytes:
     all_chunks: list[AwcChunk] = [
         chunk for stream in streams for chunk in stream.chunks
     ]
+    stream_by_chunk = {
+        id(chunk): stream for stream in streams for chunk in stream.chunks
+    }
     should_sort_chunks = bool(
         awc.multi_channel_flag or not awc.single_channel_encrypt_flag
     )
@@ -189,13 +234,23 @@ def build_awc_bytes(awc: Awc) -> bytes:
         if alignment:
             cursor += (-cursor) % alignment
         payload = chunk.to_payload(endian)
-        if (
-            not awc.whole_file_encrypted
-            and awc.single_channel_encrypt_flag
-            and chunk.type_value == int(AwcChunkType.DATA)
-        ):
-            payload += b"\x00" * ((-len(payload)) % 4)
-            payload = encrypt_awc_rsxxtea(payload)
+        if not awc.whole_file_encrypted and chunk.type_value == int(AwcChunkType.DATA):
+            owner = stream_by_chunk[id(chunk)]
+            stream_format = owner.stream_format_chunk
+            if awc.multi_channel_flag and awc.multi_channel_encrypt_flag:
+                if stream_format is None:
+                    raise ValueError(
+                        "Encrypted AWC multichannel data requires a stream-format chunk"
+                    )
+                payload = _transform_multichannel_data(
+                    payload,
+                    block_count=int(stream_format.block_count),
+                    block_size=int(stream_format.block_size),
+                    transform=encrypt_awc_rsxxtea,
+                )
+            elif awc.single_channel_encrypt_flag:
+                payload += b"\x00" * ((-len(payload)) % 4)
+                payload = encrypt_awc_rsxxtea(payload)
         if len(payload) > AWC_CHUNK_FIELD_MASK:
             raise ValueError("AWC chunk is too large")
         info = AwcChunkInfo(chunk.type, size=len(payload), offset=cursor)

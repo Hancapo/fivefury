@@ -6,12 +6,13 @@ from typing import TYPE_CHECKING, Any
 from ...gamefile import GameFileType
 from ..scene import read_cut_scene
 from .animations import _resolve_ycds
-from .audio import _event_references, _resolve_audio
+from .audio import _audio_container_hints, _event_references, _resolve_audio
 from .bindings import (
     _normalize_initial_ped_variations,
     _resolve_binding_texture_chains,
     _resolve_bindings,
     _resolve_ped_components,
+    _resolve_ped_expression_resources,
 )
 from .common import _source_rank
 from .models import CutsceneAssetBundle, CutsceneResolveIssue
@@ -65,6 +66,10 @@ def resolve_cutscene_assets(
             bindings = _resolve_bindings(
                 cache, scene, issues, cancellation=cancellation
             )
+        with active_trace.span("facial_resources"):
+            _resolve_ped_expression_resources(
+                cache, bindings, issues, cancellation=cancellation
+            )
         normalized_initial_variations = _normalize_initial_ped_variations(
             bindings, initial_ped_variations, issues
         )
@@ -94,7 +99,11 @@ def resolve_cutscene_assets(
                 scene, {"load_audio", "play_audio"}
             )
             audio = _resolve_audio(
-                cache, audio_references, issues, cancellation=cancellation
+                cache,
+                audio_references,
+                issues,
+                container_hints=_audio_container_hints(scene, audio_references),
+                cancellation=cancellation,
             )
         return CutsceneAssetBundle(
             source=source,

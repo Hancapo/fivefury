@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from fivefury import (
+    YED_FACIAL_ROOT_BONE_ID,
     CutFacialAnimationMode,
     CutScene,
-    YED_FACIAL_ROOT_BONE_ID,
     YcdCutsceneBuilder,
     YcdFacialTrackSet,
     YedInstruction,
@@ -18,6 +18,7 @@ from fivefury import (
     YmtPedInitData,
     build_yed_bytes,
     create_yed,
+    evaluate_yed,
     get_ped_expression_binding,
     set_ped_expression_binding,
     validate_yed,
@@ -132,3 +133,61 @@ def test_yed_validation_requires_facial_root_and_valid_vm_references() -> None:
     assert "stream-track-index-invalid" in codes
     with pytest.raises(ValueError, match="references track"):
         build_yed_bytes(yed)
+
+
+@pytest.mark.parametrize(
+    ("condition", "branch_type", "expected"),
+    [
+        (0.0, YedInstructionType.JUMP_IF_FALSE, 2.0),
+        (1.0, YedInstructionType.JUMP_IF_FALSE, 1.0),
+        (1.0, YedInstructionType.JUMP_IF_TRUE, 2.0),
+        (0.0, YedInstructionType.JUMP_IF_TRUE, 1.0),
+    ],
+)
+def test_yed_conditional_branches_match_rage_zero_semantics(
+    condition: float,
+    branch_type: YedInstructionType,
+    expected: float,
+) -> None:
+    yed = create_yed("branch")
+    yed.expressions[0].streams = [
+        YedStream(
+            name_hash=MetaHash("main"),
+            depth=4,
+            data1=b"",
+            data2=b"",
+            data3=b"",
+            instructions=[
+                YedInstruction(
+                    YedInstructionType.PUSH_FLOAT,
+                    operands={"value": condition},
+                ),
+                YedInstruction(
+                    branch_type,
+                    operands={"instruction_offset": 2},
+                ),
+                YedInstruction(
+                    YedInstructionType.PUSH_FLOAT,
+                    operands={"value": 1.0},
+                ),
+                YedInstruction(
+                    YedInstructionType.JUMP,
+                    operands={"instruction_offset": 1},
+                ),
+                YedInstruction(
+                    YedInstructionType.PUSH_FLOAT,
+                    operands={"value": 2.0},
+                ),
+                YedInstruction(
+                    YedInstructionType.TRACK_SET,
+                    operands={"bone_id": 1, "track": 0},
+                ),
+                YedInstruction(YedInstructionType.END),
+            ],
+        )
+    ]
+
+    result = evaluate_yed(yed, ("branch",), {})
+
+    assert result.output_tracks[(1, 0)][0] == pytest.approx(expected)
+    assert result.issues == []
