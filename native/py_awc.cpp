@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -571,7 +572,11 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
             counts[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 4));
             samples[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 12));
             encoded_sizes[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 20));
-            if (counts[static_cast<std::size_t>(channel)] < 0 || samples[static_cast<std::size_t>(channel)] < 0) {
+            if (
+                counts[static_cast<std::size_t>(channel)] < 0
+                || samples[static_cast<std::size_t>(channel)] < 0
+                || encoded_sizes[static_cast<std::size_t>(channel)] < 0
+            ) {
                 Py_DECREF(result);
                 PyErr_SetString(PyExc_ValueError, "AWC multichannel block contains a negative size");
                 return nullptr;
@@ -584,44 +589,53 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
             }
             cursor += static_cast<Py_ssize_t>(table_bytes);
         }
-        cursor += (0x800 - (cursor % 0x800)) % 0x800;
-        if (cursor > current_block_size) {
+        const auto alignment = (0x800 - (cursor % 0x800)) % 0x800;
+        if (alignment > current_block_size - cursor) {
             Py_DECREF(result);
             PyErr_SetString(PyExc_ValueError, "AWC multichannel payload alignment is invalid");
             return nullptr;
         }
+        cursor += alignment;
+
+        std::vector<Py_ssize_t> stored_payload_sizes(
+            static_cast<std::size_t>(channel_count)
+        );
+        auto payload_cursor = cursor;
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
-            const auto declared_payload_size =
-                static_cast<std::int64_t>(
-                    counts[static_cast<std::size_t>(channel)]
-                ) * 2048LL;
             const auto encoded_size = encoded_sizes[static_cast<std::size_t>(channel)];
-            const auto available = current_block_size - cursor;
-            auto stored_payload_size = declared_payload_size;
-            if (declared_payload_size > available) {
-                const auto compact_last_payload =
-                    channel + 1 == channel_count && encoded_size > 0 && encoded_size <= available;
-                if (!compact_last_payload) {
-                    Py_DECREF(result);
-                    PyErr_SetString(PyExc_ValueError, "AWC multichannel payload is truncated");
-                    return nullptr;
-                }
-                stored_payload_size = available;
+            const auto stored_payload_size = encoded_size > 0
+                ? static_cast<std::int64_t>(encoded_size)
+                : static_cast<std::int64_t>(
+                      counts[static_cast<std::size_t>(channel)]
+                  ) * 2048LL;
+            if (
+                stored_payload_size
+                > static_cast<std::int64_t>(
+                    std::numeric_limits<Py_ssize_t>::max()
+                )
+            ) {
+                Py_DECREF(result);
+                PyErr_SetString(PyExc_OverflowError, "AWC multichannel payload exceeds platform limits");
+                return nullptr;
             }
-            auto used_size = static_cast<Py_ssize_t>(stored_payload_size);
-            if (encoded_size > 0) {
-                if (encoded_size > used_size) {
-                    Py_DECREF(result);
-                    PyErr_SetString(PyExc_ValueError, "AWC encoded size exceeds its channel payload");
-                    return nullptr;
-                }
-                used_size = encoded_size;
+            const auto stride = static_cast<Py_ssize_t>(stored_payload_size);
+            if (stride > current_block_size - payload_cursor) {
+                Py_DECREF(result);
+                PyErr_SetString(PyExc_ValueError, "AWC multichannel payload is truncated");
+                return nullptr;
             }
+            stored_payload_sizes[static_cast<std::size_t>(channel)] = stride;
+            payload_cursor += stride;
+        }
+
+        for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
+            const auto stored_payload_size =
+                stored_payload_sizes[static_cast<std::size_t>(channel)];
             PyObject* item = Py_BuildValue(
                 "(iy#)",
                 samples[static_cast<std::size_t>(channel)],
                 block + cursor,
-                used_size
+                stored_payload_size
             );
             if (item == nullptr || PyList_Append(PyList_GetItem(result, channel), item) != 0) {
                 Py_XDECREF(item);
@@ -629,7 +643,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
                 return nullptr;
             }
             Py_DECREF(item);
-            cursor += static_cast<Py_ssize_t>(stored_payload_size);
+            cursor += stored_payload_size;
         }
     }
     return result;

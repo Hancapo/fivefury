@@ -75,8 +75,8 @@ def test_native_multichannel_block_extraction() -> None:
     block += struct.pack("<6i", 1, 1, 0, 3, 0, len(right))
     block += struct.pack("<2i", 0, 0)
     block += b"\x00" * ((-len(block)) % 0x800)
-    block += left.ljust(2048, b"\x00")
-    block += right.ljust(2048, b"\x00")
+    block += left
+    block += right
 
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=len(block), channel_count=2
@@ -94,6 +94,106 @@ def test_native_multichannel_block_extraction_accepts_compact_final_block() -> N
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=8192, channel_count=1
     ) == [[(2, payload)]]
+
+
+def test_native_multichannel_block_extraction_accepts_compact_three_channel_final_block() -> None:
+    payloads = [b"A" * 1872, b"B" * 1920, b"C" * 1920]
+    block = bytearray()
+    for channel, payload in enumerate(payloads):
+        block += struct.pack("<6i", channel, 1, 0, 7744, 0, len(payload))
+    block += struct.pack("<3i", 0, 0, 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += b"".join(payloads)
+
+    assert len(block) == 7760
+    assert _extract_multichannel_blocks(
+        bytes(block), block_count=1, block_size=524288, channel_count=3
+    ) == [[(7744, payload)] for payload in payloads]
+
+
+def test_native_multichannel_block_extraction_uses_compact_strides_before_padding() -> None:
+    payloads = [b"\xff\xfbA", b"\xff\xfbBBBB", b"\xff\xfbCCCCC"]
+    block = bytearray()
+    for channel, payload in enumerate(payloads):
+        block += struct.pack("<6i", channel, 1, 0, 1152, 0, len(payload))
+    block += struct.pack("<3i", 0, 0, 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += b"".join(payloads)
+    block += b"padding" * 800
+
+    assert len(block) < 8192
+    block += b"\x00" * (8192 - len(block))
+    assert _extract_multichannel_blocks(
+        bytes(block), block_count=1, block_size=8192, channel_count=3
+    ) == [[(1152, payload)] for payload in payloads]
+
+
+def test_native_multichannel_block_extraction_falls_back_to_padded_stride() -> None:
+    payloads = [b"L" * 2048, b"R" * 2048]
+    block = bytearray()
+    for channel in range(2):
+        block += struct.pack("<6i", channel, 1, 0, 1024, 0, 0)
+    block += struct.pack("<2i", 0, 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += b"".join(payloads)
+
+    assert _extract_multichannel_blocks(
+        bytes(block), block_count=1, block_size=len(block), channel_count=2
+    ) == [[(1024, payloads[0])], [(1024, payloads[1])]]
+
+
+def test_native_multichannel_block_validation_rejects_compact_size_sum() -> None:
+    block = bytearray()
+    block += struct.pack("<6i", 0, 1, 0, 2, 0, 5)
+    block += struct.pack("<6i", 1, 1, 0, 2, 0, 5)
+    block += struct.pack("<2i", 0, 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += b"123456789"
+
+    with pytest.raises(ValueError, match="payload is truncated"):
+        _extract_multichannel_blocks(
+            bytes(block), block_count=1, block_size=8192, channel_count=2
+        )
+
+
+def test_native_multichannel_block_validation_rejects_truncated_padded_payload() -> None:
+    block = bytearray(struct.pack("<6i", 0, 1, 0, 2, 0, 0))
+    block += struct.pack("<i", 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += b"short"
+
+    with pytest.raises(ValueError, match="payload is truncated"):
+        _extract_multichannel_blocks(
+            bytes(block), block_count=1, block_size=8192, channel_count=1
+        )
+
+
+@pytest.mark.parametrize(
+    ("small_block_count", "sample_count", "encoded_size"),
+    [(-1, 2, 0), (1, -1, 0), (1, 2, -1)],
+    ids=["small-block-count", "sample-count", "encoded-size"],
+)
+def test_native_multichannel_block_validation_rejects_negative_sizes(
+    small_block_count: int,
+    sample_count: int,
+    encoded_size: int,
+) -> None:
+    block = bytearray(
+        struct.pack(
+            "<6i",
+            0,
+            small_block_count,
+            0,
+            sample_count,
+            0,
+            encoded_size,
+        )
+    )
+
+    with pytest.raises(ValueError, match="negative size"):
+        _extract_multichannel_blocks(
+            bytes(block), block_count=1, block_size=len(block), channel_count=1
+        )
 
 
 def test_native_multichannel_block_validation_rejects_truncation() -> None:

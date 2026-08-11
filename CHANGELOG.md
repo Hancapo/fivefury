@@ -7,6 +7,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-08-11
+
+### Fixed
+- Compact multichannel AWC blocks use their encoded channel sizes without consuming block padding.
+
 ## [0.3.12] - 2026-08-11
 
 ### Fixed
