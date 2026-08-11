@@ -42,6 +42,8 @@ PyObject* mod_index_find_path_id(PyObject*, PyObject* args);
 PyObject* mod_index_find_hash_ids(PyObject*, PyObject* args);
 PyObject* mod_index_find_hashes_ids(PyObject*, PyObject* args);
 PyObject* mod_index_find_kind_ids(PyObject*, PyObject* args);
+PyObject* mod_index_find_container_ids(PyObject*, PyObject* args);
+PyObject* mod_index_find_stem_prefix_ids(PyObject*, PyObject* args);
 PyObject* mod_index_kind_short_hash_map(PyObject*, PyObject* args);
 PyObject* mod_index_kind_counts(PyObject*, PyObject* args);
 PyObject* mod_index_get_path(PyObject*, PyObject* args);

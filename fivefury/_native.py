@@ -66,6 +66,25 @@ class CompactIndex:
     def find_kind_ids(self, kind_value: int) -> list[int]:
         return _ffi.index_find_kind_ids(self._capsule, int(kind_value))
 
+    def find_container_ids(
+        self,
+        container: str,
+        *,
+        include_prefixed: bool = False,
+        kind_value: int | None = None,
+    ) -> list[int]:
+        return _ffi.index_find_container_ids(
+            self._capsule,
+            str(container),
+            bool(include_prefixed),
+            kind_value,
+        )
+
+    def find_stem_prefix_ids(self, prefix: str, kind_value: int) -> list[int]:
+        return _ffi.index_find_stem_prefix_ids(
+            self._capsule, str(prefix), int(kind_value)
+        )
+
     def kind_short_hash_map(self, kind_value: int) -> dict[int, int]:
         return _ffi.index_kind_short_hash_map(self._capsule, int(kind_value))
 

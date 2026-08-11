@@ -23,6 +23,8 @@ tests/*
 !tests/test_awc_enhanced.py
 !tests/test_awc_native.py
 !tests/test_cache_hot_paths.py
+!tests/test_cut_animation_resolution.py
+!tests/test_cut_resolver.py
 !tests/test_gtxd.py
 !tests/test_ymf.py
 !tests/test_ynd.py

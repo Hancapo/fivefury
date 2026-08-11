@@ -220,6 +220,72 @@ PyObject* mod_index_find_kind_ids(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_index_find_container_ids(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    PyObject* container_object = nullptr;
+    int include_prefixed = 0;
+    PyObject* kind_object = Py_None;
+    if (!PyArg_ParseTuple(
+            args,
+            "OOp|O:index_find_container_ids",
+            &capsule,
+            &container_object,
+            &include_prefixed,
+            &kind_object
+        )) {
+        return nullptr;
+    }
+    auto* index = require_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    std::string container;
+    if (!unicode_to_utf8(container_object, container, "container")) {
+        return nullptr;
+    }
+    std::optional<std::int32_t> kind;
+    if (kind_object != Py_None) {
+        const auto value = PyLong_AsLong(kind_object);
+        if (PyErr_Occurred()) {
+            return nullptr;
+        }
+        kind = static_cast<std::int32_t>(value);
+    }
+    try {
+        return make_id_list(index->find_container_ids(container, include_prefixed != 0, kind));
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
+PyObject* mod_index_find_stem_prefix_ids(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    PyObject* prefix_object = nullptr;
+    int kind_value = 0;
+    if (!PyArg_ParseTuple(
+            args,
+            "OOi:index_find_stem_prefix_ids",
+            &capsule,
+            &prefix_object,
+            &kind_value
+        )) {
+        return nullptr;
+    }
+    auto* index = require_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    std::string prefix;
+    if (!unicode_to_utf8(prefix_object, prefix, "prefix")) {
+        return nullptr;
+    }
+    try {
+        return make_id_list(index->find_stem_prefix_ids(prefix, kind_value));
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_index_kind_short_hash_map(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     int kind_value = 0;

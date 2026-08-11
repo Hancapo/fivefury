@@ -1,6 +1,8 @@
 #include "rpf_index.h"
 
+#include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace fivefury_native {
 
@@ -29,6 +31,7 @@ void CompactIndex::clear() {
     path_to_id_.clear();
     hash_to_ids_.clear();
     kind_to_ids_.clear();
+    container_to_ids_.clear();
 }
 
 std::size_t CompactIndex::count() const noexcept {
@@ -115,6 +118,64 @@ std::vector<std::uint32_t> CompactIndex::find_kind_ids(std::int32_t kind_value) 
         return {};
     }
     return it->second;
+}
+
+std::vector<std::uint32_t> CompactIndex::find_container_ids(
+    const std::string& container,
+    bool include_prefixed,
+    std::optional<std::int32_t> kind_value
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::uint32_t> result;
+    std::unordered_set<std::uint32_t> seen;
+    const auto append = [&](const std::vector<std::uint32_t>& ids) {
+        for (const auto asset_id : ids) {
+            if (kind_value.has_value() && checked_at(kinds_, asset_id) != kind_value.value()) {
+                continue;
+            }
+            if (seen.insert(asset_id).second) {
+                result.push_back(asset_id);
+            }
+        }
+    };
+    const auto exact = container_to_ids_.find(container);
+    if (exact != container_to_ids_.end()) {
+        append(exact->second);
+    }
+    if (include_prefixed) {
+        const auto prefix = container + "_";
+        for (const auto& [name, ids] : container_to_ids_) {
+            if (name.starts_with(prefix)) {
+                append(ids);
+            }
+        }
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+std::vector<std::uint32_t> CompactIndex::find_stem_prefix_ids(
+    const std::string& prefix,
+    std::int32_t kind_value
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::uint32_t> result;
+    const auto found = kind_to_ids_.find(kind_value);
+    if (found == kind_to_ids_.end()) {
+        return result;
+    }
+    for (const auto asset_id : found->second) {
+        const auto& path = checked_at(paths_, asset_id);
+        const auto slash = path.rfind('/');
+        const auto name_start = slash == std::string::npos ? 0U : slash + 1U;
+        const auto dot = path.rfind('.');
+        const auto name_end = dot == std::string::npos || dot < name_start ? path.size() : dot;
+        const auto stem = path.substr(name_start, name_end - name_start);
+        if (stem.starts_with(prefix)) {
+            result.push_back(asset_id);
+        }
+    }
+    return result;
 }
 
 std::vector<std::pair<std::uint32_t, std::uint32_t>> CompactIndex::kind_short_hash_pairs(std::int32_t kind_value) const {
@@ -281,13 +342,31 @@ std::uint32_t CompactIndex::add_unlocked(AssetRecordData&& record) {
         hash_to_ids_[record.short_hash].push_back(asset_id);
     }
     kind_to_ids_[record.kind].push_back(asset_id);
+    index_containers_unlocked(paths_.back(), asset_id);
     return asset_id;
+}
+
+void CompactIndex::index_containers_unlocked(const std::string& path, std::uint32_t asset_id) {
+    const auto final_slash = path.rfind('/');
+    if (final_slash == std::string::npos) {
+        return;
+    }
+    std::size_t start = 0;
+    while (start < final_slash) {
+        const auto slash = path.find('/', start);
+        const auto end = slash == std::string::npos || slash > final_slash ? final_slash : slash;
+        if (end > start) {
+            container_to_ids_[path.substr(start, end - start)].push_back(asset_id);
+        }
+        start = end + 1U;
+    }
 }
 
 void CompactIndex::rebuild_indices_unlocked() {
     path_to_id_.clear();
     hash_to_ids_.clear();
     kind_to_ids_.clear();
+    container_to_ids_.clear();
 
     for (std::uint32_t asset_id = 0; asset_id < paths_.size(); ++asset_id) {
         path_to_id_[paths_[asset_id]] = asset_id;
@@ -298,6 +377,7 @@ void CompactIndex::rebuild_indices_unlocked() {
             hash_to_ids_[short_hash].push_back(asset_id);
         }
         kind_to_ids_[kinds_[asset_id]].push_back(asset_id);
+        index_containers_unlocked(paths_[asset_id], asset_id);
     }
 }
 

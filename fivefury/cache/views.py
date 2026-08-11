@@ -316,9 +316,16 @@ class _TextureParentMap(Mapping[int, int]):
         if self._generation == self._cache._view_generation:
             return
         hash_to_parent: dict[int, int] = {}
-        for asset in self._cache.iter_assets():
-            if asset.kind not in {GameFileType.GTXD, GameFileType.YMT} and asset.name.lower() not in {"vehicles.meta", "peds.meta"}:
-                continue
+        candidates = [*self._cache.iter_assets(kind=GameFileType.GTXD)]
+        candidates.extend(self._cache.find_assets("vehicles.meta"))
+        candidates.extend(self._cache.find_assets("peds.meta"))
+        candidates.extend(
+            asset
+            for asset in self._cache.iter_assets(kind=GameFileType.YMT)
+            if asset.stem.lower() == "gtxd"
+            or asset.stem.lower().endswith("_gtxd")
+        )
+        for asset in candidates:
             data = self._cache.read_bytes(asset, logical=True)
             if not data:
                 continue

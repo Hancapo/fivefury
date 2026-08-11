@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fivefury import GameFileCache, GameFileType, jenk_hash
+from pathlib import Path
+
+from fivefury import GameFileCache, GameFileType, RpfArchive, jenk_hash
 
 
 def _cache_with_assets() -> GameFileCache:
@@ -73,3 +75,50 @@ def test_batch_name_lookup_preserves_each_requested_name() -> None:
     assert [asset.path for asset in cache.find_name("hero.ydr")] == [
         "x64/models/hero.ydr"
     ]
+
+
+def test_container_and_typed_stem_prefix_indexes_avoid_global_search() -> None:
+    cache = GameFileCache()
+    cache._register_asset(
+        path="packs/player_zero/player_zero_variants/uppr_000_u.ydd",
+        kind=GameFileType.YDD,
+        size=1,
+        uncompressed_size=1,
+    )
+    cache._register_asset(
+        path="packs/player_one/player_one_variants/uppr_000_u.ydd",
+        kind=GameFileType.YDD,
+        size=1,
+        uncompressed_size=1,
+    )
+    cache._register_asset(
+        path="data/lang/proaud.gxt2",
+        kind=GameFileType.GXT2,
+        size=1,
+        uncompressed_size=1,
+    )
+
+    assert [
+        asset.path
+        for asset in cache.find_container_assets(
+            "player_zero", kind=GameFileType.YDD, include_prefixed=True
+        )
+    ] == ["packs/player_zero/player_zero_variants/uppr_000_u.ydd"]
+    assert [asset.path for asset in cache.find_stem_prefix("proau", kind="gxt2")] == [
+        "data/lang/proaud.gxt2"
+    ]
+
+
+def test_native_archive_scan_classifies_named_metadata(tmp_path: Path) -> None:
+    archive = RpfArchive.empty("metadata.rpf")
+    archive.add_file("data/vehicles.meta", b"<CVehicleModelInfo__InitDataList />")
+    archive.add_file("data/peds.meta", b"<CPedModelInfo__InitDataList />")
+    archive.add_file("data/gtxd.meta", b"<CMapParentTxds />")
+    archive.save(tmp_path / "metadata.rpf")
+
+    with GameFileCache(tmp_path, use_index_cache=False) as cache:
+        cache.scan(load_keys=False)
+
+        assert cache.get_asset("vehicles.meta").kind is GameFileType.VEHICLES
+        assert cache.get_asset("peds.meta").kind is GameFileType.PEDS
+        assert cache.get_asset("gtxd.meta").kind is GameFileType.GTXD
