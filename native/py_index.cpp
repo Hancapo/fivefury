@@ -142,6 +142,67 @@ PyObject* mod_index_find_hash_ids(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_index_find_hashes_ids(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    PyObject* values_object = nullptr;
+    PyObject* kind_object = Py_None;
+    if (!PyArg_ParseTuple(args, "OO|O:index_find_hashes_ids", &capsule, &values_object, &kind_object)) {
+        return nullptr;
+    }
+    auto* index = require_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    const auto count = PySequence_Size(values_object);
+    if (count < 0) {
+        return nullptr;
+    }
+    std::vector<std::uint32_t> hashes;
+    hashes.reserve(static_cast<std::size_t>(count));
+    for (Py_ssize_t item_index = 0; item_index < count; ++item_index) {
+        PyObject* item = PySequence_GetItem(values_object, item_index);
+        if (item == nullptr) {
+            return nullptr;
+        }
+        const auto value = PyLong_AsUnsignedLongMask(item);
+        Py_DECREF(item);
+        if (PyErr_Occurred()) {
+            return nullptr;
+        }
+        hashes.push_back(static_cast<std::uint32_t>(value));
+    }
+    std::optional<std::int32_t> kind;
+    if (kind_object != Py_None) {
+        const auto value = PyLong_AsLong(kind_object);
+        if (PyErr_Occurred()) {
+            return nullptr;
+        }
+        kind = static_cast<std::int32_t>(value);
+    }
+    try {
+        const auto groups = index->find_hashes_ids(hashes, kind);
+        PyObject* result = PyDict_New();
+        if (result == nullptr) {
+            return nullptr;
+        }
+        for (const auto& [hash_value, asset_ids] : groups) {
+            PyObject* key = PyLong_FromUnsignedLong(hash_value);
+            PyObject* values = make_id_list(asset_ids);
+            if (key == nullptr || values == nullptr || PyDict_SetItem(result, key, values) < 0) {
+                Py_XDECREF(key);
+                Py_XDECREF(values);
+                Py_DECREF(result);
+                return nullptr;
+            }
+            Py_DECREF(key);
+            Py_DECREF(values);
+        }
+        return result;
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_index_find_kind_ids(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     int kind_value = 0;

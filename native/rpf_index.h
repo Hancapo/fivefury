@@ -42,6 +42,10 @@ public:
 
     std::optional<std::uint32_t> find_path_id(const std::string& path) const;
     std::vector<std::uint32_t> find_hash_ids(std::uint32_t hash_value) const;
+    std::vector<std::pair<std::uint32_t, std::vector<std::uint32_t>>> find_hashes_ids(
+        const std::vector<std::uint32_t>& hash_values,
+        std::optional<std::int32_t> kind_value = std::nullopt
+    ) const;
     std::vector<std::uint32_t> find_kind_ids(std::int32_t kind_value) const;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> kind_short_hash_pairs(std::int32_t kind_value) const;
     std::vector<std::pair<std::int32_t, std::uint32_t>> kind_counts() const;

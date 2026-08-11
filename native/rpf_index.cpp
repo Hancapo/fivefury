@@ -85,6 +85,29 @@ std::vector<std::uint32_t> CompactIndex::find_hash_ids(std::uint32_t hash_value)
     return it->second;
 }
 
+std::vector<std::pair<std::uint32_t, std::vector<std::uint32_t>>> CompactIndex::find_hashes_ids(
+    const std::vector<std::uint32_t>& hash_values,
+    std::optional<std::int32_t> kind_value
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::pair<std::uint32_t, std::vector<std::uint32_t>>> result;
+    result.reserve(hash_values.size());
+    for (const auto hash_value : hash_values) {
+        std::vector<std::uint32_t> matches;
+        const auto found = hash_to_ids_.find(hash_value);
+        if (found != hash_to_ids_.end()) {
+            matches.reserve(found->second.size());
+            for (const auto asset_id : found->second) {
+                if (!kind_value.has_value() || checked_at(kinds_, asset_id) == kind_value.value()) {
+                    matches.push_back(asset_id);
+                }
+            }
+        }
+        result.emplace_back(hash_value, std::move(matches));
+    }
+    return result;
+}
+
 std::vector<std::uint32_t> CompactIndex::find_kind_ids(std::int32_t kind_value) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = kind_to_ids_.find(kind_value);

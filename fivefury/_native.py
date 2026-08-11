@@ -54,6 +54,15 @@ class CompactIndex:
     def find_hash_ids(self, hash_value: int) -> list[int]:
         return _ffi.index_find_hash_ids(self._capsule, int(hash_value))
 
+    def find_hashes_ids(
+        self, hash_values: list[int], kind_value: int | None = None
+    ) -> dict[int, list[int]]:
+        return _ffi.index_find_hashes_ids(
+            self._capsule,
+            [int(value) & 0xFFFFFFFF for value in hash_values],
+            kind_value,
+        )
+
     def find_kind_ids(self, kind_value: int) -> list[int]:
         return _ffi.index_find_kind_ids(self._capsule, int(kind_value))
 

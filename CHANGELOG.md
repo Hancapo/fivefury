@@ -22,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 - AWC ADPCM, PCM channel operations, peak generation, and RSXXTEA run in the native backend.
+- GameFileCache uses stored asset types directly and supports batched typed hash and name lookups.
 
 ## [0.3.9] - 2026-08-08
 
