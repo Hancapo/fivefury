@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 
 from ..drawable import DRAWABLE_LOD_ORDER, DrawableLod, coerce_drawable_lod
 
@@ -50,11 +50,22 @@ class VertexSemantic(IntEnum):
 YdrLod = DrawableLod
 
 
-class YdrRenderMask(IntEnum):
-    STATIC_PROP = 227
-    INTERIOR_PROP = 235
-    SHELL = 239
-    FULL = 255
+class YdrRenderMask(IntFlag):
+    NONE = 0x00
+    DEFAULT = 0x01
+    SHADOW = 0x02
+    REFLECTION = 0x04
+    MIRROR = 0x08
+    WATER_REFLECTION = 0x10
+    UNUSED_13 = 0x20
+    RESERVED_14 = 0x40
+    RESERVED_15 = 0x80
+
+    RESERVED_PASSES = UNUSED_13 | RESERVED_14 | RESERVED_15
+    STATIC_PROP = RESERVED_PASSES | DEFAULT | SHADOW
+    INTERIOR_PROP = STATIC_PROP | MIRROR
+    SHELL = INTERIOR_PROP | REFLECTION
+    FULL = RESERVED_PASSES | DEFAULT | SHADOW | REFLECTION | MIRROR | WATER_REFLECTION
 
 
 @dataclasses.dataclass(slots=True)

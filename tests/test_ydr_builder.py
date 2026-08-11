@@ -436,6 +436,37 @@ def test_create_ydr_accepts_named_render_mask_presets(tmp_path: Path) -> None:
     assert ydr.get_model(0).render_mask == int(YdrRenderMask.SHELL)
 
 
+def test_ydr_render_mask_exposes_composable_runtime_passes(tmp_path: Path) -> None:
+    assert int(YdrRenderMask.DEFAULT) == 0x01
+    assert int(YdrRenderMask.SHADOW) == 0x02
+    assert int(YdrRenderMask.REFLECTION) == 0x04
+    assert int(YdrRenderMask.MIRROR) == 0x08
+    assert int(YdrRenderMask.WATER_REFLECTION) == 0x10
+    assert int(YdrRenderMask.RESERVED_PASSES) == 0xE0
+    assert int(YdrRenderMask.STATIC_PROP) == 227
+    assert int(YdrRenderMask.INTERIOR_PROP) == 235
+    assert int(YdrRenderMask.SHELL) == 239
+    assert int(YdrRenderMask.FULL) == 255
+
+    render_mask = YdrRenderMask.STATIC_PROP | YdrRenderMask.WATER_REFLECTION
+    build = create_ydr(
+        meshes=[_triangle_mesh()],
+        material_textures={"DiffuseSampler": "test_diffuse"},
+        render_mask=render_mask,
+        name="triangle_water_reflection",
+    )
+
+    ydr_path = tmp_path / "triangle_water_reflection.ydr"
+    build.save(ydr_path)
+    restored = YdrRenderMask(read_ydr(ydr_path).get_model(0).render_mask)
+
+    assert restored == render_mask
+    assert YdrRenderMask.DEFAULT in restored
+    assert YdrRenderMask.WATER_REFLECTION in restored
+    assert YdrRenderMask.SHADOW in restored
+    assert YdrRenderMask.REFLECTION not in restored
+
+
 def test_ydr_build_from_meshes_can_add_models_declaratively() -> None:
     build = YdrBuild.from_meshes(
         meshes=[_triangle_mesh(material="main")],

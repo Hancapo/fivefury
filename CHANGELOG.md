@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Composable YDR render-pass masks with named default, shadow, reflection, mirror, and water-reflection flags.
+
 ### Fixed
 - Enhanced sampler-state parameters no longer inherit colliding legacy texture metadata.
 - YDR validation reports genuinely null optional texture slots as informational instead of warnings.
