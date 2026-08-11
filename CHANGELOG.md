@@ -30,6 +30,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - AWC PCM WAV handling and multichannel block extraction run in the native backend.
 - GameFileCache uses stored asset types directly and supports batched typed hash and name lookups.
 - CUT dependency resolution uses direct container, prefix, and metadata indexes instead of global asset and YMT scans.
+- GameFileCache retains larger dependency sets and reuses parsed texture-parent metadata.
 
 ## [0.3.9] - 2026-08-08
 
