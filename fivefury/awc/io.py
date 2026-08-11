@@ -9,6 +9,7 @@ from .constants import (
     AWC_MAGIC_LE,
     AWC_STREAM_ID_MASK,
     AwcChunkType,
+    AwcCodecType,
 )
 from .crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
 from .structures import Awc, AwcChunk, AwcChunkInfo, AwcStream
@@ -97,8 +98,17 @@ def read_awc(
     chunk_cursor = 0
     for stream_id, chunk_count in stream_infos:
         chunks: list[AwcChunk] = []
+        stream_codec: AwcCodecType | None = None
         for info in chunk_infos[chunk_cursor : chunk_cursor + chunk_count]:
-            chunk = AwcChunk.from_info(info, data, endian)
+            seek_table_entry_size = 2 if stream_codec is AwcCodecType.MP3 else 4
+            chunk = AwcChunk.from_info(
+                info,
+                data,
+                endian,
+                seek_table_entry_size=seek_table_entry_size,
+            )
+            if chunk.format is not None:
+                stream_codec = chunk.format.codec
             if (
                 decrypt
                 and not whole_file_encrypted
