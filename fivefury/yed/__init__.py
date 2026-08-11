@@ -6,7 +6,11 @@ from .audit import (
     audit_yed_paths,
     iter_yed_files,
 )
-from .constants import DEFAULT_YED_VERSION
+from .constants import (
+    DEFAULT_YED_VERSION,
+    YED_FACIAL_ROOT_BONE_ID,
+    YED_FACIAL_ROOT_BONE_NAME,
+)
 from .enums import YedInstructionType, YedTrackFormat
 from .model import (
     ResourceListInfo,
@@ -25,6 +29,7 @@ from .ped import (
     YedPedExpressionBinding,
     get_ped_expression_binding,
     set_ped_expression_binding,
+    validate_ped_expression_binding,
 )
 from .reader import read_yed, read_yed_dictionary
 from .runtime_headers import (
@@ -55,6 +60,8 @@ __all__ = [
     "YedTrack",
     "YedTrackFormat",
     "YedPedExpressionBinding",
+    "YED_FACIAL_ROOT_BONE_ID",
+    "YED_FACIAL_ROOT_BONE_NAME",
     "YedRuntimeProfile",
     "YedValidationIssue",
     "audit_yed",
@@ -70,5 +77,6 @@ __all__ = [
     "read_yed_dictionary",
     "save_yed",
     "set_ped_expression_binding",
+    "validate_ped_expression_binding",
     "validate_yed",
 ]

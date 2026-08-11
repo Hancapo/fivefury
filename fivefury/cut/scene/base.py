@@ -20,6 +20,8 @@ from .bindings import (
     _BINDING_CLASS_BY_TYPE,
     _ROLE_PROPERTY_NAMES,
     CutBinding,
+    CutFacialAnimationMode,
+    CutPed,
     CutProp,
     CutPropAnimationPreset,
     CutTypeFileStrategy,
@@ -113,7 +115,11 @@ class CutScene:
         if resolved is None:
             return None
         clips = self.available_clips(cut_index=cut_index)
-        animation_clip_base = getattr(resolved, "animation_clip_base", None)
+        animation_clip_base = getattr(
+            resolved,
+            "runtime_animation_clip_base",
+            getattr(resolved, "animation_clip_base", None),
+        )
         if animation_clip_base:
             clip = clips.get(MetaHash(animation_clip_base).uint)
             if clip is not None:
@@ -525,7 +531,11 @@ class CutScene:
                         continue
                     candidate_hashes: list[int] = []
                     candidate_labels: list[str] = []
-                    animation_clip_base = getattr(bound, "animation_clip_base", None)
+                    animation_clip_base = getattr(
+                        bound,
+                        "runtime_animation_clip_base",
+                        getattr(bound, "animation_clip_base", None),
+                    )
                     active_cut_index = _technical_cut_index(
                         self.camera_cut_list,
                         float(event.start),
@@ -618,6 +628,53 @@ for _role, _property_name in _ROLE_PROPERTY_NAMES.items():
 
 for _role, _binding_cls in _BINDING_ADDERS.items():
     setattr(CutScene, f"add_{_role}", _make_binding_adder(_binding_cls))
+
+
+def add_ped(
+    self: CutScene,
+    name: str | None = None,
+    *,
+    object_id: int | None = None,
+    cutscene_name: str | None = None,
+    streaming_name: str | None = None,
+    model_name: str | None = None,
+    animation_clip_base: str | None = None,
+    anim_streaming_base: int | None = None,
+    facial_animation: CutFacialAnimationMode | str | None = None,
+    override_face_animation_filename: str | None = None,
+    face_animation_node_name: str | None = None,
+    face_attributes_filename: str | None = None,
+    type_file: str | None = None,
+    ytyp_name: str | None = None,
+    fields: dict[str, Any] | None = None,
+) -> CutPed:
+    ped = self.add_typed_binding(CutPed, name, object_id=object_id, fields=fields)
+    assert isinstance(ped, CutPed)
+    ped.configure_model_asset(
+        cutscene_name=cutscene_name,
+        streaming_name=streaming_name if streaming_name is not None else model_name,
+        animation_clip_base=animation_clip_base,
+        anim_streaming_base=anim_streaming_base,
+        type_file=type_file if type_file is not None else ytyp_name,
+    )
+    if facial_animation is not None:
+        ped.configure_facial_animation(
+            facial_animation,
+            override_filename=override_face_animation_filename,
+            node_name=face_animation_node_name,
+            attributes_filename=face_attributes_filename,
+        )
+        if (
+            ped.facial_animation_mode is not CutFacialAnimationMode.NONE
+            and not ped.animation_clip_base
+        ):
+            raise ValueError(
+                "animation_clip_base is required for merged facial animation"
+            )
+    return ped
+
+
+setattr(CutScene, "add_ped", add_ped)
 
 
 def add_prop(

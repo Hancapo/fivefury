@@ -15,6 +15,7 @@ class YmtPedInitData:
     clip_dictionary_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     expression_set_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     expression_dictionary_name: MetaHash = dataclasses.field(default_factory=MetaHash)
+    expression_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     ped_type: MetaHash = dataclasses.field(default_factory=MetaHash)
     movement_clip_set: MetaHash = dataclasses.field(default_factory=MetaHash)
     ped_component_set_name: MetaHash = dataclasses.field(default_factory=MetaHash)
@@ -31,6 +32,7 @@ class YmtPedInitData:
             clip_dictionary_name=_meta_hash(_field(fields, "ClipDictionaryName", "0x994CF78F", "hash_994CF78F")),
             expression_set_name=_meta_hash(_field(fields, "ExpressionSetName", "0x8C3E474C", "hash_8C3E474C")),
             expression_dictionary_name=_meta_hash(_field(fields, "ExpressionDictionaryName", "0x68EFE1B7", "hash_68EFE1B7")),
+            expression_name=_meta_hash(_field(fields, "ExpressionName", "0xB3212586", "hash_B3212586")),
             ped_type=_meta_hash(_field(fields, "Pedtype", "0xB5EF3F22", "hash_B5EF3F22")),
             movement_clip_set=_meta_hash(_field(fields, "MovementClipSet", "0xC19D8347", "hash_C19D8347")),
             ped_component_set_name=_meta_hash(_field(fields, "PedComponentSetName", "0xC465D37B", "hash_C465D37B")),

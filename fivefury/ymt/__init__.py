@@ -112,6 +112,7 @@ YMT_ROOT_NAMES = {
     54445749: "child",
     2571958159: "ClipDictionaryName",
     1760551351: "ExpressionDictionaryName",
+    3005293958: "ExpressionName",
     2352891724: "ExpressionSetName",
     3052355362: "Pedtype",
     3248325447: "MovementClipSet",

@@ -18,7 +18,7 @@ from ..limits import (
     CUT_MINIMUM_DURATION,
     CUT_MINIMUM_SECTION_DURATION,
 )
-from .bindings import CutBinding
+from .bindings import CutBinding, CutPed
 from .shared import (
     _coerce_name,
     _is_scene_entity,
@@ -855,7 +855,10 @@ def _validate_animations(
                 "set_anim.model.not_loaded",
                 f"SET_ANIM for {_binding_name(binding)} happens before LOAD_MODELS",
             )
-        animation_clip_base = getattr(binding, "animation_clip_base", None)
+        authored_clip_base = getattr(binding, "animation_clip_base", None)
+        animation_clip_base = getattr(
+            binding, "runtime_animation_clip_base", authored_clip_base
+        )
         anim_streaming_base = _binding_int_field(binding, "AnimStreamingBase")
         if (
             _is_streamed_model(binding)
@@ -868,8 +871,8 @@ def _validate_animations(
                 "set_anim.streaming_base.missing",
                 f"{_binding_name(binding)} is animated but has no animation_clip_base/AnimStreamingBase",
             )
-        if animation_clip_base:
-            expected_base = jenk_partial_hash(animation_clip_base)
+        if authored_clip_base:
+            expected_base = jenk_partial_hash(authored_clip_base)
             if anim_streaming_base != expected_base:
                 _issue(
                     issues,
@@ -938,6 +941,48 @@ def _validate_animations(
                     "load_anim_dict.ycd.missing",
                     f"LOAD_ANIM_DICT '{label}' does not match any attached YCD",
                 )
+
+
+def _validate_facial_animation(
+    scene: "CutScene", issues: list[CutSceneValidationIssue]
+) -> None:
+    for binding in scene.peds:
+        if not isinstance(binding, CutPed):
+            continue
+        name = _binding_name(binding)
+        if binding.override_face_animation and not binding.override_face_animation_filename:
+            _issue(
+                issues,
+                "error",
+                "ped.face.override_filename.missing",
+                f"{name} enables facial animation override without a filename",
+            )
+        if binding.face_and_body_are_merged and not binding.has_face_animation:
+            _issue(
+                issues,
+                "error",
+                "ped.face.merged.inactive",
+                f"{name} merges face and body but does not enable facial animation",
+            )
+        if binding.has_face_animation and not binding.face_and_body_are_merged:
+            _issue(
+                issues,
+                "error",
+                "ped.face.separate.unsupported",
+                f"{name} requests a separate facial clip, which final runtime builds do not play",
+                hint="Use merged facial animation and author the '<base>_dual-<section>' clip.",
+            )
+        if (
+            binding.has_face_animation
+            and not binding.animation_clip_base
+            and _binding_int_field(binding, "AnimStreamingBase") == 0
+        ):
+            _issue(
+                issues,
+                "error",
+                "ped.face.clip_base.missing",
+                f"{name} has facial animation but no resolvable animation_clip_base",
+            )
 
 
 def _validate_assets(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
@@ -1015,6 +1060,7 @@ def validate_cut_scene(
     _validate_attachments(scene, issues)
     _validate_loading(scene, issues)
     _validate_cameras(scene, issues, strict=strict)
+    _validate_facial_animation(scene, issues)
     _validate_animations(scene, issues, strict=strict)
     _validate_assets(scene, issues)
     _validate_flags(scene, issues)

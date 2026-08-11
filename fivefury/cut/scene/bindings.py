@@ -105,6 +105,12 @@ class CutTypeFileStrategy(Enum):
     NONE = "none"
 
 
+class CutFacialAnimationMode(Enum):
+    NONE = "none"
+    MERGED = "merged"
+    OVERRIDE_MERGED = "override_merged"
+
+
 _CUT_PROP_ANIMATION_PRESETS: dict[CutPropAnimationPreset, dict[str, Any | None]] = {
     CutPropAnimationPreset.NONE: {
         "cAnimExportCtrlSpecFile": None,
@@ -533,6 +539,114 @@ class CutCamera(_TypedCutBinding):
 class CutPed(_CutStreamedModelBinding):
     TYPE_NAME = "rage__cutfPedModelObject"
     ROLE = "ped"
+
+    @property
+    def found_face_animation(self) -> bool:
+        return bool(self.fields.get("bFoundFaceAnimation", False))
+
+    @found_face_animation.setter
+    def found_face_animation(self, value: bool) -> None:
+        self.fields["bFoundFaceAnimation"] = bool(value)
+
+    @property
+    def face_and_body_are_merged(self) -> bool:
+        return bool(self.fields.get("bFaceAndBodyAreMerged", False))
+
+    @face_and_body_are_merged.setter
+    def face_and_body_are_merged(self, value: bool) -> None:
+        self.fields["bFaceAndBodyAreMerged"] = bool(value)
+
+    @property
+    def override_face_animation(self) -> bool:
+        return bool(self.fields.get("bOverrideFaceAnimation", False))
+
+    @override_face_animation.setter
+    def override_face_animation(self, value: bool) -> None:
+        self.fields["bOverrideFaceAnimation"] = bool(value)
+
+    @property
+    def override_face_animation_filename(self) -> str | None:
+        return self._get_hashed_text_field("overrideFaceAnimationFilename")
+
+    @override_face_animation_filename.setter
+    def override_face_animation_filename(self, value: str | None) -> None:
+        self._set_hashed_text_field("overrideFaceAnimationFilename", value)
+
+    @property
+    def face_animation_node_name(self) -> str | None:
+        return self._get_hashed_text_field("faceAnimationNodeName")
+
+    @face_animation_node_name.setter
+    def face_animation_node_name(self, value: str | None) -> None:
+        self._set_hashed_text_field("faceAnimationNodeName", value)
+
+    @property
+    def face_attributes_filename(self) -> str | None:
+        return self._get_hashed_text_field("faceAttributesFilename")
+
+    @face_attributes_filename.setter
+    def face_attributes_filename(self, value: str | None) -> None:
+        self._set_hashed_text_field("faceAttributesFilename", value)
+
+    @property
+    def has_face_animation(self) -> bool:
+        return self.found_face_animation or (
+            self.override_face_animation
+            and bool(self.override_face_animation_filename)
+        )
+
+    @property
+    def facial_animation_mode(self) -> CutFacialAnimationMode | None:
+        if not self.has_face_animation and not self.face_and_body_are_merged:
+            return CutFacialAnimationMode.NONE
+        if not self.face_and_body_are_merged:
+            return None
+        if self.override_face_animation:
+            return CutFacialAnimationMode.OVERRIDE_MERGED
+        return CutFacialAnimationMode.MERGED
+
+    @property
+    def runtime_animation_clip_base(self) -> str | None:
+        base = self.animation_clip_base
+        if base and self.has_face_animation and self.face_and_body_are_merged:
+            return base if base.endswith("_dual") else f"{base}_dual"
+        return base
+
+    def configure_facial_animation(
+        self,
+        mode: CutFacialAnimationMode | str,
+        *,
+        override_filename: str | None = None,
+        node_name: str | None = None,
+        attributes_filename: str | None = None,
+    ) -> "CutPed":
+        resolved = (
+            mode
+            if isinstance(mode, CutFacialAnimationMode)
+            else CutFacialAnimationMode(str(mode).strip().lower())
+        )
+        self.face_animation_node_name = node_name
+        self.face_attributes_filename = attributes_filename
+        if resolved is CutFacialAnimationMode.NONE:
+            self.found_face_animation = False
+            self.face_and_body_are_merged = False
+            self.override_face_animation = False
+            self.override_face_animation_filename = None
+        elif resolved is CutFacialAnimationMode.MERGED:
+            self.found_face_animation = True
+            self.face_and_body_are_merged = True
+            self.override_face_animation = False
+            self.override_face_animation_filename = None
+        else:
+            if not override_filename:
+                raise ValueError(
+                    "override_filename is required for override_merged facial animation"
+                )
+            self.found_face_animation = False
+            self.face_and_body_are_merged = True
+            self.override_face_animation = True
+            self.override_face_animation_filename = override_filename
+        return self
 
 
 class CutProp(_CutStreamedModelBinding):

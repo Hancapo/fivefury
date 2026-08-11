@@ -13,6 +13,7 @@ from .constants import (
     DEFAULT_YED_EXPRESSION_VFT,
     DEFAULT_YED_VERSION,
     SPRING_BLOCK_SIZE,
+    YED_FACIAL_ROOT_BONE_ID,
 )
 from .enums import YedInstructionType, YedTrackFormat
 
@@ -563,6 +564,33 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
     issues: list[YedValidationIssue] = []
     seen_hashes: set[int] = set()
     skeleton_tags = _collect_skeleton_bone_tags(skeleton)
+    if skeleton is not None and yed.expressions and YED_FACIAL_ROOT_BONE_ID not in skeleton_tags:
+        issues.append(
+            YedValidationIssue(
+                "facial-root-bone-missing",
+                "the skeleton does not contain required bone "
+                f"FACIAL_facialRoot ({YED_FACIAL_ROOT_BONE_ID})",
+            )
+        )
+    dictionary_lists = (
+        ("expression hashes", yed.dictionary.expression_name_hashes, len(yed.expressions)),
+        ("expression pointers", yed.dictionary.expressions_info, len(yed.expressions)),
+    )
+    for label, info, actual_count in dictionary_lists:
+        if info.pointer and info.capacity < info.count:
+            issues.append(
+                YedValidationIssue(
+                    "list-capacity-invalid",
+                    f"YED {label} capacity is smaller than its count",
+                )
+            )
+        if info.pointer and info.count != actual_count:
+            issues.append(
+                YedValidationIssue(
+                    "list-count-mismatch",
+                    f"YED {label} declares {info.count} items but exposes {actual_count}",
+                )
+            )
     for expression in yed.expressions:
         short = expression.short_name
         expression_name = short or expression.name
@@ -579,6 +607,29 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
                     expression_name,
                 )
             )
+        expression_lists = (
+            ("streams", expression.streams_info, len(expression.streams)),
+            ("tracks", expression.tracks_info, len(expression.tracks)),
+            ("springs", expression.springs_info, len(expression.springs)),
+            ("variables", expression.variables_info, len(expression.variables)),
+        )
+        for label, info, actual_count in expression_lists:
+            if info.pointer and info.capacity < info.count:
+                issues.append(
+                    YedValidationIssue(
+                        "list-capacity-invalid",
+                        f"{label} capacity is smaller than its count",
+                        expression_name,
+                    )
+                )
+            if info.pointer and info.count != actual_count:
+                issues.append(
+                    YedValidationIssue(
+                        "list-count-mismatch",
+                        f"{label} declares {info.count} items but exposes {actual_count}",
+                        expression_name,
+                    )
+                )
         for track in expression.tracks:
             try:
                 _ = track.format
@@ -586,13 +637,9 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
                 issues.append(YedValidationIssue("track-format-invalid", str(exc), expression_name))
             if skeleton_tags and (int(track.bone_id) & 0xFFFF) not in skeleton_tags:
                 issues.append(YedValidationIssue("track-bone-missing", f"track bone id {track.bone_id:#06x} is not present in the skeleton", expression_name))
-        seen_springs: set[int] = set()
         for spring in expression.springs:
             if len(spring.raw) != SPRING_BLOCK_SIZE:
                 issues.append(YedValidationIssue("spring-size-invalid", "YED spring raw block has invalid size", expression_name))
-            if spring.bone_id in seen_springs:
-                issues.append(YedValidationIssue("spring-bone-duplicate", f"duplicate spring bone id {spring.bone_id:#06x}", expression_name))
-            seen_springs.add(spring.bone_id)
             if skeleton_tags and (int(spring.bone_id) & 0xFFFF) not in skeleton_tags:
                 issues.append(YedValidationIssue("spring-bone-missing", f"spring bone id {spring.bone_id:#06x} is not present in the skeleton", expression_name))
         for stream in expression.streams:
@@ -607,6 +654,48 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
                             expression_name,
                         )
                     )
+                    continue
+                track_index = instruction.operands.get("track_index")
+                if track_index is not None and not 0 <= int(track_index) < len(expression.tracks):
+                    issues.append(
+                        YedValidationIssue(
+                            "stream-track-index-invalid",
+                            f"stream {int(stream.name_hash):#010x} instruction "
+                            f"{instruction.index} references track {int(track_index)}",
+                            expression_name,
+                        )
+                    )
+                variable_index = instruction.operands.get("variable_index")
+                if variable_index is not None and not 0 <= int(variable_index) < len(expression.variables):
+                    issues.append(
+                        YedValidationIssue(
+                            "stream-variable-index-invalid",
+                            f"stream {int(stream.name_hash):#010x} instruction "
+                            f"{instruction.index} references variable {int(variable_index)}",
+                            expression_name,
+                        )
+                    )
+                instruction_offset = instruction.operands.get("instruction_offset")
+                if instruction_offset is not None and not 0 <= int(instruction_offset) < len(stream.instructions):
+                    issues.append(
+                        YedValidationIssue(
+                            "stream-jump-target-invalid",
+                            f"stream {int(stream.name_hash):#010x} instruction "
+                            f"{instruction.index} jumps to {int(instruction_offset)}",
+                            expression_name,
+                        )
+                    )
+                for source in instruction.operands.get("source_infos", ()):
+                    source_track = int(source.get("track_index", -1))
+                    if not 0 <= source_track < len(expression.tracks):
+                        issues.append(
+                            YedValidationIssue(
+                                "stream-blend-track-index-invalid",
+                                f"stream {int(stream.name_hash):#010x} instruction "
+                                f"{instruction.index} references blend track {source_track}",
+                                expression_name,
+                            )
+                        )
     return issues
 
 
