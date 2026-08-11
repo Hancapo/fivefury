@@ -9,6 +9,7 @@ PyMethodDef module_methods[] = {
     {"index_add", mod_index_add, METH_VARARGS, nullptr},
     {"index_find_path_id", mod_index_find_path_id, METH_VARARGS, nullptr},
     {"index_find_hash_ids", mod_index_find_hash_ids, METH_VARARGS, nullptr},
+    {"index_find_hashes_ids", mod_index_find_hashes_ids, METH_VARARGS, nullptr},
     {"index_find_kind_ids", mod_index_find_kind_ids, METH_VARARGS, nullptr},
     {"index_kind_short_hash_map", mod_index_kind_short_hash_map, METH_VARARGS, nullptr},
     {"index_kind_counts", mod_index_kind_counts, METH_VARARGS, nullptr},

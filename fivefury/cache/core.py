@@ -447,6 +447,59 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         result = list(self._iter_ids(ids, kind=kind))
         return result[:limit] if limit is not None else result
 
+    def find_hashes(
+        self,
+        values: Sequence[int | MetaHash],
+        *,
+        kind: GameFileType | str | int | None = None,
+    ) -> dict[int, list[AssetRecord]]:
+        hashes = list(dict.fromkeys(int(value) & 0xFFFFFFFF for value in values))
+        kind_value = _coerce_kind(kind)
+        groups = self._index.find_hashes_ids(
+            hashes,
+            None if kind_value is None else int(kind_value),
+        )
+        return {
+            hash_value: [self._record_from_id(asset_id) for asset_id in asset_ids]
+            for hash_value, asset_ids in groups.items()
+        }
+
+    def find_names(
+        self,
+        names: Sequence[str | Path],
+        *,
+        kind: GameFileType | str | int | None = None,
+    ) -> dict[str, list[AssetRecord]]:
+        normalized = [str(name) for name in names]
+        candidates: dict[str, tuple[str, str, int, int]] = {}
+        hashes: list[int] = []
+        for original in normalized:
+            name = _path_name(original).lower()
+            stem = _path_stem(name)
+            name_hash = jenk_hash(name)
+            stem_hash = jenk_hash(stem)
+            candidates[original] = (name, stem, name_hash, stem_hash)
+            hashes.extend((name_hash, stem_hash))
+        groups = self.find_hashes(hashes, kind=kind)
+        result: dict[str, list[AssetRecord]] = {}
+        for original, (name, stem, name_hash, stem_hash) in candidates.items():
+            matches: list[AssetRecord] = []
+            seen: set[int] = set()
+            requires_extension = name != stem
+            for asset in (*groups.get(stem_hash, ()), *groups.get(name_hash, ())):
+                if asset.id in seen:
+                    continue
+                if requires_extension:
+                    matches_name = asset.name.lower() == name
+                else:
+                    matches_name = asset.stem.lower() == stem
+                if not matches_name:
+                    continue
+                seen.add(asset.id)
+                matches.append(asset)
+            result[original] = matches
+        return result
+
     def find_name(
         self,
         name: str | Path,
@@ -464,6 +517,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             result: list[AssetRecord] = []
             seen: set[int] = set()
             kind_value = _coerce_kind(kind)
+            requires_extension = text != stem
             for asset_id in ids:
                 if asset_id in seen or asset_id < 0 or asset_id >= self.asset_count:
                     continue
@@ -471,7 +525,12 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
                 if kind_value is not None and asset.kind is not kind_value:
                     continue
                 path_value = self._index.get_path(asset_id)
-                if _path_name(path_value) != text and _path_stem(path_value) != stem:
+                matches_name = (
+                    _path_name(path_value) == text
+                    if requires_extension
+                    else _path_stem(path_value) == stem
+                )
+                if not matches_name:
                     continue
                 seen.add(asset_id)
                 result.append(asset)
@@ -524,8 +583,6 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
 
     def has_asset(self, query: str | Path | int | MetaHash, *, kind: GameFileType | str | int | None = None) -> bool:
         return self.get_asset(query, kind=kind) is not None
-
-
 
 GameFileCache.search = GameFileCache.search_assets
 GameFileCache.find = GameFileCache.find_assets

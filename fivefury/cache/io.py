@@ -259,7 +259,7 @@ class GameFileCacheIOMixin:
             stored_native, standalone_native = native_variants
             self._log(f"read file {asset.path}")
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
-            ext = Path(asset.path).suffix.lower()
+            ext = asset.extension
             raw_source = standalone_native if ext in {".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
             parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None

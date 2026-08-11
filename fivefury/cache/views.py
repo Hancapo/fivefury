@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from ..common import hash_value
-from ..gamefile import GameFileType, guess_game_file_type
+from ..gamefile import GameFileType
 from ..gtxd import Gtxd, read_gtxd
 from ..ymt import Ymt
 from ..metahash import MetaHash
@@ -45,8 +45,7 @@ class AssetRecord:
 
     @property
     def kind(self) -> GameFileType:
-        stored = GameFileType(int(self._cache._index.get_kind(self.id)))
-        return guess_game_file_type(self.path, stored)
+        return GameFileType(int(self._cache._index.get_kind(self.id)))
 
     @property
     def size(self) -> int:
