@@ -273,7 +273,7 @@ class YcdAnimSequence:
         if not self.is_cached_quaternion:
             return self.evaluate_vector4(frame)
 
-        xyz: list[float] = []
+        explicit: list[float] = []
         normalized = 0.0
         quat_index = 3
         for channel in self.channels:
@@ -281,10 +281,17 @@ class YcdAnimSequence:
                 normalized = channel.evaluate_float(frame)
                 quat_index = int(channel.quat_index)
                 continue
-            xyz.extend(float(value) for value in channel.evaluate_components(frame))
-            if len(xyz) >= 3:
-                xyz = xyz[:3]
-                break
+            if len(explicit) < 4:
+                explicit.extend(
+                    float(value) for value in channel.evaluate_components(frame)
+                )
+                explicit = explicit[:4]
+        # CachedQuaternion1 replaces one omitted quaternion component.  The
+        # CachedQuaternion2 layout follows four explicit components and stores
+        # auxiliary cache metadata; those explicit values are the quaternion.
+        if len(explicit) >= 4:
+            return tuple(explicit[:4])
+        xyz = explicit
         while len(xyz) < 3:
             xyz.append(0.0)
         x, y, z = xyz[:3]

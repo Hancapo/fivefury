@@ -500,7 +500,12 @@ class YcdAnimation:
                 continue
             if track_value is not None and int(bone.track) != track_value:
                 continue
-            result[(int(bone.bone_id), int(bone.track))] = sequence.evaluate_vector4(local_frame)
+            evaluator = (
+                sequence.evaluate_quaternion
+                if is_ycd_rotation_track(int(bone.track))
+                else sequence.evaluate_vector4
+            )
+            result[(int(bone.bone_id), int(bone.track))] = evaluator(local_frame)
         return result
 
     def evaluate_uv_animation(self, frame: int) -> dict[tuple[int, int], tuple[float, float, float, float]]:

@@ -225,22 +225,22 @@ def is_ycd_position_track(track: int) -> bool:
 
 
 def is_ycd_rotation_track(track: int) -> bool:
-    return int(track) in (int(YcdAnimationTrack.BONE_ROTATION), int(YcdAnimationTrack.MOVER_ROTATION))
+    return TRACK_FORMAT_BY_ID.get(int(track)) is YcdTrackFormat.QUATERNION
 
 
 __all__ = [
-    "YcdAnimationTrack",
-    "YcdTrackFormat",
     "CAMERA_TRACK_IDS",
     "FACIAL_TRACK_IDS",
     "ROOT_MOTION_TRACK_IDS",
+    "YcdAnimationTrack",
+    "YcdTrackFormat",
     "get_ycd_track_format",
     "get_ycd_track_name",
     "is_ycd_camera_track",
     "is_ycd_facial_track",
     "is_ycd_object_track",
     "is_ycd_position_track",
-    "is_ycd_rotation_track",
     "is_ycd_root_motion_track",
+    "is_ycd_rotation_track",
     "is_ycd_uv_track",
 ]
