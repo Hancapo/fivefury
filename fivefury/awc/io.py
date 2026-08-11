@@ -49,9 +49,13 @@ def read_awc(
         elif magic_le == AWC_MAGIC_BE:
             endian = ">"
         else:
-            raise ValueError(f"Invalid AWC magic 0x{magic_le:08X} after whole-file decryption")
+            raise ValueError(
+                f"Invalid AWC magic 0x{magic_le:08X} after whole-file decryption"
+            )
 
-    magic, version, flags, stream_count, data_offset = struct.unpack_from(f"{endian}IHHii", data, 0)
+    _magic, version, flags, stream_count, data_offset = struct.unpack_from(
+        f"{endian}IHHii", data, 0
+    )
     if stream_count < 0:
         raise ValueError("AWC stream count is negative")
 
@@ -61,7 +65,11 @@ def read_awc(
         table_size = stream_count * 2
         if offset + table_size > len(data):
             raise ValueError("AWC chunk index table is truncated")
-        chunk_indices = list(struct.unpack_from(f"{endian}{stream_count}H", data, offset)) if stream_count else []
+        chunk_indices = (
+            list(struct.unpack_from(f"{endian}{stream_count}H", data, offset))
+            if stream_count
+            else []
+        )
         offset += table_size
 
     if offset + (stream_count * 4) > len(data):
@@ -94,7 +102,7 @@ def read_awc(
             if (
                 decrypt
                 and not whole_file_encrypted
-                and (flags & 2)
+                and (flags & (2 | 8))
                 and chunk.type_value == int(AwcChunkType.DATA)
                 and len(chunk.data) % 4 == 0
             ):
@@ -103,11 +111,28 @@ def read_awc(
         chunk_cursor += chunk_count
         streams.append(AwcStream(stream_id, chunks))
 
-    awc = Awc(streams, version=version, flags=flags, path=path, endian=endian, whole_file_encrypted=whole_file_encrypted)
+    awc = Awc(
+        streams,
+        version=version,
+        flags=flags,
+        path=path,
+        endian=endian,
+        whole_file_encrypted=whole_file_encrypted,
+    )
     if awc.multi_channel_flag:
-        source_stream = next((stream for stream in awc.streams if stream.stream_format_chunk is not None), None)
+        source_stream = next(
+            (
+                stream
+                for stream in awc.streams
+                if stream.stream_format_chunk is not None
+            ),
+            None,
+        )
         if source_stream is not None and source_stream.stream_format_chunk is not None:
-            channels_by_id = {channel.id & AWC_STREAM_ID_MASK: channel for channel in source_stream.stream_format_chunk.channels}
+            channels_by_id = {
+                channel.id & AWC_STREAM_ID_MASK: channel
+                for channel in source_stream.stream_format_chunk.channels
+            }
             for stream in awc.streams:
                 stream.stream_format = channels_by_id.get(stream.hash)
     if chunk_indices:
@@ -128,11 +153,23 @@ def build_awc_bytes(awc: Awc) -> bytes:
     stream_count = len(streams)
     chunk_indices_flag = bool(awc.flags & 1)
     info_start = 16 + (stream_count * 2 if chunk_indices_flag else 0)
-    data_offset = info_start + (stream_count * 4) + sum(len(stream.chunks) * 8 for stream in streams)
+    data_offset = (
+        info_start
+        + (stream_count * 4)
+        + sum(len(stream.chunks) * 8 for stream in streams)
+    )
 
-    all_chunks: list[AwcChunk] = [chunk for stream in streams for chunk in stream.chunks]
-    should_sort_chunks = bool(awc.multi_channel_flag or not awc.single_channel_encrypt_flag)
-    write_chunks = sorted(all_chunks, key=lambda chunk: chunk.sort_order) if should_sort_chunks else all_chunks
+    all_chunks: list[AwcChunk] = [
+        chunk for stream in streams for chunk in stream.chunks
+    ]
+    should_sort_chunks = bool(
+        awc.multi_channel_flag or not awc.single_channel_encrypt_flag
+    )
+    write_chunks = (
+        sorted(all_chunks, key=lambda chunk: chunk.sort_order)
+        if should_sort_chunks
+        else all_chunks
+    )
 
     cursor = data_offset
     payload_by_chunk: dict[int, bytes] = {}
@@ -142,7 +179,11 @@ def build_awc_bytes(awc: Awc) -> bytes:
         if alignment:
             cursor += (-cursor) % alignment
         payload = chunk.to_payload(endian)
-        if not awc.whole_file_encrypted and awc.single_channel_encrypt_flag and chunk.type_value == int(AwcChunkType.DATA):
+        if (
+            not awc.whole_file_encrypted
+            and awc.single_channel_encrypt_flag
+            and chunk.type_value == int(AwcChunkType.DATA)
+        ):
             payload += b"\x00" * ((-len(payload)) % 4)
             payload = encrypt_awc_rsxxtea(payload)
         if len(payload) > AWC_CHUNK_FIELD_MASK:
@@ -154,7 +195,14 @@ def build_awc_bytes(awc: Awc) -> bytes:
         cursor += len(payload)
 
     out = bytearray()
-    out += struct.pack(f"{endian}IHHii", AWC_MAGIC_LE, int(awc.version) & 0xFFFF, int(awc.flags) & 0xFFFF, stream_count, data_offset)
+    out += struct.pack(
+        f"{endian}IHHii",
+        AWC_MAGIC_LE,
+        int(awc.version) & 0xFFFF,
+        int(awc.flags) & 0xFFFF,
+        stream_count,
+        data_offset,
+    )
 
     if chunk_indices_flag:
         chunk_cursor = 0

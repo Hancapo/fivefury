@@ -7,7 +7,14 @@ from pathlib import Path
 
 from ..hashing import jenk_hash
 from ..metahash import HashLike, MetaHash, coerce_meta_hash
-from .audio import _build_peak_values, build_pcm_wav, decode_awc_adpcm, interleave_pcm16, parse_pcm_wav, split_interleaved_pcm16
+from .audio import (
+    _build_peak_values,
+    build_pcm_wav,
+    decode_awc_adpcm,
+    interleave_pcm16,
+    parse_pcm_wav,
+    split_interleaved_pcm16,
+)
 from .constants import (
     AWC_CHUNK_FIELD_MASK,
     AWC_DEFAULT_FLAGS,
@@ -31,9 +38,15 @@ def _hash_from_name(value: str) -> int:
 
 
 def _channel_name(name: HashLike | str, channel_index: int) -> str:
-    base = str(name) if isinstance(name, str) else f"{int(name) & AWC_STREAM_ID_MASK:08x}"
+    base = (
+        str(name) if isinstance(name, str) else f"{int(name) & AWC_STREAM_ID_MASK:08x}"
+    )
     suffixes = ("left", "right", "center", "lfe", "surround_left", "surround_right")
-    suffix = suffixes[channel_index] if channel_index < len(suffixes) else f"ch{channel_index + 1}"
+    suffix = (
+        suffixes[channel_index]
+        if channel_index < len(suffixes)
+        else f"ch{channel_index + 1}"
+    )
     return f"{base}_{suffix}"
 
 
@@ -45,7 +58,7 @@ class AwcChunkInfo:
     raw: int = 0
 
     @classmethod
-    def from_raw(cls, raw: int) -> "AwcChunkInfo":
+    def from_raw(cls, raw: int) -> AwcChunkInfo:
         chunk_type = (raw >> 56) & 0xFF
         try:
             typed: int | AwcChunkType = AwcChunkType(chunk_type)
@@ -96,11 +109,15 @@ class AwcFormat:
     peak: int | None = None
 
     @classmethod
-    def from_bytes(cls, data: bytes, endian: str = "<") -> "AwcFormat":
+    def from_bytes(cls, data: bytes, endian: str = "<") -> AwcFormat:
         if len(data) not in {20, 24}:
-            raise ValueError(f"AWC format chunk must be 20 or 24 bytes, got {len(data)}")
+            raise ValueError(
+                f"AWC format chunk must be 20 or 24 bytes, got {len(data)}"
+            )
         values = struct.unpack_from(f"{endian}IiHhHHHBB", data, 0)
-        peak = struct.unpack_from(f"{endian}I", data, 20)[0] if len(data) == 24 else None
+        peak = (
+            struct.unpack_from(f"{endian}I", data, 20)[0] if len(data) == 24 else None
+        )
         return cls(
             samples=int(values[0]),
             loop_point=int(values[1]),
@@ -133,7 +150,9 @@ class AwcFormat:
 
     @property
     def duration(self) -> float:
-        return (float(self.samples) / float(self.sample_rate)) if self.sample_rate else 0.0
+        return (
+            (float(self.samples) / float(self.sample_rate)) if self.sample_rate else 0.0
+        )
 
 
 @dataclass(slots=True)
@@ -147,7 +166,9 @@ class AwcStreamFormat:
     unused2: int = 0
 
     @classmethod
-    def from_bytes(cls, data: bytes, offset: int = 0, endian: str = "<") -> "AwcStreamFormat":
+    def from_bytes(
+        cls, data: bytes, offset: int = 0, endian: str = "<"
+    ) -> AwcStreamFormat:
         values = struct.unpack_from(f"{endian}IIhHBBH", data, offset)
         return cls(
             id=int(values[0]),
@@ -179,18 +200,28 @@ class AwcStreamFormatChunk:
     channels: list[AwcStreamFormat] = field(default_factory=list)
 
     @classmethod
-    def from_bytes(cls, data: bytes, endian: str = "<") -> "AwcStreamFormatChunk":
+    def from_bytes(cls, data: bytes, endian: str = "<") -> AwcStreamFormatChunk:
         if len(data) < 12:
             raise ValueError("AWC streamformat chunk is truncated")
-        block_count, block_size, channel_count = struct.unpack_from(f"{endian}III", data, 0)
+        block_count, block_size, channel_count = struct.unpack_from(
+            f"{endian}III", data, 0
+        )
         expected = 12 + int(channel_count) * 16
         if len(data) < expected:
             raise ValueError("AWC streamformat channel table is truncated")
-        channels = [AwcStreamFormat.from_bytes(data, 12 + (index * 16), endian) for index in range(int(channel_count))]
+        channels = [
+            AwcStreamFormat.from_bytes(data, 12 + (index * 16), endian)
+            for index in range(int(channel_count))
+        ]
         return cls(int(block_count), int(block_size), channels)
 
     def to_bytes(self, endian: str = "<") -> bytes:
-        payload = struct.pack(f"{endian}III", int(self.block_count), int(self.block_size), len(self.channels))
+        payload = struct.pack(
+            f"{endian}III",
+            int(self.block_count),
+            int(self.block_size),
+            len(self.channels),
+        )
         payload += b"".join(channel.to_bytes(endian) for channel in self.channels)
         return payload
 
@@ -206,7 +237,9 @@ class AwcChunk:
     seek_table: list[int] | None = None
 
     @classmethod
-    def from_info(cls, info: AwcChunkInfo, source: bytes, endian: str = "<") -> "AwcChunk":
+    def from_info(
+        cls, info: AwcChunkInfo, source: bytes, endian: str = "<"
+    ) -> AwcChunk:
         start = info.offset
         end = start + info.size
         if start < 0 or end > len(source):
@@ -220,11 +253,15 @@ class AwcChunk:
         elif info.type_value == int(AwcChunkType.PEAK):
             if len(data) % 2:
                 raise ValueError("AWC peak chunk size must be even")
-            chunk.peaks = list(struct.unpack(f"{endian}{len(data) // 2}H", data)) if data else []
+            chunk.peaks = (
+                list(struct.unpack(f"{endian}{len(data) // 2}H", data)) if data else []
+            )
         elif info.type_value == int(AwcChunkType.SEEK_TABLE):
             if len(data) % 4:
                 raise ValueError("AWC seektable chunk size must be divisible by 4")
-            chunk.seek_table = list(struct.unpack(f"{endian}{len(data) // 4}I", data)) if data else []
+            chunk.seek_table = (
+                list(struct.unpack(f"{endian}{len(data) // 4}I", data)) if data else []
+            )
         return chunk
 
     @property
@@ -250,12 +287,32 @@ class AwcChunk:
     def to_payload(self, endian: str = "<") -> bytes:
         if self.type_value == int(AwcChunkType.FORMAT) and self.format is not None:
             return self.format.to_bytes(endian)
-        if self.type_value == int(AwcChunkType.STREAM_FORMAT) and self.stream_format is not None:
+        if (
+            self.type_value == int(AwcChunkType.STREAM_FORMAT)
+            and self.stream_format is not None
+        ):
             return self.stream_format.to_bytes(endian)
         if self.type_value == int(AwcChunkType.PEAK) and self.peaks is not None:
-            return struct.pack(f"{endian}{len(self.peaks)}H", *[int(value) & 0xFFFF for value in self.peaks]) if self.peaks else b""
-        if self.type_value == int(AwcChunkType.SEEK_TABLE) and self.seek_table is not None:
-            return struct.pack(f"{endian}{len(self.seek_table)}I", *[int(value) & 0xFFFFFFFF for value in self.seek_table]) if self.seek_table else b""
+            return (
+                struct.pack(
+                    f"{endian}{len(self.peaks)}H",
+                    *[int(value) & 0xFFFF for value in self.peaks],
+                )
+                if self.peaks
+                else b""
+            )
+        if (
+            self.type_value == int(AwcChunkType.SEEK_TABLE)
+            and self.seek_table is not None
+        ):
+            return (
+                struct.pack(
+                    f"{endian}{len(self.seek_table)}I",
+                    *[int(value) & 0xFFFFFFFF for value in self.seek_table],
+                )
+                if self.seek_table
+                else b""
+            )
         return bytes(self.data)
 
 
@@ -276,14 +333,18 @@ class AwcStream:
         stream_format: AwcStreamFormat | None = None,
         channel_pcm: bytes | None = None,
     ) -> None:
-        self.id = _hash_from_name(name) if name and id in (None, 0, "") else _coerce_stream_id(id)
+        self.id = (
+            _hash_from_name(name)
+            if name and id in (None, 0, "")
+            else _coerce_stream_id(id)
+        )
         self.chunks = list(chunks or [])
         self.name = name
         self.stream_format = stream_format
         self.channel_pcm = channel_pcm
 
     @staticmethod
-    def from_pcm(name: HashLike | str, pcm: bytes, *, sample_rate: int) -> "AwcStream":
+    def from_pcm(name: HashLike | str, pcm: bytes, *, sample_rate: int) -> AwcStream:
         return _awc_stream_from_pcm(name, pcm, sample_rate=sample_rate)
 
     @staticmethod
@@ -294,12 +355,19 @@ class AwcStream:
         sample_rate: int | None = None,
         channels: int | None = 1,
         source_format: str | None = None,
-    ) -> "AwcStream":
+    ) -> AwcStream:
         from .conversion import decode_audio
 
-        decoded = decode_audio(source, sample_rate=sample_rate, channels=channels, source_format=source_format)
+        decoded = decode_audio(
+            source,
+            sample_rate=sample_rate,
+            channels=channels,
+            source_format=source_format,
+        )
         if decoded.channels != 1:
-            raise ValueError("AwcStream.from_audio only builds a single mono stream; use Awc.from_audio for multichannel AWC files")
+            raise ValueError(
+                "AwcStream.from_audio only builds a single mono stream; use Awc.from_audio for multichannel AWC files"
+            )
         return _awc_stream_from_pcm(name, decoded.pcm, sample_rate=decoded.sample_rate)
 
     @property
@@ -356,7 +424,11 @@ class AwcStream:
         fmt = self.format_chunk
         if fmt is not None:
             return fmt.duration
-        return (float(self.sample_count) / float(self.sample_rate)) if self.sample_rate else 0.0
+        return (
+            (float(self.sample_count) / float(self.sample_rate))
+            if self.sample_rate
+            else 0.0
+        )
 
     @property
     def raw_audio_bytes(self) -> bytes:
@@ -368,10 +440,27 @@ class AwcStream:
         codec = self.codec or AwcCodecType.PCM
         if codec is AwcCodecType.ADPCM:
             return decode_awc_adpcm(data, self.sample_count)
-        return data
+        if codec is AwcCodecType.PCM:
+            return data
+        if codec in {AwcCodecType.MP3, AwcCodecType.VORBIS}:
+            from .conversion import decode_audio
+
+            decoded = decode_audio(
+                data,
+                sample_rate=self.sample_rate or None,
+                channels=1,
+                source_format=(".mp3" if codec is AwcCodecType.MP3 else ".ogg"),
+            )
+            return decoded.pcm
+        raise NotImplementedError(f"AWC codec {codec.name} cannot be decoded to PCM")
 
     def wav_bytes(self) -> bytes:
-        return build_pcm_wav(self.pcm_bytes(), sample_rate=self.sample_rate, channels=1, bits_per_sample=16)
+        return build_pcm_wav(
+            self.pcm_bytes(),
+            sample_rate=self.sample_rate,
+            channels=1,
+            bits_per_sample=16,
+        )
 
 
 @dataclass(slots=True)
@@ -401,20 +490,26 @@ class Awc:
         self.whole_file_encrypted = bool(whole_file_encrypted)
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str | Path | None = None) -> "Awc":
+    def from_bytes(
+        cls, data: bytes | bytearray | memoryview, *, path: str | Path | None = None
+    ) -> Awc:
         from .io import read_awc
 
         return read_awc(data, path=path)
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "Awc":
+    def from_file(cls, path: str | Path) -> Awc:
         from .io import read_awc
 
         return read_awc(path)
 
     @classmethod
-    def from_wav(cls, name: HashLike | str, wav: bytes | bytearray | memoryview | str | Path) -> "Awc":
-        wav_data = Path(wav).read_bytes() if isinstance(wav, (str, Path)) else bytes(wav)
+    def from_wav(
+        cls, name: HashLike | str, wav: bytes | bytearray | memoryview | str | Path
+    ) -> Awc:
+        wav_data = (
+            Path(wav).read_bytes() if isinstance(wav, (str, Path)) else bytes(wav)
+        )
         pcm, sample_rate, channels, bits_per_sample = parse_pcm_wav(wav_data)
         if channels != 1:
             raise ValueError("AWC WAV import currently supports mono PCM only")
@@ -432,22 +527,38 @@ class Awc:
         sample_rate: int | None = None,
         channels: int | None = None,
         source_format: str | None = None,
-    ) -> "Awc":
+    ) -> Awc:
         from .conversion import decode_audio
 
-        decoded = decode_audio(source, sample_rate=sample_rate, channels=channels, source_format=source_format)
+        decoded = decode_audio(
+            source,
+            sample_rate=sample_rate,
+            channels=channels,
+            source_format=source_format,
+        )
         if decoded.channels == 1:
-            stream = AwcStream.from_pcm(name, decoded.pcm, sample_rate=decoded.sample_rate)
+            stream = AwcStream.from_pcm(
+                name, decoded.pcm, sample_rate=decoded.sample_rate
+            )
             return cls([stream])
-        return cls.from_multichannel_pcm(name, decoded.pcm, sample_rate=decoded.sample_rate, channels=decoded.channels)
+        return cls.from_multichannel_pcm(
+            name,
+            decoded.pcm,
+            sample_rate=decoded.sample_rate,
+            channels=decoded.channels,
+        )
 
     @classmethod
-    def from_multichannel_pcm(cls, name: HashLike | str, pcm: bytes, *, sample_rate: int, channels: int) -> "Awc":
+    def from_multichannel_pcm(
+        cls, name: HashLike | str, pcm: bytes, *, sample_rate: int, channels: int
+    ) -> Awc:
         channel_pcm = split_interleaved_pcm16(pcm, channels)
         return cls.from_channel_pcm(name, channel_pcm, sample_rate=sample_rate)
 
     @classmethod
-    def from_channel_pcm(cls, name: HashLike | str, channels: list[bytes], *, sample_rate: int) -> "Awc":
+    def from_channel_pcm(
+        cls, name: HashLike | str, channels: list[bytes], *, sample_rate: int
+    ) -> Awc:
         if len(channels) < 2:
             raise ValueError("from_channel_pcm requires at least two channels")
         sample_counts = {len(channel) // 2 for channel in channels}
@@ -455,7 +566,12 @@ class Awc:
             raise ValueError("all PCM channels must have the same sample count")
         sample_count = sample_counts.pop()
         channel_streams = [
-            _awc_channel_stream_from_pcm(_channel_name(name, index), channel, sample_rate=sample_rate, sample_count=sample_count)
+            _awc_channel_stream_from_pcm(
+                _channel_name(name, index),
+                channel,
+                sample_rate=sample_rate,
+                sample_count=sample_count,
+            )
             for index, channel in enumerate(channels)
         ]
         source_stream = _awc_multichannel_source_stream(channel_streams)
@@ -503,7 +619,11 @@ class Awc:
         self.flags = (self.flags | 8) if value else (self.flags & ~8)
 
     def stream(self, value: int | str | MetaHash) -> AwcStream | None:
-        target = _hash_from_name(value) if isinstance(value, str) else (int(value) & AWC_STREAM_ID_MASK)
+        target = (
+            _hash_from_name(value)
+            if isinstance(value, str)
+            else (int(value) & AWC_STREAM_ID_MASK)
+        )
         for stream in self.streams:
             if stream.hash == target:
                 return stream
@@ -524,7 +644,11 @@ class Awc:
         if source is None:
             return b""
         channels = _extract_multichannel_channel_pcm(source)
-        sample_count = source.stream_format_chunk.channels[0].samples if source.stream_format_chunk and source.stream_format_chunk.channels else None
+        sample_count = (
+            source.stream_format_chunk.channels[0].samples
+            if source.stream_format_chunk and source.stream_format_chunk.channels
+            else None
+        )
         return interleave_pcm16(channels, sample_count=sample_count)
 
     def wav_bytes(self) -> bytes:
@@ -533,9 +657,24 @@ class Awc:
                 return build_pcm_wav(b"", sample_rate=0, channels=1, bits_per_sample=16)
             return self.streams[0].wav_bytes()
         source = _find_multichannel_source(self)
-        sample_rate = source.stream_format_chunk.channels[0].sample_rate if source and source.stream_format_chunk and source.stream_format_chunk.channels else 0
-        channels = len(source.stream_format_chunk.channels) if source and source.stream_format_chunk else 1
-        return build_pcm_wav(self.pcm_bytes(), sample_rate=sample_rate, channels=channels, bits_per_sample=16)
+        sample_rate = (
+            source.stream_format_chunk.channels[0].sample_rate
+            if source
+            and source.stream_format_chunk
+            and source.stream_format_chunk.channels
+            else 0
+        )
+        channels = (
+            len(source.stream_format_chunk.channels)
+            if source and source.stream_format_chunk
+            else 1
+        )
+        return build_pcm_wav(
+            self.pcm_bytes(),
+            sample_rate=sample_rate,
+            channels=channels,
+            bits_per_sample=16,
+        )
 
     def to_bytes(self) -> bytes:
         from .io import build_awc_bytes
@@ -546,7 +685,9 @@ class Awc:
         Path(path).write_bytes(self.to_bytes())
 
 
-def _awc_stream_from_pcm(name: HashLike | str, pcm: bytes, *, sample_rate: int) -> AwcStream:
+def _awc_stream_from_pcm(
+    name: HashLike | str, pcm: bytes, *, sample_rate: int
+) -> AwcStream:
     sample_count = len(pcm) // 2
     fmt = AwcFormat(
         samples=sample_count,
@@ -570,11 +711,19 @@ def _awc_stream_from_pcm(name: HashLike | str, pcm: bytes, *, sample_rate: int) 
     if peak_chunk_values:
         chunks.insert(1, AwcChunk(AwcChunkType.PEAK, peaks=peak_chunk_values))
     text_name = str(name) if isinstance(name, str) else None
-    return AwcStream(name if not isinstance(name, str) else None, chunks, name=text_name)
+    return AwcStream(
+        name if not isinstance(name, str) else None, chunks, name=text_name
+    )
 
 
-def _awc_channel_stream_from_pcm(name: HashLike | str, pcm: bytes, *, sample_rate: int, sample_count: int) -> AwcStream:
-    stream = AwcStream(name if not isinstance(name, str) else None, [], name=str(name) if isinstance(name, str) else None)
+def _awc_channel_stream_from_pcm(
+    name: HashLike | str, pcm: bytes, *, sample_rate: int, sample_count: int
+) -> AwcStream:
+    stream = AwcStream(
+        name if not isinstance(name, str) else None,
+        [],
+        name=str(name) if isinstance(name, str) else None,
+    )
     stream.stream_format = AwcStreamFormat(
         id=stream.hash,
         samples=sample_count,
@@ -588,11 +737,19 @@ def _awc_channel_stream_from_pcm(name: HashLike | str, pcm: bytes, *, sample_rat
 
 def _awc_multichannel_source_stream(channel_streams: list[AwcStream]) -> AwcStream:
     block_size = 524288
-    data, seek_table, block_count = _build_multichannel_data([stream.channel_pcm or b"" for stream in channel_streams], block_size=block_size, codec=AwcCodecType.PCM)
+    data, seek_table, block_count = _build_multichannel_data(
+        [stream.channel_pcm or b"" for stream in channel_streams],
+        block_size=block_size,
+        codec=AwcCodecType.PCM,
+    )
     stream_format = AwcStreamFormatChunk(
         block_count=block_count,
         block_size=block_size,
-        channels=[stream.stream_format for stream in channel_streams if stream.stream_format is not None],
+        channels=[
+            stream.stream_format
+            for stream in channel_streams
+            if stream.stream_format is not None
+        ],
     )
     return AwcStream(
         0,
@@ -604,21 +761,33 @@ def _awc_multichannel_source_stream(channel_streams: list[AwcStream]) -> AwcStre
     )
 
 
-def _build_multichannel_data(channel_data: list[bytes], *, block_size: int, codec: AwcCodecType) -> tuple[bytes, list[int], int]:
+def _build_multichannel_data(
+    channel_data: list[bytes], *, block_size: int, codec: AwcCodecType
+) -> tuple[bytes, list[int], int]:
     channel_count = len(channel_data)
     small_block_size = 2048
-    samples_per_small_block = 4088 if codec is AwcCodecType.ADPCM else small_block_size // 2
+    samples_per_small_block = (
+        4088 if codec is AwcCodecType.ADPCM else small_block_size // 2
+    )
     header_size = (96 * channel_count) + (block_size // 512) + 1024
     header_size += (-header_size) % 0x800
     small_block_space = max(1, (block_size - header_size) // small_block_size)
     small_blocks_per_large_block = max(1, small_block_space // channel_count)
-    total_small_blocks = max((len(data) + small_block_size - 1) // small_block_size for data in channel_data)
-    block_count = max(1, (total_small_blocks + small_blocks_per_large_block - 1) // small_blocks_per_large_block)
+    total_small_blocks = max(
+        (len(data) + small_block_size - 1) // small_block_size for data in channel_data
+    )
+    block_count = max(
+        1,
+        (total_small_blocks + small_blocks_per_large_block - 1)
+        // small_blocks_per_large_block,
+    )
 
     blocks: list[bytes] = []
     seek_table: list[int] = []
     for block_index in range(block_count):
-        seek_table.append(block_index * small_blocks_per_large_block * samples_per_small_block)
+        seek_table.append(
+            block_index * small_blocks_per_large_block * samples_per_small_block
+        )
         block = bytearray()
         channel_payloads: list[bytes] = []
         channel_offsets: list[list[int]] = []
@@ -628,12 +797,28 @@ def _build_multichannel_data(channel_data: list[bytes], *, block_size: int, code
             data_size = small_blocks_per_large_block * small_block_size
             payload = bytes(data[start_byte : start_byte + data_size])
             payload += b"\x00" * (data_size - len(payload))
-            remaining_samples = max(0, (len(data) // 2) - (start_small_block * samples_per_small_block))
-            sample_count = min(small_blocks_per_large_block * samples_per_small_block, remaining_samples)
-            offsets = [index * samples_per_small_block for index in range(small_blocks_per_large_block)]
+            remaining_samples = max(
+                0, (len(data) // 2) - (start_small_block * samples_per_small_block)
+            )
+            sample_count = min(
+                small_blocks_per_large_block * samples_per_small_block,
+                remaining_samples,
+            )
+            offsets = [
+                index * samples_per_small_block
+                for index in range(small_blocks_per_large_block)
+            ]
             channel_offsets.append(offsets)
             channel_payloads.append(payload)
-            block += struct.pack("<iiiiii", channel_index * small_blocks_per_large_block, small_blocks_per_large_block, 0, sample_count, 0, 0)
+            block += struct.pack(
+                "<iiiiii",
+                channel_index * small_blocks_per_large_block,
+                small_blocks_per_large_block,
+                0,
+                sample_count,
+                0,
+                0,
+            )
         for offsets in channel_offsets:
             block += struct.pack(f"<{len(offsets)}i", *offsets)
         block += b"\x00" * ((-len(block)) % 0x800)
@@ -664,19 +849,53 @@ def _extract_multichannel_channel_pcm(source: AwcStream) -> list[bytes]:
         if not block:
             break
         cursor = 0
-        headers: list[tuple[int, int, int]] = []
+        headers: list[tuple[int, int, int, int]] = []
         for _ in stream_format.channels:
-            start_block, block_count, _unused1, sample_count, _unused2, _unused3 = struct.unpack_from("<iiiiii", block, cursor)
+            (
+                start_block,
+                block_count,
+                _unused1,
+                sample_count,
+                _unused2,
+                encoded_size,
+            ) = struct.unpack_from("<iiiiii", block, cursor)
             cursor += 24
-            headers.append((start_block, block_count, sample_count))
-        for _start_block, block_count, _sample_count in headers:
+            headers.append((start_block, block_count, sample_count, encoded_size))
+        for _start_block, block_count, _sample_count, _encoded_size in headers:
             cursor += block_count * 4
         cursor += (-cursor) % 0x800
-        for channel_index, (_start_block, block_count, sample_count) in enumerate(headers):
+        for channel_index, (
+            _start_block,
+            block_count,
+            sample_count,
+            encoded_size,
+        ) in enumerate(headers):
             size = block_count * 2048
             payload = block[cursor : cursor + size]
             cursor += size
-            outputs[channel_index].extend(payload[: sample_count * 2])
+            if 0 < encoded_size <= len(payload):
+                payload = payload[:encoded_size]
+            channel = stream_format.channels[channel_index]
+            codec = channel.codec
+            if codec is AwcCodecType.PCM:
+                decoded = payload[: sample_count * 2]
+            elif codec is AwcCodecType.ADPCM:
+                decoded = decode_awc_adpcm(payload, sample_count)
+            elif codec in {AwcCodecType.MP3, AwcCodecType.VORBIS}:
+                from .conversion import decode_audio
+
+                decoded = decode_audio(
+                    payload,
+                    sample_rate=channel.sample_rate or None,
+                    channels=1,
+                    source_format=(".mp3" if codec is AwcCodecType.MP3 else ".ogg"),
+                ).pcm
+                decoded = decoded[: sample_count * 2]
+            else:
+                raise NotImplementedError(
+                    f"AWC codec {codec.name} cannot be decoded to PCM"
+                )
+            outputs[channel_index].extend(decoded)
     return [bytes(output) for output in outputs]
 
 

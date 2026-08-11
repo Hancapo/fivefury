@@ -134,6 +134,28 @@ def crypto_magic_mask(seed: int, length: int, rounds: int = 4) -> bytes:
     return _ffi.crypto_magic_mask(int(seed), int(length), int(rounds))
 
 
+def _awc_build_peak_values(data: bytes, sample_count: int, block_size: int) -> list[int]:
+    return _ffi.awc_build_peak_values(data, int(sample_count), int(block_size))
+
+
+def _awc_split_interleaved_pcm16(data: bytes, channels: int) -> list[bytes]:
+    return _ffi.awc_split_interleaved_pcm16(data, int(channels))
+
+
+def _awc_interleave_pcm16(channels: list[bytes], sample_count: int | None) -> bytes:
+    if sample_count is None:
+        return _ffi.awc_interleave_pcm16(channels)
+    return _ffi.awc_interleave_pcm16(channels, int(sample_count))
+
+
+def _awc_decode_adpcm(data: bytes, sample_count: int) -> bytes:
+    return _ffi.awc_decode_adpcm(data, int(sample_count))
+
+
+def _awc_rsxxtea(data: bytes, key: tuple[int, int, int, int], *, decrypt: bool) -> bytes:
+    return _ffi.awc_rsxxtea(data, key, bool(decrypt))
+
+
 def read_rpf_entry(
     path: str | Path,
     entry_path: str | Path,

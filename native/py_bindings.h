@@ -79,6 +79,11 @@ PyObject* mod_bounds_collect_triangles(PyObject*, PyObject* args);
 PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args);
 PyObject* mod_resource_layout_sections(PyObject*, PyObject* args);
 PyObject* mod_resource_pack_block_sizes(PyObject*, PyObject* args);
+PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args);
+PyObject* mod_awc_split_interleaved_pcm16(PyObject*, PyObject* args);
+PyObject* mod_awc_interleave_pcm16(PyObject*, PyObject* args);
+PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args);
+PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;

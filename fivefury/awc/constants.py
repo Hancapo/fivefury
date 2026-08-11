@@ -14,7 +14,17 @@ AWC_RSXXTEA_DELTA = 0x9E3779B9
 
 class AwcCodecType(IntEnum):
     PCM = 0
+    PCM_BIG_ENDIAN = 1
+    FLOAT = 2
+    FLOAT_BIG_ENDIAN = 3
     ADPCM = 4
+    XMA2 = 5
+    XWMA = 6
+    MP3 = 7
+    VORBIS = 8
+    AAC = 9
+    WMA = 10
+    ATRAC9 = 11
 
 
 class AwcChunkType(IntEnum):
@@ -49,14 +59,14 @@ _CHUNK_XML_NAMES = {
 def awc_chunk_name(value: int | AwcChunkType) -> str:
     try:
         return _CHUNK_XML_NAMES[AwcChunkType(int(value))]
-    except Exception:
+    except (TypeError, ValueError):
         return f"unknown_0x{int(value) & 0xFF:02X}"
 
 
 def chunk_sort_order(chunk_type: int | AwcChunkType) -> int:
     try:
         kind = AwcChunkType(int(chunk_type))
-    except Exception:
+    except (TypeError, ValueError):
         return 0
     if kind in {AwcChunkType.DATA, AwcChunkType.MID}:
         return 3
@@ -76,11 +86,15 @@ def chunk_sort_order(chunk_type: int | AwcChunkType) -> int:
 def chunk_alignment(chunk_type: int | AwcChunkType) -> int:
     try:
         kind = AwcChunkType(int(chunk_type))
-    except Exception:
+    except (TypeError, ValueError):
         return 0
     if kind in {AwcChunkType.DATA, AwcChunkType.MID}:
         return 16
-    if kind in {AwcChunkType.MARKERS, AwcChunkType.GRANULAR_GRAINS, AwcChunkType.GRANULAR_LOOPS}:
+    if kind in {
+        AwcChunkType.MARKERS,
+        AwcChunkType.GRANULAR_GRAINS,
+        AwcChunkType.GRANULAR_LOOPS,
+    }:
         return 4
     return 0
 

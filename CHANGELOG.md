@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - Composable YDR render-pass masks with named default, shadow, reflection, mirror, and water-reflection flags.
 - Public skeleton transform and skinning matrix helpers for runtime animation consumers.
+- AWC codec metadata and PCM extraction for Enhanced MP3 and Vorbis streams.
 
 ### Changed
 - YCD rotation tracks evaluate cached quaternion channels using their declared track format.
@@ -18,6 +19,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Enhanced sampler-state parameters no longer inherit colliding legacy texture metadata.
 - YDR validation reports genuinely null optional texture slots as informational instead of warnings.
 - Gen9-to-legacy drawable conversion ignores unbound Gen9-only texture resources.
+
+### Performance
+- AWC ADPCM, PCM channel operations, peak generation, and RSXXTEA run in the native backend.
 
 ## [0.3.9] - 2026-08-08
 
