@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-08-11
+
 ### Added
 - Declarative CUT facial animation modes with YCD clip resolution and runtime validation.
 - Complete ped expression bindings and facial skeleton validation for YMT and YED assets.
