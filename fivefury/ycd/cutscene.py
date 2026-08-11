@@ -25,38 +25,11 @@ from .sequence_channels import (
     YcdStaticQuaternionChannel,
     YcdStaticVector3Channel,
 )
-from .sequence_tracks import YcdAnimationTrack, get_ycd_track_format
+from .sequence_tracks import YcdAnimationTrack, YcdTrackFormat, get_ycd_track_format
 
 YCD_CUTSCENE_DEFAULT_FPS = 30.0
 YCD_CUTSCENE_DEFAULT_VERSION = 46
 YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT = 287
-
-_SCALAR_TRACKS = {
-    int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW),
-    int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_STRENGTH),
-    int(YcdAnimationTrack.CAMERA_MOTION_BLUR),
-    int(YcdAnimationTrack.CAMERA_COC),
-    int(YcdAnimationTrack.CAMERA_FOCUS),
-    int(YcdAnimationTrack.CAMERA_NIGHT_COC),
-    int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_OUT_OF_FOCUS_PLANE),
-    int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_IN_FOCUS_PLANE),
-    int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_OUT_OF_FOCUS_PLANE),
-    int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_IN_FOCUS_PLANE),
-}
-
-_VECTOR3_TRACKS = {
-    int(YcdAnimationTrack.BONE_TRANSLATION),
-    int(YcdAnimationTrack.MOVER_TRANSLATION),
-    int(YcdAnimationTrack.CAMERA_TRANSLATION),
-    int(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD),
-}
-
-_QUATERNION_TRACKS = {
-    int(YcdAnimationTrack.BONE_ROTATION),
-    int(YcdAnimationTrack.MOVER_ROTATION),
-    int(YcdAnimationTrack.CAMERA_ROTATION),
-}
-
 
 def _lerp(a: float, b: float, alpha: float) -> float:
     return float(a + ((b - a) * alpha))
@@ -98,15 +71,13 @@ def _nlerp_quaternion(
     )
 
 
-def _track_component_count(track: int | YcdAnimationTrack) -> int:
-    value = int(track)
-    if value in _SCALAR_TRACKS:
-        return 1
-    if value in _VECTOR3_TRACKS:
-        return 3
-    if value in _QUATERNION_TRACKS:
-        return 4
-    raise ValueError(f"Unsupported cutscene YCD track {value}")
+def _track_component_count(track: int | YcdAnimationTrack, format: int | YcdTrackFormat | None = None) -> int:
+    resolved = get_ycd_track_format(int(track)) if format is None else YcdTrackFormat(int(format))
+    return {
+        YcdTrackFormat.FLOAT: 1,
+        YcdTrackFormat.VECTOR3: 3,
+        YcdTrackFormat.QUATERNION: 4,
+    }[resolved]
 
 
 def _coerce_tuple(value: object, component_count: int) -> tuple[float, ...]:
@@ -361,6 +332,7 @@ class YcdCutsceneSection:
 class YcdCutsceneTrack:
     track: int
     bone_id: int
+    format: YcdTrackFormat
     samples: list[tuple[float, ...]]
 
 
@@ -368,6 +340,24 @@ class YcdCutsceneTrack:
 class YcdCutsceneBoneAnimation:
     position: object | None = None
     rotation: object | None = None
+
+
+@dataclass(slots=True)
+class YcdFacialTrackSamples:
+    samples: object
+    format: YcdTrackFormat | int | None = None
+
+
+@dataclass(slots=True)
+class YcdFacialTrackSet:
+    blend_shapes: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    visemes: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    animated_normal_maps: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    controls: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    translations: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    rotations: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    scales: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    tinting: object | YcdFacialTrackSamples | None = None
 
 
 @dataclass(slots=True)
@@ -529,9 +519,11 @@ class YcdCutsceneBuilder:
         track: int | YcdAnimationTrack,
         samples: object,
         bone_id: int = 0,
+        format: int | YcdTrackFormat | None = None,
     ) -> YcdCutsceneBuilder:
         track_value = int(track)
-        component_count = _track_component_count(track_value)
+        track_format = get_ycd_track_format(track_value) if format is None else YcdTrackFormat(int(format))
+        component_count = _track_component_count(track_value, track_format)
         clip = self._get_or_create_clip(name)
         if any(existing.track == track_value and existing.bone_id == int(bone_id) for existing in clip.tracks):
             raise ValueError(f"Clip '{name}' already has track {track_value} for bone_id {bone_id}")
@@ -539,6 +531,7 @@ class YcdCutsceneBuilder:
             YcdCutsceneTrack(
                 track=track_value,
                 bone_id=int(bone_id),
+                format=track_format,
                 samples=_sample_track_values(
                     samples,
                     component_count=component_count,
@@ -627,8 +620,71 @@ class YcdCutsceneBuilder:
     def add_prop(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
         return self.add_object(name, **kwargs)
 
-    def add_ped(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
-        return self.add_object(name, **kwargs)
+    def add_ped(
+        self,
+        name: str,
+        *,
+        facial: YcdFacialTrackSet | None = None,
+        **kwargs: object,
+    ) -> YcdCutsceneBuilder:
+        clip_name = self.combined_facial_clip_name(name) if facial is not None else name
+        self.add_object(clip_name, **kwargs)
+        if facial is not None:
+            self.add_facial_animation(clip_name, facial, merged=False)
+        return self
+
+    @staticmethod
+    def combined_facial_clip_name(name: str) -> str:
+        value = str(name)
+        return value if value.endswith("_dual") else f"{value}_dual"
+
+    @staticmethod
+    def _facial_samples(value: object | YcdFacialTrackSamples) -> tuple[object, int | YcdTrackFormat | None]:
+        if isinstance(value, YcdFacialTrackSamples):
+            return value.samples, value.format
+        return value, None
+
+    def add_facial_animation(
+        self,
+        name: str,
+        facial: YcdFacialTrackSet,
+        *,
+        merged: bool = True,
+    ) -> YcdCutsceneBuilder:
+        target_name = self.combined_facial_clip_name(name) if merged else str(name)
+        source_name = str(name)
+        if target_name != source_name and source_name in self._clips:
+            source = self._clips.pop(source_name)
+            target = self._clips.get(target_name)
+            if target is None:
+                source.name = target_name
+                self._clips[target_name] = source
+            else:
+                target.tracks.extend(source.tracks)
+
+        mappings = (
+            (YcdAnimationTrack.BLEND_SHAPE, facial.blend_shapes),
+            (YcdAnimationTrack.VISEMES, facial.visemes),
+            (YcdAnimationTrack.ANIMATED_NORMAL_MAPS, facial.animated_normal_maps),
+            (YcdAnimationTrack.FACIAL_CONTROL, facial.controls),
+            (YcdAnimationTrack.FACIAL_TRANSLATION, facial.translations),
+            (YcdAnimationTrack.FACIAL_ROTATION, facial.rotations),
+            (YcdAnimationTrack.FACIAL_SCALE, facial.scales),
+        )
+        for track, values in mappings:
+            for control_id, value in values.items():
+                samples, format = self._facial_samples(value)
+                self.add_track(target_name, track=track, samples=samples, bone_id=int(control_id), format=format)
+        if facial.tinting is not None:
+            samples, format = self._facial_samples(facial.tinting)
+            self.add_track(
+                target_name,
+                track=YcdAnimationTrack.FACIAL_TINTING,
+                samples=samples,
+                bone_id=0,
+                format=format,
+            )
+        return self
 
     def add_vehicle(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
         return self.add_object(name, **kwargs)
@@ -674,7 +730,11 @@ class YcdCutsceneBuilder:
                 frame_samples = track_spec.samples[section.start_frame : section.end_frame + 1]
                 if not frame_samples:
                     continue
-                bone = YcdAnimationBoneId(bone_id=track_spec.bone_id, track=track_spec.track, format=get_ycd_track_format(track_spec.track))
+                bone = YcdAnimationBoneId(
+                    bone_id=track_spec.bone_id,
+                    track=track_spec.track,
+                    format=track_spec.format,
+                )
                 bone_ids.append(bone)
                 track_windows.append((track_spec, _iter_sequence_sample_windows(frame_samples, frame_limit=sample_frame_limit)))
             if not track_windows:
@@ -796,6 +856,8 @@ __all__ = [
     "YcdCutsceneClip",
     "YcdCutsceneSection",
     "YcdCutsceneTrack",
+    "YcdFacialTrackSamples",
+    "YcdFacialTrackSet",
     "build_cutscene_sections",
     "build_cutscene_ycds",
 ]

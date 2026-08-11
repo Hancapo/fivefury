@@ -30,7 +30,6 @@ from .model import (
     _resolve_ycd_clip_hash,
 )
 from .runtime_headers import YCD_VERSION, YcdRuntimeProfile, get_ycd_runtime_profile
-from .sequence_tracks import get_ycd_track_format
 from .sequences import build_sequence_data
 
 DAT_VIRTUAL_BASE = 0x50000000
@@ -160,8 +159,6 @@ class _YcdWriter:
             resolved_bone_ids.append(resolved)
 
         animation.bone_ids = resolved_bone_ids
-        for bone_id in animation.bone_ids:
-            bone_id.format = get_ycd_track_format(bone_id.track)
         animation.bone_id_count = len(resolved_bone_ids)
         animation.sequence_count = len(animation.sequences)
 
