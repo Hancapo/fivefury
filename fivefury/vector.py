@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 Vector3 = tuple[float, float, float]
+Vector4 = tuple[float, float, float, float]
 Quaternion = tuple[float, float, float, float]
 Aabb3 = tuple[Vector3, Vector3]
 
@@ -11,6 +12,23 @@ Aabb3 = tuple[Vector3, Vector3]
 def vec3(value: Iterable[float]) -> Vector3:
     x, y, z = value
     return (float(x), float(y), float(z))
+
+
+def vec4(value: Iterable[float]) -> Vector4:
+    x, y, z, w = value
+    return (float(x), float(y), float(z), float(w))
+
+
+def vec4_map(value: Vector4, operation: Callable[[float], float]) -> Vector4:
+    return tuple(operation(component) for component in value)  # type: ignore[return-value]
+
+
+def vec4_map2(
+    left: Vector4,
+    right: Vector4,
+    operation: Callable[[float, float], float],
+) -> Vector4:
+    return tuple(operation(left[index], right[index]) for index in range(4))  # type: ignore[return-value]
 
 
 def vec_add(left: Vector3, right: Vector3) -> Vector3:
@@ -62,6 +80,81 @@ def quat_rotate_vector(rotation: Quaternion, value: Vector3) -> Vector3:
     uv = vec_cross(q, value)
     uuv = vec_cross(q, uv)
     return vec_add(value, vec_add(vec_scale(uv, 2.0 * w * inverse_length), vec_scale(uuv, 2.0)))
+
+
+def quat_normalize(
+    value: Quaternion,
+    fallback: Quaternion = (0.0, 0.0, 0.0, 1.0),
+    *,
+    epsilon: float = 1e-12,
+) -> Quaternion:
+    x, y, z, w = value
+    length = math.sqrt((x * x) + (y * y) + (z * z) + (w * w))
+    if length <= epsilon:
+        return fallback
+    inverse = 1.0 / length
+    return (x * inverse, y * inverse, z * inverse, w * inverse)
+
+
+def quat_inverse(value: Quaternion) -> Quaternion:
+    x, y, z, w = quat_normalize(value)
+    return (-x, -y, -z, w)
+
+
+def quat_multiply_raw(left: Quaternion, right: Quaternion) -> Quaternion:
+    x1, y1, z1, w1 = left
+    x2, y2, z2, w2 = right
+    return (
+        (w1 * x2) + (x1 * w2) + (y1 * z2) - (z1 * y2),
+        (w1 * y2) - (x1 * z2) + (y1 * w2) + (z1 * x2),
+        (w1 * z2) + (x1 * y2) - (y1 * x2) + (z1 * w2),
+        (w1 * w2) - (x1 * x2) - (y1 * y2) - (z1 * z2),
+    )
+
+
+def quat_multiply(left: Quaternion, right: Quaternion) -> Quaternion:
+    return quat_normalize(quat_multiply_raw(left, right))
+
+
+def quat_from_euler_xyz_raw(value: Vector3) -> Quaternion:
+    x, y, z = value
+    cx, sx = math.cos(x * 0.5), math.sin(x * 0.5)
+    cy, sy = math.cos(y * 0.5), math.sin(y * 0.5)
+    cz, sz = math.cos(z * 0.5), math.sin(z * 0.5)
+    return (
+        (sx * cy * cz) + (cx * sy * sz),
+        (cx * sy * cz) - (sx * cy * sz),
+        (cx * cy * sz) + (sx * sy * cz),
+        (cx * cy * cz) - (sx * sy * sz),
+    )
+
+
+def quat_from_euler_xyz(value: Vector3) -> Quaternion:
+    return quat_normalize(quat_from_euler_xyz_raw(value))
+
+
+def quat_to_euler_xyz(value: Quaternion) -> Vector3:
+    x, y, z, w = quat_normalize(value)
+    sin_x = 2.0 * ((w * x) - (y * z))
+    cos_x = 1.0 - (2.0 * ((x * x) + (y * y)))
+    pitch = math.asin(max(-1.0, min(1.0, 2.0 * ((w * y) + (z * x)))))
+    roll = math.atan2(sin_x, cos_x)
+    yaw = math.atan2(
+        2.0 * ((w * z) - (x * y)),
+        1.0 - (2.0 * ((y * y) + (z * z))),
+    )
+    return (roll, pitch, yaw)
+
+
+def quat_nlerp(start: Quaternion, end: Quaternion, amount: float) -> Quaternion:
+    if sum(start[index] * end[index] for index in range(4)) < 0.0:
+        end = tuple(-component for component in end)  # type: ignore[assignment]
+    return quat_normalize(
+        tuple(
+            start[index] + ((end[index] - start[index]) * amount)
+            for index in range(4)
+        )
+    )
 
 
 def vec_min(values: Iterable[Vector3]) -> Vector3:
@@ -160,6 +253,7 @@ __all__ = [
     "Aabb3",
     "Quaternion",
     "Vector3",
+    "Vector4",
     "aabb_center",
     "aabb_expand",
     "aabb_from_center_size",
@@ -168,8 +262,19 @@ __all__ = [
     "aabb_radius",
     "aabb_size",
     "aabb_transform",
+    "quat_from_euler_xyz",
+    "quat_from_euler_xyz_raw",
+    "quat_inverse",
+    "quat_multiply",
+    "quat_multiply_raw",
+    "quat_nlerp",
+    "quat_normalize",
     "quat_rotate_vector",
+    "quat_to_euler_xyz",
     "vec3",
+    "vec4",
+    "vec4_map",
+    "vec4_map2",
     "vec_add",
     "vec_cross",
     "vec_distance",

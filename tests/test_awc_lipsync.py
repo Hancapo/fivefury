@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from fivefury import (
@@ -7,6 +9,7 @@ from fivefury import (
     AwcChunk,
     AwcChunkType,
     AwcStream,
+    ResolvedCutAudio,
     Ycd,
     YcdCutsceneBuilder,
     YcdFacialTrackSet,
@@ -97,3 +100,35 @@ def test_opaque_lipsync_chunk_remains_lossless() -> None:
     assert chunk.lipsync_error is not None
     assert chunk.to_payload() == b"opaque"
     assert build_awc_bytes(rebuilt) == original
+
+
+def test_resolved_cut_audio_keeps_the_exact_decoded_stream_and_lipsync() -> None:
+    unrelated = AwcStream.from_pcm("other_line", b"\x01\x00", sample_rate=1000)
+    selected = AwcStream.from_pcm("speech_line", b"\x02\x00", sample_rate=1000)
+    selected.set_lipsync(_facial_ycd())
+    resolved = ResolvedCutAudio(
+        "speech_line",
+        SimpleNamespace(id=1, path="speech.awc"),
+        SimpleNamespace(parsed=Awc([unrelated, selected])),
+    )
+
+    assert resolved.stream is selected
+    assert resolved.stream_id == selected.hash
+    assert resolved.lipsync is selected.lipsync
+    assert resolved.lipsync_chunk is selected.lipsync_chunk
+    assert resolved.wav_bytes() == selected.wav_bytes()
+
+
+def test_resolved_cut_audio_reports_multiple_unmatched_streams_as_ambiguous() -> None:
+    first = AwcStream.from_pcm("first", b"\x01\x00", sample_rate=1000)
+    second = AwcStream.from_pcm("second", b"\x02\x00", sample_rate=1000)
+    resolved = ResolvedCutAudio(
+        "missing",
+        SimpleNamespace(id=1, path="ambiguous.awc"),
+        SimpleNamespace(parsed=Awc([first, second])),
+    )
+
+    assert resolved.stream is None
+    assert resolved.stream_ambiguity == (first.hash, second.hash)
+    with pytest.raises(ValueError, match="ambiguous"):
+        resolved.wav_bytes()

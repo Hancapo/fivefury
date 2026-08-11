@@ -83,6 +83,19 @@ def test_native_multichannel_block_extraction() -> None:
     ) == [[(2, left)], [(3, right)]]
 
 
+def test_native_multichannel_block_extraction_accepts_compact_final_block() -> None:
+    payload = b"final"
+    block = bytearray()
+    block += struct.pack("<6i", 0, 1, 0, 2, 0, len(payload))
+    block += struct.pack("<i", 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += payload
+
+    assert _extract_multichannel_blocks(
+        bytes(block), block_count=1, block_size=8192, channel_count=1
+    ) == [[(2, payload)]]
+
+
 def test_native_multichannel_block_validation_rejects_truncation() -> None:
     with pytest.raises(ValueError, match="alignment is invalid"):
         _extract_multichannel_blocks(

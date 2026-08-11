@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from ...gamefile import GameFile, GameFileType
+from ...metahash import MetaHash
 from ..model import CutHashedString
 from ..scene import CutBinding, CutScene
 from .values import subtitle_hash
@@ -36,6 +38,10 @@ class ResolvedCutBinding:
     component_texture_files: list[GameFile] = field(default_factory=list)
     texture_assets: list[AssetRecord] = field(default_factory=list)
     texture_files: list[GameFile] = field(default_factory=list)
+    ped_metadata_asset: AssetRecord | None = None
+    ped_metadata_file: GameFile | None = None
+    ped_init_data_candidates: tuple[Any, ...] = ()
+    ped_init_data: Any | None = None
 
     @property
     def model_file(self) -> GameFile | None:
@@ -50,27 +56,130 @@ class ResolvedCutBinding:
         result = self.model_file
         return result.parsed if result is not None else None
 
+    @property
+    def ped_metadata(self) -> Any | None:
+        result = self.ped_metadata_file
+        ymt = result.parsed if result is not None else None
+        return getattr(ymt, "ped_metadata", None)
+
+    @property
+    def ped_init_data_asset(self) -> AssetRecord | None:
+        return self.ped_metadata_asset if self.ped_init_data is not None else None
+
+    @property
+    def expression_file(self) -> GameFile | None:
+        return self.files.get(GameFileType.YED)
+
+    @property
+    def expression_dictionary(self) -> Any | None:
+        result = self.expression_file
+        return result.parsed if result is not None else None
+
 
 @dataclass(slots=True)
 class ResolvedCutAudio:
     reference: str | int
     asset: AssetRecord
     file: GameFile
+    container_reference: str | None = None
 
     @property
     def awc(self) -> Any:
         return self.file.parsed
 
     @property
-    def duration(self) -> float:
+    def stream_candidates(self) -> tuple[Any, ...]:
         awc = self.awc
         if getattr(awc, "multi_channel_flag", False):
-            streams = getattr(awc, "channel_streams", ())
-        else:
-            streams = getattr(awc, "streams", ())
-        return max(
-            (float(getattr(stream, "duration", 0.0)) for stream in streams), default=0.0
+            return tuple(
+                stream
+                for stream in getattr(awc, "streams", ())
+                if getattr(stream, "stream_format_chunk", None) is not None
+                and getattr(stream, "data_chunk", None) is not None
+            )
+        return tuple(
+            stream
+            for stream in getattr(awc, "streams", ())
+            if getattr(stream, "data_chunk", None) is not None
+            and getattr(stream, "codec", None) is not None
         )
+
+    @property
+    def stream(self) -> Any | None:
+        candidates = self.stream_candidates
+        if len(candidates) == 1:
+            return candidates[0]
+        reference_hash = self._reference_hash
+        matching = tuple(
+            stream
+            for stream in candidates
+            if int(getattr(stream, "hash", -1)) == reference_hash
+        )
+        return matching[0] if len(matching) == 1 else None
+
+    @property
+    def stream_ambiguity(self) -> tuple[int, ...]:
+        if self.stream is not None:
+            return ()
+        return tuple(
+            int(getattr(stream, "id", 0)) & 0x1FFFFFFF
+            for stream in self.stream_candidates
+        )
+
+    @property
+    def stream_id(self) -> int | None:
+        stream = self.stream
+        return (
+            int(getattr(stream, "id", 0)) & 0x1FFFFFFF
+            if stream is not None
+            else None
+        )
+
+    @property
+    def lipsync_chunk(self) -> Any | None:
+        stream = self.stream
+        return getattr(stream, "lipsync_chunk", None) if stream is not None else None
+
+    @property
+    def lipsync(self) -> Any | None:
+        stream = self.stream
+        return getattr(stream, "lipsync", None) if stream is not None else None
+
+    @property
+    def _reference_hash(self) -> int:
+        if isinstance(self.reference, str):
+            stem = PurePosixPath(self.reference.replace("\\", "/")).stem.casefold()
+            return MetaHash(stem).uint & 0x1FFFFFFF
+        return int(self.reference) & 0x1FFFFFFF
+
+    def wav_bytes(self) -> bytes:
+        stream = self.stream
+        if stream is None:
+            candidate_ids = ", ".join(
+                f"0x{value:08X}" for value in self.stream_ambiguity
+            )
+            raise ValueError(
+                "AWC audio stream is ambiguous"
+                + (f": {candidate_ids}" if candidate_ids else "")
+            )
+        if getattr(self.awc, "multi_channel_flag", False):
+            return self.awc.wav_bytes()
+        return stream.wav_bytes()
+
+    @property
+    def duration(self) -> float:
+        stream = self.stream
+        if stream is None:
+            return 0.0
+        if getattr(self.awc, "multi_channel_flag", False):
+            return max(
+                (
+                    float(getattr(channel, "duration", 0.0))
+                    for channel in getattr(self.awc, "channel_streams", ())
+                ),
+                default=0.0,
+            )
+        return float(getattr(stream, "duration", 0.0))
 
 
 @dataclass(slots=True)

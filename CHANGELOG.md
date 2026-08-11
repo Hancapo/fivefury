@@ -7,6 +7,15 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Deterministic YED expression evaluation for facial animation tracks.
+- CUT resolution of ped expression metadata and YED dictionaries.
+
+### Fixed
+- Conditional YED branches preserve their runtime meanings.
+- Encrypted multichannel AWC streams decode and rebuild per audio block.
+- CUT audio resolution uses the scene's logical audio container names and exact stream identities.
+
 ## [0.3.10] - 2026-08-11
 
 ### Added

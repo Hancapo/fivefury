@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
@@ -18,13 +18,13 @@ from .values import field_hash
 
 if TYPE_CHECKING:
     from ...cache import AssetRecord, GameFileCache
+    from ...gamefile import GameFile
 
 _MODEL_KINDS_BY_ROLE: dict[str, tuple[GameFileType, ...]] = {
     "ped": (
         GameFileType.YFT,
         GameFileType.YDD,
         GameFileType.YMT,
-        GameFileType.YED,
         GameFileType.YTD,
     ),
     "prop": (GameFileType.YDR, GameFileType.YDD, GameFileType.YFT, GameFileType.YTD),
@@ -86,6 +86,103 @@ def _resolve_bindings(
                 )
             )
     return result
+
+
+def _resolve_ped_expression_resources(
+    cache: GameFileCache,
+    resolved_bindings: dict[int, ResolvedCutBinding],
+    issues: list[CutsceneResolveIssue],
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
+) -> None:
+    metadata_matches: dict[
+        int,
+        tuple[int, list[tuple[AssetRecord, GameFile, Any]]],
+    ] = {}
+    for asset in sorted(
+        cache.find_assets("peds.ymt", kind=GameFileType.YMT),
+        key=_source_rank,
+    ):
+        check_cutscene_resolution_cancelled(cancellation)
+        game_file = _load_file(cache, asset, issues)
+        metadata = getattr(
+            getattr(game_file, "parsed", None), "ped_metadata", None
+        )
+        if metadata is None:
+            continue
+        source_tier = _source_rank(asset)[0]
+        for item in metadata.init_datas:
+            reference_hash = int(getattr(item.name, "uint", 0))
+            existing = metadata_matches.get(reference_hash)
+            if existing is None or source_tier < existing[0]:
+                metadata_matches[reference_hash] = (
+                    source_tier,
+                    [(asset, game_file, item)],
+                )
+            elif source_tier == existing[0]:
+                existing[1].append((asset, game_file, item))
+
+    for object_id, resolved in resolved_bindings.items():
+        check_cutscene_resolution_cancelled(cancellation)
+        if resolved.binding.role != "ped":
+            continue
+        candidates = metadata_matches.get(int(resolved.reference_hash or 0))
+        matches = tuple(item for _, _, item in candidates[1]) if candidates else ()
+        resolved.ped_init_data_candidates = matches
+        if candidates and len(candidates[1]) == 1:
+            asset, game_file, item = candidates[1][0]
+            resolved.ped_metadata_asset = asset
+            resolved.ped_metadata_file = game_file
+            resolved.ped_init_data = item
+        else:
+            resolved.ped_metadata_asset = None
+            resolved.ped_metadata_file = None
+            resolved.ped_init_data = None
+        if resolved.ped_init_data is None:
+            issues.append(
+                CutsceneResolveIssue(
+                    severity="info" if not matches else "warning",
+                    code="binding.ymt_init_unresolved",
+                    message=(
+                        f"{resolved.binding.display_name} matched {len(matches)} ped init records; "
+                        "an exact unique YMT init record is required"
+                    ),
+                    asset_path=(
+                        resolved.ped_metadata_asset.path
+                        if resolved.ped_metadata_asset is not None
+                        else None
+                    ),
+                    object_id=object_id,
+                )
+            )
+            continue
+        expression_hash = int(
+            getattr(
+                getattr(resolved.ped_init_data, "expression_dictionary_name", None),
+                "uint",
+                0,
+            )
+        )
+        if expression_hash == 0:
+            continue
+        asset = _preferred_asset(cache, expression_hash, GameFileType.YED)
+        if asset is None:
+            issues.append(
+                CutsceneResolveIssue(
+                    severity="warning",
+                    code="binding.yed_unresolved",
+                    message=(
+                        f"{resolved.binding.display_name} expression dictionary "
+                        f"0x{expression_hash:08X} was not found"
+                    ),
+                    object_id=object_id,
+                )
+            )
+            continue
+        game_file = _load_file(cache, asset, issues, object_id=object_id)
+        if game_file is not None:
+            resolved.assets[GameFileType.YED] = asset
+            resolved.files[GameFileType.YED] = game_file
 
 
 _PED_COMPONENT_PREFIXES: dict[int, str] = {

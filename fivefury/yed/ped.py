@@ -4,7 +4,6 @@ import dataclasses
 from collections.abc import MutableMapping
 from typing import Any
 
-
 _EXPRESSION_SET_NAME = (
     "ExpressionSetName",
     "expressionSetName",
@@ -55,7 +54,7 @@ class YedPedExpressionBinding:
             )
         return issues
 
-    def require_valid(self) -> "YedPedExpressionBinding":
+    def require_valid(self) -> YedPedExpressionBinding:
         issues = self.validate()
         if issues:
             raise ValueError("; ".join(issues))

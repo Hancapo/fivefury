@@ -42,8 +42,8 @@ class YedInstructionType(IntEnum):
     TRACK_SET_OFFSET_COMP = 0x29
     TRACK_SET_BONE_TRANSFORM = 0x2A
     JUMP = 0x2B
-    JUMP_IF_TRUE = 0x2C
-    JUMP_IF_FALSE = 0x2D
+    JUMP_IF_FALSE = 0x2C
+    JUMP_IF_TRUE = 0x2D
     VECTOR_ADD = 0x2E
     VECTOR_SUB = 0x2F
     VECTOR_MUL = 0x30

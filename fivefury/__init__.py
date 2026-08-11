@@ -432,7 +432,15 @@ from .gxt2 import (
     save_gxt2,
     save_gxt2_text,
 )
-from .gtxd import Gtxd, TxdRelationship, create_gtxd, is_gtxd_rbf, read_gtxd, read_gtxd_bytes, save_gtxd
+from .gtxd import (
+    Gtxd,
+    TxdRelationship,
+    create_gtxd,
+    is_gtxd_rbf,
+    read_gtxd,
+    read_gtxd_bytes,
+    save_gtxd,
+)
 from .hashing import jenk_hash
 from .metahash import HashString, MetaHash
 from .meta import Meta, read_meta
@@ -954,13 +962,18 @@ from .ynv import (
     save_ynv,
 )
 from .yed import (
+    DofKey,
     GEN9_YED_DICTIONARY_VFTS,
     GEN9_YED_RUNTIME_PROFILE,
     LEGACY_YED_RUNTIME_PROFILE,
+    VariableKey,
+    Vector4,
     YED_VERSION,
     Yed,
     YedAuditReport,
     YedDictionary,
+    YedEvaluationIssue,
+    YedEvaluationResult,
     YedExpression,
     YedInstruction,
     YedInstructionType,
@@ -979,6 +992,7 @@ from .yed import (
     audit_yed_paths,
     build_yed_bytes,
     create_yed,
+    evaluate_yed,
     get_ped_expression_binding,
     get_yed_runtime_profile,
     iter_yed_files,
@@ -1239,6 +1253,7 @@ __all__ = [
     "build_yed_bytes",
     "create_gtxd",
     "create_yed",
+    "evaluate_yed",
     "audit_yed",
     "audit_yed_cache",
     "audit_yed_file",
@@ -1740,6 +1755,9 @@ __all__ = [
     "YnvSectorData",
     "YnvSourcePolygon",
     "YnvRuntimeProfile",
+    "DofKey",
+    "VariableKey",
+    "Vector4",
     "Yed",
     "GEN9_YED_DICTIONARY_VFTS",
     "GEN9_YED_RUNTIME_PROFILE",
@@ -1747,6 +1765,8 @@ __all__ = [
     "YED_VERSION",
     "YedAuditReport",
     "YedDictionary",
+    "YedEvaluationIssue",
+    "YedEvaluationResult",
     "YedExpression",
     "YedInstruction",
     "YedInstructionType",

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import struct
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from ..binary import vec3
 from ..game_target import GameTarget, coerce_game_target
@@ -33,7 +34,7 @@ class ResourceListInfo:
     unknown: int = 0
 
     @classmethod
-    def read(cls, data: bytes, offset: int) -> "ResourceListInfo":
+    def read(cls, data: bytes, offset: int) -> ResourceListInfo:
         pointer, count, capacity, unknown = struct.unpack_from("<QHHI", data, offset)
         return cls(pointer=pointer, count=count, capacity=capacity, unknown=unknown)
 
@@ -61,15 +62,15 @@ class YedTrack:
         self.flags = (self.flags & 0x7F) | (0x80 if value else 0)
 
     @classmethod
-    def vector3(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> "YedTrack":
+    def vector3(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> YedTrack:
         return cls.from_parts(bone_id, track, YedTrackFormat.VECTOR3, remap=remap)
 
     @classmethod
-    def quaternion(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> "YedTrack":
+    def quaternion(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> YedTrack:
         return cls.from_parts(bone_id, track, YedTrackFormat.QUATERNION, remap=remap)
 
     @classmethod
-    def scalar(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> "YedTrack":
+    def scalar(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> YedTrack:
         return cls.from_parts(bone_id, track, YedTrackFormat.FLOAT, remap=remap)
 
     @classmethod
@@ -80,7 +81,7 @@ class YedTrack:
         format: YedTrackFormat | int,
         *,
         remap: bool = False,
-    ) -> "YedTrack":
+    ) -> YedTrack:
         return cls(
             bone_id=int(bone_id) & 0xFFFF,
             track=int(track) & 0xFF,
@@ -148,7 +149,7 @@ class YedStream:
         data1: bytes = b"",
         data2: bytes = b"",
         data3: bytes = b"\x00",
-    ) -> "YedStream":
+    ) -> YedStream:
         name_hash = int(name, 16) if isinstance(name, str) and name.lower().startswith("0x") else jenk_hash(name) if isinstance(name, str) else MetaHash(name)
         instructions = [
             YedInstruction(YedInstructionType(opcode) if opcode in YedInstructionType._value2member_map_ else opcode, index)
@@ -196,13 +197,13 @@ class YedSpring:
         self.raw = bytes(data)
 
     @classmethod
-    def default(cls, bone_id: int, *, gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)) -> "YedSpring":
+    def default(cls, bone_id: int, *, gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)) -> YedSpring:
         data = bytearray(SPRING_BLOCK_SIZE)
         struct.pack_into("<3f", data, 0x90, *gravity)
         struct.pack_into("<H", data, 0x9C, int(bone_id) & 0xFFFF)
         return cls(bytes(data))
 
-    def clone(self, *, bone_id: int | None = None) -> "YedSpring":
+    def clone(self, *, bone_id: int | None = None) -> YedSpring:
         spring = YedSpring(self.raw)
         if bone_id is not None:
             spring.bone_id = bone_id
@@ -304,7 +305,7 @@ class YedExpression:
         return item
 
     @classmethod
-    def create(cls, name: str, *, springs: list[YedSpring] | None = None, tracks: list[YedTrack] | None = None) -> "YedExpression":
+    def create(cls, name: str, *, springs: list[YedSpring] | None = None, tracks: list[YedTrack] | None = None) -> YedExpression:
         short = Path(name).stem.lower()
         full_name = name if name.startswith("pack:/") else f"pack:/{short}.expr"
         spring_list = list(springs or [])
@@ -472,7 +473,7 @@ class Yed:
         self._standalone_data = None
         return copied
 
-    def retarget_bone_ids(self, mapping: dict[int, int], *, expressions: list[str | int | MetaHash] | None = None) -> "Yed":
+    def retarget_bone_ids(self, mapping: dict[int, int], *, expressions: list[str | int | MetaHash] | None = None) -> Yed:
         selected = [self.require_expression(expression) for expression in expressions] if expressions else list(self.expressions)
         normalized = {int(source) & 0xFFFF: int(target) & 0xFFFF for source, target in mapping.items()}
         for expression in selected:
@@ -497,14 +498,14 @@ class Yed:
         self._standalone_data = None
         return self
 
-    def refresh_metadata(self) -> "Yed":
+    def refresh_metadata(self) -> Yed:
         self.dictionary.expressions.sort(key=lambda expression: int(expression.name_hash))
         for expression in self.expressions:
             expression.max_stream_size = max((0x10 + len(stream.data1) + len(stream.data2) + len(stream.data3) for stream in expression.streams), default=0)
         self._standalone_data = None
         return self
 
-    def validate(self, *, skeleton: object | None = None, raise_on_error: bool = True) -> list["YedValidationIssue"]:
+    def validate(self, *, skeleton: object | None = None, raise_on_error: bool = True) -> list[YedValidationIssue]:
         issues = validate_yed(self, skeleton=skeleton)
         if issues and raise_on_error:
             details = "; ".join(issue.message for issue in issues[:4])
@@ -545,19 +546,19 @@ def create_yed(
 def _collect_skeleton_bone_tags(skeleton: object | None) -> set[int]:
     if skeleton is None:
         return set()
-    if hasattr(skeleton, "skeleton") and getattr(skeleton, "skeleton") is not None:
-        return _collect_skeleton_bone_tags(getattr(skeleton, "skeleton"))
+    if hasattr(skeleton, "skeleton") and skeleton.skeleton is not None:
+        return _collect_skeleton_bone_tags(skeleton.skeleton)
     if hasattr(skeleton, "drawable"):
-        return _collect_skeleton_bone_tags(getattr(skeleton, "drawable"))
+        return _collect_skeleton_bone_tags(skeleton.drawable)
     if hasattr(skeleton, "drawables"):
         tags: set[int] = set()
-        for entry in getattr(skeleton, "drawables"):
+        for entry in skeleton.drawables:
             tags.update(_collect_skeleton_bone_tags(entry))
         return tags
     bones = getattr(skeleton, "bones", None)
     if bones is None:
         return set()
-    return {int(getattr(bone, "tag")) & 0xFFFF for bone in bones if hasattr(bone, "tag")}
+    return {int(bone.tag) & 0xFFFF for bone in bones if hasattr(bone, "tag")}
 
 
 def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidationIssue]:
@@ -676,15 +677,17 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
                         )
                     )
                 instruction_offset = instruction.operands.get("instruction_offset")
-                if instruction_offset is not None and not 0 <= int(instruction_offset) < len(stream.instructions):
-                    issues.append(
-                        YedValidationIssue(
-                            "stream-jump-target-invalid",
-                            f"stream {int(stream.name_hash):#010x} instruction "
-                            f"{instruction.index} jumps to {int(instruction_offset)}",
-                            expression_name,
+                if instruction_offset is not None:
+                    target = instruction.index + 1 + int(instruction_offset)
+                    if not 0 <= target < len(stream.instructions):
+                        issues.append(
+                            YedValidationIssue(
+                                "stream-jump-target-invalid",
+                                f"stream {int(stream.name_hash):#010x} instruction "
+                                f"{instruction.index} jumps to {target}",
+                                expression_name,
+                            )
                         )
-                    )
                 for source in instruction.operands.get("source_infos", ()):
                     source_track = int(source.get("track_index", -1))
                     if not 0 <= source_track < len(expression.tracks):
@@ -700,12 +703,12 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
 
 
 __all__ = [
-    "YedInstruction",
-    "YedInstructionType",
     "ResourceListInfo",
     "Yed",
     "YedDictionary",
     "YedExpression",
+    "YedInstruction",
+    "YedInstructionType",
     "YedSpring",
     "YedStream",
     "YedTrack",

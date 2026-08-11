@@ -61,9 +61,19 @@ _BONE_INSTRUCTIONS = {
     YedInstructionType.TRACK_SET_BONE_TRANSFORM,
 }
 
-_VARIABLE_INSTRUCTIONS = {YedInstructionType.GET_VARIABLE, YedInstructionType.SET_VARIABLE}
-_JUMP_INSTRUCTIONS = {YedInstructionType.JUMP, YedInstructionType.JUMP_IF_TRUE, YedInstructionType.JUMP_IF_FALSE}
-_BLEND_INSTRUCTIONS = {YedInstructionType.BLEND_VECTOR, YedInstructionType.BLEND_QUATERNION}
+_VARIABLE_INSTRUCTIONS = {
+    YedInstructionType.GET_VARIABLE,
+    YedInstructionType.SET_VARIABLE,
+}
+_JUMP_INSTRUCTIONS = {
+    YedInstructionType.JUMP,
+    YedInstructionType.JUMP_IF_TRUE,
+    YedInstructionType.JUMP_IF_FALSE,
+}
+_BLEND_INSTRUCTIONS = {
+    YedInstructionType.BLEND_VECTOR,
+    YedInstructionType.BLEND_QUATERNION,
+}
 
 
 def _take(data: bytes, offset: int, size: int, label: str) -> bytes:
@@ -75,12 +85,18 @@ def _take(data: bytes, offset: int, size: int, label: str) -> bytes:
 
 def _parse_blend(data1: bytes, offset: int) -> tuple[dict[str, Any], int]:
     start = offset
-    byte_length, source_count, num_source_weights, unknown_1 = struct.unpack("<IIII", _take(data1, offset, 16, "blend"))
+    byte_length, source_count, num_source_weights, unknown_1 = struct.unpack(
+        "<IIII", _take(data1, offset, 16, "blend")
+    )
     offset += 16
     source_infos = []
     for _ in range(source_count):
-        track_index, component_offset = struct.unpack("<HH", _take(data1, offset, 4, "blend source"))
-        source_infos.append({"track_index": track_index, "component_offset": component_offset})
+        track_index, component_offset = struct.unpack(
+            "<HH", _take(data1, offset, 4, "blend source")
+        )
+        source_infos.append(
+            {"track_index": track_index, "component_offset": component_offset}
+        )
         offset += 4
     value_count = (source_count // 4) * (6 + ((max(num_source_weights, 1) - 1) * 9))
     values = []
@@ -88,7 +104,9 @@ def _parse_blend(data1: bytes, offset: int) -> tuple[dict[str, Any], int]:
         values.append(struct.unpack("<4f", _take(data1, offset, 16, "blend value")))
         offset += 16
     if byte_length and offset - start != byte_length:
-        raise ValueError(f"blend byte length mismatch: declared {byte_length}, parsed {offset - start}")
+        raise ValueError(
+            f"blend byte length mismatch: declared {byte_length}, parsed {offset - start}"
+        )
     return (
         {
             "byte_length": byte_length,
@@ -102,7 +120,9 @@ def _parse_blend(data1: bytes, offset: int) -> tuple[dict[str, Any], int]:
     )
 
 
-def parse_instruction_buffers(data1: bytes, data2: bytes, data3: bytes) -> list[YedInstruction]:
+def parse_instruction_buffers(
+    data1: bytes, data2: bytes, data3: bytes
+) -> list[YedInstruction]:
     instructions: list[YedInstruction] = []
     offset1 = 0
     offset2 = 0
@@ -115,14 +135,25 @@ def parse_instruction_buffers(data1: bytes, data2: bytes, data3: bytes) -> list[
             if instruction_type in _EMPTY_INSTRUCTIONS:
                 pass
             elif instruction_type is YedInstructionType.PUSH_FLOAT:
-                (value,) = struct.unpack("<f", _take(data2, offset2, 4, instruction_type.name))
+                (value,) = struct.unpack(
+                    "<f", _take(data2, offset2, 4, instruction_type.name)
+                )
                 operands["value"] = value
                 offset2 += 4
             elif instruction_type is YedInstructionType.PUSH_VECTOR:
-                operands["value"] = struct.unpack("<4f", _take(data1, offset1, 16, instruction_type.name))
+                operands["value"] = struct.unpack(
+                    "<4f", _take(data1, offset1, 16, instruction_type.name)
+                )
                 offset1 += 16
             elif instruction_type in _BONE_INSTRUCTIONS:
-                track_index, bone_id, track, format_value, component_index, use_defaults = struct.unpack(
+                (
+                    track_index,
+                    bone_id,
+                    track,
+                    format_value,
+                    component_index,
+                    use_defaults,
+                ) = struct.unpack(
                     "<HHBBBB",
                     _take(data2, offset2, 8, instruction_type.name),
                 )
@@ -138,11 +169,17 @@ def parse_instruction_buffers(data1: bytes, data2: bytes, data3: bytes) -> list[
                 )
                 offset2 += 8
             elif instruction_type in _VARIABLE_INSTRUCTIONS:
-                variable, variable_index = struct.unpack("<II", _take(data2, offset2, 8, instruction_type.name))
-                operands.update({"variable": variable, "variable_index": variable_index})
+                variable, variable_index = struct.unpack(
+                    "<II", _take(data2, offset2, 8, instruction_type.name)
+                )
+                operands.update(
+                    {"variable": variable, "variable_index": variable_index}
+                )
                 offset2 += 8
             elif instruction_type in _JUMP_INSTRUCTIONS:
-                data1_offset_delta, data2_offset_delta, data3_offset = struct.unpack("<III", _take(data2, offset2, 12, instruction_type.name))
+                data1_offset_delta, data2_offset_delta, data3_offset = struct.unpack(
+                    "<III", _take(data2, offset2, 12, instruction_type.name)
+                )
                 operands.update(
                     {
                         "data1_offset": data1_offset_delta,
@@ -152,8 +189,12 @@ def parse_instruction_buffers(data1: bytes, data2: bytes, data3: bytes) -> list[
                 )
                 offset2 += 12
             elif instruction_type is YedInstructionType.DEFINE_SPRING:
-                raw = _take(data1, offset1, SPRING_BLOCK_SIZE + 16, instruction_type.name)
-                bone_track_rot, bone_track_pos, unknown_13, unknown_14 = struct.unpack_from("<IIII", raw, SPRING_BLOCK_SIZE)
+                raw = _take(
+                    data1, offset1, SPRING_BLOCK_SIZE + 16, instruction_type.name
+                )
+                bone_track_rot, bone_track_pos, unknown_13, unknown_14 = (
+                    struct.unpack_from("<IIII", raw, SPRING_BLOCK_SIZE)
+                )
                 operands.update(
                     {
                         "spring_raw": raw[:SPRING_BLOCK_SIZE],
@@ -189,8 +230,17 @@ def parse_instruction_buffers(data1: bytes, data2: bytes, data3: bytes) -> list[
                     operands=operands,
                 )
             )
-        except Exception as exc:
-            instructions.append(YedInstruction(opcode, index=index, data1_offset=offset1, data2_offset=offset2, parsed=False, parse_error=str(exc)))
+        except Exception as exc:  # noqa: BLE001 - preserve malformed VM data.
+            instructions.append(
+                YedInstruction(
+                    opcode,
+                    index=index,
+                    data1_offset=offset1,
+                    data2_offset=offset2,
+                    parsed=False,
+                    parse_error=str(exc),
+                )
+            )
             break
     if instructions and all(instruction.parsed for instruction in instructions):
         if offset1 != len(data1):
@@ -224,14 +274,30 @@ def _append_blend(data: bytearray, operands: dict[str, Any]) -> None:
     num_source_weights = max(int(operands.get("num_source_weights", 1)), 1)
     source_count = int(operands.get("source_count", len(source_infos)))
     byte_length = 16 + (source_count * 4) + (len(values) * 16)
-    data.extend(struct.pack("<IIII", byte_length, source_count, num_source_weights, int(operands.get("unknown_1", 0))))
+    data.extend(
+        struct.pack(
+            "<IIII",
+            byte_length,
+            source_count,
+            num_source_weights,
+            int(operands.get("unknown_1", 0)),
+        )
+    )
     for source in source_infos:
-        data.extend(struct.pack("<HH", int(source["track_index"]) & 0xFFFF, int(source["component_offset"]) & 0xFFFF))
+        data.extend(
+            struct.pack(
+                "<HH",
+                int(source["track_index"]) & 0xFFFF,
+                int(source["component_offset"]) & 0xFFFF,
+            )
+        )
     for value in values:
         data.extend(struct.pack("<4f", *value))
 
 
-def build_instruction_buffers(instructions: list[YedInstruction]) -> tuple[bytes, bytes, bytes]:
+def build_instruction_buffers(
+    instructions: list[YedInstruction],
+) -> tuple[bytes, bytes, bytes]:
     data1 = bytearray()
     data2 = bytearray()
     data3 = bytearray()
@@ -262,7 +328,13 @@ def build_instruction_buffers(instructions: list[YedInstruction]) -> tuple[bytes
                 )
             )
         elif instruction_type in _VARIABLE_INSTRUCTIONS:
-            data2.extend(struct.pack("<II", int(operands["variable"]), int(operands.get("variable_index", 0))))
+            data2.extend(
+                struct.pack(
+                    "<II",
+                    int(operands["variable"]),
+                    int(operands.get("variable_index", 0)),
+                )
+            )
         elif instruction_type in _JUMP_INSTRUCTIONS:
             data2.extend(
                 struct.pack(
@@ -300,7 +372,9 @@ def build_instruction_buffers(instructions: list[YedInstruction]) -> tuple[bytes
         elif instruction_type in _BLEND_INSTRUCTIONS:
             _append_blend(data1, operands)
         else:
-            raise ValueError(f"unsupported YED instruction opcode {instruction.opcode:#04x}")
+            raise ValueError(
+                f"unsupported YED instruction opcode {instruction.opcode:#04x}"
+            )
     return bytes(data1), bytes(data2), bytes(data3)
 
 
