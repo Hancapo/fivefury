@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Composable YDR render-pass masks with named default, shadow, reflection, mirror, and water-reflection flags.
 - Public skeleton transform and skinning matrix helpers for runtime animation consumers.
 - AWC codec metadata and PCM extraction for Enhanced MP3 and Vorbis streams.
+- Embedded AWC lip-sync clip dictionaries with typed 32-bit, 64-bit, and custom chunk tags.
 - CUT dependency resolution for sectioned animations, actors, textures, audio, and subtitles.
 - Structured CUT resolution traces, audits, benchmarks, and cooperative cancellation.
 

@@ -28,9 +28,12 @@ class AwcCodecType(IntEnum):
 
 
 class AwcChunkType(IntEnum):
+    CUSTOM_LIPSYNC = 0x3E
+    LIPSYNC = 0x41
+    LIPSYNC64 = 0x5C
+    ANIMATION = 0x5C
     DATA = 0x55
     FORMAT = 0xFA
-    ANIMATION = 0x5C
     PEAK = 0x36
     MID = 0x68
     GESTURE = 0x2B
@@ -42,9 +45,11 @@ class AwcChunkType(IntEnum):
 
 
 _CHUNK_XML_NAMES = {
+    AwcChunkType.CUSTOM_LIPSYNC: "custom_lipsync",
+    AwcChunkType.LIPSYNC: "lipsync",
     AwcChunkType.DATA: "data",
     AwcChunkType.FORMAT: "format",
-    AwcChunkType.ANIMATION: "animation",
+    AwcChunkType.LIPSYNC64: "lipsync64",
     AwcChunkType.PEAK: "peak",
     AwcChunkType.MID: "mid",
     AwcChunkType.GESTURE: "gesture",
@@ -54,6 +59,18 @@ _CHUNK_XML_NAMES = {
     AwcChunkType.STREAM_FORMAT: "streamformat",
     AwcChunkType.SEEK_TABLE: "seektable",
 }
+
+AWC_LIPSYNC_CHUNK_TYPES = frozenset(
+    {
+        int(AwcChunkType.CUSTOM_LIPSYNC),
+        int(AwcChunkType.LIPSYNC),
+        int(AwcChunkType.LIPSYNC64),
+    }
+)
+
+
+def is_lipsync_chunk_type(value: int | AwcChunkType) -> bool:
+    return (int(value) & 0xFF) in AWC_LIPSYNC_CHUNK_TYPES
 
 
 def awc_chunk_name(value: int | AwcChunkType) -> str:
@@ -74,7 +91,9 @@ def chunk_sort_order(chunk_type: int | AwcChunkType) -> int:
         AwcChunkType.MARKERS,
         AwcChunkType.GRANULAR_GRAINS,
         AwcChunkType.GRANULAR_LOOPS,
-        AwcChunkType.ANIMATION,
+        AwcChunkType.LIPSYNC64,
+        AwcChunkType.LIPSYNC,
+        AwcChunkType.CUSTOM_LIPSYNC,
         AwcChunkType.GESTURE,
     }:
         return 2
@@ -102,6 +121,7 @@ def chunk_alignment(chunk_type: int | AwcChunkType) -> int:
 __all__ = [
     "AWC_CHUNK_FIELD_MASK",
     "AWC_DEFAULT_FLAGS",
+    "AWC_LIPSYNC_CHUNK_TYPES",
     "AWC_MAGIC_BE",
     "AWC_MAGIC_BYTES",
     "AWC_MAGIC_LE",
@@ -113,4 +133,5 @@ __all__ = [
     "awc_chunk_name",
     "chunk_alignment",
     "chunk_sort_order",
+    "is_lipsync_chunk_type",
 ]

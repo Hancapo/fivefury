@@ -13,6 +13,7 @@ from ..resource import (
     build_rsc7,
     get_resource_total_page_count,
     layout_resource_sections,
+    parse_rsc7,
 )
 from .model import (
     Ycd,
@@ -707,4 +708,13 @@ def save_ycd(ycd: Ycd, path: str | Path, *, game: str | GameTarget | None = None
     return atomic_write_bytes(path, build_ycd_bytes(ycd, game=game))
 
 
-__all__ = ["build_ycd_bytes", "save_ycd"]
+def build_ycd_embedded_resource(
+    ycd: Ycd,
+    *,
+    game: str | GameTarget | None = None,
+) -> bytes:
+    header, payload = parse_rsc7(build_ycd_bytes(ycd, game=game))
+    return header.pack() + payload
+
+
+__all__ = ["build_ycd_bytes", "build_ycd_embedded_resource", "save_ycd"]

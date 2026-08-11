@@ -2,6 +2,7 @@ from .audio import build_pcm_wav, decode_awc_adpcm, parse_pcm_wav
 from .constants import (
     AWC_CHUNK_FIELD_MASK,
     AWC_DEFAULT_FLAGS,
+    AWC_LIPSYNC_CHUNK_TYPES,
     AWC_MAGIC_BE,
     AWC_MAGIC_BYTES,
     AWC_MAGIC_LE,
@@ -11,10 +12,17 @@ from .constants import (
     AwcChunkType,
     AwcCodecType,
     awc_chunk_name,
+    is_lipsync_chunk_type,
 )
-from .conversion import DecodedAudio, SUPPORTED_AUDIO_EXTENSIONS, convert_audio_to_awc, decode_audio
+from .conversion import (
+    SUPPORTED_AUDIO_EXTENSIONS,
+    DecodedAudio,
+    convert_audio_to_awc,
+    decode_audio,
+)
 from .crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
 from .io import build_awc_bytes, read_awc, save_awc
+from .lipsync import require_valid_awc_lipsync, validate_awc_lipsync
 from .structures import (
     Awc,
     AwcChunk,
@@ -28,12 +36,14 @@ from .structures import (
 __all__ = [
     "AWC_CHUNK_FIELD_MASK",
     "AWC_DEFAULT_FLAGS",
+    "AWC_LIPSYNC_CHUNK_TYPES",
     "AWC_MAGIC_BE",
     "AWC_MAGIC_BYTES",
     "AWC_MAGIC_LE",
     "AWC_RSXXTEA_CONSTANT",
     "AWC_RSXXTEA_DELTA",
     "AWC_STREAM_ID_MASK",
+    "SUPPORTED_AUDIO_EXTENSIONS",
     "Awc",
     "AwcChunk",
     "AwcChunkInfo",
@@ -44,16 +54,18 @@ __all__ = [
     "AwcStreamFormat",
     "AwcStreamFormatChunk",
     "DecodedAudio",
-    "SUPPORTED_AUDIO_EXTENSIONS",
     "awc_chunk_name",
     "build_awc_bytes",
     "build_pcm_wav",
     "convert_audio_to_awc",
-    "decode_awc_adpcm",
     "decode_audio",
+    "decode_awc_adpcm",
     "decrypt_awc_rsxxtea",
     "encrypt_awc_rsxxtea",
+    "is_lipsync_chunk_type",
     "parse_pcm_wav",
     "read_awc",
+    "require_valid_awc_lipsync",
     "save_awc",
+    "validate_awc_lipsync",
 ]
