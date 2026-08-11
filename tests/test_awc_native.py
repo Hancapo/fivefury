@@ -6,8 +6,11 @@ import pytest
 
 from fivefury.awc.audio import (
     _build_peak_values,
+    _extract_multichannel_blocks,
+    build_pcm_wav,
     decode_awc_adpcm,
     interleave_pcm16,
+    parse_pcm_wav,
     split_interleaved_pcm16,
 )
 from fivefury.awc.crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
@@ -55,3 +58,33 @@ def test_native_rsxxtea_roundtrip_and_size_validation() -> None:
     assert decrypt_awc_rsxxtea(encrypted, key) == source
     with pytest.raises(ValueError, match="divisible by 4"):
         encrypt_awc_rsxxtea(b"unaligned", key)
+
+
+def test_native_pcm_wav_roundtrip_and_padding() -> None:
+    wav = build_pcm_wav(b"\x7f", sample_rate=22050, channels=1, bits_per_sample=8)
+
+    assert len(wav) % 2 == 0
+    assert parse_pcm_wav(wav) == (b"\x7f", 22050, 1, 8)
+
+
+def test_native_multichannel_block_extraction() -> None:
+    left = b"left"
+    right = b"right!"
+    block = bytearray()
+    block += struct.pack("<6i", 0, 1, 0, 2, 0, len(left))
+    block += struct.pack("<6i", 1, 1, 0, 3, 0, len(right))
+    block += struct.pack("<2i", 0, 0)
+    block += b"\x00" * ((-len(block)) % 0x800)
+    block += left.ljust(2048, b"\x00")
+    block += right.ljust(2048, b"\x00")
+
+    assert _extract_multichannel_blocks(
+        bytes(block), block_count=1, block_size=len(block), channel_count=2
+    ) == [[(2, left)], [(3, right)]]
+
+
+def test_native_multichannel_block_validation_rejects_truncation() -> None:
+    with pytest.raises(ValueError, match="alignment is invalid"):
+        _extract_multichannel_blocks(
+            b"\x00" * 24, block_count=1, block_size=24, channel_count=1
+        )

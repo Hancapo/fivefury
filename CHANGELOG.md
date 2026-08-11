@@ -23,9 +23,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YDR validation reports genuinely null optional texture slots as informational instead of warnings.
 - Gen9-to-legacy drawable conversion ignores unbound Gen9-only texture resources.
 - Archive scans classify named metadata consistently with loose files.
+- Enhanced MP3 AWC seek tables preserve their serialized entry width.
 
 ### Performance
 - AWC ADPCM, PCM channel operations, peak generation, and RSXXTEA run in the native backend.
+- AWC PCM WAV handling and multichannel block extraction run in the native backend.
 - GameFileCache uses stored asset types directly and supports batched typed hash and name lookups.
 - CUT dependency resolution uses direct container, prefix, and metadata indexes instead of global asset and YMT scans.
 

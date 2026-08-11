@@ -12,6 +12,8 @@ from fivefury import (
     AwcStreamFormat,
     AwcStreamFormatChunk,
     DecodedAudio,
+    build_awc_bytes,
+    read_awc,
 )
 
 
@@ -81,3 +83,32 @@ def test_enhanced_multichannel_block_uses_encoded_size_and_sample_count(
     monkeypatch.setattr("fivefury.awc.conversion.decode_audio", decode)
 
     assert awc.pcm_bytes() == b"\x01\x00\x02\x00\x03\x00"
+
+
+def test_enhanced_mp3_seek_table_preserves_uint16_entries() -> None:
+    stream = AwcStream(
+        1,
+        [
+            AwcChunk(
+                AwcChunkType.FORMAT,
+                format=AwcFormat(
+                    samples=3,
+                    sample_rate=48000,
+                    codec=AwcCodecType.MP3,
+                ),
+            ),
+            AwcChunk(
+                AwcChunkType.SEEK_TABLE,
+                seek_table=[0, 2, 4],
+                seek_table_entry_size=2,
+            ),
+            AwcChunk(AwcChunkType.DATA, data=b"mp3"),
+        ],
+    )
+
+    rebuilt = read_awc(build_awc_bytes(Awc([stream])))
+    seek = rebuilt.streams[0].chunks[1]
+
+    assert seek.seek_table_entry_size == 2
+    assert seek.seek_table == [0, 2, 4]
+    assert seek.to_payload() == struct.pack("<3H", 0, 2, 4)

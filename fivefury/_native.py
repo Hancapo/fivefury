@@ -184,6 +184,26 @@ def _awc_rsxxtea(data: bytes, key: tuple[int, int, int, int], *, decrypt: bool) 
     return _ffi.awc_rsxxtea(data, key, bool(decrypt))
 
 
+def _awc_parse_pcm_wav(data: bytes) -> tuple[bytes, int, int, int]:
+    return _ffi.awc_parse_pcm_wav(data)
+
+
+def _awc_build_pcm_wav(
+    data: bytes, sample_rate: int, channels: int, bits_per_sample: int
+) -> bytes:
+    return _ffi.awc_build_pcm_wav(
+        data, int(sample_rate), int(channels), int(bits_per_sample)
+    )
+
+
+def _awc_extract_multichannel_blocks(
+    data: bytes, block_count: int, block_size: int, channel_count: int
+) -> list[list[tuple[int, bytes]]]:
+    return _ffi.awc_extract_multichannel_blocks(
+        data, int(block_count), int(block_size), int(channel_count)
+    )
+
+
 def read_rpf_entry(
     path: str | Path,
     entry_path: str | Path,
@@ -436,8 +456,8 @@ def scan_rpf_batch_into_index(
 
 __all__ = [
     "CompactIndex",
-    "crypto_magic_mask",
     "NativeCryptoContext",
+    "crypto_magic_mask",
     "read_rpf_entry",
     "read_rpf_entry_variants",
     "resource_layout_sections",

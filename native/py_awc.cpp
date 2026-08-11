@@ -37,6 +37,12 @@ std::int16_t read_i16(const char* source) {
     );
 }
 
+std::uint16_t read_u16(const char* source) {
+    const auto* bytes = reinterpret_cast<const unsigned char*>(source);
+    return static_cast<std::uint16_t>(bytes[0]) |
+           (static_cast<std::uint16_t>(bytes[1]) << 8U);
+}
+
 void write_i16(char* destination, std::int16_t value) {
     const auto bits = static_cast<std::uint16_t>(value);
     destination[0] = static_cast<char>(bits & 0xFFU);
@@ -56,6 +62,11 @@ void write_u32(char* destination, std::uint32_t value) {
     destination[1] = static_cast<char>((value >> 8U) & 0xFFU);
     destination[2] = static_cast<char>((value >> 16U) & 0xFFU);
     destination[3] = static_cast<char>((value >> 24U) & 0xFFU);
+}
+
+void write_u16(char* destination, std::uint16_t value) {
+    destination[0] = static_cast<char>(value & 0xFFU);
+    destination[1] = static_cast<char>((value >> 8U) & 0xFFU);
 }
 
 std::uint32_t rsxxtea_mix(
@@ -365,6 +376,254 @@ PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
         write_u32(output.data() + index * 4U, blocks[index]);
     }
     return PyBytes_FromStringAndSize(output.data(), source_size);
+}
+
+PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args) {
+    const char* source = nullptr;
+    Py_ssize_t source_size = 0;
+    if (!PyArg_ParseTuple(args, "y#", &source, &source_size)) {
+        return nullptr;
+    }
+    if (
+        source_size < 12 || std::memcmp(source, "RIFF", 4) != 0 ||
+        std::memcmp(source + 8, "WAVE", 4) != 0
+    ) {
+        PyErr_SetString(PyExc_ValueError, "Expected a RIFF/WAVE file");
+        return nullptr;
+    }
+
+    bool has_format = false;
+    bool has_data = false;
+    std::uint16_t audio_format = 0;
+    std::uint16_t channels = 0;
+    std::uint32_t sample_rate = 0;
+    std::uint16_t bits_per_sample = 0;
+    const char* pcm = nullptr;
+    Py_ssize_t pcm_size = 0;
+    Py_ssize_t offset = 12;
+    while (offset <= source_size - 8) {
+        const auto chunk_size = static_cast<Py_ssize_t>(read_u32(source + offset + 4));
+        const auto payload_start = offset + 8;
+        if (chunk_size > source_size - payload_start) {
+            PyErr_SetString(PyExc_ValueError, "WAV chunk points outside the file");
+            return nullptr;
+        }
+        const auto* chunk_id = source + offset;
+        if (std::memcmp(chunk_id, "fmt ", 4) == 0) {
+            if (chunk_size < 16) {
+                PyErr_SetString(PyExc_ValueError, "WAV fmt chunk is truncated");
+                return nullptr;
+            }
+            audio_format = read_u16(source + payload_start);
+            channels = read_u16(source + payload_start + 2);
+            sample_rate = read_u32(source + payload_start + 4);
+            bits_per_sample = read_u16(source + payload_start + 14);
+            has_format = true;
+        } else if (std::memcmp(chunk_id, "data", 4) == 0) {
+            pcm = source + payload_start;
+            pcm_size = chunk_size;
+            has_data = true;
+        }
+        const auto padded_size = chunk_size + (chunk_size & 1);
+        if (padded_size > source_size - payload_start) {
+            offset = source_size;
+        } else {
+            offset = payload_start + padded_size;
+        }
+    }
+    if (!has_format) {
+        PyErr_SetString(PyExc_ValueError, "WAV fmt chunk not found");
+        return nullptr;
+    }
+    if (!has_data) {
+        PyErr_SetString(PyExc_ValueError, "WAV data chunk not found");
+        return nullptr;
+    }
+    if (audio_format != 1) {
+        PyErr_SetString(PyExc_ValueError, "Only PCM WAV files are supported");
+        return nullptr;
+    }
+    return Py_BuildValue(
+        "(y#IHH)",
+        pcm,
+        pcm_size,
+        sample_rate,
+        channels,
+        bits_per_sample
+    );
+}
+
+PyObject* mod_awc_build_pcm_wav(PyObject*, PyObject* args) {
+    const char* pcm = nullptr;
+    Py_ssize_t pcm_size = 0;
+    unsigned int sample_rate = 0;
+    unsigned int channels = 1;
+    unsigned int bits_per_sample = 16;
+    if (!PyArg_ParseTuple(
+            args,
+            "y#I|II",
+            &pcm,
+            &pcm_size,
+            &sample_rate,
+            &channels,
+            &bits_per_sample
+        )) {
+        return nullptr;
+    }
+    if (channels == 0 || channels > 0xFFFFU) {
+        PyErr_SetString(PyExc_ValueError, "channels must fit a non-zero uint16");
+        return nullptr;
+    }
+    if (bits_per_sample == 0 || bits_per_sample > 0xFFFFU || bits_per_sample % 8U != 0U) {
+        PyErr_SetString(PyExc_ValueError, "bits_per_sample must be byte-aligned and fit uint16");
+        return nullptr;
+    }
+    const auto block_align = channels * (bits_per_sample / 8U);
+    if (block_align > 0xFFFFU) {
+        PyErr_SetString(PyExc_ValueError, "PCM block alignment exceeds uint16");
+        return nullptr;
+    }
+    const auto byte_rate = static_cast<std::uint64_t>(sample_rate) * block_align;
+    const auto padded_data_size = static_cast<std::uint64_t>(pcm_size) + (pcm_size & 1);
+    if (byte_rate > 0xFFFFFFFFULL || padded_data_size + 36ULL > 0xFFFFFFFFULL) {
+        PyErr_SetString(PyExc_OverflowError, "WAV output exceeds RIFF limits");
+        return nullptr;
+    }
+    std::string output(static_cast<std::size_t>(44 + padded_data_size), '\0');
+    std::memcpy(output.data(), "RIFF", 4);
+    write_u32(output.data() + 4, static_cast<std::uint32_t>(36ULL + padded_data_size));
+    std::memcpy(output.data() + 8, "WAVEfmt ", 8);
+    write_u32(output.data() + 16, 16);
+    write_u16(output.data() + 20, 1);
+    write_u16(output.data() + 22, static_cast<std::uint16_t>(channels));
+    write_u32(output.data() + 24, sample_rate);
+    write_u32(output.data() + 28, static_cast<std::uint32_t>(byte_rate));
+    write_u16(output.data() + 32, static_cast<std::uint16_t>(block_align));
+    write_u16(output.data() + 34, static_cast<std::uint16_t>(bits_per_sample));
+    std::memcpy(output.data() + 36, "data", 4);
+    write_u32(output.data() + 40, static_cast<std::uint32_t>(pcm_size));
+    if (pcm_size != 0) {
+        std::memcpy(output.data() + 44, pcm, static_cast<std::size_t>(pcm_size));
+    }
+    return PyBytes_FromStringAndSize(output.data(), static_cast<Py_ssize_t>(output.size()));
+}
+
+PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
+    const char* source = nullptr;
+    Py_ssize_t source_size = 0;
+    Py_ssize_t block_count = 0;
+    Py_ssize_t block_size = 0;
+    Py_ssize_t channel_count = 0;
+    if (!PyArg_ParseTuple(
+            args,
+            "y#nnn",
+            &source,
+            &source_size,
+            &block_count,
+            &block_size,
+            &channel_count
+        )) {
+        return nullptr;
+    }
+    if (block_count < 0 || block_size <= 0 || channel_count <= 0) {
+        PyErr_SetString(PyExc_ValueError, "invalid AWC multichannel block dimensions");
+        return nullptr;
+    }
+    if (block_count > source_size / block_size) {
+        PyErr_SetString(PyExc_ValueError, "AWC multichannel data is truncated");
+        return nullptr;
+    }
+    if (channel_count > block_size / 24) {
+        PyErr_SetString(PyExc_ValueError, "AWC multichannel header table is truncated");
+        return nullptr;
+    }
+
+    PyObject* result = PyList_New(channel_count);
+    if (result == nullptr) {
+        return nullptr;
+    }
+    for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
+        PyObject* channel_blocks = PyList_New(0);
+        if (channel_blocks == nullptr) {
+            Py_DECREF(result);
+            return nullptr;
+        }
+        PyList_SetItem(result, channel, channel_blocks);
+    }
+
+    for (Py_ssize_t block_index = 0; block_index < block_count; ++block_index) {
+        const char* block = source + block_index * block_size;
+        Py_ssize_t cursor = channel_count * 24;
+        std::vector<std::int32_t> counts(static_cast<std::size_t>(channel_count));
+        std::vector<std::int32_t> samples(static_cast<std::size_t>(channel_count));
+        std::vector<std::int32_t> encoded_sizes(static_cast<std::size_t>(channel_count));
+        for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
+            const char* header = block + channel * 24;
+            counts[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 4));
+            samples[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 12));
+            encoded_sizes[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 20));
+            if (counts[static_cast<std::size_t>(channel)] < 0 || samples[static_cast<std::size_t>(channel)] < 0) {
+                Py_DECREF(result);
+                PyErr_SetString(PyExc_ValueError, "AWC multichannel block contains a negative size");
+                return nullptr;
+            }
+            const auto table_bytes = static_cast<std::int64_t>(counts[static_cast<std::size_t>(channel)]) * 4LL;
+            if (table_bytes > block_size - cursor) {
+                Py_DECREF(result);
+                PyErr_SetString(PyExc_ValueError, "AWC multichannel offset table is truncated");
+                return nullptr;
+            }
+            cursor += static_cast<Py_ssize_t>(table_bytes);
+        }
+        cursor += (0x800 - (cursor % 0x800)) % 0x800;
+        if (cursor > block_size) {
+            Py_DECREF(result);
+            PyErr_SetString(PyExc_ValueError, "AWC multichannel payload alignment is invalid");
+            return nullptr;
+        }
+        for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
+            const auto declared_payload_size =
+                static_cast<std::int64_t>(
+                    counts[static_cast<std::size_t>(channel)]
+                ) * 2048LL;
+            const auto encoded_size = encoded_sizes[static_cast<std::size_t>(channel)];
+            const auto available = block_size - cursor;
+            auto stored_payload_size = declared_payload_size;
+            if (declared_payload_size > available) {
+                const auto compact_last_payload =
+                    channel + 1 == channel_count && encoded_size > 0 && encoded_size <= available;
+                if (!compact_last_payload) {
+                    Py_DECREF(result);
+                    PyErr_SetString(PyExc_ValueError, "AWC multichannel payload is truncated");
+                    return nullptr;
+                }
+                stored_payload_size = available;
+            }
+            auto used_size = static_cast<Py_ssize_t>(stored_payload_size);
+            if (encoded_size > 0) {
+                if (encoded_size > used_size) {
+                    Py_DECREF(result);
+                    PyErr_SetString(PyExc_ValueError, "AWC encoded size exceeds its channel payload");
+                    return nullptr;
+                }
+                used_size = encoded_size;
+            }
+            PyObject* item = Py_BuildValue(
+                "(iy#)",
+                samples[static_cast<std::size_t>(channel)],
+                block + cursor,
+                used_size
+            );
+            if (item == nullptr || PyList_Append(PyList_GetItem(result, channel), item) != 0) {
+                Py_XDECREF(item);
+                Py_DECREF(result);
+                return nullptr;
+            }
+            Py_DECREF(item);
+            cursor += static_cast<Py_ssize_t>(stored_payload_size);
+        }
+    }
+    return result;
 }
 
 }  // namespace fivefury_py

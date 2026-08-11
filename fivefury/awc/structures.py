@@ -9,6 +9,7 @@ from ..hashing import jenk_hash
 from ..metahash import HashLike, MetaHash, coerce_meta_hash
 from .audio import (
     _build_peak_values,
+    _extract_multichannel_blocks,
     build_pcm_wav,
     decode_awc_adpcm,
     interleave_pcm16,
@@ -235,17 +236,28 @@ class AwcChunk:
     stream_format: AwcStreamFormatChunk | None = None
     peaks: list[int] | None = None
     seek_table: list[int] | None = None
+    seek_table_entry_size: int = 4
 
     @classmethod
     def from_info(
-        cls, info: AwcChunkInfo, source: bytes, endian: str = "<"
+        cls,
+        info: AwcChunkInfo,
+        source: bytes,
+        endian: str = "<",
+        *,
+        seek_table_entry_size: int = 4,
     ) -> AwcChunk:
         start = info.offset
         end = start + info.size
         if start < 0 or end > len(source):
             raise ValueError(f"AWC chunk {info.name} points outside the file")
         data = bytes(source[start:end])
-        chunk = cls(info.type, data, info=info)
+        chunk = cls(
+            info.type,
+            data,
+            info=info,
+            seek_table_entry_size=seek_table_entry_size,
+        )
         if info.type_value == int(AwcChunkType.FORMAT):
             chunk.format = AwcFormat.from_bytes(data, endian)
         elif info.type_value == int(AwcChunkType.STREAM_FORMAT):
@@ -257,10 +269,22 @@ class AwcChunk:
                 list(struct.unpack(f"{endian}{len(data) // 2}H", data)) if data else []
             )
         elif info.type_value == int(AwcChunkType.SEEK_TABLE):
-            if len(data) % 4:
-                raise ValueError("AWC seektable chunk size must be divisible by 4")
+            if seek_table_entry_size not in {2, 4}:
+                raise ValueError("AWC seektable entry size must be 2 or 4 bytes")
+            if len(data) % seek_table_entry_size:
+                raise ValueError(
+                    "AWC seektable chunk size is not aligned to its entry width"
+                )
+            value_format = "H" if seek_table_entry_size == 2 else "I"
             chunk.seek_table = (
-                list(struct.unpack(f"{endian}{len(data) // 4}I", data)) if data else []
+                list(
+                    struct.unpack(
+                        f"{endian}{len(data) // seek_table_entry_size}{value_format}",
+                        data,
+                    )
+                )
+                if data
+                else []
             )
         return chunk
 
@@ -305,10 +329,14 @@ class AwcChunk:
             self.type_value == int(AwcChunkType.SEEK_TABLE)
             and self.seek_table is not None
         ):
+            if self.seek_table_entry_size not in {2, 4}:
+                raise ValueError("AWC seektable entry size must be 2 or 4 bytes")
+            value_format = "H" if self.seek_table_entry_size == 2 else "I"
+            value_mask = 0xFFFF if self.seek_table_entry_size == 2 else 0xFFFFFFFF
             return (
                 struct.pack(
-                    f"{endian}{len(self.seek_table)}I",
-                    *[int(value) & 0xFFFFFFFF for value in self.seek_table],
+                    f"{endian}{len(self.seek_table)}{value_format}",
+                    *[int(value) & value_mask for value in self.seek_table],
                 )
                 if self.seek_table
                 else b""
@@ -841,40 +869,15 @@ def _extract_multichannel_channel_pcm(source: AwcStream) -> list[bytes]:
     data_chunk = source.data_chunk
     if stream_format is None or data_chunk is None:
         return []
-    data = data_chunk.data
     outputs = [bytearray() for _ in stream_format.channels]
-    block_size = stream_format.block_size
-    for block_index in range(stream_format.block_count):
-        block = data[block_index * block_size : (block_index + 1) * block_size]
-        if not block:
-            break
-        cursor = 0
-        headers: list[tuple[int, int, int, int]] = []
-        for _ in stream_format.channels:
-            (
-                start_block,
-                block_count,
-                _unused1,
-                sample_count,
-                _unused2,
-                encoded_size,
-            ) = struct.unpack_from("<iiiiii", block, cursor)
-            cursor += 24
-            headers.append((start_block, block_count, sample_count, encoded_size))
-        for _start_block, block_count, _sample_count, _encoded_size in headers:
-            cursor += block_count * 4
-        cursor += (-cursor) % 0x800
-        for channel_index, (
-            _start_block,
-            block_count,
-            sample_count,
-            encoded_size,
-        ) in enumerate(headers):
-            size = block_count * 2048
-            payload = block[cursor : cursor + size]
-            cursor += size
-            if 0 < encoded_size <= len(payload):
-                payload = payload[:encoded_size]
+    blocks = _extract_multichannel_blocks(
+        data_chunk.data,
+        block_count=stream_format.block_count,
+        block_size=stream_format.block_size,
+        channel_count=len(stream_format.channels),
+    )
+    for channel_index, channel_blocks in enumerate(blocks):
+        for sample_count, payload in channel_blocks:
             channel = stream_format.channels[channel_index]
             codec = channel.codec
             if codec is AwcCodecType.PCM:

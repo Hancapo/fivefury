@@ -54,6 +54,9 @@ PyMethodDef module_methods[] = {
     {"awc_interleave_pcm16", mod_awc_interleave_pcm16, METH_VARARGS, nullptr},
     {"awc_decode_adpcm", mod_awc_decode_adpcm, METH_VARARGS, nullptr},
     {"awc_rsxxtea", mod_awc_rsxxtea, METH_VARARGS, nullptr},
+    {"awc_parse_pcm_wav", mod_awc_parse_pcm_wav, METH_VARARGS, nullptr},
+    {"awc_build_pcm_wav", mod_awc_build_pcm_wav, METH_VARARGS, nullptr},
+    {"awc_extract_multichannel_blocks", mod_awc_extract_multichannel_blocks, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 
