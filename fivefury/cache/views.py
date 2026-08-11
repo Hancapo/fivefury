@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Iterator as AbcIterator, Mapping, Sequence
+from collections.abc import Iterator as AbcIterator
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from ..common import hash_value
 from ..gamefile import GameFileType
 from ..gtxd import Gtxd, read_gtxd
-from ..ymt import Ymt
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
+from ..ymt import Ymt
 from .kinds import coerce_game_file_kind as _coerce_kind
-from .paths import path_name as _path_name, path_stem as _path_stem, split_archive_asset_path as _split_archive_asset_path
+from .paths import path_name as _path_name
+from .paths import path_stem as _path_stem
+from .paths import split_archive_asset_path as _split_archive_asset_path
 
 if TYPE_CHECKING:
     from .core import GameFileCache
@@ -60,15 +63,15 @@ class AssetRecord:
         return int(self._cache._index.get_uncompressed_size(self.id))
 
     @property
-    def entry(self) -> Optional[RpfFileEntry]:
+    def entry(self) -> RpfFileEntry | None:
         return self._cache._live_entries.get(self.id)
 
     @property
-    def archive(self) -> Optional[RpfArchive]:
+    def archive(self) -> RpfArchive | None:
         return self._cache._live_archives.get(self.id)
 
     @property
-    def loose_path(self) -> Optional[Path]:
+    def loose_path(self) -> Path | None:
         return self._cache._loose_path_for_id(self.id)
 
     @property
@@ -189,7 +192,7 @@ class _AssetRecordMap(Mapping[str, AssetRecord]):
 
 
 class _KindHashRecordMap(Mapping[int, AssetRecord]):
-    __slots__ = ("_cache", "_kind", "_generation", "_hash_to_id")
+    __slots__ = ("_cache", "_generation", "_hash_to_id", "_kind")
 
     def __init__(self, cache: GameFileCache, kind: GameFileType) -> None:
         self._cache = cache
@@ -253,7 +256,7 @@ class _ArchetypeMap(Mapping[int, Any]):
                     continue
                 try:
                     name_hash = int(name)
-                except Exception:
+                except (TypeError, ValueError, OverflowError):
                     continue
                 if name_hash == 0:
                     continue
@@ -310,6 +313,18 @@ class _TextureParentMap(Mapping[int, int]):
         if isinstance(parsed, Ymt) and parsed.gtxd is not None:
             self._load_gtxd_relations(parsed.gtxd, mapping)
             return True
+        relationships = getattr(parsed, "txd_relationships", None)
+        if relationships is not None:
+            for relationship in relationships:
+                self._add_relation(
+                    relationship.child,
+                    relationship.parent,
+                    mapping,
+                )
+            return True
+        content = getattr(parsed, "content", None)
+        if content is not None and content is not parsed:
+            return self._load_parsed_relations(content, mapping)
         return False
 
     def _ensure_index(self) -> None:
@@ -337,7 +352,11 @@ class _TextureParentMap(Mapping[int, int]):
                 continue
             try:
                 self._load_gtxd_relations(read_gtxd(text), hash_to_parent)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - malformed metadata is optional
+                self._cache._log(
+                    f"skip texture-parent metadata {asset.path}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
                 continue
         self._hash_to_parent = hash_to_parent
         self._generation = self._cache._view_generation
@@ -363,7 +382,7 @@ class _TextureParentMap(Mapping[int, int]):
 
 
 class _KindCountsView(Mapping[GameFileType, int]):
-    __slots__ = ("_cache", "_generation", "_counts")
+    __slots__ = ("_cache", "_counts", "_generation")
 
     def __init__(self, cache: GameFileCache) -> None:
         self._cache = cache

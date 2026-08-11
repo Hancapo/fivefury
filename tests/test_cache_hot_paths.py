@@ -122,3 +122,9 @@ def test_native_archive_scan_classifies_named_metadata(tmp_path: Path) -> None:
         assert cache.get_asset("vehicles.meta").kind is GameFileType.VEHICLES
         assert cache.get_asset("peds.meta").kind is GameFileType.PEDS
         assert cache.get_asset("gtxd.meta").kind is GameFileType.GTXD
+
+
+def test_default_loaded_file_cache_holds_large_dependency_sets() -> None:
+    cache = GameFileCache()
+
+    assert cache.max_loaded_files >= 256

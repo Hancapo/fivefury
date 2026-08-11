@@ -72,7 +72,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     index_cache_path: str | Path | None = None
     scan_workers: int | None = None
     max_open_archives: int = 8
-    max_loaded_files: int = 32
+    max_loaded_files: int = 256
     register_resolver_names: bool = False
     verbose: bool = False
     archives: list[RpfArchive] = field(default_factory=list)
