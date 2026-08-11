@@ -11,6 +11,8 @@ PyMethodDef module_methods[] = {
     {"index_find_hash_ids", mod_index_find_hash_ids, METH_VARARGS, nullptr},
     {"index_find_hashes_ids", mod_index_find_hashes_ids, METH_VARARGS, nullptr},
     {"index_find_kind_ids", mod_index_find_kind_ids, METH_VARARGS, nullptr},
+    {"index_find_container_ids", mod_index_find_container_ids, METH_VARARGS, nullptr},
+    {"index_find_stem_prefix_ids", mod_index_find_stem_prefix_ids, METH_VARARGS, nullptr},
     {"index_kind_short_hash_map", mod_index_kind_short_hash_map, METH_VARARGS, nullptr},
     {"index_kind_counts", mod_index_kind_counts, METH_VARARGS, nullptr},
     {"index_get_path", mod_index_get_path, METH_VARARGS, nullptr},

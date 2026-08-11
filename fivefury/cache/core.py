@@ -4,7 +4,10 @@ from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Self
+from typing import TYPE_CHECKING, Any, Iterator, Self
+
+if TYPE_CHECKING:
+    from ..cut.resolve import CutsceneAssetBundle
 
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
@@ -500,6 +503,43 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             result[original] = matches
         return result
 
+    def find_container_assets(
+        self,
+        container: str,
+        *,
+        kind: GameFileType | str | int | None = None,
+        include_prefixed: bool = False,
+    ) -> list[AssetRecord]:
+        normalized = str(container).strip().replace("\\", "/").strip("/").lower()
+        if not normalized or "/" in normalized:
+            raise ValueError("container must be a single normalized path component")
+        kind_value = _coerce_kind(kind)
+        ids = self._index.find_container_ids(
+            normalized,
+            include_prefixed=include_prefixed,
+            kind_value=None if kind_value is None else int(kind_value),
+        )
+        return [self._record_from_id(asset_id) for asset_id in ids]
+
+    def find_stem_prefix(
+        self,
+        prefix: str,
+        *,
+        kind: GameFileType | str | int,
+    ) -> list[AssetRecord]:
+        normalized = _path_stem(str(prefix)).lower()
+        if not normalized:
+            return []
+        kind_value = _coerce_kind(kind)
+        if kind_value is None:
+            raise ValueError(f"Unknown game file type: {kind!r}")
+        return [
+            self._record_from_id(asset_id)
+            for asset_id in self._index.find_stem_prefix_ids(
+                normalized, int(kind_value)
+            )
+        ]
+
     def find_name(
         self,
         name: str | Path,
@@ -583,6 +623,26 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
 
     def has_asset(self, query: str | Path | int | MetaHash, *, kind: GameFileType | str | int | None = None) -> bool:
         return self.get_asset(query, kind=kind) is not None
+
+    def resolve_cutscene(
+        self,
+        query: Any,
+        *,
+        subtitle_language: str = "american",
+        initial_ped_variations: Mapping[
+            str | int, Mapping[int, tuple[int, int]]
+        ]
+        | None = None,
+    ) -> CutsceneAssetBundle:
+        """Resolve a CUT and its directly referenced runtime dependencies."""
+        from ..cut.resolve import resolve_cutscene_assets
+
+        return resolve_cutscene_assets(
+            self,
+            query,
+            subtitle_language=subtitle_language,
+            initial_ped_variations=initial_ped_variations,
+        )
 
 GameFileCache.search = GameFileCache.search_assets
 GameFileCache.find = GameFileCache.find_assets

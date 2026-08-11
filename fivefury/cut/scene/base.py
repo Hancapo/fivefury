@@ -98,6 +98,61 @@ class CutScene:
             merged.update(ycd.build_cutscene_map(cut_index))
         return merged
 
+    def clip_for_binding(
+        self, binding: CutBinding | int, *, cut_index: int = 0
+    ) -> YcdClip | None:
+        """Resolve the sectioned animation clip assigned to a CUT binding.
+
+        ``AnimStreamingBase`` is a Jenkins partial hash in serialized CUT data,
+        not a final clip hash and not the model's ``StreamingName``.  Multiple
+        actors may intentionally share a model while using distinct animation
+        streaming bases, so an authoritative but unresolved base must not fall
+        back to the model name.
+        """
+        resolved = self.get_binding(binding) if isinstance(binding, int) else binding
+        if resolved is None:
+            return None
+        clips = self.available_clips(cut_index=cut_index)
+        animation_clip_base = getattr(resolved, "animation_clip_base", None)
+        if animation_clip_base:
+            clip = clips.get(MetaHash(animation_clip_base).uint)
+            if clip is not None:
+                return clip
+        animation_streaming_base = getattr(
+            resolved, "animation_streaming_base", None
+        )
+        if animation_streaming_base in (None, "", 0):
+            animation_streaming_base = resolved.fields.get("AnimStreamingBase")
+        if animation_streaming_base not in (None, "", 0):
+            try:
+                return clips.get(jenk_finalize_hash(int(animation_streaming_base)))
+            except (TypeError, ValueError):
+                return None
+        for candidate in (
+            getattr(resolved, "cutscene_name", None),
+            resolved.fields.get("cName"),
+            resolved.name,
+        ):
+            if candidate:
+                candidate_hash = getattr(candidate, "hash", None)
+                if candidate_hash is None and isinstance(candidate, str):
+                    try:
+                        candidate_hash = (
+                            int(candidate, 16)
+                            if candidate.lower().startswith("0x")
+                            else None
+                        )
+                    except ValueError:
+                        candidate_hash = None
+                clip = clips.get(
+                    int(candidate_hash) & 0xFFFFFFFF
+                    if candidate_hash is not None
+                    else MetaHash(candidate).uint
+                )
+                if clip is not None:
+                    return clip
+        return None
+
     @property
     def tracks_by_key(self) -> dict[str, CutTrack]:
         return {track.key: track for track in self.tracks}

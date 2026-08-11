@@ -177,14 +177,21 @@ std::int32_t guess_kind(std::string_view path) {
     if (starts_with(name, "heightmap") && ends_with(name, ".dat")) {
         return 28;
     }
-    if (name == "water.xml") {
-        return 29;
+    static const std::unordered_map<std::string_view, std::int32_t> kind_by_name = {
+        {"gta5_cache_y.dat", 36}, {"gtxd.meta", 26}, {"vehicles.meta", 18},
+        {"handling.meta", 35},    {"carcols.meta", 19}, {"carmodcols.meta", 20},
+        {"carvariations.meta", 21}, {"vehiclelayouts.meta", 22},
+        {"peds.meta", 23}, {"water.xml", 29},
+    };
+    const auto named_kind = kind_by_name.find(name);
+    if (named_kind != kind_by_name.end()) {
+        return named_kind->second;
     }
     static const std::unordered_map<std::string_view, std::int32_t> kind_by_extension = {
         {".ydd", 0},   {".ydr", 1},  {".yft", 2},  {".ymap", 3}, {".ymf", 4},
         {".ymt", 5},   {".ytd", 6},  {".ytyp", 7}, {".ybn", 8},  {".ycd", 9},
         {".ypt", 10},  {".ynd", 11}, {".ynv", 12}, {".rel", 13}, {".ywr", 14},
-        {".yvr", 15},  {".gxt2", 16}, {".awc", 17}, {".yed", 25}, {".yld", 26},
+        {".yvr", 15},  {".gxt2", 16}, {".awc", 17}, {".yed", 25},
         {".yfd", 27},  {".mrf", 30}, {".ypdb", 32}, {".cut", 33}, {".rpf", 100},
     };
 

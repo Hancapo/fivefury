@@ -4,22 +4,30 @@ import struct
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from fivefury.cache import GameFileCache
 from fivefury.common import hash_value
 from fivefury.gamefile import GameFileType, guess_game_file_type
 from fivefury.gtxd import read_gtxd
 from fivefury.meta import Meta
-from fivefury.ymt import Ymt, YmtContentType, YmtFormat, YmtScenarioPointManifest, read_ymt
 from fivefury.pso import (
+    PsoBlockBuilder,
     PsoHashedString,
     PsoNode,
-    PsoBlockBuilder,
     PsoStruct,
     build_chks_section,
     build_pmap_section,
     build_psin_section,
     finalize_sections_with_checksum,
     serialize_psch,
+)
+from fivefury.ymt import (
+    Ymt,
+    YmtContentType,
+    YmtFormat,
+    YmtScenarioPointManifest,
+    read_ymt,
 )
 
 C_SCENARIO_POINT_MANIFEST = 1425675487
@@ -39,11 +47,11 @@ def _rbf_open(index: int, data_type: int, name: str | None = None) -> bytes:
 
 def _rbf_bytes(value: str) -> bytes:
     encoded = value.encode("ascii") + b"\0"
-    return b"\xFD\xFF" + struct.pack("<i", len(encoded)) + encoded
+    return b"\xfd\xff" + struct.pack("<i", len(encoded)) + encoded
 
 
 def _rbf_close() -> bytes:
-    return b"\xFF\xFF"
+    return b"\xff\xff"
 
 
 def _gtxd_rbf_sample() -> bytes:
@@ -80,7 +88,13 @@ def _scenario_manifest_pso_sample() -> bytes:
         [
             build_psin_section(blocks),
             build_pmap_section(blocks, root_block_id=1),
-            serialize_psch({C_SCENARIO_POINT_MANIFEST: PsoStruct(name_hash=C_SCENARIO_POINT_MANIFEST, length=0, entries=[])}),
+            serialize_psch(
+                {
+                    C_SCENARIO_POINT_MANIFEST: PsoStruct(
+                        name_hash=C_SCENARIO_POINT_MANIFEST, length=0, entries=[]
+                    )
+                }
+            ),
             build_chks_section(),
         ]
     )
@@ -138,11 +152,25 @@ def test_ymt_scenario_manifest_exposes_semantic_lists() -> None:
                     type_name="CScenarioPointRegionDef",
                     fields={
                         "Name": PsoHashedString(hash=0x11111111),
-                        "AABB": PsoNode(type_name="rage__spdAABB", fields={"min": (1.0, 2.0, 3.0, 0.0), "max": (4.0, 5.0, 6.0, 0.0)}),
+                        "AABB": PsoNode(
+                            type_name="rage__spdAABB",
+                            fields={
+                                "min": (1.0, 2.0, 3.0, 0.0),
+                                "max": (4.0, 5.0, 6.0, 0.0),
+                            },
+                        ),
                     },
                 )
             ],
-            "Groups": [PsoNode(type_name="CScenarioPointGroup", fields={"Name": PsoHashedString(hash=0x22222222), "EnabledByDefault": True})],
+            "Groups": [
+                PsoNode(
+                    type_name="CScenarioPointGroup",
+                    fields={
+                        "Name": PsoHashedString(hash=0x22222222),
+                        "EnabledByDefault": True,
+                    },
+                )
+            ],
             "InteriorNames": [PsoHashedString(hash=0x33333333)],
         },
     )
@@ -158,7 +186,13 @@ def test_ymt_scenario_manifest_exposes_semantic_lists() -> None:
 
 
 def test_ymt_from_meta_exposes_scenario_region_content() -> None:
-    ymt = Ymt.from_meta(Meta(Name="scenario_region", root_name_hash=C_SCENARIO_POINT_REGION, root_value={"points": []}))
+    ymt = Ymt.from_meta(
+        Meta(
+            Name="scenario_region",
+            root_name_hash=C_SCENARIO_POINT_REGION,
+            root_value={"points": []},
+        )
+    )
 
     assert ymt.format is YmtFormat.RSC
     assert ymt.content_type is YmtContentType.SCENARIO_POINT_REGION
@@ -167,11 +201,40 @@ def test_ymt_from_meta_exposes_scenario_region_content() -> None:
 
 def test_ymt_from_meta_marks_ped_variation_root() -> None:
     root = {"availComp": []}
-    ymt = Ymt.from_meta(Meta(Name="mp_f_freemode_01", root_name_hash=C_PED_VARIATION_INFO, root_value=root))
+    ymt = Ymt.from_meta(
+        Meta(
+            Name="mp_f_freemode_01",
+            root_name_hash=C_PED_VARIATION_INFO,
+            root_value=root,
+        )
+    )
 
     assert ymt.content_type is YmtContentType.PED_VARIATION
     assert ymt.ped_variation is root
     assert ymt.root_type_name == "CPedVariationInfo"
+
+
+@pytest.mark.parametrize(
+    ("root_hash", "root_name", "content_type"),
+    [
+        (0xDE5DB4C2, "naOcclusionInteriorMetadata", YmtContentType.AUDIO_OCCLUSION),
+        (0xF0613E4B, "fwClipSetManager", YmtContentType.CLIP_SETS),
+        (0xBDD20BCF, "CVehicleModelInfoVarGlobal", YmtContentType.VEHICLE_COLORS),
+        (0x6172064B, "camMetadataStore", YmtContentType.CAMERA_METADATA),
+        (0x047A1DE0, "CLevelData", YmtContentType.LEVEL_DATA),
+    ],
+)
+def test_ymt_maps_runtime_root_types(
+    root_hash: int,
+    root_name: str,
+    content_type: YmtContentType,
+) -> None:
+    root = {"value": 1}
+    ymt = Ymt.from_meta(Meta(Name="mapped", root_name_hash=root_hash, root_value=root))
+
+    assert ymt.root_type_name == root_name
+    assert ymt.content_type is content_type
+    assert ymt.content is root
 
 
 def test_ymt_from_meta_exposes_streaming_request_record() -> None:
@@ -190,7 +253,13 @@ def test_ymt_from_meta_exposes_streaming_request_record() -> None:
         "CommonSets": [{"Requests": [0x44444444, 0x11111111]}],
         "NewStyle": True,
     }
-    ymt = Ymt.from_meta(Meta(Name="example_srl", root_name_hash=C_STREAMING_REQUEST_RECORD, root_value=root))
+    ymt = Ymt.from_meta(
+        Meta(
+            Name="example_srl",
+            root_name_hash=C_STREAMING_REQUEST_RECORD,
+            root_value=root,
+        )
+    )
 
     assert ymt.content_type is YmtContentType.STREAMING_REQUEST_RECORD
     assert ymt.root_type_name == "CStreamingRequestRecord"
@@ -199,7 +268,9 @@ def test_ymt_from_meta_exposes_streaming_request_record() -> None:
     assert ymt.streaming_request_record.new_style is True
     assert ymt.streaming_request_record.frames[0].camera_position == (1.0, 2.0, 3.0)
     assert ymt.streaming_request_record.frames[0].common_add_sets == [0, 2]
-    assert [int(item) for item in ymt.streaming_request_record.iter_requested_hashes()] == [0x11111111, 0x33333333, 0x44444444]
+    assert [
+        int(item) for item in ymt.streaming_request_record.iter_requested_hashes()
+    ] == [0x11111111, 0x33333333, 0x44444444]
 
 
 def test_ymt_from_meta_exposes_ped_metadata() -> None:
@@ -220,9 +291,15 @@ def test_ymt_from_meta_exposes_ped_metadata() -> None:
             }
         ],
         "txdRelationships": [{"parent": "ped_parent", "child": "ped_child"}],
-        "multiTxdRelationships": [{"parent": "ped_parent", "children": ["ped_child_a", "ped_child_b"]}],
+        "multiTxdRelationships": [
+            {"parent": "ped_parent", "children": ["ped_child_a", "ped_child_b"]}
+        ],
     }
-    ymt = Ymt.from_meta(Meta(Name="peds", root_name_hash=C_PED_MODEL_INFO_INIT_DATA_LIST, root_value=root))
+    ymt = Ymt.from_meta(
+        Meta(
+            Name="peds", root_name_hash=C_PED_MODEL_INFO_INIT_DATA_LIST, root_value=root
+        )
+    )
 
     assert ymt.content_type is YmtContentType.PED_METADATA
     assert ymt.root_type_name == "CPedModelInfo__InitDataList"
@@ -230,7 +307,9 @@ def test_ymt_from_meta_exposes_ped_metadata() -> None:
     assert ymt.ped_metadata.resident_txd == "ped_txd"
     assert [str(item) for item in ymt.ped_metadata.ped_names] == ["a_m_m_bevhills_01"]
     assert ymt.ped_metadata.txd_relationships[0].child == "ped_child"
-    assert ymt.ped_metadata.multi_txd_relationships == {"ped_parent": ["ped_child_a", "ped_child_b"]}
+    assert ymt.ped_metadata.multi_txd_relationships == {
+        "ped_parent": ["ped_child_a", "ped_child_b"]
+    }
 
 
 def test_texture_parent_dict_reads_gtxd_ymt_as_ymt() -> None:
@@ -249,4 +328,6 @@ def test_texture_parent_dict_reads_gtxd_ymt_as_ymt() -> None:
             loose_path=path,
         )
 
-        assert cache.texture_parent_dict.get(hash_value("child_a")) == hash_value("shared_parent")
+        assert cache.texture_parent_dict.get(hash_value("child_a")) == hash_value(
+            "shared_parent"
+        )

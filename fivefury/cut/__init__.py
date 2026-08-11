@@ -67,6 +67,14 @@ from .payloads import (
     CutVehicleVariationPayload,
 )
 from .pso import read_cut
+from .resolve import (
+    CutsceneAssetBundle,
+    CutsceneResolveIssue,
+    ResolvedCutAudio,
+    ResolvedCutBinding,
+    ResolvedCutSubtitleDictionary,
+    resolve_cutscene_assets,
+)
 from .scene import (
     CutAnimatedLight,
     CutAnimatedParticleEffect,
@@ -172,9 +180,14 @@ __all__ = [
     "CutScreenFadePayload",
     "CutScene",
     "CutsceneAssets",
+    "CutsceneAssetBundle",
+    "CutsceneResolveIssue",
     "CutsceneProject",
     "CutSceneValidationError",
     "CutSceneValidationIssue",
+    "ResolvedCutAudio",
+    "ResolvedCutBinding",
+    "ResolvedCutSubtitleDictionary",
     "CutScriptError",
     "CutScriptHashResolver",
     "CutScriptResult",
@@ -212,6 +225,7 @@ __all__ = [
     "read_cut_scene",
     "read_cutxml",
     "read_cutxml_scene",
+    "resolve_cutscene_assets",
     "read_cutscript",
     "save_cut",
     "save_cut_as_cutscript",

@@ -47,6 +47,15 @@ public:
         std::optional<std::int32_t> kind_value = std::nullopt
     ) const;
     std::vector<std::uint32_t> find_kind_ids(std::int32_t kind_value) const;
+    std::vector<std::uint32_t> find_container_ids(
+        const std::string& container,
+        bool include_prefixed,
+        std::optional<std::int32_t> kind_value = std::nullopt
+    ) const;
+    std::vector<std::uint32_t> find_stem_prefix_ids(
+        const std::string& prefix,
+        std::int32_t kind_value
+    ) const;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> kind_short_hash_pairs(std::int32_t kind_value) const;
     std::vector<std::pair<std::int32_t, std::uint32_t>> kind_counts() const;
 
@@ -82,6 +91,7 @@ public:
 
 private:
     std::uint32_t add_unlocked(AssetRecordData&& record);
+    void index_containers_unlocked(const std::string& path, std::uint32_t asset_id);
     void rebuild_indices_unlocked();
 
     mutable std::mutex mutex_;
@@ -96,6 +106,7 @@ private:
     std::unordered_map<std::string, std::uint32_t> path_to_id_;
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> hash_to_ids_;
     std::unordered_map<std::int32_t, std::vector<std::uint32_t>> kind_to_ids_;
+    std::unordered_map<std::string, std::vector<std::uint32_t>> container_to_ids_;
 };
 
 }  // namespace fivefury_native
