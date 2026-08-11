@@ -40,6 +40,7 @@ from fivefury.resource import (
     split_rsc7_sections,
 )
 from fivefury.ycd.sequence_channels import (
+    YcdCachedQuaternionChannel,
     YcdQuantizeFloatChannel,
     YcdStaticFloatChannel,
 )
@@ -765,6 +766,102 @@ def test_ycd_bone_id_format_defaults_from_track() -> None:
     assert int(rotation_bone.format) == int(YcdTrackFormat.QUATERNION)
     assert int(translation_bone.format) == int(YcdTrackFormat.VECTOR3)
     assert int(uv_bone.format) == int(get_ycd_track_format(YcdAnimationTrack.SHADER_SLIDE_U))
+    assert YcdAnimSequence(
+        bone_id=YcdAnimationBoneId(
+            bone_id=0,
+            track=YcdAnimationTrack.FACIAL_ROTATION,
+        )
+    ).is_rotation_track
+
+
+def test_ycd_rotation_track_restores_cached_quaternion_component() -> None:
+    bone = YcdAnimationBoneId(
+        bone_id=2108,
+        track=YcdAnimationTrack.BONE_ROTATION,
+    )
+    sequence = YcdAnimSequence(
+        bone_id=bone,
+        is_cached_quaternion=True,
+        channels=[
+            YcdStaticFloatChannel(
+                channel_type=YcdChannelType.STATIC_FLOAT,
+                channel_index=0,
+                value=0.2,
+            ),
+            YcdStaticFloatChannel(
+                channel_type=YcdChannelType.STATIC_FLOAT,
+                channel_index=1,
+                value=0.3,
+            ),
+            YcdStaticFloatChannel(
+                channel_type=YcdChannelType.STATIC_FLOAT,
+                channel_index=2,
+                value=0.4,
+            ),
+            YcdCachedQuaternionChannel(
+                channel_type=YcdChannelType.CACHED_QUATERNION1,
+                channel_index=3,
+                quat_index=0,
+            ),
+        ],
+    )
+    sequence.channels[-1].parent_sequence = sequence
+    animation = YcdAnimation(
+        hash=MetaHash("cached_quaternion_evaluation"),
+        frames=1,
+        sequence_frame_limit=1,
+        duration=0.0,
+        usage_count=1,
+        sequence_count=1,
+        bone_id_count=1,
+        sequences=[
+            YcdSequence(
+                hash=MetaHash("cached_quaternion_evaluation_seq"),
+                data_length=0,
+                frame_offset=0,
+                root_motion_refs_offset=0,
+                num_frames=1,
+                frame_length=0,
+                indirect_quantize_float_num_ints=0,
+                quantize_float_value_bits=0,
+                chunk_size=0,
+                root_motion_ref_counts=0,
+                raw_data=b"",
+                anim_sequences=[sequence],
+            )
+        ],
+        bone_ids=[bone],
+    )
+
+    value = animation.evaluate_tracks(0)[(2108, int(YcdAnimationTrack.BONE_ROTATION))]
+
+    assert value == pytest.approx((math.sqrt(0.71), 0.2, 0.3, 0.4))
+
+
+def test_ycd_rotation_track_preserves_four_explicit_cached_components() -> None:
+    sequence = YcdAnimSequence(
+        is_cached_quaternion=True,
+        channels=[
+            *(
+                YcdStaticFloatChannel(
+                    channel_type=YcdChannelType.STATIC_FLOAT,
+                    channel_index=index,
+                    value=value,
+                )
+                for index, value in enumerate((-0.67, -0.37, -0.25, 0.58))
+            ),
+            YcdCachedQuaternionChannel(
+                channel_type=YcdChannelType.CACHED_QUATERNION2,
+                channel_index=4,
+                quat_index=0,
+            ),
+        ],
+    )
+    sequence.channels[-1].parent_sequence = sequence
+
+    assert sequence.evaluate_quaternion(0) == pytest.approx(
+        (-0.67, -0.37, -0.25, 0.58)
+    )
 
 
 def test_ycd_writer_sanitizes_non_uv_quantize_overflow() -> None:

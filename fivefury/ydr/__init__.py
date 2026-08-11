@@ -74,9 +74,14 @@ from .shaders import (
     resolve_shader_reference,
 )
 from .transforms import (
+    apply_ped_procedural_bone_fallbacks,
     compose_bone_local_transform,
+    compose_local_transform,
     multiply_matrix4,
+    skeleton_absolute_matrices,
     skeleton_absolute_transforms,
+    skeleton_skinning_matrices,
+    skeleton_skinning_transforms,
 )
 
 __all__ = [
@@ -139,7 +144,9 @@ __all__ = [
     "adapt_shader_to_gen9",
     "coerce_gen9_shader_name",
     "coerce_shader_name",
+    "apply_ped_procedural_bone_fallbacks",
     "compose_bone_local_transform",
+    "compose_local_transform",
     "create_ydr",
     "format_ydr_gen9_shader_info",
     "format_ydr_shader_info",
@@ -153,6 +160,9 @@ __all__ = [
     "paint_vertices",
     "skeleton_bone_flag_names",
     "skeleton_absolute_transforms",
+    "skeleton_absolute_matrices",
+    "skeleton_skinning_matrices",
+    "skeleton_skinning_transforms",
     "read_gen9_shader_library",
     "read_shader_library",
     "read_ydr",
