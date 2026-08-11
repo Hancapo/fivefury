@@ -10,6 +10,10 @@ from ...ymt import iter_ped_drawables
 from ..scene import CutScene
 from .common import _load_file, _preferred_asset, _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutBinding
+from .runtime import (
+    CutsceneResolutionCancellation,
+    check_cutscene_resolution_cancelled,
+)
 from .values import field_hash
 
 if TYPE_CHECKING:
@@ -34,9 +38,12 @@ def _resolve_bindings(
     cache: GameFileCache,
     scene: CutScene,
     issues: list[CutsceneResolveIssue],
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
 ) -> dict[int, ResolvedCutBinding]:
     result: dict[int, ResolvedCutBinding] = {}
     for binding in scene.bindings:
+        check_cutscene_resolution_cancelled(cancellation)
         resolved = ResolvedCutBinding(binding=binding)
         result[binding.object_id] = resolved
         kinds = _MODEL_KINDS_BY_ROLE.get(binding.role)
@@ -182,9 +189,12 @@ def _resolve_ped_components(
     resolved_bindings: dict[int, ResolvedCutBinding],
     issues: list[CutsceneResolveIssue],
     initial_ped_variations: Mapping[int, Mapping[int, tuple[int, int]]] | None = None,
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
 ) -> None:
     search_cache: dict[tuple[str, GameFileType], list[AssetRecord]] = {}
     for object_id, resolved in resolved_bindings.items():
+        check_cutscene_resolution_cancelled(cancellation)
         if resolved.binding.role != "ped" or resolved.reference_hash is None:
             continue
         model_asset = resolved.assets.get(GameFileType.YFT)
@@ -226,6 +236,7 @@ def _resolve_ped_components(
         seen_textures: set[str] = set()
         has_component_dictionary = GameFileType.YDD in resolved.files
         for component, requested in variations.items():
+            check_cutscene_resolution_cancelled(cancellation)
             prefix = _PED_VARIATION_PREFIXES[component]
             for drawable, texture_index in sorted(requested):
                 if component >= 12:
@@ -288,8 +299,11 @@ def _resolve_binding_texture_chains(
     cache: GameFileCache,
     resolved_bindings: dict[int, ResolvedCutBinding],
     issues: list[CutsceneResolveIssue],
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
 ) -> None:
     for object_id, resolved in resolved_bindings.items():
+        check_cutscene_resolution_cancelled(cancellation)
         texture_root = resolved.assets.get(GameFileType.YTD)
         if texture_root is None:
             continue

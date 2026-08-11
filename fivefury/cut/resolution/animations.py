@@ -7,6 +7,10 @@ from ...gamefile import GameFileType
 from ..scene import CutScene
 from .common import _load_file
 from .models import CutsceneResolveIssue
+from .runtime import (
+    CutsceneResolutionCancellation,
+    check_cutscene_resolution_cancelled,
+)
 
 if TYPE_CHECKING:
     from ...cache import AssetRecord, GameFileCache
@@ -18,6 +22,8 @@ def _resolve_ycds(
     source: AssetRecord,
     scene: CutScene,
     issues: list[CutsceneResolveIssue],
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
 ) -> tuple[dict[int, Ycd], dict[int, AssetRecord]]:
     path = PurePosixPath(source.path.replace("\\", "/"))
     section_count = max(1, len(scene.camera_cut_list or ()) + 1)
@@ -25,6 +31,7 @@ def _resolve_ycds(
     assets: dict[int, AssetRecord] = {}
 
     for section in range(section_count):
+        check_cutscene_resolution_cancelled(cancellation)
         candidates = [path.with_name(f"{path.stem}-{section}.ycd")]
         if section == 0:
             candidates.append(path.with_suffix(".ycd"))

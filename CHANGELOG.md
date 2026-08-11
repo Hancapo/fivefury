@@ -12,6 +12,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Public skeleton transform and skinning matrix helpers for runtime animation consumers.
 - AWC codec metadata and PCM extraction for Enhanced MP3 and Vorbis streams.
 - CUT dependency resolution for sectioned animations, actors, textures, audio, and subtitles.
+- Structured CUT resolution traces, audits, benchmarks, and cooperative cancellation.
 
 ### Changed
 - YCD rotation tracks evaluate cached quaternion channels using their declared track format.

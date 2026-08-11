@@ -8,6 +8,10 @@ from ...metahash import MetaHash
 from ..scene import CutScene
 from .common import _load_file, _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutAudio
+from .runtime import (
+    CutsceneResolutionCancellation,
+    check_cutscene_resolution_cancelled,
+)
 from .values import field_reference
 
 if TYPE_CHECKING:
@@ -47,6 +51,8 @@ def _resolve_audio(
     cache: GameFileCache,
     references: tuple[str | int, ...],
     issues: list[CutsceneResolveIssue],
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
 ) -> dict[str | int, ResolvedCutAudio]:
     if not references:
         return {}
@@ -60,12 +66,14 @@ def _resolve_audio(
         reference: [] for reference in references
     }
     for asset in cache.iter_assets(GameFileType.AWC):
+        check_cutscene_resolution_cancelled(cancellation)
         for candidate_hash in _audio_asset_reference_hashes(asset):
             for reference in references_by_hash.get(candidate_hash, ()):
                 candidates[reference].append(asset)
 
     result: dict[str | int, ResolvedCutAudio] = {}
     for reference in references:
+        check_cutscene_resolution_cancelled(cancellation)
         matches = candidates[reference]
         if not matches:
             issues.append(

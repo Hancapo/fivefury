@@ -1,18 +1,35 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Self
+from typing import TYPE_CHECKING, Any, Self
 
 if TYPE_CHECKING:
+    from ..cut.resolution.runtime import (
+        CutsceneResolutionCancellation,
+        CutsceneResolutionTrace,
+    )
     from ..cut.resolve import CutsceneAssetBundle
 
+from ..crypto import GameCrypto
+from ..gamefile import GameFile, GameFileType, guess_game_file_type
+from ..hashing import jenk_hash
+from ..metahash import MetaHash
+from ..resolver import HashResolver, get_hash_resolver
+from ..rpf import (
+    RpfArchive,
+    RpfEntry,
+    RpfFileEntry,
+    RpfResourceFileEntry,
+    _normalize_key,
+)
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
 from .kinds import coerce_game_file_kind as _coerce_kind
-from .paths import path_name as _path_name, path_stem as _path_stem
+from .paths import path_name as _path_name
+from .paths import path_stem as _path_stem
 from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes
 from .views import (
     AssetRecord,
@@ -24,12 +41,6 @@ from .views import (
     _KindHashRecordMap,
     _TextureParentMap,
 )
-from ..crypto import GameCrypto
-from ..gamefile import GameFile, GameFileType, guess_game_file_type
-from ..hashing import jenk_hash
-from ..metahash import MetaHash
-from ..resolver import HashResolver, get_hash_resolver
-from ..rpf import RpfArchive, RpfEntry, RpfFileEntry, RpfResourceFileEntry, _normalize_key
 
 try:
     from .._native import CompactIndex
@@ -633,6 +644,8 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             str | int, Mapping[int, tuple[int, int]]
         ]
         | None = None,
+        cancellation: CutsceneResolutionCancellation | None = None,
+        trace: CutsceneResolutionTrace | None = None,
     ) -> CutsceneAssetBundle:
         """Resolve a CUT and its directly referenced runtime dependencies."""
         from ..cut.resolve import resolve_cutscene_assets
@@ -642,6 +655,8 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             query,
             subtitle_language=subtitle_language,
             initial_ped_variations=initial_ped_variations,
+            cancellation=cancellation,
+            trace=trace,
         )
 
 GameFileCache.search = GameFileCache.search_assets

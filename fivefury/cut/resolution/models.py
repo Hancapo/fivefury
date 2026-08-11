@@ -11,6 +11,7 @@ from .values import subtitle_hash
 if TYPE_CHECKING:
     from ...cache import AssetRecord
     from ...ycd import Ycd
+    from .runtime import CutsceneResolutionTrace
 
 
 @dataclass(slots=True, frozen=True)
@@ -112,6 +113,7 @@ class CutsceneAssetBundle:
         default_factory=dict
     )
     issues: list[CutsceneResolveIssue] = field(default_factory=list)
+    trace: CutsceneResolutionTrace | None = None
 
     @property
     def ok(self) -> bool:
