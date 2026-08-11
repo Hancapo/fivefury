@@ -8,6 +8,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
+- Declarative CUT facial animation modes with YCD clip resolution and runtime validation.
+- Complete ped expression bindings and facial skeleton validation for YMT and YED assets.
 - Declarative YCD facial authoring for merged cutscene clips, controls, visemes, blend shapes, transforms, animated normal maps, and tinting.
 - Formal names for the built-in RAGE animation tracks used by YCD assets.
 - Composable YDR render-pass masks with named default, shadow, reflection, mirror, and water-reflection flags.
