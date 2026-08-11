@@ -8,6 +8,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
+- Declarative YCD facial authoring for merged cutscene clips, controls, visemes, blend shapes, transforms, animated normal maps, and tinting.
+- Formal names for the built-in RAGE animation tracks used by YCD assets.
 - Composable YDR render-pass masks with named default, shadow, reflection, mirror, and water-reflection flags.
 - Public skeleton transform and skinning matrix helpers for runtime animation consumers.
 - AWC codec metadata and PCM extraction for Enhanced MP3 and Vorbis streams.
@@ -19,6 +21,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YMT files expose formal content types for all roots used by the Legacy and Enhanced game data.
 
 ### Fixed
+- YCD writing preserves explicitly serialized track formats instead of replacing them with inferred defaults.
 - Enhanced sampler-state parameters no longer inherit colliding legacy texture metadata.
 - YDR validation reports genuinely null optional texture slots as informational instead of warnings.
 - Gen9-to-legacy drawable conversion ignores unbound Gen9-only texture resources.

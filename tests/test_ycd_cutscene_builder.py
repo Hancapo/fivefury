@@ -22,6 +22,9 @@ from fivefury import (
     YcdClipType,
     YcdCutsceneBoneAnimation,
     YcdCutsceneBuilder,
+    YcdFacialTrackSamples,
+    YcdFacialTrackSet,
+    YcdTrackFormat,
     build_cutscene_sections,
     build_ycd_bytes,
     read_ycd,
@@ -239,6 +242,63 @@ def test_cutscene_builder_returns_empty_when_no_animated_clips() -> None:
     builder = YcdCutsceneBuilder.create("empty_scene", duration=5.0)
 
     assert builder.build_ycds() == []
+
+
+def test_cutscene_builder_authors_merged_facial_tracks() -> None:
+    builder = YcdCutsceneBuilder.create("facial_scene", duration=1.0, fps=30.0)
+    builder.add_ped(
+        "cs_actor",
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        facial=YcdFacialTrackSet(
+            controls={0x1234: {0.0: 0.0, 1.0: 1.0}},
+            translations={0x2345: (1.0, 2.0, 3.0)},
+            rotations={0x3456: (0.0, 0.0, 0.0, 1.0)},
+            scales={0x4567: (1.0, 1.1, 1.2)},
+            visemes={0x5678: 0.75},
+            blend_shapes={0x6789: 0.5},
+            animated_normal_maps={
+                0x789A: YcdFacialTrackSamples((0.1, 0.2, 0.3), format=YcdTrackFormat.VECTOR3)
+            },
+            tinting=0.25,
+        ),
+    )
+
+    rebuilt = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
+    clip = rebuilt.get_clip("cs_actor_dual-0")
+
+    assert clip is not None and clip.animation is not None
+    bindings = {
+        (int(binding.bone_id), int(binding.track)): YcdTrackFormat(int(binding.format))
+        for binding in clip.animation.bone_ids
+    }
+    assert bindings[(0x789A, int(YcdAnimationTrack.ANIMATED_NORMAL_MAPS))] is YcdTrackFormat.VECTOR3
+    assert bindings[(0x4567, int(YcdAnimationTrack.FACIAL_SCALE))] is YcdTrackFormat.VECTOR3
+    assert bindings[(0, int(YcdAnimationTrack.FACIAL_TINTING))] is YcdTrackFormat.FLOAT
+
+    samples = clip.evaluate_facial_animation_at_time(0.5)
+    assert samples[0x1234].control == pytest.approx(0.5, abs=0.02)
+    assert samples[0x2345].translation == pytest.approx((1.0, 2.0, 3.0))
+    assert samples[0x3456].rotation == pytest.approx((0.0, 0.0, 0.0, 1.0))
+    assert samples[0x4567].scale == pytest.approx((1.0, 1.1, 1.2))
+    assert samples[0x5678].viseme == pytest.approx(0.75)
+    assert samples[0x6789].blend_shape == pytest.approx(0.5)
+    assert samples[0x789A].animated_normal_maps == pytest.approx((0.1, 0.2, 0.3))
+    assert samples[0].tinting == pytest.approx(0.25)
+
+
+def test_add_facial_animation_promotes_existing_body_clip_to_dual() -> None:
+    builder = YcdCutsceneBuilder.create("facial_scene", duration=0.1, fps=30.0)
+    builder.add_ped(
+        "cs_actor",
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    builder.add_facial_animation("cs_actor", YcdFacialTrackSet(controls={1: 1.0}))
+
+    ycd = builder.build_ycds()[0]
+
+    assert [clip.short_name for clip in ycd.clips] == ["cs_actor_dual-0"]
 
 
 def test_cutscene_builder_preserves_static_negative_w_quaternion() -> None:

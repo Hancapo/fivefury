@@ -234,9 +234,14 @@ YcdUvAnimationSample = YcdUvTransformSample
 
 @dataclass(slots=True)
 class YcdFacialAnimationSample:
+    blend_shape: float | None = None
+    viseme: float | None = None
+    animated_normal_maps: float | tuple[float, float, float] | None = None
     control: float | None = None
     translation: tuple[float, float, float] | None = None
     rotation: tuple[float, float, float, float] | None = None
+    scale: tuple[float, float, float] | None = None
+    tinting: float | None = None
 
 
 @dataclass(slots=True)
@@ -360,8 +365,6 @@ class YcdAnimation:
             resolved_bone_ids.append(resolved)
 
         self.bone_ids = resolved_bone_ids
-        for bone_id in self.bone_ids:
-            bone_id.format = get_ycd_track_format(bone_id.track)
         self.bone_id_count = len(resolved_bone_ids)
         self.sequence_count = len(self.sequences)
         return self
@@ -566,12 +569,35 @@ class YcdAnimation:
         }
         for (bone_id, track), value in tracks.items():
             sample = result.setdefault(int(bone_id), YcdFacialAnimationSample())
-            if int(track) == int(YcdAnimationTrack.FACIAL_CONTROL):
+            if int(track) == int(YcdAnimationTrack.BLEND_SHAPE):
+                sample.blend_shape = float(value[0])
+            elif int(track) == int(YcdAnimationTrack.VISEMES):
+                sample.viseme = float(value[0])
+            elif int(track) == int(YcdAnimationTrack.ANIMATED_NORMAL_MAPS):
+                binding = next(
+                    (
+                        sequence.bone_id
+                        for sequence in self.facial_sequences
+                        if sequence.bone_id is not None
+                        and int(sequence.bone_id.bone_id) == int(bone_id)
+                        and int(sequence.bone_id.track) == int(track)
+                    ),
+                    None,
+                )
+                if binding is not None and int(binding.format) == int(YcdTrackFormat.VECTOR3):
+                    sample.animated_normal_maps = value[:3]
+                else:
+                    sample.animated_normal_maps = float(value[0])
+            elif int(track) == int(YcdAnimationTrack.FACIAL_CONTROL):
                 sample.control = float(value[0])
             elif int(track) == int(YcdAnimationTrack.FACIAL_TRANSLATION):
                 sample.translation = value[:3]
             elif int(track) == int(YcdAnimationTrack.FACIAL_ROTATION):
                 sample.rotation = value
+            elif int(track) == int(YcdAnimationTrack.FACIAL_SCALE):
+                sample.scale = value[:3]
+            elif int(track) == int(YcdAnimationTrack.FACIAL_TINTING):
+                sample.tinting = float(value[0])
         return result
 
     def evaluate_uv_transform(self, frame: float) -> YcdUvTransformSample:

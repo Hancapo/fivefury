@@ -7,6 +7,8 @@ from .cutscene import (
     YcdCutsceneClip,
     YcdCutsceneSection,
     YcdCutsceneTrack,
+    YcdFacialTrackSamples,
+    YcdFacialTrackSet,
     build_cutscene_sections,
     build_cutscene_ycds,
 )
@@ -67,6 +69,8 @@ __all__ = [
     "YcdCutsceneClip",
     "YcdCutsceneSection",
     "YcdCutsceneTrack",
+    "YcdFacialTrackSamples",
+    "YcdFacialTrackSet",
     "YcdAnimSequence",
     "YcdCameraAnimationSample",
     "YcdChannelType",
