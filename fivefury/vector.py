@@ -122,10 +122,10 @@ def quat_from_euler_xyz_raw(value: Vector3) -> Quaternion:
     cy, sy = math.cos(y * 0.5), math.sin(y * 0.5)
     cz, sz = math.cos(z * 0.5), math.sin(z * 0.5)
     return (
-        (sx * cy * cz) + (cx * sy * sz),
-        (cx * sy * cz) - (sx * cy * sz),
-        (cx * cy * sz) + (sx * sy * cz),
-        (cx * cy * cz) - (sx * sy * sz),
+        (sx * cy * cz) - (cx * sy * sz),
+        (cx * sy * cz) + (sx * cy * sz),
+        (cx * cy * sz) - (sx * sy * cz),
+        (cx * cy * cz) + (sx * sy * sz),
     )
 
 
@@ -135,12 +135,12 @@ def quat_from_euler_xyz(value: Vector3) -> Quaternion:
 
 def quat_to_euler_xyz(value: Quaternion) -> Vector3:
     x, y, z, w = quat_normalize(value)
-    sin_x = 2.0 * ((w * x) - (y * z))
+    sin_x = 2.0 * ((w * x) + (y * z))
     cos_x = 1.0 - (2.0 * ((x * x) + (y * y)))
-    pitch = math.asin(max(-1.0, min(1.0, 2.0 * ((w * y) + (z * x)))))
+    pitch = math.asin(max(-1.0, min(1.0, 2.0 * ((w * y) - (z * x)))))
     roll = math.atan2(sin_x, cos_x)
     yaw = math.atan2(
-        2.0 * ((w * z) - (x * y)),
+        2.0 * ((w * z) + (x * y)),
         1.0 - (2.0 * ((y * y) + (z * z))),
     )
     return (roll, pitch, yaw)

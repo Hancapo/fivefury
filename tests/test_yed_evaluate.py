@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import math
+import random
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -24,6 +25,12 @@ from fivefury import (
     jenk_hash,
     read_yed,
 )
+from fivefury.vector import (
+    quat_from_euler_xyz,
+    quat_multiply,
+    quat_normalize,
+    quat_to_euler_xyz,
+)
 
 
 def _stream(*instructions: YedInstruction) -> YedStream:
@@ -39,6 +46,88 @@ def _stream(*instructions: YedInstruction) -> YedStream:
 
 def _instruction(kind: YedInstructionType, **operands: object) -> YedInstruction:
     return YedInstruction(kind, operands=dict(operands))
+
+
+def _assert_same_rotation(
+    actual: tuple[float, float, float, float],
+    expected: tuple[float, float, float, float],
+    *,
+    tolerance: float = 1e-9,
+) -> None:
+    actual = quat_normalize(actual)
+    expected = quat_normalize(expected)
+    alignment = abs(sum(left * right for left, right in zip(actual, expected)))
+    assert alignment == pytest.approx(1.0, abs=tolerance)
+
+
+def test_rage_euler_xyz_compound_reference_reaches_the_vm() -> None:
+    angles = tuple(math.radians(value) for value in (30.0, -40.0, 55.0))
+    expected = (
+        0.368276296063,
+        -0.180736259985,
+        0.497636296346,
+        0.764241513295,
+    )
+    expression = YedExpression.create("compound_euler")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.PUSH_VECTOR, value=(*angles, 0.0)),
+            _instruction(YedInstructionType.FROM_EULER),
+            _instruction(YedInstructionType.DUP),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=1, track=1),
+            _instruction(YedInstructionType.TO_EULER),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=2, track=0),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+
+    result = evaluate_yed(create_yed(expression), ("compound_euler",), {})
+
+    assert quat_from_euler_xyz(angles) == pytest.approx(expected, abs=1e-12)
+    assert quat_to_euler_xyz(expected) == pytest.approx(angles, abs=1e-12)
+    assert result.output_tracks[(1, 1)] == pytest.approx(expected, abs=1e-12)
+    assert result.output_tracks[(2, 0)][:3] == pytest.approx(angles, abs=1e-12)
+    assert result.issues == []
+
+
+def test_euler_xyz_roundtrip_preserves_finite_rotations() -> None:
+    expression = YedExpression.create("euler_roundtrip")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.TRACK_GET, bone_id=1, track=1),
+            _instruction(YedInstructionType.TO_EULER),
+            _instruction(YedInstructionType.FROM_EULER),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=2, track=1),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+    yed = create_yed(expression)
+    rotations = [
+        quat_from_euler_xyz(tuple(math.radians(value) for value in angles))
+        for angles in (
+            (0.0, 0.0, 0.0),
+            (90.0, 0.0, 0.0),
+            (0.0, -90.0, 0.0),
+            (0.0, 0.0, 90.0),
+            (30.0, -40.0, 55.0),
+            (-120.0, 25.0, 170.0),
+            (15.0, 89.9, -35.0),
+            (-22.0, -89.9, 64.0),
+        )
+    ]
+    rotations.append(tuple(-value for value in rotations[4]))
+    generator = random.Random(0x594544)
+    for _ in range(64):
+        rotations.append(
+            quat_normalize(tuple(generator.uniform(-1.0, 1.0) for _ in range(4)))
+        )
+
+    for rotation in rotations:
+        python_roundtrip = quat_from_euler_xyz(quat_to_euler_xyz(rotation))
+        result = evaluate_yed(yed, ("euler_roundtrip",), {(1, 1): rotation})
+        _assert_same_rotation(python_roundtrip, rotation, tolerance=1e-8)
+        _assert_same_rotation(result.output_tracks[(2, 1)], rotation, tolerance=1e-8)
+        assert result.issues == []
 
 
 def test_evaluate_yed_maps_a_facial_control_to_a_bone_track() -> None:
@@ -217,6 +306,137 @@ def test_component_writes_support_vectors_and_quaternions() -> None:
     assert result.output_tracks[(2, 1)] == pytest.approx(
         (0.0, 0.0, 2**-0.5, 2**-0.5)
     )
+
+
+def test_quaternion_component_write_preserves_compound_rage_axes() -> None:
+    angles = tuple(math.radians(value) for value in (30.0, -40.0, 55.0))
+    replacement = math.radians(-36.2039)
+    initial = quat_from_euler_xyz(angles)
+    expected = quat_from_euler_xyz((replacement, angles[1], angles[2]))
+    expression = YedExpression.create("compound_component")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.PUSH_FLOAT, value=replacement),
+            _instruction(
+                YedInstructionType.TRACK_SET_COMP,
+                bone_id=4407,
+                track=1,
+                component_index=0,
+                format=int(YedTrackFormat.QUATERNION),
+            ),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+
+    result = evaluate_yed(
+        create_yed(expression),
+        ("compound_component",),
+        {(4407, 1): initial},
+    )
+
+    _assert_same_rotation(result.output_tracks[(4407, 1)], expected)
+    assert result.issues == []
+
+
+def test_michael_ear_component_regression_stays_near_neutral() -> None:
+    neutral = {
+        4407: (
+            -0.04937572777271271,
+            -0.6273804903030396,
+            0.06097438931465149,
+            0.7747502326965332,
+        ),
+        6621: (
+            -0.04937604069709778,
+            0.6273804306983948,
+            -0.06097400188446045,
+            0.774750292301178,
+        ),
+    }
+    replacement = math.radians(-36.2039)
+    expression = YedExpression.create("head_000_r_ear_regression")
+    instructions = []
+    for bone_tag in neutral:
+        instructions.extend(
+            (
+                _instruction(YedInstructionType.PUSH_FLOAT, value=replacement),
+                _instruction(
+                    YedInstructionType.TRACK_SET_COMP,
+                    bone_id=bone_tag,
+                    track=1,
+                    component_index=0,
+                    format=int(YedTrackFormat.QUATERNION),
+                ),
+            )
+        )
+    expression.streams = [
+        _stream(*instructions, _instruction(YedInstructionType.END))
+    ]
+
+    result = evaluate_yed(
+        create_yed(expression),
+        ("head_000_r_ear_regression",),
+        {(bone_tag, 1): rotation for bone_tag, rotation in neutral.items()},
+    )
+
+    for bone_tag, neutral_rotation in neutral.items():
+        final_rotation = quat_normalize(result.output_tracks[(bone_tag, 1)])
+        alignment = abs(
+            sum(
+                left * right
+                for left, right in zip(final_rotation, neutral_rotation)
+            )
+        )
+        angular_distance = math.degrees(
+            2.0 * math.acos(max(-1.0, min(1.0, alignment)))
+        )
+        assert angular_distance < 0.3
+        assert sum(value * value for value in final_rotation) == pytest.approx(1.0)
+    assert result.issues == []
+
+
+def test_relative_quaternion_component_write_uses_compound_default_pose() -> None:
+    base_angles = tuple(math.radians(value) for value in (12.0, -25.0, 33.0))
+    relative_angles = tuple(math.radians(value) for value in (4.0, -7.0, 11.0))
+    replacement = math.radians(-8.0)
+    base = quat_from_euler_xyz(base_angles)
+    current = quat_multiply(base, quat_from_euler_xyz(relative_angles))
+    expected_relative = (
+        replacement + base_angles[0],
+        relative_angles[1],
+        relative_angles[2],
+    )
+    expected = quat_multiply(base, quat_from_euler_xyz(expected_relative))
+    bone = SimpleNamespace(
+        tag=4407,
+        translation=(0.0, 0.0, 0.0),
+        rotation=base,
+        scale=(1.0, 1.0, 1.0),
+    )
+    expression = YedExpression.create("relative_component")
+    expression.streams = [
+        _stream(
+            _instruction(YedInstructionType.PUSH_FLOAT, value=replacement),
+            _instruction(
+                YedInstructionType.TRACK_SET_OFFSET_COMP,
+                bone_id=4407,
+                track=1,
+                component_index=0,
+                format=int(YedTrackFormat.QUATERNION),
+            ),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+
+    result = evaluate_yed(
+        create_yed(expression),
+        ("relative_component",),
+        {(4407, 1): current},
+        skeleton=SimpleNamespace(bones=[bone]),
+    )
+
+    _assert_same_rotation(result.output_tracks[(4407, 1)], expected)
+    assert result.issues == []
 
 
 @pytest.mark.parametrize(
@@ -416,6 +636,27 @@ def _blend_operands(multiplier: float) -> dict[str, object]:
     }
 
 
+def _compound_quaternion_blend_operands() -> dict[str, object]:
+    first = tuple(math.radians(value) for value in (30.0, -40.0, 55.0))
+    second = tuple(math.radians(value) for value in (-12.0, 18.0, 27.0))
+    return {
+        "source_count": 4,
+        "num_source_weights": 1,
+        "source_infos": [
+            {"track_index": index, "component_offset": 0}
+            for index in range(4)
+        ],
+        "values": [
+            (first[0], second[0], 0.0, 0.0),
+            (first[1], second[1], 0.0, 0.0),
+            (first[2], second[2], 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+        ],
+    }
+
+
 def test_linear_vector_and_quaternion_blends_use_serialized_sources() -> None:
     vector = YedExpression.create(
         "vector_blend",
@@ -454,6 +695,41 @@ def test_linear_vector_and_quaternion_blends_use_serialized_sources() -> None:
     assert result.output_tracks[(21, 1)] == pytest.approx(
         (2**-0.5, 0.0, 0.0, 2**-0.5)
     )
+
+
+def test_quaternion_blend_preserves_compound_serialized_source_order() -> None:
+    first = tuple(math.radians(value) for value in (30.0, -40.0, 55.0))
+    second = tuple(math.radians(value) for value in (-12.0, 18.0, 27.0))
+    expression = YedExpression.create(
+        "compound_quaternion_blend",
+        tracks=[YedTrack.scalar(index + 1, 24) for index in range(4)],
+    )
+    expression.streams = [
+        _stream(
+            _instruction(
+                YedInstructionType.BLEND_QUATERNION,
+                **_compound_quaternion_blend_operands(),
+            ),
+            _instruction(YedInstructionType.TRACK_SET, bone_id=4407, track=1),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+    expected = quat_multiply(
+        quat_from_euler_xyz(first),
+        quat_from_euler_xyz(second),
+    )
+
+    result = evaluate_yed(
+        create_yed(expression),
+        ("compound_quaternion_blend",),
+        {
+            (1, 24): (1.0, 0.0, 0.0, 0.0),
+            (2, 24): (1.0, 0.0, 0.0, 0.0),
+        },
+    )
+
+    _assert_same_rotation(result.output_tracks[(4407, 1)], expected)
+    assert result.issues == []
 
 
 def test_missing_skeleton_uses_typed_fallback_and_tagged_skeleton_uses_default() -> None:

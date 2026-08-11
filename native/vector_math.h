@@ -60,10 +60,10 @@ inline Vec4 quat_from_euler_xyz_raw(const Vec4& value) {
     const auto cz = std::cos(value.z * 0.5);
     const auto sz = std::sin(value.z * 0.5);
     return {
-        sx * cy * cz + cx * sy * sz,
-        cx * sy * cz - sx * cy * sz,
-        cx * cy * sz + sx * sy * cz,
-        cx * cy * cz - sx * sy * sz,
+        sx * cy * cz - cx * sy * sz,
+        cx * sy * cz + sx * cy * sz,
+        cx * cy * sz - sx * sy * cz,
+        cx * cy * cz + sx * sy * sz,
     };
 }
 
@@ -73,12 +73,12 @@ inline Vec4 quat_from_euler_xyz(const Vec4& value) {
 
 inline Vec4 quat_to_euler_xyz(const Vec4& value) {
     const auto q = quat_normalize(value);
-    const auto sin_x = 2.0 * (q.w * q.x - q.y * q.z);
+    const auto sin_x = 2.0 * (q.w * q.x + q.y * q.z);
     const auto cos_x = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
-    const auto pitch = std::asin(std::clamp(2.0 * (q.w * q.y + q.z * q.x), -1.0, 1.0));
+    const auto pitch = std::asin(std::clamp(2.0 * (q.w * q.y - q.z * q.x), -1.0, 1.0));
     const auto roll = std::atan2(sin_x, cos_x);
     const auto yaw = std::atan2(
-        2.0 * (q.w * q.z - q.x * q.y),
+        2.0 * (q.w * q.z + q.x * q.y),
         1.0 - 2.0 * (q.y * q.y + q.z * q.z)
     );
     return {roll, pitch, yaw, 0.0};
