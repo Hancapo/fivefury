@@ -9,6 +9,7 @@ ext_modules = [
         "fivefury._native_abi3",
         [
             "native/py_bindings.cpp",
+            "native/py_awc.cpp",
             "native/py_bounds.cpp",
             "native/py_resource.cpp",
             "native/bounds_algorithms.cpp",

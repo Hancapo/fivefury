@@ -46,6 +46,11 @@ PyMethodDef module_methods[] = {
     {"ydr_pack_vertex_buffer", mod_ydr_pack_vertex_buffer, METH_VARARGS, nullptr},
     {"resource_layout_sections", mod_resource_layout_sections, METH_VARARGS, nullptr},
     {"resource_pack_block_sizes", mod_resource_pack_block_sizes, METH_VARARGS, nullptr},
+    {"awc_build_peak_values", mod_awc_build_peak_values, METH_VARARGS, nullptr},
+    {"awc_split_interleaved_pcm16", mod_awc_split_interleaved_pcm16, METH_VARARGS, nullptr},
+    {"awc_interleave_pcm16", mod_awc_interleave_pcm16, METH_VARARGS, nullptr},
+    {"awc_decode_adpcm", mod_awc_decode_adpcm, METH_VARARGS, nullptr},
+    {"awc_rsxxtea", mod_awc_rsxxtea, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 
