@@ -7,6 +7,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-08-12
+
+### Fixed
+- Windows ABI3 wheels decode encrypted AWC containers on Python 3.11.
+
 ## [0.3.15] - 2026-08-12
 
 ### Fixed
