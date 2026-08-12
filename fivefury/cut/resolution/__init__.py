@@ -5,6 +5,7 @@ from .models import (
     ResolvedCutAudio,
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
+    ResolvedPedExpressionSet,
 )
 from .runtime import (
     CutsceneResolutionCancellation,
@@ -23,5 +24,6 @@ __all__ = [
     "ResolvedCutAudio",
     "ResolvedCutBinding",
     "ResolvedCutSubtitleDictionary",
+    "ResolvedPedExpressionSet",
     "resolve_cutscene_assets",
 ]

@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 - Typed loading of shared ped expression-set metadata.
+- CUT ped bindings resolve shared expression sets and their ordered YED programs.
 
 ## [0.3.13] - 2026-08-11
 

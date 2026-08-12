@@ -83,6 +83,7 @@ from .resolve import (
     ResolvedCutAudio,
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
+    ResolvedPedExpressionSet,
     resolve_cutscene_assets,
 )
 from .scene import (
@@ -208,6 +209,7 @@ __all__ = [
     "ResolvedCutAudio",
     "ResolvedCutBinding",
     "ResolvedCutSubtitleDictionary",
+    "ResolvedPedExpressionSet",
     "CutScriptError",
     "CutScriptHashResolver",
     "CutScriptResult",

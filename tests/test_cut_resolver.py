@@ -20,8 +20,8 @@ from fivefury import (
 from fivefury.cut.resolution.bindings import (
     _MODEL_KINDS_BY_ROLE,
     _ped_component_variations,
-    _resolve_ped_expression_resources,
 )
+from fivefury.cut.resolution.expressions import _resolve_ped_expression_resources
 from fivefury.gamefile import GameFileType
 
 
@@ -187,6 +187,65 @@ def test_resolve_cutscene_accepts_script_registered_ped_snapshot(
     )
 
 
+def test_resolve_cutscene_uses_shared_ped_expression_sets(
+    game_cache: GameFileCache,
+) -> None:
+    bundle = game_cache.resolve_cutscene("pro_mcs_1.cut")
+    host_hash = MetaHash("a_m_m_prolhost_01").uint
+    hosts = [
+        binding
+        for binding in bundle.bindings.values()
+        if binding.reference_hash == host_hash
+    ]
+
+    assert len(hosts) == 2
+    assert all(binding.expression_file is not None for binding in hosts)
+    assert all(binding.expression_file.path.endswith("/ambient.yed") for binding in hosts)
+    assert all(binding.resolved_expression_set is not None for binding in hosts)
+    assert all(
+        "facial" in binding.resolved_expression_set.selected_expression_names
+        for binding in hosts
+    )
+    assert not any(
+        issue.code == "binding.yed_unresolved" and issue.object_id in {4, 9}
+        for issue in bundle.issues
+    )
+
+
+@pytest.mark.parametrize(
+    ("cut_name", "expected_dictionaries"),
+    [
+        (
+            "abigail_mcs_1_concat.cut",
+            {"p_m_zero", "csb_abigail"},
+        ),
+        (
+            "pro_mcs_3_pt1.cut",
+            {"p_m_two", "p_m_zero", "csb_prolsec"},
+        ),
+    ],
+)
+def test_resolve_cutscene_preserves_direct_ped_expression_dictionaries(
+    game_cache: GameFileCache,
+    cut_name: str,
+    expected_dictionaries: set[str],
+) -> None:
+    bundle = game_cache.resolve_cutscene(cut_name)
+    direct_peds = [
+        binding
+        for binding in bundle.bindings.values()
+        if binding.binding.role == "ped" and binding.expression_file is not None
+    ]
+
+    assert {binding.expression_file.stem for binding in direct_peds} == (
+        expected_dictionaries
+    )
+    assert all(binding.resolved_expression_set is None for binding in direct_peds)
+    assert not any(
+        issue.code == "binding.yed_unresolved" for issue in bundle.issues
+    )
+
+
 def test_resolve_cutscene_rejects_non_cut_assets(game_cache: GameFileCache) -> None:
     with pytest.raises(FileNotFoundError):
         game_cache.resolve_cutscene("oracle.yft")
@@ -225,7 +284,7 @@ def test_ped_expression_dictionary_follows_the_exact_ymt_init_record(
             return [ymt_asset]
 
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._preferred_asset",
+        "fivefury.cut.resolution.expressions._preferred_asset",
         lambda _cache, value, kind: (
             yed_asset
             if value == expression_hash and kind is GameFileType.YED
@@ -233,7 +292,7 @@ def test_ped_expression_dictionary_follows_the_exact_ymt_init_record(
         ),
     )
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._load_file",
+        "fivefury.cut.resolution.expressions._load_file",
         lambda _cache, asset, _issues, **_kwargs: (
             ymt_file if asset is ymt_asset else yed_file if asset is yed_asset else None
         ),
@@ -308,11 +367,11 @@ def test_ped_expression_resolution_uses_highest_source_precedence(
         return yed_asset
 
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._preferred_asset",
+        "fivefury.cut.resolution.expressions._preferred_asset",
         preferred,
     )
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._load_file",
+        "fivefury.cut.resolution.expressions._load_file",
         lambda _cache, asset, _issues, **_kwargs: {
             id(base_asset): base_file,
             id(mod_asset): mod_file,
@@ -345,7 +404,7 @@ def test_ped_expression_resolution_rejects_same_tier_ambiguity(
             return [first_asset, second_asset]
 
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._load_file",
+        "fivefury.cut.resolution.expressions._load_file",
         lambda _cache, asset, _issues, **_kwargs: (
             _ped_metadata_file(first_init)
             if asset is first_asset
@@ -383,11 +442,11 @@ def test_ped_expression_resolution_reports_missing_init_and_yed(
             return [metadata_asset]
 
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._load_file",
+        "fivefury.cut.resolution.expressions._load_file",
         lambda *_args, **_kwargs: metadata_file,
     )
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._preferred_asset",
+        "fivefury.cut.resolution.expressions._preferred_asset",
         lambda _cache, value, kind: (
             None
             if value == expression_hash and kind is GameFileType.YED
@@ -439,7 +498,7 @@ def test_ped_expression_resolution_honors_cancellation_before_and_during_scan(
         return _ped_metadata_file()
 
     monkeypatch.setattr(
-        "fivefury.cut.resolution.bindings._load_file",
+        "fivefury.cut.resolution.expressions._load_file",
         cancel_after_first,
     )
     with pytest.raises(CutsceneResolutionCancelled):

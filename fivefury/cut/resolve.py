@@ -1,25 +1,27 @@
 from .resolution import (
     CutsceneAssetBundle,
-    CutsceneResolveIssue,
     CutsceneResolutionCancellation,
     CutsceneResolutionCancelled,
     CutsceneResolutionSpan,
     CutsceneResolutionTrace,
+    CutsceneResolveIssue,
     ResolvedCutAudio,
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
+    ResolvedPedExpressionSet,
     resolve_cutscene_assets,
 )
 
 __all__ = [
     "CutsceneAssetBundle",
-    "CutsceneResolveIssue",
     "CutsceneResolutionCancellation",
     "CutsceneResolutionCancelled",
     "CutsceneResolutionSpan",
     "CutsceneResolutionTrace",
+    "CutsceneResolveIssue",
     "ResolvedCutAudio",
     "ResolvedCutBinding",
     "ResolvedCutSubtitleDictionary",
+    "ResolvedPedExpressionSet",
     "resolve_cutscene_assets",
 ]

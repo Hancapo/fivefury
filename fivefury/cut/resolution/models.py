@@ -13,6 +13,7 @@ from .values import subtitle_hash
 if TYPE_CHECKING:
     from ...cache import AssetRecord
     from ...ycd import Ycd
+    from ...yed import PedExpressionSet
     from .runtime import CutsceneResolutionTrace
 
 
@@ -24,6 +25,23 @@ class CutsceneResolveIssue:
     asset_path: str | None = None
     object_id: int | None = None
     event_id: int | None = None
+
+
+@dataclass(slots=True)
+class ResolvedPedExpressionSet:
+    expression_set: PedExpressionSet
+    source_asset: AssetRecord
+    source_file: GameFile
+    yed_asset: AssetRecord | None = None
+    yed_file: GameFile | None = None
+    selected_expression_names: tuple[str, ...] = ()
+    selected_program_names: tuple[str, ...] = ()
+    selected_program_hashes: tuple[MetaHash, ...] = ()
+    missing_expression_names: tuple[str, ...] = ()
+
+    @property
+    def dictionary(self) -> Any | None:
+        return self.yed_file.parsed if self.yed_file is not None else None
 
 
 @dataclass(slots=True)
@@ -42,6 +60,7 @@ class ResolvedCutBinding:
     ped_metadata_file: GameFile | None = None
     ped_init_data_candidates: tuple[Any, ...] = ()
     ped_init_data: Any | None = None
+    resolved_expression_set: ResolvedPedExpressionSet | None = None
 
     @property
     def model_file(self) -> GameFile | None:
@@ -74,6 +93,11 @@ class ResolvedCutBinding:
     def expression_dictionary(self) -> Any | None:
         result = self.expression_file
         return result.parsed if result is not None else None
+
+    @property
+    def expression_set(self) -> PedExpressionSet | None:
+        result = self.resolved_expression_set
+        return result.expression_set if result is not None else None
 
 
 @dataclass(slots=True)
