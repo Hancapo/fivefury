@@ -30,6 +30,7 @@ from ..ycd import read_ycd
 from ..ydd import read_ydd
 from ..ydr import read_ydr
 from ..yed import read_yed
+from ..yed.expression_sets import read_ped_expression_sets
 from ..yft import read_yft
 from ..ynd import read_ynd
 from ..ynv import read_ynv
@@ -74,6 +75,13 @@ def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tupl
         return _decode_or_fallback(GameFileType.HEIGHTMAP, data, data, read_heightmap)
     if name == "water.xml":
         return _decode_or_fallback(GameFileType.WATER, data, data, read_water)
+    if name == "expression_sets.xml":
+        return _decode_or_fallback(
+            GameFileType.EXPRESSION_SETS,
+            data,
+            data,
+            lambda payload: read_ped_expression_sets(payload, source_path=path),
+        )
     if name == "gtxd.meta":
         return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
     vehicle_meta_type = guess_game_file_type(path)

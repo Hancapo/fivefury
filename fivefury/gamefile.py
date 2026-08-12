@@ -49,6 +49,7 @@ class GameFileType(IntEnum):
     CDR = 34
     HANDLING = 35
     GTA5_CACHE = 36
+    EXPRESSION_SETS = 37
     RPF = 100
     BINARY = 101
 
@@ -96,6 +97,7 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
         "vehiclelayouts.meta": GameFileType.VEHICLE_LAYOUTS,
         "peds.meta": GameFileType.PEDS,
         "water.xml": GameFileType.WATER,
+        "expression_sets.xml": GameFileType.EXPRESSION_SETS,
     }
     named_type = named_meta_types.get(normalized_name)
     if named_type is not None:
