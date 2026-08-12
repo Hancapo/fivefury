@@ -12,9 +12,9 @@ from .bindings import (
     _resolve_binding_texture_chains,
     _resolve_bindings,
     _resolve_ped_components,
-    _resolve_ped_expression_resources,
 )
 from .common import _source_rank
+from .expressions import _resolve_ped_expression_resources
 from .models import CutsceneAssetBundle, CutsceneResolveIssue
 from .runtime import (
     CutsceneResolutionCancellation,
