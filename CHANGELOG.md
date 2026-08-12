@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+- YCD rotation tracks interpolate through the shortest quaternion path between sub-frame samples.
+
 ## [0.3.14] - 2026-08-12
 
 ### Added

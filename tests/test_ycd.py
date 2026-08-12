@@ -42,6 +42,7 @@ from fivefury.resource import (
 from fivefury.ycd.sequence_channels import (
     YcdCachedQuaternionChannel,
     YcdQuantizeFloatChannel,
+    YcdRawFloatChannel,
     YcdStaticFloatChannel,
 )
 from fivefury.ycd.write import _YcdWriter
@@ -75,6 +76,51 @@ YCD_ADDRESS_SHAPED_HASHES = (
     0x4FFFFFFF,
     0x70000000,
 )
+
+
+def _two_frame_animation(
+    track: YcdAnimationTrack,
+    start: tuple[float, float, float, float],
+    end: tuple[float, float, float, float],
+) -> YcdAnimation:
+    bone = YcdAnimationBoneId(bone_id=17, track=track)
+    sequence = YcdAnimSequence(
+        bone_id=bone,
+        channels=[
+            YcdRawFloatChannel(
+                channel_type=YcdChannelType.RAW_FLOAT,
+                channel_index=index,
+                values=[start[index], end[index]],
+            )
+            for index in range(4)
+        ],
+    )
+    return YcdAnimation(
+        hash=MetaHash(f"interpolation_{int(track)}"),
+        frames=2,
+        sequence_frame_limit=2,
+        duration=1.0,
+        usage_count=1,
+        sequence_count=1,
+        bone_id_count=1,
+        sequences=[
+            YcdSequence(
+                hash=MetaHash(f"interpolation_{int(track)}_sequence"),
+                data_length=0,
+                frame_offset=0,
+                root_motion_refs_offset=0,
+                num_frames=2,
+                frame_length=0,
+                indirect_quantize_float_num_ints=0,
+                quantize_float_value_bits=0,
+                chunk_size=0,
+                root_motion_ref_counts=0,
+                raw_data=b"",
+                anim_sequences=[sequence],
+            )
+        ],
+        bone_ids=[bone],
+    )
 
 
 def _minimal_ycd_with_hash(hash_value: int, game: GameTarget) -> Ycd:
@@ -772,6 +818,43 @@ def test_ycd_bone_id_format_defaults_from_track() -> None:
             track=YcdAnimationTrack.FACIAL_ROTATION,
         )
     ).is_rotation_track
+
+
+@pytest.mark.parametrize(
+    "track",
+    [
+        YcdAnimationTrack.BONE_ROTATION,
+        YcdAnimationTrack.MOVER_ROTATION,
+        YcdAnimationTrack.CAMERA_ROTATION,
+        YcdAnimationTrack.GENERIC_ROTATION,
+    ],
+)
+def test_ycd_rotation_tracks_interpolate_on_shortest_quaternion_path(
+    track: YcdAnimationTrack,
+) -> None:
+    animation = _two_frame_animation(
+        track,
+        (0.0, 0.0, 0.0, 1.0),
+        (0.0, 0.0, 0.0, -1.0),
+    )
+    key = (17, int(track))
+
+    assert animation.evaluate_tracks(0.5)[key] == pytest.approx((0.0, 0.0, 0.0, 1.0))
+    assert animation.evaluate_tracks(0)[key] == (0.0, 0.0, 0.0, 1.0)
+    assert animation.evaluate_tracks(1)[key] == (0.0, 0.0, 0.0, -1.0)
+    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_ycd_non_rotation_track_interpolation_is_unchanged() -> None:
+    animation = _two_frame_animation(
+        YcdAnimationTrack.BONE_TRANSLATION,
+        (1.0, 2.0, 3.0, 4.0),
+        (5.0, 6.0, 7.0, 8.0),
+    )
+    key = (17, int(YcdAnimationTrack.BONE_TRANSLATION))
+
+    assert animation.evaluate_tracks(0.5)[key] == (3.0, 4.0, 5.0, 6.0)
+    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == (1.0, 2.0, 3.0, 4.0)
 
 
 def test_ycd_rotation_track_restores_cached_quaternion_component() -> None:

@@ -88,9 +88,11 @@ def quat_normalize(
     *,
     epsilon: float = 1e-12,
 ) -> Quaternion:
-    x, y, z, w = value
+    x, y, z, w = (float(component) for component in value)
+    if not all(math.isfinite(component) for component in (x, y, z, w)):
+        return fallback
     length = math.sqrt((x * x) + (y * y) + (z * z) + (w * w))
-    if length <= epsilon:
+    if not math.isfinite(length) or length <= epsilon:
         return fallback
     inverse = 1.0 / length
     return (x * inverse, y * inverse, z * inverse, w * inverse)
@@ -147,14 +149,29 @@ def quat_to_euler_xyz(value: Quaternion) -> Vector3:
 
 
 def quat_nlerp(start: Quaternion, end: Quaternion, amount: float) -> Quaternion:
-    if sum(start[index] * end[index] for index in range(4)) < 0.0:
-        end = tuple(-component for component in end)  # type: ignore[assignment]
-    return quat_normalize(
-        tuple(
-            start[index] + ((end[index] - start[index]) * amount)
-            for index in range(4)
+    alpha = float(amount)
+    if not math.isfinite(alpha):
+        alpha = 0.0
+    alpha = max(0.0, min(1.0, alpha))
+
+    normalized_start = quat_normalize(start)
+    normalized_end = quat_normalize(end, fallback=normalized_start)
+    if sum(normalized_start[index] * normalized_end[index] for index in range(4)) < 0.0:
+        normalized_end = (
+            -normalized_end[0],
+            -normalized_end[1],
+            -normalized_end[2],
+            -normalized_end[3],
         )
+
+    blended = (
+        normalized_start[0] + ((normalized_end[0] - normalized_start[0]) * alpha),
+        normalized_start[1] + ((normalized_end[1] - normalized_start[1]) * alpha),
+        normalized_start[2] + ((normalized_end[2] - normalized_start[2]) * alpha),
+        normalized_start[3] + ((normalized_end[3] - normalized_start[3]) * alpha),
     )
+    fallback = normalized_start if alpha <= 0.5 else normalized_end
+    return quat_normalize(blended, fallback=fallback)
 
 
 def vec_min(values: Iterable[Vector3]) -> Vector3:
