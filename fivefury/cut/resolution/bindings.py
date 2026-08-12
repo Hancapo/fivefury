@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
-from ...ymt import iter_ped_drawables
+from ...ymt import PedPropAnchor, iter_ped_drawables, ped_prop_file_stem
 from ..scene import CutScene
 from .common import _load_file, _preferred_asset, _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutBinding
@@ -103,20 +103,9 @@ _PED_COMPONENT_PREFIXES: dict[int, str] = {
     11: "jbib",
 }
 
-_PED_PROP_PREFIXES: dict[int, str] = {
-    12: "p_head",
-    13: "p_eyes",
-    14: "p_ears",
-    15: "p_mouth",
-    16: "p_lhand",
-    17: "p_rhand",
-    18: "p_lwrist",
-    19: "p_rwrist",
-    20: "p_lhip",
-    21: "p_lfoot",
-    22: "p_rfoot",
-    23: "ph_lhand",
-    24: "ph_rhand",
+_PED_PROP_PREFIXES = {
+    12 + int(anchor): ped_prop_file_stem(anchor, 0).rsplit("_", 1)[0]
+    for anchor in PedPropAnchor
 }
 
 _PED_VARIATION_PREFIXES = {**_PED_COMPONENT_PREFIXES, **_PED_PROP_PREFIXES}
