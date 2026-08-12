@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,37 @@ class CutsceneResolveIssue:
     asset_path: str | None = None
     object_id: int | None = None
     event_id: int | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class PedOutfitOption:
+    slot: int
+    drawable: int
+    texture_count: int
+    is_prop: bool
+    file_stem: str | None
+    prop_mask: int = 0
+    num_alternatives: int = 0
+    owns_cloth: bool = False
+    drawable_asset: AssetRecord | None = None
+    texture_assets: tuple[AssetRecord, ...] = ()
+
+
+@dataclass(slots=True, frozen=True)
+class PedOutfitCatalog:
+    model_name: str
+    model_hash: int | None
+    variation_asset: AssetRecord | None
+    slots: Mapping[int, tuple[PedOutfitOption, ...]]
+    issues: tuple[CutsceneResolveIssue, ...] = ()
+
+
+@dataclass(slots=True)
+class ResolvedPedOutfitVariant:
+    option: PedOutfitOption
+    drawable_files: tuple[GameFile, ...] = ()
+    texture_files: tuple[GameFile, ...] = ()
+    issues: tuple[CutsceneResolveIssue, ...] = ()
 
 
 @dataclass(slots=True)

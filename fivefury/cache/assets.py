@@ -15,6 +15,7 @@ from ..metahash import MetaHash
 from ..rpf import RpfFileEntry
 from ..ytd import Texture, Ytd, read_ytd
 from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
+from .precedence import preferred_asset
 
 if TYPE_CHECKING:  # pragma: no cover
     from .views import AssetRecord
@@ -265,7 +266,7 @@ class GameFileCacheAssetMixin:
         depth = 0
         while current_hash and current_hash not in seen_hashes:
             seen_hashes.add(current_hash)
-            asset = self.get_asset(current_hash, kind=GameFileType.YTD)
+            asset = preferred_asset(self, current_hash, GameFileType.YTD)
             if asset is not None:
                 yield asset, depth
             next_hash = self.texture_parent_dict.get(current_hash)
@@ -285,7 +286,15 @@ class GameFileCacheAssetMixin:
         else:
             direct_ytd = self._coerce_asset(query, kind=GameFileType.YTD)
         if direct_ytd is not None:
-            chain = self._iter_texture_dict_chain_assets(direct_ytd.short_hash) if include_parents else [(direct_ytd, 0)]
+            chain = [(direct_ytd, 0)]
+            parent_hash = self.texture_parent_dict.get(direct_ytd.short_hash)
+            if include_parents and parent_hash:
+                chain.extend(
+                    (asset, depth + 1)
+                    for asset, depth in self._iter_texture_dict_chain_assets(
+                        parent_hash
+                    )
+                )
             for asset, depth in chain:
                 if asset.path in seen_paths:
                     continue

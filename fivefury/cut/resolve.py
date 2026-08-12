@@ -5,10 +5,13 @@ from .resolution import (
     CutsceneResolutionSpan,
     CutsceneResolutionTrace,
     CutsceneResolveIssue,
+    PedOutfitCatalog,
+    PedOutfitOption,
     ResolvedCutAudio,
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
     ResolvedPedExpressionSet,
+    ResolvedPedOutfitVariant,
     resolve_cutscene_assets,
 )
 
@@ -19,9 +22,12 @@ __all__ = [
     "CutsceneResolutionSpan",
     "CutsceneResolutionTrace",
     "CutsceneResolveIssue",
+    "PedOutfitCatalog",
+    "PedOutfitOption",
     "ResolvedCutAudio",
     "ResolvedCutBinding",
     "ResolvedCutSubtitleDictionary",
     "ResolvedPedExpressionSet",
+    "ResolvedPedOutfitVariant",
     "resolve_cutscene_assets",
 ]

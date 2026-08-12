@@ -2,10 +2,13 @@ from .core import resolve_cutscene_assets
 from .models import (
     CutsceneAssetBundle,
     CutsceneResolveIssue,
+    PedOutfitCatalog,
+    PedOutfitOption,
     ResolvedCutAudio,
     ResolvedCutBinding,
     ResolvedCutSubtitleDictionary,
     ResolvedPedExpressionSet,
+    ResolvedPedOutfitVariant,
 )
 from .runtime import (
     CutsceneResolutionCancellation,
@@ -21,9 +24,12 @@ __all__ = [
     "CutsceneResolutionSpan",
     "CutsceneResolutionTrace",
     "CutsceneResolveIssue",
+    "PedOutfitCatalog",
+    "PedOutfitOption",
     "ResolvedCutAudio",
     "ResolvedCutBinding",
     "ResolvedCutSubtitleDictionary",
     "ResolvedPedExpressionSet",
+    "ResolvedPedOutfitVariant",
     "resolve_cutscene_assets",
 ]
