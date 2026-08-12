@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ...cache.precedence import asset_source_rank, preferred_asset
 from ...gamefile import GameFile, GameFileType
 from .models import CutsceneResolveIssue
 
@@ -10,23 +11,13 @@ if TYPE_CHECKING:
 
 
 def _source_rank(asset: AssetRecord) -> tuple[int, str]:
-    path = asset.path.replace("\\", "/").lower()
-    if path.startswith("mods/"):
-        tier = 0
-    elif path.startswith("update/x64/dlcpacks/"):
-        tier = 1
-    elif path.startswith("update/"):
-        tier = 2
-    else:
-        tier = 3
-    return tier, path
+    return asset_source_rank(asset)
 
 
 def _preferred_asset(
     cache: GameFileCache, value: int, kind: GameFileType
 ) -> AssetRecord | None:
-    matches = cache.find_hash(value, kind=kind)
-    return min(matches, key=_source_rank) if matches else None
+    return preferred_asset(cache, value, kind)
 
 
 def _load_file(

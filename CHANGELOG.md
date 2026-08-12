@@ -7,6 +7,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+- Lazy ped outfit catalogs with on-demand component and prop resolution.
+
 ## [0.3.16] - 2026-08-12
 
 ### Fixed

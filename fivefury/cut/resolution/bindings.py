@@ -4,11 +4,12 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from ...cache.ped_assets import matching_ped_assets
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
 from ...ymt import PedPropAnchor, iter_ped_drawables, ped_prop_file_stem
 from ..scene import CutScene
-from .common import _load_file, _preferred_asset, _source_rank
+from .common import _load_file, _preferred_asset
 from .models import CutsceneResolveIssue, ResolvedCutBinding
 from .runtime import (
     CutsceneResolutionCancellation,
@@ -143,35 +144,6 @@ def _ped_component_variations(
     return result
 
 
-def _ped_asset_relevance(asset: AssetRecord, model_stem: str) -> tuple[int, int, str]:
-    parts = asset.path.replace("\\", "/").lower().split("/")
-    if model_stem in parts:
-        folder_rank = 0
-    elif any(part.startswith(f"{model_stem}_") for part in parts):
-        folder_rank = 1
-    else:
-        folder_rank = 2
-    source_rank, path = _source_rank(asset)
-    return folder_rank, source_rank, path
-
-
-def _matching_ped_assets(
-    assets: list[AssetRecord],
-    model_stem: str,
-    pattern: re.Pattern[str],
-) -> list[AssetRecord]:
-    matches = []
-    for asset in assets:
-        parts = asset.path.replace("\\", "/").lower().split("/")
-        if not any(
-            part == model_stem or part.startswith(f"{model_stem}_") for part in parts
-        ):
-            continue
-        if pattern.match(asset.stem.lower()):
-            matches.append(asset)
-    return sorted(matches, key=lambda item: _ped_asset_relevance(item, model_stem))
-
-
 def _resolve_ped_components(
     cache: GameFileCache,
     scene: CutScene,
@@ -242,7 +214,7 @@ def _resolve_ped_components(
                 # A same-name YDD already contains clothing components, but ped
                 # props always live in separate streamed-ped-prop dictionaries.
                 if component >= 12 or not has_component_dictionary:
-                    model_matches = _matching_ped_assets(
+                    model_matches = matching_ped_assets(
                         ydd_assets, model_stem, model_pattern
                     )
                     if model_matches:
@@ -259,7 +231,7 @@ def _resolve_ped_components(
                 texture_pattern = re.compile(
                     rf"^{prefix}_diff_{drawable:03d}_{texture_letter}(?:_|$)"
                 )
-                texture_matches = _matching_ped_assets(
+                texture_matches = matching_ped_assets(
                     ytd_assets, model_stem, texture_pattern
                 )
                 if texture_matches:

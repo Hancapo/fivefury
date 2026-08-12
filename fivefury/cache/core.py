@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 
 if TYPE_CHECKING:
+    from ..cut.resolution.models import (
+        PedOutfitCatalog,
+        ResolvedCutBinding,
+        ResolvedPedOutfitVariant,
+    )
     from ..cut.resolution.runtime import (
         CutsceneResolutionCancellation,
         CutsceneResolutionTrace,
@@ -96,6 +101,11 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     _texture_parent_view: _TextureParentMap | None = field(default=None, init=False, repr=False)
     _kind_counts_view: _KindCountsView | None = field(default=None, init=False, repr=False)
     _view_generation: int = field(default=0, init=False, repr=False)
+    _ped_outfit_catalog_cache: dict[tuple[int, int, int], Any] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.resolver is None:
@@ -195,6 +205,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self.active_dlc_names.clear()
         self._active_dlc_filter = None
         self._archive_lookup.clear()
+        self._ped_outfit_catalog_cache.clear()
         self._invalidate_views()
 
     def clear_runtime_cache(self, *, loaded_files: bool = False) -> None:
@@ -657,6 +668,36 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             initial_ped_variations=initial_ped_variations,
             cancellation=cancellation,
             trace=trace,
+        )
+
+    def resolve_ped_outfit_catalog(
+        self,
+        query: ResolvedCutBinding | AssetRecord | GameFile | str | int,
+        *,
+        cancellation: CutsceneResolutionCancellation | None = None,
+    ) -> PedOutfitCatalog:
+        from ..cut.resolution.outfits import resolve_ped_outfit_catalog
+
+        return resolve_ped_outfit_catalog(self, query, cancellation=cancellation)
+
+    def resolve_ped_outfit_variant(
+        self,
+        catalog: PedOutfitCatalog,
+        slot: int,
+        drawable: int,
+        texture: int = 0,
+        *,
+        cancellation: CutsceneResolutionCancellation | None = None,
+    ) -> ResolvedPedOutfitVariant:
+        from ..cut.resolution.outfits import resolve_ped_outfit_variant
+
+        return resolve_ped_outfit_variant(
+            self,
+            catalog,
+            slot,
+            drawable,
+            texture,
+            cancellation=cancellation,
         )
 
 GameFileCache.search = GameFileCache.search_assets
