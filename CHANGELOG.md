@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 - YCD rotation tracks interpolate through the shortest quaternion path between sub-frame samples.
+- CUT prop bindings resolve archetype texture dictionaries and their GTXD parent chains.
 
 ## [0.3.14] - 2026-08-12
 

@@ -12,6 +12,7 @@ from .common import _load_file, _preferred_asset, _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutBinding
 from .runtime import (
     CutsceneResolutionCancellation,
+    CutsceneResolutionCancelled,
     check_cutscene_resolution_cancelled,
 )
 from .values import field_hash
@@ -303,40 +304,82 @@ def _resolve_binding_texture_chains(
 ) -> None:
     for object_id, resolved in resolved_bindings.items():
         check_cutscene_resolution_cancelled(cancellation)
-        texture_root = resolved.assets.get(GameFileType.YTD)
-        if texture_root is None:
+        model_root = next(
+            (
+                resolved.assets[kind]
+                for kind in _MODEL_KINDS_BY_ROLE.get(resolved.binding.role, ())
+                if kind in {GameFileType.YDR, GameFileType.YDD, GameFileType.YFT}
+                and kind in resolved.assets
+            ),
+            None,
+        )
+        direct_root = resolved.assets.get(GameFileType.YTD)
+        roots = tuple(root for root in (model_root, direct_root) if root is not None)
+        if not roots:
             continue
-        try:
-            chain = cache.list_texture_dictionaries(
-                texture_root,
-                include_parents=True,
-            )
-        except Exception as exc:  # noqa: BLE001 - metadata failures become diagnostics
-            issues.append(
-                CutsceneResolveIssue(
-                    severity="warning",
-                    code="binding.texture_chain_failed",
-                    message=(
-                        f"Unable to resolve the texture dictionary chain for "
-                        f"{texture_root.stem}: {type(exc).__name__}: {exc}"
-                    ),
-                    asset_path=texture_root.path,
-                    object_id=object_id,
+
+        if model_root is not None:
+            for archetype in cache._iter_archetypes_for_query(model_root):
+                check_cutscene_resolution_cancelled(cancellation)
+                declared = getattr(archetype, "texture_dictionary", None)
+                if declared in (None, "", 0):
+                    continue
+                if cache.get_asset(declared, kind=GameFileType.YTD) is None:
+                    declared_hash = MetaHash(declared)
+                    issues.append(
+                        CutsceneResolveIssue(
+                            severity="warning",
+                            code="binding.texture_dictionary_unresolved",
+                            message=(
+                                f"{model_root.stem} declares texture dictionary "
+                                f"{declared_hash}, but no matching YTD is available"
+                            ),
+                            asset_path=model_root.path,
+                            object_id=object_id,
+                        )
+                    )
+
+        seen_paths = {
+            asset.path.replace("\\", "/").casefold()
+            for asset in resolved.texture_assets
+        }
+        for texture_root in roots:
+            check_cutscene_resolution_cancelled(cancellation)
+            try:
+                chain = cache.iter_texture_dictionaries(
+                    texture_root,
+                    include_parents=True,
                 )
-            )
-            continue
-        seen_paths: set[str] = set()
-        for candidate in chain:
-            asset = _preferred_asset(cache, candidate.short_hash, GameFileType.YTD)
-            asset = asset or candidate
-            if asset.path in seen_paths:
-                continue
-            seen_paths.add(asset.path)
-            game_file = _load_file(cache, asset, issues, object_id=object_id)
-            if game_file is None:
-                continue
-            resolved.texture_assets.append(asset)
-            resolved.texture_files.append(game_file)
+                for candidate in chain:
+                    check_cutscene_resolution_cancelled(cancellation)
+                    asset = _preferred_asset(
+                        cache, candidate.short_hash, GameFileType.YTD
+                    )
+                    asset = asset or candidate
+                    path_key = asset.path.replace("\\", "/").casefold()
+                    if path_key in seen_paths:
+                        continue
+                    seen_paths.add(path_key)
+                    game_file = _load_file(cache, asset, issues, object_id=object_id)
+                    if game_file is None:
+                        continue
+                    resolved.texture_assets.append(asset)
+                    resolved.texture_files.append(game_file)
+            except CutsceneResolutionCancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001 - dependency failures become diagnostics
+                issues.append(
+                    CutsceneResolveIssue(
+                        severity="warning",
+                        code="binding.texture_chain_failed",
+                        message=(
+                            f"Unable to resolve the texture dictionary chain for "
+                            f"{texture_root.stem}: {type(exc).__name__}: {exc}"
+                        ),
+                        asset_path=texture_root.path,
+                        object_id=object_id,
+                    )
+                )
 
 
 def _normalize_initial_ped_variations(

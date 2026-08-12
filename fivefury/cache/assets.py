@@ -4,13 +4,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
+from ..assets import (
+    RESOURCE_TEXTURE_ASSET_TYPES,
+    ResourceTextureAsset,
+    open_resource_texture_asset,
+)
 from ..common import hash_value
 from ..gamefile import GameFileType
 from ..metahash import MetaHash
-from ..assets import RESOURCE_TEXTURE_ASSET_TYPES, ResourceTextureAsset, open_resource_texture_asset
 from ..rpf import RpfFileEntry
-from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
 from ..ytd import Texture, Ytd, read_ytd
+from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
 
 if TYPE_CHECKING:  # pragma: no cover
     from .views import AssetRecord
@@ -273,7 +277,13 @@ class GameFileCacheAssetMixin:
     def iter_texture_dictionary_chain(self, query: Any, *, include_parents: bool = True) -> Iterator[tuple["AssetRecord", int]]:
         seen_paths: set[str] = set()
 
-        direct_ytd = self._coerce_asset(query, kind=GameFileType.YTD)
+        query_kind = getattr(query, "kind", None)
+        if query_kind is GameFileType.YTD:
+            direct_ytd = query
+        elif isinstance(query_kind, GameFileType):
+            direct_ytd = None
+        else:
+            direct_ytd = self._coerce_asset(query, kind=GameFileType.YTD)
         if direct_ytd is not None:
             chain = self._iter_texture_dict_chain_assets(direct_ytd.short_hash) if include_parents else [(direct_ytd, 0)]
             for asset, depth in chain:

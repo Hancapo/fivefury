@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,7 @@ from fivefury import (
     Gta5CacheMapData,
     Gta5CacheMode,
     Gta5CacheY,
+    MetaHash,
     MloArchetypeDef,
     MloInstanceDef,
     Ymap,
@@ -220,3 +222,49 @@ def test_game_file_cache_detects_and_decodes_gta5_cache(tmp_path) -> None:
     assert game_file.kind is GameFileType.GTA5_CACHE
     assert isinstance(game_file.parsed, Gta5CacheY)
     assert len(cache.Gta5CacheDict) == 1
+
+
+def test_asset_coercion_enforces_requested_kind(tmp_path) -> None:
+    (tmp_path / "model.ydr").write_bytes(b"")
+    (tmp_path / "model.ytd").write_bytes(b"")
+
+    with GameFileCache(tmp_path, use_index_cache=False) as cache:
+        cache.scan()
+        model = cache.get_asset("model", kind=GameFileType.YDR)
+        assert model is not None
+
+        texture = cache._coerce_asset(model, kind=GameFileType.YTD)
+        assert texture is not None
+        assert texture.kind is GameFileType.YTD
+        assert cache._coerce_asset(model, kind=GameFileType.YBN) is None
+        assert cache._coerce_asset(model) is model
+
+
+def test_model_texture_chain_uses_archetype_dictionary_and_gtxd_parents(
+    tmp_path,
+) -> None:
+    for name in ("model.ydr", "model.ytd", "shared_props.ytd", "common_parent.ytd"):
+        (tmp_path / name).write_bytes(b"")
+
+    with GameFileCache(tmp_path, use_index_cache=False) as cache:
+        cache.scan()
+        model = cache.get_asset("model", kind=GameFileType.YDR)
+        direct = cache.get_asset("model", kind=GameFileType.YTD)
+        assert model is not None and direct is not None
+        cache._archetype_view = {
+            model.short_hash: SimpleNamespace(
+                name=MetaHash("model"),
+                asset_name=MetaHash("model"),
+                texture_dictionary=MetaHash("shared_props"),
+            )
+        }
+        cache._texture_parent_view = {
+            int(MetaHash("shared_props")): int(MetaHash("common_parent"))
+        }
+
+        assert [
+            asset.stem for asset in cache.list_texture_dictionaries(model)
+        ] == ["shared_props", "common_parent"]
+        assert [
+            asset.stem for asset in cache.list_texture_dictionaries(direct)
+        ] == ["model"]

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from fivefury import (
+    CutBinding,
     CutScene,
     CutsceneResolutionCancellation,
     CutsceneResolutionCancelled,
@@ -20,9 +21,10 @@ from fivefury import (
 from fivefury.cut.resolution.bindings import (
     _MODEL_KINDS_BY_ROLE,
     _ped_component_variations,
+    _resolve_binding_texture_chains,
 )
 from fivefury.cut.resolution.expressions import _resolve_ped_expression_resources
-from fivefury.gamefile import GameFileType
+from fivefury.gamefile import GameFile, GameFileType
 
 
 def _configured_game_paths() -> list[tuple[str, Path]]:
@@ -90,6 +92,160 @@ def test_ped_variation_dependencies_include_props_without_default_equipment() ->
     assert 12 not in variations
 
 
+def _synthetic_texture_cache(tmp_path: Path) -> GameFileCache:
+    for name in (
+        "model.ydr",
+        "model.ytd",
+        "shared_props.ytd",
+        "common_parent.ytd",
+    ):
+        (tmp_path / name).write_bytes(b"")
+    cache = GameFileCache(tmp_path, use_index_cache=False)
+    cache.scan()
+    model = cache.get_asset("model", kind=GameFileType.YDR)
+    assert model is not None
+    cache._archetype_view = {
+        model.short_hash: SimpleNamespace(
+            name=MetaHash("model"),
+            asset_name=MetaHash("model"),
+            texture_dictionary=MetaHash("shared_props"),
+        )
+    }
+    cache._texture_parent_view = {
+        int(MetaHash("shared_props")): int(MetaHash("common_parent"))
+    }
+    return cache
+
+
+def _resolved_prop(cache: GameFileCache, *, direct: bool) -> ResolvedCutBinding:
+    model = cache.get_asset("model", kind=GameFileType.YDR)
+    assert model is not None
+    assets = {GameFileType.YDR: model}
+    if direct:
+        texture = cache.get_asset("model", kind=GameFileType.YTD)
+        assert texture is not None
+        assets[GameFileType.YTD] = texture
+    return ResolvedCutBinding(
+        binding=CutBinding.new(
+            object_id=7,
+            type_name="cCutscenePropObject",
+            role="prop",
+            name="model",
+        ),
+        assets=assets,
+    )
+
+
+def test_cut_binding_texture_resolution_merges_archetype_and_direct_chains(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _synthetic_texture_cache(tmp_path)
+    monkeypatch.setattr(
+        GameFileCache,
+        "load_asset",
+        lambda _cache, asset: GameFile(
+            path=asset.path,
+            kind=asset.kind,
+            parsed=object(),
+            loaded=True,
+        ),
+    )
+    resolved = _resolved_prop(cache, direct=True)
+    issues = []
+
+    _resolve_binding_texture_chains(cache, {7: resolved}, issues)
+
+    assert [asset.stem for asset in resolved.texture_assets] == [
+        "shared_props",
+        "common_parent",
+        "model",
+    ]
+    assert len(resolved.texture_files) == 3
+    assert not issues
+
+    overlap = _resolved_prop(cache, direct=False)
+    shared = cache.get_asset("shared_props", kind=GameFileType.YTD)
+    assert shared is not None
+    overlap.assets[GameFileType.YTD] = shared
+    _resolve_binding_texture_chains(cache, {7: overlap}, [])
+    assert [asset.stem for asset in overlap.texture_assets] == [
+        "shared_props",
+        "common_parent",
+    ]
+    cache.close()
+
+
+def test_cut_binding_texture_resolution_keeps_same_name_fallback(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _synthetic_texture_cache(tmp_path)
+    cache._archetype_view = {}
+    monkeypatch.setattr(
+        GameFileCache,
+        "load_asset",
+        lambda _cache, asset: GameFile(path=asset.path, kind=asset.kind, loaded=True),
+    )
+    resolved = _resolved_prop(cache, direct=True)
+
+    _resolve_binding_texture_chains(cache, {7: resolved}, [])
+
+    assert [asset.stem for asset in resolved.texture_assets] == ["model"]
+    cache.close()
+
+
+def test_cut_binding_texture_resolution_reports_missing_declared_dictionary(
+    tmp_path,
+) -> None:
+    (tmp_path / "model.ydr").write_bytes(b"")
+    cache = GameFileCache(tmp_path, use_index_cache=False)
+    cache.scan()
+    model = cache.get_asset("model", kind=GameFileType.YDR)
+    assert model is not None
+    cache._archetype_view = {
+        model.short_hash: SimpleNamespace(
+            name=MetaHash("model"),
+            asset_name=MetaHash("model"),
+            texture_dictionary=MetaHash("missing_shared"),
+        )
+    }
+    resolved = _resolved_prop(cache, direct=False)
+    issues = []
+
+    _resolve_binding_texture_chains(cache, {7: resolved}, issues)
+
+    issue = next(
+        item for item in issues if item.code == "binding.texture_dictionary_unresolved"
+    )
+    assert issue.object_id == 7
+    assert issue.asset_path == model.path
+    assert "missing_shared" in issue.message
+    cache.close()
+
+
+def test_cut_binding_texture_resolution_honors_cancellation(tmp_path) -> None:
+    cache = _synthetic_texture_cache(tmp_path)
+    resolved = _resolved_prop(cache, direct=True)
+
+    class CancelDuringTraversal:
+        checks = 0
+
+        def check(self) -> None:
+            self.checks += 1
+            if self.checks >= 4:
+                raise CutsceneResolutionCancelled
+
+    with pytest.raises(CutsceneResolutionCancelled):
+        _resolve_binding_texture_chains(
+            cache,
+            {7: resolved},
+            [],
+            cancellation=CancelDuringTraversal(),
+        )
+    cache.close()
+
+
 def test_resolve_cutscene_loads_only_direct_cut_dependencies(
     game_cache: GameFileCache,
 ) -> None:
@@ -127,6 +283,23 @@ def test_resolve_cutscene_loads_only_direct_cut_dependencies(
     )
     assert vehicle.texture_files
     assert any(asset.stem.lower() == "vehshare" for asset in vehicle.texture_assets)
+    phone = next(
+        item
+        for item in bundle.bindings.values()
+        if any(asset.stem.lower() == "prop_npc_phone" for asset in item.assets.values())
+    )
+    door = next(
+        item
+        for item in bundle.bindings.values()
+        if any(
+            asset.stem.lower() == "v_ilev_ss_door7"
+            for asset in item.assets.values()
+        )
+    )
+    assert any(
+        asset.stem.lower() == "prop_npc_phone1" for asset in phone.texture_assets
+    )
+    assert any(asset.stem.lower() == "v_ilev_sweatdrs" for asset in door.texture_assets)
     assert bundle.audio_references
     assert bundle.audio
     assert all(item.asset.kind is GameFileType.AWC for item in bundle.audio.values())
