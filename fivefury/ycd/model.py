@@ -9,6 +9,7 @@ from ..buckets import at_hash_bucket_capacity
 from ..game_target import GameTarget
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
+from ..vector import quat_nlerp
 from .sequences import (
     YcdAnimationTrack,
     YcdAnimSequence,
@@ -485,7 +486,7 @@ class YcdAnimation:
             if v0 is None or v1 is None:
                 continue
             if is_ycd_rotation_track(key[1]):
-                result[key] = _nlerp_vector4(v0, v1, pos.alpha1)
+                result[key] = quat_nlerp(v0, v1, pos.alpha1)
             else:
                 result[key] = _lerp_vector4(v0, v1, pos.alpha1)
         return result
@@ -1089,19 +1090,6 @@ def _lerp_vector4(
         float((value0[2] * alpha0) + (value1[2] * alpha1)),
         float((value0[3] * alpha0) + (value1[3] * alpha1)),
     )
-
-
-def _nlerp_vector4(
-    value0: tuple[float, float, float, float],
-    value1: tuple[float, float, float, float],
-    alpha1: float,
-) -> tuple[float, float, float, float]:
-    x, y, z, w = _lerp_vector4(value0, value1, alpha1)
-    length = math.sqrt((x * x) + (y * y) + (z * z) + (w * w))
-    if length <= 0.0:
-        return (x, y, z, w)
-    inv = 1.0 / length
-    return (x * inv, y * inv, z * inv, w * inv)
 
 
 def _track_scalar(

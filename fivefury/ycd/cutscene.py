@@ -8,6 +8,7 @@ from ..cut import CutFile, CutScene, read_cut
 from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
+from ..vector import quat_nlerp, quat_normalize
 from .model import (
     Ycd,
     YcdAnimation,
@@ -40,12 +41,7 @@ def _lerp_tuple(a: tuple[float, ...], b: tuple[float, ...], alpha: float) -> tup
 
 
 def _normalize_quaternion(value: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
-    x, y, z, w = (float(component) for component in value)
-    length = (x * x) + (y * y) + (z * z) + (w * w)
-    if length <= 0.0:
-        return (0.0, 0.0, 0.0, 1.0)
-    scale = length ** -0.5
-    normalized = (x * scale, y * scale, z * scale, w * scale)
+    normalized = quat_normalize(value)
     if normalized[3] < 0.0:
         return tuple(-component for component in normalized)  # type: ignore[return-value]
     return normalized
@@ -56,19 +52,7 @@ def _nlerp_quaternion(
     b: tuple[float, float, float, float],
     alpha: float,
 ) -> tuple[float, float, float, float]:
-    ax, ay, az, aw = _normalize_quaternion(a)
-    bx, by, bz, bw = _normalize_quaternion(b)
-    dot = (ax * bx) + (ay * by) + (az * bz) + (aw * bw)
-    if dot < 0.0:
-        bx, by, bz, bw = -bx, -by, -bz, -bw
-    return _normalize_quaternion(
-        (
-            _lerp(ax, bx, alpha),
-            _lerp(ay, by, alpha),
-            _lerp(az, bz, alpha),
-            _lerp(aw, bw, alpha),
-        )
-    )
+    return _normalize_quaternion(quat_nlerp(a, b, alpha))
 
 
 def _track_component_count(track: int | YcdAnimationTrack, format: int | YcdTrackFormat | None = None) -> int:
