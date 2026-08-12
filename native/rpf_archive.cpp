@@ -181,7 +181,7 @@ std::int32_t guess_kind(std::string_view path) {
         {"gta5_cache_y.dat", 36}, {"gtxd.meta", 26}, {"vehicles.meta", 18},
         {"handling.meta", 35},    {"carcols.meta", 19}, {"carmodcols.meta", 20},
         {"carvariations.meta", 21}, {"vehiclelayouts.meta", 22},
-        {"peds.meta", 23}, {"water.xml", 29},
+        {"peds.meta", 23}, {"water.xml", 29}, {"expression_sets.xml", 37},
     };
     const auto named_kind = kind_by_name.find(name);
     if (named_kind != kind_by_name.end()) {
