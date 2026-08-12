@@ -26,6 +26,22 @@ class PedComponent(enum.IntEnum):
     JBIB = 11
 
 
+class PedPropAnchor(enum.IntEnum):
+    HEAD = 0
+    EYES = 1
+    EARS = 2
+    MOUTH = 3
+    LEFT_HAND = 4
+    RIGHT_HAND = 5
+    LEFT_WRIST = 6
+    RIGHT_WRIST = 7
+    HIP = 8
+    LEFT_FOOT = 9
+    RIGHT_FOOT = 10
+    PHYSICS_LEFT_HAND = 11
+    PHYSICS_RIGHT_HAND = 12
+
+
 _COMPONENT_ALIASES = {
     "head": PedComponent.HEAD,
     "berd": PedComponent.BEARD,
@@ -63,6 +79,22 @@ _COMPONENT_FILE_STEMS = {
     PedComponent.JBIB: "jbib",
 }
 
+_PROP_FILE_STEMS = {
+    PedPropAnchor.HEAD: "p_head",
+    PedPropAnchor.EYES: "p_eyes",
+    PedPropAnchor.EARS: "p_ears",
+    PedPropAnchor.MOUTH: "p_mouth",
+    PedPropAnchor.LEFT_HAND: "p_lhand",
+    PedPropAnchor.RIGHT_HAND: "p_rhand",
+    PedPropAnchor.LEFT_WRIST: "p_lwrist",
+    PedPropAnchor.RIGHT_WRIST: "p_rwrist",
+    PedPropAnchor.HIP: "p_lhip",
+    PedPropAnchor.LEFT_FOOT: "p_lfoot",
+    PedPropAnchor.RIGHT_FOOT: "p_rfoot",
+    PedPropAnchor.PHYSICS_LEFT_HAND: "ph_lhand",
+    PedPropAnchor.PHYSICS_RIGHT_HAND: "ph_rhand",
+}
+
 _ROOT_COMPONENTS = ("aComponentData3", "0xE2489C4F")
 _ROOT_AVAILABLE = ("availComp", "0xB29BE228")
 _COMPONENT_DRAWABLES = ("aDrawblData3", "0x68AC8351")
@@ -71,6 +103,10 @@ _DRAWABLE_CLOTH = ("clothData", "0x92E68DB3")
 _CLOTH_OWNS = ("ownsCloth", "0xA893A361")
 _PROP_MASK = ("propMask", "0xAECFE243")
 _NUM_ALTERNATIVES = ("numAlternatives", "0xA7431FBA")
+_ROOT_PROP_INFO = ("propInfo", "0x8590CDD8")
+_PROP_ANCHORS = ("aAnchors", "0x09AD30FA")
+_ANCHOR_PROPS = ("props", "0x8856F65A")
+_ANCHOR_ID = ("anchor", "0x7019CA89")
 
 
 @dataclass(slots=True, frozen=True)
@@ -93,6 +129,21 @@ class PedDrawableVariation:
         return f"{_COMPONENT_FILE_STEMS[self.component]}_{self.drawable_index:03d}_{suffix}"
 
 
+@dataclass(slots=True, frozen=True)
+class PedPropVariation:
+    anchor: PedPropAnchor
+    drawable_index: int
+    texture_count: int
+
+    @property
+    def slot(self) -> int:
+        return 12 + int(self.anchor)
+
+    @property
+    def file_stem(self) -> str:
+        return ped_prop_file_stem(self.anchor, self.drawable_index)
+
+
 def coerce_ped_component(value: PedComponent | str | int) -> PedComponent:
     if isinstance(value, PedComponent):
         return value
@@ -106,7 +157,21 @@ def coerce_ped_component(value: PedComponent | str | int) -> PedComponent:
     return PedComponent(int(value))
 
 
-def iter_ped_drawables(ymt: "Ymt") -> Iterator[PedDrawableVariation]:
+def coerce_ped_prop_anchor(value: PedPropAnchor | str | int) -> PedPropAnchor:
+    if isinstance(value, PedPropAnchor):
+        return value
+    if isinstance(value, str):
+        key = value.strip().lower()
+        for anchor, stem in _PROP_FILE_STEMS.items():
+            if key in {anchor.name.lower(), stem, stem.removeprefix("p_")}:
+                return anchor
+        if key.isdigit():
+            return PedPropAnchor(int(key))
+        raise ValueError(f"Unknown ped prop anchor {value!r}")
+    return PedPropAnchor(int(value))
+
+
+def iter_ped_drawables(ymt: Ymt) -> Iterator[PedDrawableVariation]:
     root = _require_ped_root(ymt)
     for component in PedComponent:
         component_data = _component_data(root, component)
@@ -126,8 +191,30 @@ def iter_ped_drawables(ymt: "Ymt") -> Iterator[PedDrawableVariation]:
             )
 
 
+def iter_ped_props(ymt: Ymt) -> Iterator[PedPropVariation]:
+    root = _require_ped_root(ymt)
+    prop_info = _get(root, _ROOT_PROP_INFO, default=None)
+    if not _is_mutable_node(prop_info):
+        return
+    anchors = _get(prop_info, _PROP_ANCHORS, default=())
+    for anchor_data in anchors:
+        if not _is_mutable_node(anchor_data):
+            continue
+        try:
+            anchor = PedPropAnchor(int(_get(anchor_data, _ANCHOR_ID)))
+        except (TypeError, ValueError):
+            continue
+        texture_counts = _get(anchor_data, _ANCHOR_PROPS, default=())
+        for drawable_index, texture_count in enumerate(texture_counts):
+            yield PedPropVariation(
+                anchor=anchor,
+                drawable_index=drawable_index,
+                texture_count=int(texture_count),
+            )
+
+
 def set_ped_drawable_cloth(
-    ymt: "Ymt",
+    ymt: Ymt,
     component: PedComponent | str | int,
     drawable: int = 0,
     *,
@@ -140,7 +227,7 @@ def set_ped_drawable_cloth(
         raise ValueError(f"YMT does not define component {component_enum.name}")
     drawables = _get(component_data, _COMPONENT_DRAWABLES, default=None)
     if not isinstance(drawables, list):
-        raise ValueError(f"YMT component {component_enum.name} has no drawable list")
+        raise TypeError(f"YMT component {component_enum.name} has no drawable list")
     drawable_index = int(drawable)
     if drawable_index < 0 or drawable_index >= len(drawables):
         raise IndexError(f"Drawable {drawable_index} is outside component {component_enum.name}")
@@ -163,7 +250,15 @@ def ped_drawable_file_stem(component: PedComponent | str | int, drawable: int, p
     return variation.file_stem
 
 
-def _require_ped_root(ymt: "Ymt") -> MutableMapping[str, Any] | PsoNode:
+def ped_prop_file_stem(
+    anchor: PedPropAnchor | str | int,
+    drawable: int,
+) -> str:
+    anchor_enum = coerce_ped_prop_anchor(anchor)
+    return f"{_PROP_FILE_STEMS[anchor_enum]}_{int(drawable):03d}"
+
+
+def _require_ped_root(ymt: Ymt) -> MutableMapping[str, Any] | PsoNode:
     root = ymt.ped_variation if ymt.ped_variation is not None else ymt.root_value
     if not _is_mutable_node(root):
         raise TypeError("YMT root is not a decoded ped variation mapping or PSO node")
@@ -214,14 +309,19 @@ def _fields(mapping: Any) -> MutableMapping[str, Any] | None:
 
 
 def _is_mutable_node(value: Any) -> bool:
-    return isinstance(value, PsoNode) or isinstance(value, MutableMapping)
+    return isinstance(value, (PsoNode, MutableMapping))
 
 
 __all__ = [
     "PedComponent",
     "PedDrawableVariation",
+    "PedPropAnchor",
+    "PedPropVariation",
     "coerce_ped_component",
+    "coerce_ped_prop_anchor",
     "iter_ped_drawables",
+    "iter_ped_props",
     "ped_drawable_file_stem",
+    "ped_prop_file_stem",
     "set_ped_drawable_cloth",
 ]
