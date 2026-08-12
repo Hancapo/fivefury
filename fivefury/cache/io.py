@@ -35,6 +35,7 @@ from ..yft import read_yft
 from ..ynd import read_ynd
 from ..ynv import read_ynv
 from ..ytd import read_ytd
+from .kinds import coerce_game_file_kind
 from .paths import split_archive_asset_path as _split_archive_asset_path
 from .views import AssetRecord
 
@@ -249,7 +250,14 @@ class GameFileCacheIOMixin:
 
     def _coerce_asset(self, value: AssetRecord | str | Path | int | MetaHash, *, kind: GameFileType | str | int | None = None) -> AssetRecord | None:
         if isinstance(value, AssetRecord):
-            return value
+            if kind is None:
+                return value
+            requested_kind = coerce_game_file_kind(kind)
+            if requested_kind is None:
+                return None
+            if value.kind is requested_kind:
+                return value
+            return self.get_asset(value.short_hash, kind=requested_kind)
         return self.get_asset(value, kind=kind)
 
     def get_file(self, path: str | Path | AssetRecord | int | MetaHash) -> GameFile | None:
