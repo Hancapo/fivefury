@@ -3,6 +3,13 @@ from __future__ import annotations
 import os
 
 from setuptools import Extension, setup
+from setuptools.command.build_ext import build_ext
+
+
+class NativeBuildExt(build_ext):
+    def finalize_options(self) -> None:
+        super().finalize_options()
+        self.force = True
 
 ext_modules = [
     Extension(
@@ -43,6 +50,7 @@ ext_modules = [
 
 
 setup(
+    cmdclass={"build_ext": NativeBuildExt},
     ext_modules=ext_modules,
     options={"bdist_wheel": {"py_limited_api": "cp311"}},
 )

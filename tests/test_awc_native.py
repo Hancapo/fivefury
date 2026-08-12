@@ -4,6 +4,7 @@ import struct
 
 import pytest
 
+from fivefury import _native_abi3
 from fivefury.awc.audio import (
     _build_peak_values,
     _extract_multichannel_blocks,
@@ -58,6 +59,16 @@ def test_native_rsxxtea_roundtrip_and_size_validation() -> None:
     assert decrypt_awc_rsxxtea(encrypted, key) == source
     with pytest.raises(ValueError, match="divisible by 4"):
         encrypt_awc_rsxxtea(b"unaligned", key)
+
+
+def test_native_rsxxtea_binding_accepts_nonempty_byte_buffers() -> None:
+    source = bytes(range(64))
+    key = (0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00)
+
+    encrypted = _native_abi3.awc_rsxxtea(source, key, False)
+
+    assert len(encrypted) == len(source)
+    assert _native_abi3.awc_rsxxtea(encrypted, key, True) == source
 
 
 def test_native_pcm_wav_roundtrip_and_padding() -> None:

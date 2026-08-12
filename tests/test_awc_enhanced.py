@@ -19,6 +19,7 @@ from fivefury import (
     AwcStreamFormatChunk,
     DecodedAudio,
     GameFileCache,
+    GameFileType,
     build_awc_bytes,
     read_awc,
 )
@@ -131,6 +132,48 @@ def test_retail_compact_multichannel_awc_decodes_to_aligned_pcm() -> None:
             abs=1 / decoded.getframerate(),
         )
     assert (len(wav) - 44) % (3 * 2) == 0
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail AWC regression",
+)
+def test_retail_encrypted_cut_audio_loads_through_the_cache() -> None:
+    assert _ENHANCED_ROOT is not None
+    paths = (
+        "x64/audio/sfx/prologue.rpf/pro_mcs_1_mastered_only.awc",
+        "x64/audio/sfx/prologue.rpf/pro_mcs_5_seq_mastered_only.awc",
+        "update/x64/dlcpacks/mpsecurity/dlc.rpf/x64/audio/sfx/dlc_security/fix_pro_mcs1_mastered.awc",
+    )
+    expected_cues = (
+        ("pro_mcs_5.cut", 0xA3BCA9C3, "pro_mcs_5_seq_mastered_only.awc"),
+        ("fix_pro_mcs1.cut", 0x3C66E70A, "fix_pro_mcs1_mastered.awc"),
+    )
+
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        load_audio=True,
+        load_peds=False,
+        load_vehicles=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        for path in paths:
+            asset = cache.find_path(path, kind=GameFileType.AWC)
+            assert asset is not None
+            assert isinstance(cache.load_asset(asset).parsed, Awc)
+
+        for cut_name, cue_hash, awc_name in expected_cues:
+            bundle = cache.resolve_cutscene(cut_name)
+            resolved = bundle.audio[cue_hash]
+            assert resolved.asset.name == awc_name
+            wav = resolved.wav_bytes()
+            assert wav[:4] == b"RIFF"
+            assert wav[8:12] == b"WAVE"
+            assert not any(
+                issue.code in {"audio.container_invalid", "audio.container_unresolved"}
+                for issue in bundle.issues
+            )
 
 
 def test_enhanced_mp3_seek_table_preserves_uint16_entries() -> None:
