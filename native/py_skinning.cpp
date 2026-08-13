@@ -488,4 +488,81 @@ PyObject* mod_skin_vertices_into(PyObject*, PyObject* args) {
     Py_RETURN_NONE;
 }
 
+PyObject* mod_skin_pack_palette_into(PyObject*, PyObject* args) {
+    PyObject* matrices_object = nullptr;
+    PyObject* output_object = nullptr;
+    Py_ssize_t bone_count_value = 0;
+    if (!PyArg_ParseTuple(
+            args,
+            "OOn:skin_pack_palette_into",
+            &matrices_object,
+            &output_object,
+            &bone_count_value
+        )) {
+        return nullptr;
+    }
+    if (bone_count_value < 0) {
+        PyErr_SetString(PyExc_ValueError, "bone count cannot be negative");
+        return nullptr;
+    }
+
+    const auto bone_count = static_cast<std::size_t>(bone_count_value);
+    std::size_t matrix_values = 0;
+    std::size_t palette_values = 0;
+    std::size_t matrix_bytes = 0;
+    std::size_t palette_bytes = 0;
+    if (!checked_size(bone_count, 16U, matrix_values) ||
+        !checked_size(bone_count, 12U, palette_values) ||
+        !checked_size(matrix_values, sizeof(float), matrix_bytes) ||
+        !checked_size(palette_values, sizeof(float), palette_bytes)) {
+        PyErr_SetString(PyExc_OverflowError, "bone palette dimensions overflow address space");
+        return nullptr;
+    }
+
+    Py_buffer matrices_buffer{};
+    Py_buffer output_buffer{};
+    if (!acquire_buffer(
+            matrices_object,
+            matrices_buffer,
+            matrix_bytes,
+            "matrices"
+        )) {
+        return nullptr;
+    }
+    if (!acquire_writable_buffer(
+            output_object,
+            output_buffer,
+            palette_bytes,
+            "output palette"
+        )) {
+        PyBuffer_Release(&matrices_buffer);
+        return nullptr;
+    }
+
+    const auto* matrices = static_cast<const float*>(matrices_buffer.buf);
+    auto* palette = static_cast<float*>(output_buffer.buf);
+    Py_BEGIN_ALLOW_THREADS
+    for (std::size_t bone = 0; bone < bone_count; ++bone) {
+        const float* source = matrices + (bone * 16U);
+        float* target = palette + (bone * 12U);
+        target[0] = source[0];
+        target[1] = source[4];
+        target[2] = source[8];
+        target[3] = source[12];
+        target[4] = source[1];
+        target[5] = source[5];
+        target[6] = source[9];
+        target[7] = source[13];
+        target[8] = source[2];
+        target[9] = source[6];
+        target[10] = source[10];
+        target[11] = source[14];
+    }
+    Py_END_ALLOW_THREADS
+
+    PyBuffer_Release(&output_buffer);
+    PyBuffer_Release(&matrices_buffer);
+    Py_RETURN_NONE;
+}
+
 }  // namespace fivefury_py

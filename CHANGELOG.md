@@ -7,6 +7,17 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- GPU-resident vertex and compute skinning for GLSL and HLSL renderers.
+- Compact four-influence streams and reusable three-row bone palettes for GPU upload.
+
+### Performance
+
+- Compact influence streams reduce static GPU upload storage by 75%.
+- Three-row affine palettes reduce per-frame bone uploads by 25%.
+- GPU-resident compute skinning is up to 164x faster than reusable CPU skinning for one million vertices on an RTX 4090.
+
 ## [0.4.2] - 2026-08-13
 
 ### Added
