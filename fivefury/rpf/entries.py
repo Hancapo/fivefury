@@ -68,10 +68,46 @@ class RpfDirectoryEntry(RpfEntry):
     entries_count: int = 0
     directories: list["RpfDirectoryEntry"] = field(default_factory=list)
     files: list["RpfFileEntry"] = field(default_factory=list)
+    _directories_by_name: dict[str, "RpfDirectoryEntry"] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _files_by_name: dict[str, "RpfFileEntry"] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        self._directories_by_name.update(
+            (entry.name.lower(), entry) for entry in self.directories
+        )
+        self._files_by_name.update((entry.name.lower(), entry) for entry in self.files)
 
     @property
     def is_directory(self) -> bool:
         return True
+
+    def clear_children(self) -> None:
+        self.directories.clear()
+        self.files.clear()
+        self._directories_by_name.clear()
+        self._files_by_name.clear()
+
+    def find_directory(self, name: str) -> "RpfDirectoryEntry | None":
+        return self._directories_by_name.get(name.lower())
+
+    def find_file(self, name: str) -> "RpfFileEntry | None":
+        return self._files_by_name.get(name.lower())
+
+    def append_directory(self, entry: "RpfDirectoryEntry") -> None:
+        self.directories.append(entry)
+        self._directories_by_name[entry.name.lower()] = entry
+
+    def append_file(self, entry: "RpfFileEntry") -> None:
+        self.files.append(entry)
+        self._files_by_name[entry.name.lower()] = entry
+
+    def remove_file(self, entry: "RpfFileEntry") -> None:
+        self.files.remove(entry)
+        self._files_by_name.pop(entry.name.lower(), None)
 
 
 @dataclass(slots=True)
