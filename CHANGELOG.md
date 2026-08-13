@@ -53,7 +53,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - The incomplete `.cutxml` parser and scene-loading API have been removed.
 - Shared map extension models now live only in `fivefury.map_extensions`.
 - PSO value helpers moved from `fivefury.vehiclemeta.common` to `fivefury.pso_values`.
-- Generic `add(...)`, `add_*`, duplicate `create_*`, and ordinary `set_*` authoring aliases have been removed in favor of typed collections, singular noun factories, properties, and explicit domain verbs.
+- Generic `add(...)`, `add_*`, duplicate `create_*`, and ordinary `set_*` authoring aliases have been removed. Existing objects now use typed collection operations such as `append`, `extend`, or mapping assignment; convenience construction uses singular noun factories; and one-to-one relationships use properties.
+- Typical migrations include `ymap.add_entity(entity)` to `ymap.entities.append(entity)`, `ymap.create_entity(...)` to `ymap.entity(...)`, and `ydr.set_bound(bound)` to `ydr.bound = bound`. Explicit verbs remain only for operations with domain behavior, such as binding, derivation, normalization, or recalculation.
 - CUT and YCD builders now use `binding(...)`, `object(...)`, `track(...)`, `event(...)`, `ped(...)`, `prop(...)`, `camera(...)`, and other typed noun factories.
 - YMAP, YTYP, YDR, YBN, YTD, bounds, GTXD, RPF, Water, and cache models now expose one canonical insertion path per relationship.
 - `create_ymf_for_ymaps(...)` has been removed; use `build_ymf_for_ymaps(...)`.
