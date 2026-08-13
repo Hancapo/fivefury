@@ -312,8 +312,8 @@ __all__ = [
     "CdrMaterialParameter",
     "CdrMesh",
     "CdrModel",
-    "CdrSkinningFlavor",
     "CdrSkeleton",
+    "CdrSkinningFlavor",
     "CdrVertexFormat",
     "CdrVertexSemantic",
 ]

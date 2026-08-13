@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from . import RpfArchive
 
 
-def write_archive_stream(archive: "RpfArchive", stream: BinaryIO) -> int:
+def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
     """Write an archive without retaining all file payloads in memory."""
 
     if archive.encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):

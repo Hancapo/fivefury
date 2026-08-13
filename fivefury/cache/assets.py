@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
+from collections.abc import Iterator
 
 from ..assets import (
     RESOURCE_TEXTURE_ASSET_TYPES,
@@ -89,10 +90,10 @@ class GameFileCacheAssetMixin:
     def _find_archetypes_for_asset(self, value: Any) -> Iterator[Any]:
         yield from self._iter_archetypes_for_query(value)
 
-    def iter_asset_texture_dictionaries(self, query: Any) -> Iterator["AssetRecord"]:
+    def iter_asset_texture_dictionaries(self, query: Any) -> Iterator[AssetRecord]:
         yield from self.iter_texture_dictionaries(query, include_parents=False)
 
-    def list_asset_texture_dictionaries(self, query: Any) -> list["AssetRecord"]:
+    def list_asset_texture_dictionaries(self, query: Any) -> list[AssetRecord]:
         return self.list_texture_dictionaries(query, include_parents=False)
 
     def _iter_ymap_entity_archetypes(self, ymap_value: Any) -> Iterator[Any]:
@@ -113,7 +114,7 @@ class GameFileCacheAssetMixin:
             seen.add(name_hash)
             yield archetype
 
-    def _primary_asset_for_archetype(self, archetype: Any) -> "AssetRecord" | None:
+    def _primary_asset_for_archetype(self, archetype: Any) -> AssetRecord | None:
         asset_name = getattr(archetype, "asset_name", None) or getattr(archetype, "name", None)
         if asset_name in (None, "", 0):
             return None
@@ -128,7 +129,7 @@ class GameFileCacheAssetMixin:
                 return asset
         return None
 
-    def _supporting_assets_for_archetype(self, archetype: Any) -> Iterator["AssetRecord"]:
+    def _supporting_assets_for_archetype(self, archetype: Any) -> Iterator[AssetRecord]:
         for field_name, kind in (
             ("texture_dictionary", GameFileType.YTD),
             ("physics_dictionary", GameFileType.YBN),
@@ -141,7 +142,7 @@ class GameFileCacheAssetMixin:
             if asset is not None:
                 yield asset
 
-    def iter_ymap_entity_assets(self, query: Any, *, include_supporting: bool = True) -> Iterator["AssetRecord"]:
+    def iter_ymap_entity_assets(self, query: Any, *, include_supporting: bool = True) -> Iterator[AssetRecord]:
         seen_paths: set[str] = set()
         for archetype in self._iter_ymap_entity_archetypes(query):
             primary = self._primary_asset_for_archetype(archetype)
@@ -156,7 +157,7 @@ class GameFileCacheAssetMixin:
                 seen_paths.add(asset.path)
                 yield asset
 
-    def list_ymap_entity_assets(self, query: Any, *, include_supporting: bool = True) -> list["AssetRecord"]:
+    def list_ymap_entity_assets(self, query: Any, *, include_supporting: bool = True) -> list[AssetRecord]:
         return list(self.iter_ymap_entity_assets(query, include_supporting=include_supporting))
 
     def extract_ymap_assets(
@@ -260,7 +261,7 @@ class GameFileCacheAssetMixin:
             if asset_name_hash in target_hashes or name_hash in target_hashes:
                 yield archetype
 
-    def _iter_texture_dict_chain_assets(self, value: int | str | MetaHash) -> Iterator[tuple["AssetRecord", int]]:
+    def _iter_texture_dict_chain_assets(self, value: int | str | MetaHash) -> Iterator[tuple[AssetRecord, int]]:
         seen_hashes: set[int] = set()
         current_hash = hash_value(value)
         depth = 0
@@ -275,7 +276,7 @@ class GameFileCacheAssetMixin:
             current_hash = int(next_hash)
             depth += 1
 
-    def iter_texture_dictionary_chain(self, query: Any, *, include_parents: bool = True) -> Iterator[tuple["AssetRecord", int]]:
+    def iter_texture_dictionary_chain(self, query: Any, *, include_parents: bool = True) -> Iterator[tuple[AssetRecord, int]]:
         seen_paths: set[str] = set()
 
         query_kind = getattr(query, "kind", None)
@@ -332,11 +333,11 @@ class GameFileCacheAssetMixin:
                 seen_paths.add(asset.path)
                 yield asset, 0
 
-    def iter_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> Iterator["AssetRecord"]:
+    def iter_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> Iterator[AssetRecord]:
         for asset, _depth in self.iter_texture_dictionary_chain(query, include_parents=include_parents):
             yield asset
 
-    def list_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> list["AssetRecord"]:
+    def list_texture_dictionaries(self, query: Any, *, include_parents: bool = True) -> list[AssetRecord]:
         return list(self.iter_texture_dictionaries(query, include_parents=include_parents))
 
     def iter_ytd_textures(self, query: Any) -> Iterator[Texture]:
@@ -356,7 +357,7 @@ class GameFileCacheAssetMixin:
         output_dir.mkdir(parents=True, exist_ok=True)
         return ytd.extract(output_dir)
 
-    def _read_standalone_resource_bytes(self, asset: "AssetRecord") -> bytes | None:
+    def _read_standalone_resource_bytes(self, asset: AssetRecord) -> bytes | None:
         entry = self._get_entry_for_asset(asset)
         if isinstance(entry, RpfFileEntry):
             if entry._archive is None:
@@ -380,7 +381,7 @@ class GameFileCacheAssetMixin:
             return None
         return open_resource_texture_asset(standalone, kind=asset.kind, path=asset.path)
 
-    def _iter_primary_texture_assets(self, query: Any) -> Iterator["AssetRecord"]:
+    def _iter_primary_texture_assets(self, query: Any) -> Iterator[AssetRecord]:
         seen_paths: set[str] = set()
         direct_asset = self._coerce_asset(query)
         if direct_asset is not None and direct_asset.kind in _EMBEDDED_TEXTURE_RESOURCE_TYPES:

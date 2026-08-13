@@ -12,9 +12,9 @@ from .ytd.defs import (
 from .ytd.model import Texture
 
 __all__ = [
-    "BCFormat",
     "BC_TO_DX9",
     "BC_TO_RSC8",
+    "BCFormat",
     "Texture",
     "TextureUsage",
     "mip_data_size",

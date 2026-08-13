@@ -51,7 +51,7 @@ def mark_cutscene_prop_archetypes(
         resolved_flags = ArchetypeFlags(current_flags)
         if animated:
             resolved_flags &= ~ArchetypeFlags.HAS_ANIM
-        setattr(archetype, "flags", int(resolved_flags | required_flags))
+        archetype.flags = int(resolved_flags | required_flags)
     return ytyp
 
 
@@ -87,7 +87,7 @@ def time_flags(
     elif start_h < end_h:
         mask = sum(1 << h for h in range(start_h, end_h))
     else:
-        mask = sum(1 << h for h in range(start_h, 24)) | sum(1 << h for h in range(0, end_h))
+        mask = sum(1 << h for h in range(start_h, 24)) | sum(1 << h for h in range(end_h))
     if invert:
         mask = int(TimeArchetypeFlags.ALL_HOURS) & ~mask
     flags = TimeArchetypeFlags(mask)

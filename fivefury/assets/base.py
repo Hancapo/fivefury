@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import ClassVar, Iterator
+from typing import ClassVar
+from collections.abc import Iterator
 
 from ..binary import u16 as _u16, u32 as _u32, u64 as _u64
 from ..common import ByteSource
@@ -69,7 +70,7 @@ class ResourceTextureAsset:
         data: bytes | bytearray | memoryview,
         *,
         path: str | Path = "",
-    ) -> "ResourceTextureAsset":
+    ) -> ResourceTextureAsset:
         header, system_data, graphics_data = split_rsc7_sections(bytes(data))
         return cls(
             path=str(path),
@@ -107,9 +108,9 @@ class ResourceTextureAsset:
 
 
 __all__ = [
+    "_DAT_VIRTUAL_BASE",
     "EmbeddedTextureDictionary",
     "ResourceTextureAsset",
-    "_DAT_VIRTUAL_BASE",
     "_coerce_kind",
     "_drawable_texture_dictionary_pointer",
     "_read_pointer_array",

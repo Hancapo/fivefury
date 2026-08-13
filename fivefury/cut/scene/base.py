@@ -303,7 +303,7 @@ class CutScene:
         section_by_time_slice_duration: float = 4.0,
         camera_cut_list: list[float] | None = None,
         section_split_list: list[float] | None = None,
-    ) -> "CutScene":
+    ) -> CutScene:
         resolved_offset = offset or (0.0, 0.0, 0.0)
         return cls(
             scene_name=scene_name,
@@ -335,7 +335,7 @@ class CutScene:
             return 0
         return max(binding.object_id for binding in self.bindings) + 1
 
-    def build(self) -> "CutScene":
+    def build(self) -> CutScene:
         next_id = 0
         normalized: list[CutBinding] = []
         for binding in sorted(
@@ -674,7 +674,7 @@ def add_ped(
     return ped
 
 
-setattr(CutScene, "add_ped", add_ped)
+CutScene.add_ped = add_ped
 
 
 def add_prop(
@@ -748,7 +748,7 @@ def add_prop(
     return prop
 
 
-setattr(CutScene, "add_prop", add_prop)
+CutScene.add_prop = add_prop
 
 
 def add_prop_from_runtime_asset(
@@ -806,4 +806,4 @@ def add_prop_from_runtime_asset(
     )
 
 
-setattr(CutScene, "add_prop_from_runtime_asset", add_prop_from_runtime_asset)
+CutScene.add_prop_from_runtime_asset = add_prop_from_runtime_asset

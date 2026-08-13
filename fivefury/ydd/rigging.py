@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
 from ..common import ByteSource
 from ..ydr import RadialBoneRigRule, Ydr, YdrSkeleton, rig_ydr_to_bones_radially

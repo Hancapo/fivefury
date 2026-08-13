@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import struct
-from typing import Callable
+from collections.abc import Callable
 
 from ..binary import read_c_string
 from .model import Matrix4, YdrBone, YdrBoneFlags, YdrSkeleton

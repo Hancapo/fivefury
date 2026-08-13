@@ -167,7 +167,7 @@ class LodLightsSoa:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "LodLightsSoa":
+    def from_meta(cls, value: Any) -> LodLightsSoa:
         if not isinstance(value, dict):
             return cls()
         return cls(
@@ -216,7 +216,7 @@ class DistantLodLightsSoa:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "DistantLodLightsSoa":
+    def from_meta(cls, value: Any) -> DistantLodLightsSoa:
         if not isinstance(value, dict):
             return cls()
         return cls(
@@ -230,7 +230,7 @@ class DistantLodLightsSoa:
         self.position.append(tuple(position))
         self.RGBI.append(int(rgbi))
 
-    def clamp_street_light_count(self) -> "DistantLodLightsSoa":
+    def clamp_street_light_count(self) -> DistantLodLightsSoa:
         self.num_street_lights = max(0, min(int(self.num_street_lights), len(self.position)))
         return self
 
@@ -305,14 +305,14 @@ DistantLodLights = DistantLodLightsSoa
 
 
 __all__ = [
+    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
+    "MAX_LOD_LIGHT_CONE_ANGLE",
+    "MAX_LOD_LIGHT_CORONA_INTENSITY",
     "DistantLodLights",
     "DistantLodLightsSoa",
     "LodLight",
     "LodLights",
     "LodLightsSoa",
-    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
-    "MAX_LOD_LIGHT_CONE_ANGLE",
-    "MAX_LOD_LIGHT_CORONA_INTENSITY",
     "_coerce_lod_light",
     "_coerce_lod_lights",
 ]

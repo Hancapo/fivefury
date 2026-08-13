@@ -88,7 +88,7 @@ from .event_api import (
 from .io import cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
 from .subtitles import CutSubtitleCue, CutSubtitleTrack, build_subtitle_gxt2, install_subtitles, subtitle_cues_from_text
 
-setattr(CutScene, "install_subtitles", install_subtitles)
+CutScene.install_subtitles = install_subtitles
 
 __all__ = [
     "CutScene",

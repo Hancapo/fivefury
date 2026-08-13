@@ -68,7 +68,7 @@ class BoxOccluder:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "BoxOccluder":
+    def from_meta(cls, value: Any) -> BoxOccluder:
         if not isinstance(value, dict):
             return cls()
         return cls(
@@ -89,7 +89,7 @@ class BoxOccluder:
         size: tuple[float, float, float],
         angle: float = 0.0,
         angle_mode: AngleMode = AngleMode.DEGREES,
-    ) -> "BoxOccluder":
+    ) -> BoxOccluder:
         radians = (
             math.radians(angle) if angle_mode == AngleMode.DEGREES else float(angle)
         )
@@ -137,7 +137,7 @@ class OccludeModel:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "OccludeModel":
+    def from_meta(cls, value: Any) -> OccludeModel:
         if not isinstance(value, dict):
             return cls()
         return cls(
@@ -167,7 +167,7 @@ class OccludeModel:
         indices: bytes,
         *,
         flags: int | None = None,
-    ) -> "OccludeModel":
+    ) -> OccludeModel:
         vert_bytes = b"".join(struct.pack("<fff", *vertex) for vertex in vertices)
         self.verts = vert_bytes + bytes(indices)
         self.num_verts_in_bytes = len(vert_bytes)
@@ -190,7 +190,7 @@ class OccludeModel:
         indices: bytes = b"",
         *,
         flags: int = 0,
-    ) -> "OccludeModel":
+    ) -> OccludeModel:
         model = cls(flags=flags)
         return model.set_geometry(vertices, indices, flags=flags)
 
@@ -201,7 +201,7 @@ class OccludeModel:
         faces: list[tuple[int, ...]],
         *,
         flags: int = 0,
-    ) -> list["OccludeModel"]:
+    ) -> list[OccludeModel]:
         triangles: list[tuple[int, int, int]] = []
         for face in faces:
             if len(face) < 3:
@@ -247,7 +247,7 @@ class OccludeModel:
         max_pos: tuple[float, float, float],
         *,
         flags: int = 0,
-    ) -> list["OccludeModel"]:
+    ) -> list[OccludeModel]:
         x0, y0, z0 = min_pos
         x1, y1, z1 = max_pos
         vertices = [
@@ -273,7 +273,7 @@ class OccludeModel:
     @classmethod
     def from_quad(
         cls, corners: list[tuple[float, float, float]], *, flags: int = 0
-    ) -> list["OccludeModel"]:
+    ) -> list[OccludeModel]:
         if len(corners) != 4:
             raise ValueError(
                 f"from_quad requires exactly 4 corners, got {len(corners)}"

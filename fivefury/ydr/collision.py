@@ -29,7 +29,7 @@ class YdrCollisionStats:
     children: int
 
 
-def mesh_collision_triangles(mesh: "YdrMesh", *, min_area: float = 1e-10) -> list[BoundTriangle]:
+def mesh_collision_triangles(mesh: YdrMesh, *, min_area: float = 1e-10) -> list[BoundTriangle]:
     return _native_backend._bounds_collect_triangles(
         mesh.positions or [],
         mesh.indices or [],
@@ -38,7 +38,7 @@ def mesh_collision_triangles(mesh: "YdrMesh", *, min_area: float = 1e-10) -> lis
 
 
 def build_bound_from_render_geometry(
-    ydr: "Ydr",
+    ydr: Ydr,
     *,
     lod: YdrLod | str | None = None,
     material: BoundMaterial | None = None,
@@ -59,7 +59,7 @@ def build_bound_from_render_geometry(
 
 
 def set_bound_from_render_geometry(
-    ydr: "Ydr",
+    ydr: Ydr,
     *,
     lod: YdrLod | str | None = None,
     material: BoundMaterial | None = None,

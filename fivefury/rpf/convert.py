@@ -14,8 +14,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 def _ensure_container_path(
-    current: "RpfArchive", parts: list[str]
-) -> tuple["RpfArchive", str]:
+    current: RpfArchive, parts: list[str]
+) -> tuple[RpfArchive, str]:
     archive = current
     relative_path = ""
     for segment in parts:
@@ -30,7 +30,7 @@ def _ensure_container_path(
 
 
 def _insert_file_path(
-    current: "RpfArchive",
+    current: RpfArchive,
     parts: list[str],
     data: bytes,
 ) -> None:
@@ -43,7 +43,7 @@ def _insert_file_path(
 
 
 def _insert_source_path(
-    current: "RpfArchive",
+    current: RpfArchive,
     parts: list[str],
     source_path: Path,
 ) -> None:
@@ -55,7 +55,7 @@ def _insert_source_path(
     archive.add_file_path(full, source_path)
 
 
-def _ensure_directory_path(current: "RpfArchive", parts: list[str]) -> None:
+def _ensure_directory_path(current: RpfArchive, parts: list[str]) -> None:
     _ensure_container_path(current, parts)
 
 
@@ -72,7 +72,7 @@ def _iter_directory_paths(root: Path) -> Iterator[Path]:
             yield current / name
 
 
-def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> "RpfArchive":
+def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> RpfArchive:
     from . import RpfArchive
 
     archive = RpfArchive.empty(name)
@@ -88,7 +88,7 @@ def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> "RpfArchive":
     return archive
 
 
-def _directory_to_rpf(source_dir: str | Path, *, name: str) -> "RpfArchive":
+def _directory_to_rpf(source_dir: str | Path, *, name: str) -> RpfArchive:
     from . import RpfArchive
 
     root = Path(source_dir).resolve(strict=True)
@@ -106,8 +106,8 @@ def _directory_to_rpf(source_dir: str | Path, *, name: str) -> "RpfArchive":
 
 
 def _coerce_archive(
-    source: str | Path | bytes | BinaryIO | "RpfArchive",
-) -> "RpfArchive":
+    source: str | Path | bytes | BinaryIO | RpfArchive,
+) -> RpfArchive:
     from . import RpfArchive
 
     if isinstance(source, RpfArchive):
@@ -119,21 +119,21 @@ def _coerce_archive(
     return RpfArchive.from_bytes(source.read())
 
 
-def load_rpf(source: str | Path | bytes | BinaryIO) -> "RpfArchive":
+def load_rpf(source: str | Path | bytes | BinaryIO) -> RpfArchive:
     return _coerce_archive(source)
 
 
-def create_rpf(name: str = "archive.rpf") -> "RpfArchive":
+def create_rpf(name: str = "archive.rpf") -> RpfArchive:
     from . import RpfArchive
 
     return RpfArchive.empty(name)
 
 
 def rpf_to_zip(
-    rpf_source: str | Path | bytes | BinaryIO | "RpfArchive",
+    rpf_source: str | Path | bytes | BinaryIO | RpfArchive,
     output: str | Path | None = None,
     *,
-    mode: "RpfExportMode | None" = None,
+    mode: RpfExportMode | None = None,
     recurse_nested: bool = True,
 ) -> bytes:
     from . import RpfArchive, RpfExportMode
@@ -149,12 +149,12 @@ def rpf_to_zip(
 
 
 def rpf_to_folder(
-    rpf_source: str | Path | bytes | BinaryIO | "RpfArchive",
+    rpf_source: str | Path | bytes | BinaryIO | RpfArchive,
     output_dir: str | Path,
     *,
-    mode: "RpfExportMode | None" = None,
+    mode: RpfExportMode | None = None,
     recurse_nested: bool = True,
-    conflict: "RpfExtractionConflict | None" = None,
+    conflict: RpfExtractionConflict | None = None,
 ) -> list[Path]:
     from . import RpfArchive, RpfExportMode, RpfExtractionConflict
 
@@ -176,7 +176,7 @@ def zip_to_rpf(
     output: str | Path | None = None,
     *,
     name: str = "archive",
-) -> "RpfArchive" | bytes:
+) -> RpfArchive | bytes:
     if isinstance(zip_source, (str, Path)):
         path = Path(zip_source)
         if path.is_dir():
@@ -197,15 +197,15 @@ def zip_to_rpf(
 
 
 __all__ = [
-    "create_rpf",
-    "load_rpf",
-    "rpf_to_folder",
-    "rpf_to_zip",
-    "zip_to_rpf",
     "_coerce_archive",
     "_directory_to_rpf",
     "_ensure_container_path",
     "_ensure_directory_path",
     "_insert_file_path",
     "_zip_to_rpf",
+    "create_rpf",
+    "load_rpf",
+    "rpf_to_folder",
+    "rpf_to_zip",
+    "zip_to_rpf",
 ]

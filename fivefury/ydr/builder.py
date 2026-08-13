@@ -332,7 +332,7 @@ def _build_system_payload(
     return system.finish(), graphics.finish(), system.block_spans, graphics.block_spans
 
 
-def ydr_to_build(source: 'Ydr', *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
+def ydr_to_build(source: Ydr, *, lod: YdrLod | str | None = None, name: str | None = None) -> YdrBuild:
     return source.to_build(lod=lod, name=name)
 
 
@@ -358,7 +358,7 @@ def _remap_root_bone_id_in_build(source: YdrBuild) -> None:
 
 
 def build_ydr_bytes(
-    source: 'YdrBuild | Ydr',
+    source: YdrBuild | Ydr,
     *,
     shader_library: ShaderLibrary | None = None,
     generate_normals: bool = True,
@@ -447,7 +447,7 @@ def build_ydr_bytes(
 
 
 def save_ydr(
-    source: 'YdrBuild | Ydr',
+    source: YdrBuild | Ydr,
     destination: str | Path,
     *,
     shader_library: ShaderLibrary | None = None,

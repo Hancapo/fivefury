@@ -42,7 +42,7 @@ class CutBinding:
         name: str | None = None,
         role: str | None = None,
         fields: dict[str, Any] | None = None,
-    ) -> "CutBinding":
+    ) -> CutBinding:
         role_name = role or _object_role(type_name)
         field_values = dict(fields or {})
         name_field = _object_name_field(type_name)
@@ -145,16 +145,16 @@ _CUT_PROP_ANIMATION_PRESETS: dict[CutPropAnimationPreset, dict[str, Any | None]]
 
 
 def _coerce_cut_prop_animation_preset(
-    value: "CutPropAnimationPreset | str | None",
-) -> "CutPropAnimationPreset | None":
+    value: CutPropAnimationPreset | str | None,
+) -> CutPropAnimationPreset | None:
     if value is None or isinstance(value, CutPropAnimationPreset):
         return value
     return CutPropAnimationPreset(str(value).strip().lower())
 
 
 def _coerce_cut_type_file_strategy(
-    value: "CutTypeFileStrategy | str | None",
-) -> "CutTypeFileStrategy":
+    value: CutTypeFileStrategy | str | None,
+) -> CutTypeFileStrategy:
     if value is None:
         return CutTypeFileStrategy.AUTO
     if isinstance(value, CutTypeFileStrategy):
@@ -360,7 +360,7 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         anim_compression_file: str | None = None,
         handle: str | None = None,
         type_file: str | None = None,
-    ) -> "_CutStreamedModelBinding":
+    ) -> _CutStreamedModelBinding:
         if cutscene_name is not None:
             self.cutscene_name = cutscene_name
         if streaming_name is not None:
@@ -388,8 +388,8 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         archetype: Any | None = None,
         ytyp: Any | None = None,
         type_source: Any | None = None,
-        type_file_strategy: "CutTypeFileStrategy | str | None" = None,
-    ) -> "_CutStreamedModelBinding":
+        type_file_strategy: CutTypeFileStrategy | str | None = None,
+    ) -> _CutStreamedModelBinding:
         strategy = _coerce_cut_type_file_strategy(type_file_strategy)
         resolved_model = model if model not in (None, "", 0) else archetype
         model_name = _extract_model_name(resolved_model)
@@ -420,8 +420,8 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         return self
 
     def apply_animation_preset(
-        self, preset: "CutPropAnimationPreset | str"
-    ) -> "_CutStreamedModelBinding":
+        self, preset: CutPropAnimationPreset | str
+    ) -> _CutStreamedModelBinding:
         resolved = _coerce_cut_prop_animation_preset(preset)
         assert resolved is not None
         values = _CUT_PROP_ANIMATION_PRESETS[resolved]
@@ -619,7 +619,7 @@ class CutPed(_CutStreamedModelBinding):
         override_filename: str | None = None,
         node_name: str | None = None,
         attributes_filename: str | None = None,
-    ) -> "CutPed":
+    ) -> CutPed:
         resolved = (
             mode
             if isinstance(mode, CutFacialAnimationMode)
@@ -664,8 +664,8 @@ class CutProp(_CutStreamedModelBinding):
         archetype: Any | None = None,
         ytyp: Any | None = None,
         type_source: Any | None = None,
-        type_file_strategy: "CutTypeFileStrategy | str | None" = None,
-    ) -> "CutProp":
+        type_file_strategy: CutTypeFileStrategy | str | None = None,
+    ) -> CutProp:
         binding = cls(name=name, object_id=object_id, fields=fields)
         binding.configure_runtime_source(
             model=model,

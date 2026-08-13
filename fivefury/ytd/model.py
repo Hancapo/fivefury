@@ -39,7 +39,7 @@ class Texture:
         mip_sizes: list[int] | tuple[int, ...] | None = None,
         usage: TextureUsage | int | str = TextureUsage.DEFAULT,
         usage_flags: int = 0,
-    ) -> "Texture":
+    ) -> Texture:
         offsets, sizes = _build_mip_info(width, height, format, mip_count)
         if mip_offsets is not None:
             offsets = list(mip_offsets)
@@ -110,7 +110,7 @@ class Ytd:
         self.textures = [item for item in self.textures if item.name.lower() != str(name).lower()]
         return len(self.textures) != previous
 
-    def build(self) -> "Ytd":
+    def build(self) -> Ytd:
         deduped: list[Texture] = []
         seen: set[str] = set()
         for texture in self.textures:
@@ -162,7 +162,7 @@ class Ytd:
         return target
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview) -> "Ytd":
+    def from_bytes(cls, data: bytes | bytearray | memoryview) -> Ytd:
         from . import read_ytd
 
         return read_ytd(data)

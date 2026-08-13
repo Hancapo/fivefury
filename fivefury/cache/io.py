@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..awc import read_awc
 from ..cdr import read_cdr
@@ -242,7 +242,7 @@ class GameFileCacheIOMixin:
             return None
         return archive.find_entry(entry_path)
 
-    def get_entry(self, path: str | Path | AssetRecord) -> Optional[RpfEntry]:
+    def get_entry(self, path: str | Path | AssetRecord) -> RpfEntry | None:
         asset = path if isinstance(path, AssetRecord) else self.find_path(path)
         if asset is None:
             return None

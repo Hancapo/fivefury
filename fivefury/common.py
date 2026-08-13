@@ -57,7 +57,7 @@ def clip_short_name(name: str) -> str:
 
 class FlexibleIntEnum(IntEnum):
     @classmethod
-    def _missing_(cls, value: object) -> "FlexibleIntEnum":
+    def _missing_(cls, value: object) -> FlexibleIntEnum:
         if not isinstance(value, int):
             raise ValueError(f"{value!r} is not a valid {cls.__name__}")
         member = int.__new__(cls, value)

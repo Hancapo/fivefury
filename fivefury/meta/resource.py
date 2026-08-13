@@ -75,11 +75,11 @@ class MetaResource:
         return stem if stem.lower().endswith(extension) else f"{stem}{extension}"
 
     @classmethod
-    def from_meta(cls, meta: Meta, *, source: str = "") -> "MetaResource":
+    def from_meta(cls, meta: Meta, *, source: str = "") -> MetaResource:
         return cls(meta=meta, source=source)
 
     @classmethod
-    def from_parsed_meta(cls, parsed: ParsedMeta, *, source: str = "") -> "MetaResource":
+    def from_parsed_meta(cls, parsed: ParsedMeta, *, source: str = "") -> MetaResource:
         return cls(
             meta=Meta(
                 Name=parsed.name,
@@ -95,11 +95,11 @@ class MetaResource:
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes, *, source: str = "") -> "MetaResource":
+    def from_bytes(cls, data: bytes, *, source: str = "") -> MetaResource:
         return cls.from_parsed_meta(ParsedMeta.from_bytes(data), source=source)
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "MetaResource":
+    def from_path(cls, path: str | Path) -> MetaResource:
         target = Path(path)
         return cls.from_bytes(target.read_bytes(), source=str(target))
 

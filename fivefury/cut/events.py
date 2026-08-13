@@ -92,10 +92,8 @@ _CUT_EVENT_ENUMS = [
 
 def _normalize_event_name(enum_name: str) -> str:
     name = enum_name
-    if name.startswith("CUTSCENE_"):
-        name = name[len("CUTSCENE_") :]
-    if name.endswith("_EVENT"):
-        name = name[: -len("_EVENT")]
+    name = name.removeprefix("CUTSCENE_")
+    name = name.removesuffix("_EVENT")
     return name.lower()
 
 

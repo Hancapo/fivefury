@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 from ...common import atomic_write_bytes
 from ...game_target import GameTarget

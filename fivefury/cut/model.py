@@ -136,12 +136,12 @@ class CutFile:
             event_arg_types=dict(Counter(node.type_name for node in self.event_args)),
         )
 
-    def to_bytes(self, *, template: "CutFile | bytes | str | None" = None) -> bytes:
+    def to_bytes(self, *, template: CutFile | bytes | str | None = None) -> bytes:
         from .write import build_cut_bytes
 
         return build_cut_bytes(self, template=template)
 
-    def save(self, destination: str, *, template: "CutFile | bytes | str | None" = None) -> None:
+    def save(self, destination: str, *, template: CutFile | bytes | str | None = None) -> None:
         from ..common import atomic_write_bytes
 
         atomic_write_bytes(destination, self.to_bytes(template=template))

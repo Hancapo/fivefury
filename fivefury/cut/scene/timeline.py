@@ -91,7 +91,7 @@ class CutTimelineEvent:
         event_payload: dict[str, Any] | None = None,
         is_load_event: bool | None = None,
         args_type: str | None = None,
-    ) -> "CutTimelineEvent":
+    ) -> CutTimelineEvent:
         spec = get_cut_event_spec(event)
         event_id = get_cut_event_id(event)
         event_name = get_cut_event_name(event_id)

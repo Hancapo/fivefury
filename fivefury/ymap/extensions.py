@@ -459,6 +459,9 @@ def extensions_to_meta(values: Any) -> list[Any]:
 
 
 __all__ = [
+    "EXTENSION_TYPES_BY_META_NAME",
+    "KNOWN_EXTENSION_TYPES",
+    "YMAP_EXTENSION_STRUCT_INFOS",
     "AudioCollisionSettingsExtension",
     "AudioEmitterExtension",
     "BuoyancyExtension",
@@ -466,15 +469,12 @@ __all__ = [
     "ClimbHandHoldExtension",
     "DecalExtension",
     "DoorExtension",
-    "YMAP_EXTENSION_STRUCT_INFOS",
-    "EXTENSION_TYPES_BY_META_NAME",
-    "ExpressionExtension",
     "ExplosionEffectExtension",
-    "KNOWN_EXTENSION_TYPES",
+    "ExpressionExtension",
     "LadderExtension",
-    "LightExtension",
     "LightAttrDef",
     "LightEffectExtension",
+    "LightExtension",
     "LightShaftExtension",
     "ParticleEffectExtension",
     "ProcObjectExtension",

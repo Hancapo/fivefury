@@ -75,7 +75,7 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "BaseArchetypeDef":
+    def from_meta(cls, value: Any) -> BaseArchetypeDef:
         archetype = cls(
             lod_dist=float(value.get("lodDist", 0.0)),
             flags=int(value.get("flags", 0)),

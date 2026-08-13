@@ -3,11 +3,11 @@ from __future__ import annotations
 from ..colors import CssColor, parse_css_rgb
 
 
-def clamp_byte(value: float | int) -> int:
+def clamp_byte(value: float) -> int:
     return max(0, min(255, int(round(value))))
 
 
-def clamp_ushort(value: float | int) -> int:
+def clamp_ushort(value: float) -> int:
     return max(0, min(65535, int(round(value))))
 
 
@@ -20,7 +20,7 @@ def unpack_rgbi(value: int) -> tuple[tuple[int, int, int], int]:
     return ((value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF), (value >> 24) & 0xFF)
 
 
-def pack_lod_light_u8(value: float | int, value_range: float) -> int:
+def pack_lod_light_u8(value: float, value_range: float) -> int:
     return clamp_byte(float(value) * (255.0 / float(value_range)))
 
 

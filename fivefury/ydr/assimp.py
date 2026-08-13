@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
+from collections.abc import Iterable, Sequence
 
 import numpy
 

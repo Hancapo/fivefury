@@ -33,7 +33,7 @@ class TimeCycleModifier(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "TimeCycleModifier":
+    def from_meta(cls, value: Any) -> TimeCycleModifier:
         return cls(
             name=value.get("name", 0),
             min_extents=tuple(value.get("minExtents", (0.0, 0.0, 0.0))),
@@ -74,7 +74,7 @@ class TimeCycleModifier(MetaHashFieldsMixin):
         percentage: float = 100.0,
         range: float = 50.0,
         hours: tuple[int, int] = (0, 24),
-    ) -> "TimeCycleModifier":
+    ) -> TimeCycleModifier:
         """Create a TimeCycleModifier from center position and size."""
         min_extents, max_extents = aabb_from_center_size(position, size)
         return cls(
@@ -97,7 +97,7 @@ class TimeCycleModifier(MetaHashFieldsMixin):
         percentage: float = 100.0,
         range: float = 50.0,
         hours: tuple[int, int] = (0, 24),
-    ) -> "TimeCycleModifier":
+    ) -> TimeCycleModifier:
         """Create a TimeCycleModifier from min/max AABB corners."""
         return cls(
             name=name,

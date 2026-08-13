@@ -27,7 +27,7 @@ def normalize_parameter_key(value: str) -> str:
     return str(value).strip().lower()
 
 
-def _coerce_parameter_vector(value: float | tuple[float, ...] | int) -> tuple[float, float, float, float]:
+def _coerce_parameter_vector(value: float | tuple[float, ...]) -> tuple[float, float, float, float]:
     if isinstance(value, (int, float)):
         components = [float(value), 0.0, 0.0, 0.0]
     else:
@@ -40,7 +40,7 @@ def _coerce_parameter_vector(value: float | tuple[float, ...] | int) -> tuple[fl
 
 
 def coerce_parameter_inline(
-    value: float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str,
+    value: float | tuple[float, ...] | tuple[tuple[float, ...], ...] | str,
     *,
     expected_count: int = 1,
 ) -> tuple[int, bytes]:
@@ -58,7 +58,7 @@ def coerce_parameter_inline(
 
 
 def _coerce_gen9_cbuffer_bytes(
-    value: float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str,
+    value: float | tuple[float, ...] | tuple[tuple[float, ...], ...] | str,
     *,
     parameter: ShaderGen9ParameterDefinition,
 ) -> bytes:

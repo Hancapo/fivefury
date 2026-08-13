@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 
 from ..common import read_source_bytes
 from ..gamefile import GameFileType
@@ -58,9 +58,9 @@ def list_embedded_texture_dictionaries(
 
 
 __all__ = [
+    "RESOURCE_TEXTURE_ASSET_TYPES",
     "EmbeddedTextureDictionary",
     "ResourceTextureAsset",
-    "RESOURCE_TEXTURE_ASSET_TYPES",
     "YddAsset",
     "YdrAsset",
     "YftAsset",

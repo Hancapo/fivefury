@@ -7,7 +7,8 @@ import pickle
 import re
 import time
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any
+from collections.abc import Iterator, Sequence
 
 from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index
 from ..crypto import GameCrypto, load_game_keys
@@ -195,7 +196,7 @@ class GameFileCacheScanMixin:
         root_text = str(Path(self.root or ".").resolve()).lower()
         config_text = f"{self._normalized_dlc_level()}|{';'.join(self._exclude_prefixes)}"
         flags_text = f"{int(self.load_vehicles)}|{int(self.load_peds)}|{int(self.load_audio)}"
-        digest = hashlib.sha1(f"{root_text}|{config_text}|{flags_text}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha1(f"{root_text}|{config_text}|{flags_text}".encode()).hexdigest()
         return _default_index_cache_dir() / f"{digest}.ffindex"
 
     def clear_index_cache(self) -> None:

@@ -47,7 +47,7 @@ class CarGen(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "CarGen":
+    def from_meta(cls, value: Any) -> CarGen:
         return cls(
             position=tuple(value.get("position", (0.0, 0.0, 0.0))),
             orient_x=float(value.get("orientX", 0.0)),
@@ -101,7 +101,7 @@ class CarGen(MetaHashFieldsMixin):
         body_colors: tuple[int, ...] = (-1, -1, -1, -1),
         pop_group: HashLike = 0,
         livery: int = -1,
-    ) -> "CarGen":
+    ) -> CarGen:
         """Create a CarGen from human-readable parameters."""
         radians = math.radians(heading)
         padded = (tuple(body_colors) + (-1, -1, -1, -1))[:4]

@@ -85,32 +85,32 @@ def _is_animation_capable(binding: CutBinding) -> bool:
     return binding.role in {"ped", "prop", "vehicle", "camera"}
 
 
-def _event_id(event: "CutTimelineEvent") -> int | None:
+def _event_id(event: CutTimelineEvent) -> int | None:
     if event.event_id is None:
         return None
     return int(event.event_id)
 
 
-def _event_name(event: "CutTimelineEvent") -> str:
+def _event_name(event: CutTimelineEvent) -> str:
     if event.event_name:
         return event.event_name
     event_id = _event_id(event)
     return get_cut_event_name(event_id) if event_id is not None else event.kind
 
 
-def _event_target_id(event: "CutTimelineEvent") -> int | None:
+def _event_target_id(event: CutTimelineEvent) -> int | None:
     if event.target_id is not None:
         return int(event.target_id)
     raw_id = event.event_payload.get("iObjectId")
     return int(raw_id) if isinstance(raw_id, int) else None
 
 
-def _event_object_payload_id(event: "CutTimelineEvent") -> int | None:
+def _event_object_payload_id(event: CutTimelineEvent) -> int | None:
     value = event.payload.get("iObjectId")
     return int(value) if isinstance(value, int) else None
 
 
-def _event_object_id_list(event: "CutTimelineEvent") -> list[int]:
+def _event_object_id_list(event: CutTimelineEvent) -> list[int]:
     value = event.payload.get("iObjectIdList")
     if not isinstance(value, list):
         return []
@@ -134,11 +134,11 @@ def _find_non_finite(value: Any, path: str) -> list[str]:
     return _find_non_finite(fields, path) if isinstance(fields, dict) else []
 
 
-def _events_by_name(scene: "CutScene", name: str) -> list["CutTimelineEvent"]:
+def _events_by_name(scene: CutScene, name: str) -> list[CutTimelineEvent]:
     return [event for event in scene.timeline if _event_name(event) == name]
 
 
-def _has_loaded_model(scene: "CutScene", object_id: int, time: float) -> bool:
+def _has_loaded_model(scene: CutScene, object_id: int, time: float) -> bool:
     loaded = False
     events = sorted(
         (
@@ -158,7 +158,7 @@ def _has_loaded_model(scene: "CutScene", object_id: int, time: float) -> bool:
     return loaded
 
 
-def _active_animation_dicts(scene: "CutScene", time: float) -> set[str]:
+def _active_animation_dicts(scene: CutScene, time: float) -> set[str]:
     active: set[str] = set()
     events = sorted(
         (
@@ -206,12 +206,12 @@ def _binding_int_field(binding: CutBinding, field_name: str) -> int:
     return int(value) if value not in (None, "") else 0
 
 
-def _has_segmented_clip(scene: "CutScene", clip_base: str, cut_index: int) -> bool:
+def _has_segmented_clip(scene: CutScene, clip_base: str, cut_index: int) -> bool:
     expected_name = f"{clip_base}-{cut_index}"
     return scene.get_clip(expected_name) is not None
 
 
-def _scene_flags(scene: "CutScene") -> CutSceneFlags:
+def _scene_flags(scene: CutScene) -> CutSceneFlags:
     if scene.cutscene_flags is not None:
         return unpack_cutscene_flags(scene.cutscene_flags)
     if scene.raw is not None:
@@ -225,7 +225,7 @@ def _scene_flags(scene: "CutScene") -> CutSceneFlags:
 
 
 def _validate_root(
-    scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool
+    scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
 ) -> None:
     if scene.duration is None:
         _issue(issues, "error", "cut.duration.missing", "CutScene duration is missing")
@@ -317,7 +317,7 @@ def _validate_root(
 
 
 def _validate_binary_capacities(
-    scene: "CutScene", issues: list[CutSceneValidationIssue]
+    scene: CutScene, issues: list[CutSceneValidationIssue]
 ) -> None:
     counts = {
         "objects": len(scene.bindings),
@@ -396,7 +396,7 @@ def _validate_section_list(
 
 
 def _validate_sections(
-    scene: "CutScene", issues: list[CutSceneValidationIssue]
+    scene: CutScene, issues: list[CutSceneValidationIssue]
 ) -> None:
     flags = _scene_flags(scene)
     modes = flags & (
@@ -475,7 +475,7 @@ def _validate_sections(
 
 
 def _validate_bindings(
-    scene: "CutScene", issues: list[CutSceneValidationIssue]
+    scene: CutScene, issues: list[CutSceneValidationIssue]
 ) -> None:
     ids = [binding.object_id for binding in scene.bindings]
     if len(ids) != len(set(ids)):
@@ -522,7 +522,7 @@ def _validate_bindings(
                 )
 
 
-def _validate_events(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_events(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
     duration = float(scene.duration or 0.0)
     bindings_by_id = scene.bindings_by_id
     for event in scene.timeline:
@@ -619,7 +619,7 @@ def _validate_events(scene: "CutScene", issues: list[CutSceneValidationIssue]) -
 
 
 def _validate_attachments(
-    scene: "CutScene", issues: list[CutSceneValidationIssue]
+    scene: CutScene, issues: list[CutSceneValidationIssue]
 ) -> None:
     parents: dict[int, int] = {}
     events = sorted(
@@ -663,7 +663,7 @@ def _validate_attachments(
             current = parents[current]
 
 
-def _validate_loading(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_loading(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
     load_model_events = _events_by_name(scene, "load_models")
     loaded_ids = {
         object_id
@@ -703,7 +703,7 @@ def _validate_loading(scene: "CutScene", issues: list[CutSceneValidationIssue]) 
 
 
 def _validate_cameras(
-    scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool
+    scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
 ) -> None:
     camera_events = _events_by_name(scene, "camera_cut")
     if strict and not camera_events:
@@ -790,7 +790,7 @@ def _validate_cameras(
 
 
 def _validate_animations(
-    scene: "CutScene", issues: list[CutSceneValidationIssue], *, strict: bool
+    scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
 ) -> None:
     load_anim_events = _events_by_name(scene, "load_anim_dict")
     set_anim_events = _events_by_name(scene, "set_anim")
@@ -944,7 +944,7 @@ def _validate_animations(
 
 
 def _validate_facial_animation(
-    scene: "CutScene", issues: list[CutSceneValidationIssue]
+    scene: CutScene, issues: list[CutSceneValidationIssue]
 ) -> None:
     for binding in scene.peds:
         if not isinstance(binding, CutPed):
@@ -985,7 +985,7 @@ def _validate_facial_animation(
             )
 
 
-def _validate_assets(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_assets(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
     for event_name in (
         "load_scene",
         "unload_scene",
@@ -1025,7 +1025,7 @@ def _validate_assets(scene: "CutScene", issues: list[CutSceneValidationIssue]) -
             )
 
 
-def _validate_flags(scene: "CutScene", issues: list[CutSceneValidationIssue]) -> None:
+def _validate_flags(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
     flags = _scene_flags(scene)
     if CutSceneFlags.IS_SECTIONED in flags:
         if (
@@ -1048,7 +1048,7 @@ def _validate_flags(scene: "CutScene", issues: list[CutSceneValidationIssue]) ->
 
 
 def validate_cut_scene(
-    scene: "CutScene", *, strict: bool = False
+    scene: CutScene, *, strict: bool = False
 ) -> list[CutSceneValidationIssue]:
     scene.build()
     issues: list[CutSceneValidationIssue] = []
@@ -1070,7 +1070,7 @@ def validate_cut_scene(
     return issues
 
 
-def assert_cut_scene_valid(scene: "CutScene", *, strict: bool = True) -> None:
+def assert_cut_scene_valid(scene: CutScene, *, strict: bool = True) -> None:
     issues = validate_cut_scene(scene, strict=strict)
     errors = [issue for issue in issues if issue.severity == "error"]
     if errors:

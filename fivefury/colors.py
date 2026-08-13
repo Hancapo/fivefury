@@ -45,15 +45,15 @@ CSS_NAMED_COLORS: dict[str, RGBA8] = {
 _FUNCTION_RE = re.compile(r"^(rgba?|hsla?)\((.*)\)$", re.IGNORECASE)
 
 
-def _clamp_byte(value: float | int) -> int:
+def _clamp_byte(value: float) -> int:
     return max(0, min(255, int(round(float(value)))))
 
 
-def _clamp_unit(value: float | int) -> float:
+def _clamp_unit(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def _alpha_byte(value: str | float | int) -> int:
+def _alpha_byte(value: str | float) -> int:
     if isinstance(value, str):
         text = value.strip()
         if text.endswith("%"):
@@ -66,7 +66,7 @@ def _alpha_byte(value: str | float | int) -> int:
     return _clamp_byte(number)
 
 
-def _rgb_component(value: str | float | int) -> int:
+def _rgb_component(value: str | float) -> int:
     if isinstance(value, str):
         text = value.strip()
         if text.endswith("%"):
@@ -195,11 +195,11 @@ def parse_css_argb(value: CssColor) -> int:
 
 __all__ = [
     "CSS_NAMED_COLORS",
-    "CssColor",
     "RGB8",
     "RGBA8",
-    "RGBUnit",
+    "CssColor",
     "RGBAUnit",
+    "RGBUnit",
     "parse_css_argb",
     "parse_css_rgb",
     "parse_css_rgb_unit",

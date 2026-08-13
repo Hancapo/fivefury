@@ -11,18 +11,18 @@ RBF_MAGIC = b"RBF0"
 @dataclasses.dataclass(slots=True)
 class RbfStructure:
     name: str
-    children: list["RbfNode"] = dataclasses.field(default_factory=list)
-    attributes: list["RbfNode"] = dataclasses.field(default_factory=list)
+    children: list[RbfNode] = dataclasses.field(default_factory=list)
+    attributes: list[RbfNode] = dataclasses.field(default_factory=list)
     pending_attributes: int = 0
 
-    def add_child(self, value: "RbfNode") -> None:
+    def add_child(self, value: RbfNode) -> None:
         if self.pending_attributes > 0:
             self.pending_attributes -= 1
             self.attributes.append(value)
         else:
             self.children.append(value)
 
-    def child_structures(self, name: str | None = None) -> list["RbfStructure"]:
+    def child_structures(self, name: str | None = None) -> list[RbfStructure]:
         return [
             child
             for child in self.children

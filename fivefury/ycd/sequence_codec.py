@@ -292,8 +292,7 @@ def _sanitize_quantize_channel(channel: YcdQuantizeFloatChannel, track: int | No
     offset = float(channel.offset)
     minimum = min(values)
     maximum = max(values)
-    if minimum < offset:
-        offset = minimum
+    offset = min(offset, minimum)
 
     quantum = _float32(channel.quantum)
     if abs(quantum) <= 1e-12:

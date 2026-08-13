@@ -7,7 +7,8 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator, Optional
+from typing import BinaryIO, Optional
+from collections.abc import Iterable, Iterator
 
 from ..crypto import (
     AES_ENCRYPTION,
@@ -91,13 +92,13 @@ class RpfArchive:
     name_shift: int = 0
     xcompressed: bool = False
     root: RpfDirectoryEntry = field(default_factory=RpfDirectoryEntry)
-    children: list["RpfArchive"] = field(default_factory=list)
-    parent: Optional["RpfArchive"] = None
-    parent_file_entry: Optional[RpfBinaryFileEntry] = None
+    children: list[RpfArchive] = field(default_factory=list)
+    parent: RpfArchive | None = None
+    parent_file_entry: RpfBinaryFileEntry | None = None
     crypto: GameCrypto | None = field(default=None, repr=False, compare=False)
     _source_bytes: bytes | None = field(default=None, repr=False, compare=False)
-    _source_file: Optional[Path] = field(default=None, repr=False, compare=False)
-    _source_handle: Optional[BinaryIO] = field(
+    _source_file: Path | None = field(default=None, repr=False, compare=False)
+    _source_handle: BinaryIO | None = field(
         default=None, init=False, repr=False, compare=False
     )
     _index: dict[str, RpfEntry] = field(
@@ -126,7 +127,7 @@ class RpfArchive:
         *,
         prefix: str = "",
         crypto: GameCrypto | None = None,
-    ) -> "RpfArchive":
+    ) -> RpfArchive:
         return cls(name=_archive_name(name), prefix=prefix, crypto=crypto)
 
     @classmethod
@@ -136,7 +137,7 @@ class RpfArchive:
         *,
         crypto: GameCrypto | None = None,
         load_nested: bool = False,
-    ) -> "RpfArchive":
+    ) -> RpfArchive:
         p = Path(path)
         archive = cls(name=p.name, source_path=str(p), crypto=crypto)
         archive._source_file = p
@@ -155,7 +156,7 @@ class RpfArchive:
         prefix: str = "",
         crypto: GameCrypto | None = None,
         load_nested: bool = False,
-    ) -> "RpfArchive":
+    ) -> RpfArchive:
         archive = cls(
             name=name or Path(source_path).name or "archive.rpf",
             source_path=source_path,
@@ -171,7 +172,7 @@ class RpfArchive:
     @classmethod
     def from_zip(
         cls, source: str | Path | bytes | BinaryIO, *, name: str = "archive"
-    ) -> "RpfArchive":
+    ) -> RpfArchive:
         if isinstance(source, (str, Path)):
             path = Path(source)
             if path.is_dir():
@@ -187,7 +188,7 @@ class RpfArchive:
     @classmethod
     def from_folder(
         cls, source_dir: str | Path, *, name: str = "archive"
-    ) -> "RpfArchive":
+    ) -> RpfArchive:
         path = Path(source_dir)
         return _directory_to_rpf(path, name=name or path.name)
 
@@ -211,7 +212,7 @@ class RpfArchive:
         for child in self.children:
             child.close()
 
-    def __enter__(self) -> "RpfArchive":
+    def __enter__(self) -> RpfArchive:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -385,7 +386,7 @@ class RpfArchive:
         *,
         recursive: bool = False,
         strict: bool = False,
-    ) -> "RpfArchive | None":
+    ) -> RpfArchive | None:
         """Load one nested RPF entry on demand."""
 
         if entry.child_archive is not None:
@@ -427,7 +428,7 @@ class RpfArchive:
         *,
         recursive: bool = True,
         strict: bool = False,
-    ) -> list["RpfArchive"]:
+    ) -> list[RpfArchive]:
         """Load pending nested archives and return the successfully parsed children."""
 
         for entry in self._nested_entries:
@@ -487,7 +488,7 @@ class RpfArchive:
 
         yield from walk(self.root)
 
-    def find_entry(self, path: str | Path) -> Optional[RpfEntry]:
+    def find_entry(self, path: str | Path) -> RpfEntry | None:
         key = _normalize_key(path)
         self._ensure_index()
         match = self._index.get(key)
@@ -624,7 +625,7 @@ class RpfArchive:
 
     def add_nested_archive(
         self, path: str | Path
-    ) -> tuple[RpfBinaryFileEntry, "RpfArchive"]:
+    ) -> tuple[RpfBinaryFileEntry, RpfArchive]:
         normalized = _normalize_path(path)
         parent_path, leaf = (
             normalized.rsplit("/", 1) if "/" in normalized else ("", normalized)
@@ -942,7 +943,7 @@ class RpfArchive:
             entry.graphics_flags = RpfResourcePageFlags()
             entry.file_size = len(payload)
             payload = _encode_large_resource_header_size(payload, entry.file_size)
-        stored_file_size = 0xFFFFFF if entry.file_size >= 0xFFFFFF else entry.file_size
+        stored_file_size = min(16777215, entry.file_size)
         size_bytes = int(stored_file_size).to_bytes(3, "little", signed=False)
         offset_bytes = bytearray(
             int(entry.file_offset).to_bytes(3, "little", signed=False)

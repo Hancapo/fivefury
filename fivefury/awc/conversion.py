@@ -105,7 +105,7 @@ def convert_audio_to_awc(
     sample_rate: int | None = None,
     channels: int | None = None,
     source_format: str | None = None,
-) -> "Awc":
+) -> Awc:
     from .structures import Awc
 
     awc = Awc.from_audio(stream_name or _default_stream_name(source), source, sample_rate=sample_rate, channels=channels, source_format=source_format)
@@ -120,8 +120,8 @@ def _default_stream_name(source: bytes | bytearray | memoryview | str | Path) ->
 
 
 __all__ = [
-    "DecodedAudio",
     "SUPPORTED_AUDIO_EXTENSIONS",
+    "DecodedAudio",
     "convert_audio_to_awc",
     "decode_audio",
 ]

@@ -130,7 +130,7 @@ class YndLink:
         flags1: int,
         flags2: int,
         link_length: int,
-    ) -> "YndLink":
+    ) -> YndLink:
         flags0 = int(flags0) & 0xFF
         flags1 = int(flags1) & 0xFF
         flags2 = int(flags2) & 0xFF
@@ -180,7 +180,7 @@ class YndLink:
     def link_length(self, value: int) -> None:
         self.distance = int(value) & 0xFF
 
-    def build(self) -> "YndLink":
+    def build(self) -> YndLink:
         self.area_id = None if self.area_id is None else (int(self.area_id) & 0xFFFF)
         self.node_id = int(self.node_id) & 0xFFFF
         if self.target_key is not None and not isinstance(self.target_key, Hashable):
@@ -225,7 +225,7 @@ class YndJunction:
         dim_y: int,
         min_z: float | None = None,
         max_z: float | None = None,
-    ) -> "YndJunction":
+    ) -> YndJunction:
         from .heightmaps import encode_junction_heightmap, quantize_junction_z
 
         dim_x = int(dim_x)
@@ -258,7 +258,7 @@ class YndJunction:
         max_z: float | None = None,
         fallback_z: float = 0.0,
         grid_spacing: float = 2.0,
-    ) -> "YndJunction":
+    ) -> YndJunction:
         from .heightmaps import build_junction_heightmap
 
         heightmap = build_junction_heightmap(
@@ -282,7 +282,7 @@ class YndJunction:
         self.heightmap = heightmap.data
         return self
 
-    def build(self) -> "YndJunction":
+    def build(self) -> YndJunction:
         self.position = (float(self.position[0]), float(self.position[1]))
         self.min_z = float(self.min_z)
         self.max_z = float(self.max_z)
@@ -344,7 +344,7 @@ class YndNode:
         unused2: int = 0,
         unused3: int = 0,
         unused4: int = 0,
-    ) -> "YndNode":
+    ) -> YndNode:
         flags0 = int(flags0) & 0xFF
         flags1 = int(flags1) & 0xFF
         flags2 = int(flags2) & 0xFF
@@ -478,7 +478,7 @@ class YndNode:
         self.qualifies_as_junction = True
         return self.junction
 
-    def build(self) -> "YndNode":
+    def build(self) -> YndNode:
         self.area_id = None if self.area_id is None else (int(self.area_id) & 0xFFFF)
         self.node_id = int(self.node_id) & 0xFFFF
         if self.key is not None and not isinstance(self.key, Hashable):
@@ -548,7 +548,7 @@ class Ynd:
         path: str | Path = "",
         game: str | GameTarget = GameTarget.GTA5,
         version: int = 1,
-    ) -> "Ynd":
+    ) -> Ynd:
         return cls(
             version=int(version),
             path=str(path) if path else "",
@@ -573,7 +573,7 @@ class Ynd:
     def junction_count(self) -> int:
         return sum(1 for node in self.nodes if node.junction is not None)
 
-    def build(self) -> "Ynd":
+    def build(self) -> Ynd:
         self.version = int(self.version)
         self.game = coerce_game_target(self.game)
         self.file_vft = int(self.file_vft) & 0xFFFFFFFF

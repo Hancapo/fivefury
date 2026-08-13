@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
 
 from ..bounds import Bound
 from ..ytd import Ytd
@@ -134,7 +135,7 @@ class YdrBuild:
         flags: int = 0,
         skeleton_binding: int | YdrSkeletonBinding | None = None,
         version: int = 165,
-    ) -> "YdrBuild":
+    ) -> YdrBuild:
         from .prepare import normalize_materials
 
         normalized_lod = coerce_lod(lod)
@@ -187,7 +188,7 @@ class YdrBuild:
         self.lights.append(light)
         return light
 
-    def clear_lights(self) -> "YdrBuild":
+    def clear_lights(self) -> YdrBuild:
         self.lights.clear()
         return self
 
