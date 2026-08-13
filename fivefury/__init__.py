@@ -68,6 +68,10 @@ from .cache import (
     ScanStats,
     TextureCatalog,
     TextureCatalogEntry,
+    TextureDictionaryGraph,
+    TextureGraphEdge,
+    TextureGraphIssue,
+    TextureGraphIssueSeverity,
     TextureRef,
 )
 from .gta5_cache import (
@@ -1602,7 +1606,11 @@ __all__ = [
     "TextureCatalog",
     "TextureCatalogEntry",
     "TextureDescriptor",
+    "TextureDictionaryGraph",
     "TextureFormat",
+    "TextureGraphEdge",
+    "TextureGraphIssue",
+    "TextureGraphIssueSeverity",
     "TextureUsage",
     "TimeArchetypeFlags",
     "TimeArchetype",

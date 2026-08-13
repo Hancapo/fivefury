@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Lazy texture dictionary catalogs with searchable texture metadata and deferred pixel loading.
+- Texture dictionary relationship graphs with source precedence, conflict, cycle, and missing-parent diagnostics.
 - Lazy ped outfit catalogs with on-demand component and prop resolution.
 
 ### Changed
