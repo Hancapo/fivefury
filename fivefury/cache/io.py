@@ -4,9 +4,9 @@ import importlib
 from pathlib import Path
 from typing import Any
 
-from ..awc import read_awc
-from ..cdr import read_cdr
-from ..cut import read_cut
+from ..awc.io import read_awc
+from ..cdr.reader import read_cdr
+from ..cut.pso import read_cut
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..gta5_cache import read_gta5_cache_y
 from ..gtxd import read_gtxd
@@ -14,7 +14,7 @@ from ..gxt2 import read_gxt2
 from ..hashing import _get_lut
 from ..heightmap import read_heightmap
 from ..metahash import MetaHash
-from ..rel import read_rel
+from ..rel.io import read_rel
 from ..resource import parse_rsc7
 from ..rpf import (
     RpfArchive,
@@ -23,17 +23,17 @@ from ..rpf import (
     _decompress_deflate,
     _normalize_key,
 )
-from ..vehiclemeta import read_vehicle_meta
-from ..water import read_water
+from ..vehiclemeta.resource import read_vehicle_meta
+from ..water.io import read_water
 from ..ybn import read_ybn
-from ..ycd import read_ycd
-from ..ydd import read_ydd
-from ..ydr import read_ydr
-from ..yed import read_yed
+from ..ycd.reader import read_ycd
+from ..ydd.reader import read_ydd
+from ..ydr.reader import read_ydr
 from ..yed.expression_sets import read_ped_expression_sets
-from ..yft import read_yft
-from ..ynd import read_ynd
-from ..ynv import read_ynv
+from ..yed.reader import read_yed
+from ..yft.reader import read_yft
+from ..ynd.reader import read_ynd
+from ..ynv.reader import read_ynv
 from ..ytd import read_ytd
 from .kinds import coerce_game_file_kind
 from .paths import split_archive_asset_path as _split_archive_asset_path
