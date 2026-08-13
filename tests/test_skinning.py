@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fivefury import compose_skeleton_matrices, skin_vertices
+from fivefury import SkinningBatch, compose_skeleton_matrices, skin_vertices
 
 
 def test_compose_skeleton_matrices_supports_out_of_order_hierarchies() -> None:
@@ -57,6 +57,44 @@ def test_skin_vertices_can_preserve_non_normalized_weights() -> None:
     )
 
     np.testing.assert_allclose(result.positions[0], (1.0, 0.0, 0.0))
+
+
+def test_skinning_batch_reuses_output_buffers() -> None:
+    matrices = np.repeat(np.eye(4, dtype=np.float32)[None, :, :], 2, axis=0)
+    matrices[0, 3, :3] = (2.0, 0.0, 0.0)
+    matrices[1, 3, :3] = (0.0, 4.0, 0.0)
+    batch = SkinningBatch(
+        [(1.0, 1.0, 1.0), (3.0, 2.0, 1.0)],
+        [(0, 1), (1, 0)],
+        [(1.0, 1.0), (0.0, 0.0)],
+        normals=[(0.0, 0.0, 2.0), (0.0, 3.0, 0.0)],
+    )
+    output = batch.buffers()
+
+    result = batch.skin(matrices, output=output)
+
+    assert result is output
+    np.testing.assert_allclose(output.positions[0], (2.0, 3.0, 1.0))
+    np.testing.assert_allclose(output.positions[1], (3.0, 2.0, 1.0))
+    assert output.normals is not None
+    np.testing.assert_allclose(output.normals[0], (0.0, 0.0, 1.0))
+    np.testing.assert_allclose(output.normals[1], (0.0, 3.0, 0.0))
+
+
+def test_skinning_batch_validates_reusable_outputs() -> None:
+    batch = SkinningBatch([(0.0, 0.0, 0.0)], [(0,)], [(1.0,)])
+    output = batch.buffers()
+    output.positions.flags.writeable = False
+
+    with pytest.raises(ValueError, match="writable and C-contiguous"):
+        batch.skin(np.eye(4, dtype=np.float32)[None, :, :], output=output)
+
+
+def test_skinning_batch_rejects_invalid_weighted_bone_indices() -> None:
+    batch = SkinningBatch([(0.0, 0.0, 0.0)], [(1,)], [(1.0,)])
+
+    with pytest.raises(ValueError, match="outside the 1 available matrices"):
+        batch.skin(np.eye(4, dtype=np.float32)[None, :, :])
 
 
 def test_skin_vertices_rejects_invalid_weighted_bone_indices() -> None:

@@ -19,7 +19,6 @@ from .authoring import (
     ValidationReport,
     validation_report,
 )
-from .skinning import SkinnedVertices, compose_skeleton_matrices, skin_vertices
 from .awc import (
     AWC_CHUNK_FIELD_MASK,
     AWC_DEFAULT_FLAGS,
@@ -567,6 +566,12 @@ from .rpf import (
     rpf_to_folder,
     rpf_to_zip,
     zip_to_rpf,
+)
+from .skinning import (
+    SkinnedVertices,
+    SkinningBatch,
+    compose_skeleton_matrices,
+    skin_vertices,
 )
 from .texture import BCFormat
 from .vehiclemeta import (
@@ -1664,6 +1669,8 @@ __all__ = [
     "ShaderLayoutDefinition",
     "ShaderLibrary",
     "ShaderParameterDefinition",
+    "SkinnedVertices",
+    "SkinningBatch",
     "SpawnPointExtension",
     "SpawnPointOverrideExtension",
     "SwayableEffectExtension",
@@ -2039,6 +2046,7 @@ __all__ = [
     "coerce_yft_physics_bound_profile",
     "collision_room_ids",
     "compose_local_transform",
+    "compose_skeleton_matrices",
     "compute_glass_bounds_offsets",
     "compute_glass_pane_geometry",
     "convert_audio_to_awc",
@@ -2251,7 +2259,6 @@ __all__ = [
     "save_ytyp",
     "scan_yft_corpus",
     "scene_to_cut",
-    "skin_vertices",
     "set_bound_from_render_geometry",
     "set_collision_room",
     "set_ped_drawable_cloth",
@@ -2262,8 +2269,7 @@ __all__ = [
     "skeleton_bone_flag_names",
     "skeleton_skinning_matrices",
     "skeleton_skinning_transforms",
-    "compose_skeleton_matrices",
-    "SkinnedVertices",
+    "skin_vertices",
     "sphere_radius_from_vertices",
     "split_ps3_rsc7_sections",
     "subtitle_cues_from_text",
