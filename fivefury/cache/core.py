@@ -36,6 +36,7 @@ from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name
 from .paths import path_stem as _path_stem
 from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes
+from .textures import TextureCatalog
 from .views import (
     AssetRecord,
     ScanStats,
@@ -99,6 +100,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     _kind_dict_views: dict[int, _KindHashRecordMap] = field(default_factory=dict, init=False, repr=False)
     _archetype_view: _ArchetypeMap | None = field(default=None, init=False, repr=False)
     _texture_parent_view: _TextureParentMap | None = field(default=None, init=False, repr=False)
+    _texture_catalog: TextureCatalog | None = field(default=None, init=False, repr=False)
     _kind_counts_view: _KindCountsView | None = field(default=None, init=False, repr=False)
     _view_generation: int = field(default=0, init=False, repr=False)
     _ped_outfit_catalog_cache: dict[tuple[int, int, int], Any] = field(
@@ -167,6 +169,8 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._kind_dict_views.clear()
         self._archetype_view = None
         self._texture_parent_view = None
+        if self._texture_catalog is not None:
+            self._texture_catalog.clear()
         self._kind_counts_view = None
 
     def _close_runtime_archives(self) -> None:
@@ -292,6 +296,15 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     @property
     def TxdParentDict(self) -> Mapping[int, int]:
         return self.texture_parent_dict
+
+    @property
+    def texture_catalog(self) -> TextureCatalog:
+        if self._texture_catalog is None:
+            self._texture_catalog = TextureCatalog(self)
+        return self._texture_catalog
+
+    def build_texture_catalog(self, dictionaries: Any | None = None) -> TextureCatalog:
+        return self.texture_catalog.build(dictionaries)
 
     @property
     def kind_counts(self) -> Mapping[GameFileType, int]:
