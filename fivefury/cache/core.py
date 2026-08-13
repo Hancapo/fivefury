@@ -81,6 +81,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     scan_workers: int | None = None
     max_open_archives: int = 8
     max_loaded_files: int = 256
+    max_cached_payload_bytes: int = 256 * 1024 * 1024
     register_resolver_names: bool = False
     verbose: bool = False
     archives: list[RpfArchive] = field(default_factory=list)
@@ -111,6 +112,12 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         init=False,
         repr=False,
     )
+    _payload_cache: OrderedDict[tuple[int, bool], bytes] = field(
+        default_factory=OrderedDict,
+        init=False,
+        repr=False,
+    )
+    _payload_cache_bytes: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.resolver is None:
@@ -215,6 +222,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._active_dlc_filter = None
         self._archive_lookup.clear()
         self._ped_outfit_catalog_cache.clear()
+        self._clear_payload_cache()
         self._invalidate_views()
 
     def clear_runtime_cache(self, *, loaded_files: bool = False) -> None:
@@ -224,8 +232,35 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._archive_lookup.clear()
         self._live_entries.clear()
         self._live_archives.clear()
+        self._clear_payload_cache()
         if loaded_files:
             self.files.clear()
+
+    def _clear_payload_cache(self) -> None:
+        self._payload_cache.clear()
+        self._payload_cache_bytes = 0
+
+    def _cached_payload(self, asset_id: int, logical: bool) -> bytes | None:
+        key = (int(asset_id), bool(logical))
+        payload = self._payload_cache.get(key)
+        if payload is not None:
+            self._payload_cache.move_to_end(key)
+        return payload
+
+    def _remember_payload(self, asset_id: int, logical: bool, payload: bytes) -> bytes:
+        limit = max(0, int(self.max_cached_payload_bytes))
+        if limit == 0 or len(payload) > limit:
+            return payload
+        key = (int(asset_id), bool(logical))
+        previous = self._payload_cache.pop(key, None)
+        if previous is not None:
+            self._payload_cache_bytes -= len(previous)
+        self._payload_cache[key] = payload
+        self._payload_cache_bytes += len(payload)
+        while self._payload_cache_bytes > limit:
+            _, evicted = self._payload_cache.popitem(last=False)
+            self._payload_cache_bytes -= len(evicted)
+        return payload
 
     def _log(self, message: str) -> None:
         if self.verbose:

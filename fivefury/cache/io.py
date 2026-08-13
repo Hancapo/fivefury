@@ -332,19 +332,22 @@ class GameFileCacheIOMixin:
         asset = self._coerce_asset(query)
         if asset is None:
             return None
+        cached = self._cached_payload(asset.id, logical)
+        if cached is not None:
+            return cached
         native = self._read_archive_asset_native(asset, standalone=logical)
         if native is not None:
             self._log(f"read bytes {asset.path} logical={logical}")
             if logical:
-                return self._logical_archive_bytes_from_standalone(asset, native)
-            return native
+                native = self._logical_archive_bytes_from_standalone(asset, native)
+            return self._remember_payload(asset.id, logical, native)
         entry = self._get_entry_for_asset(asset)
         if isinstance(entry, RpfFileEntry):
             self._log(f"read bytes {asset.path} logical={logical}")
-            return entry.read(logical=logical)
+            return self._remember_payload(asset.id, logical, entry.read(logical=logical))
         if asset.loose_path is not None:
             self._log(f"read bytes {asset.path} logical={logical}")
-            return asset.loose_path.read_bytes()
+            return self._remember_payload(asset.id, logical, asset.loose_path.read_bytes())
         return None
 
     def get_bytes(self, path: str | Path | AssetRecord | int | MetaHash, *, logical: bool = True) -> bytes | None:

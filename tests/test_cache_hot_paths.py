@@ -128,3 +128,23 @@ def test_default_loaded_file_cache_holds_large_dependency_sets() -> None:
     cache = GameFileCache()
 
     assert cache.max_loaded_files >= 256
+
+
+def test_payload_cache_reuses_reads_and_evicts_by_byte_budget(tmp_path: Path) -> None:
+    (tmp_path / "first.bin").write_bytes(b"first")
+    (tmp_path / "second.bin").write_bytes(b"second")
+    cache = GameFileCache(
+        tmp_path,
+        use_index_cache=False,
+        max_cached_payload_bytes=6,
+    )
+    cache.scan(load_keys=False)
+
+    first = cache.read_bytes("first.bin")
+    assert cache.read_bytes("first.bin") is first
+    assert cache.read_bytes("second.bin") == b"second"
+    assert list(cache._payload_cache) == [(cache.get_asset("second.bin").id, True)]
+
+    cache.clear_runtime_cache()
+    assert cache._payload_cache_bytes == 0
+    assert not cache._payload_cache

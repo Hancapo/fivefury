@@ -121,6 +121,7 @@ def build_ybn_bytes(
     system_flags = None
     graphics_flags = None
     system_data = b""
+    prepared_bvhs = {}
     for _ in range(16):
         root_pages_info = dataclasses.replace(
             pages_info,
@@ -131,6 +132,7 @@ def build_ybn_bytes(
             bound,
             root_pages_info=root_pages_info,
             file_vft_resolver=file_vft_resolver,
+            _prepared_bvhs=prepared_bvhs,
         )
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
