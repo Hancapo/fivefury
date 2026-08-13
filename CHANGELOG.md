@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-13
+
 ### Added
 
 - Batch vertex skinning for positions and normals.
