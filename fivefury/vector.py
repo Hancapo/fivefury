@@ -11,6 +11,20 @@ Quaternion = tuple[float, float, float, float]
 Aabb3 = tuple[Vector3, Vector3]
 
 
+def lerp(start: float, end: float, amount: float) -> float:
+    return float(start + ((end - start) * amount))
+
+
+def lerp_tuple(
+    start: tuple[float, ...],
+    end: tuple[float, ...],
+    amount: float,
+) -> tuple[float, ...]:
+    return tuple(
+        lerp(left, right, amount) for left, right in zip(start, end, strict=True)
+    )
+
+
 def vec3(value: Iterable[float]) -> Vector3:
     x, y, z = value
     return (float(x), float(y), float(z))
@@ -65,7 +79,9 @@ def vec_distance(left: Vector3, right: Vector3) -> float:
     return vec_length(vec_sub(left, right))
 
 
-def vec_normalize(value: Vector3, fallback: Vector3 = (0.0, 0.0, 1.0), *, epsilon: float = 1e-8) -> Vector3:
+def vec_normalize(
+    value: Vector3, fallback: Vector3 = (0.0, 0.0, 1.0), *, epsilon: float = 1e-8
+) -> Vector3:
     length = vec_length(value)
     if length <= epsilon:
         return fallback
@@ -81,7 +97,9 @@ def quat_rotate_vector(rotation: Quaternion, value: Vector3) -> Vector3:
     q = (x * inverse_length, y * inverse_length, z * inverse_length)
     uv = vec_cross(q, value)
     uuv = vec_cross(q, uv)
-    return vec_add(value, vec_add(vec_scale(uv, 2.0 * w * inverse_length), vec_scale(uuv, 2.0)))
+    return vec_add(
+        value, vec_add(vec_scale(uv, 2.0 * w * inverse_length), vec_scale(uuv, 2.0))
+    )
 
 
 def quat_normalize(
@@ -176,6 +194,13 @@ def quat_nlerp(start: Quaternion, end: Quaternion, amount: float) -> Quaternion:
     return quat_normalize(blended, fallback=fallback)
 
 
+def quat_canonicalize(value: Quaternion) -> Quaternion:
+    normalized = quat_normalize(value)
+    if normalized[3] < 0.0:
+        return tuple(-component for component in normalized)  # type: ignore[return-value]
+    return normalized
+
+
 def interpolate_vector4_many(
     starts: Iterable[Vector4],
     ends: Iterable[Vector4],
@@ -233,10 +258,17 @@ def aabb_from_center_size(center: Vector3, size: Vector3) -> Aabb3:
 
 
 def aabb_from_points(points: Iterable[Vector3]) -> Aabb3:
-    items = list(points)
+    items = points if isinstance(points, list) else list(points)
     if not items:
         raise ValueError("at least one point is required")
-    return vec_min(items), vec_max(items)
+    return _ffi.bounds_from_vertices(items)
+
+
+def sphere_radius_from_points(center: Vector3, points: Iterable[Vector3]) -> float:
+    items = points if isinstance(points, list) else list(points)
+    return (
+        float(_ffi.bounds_sphere_radius_from_vertices(center, items)) if items else 0.0
+    )
 
 
 def aabb_expand(bounds: Aabb3, padding: float) -> Aabb3:
@@ -278,7 +310,9 @@ def aabb_transform(
         for y in (minimum[1], maximum[1]):
             for z in (minimum[2], maximum[2]):
                 scaled = (x * scale[0], y * scale[1], z * scale[2])
-                points.append(vec_add(quat_rotate_vector(rotation, scaled), translation))
+                points.append(
+                    vec_add(quat_rotate_vector(rotation, scaled), translation)
+                )
     return aabb_from_points(points)
 
 
@@ -295,6 +329,10 @@ __all__ = [
     "aabb_radius",
     "aabb_size",
     "aabb_transform",
+    "interpolate_vector4_many",
+    "lerp",
+    "lerp_tuple",
+    "quat_canonicalize",
     "quat_from_euler_xyz",
     "quat_from_euler_xyz_raw",
     "quat_inverse",
@@ -304,6 +342,7 @@ __all__ = [
     "quat_normalize",
     "quat_rotate_vector",
     "quat_to_euler_xyz",
+    "sphere_radius_from_points",
     "vec3",
     "vec4",
     "vec4_map",

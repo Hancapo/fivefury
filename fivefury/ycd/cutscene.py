@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,7 +9,7 @@ from ..cut import CutFile, CutScene, read_cut
 from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
-from ..vector import quat_nlerp, quat_normalize
+from ..vector import lerp_tuple, quat_canonicalize, quat_nlerp
 from .model import (
     Ycd,
     YcdAnimation,
@@ -32,31 +33,23 @@ YCD_CUTSCENE_DEFAULT_FPS = 30.0
 YCD_CUTSCENE_DEFAULT_VERSION = 46
 YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT = 287
 
-def _lerp(a: float, b: float, alpha: float) -> float:
-    return float(a + ((b - a) * alpha))
-
-
-def _lerp_tuple(a: tuple[float, ...], b: tuple[float, ...], alpha: float) -> tuple[float, ...]:
-    return tuple(_lerp(va, vb, alpha) for va, vb in zip(a, b, strict=True))
-
-
-def _normalize_quaternion(value: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
-    normalized = quat_normalize(value)
-    if normalized[3] < 0.0:
-        return tuple(-component for component in normalized)  # type: ignore[return-value]
-    return normalized
-
 
 def _nlerp_quaternion(
     a: tuple[float, float, float, float],
     b: tuple[float, float, float, float],
     alpha: float,
 ) -> tuple[float, float, float, float]:
-    return _normalize_quaternion(quat_nlerp(a, b, alpha))
+    return quat_canonicalize(quat_nlerp(a, b, alpha))
 
 
-def _track_component_count(track: int | YcdAnimationTrack, format: int | YcdTrackFormat | None = None) -> int:
-    resolved = get_ycd_track_format(int(track)) if format is None else YcdTrackFormat(int(format))
+def _track_component_count(
+    track: int | YcdAnimationTrack, format: int | YcdTrackFormat | None = None
+) -> int:
+    resolved = (
+        get_ycd_track_format(int(track))
+        if format is None
+        else YcdTrackFormat(int(format))
+    )
     return {
         YcdTrackFormat.FLOAT: 1,
         YcdTrackFormat.VECTOR3: 3,
@@ -66,7 +59,9 @@ def _track_component_count(track: int | YcdAnimationTrack, format: int | YcdTrac
 
 def _coerce_tuple(value: object, component_count: int) -> tuple[float, ...]:
     if component_count == 1:
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
             if len(value) != 1:
                 raise ValueError(f"Expected 1 component, got {len(value)}")
             return (float(value[0]),)
@@ -77,7 +72,7 @@ def _coerce_tuple(value: object, component_count: int) -> tuple[float, ...]:
         raise ValueError(f"Expected {component_count} components, got {len(value)}")
     result = tuple(float(component) for component in value)
     if component_count == 4:
-        return _normalize_quaternion(result)  # type: ignore[arg-type]
+        return quat_canonicalize(result)  # type: ignore[arg-type]
     return result
 
 
@@ -90,7 +85,7 @@ def _interpolate_values(
 ) -> tuple[float, ...]:
     if is_quaternion:
         return _nlerp_quaternion(start, end, alpha)  # type: ignore[arg-type]
-    return _lerp_tuple(start, end, alpha)
+    return lerp_tuple(start, end, alpha)
 
 
 def _is_per_frame_sequence(value: object) -> bool:
@@ -99,7 +94,11 @@ def _is_per_frame_sequence(value: object) -> bool:
     if not value:
         return False
     first = value[0]
-    return isinstance(first, Mapping) or isinstance(first, Sequence) and not isinstance(first, (str, bytes, bytearray))
+    return (
+        isinstance(first, Mapping)
+        or isinstance(first, Sequence)
+        and not isinstance(first, (str, bytes, bytearray))
+    )
 
 
 def _sample_track_values(
@@ -118,7 +117,7 @@ def _sample_track_values(
             raise ValueError("Keyframe mapping cannot be empty")
         keyed = []
         for key, value in source.items():
-            frame = int(round(float(key) * fps))
+            frame = round(float(key) * fps)
             frame = min(max(frame, 0), frame_count - 1)
             keyed.append((frame, _coerce_tuple(value, component_count)))
         keyed.sort(key=lambda item: item[0])
@@ -131,11 +130,15 @@ def _sample_track_values(
         result = [deduped[0][1]] * frame_count
         if len(deduped) == 1:
             return list(result)
-        for (start_frame, start_value), (end_frame, end_value) in zip(deduped, deduped[1:]):
+        for (start_frame, start_value), (end_frame, end_value) in itertools.pairwise(
+            deduped
+        ):
             span = max(end_frame - start_frame, 1)
             for frame in range(start_frame, min(end_frame, frame_count - 1) + 1):
                 alpha = float(frame - start_frame) / float(span)
-                result[frame] = _interpolate_values(start_value, end_value, alpha, is_quaternion=is_quaternion)
+                result[frame] = _interpolate_values(
+                    start_value, end_value, alpha, is_quaternion=is_quaternion
+                )
         last_frame, last_value = deduped[-1]
         for frame in range(last_frame, frame_count):
             result[frame] = last_value
@@ -143,14 +146,18 @@ def _sample_track_values(
 
     if _is_per_frame_sequence(source):
         if len(source) != frame_count:  # type: ignore[arg-type]
-            raise ValueError(f"Expected {frame_count} per-frame samples, got {len(source)}")  # type: ignore[arg-type]
+            raise ValueError(
+                f"Expected {frame_count} per-frame samples, got {len(source)}"
+            )  # type: ignore[arg-type]
         return [_coerce_tuple(item, component_count) for item in source]  # type: ignore[arg-type]
 
     constant = _coerce_tuple(source, component_count)
     return [constant for _ in range(frame_count)]
 
 
-def _make_quantize_channel(component_index: int, values: list[float]) -> YcdQuantizeFloatChannel:
+def _make_quantize_channel(
+    component_index: int, values: list[float]
+) -> YcdQuantizeFloatChannel:
     minimum = min(values)
     maximum = max(values)
     span = max(maximum - minimum, 0.0)
@@ -201,7 +208,12 @@ def _make_channels(
                 YcdStaticQuaternionChannel(
                     channel_type=YcdChannelType.STATIC_QUATERNION,
                     channel_index=0,
-                    value=(float(value[0]), float(value[1]), float(value[2]), float(value[3])),
+                    value=(
+                        float(value[0]),
+                        float(value[1]),
+                        float(value[2]),
+                        float(value[3]),
+                    ),
                 )
             ]
         return [
@@ -250,7 +262,11 @@ def _cutscene_track_sort_key(track_spec: YcdCutsceneTrack) -> tuple[int, int, in
         int(YcdAnimationTrack.MOVER_TRANSLATION): 2,
         int(YcdAnimationTrack.MOVER_ROTATION): 3,
     }
-    return (order.get(int(track_spec.track), 100 + int(track_spec.track)), int(track_spec.bone_id), int(track_spec.track))
+    return (
+        order.get(int(track_spec.track), 100 + int(track_spec.track)),
+        int(track_spec.bone_id),
+        int(track_spec.track),
+    )
 
 
 def _iter_sequence_sample_windows(
@@ -334,12 +350,20 @@ class YcdFacialTrackSamples:
 
 @dataclass(slots=True)
 class YcdFacialTrackSet:
-    blend_shapes: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    blend_shapes: Mapping[int, object | YcdFacialTrackSamples] = field(
+        default_factory=dict
+    )
     visemes: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
-    animated_normal_maps: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    animated_normal_maps: Mapping[int, object | YcdFacialTrackSamples] = field(
+        default_factory=dict
+    )
     controls: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
-    translations: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
-    rotations: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
+    translations: Mapping[int, object | YcdFacialTrackSamples] = field(
+        default_factory=dict
+    )
+    rotations: Mapping[int, object | YcdFacialTrackSamples] = field(
+        default_factory=dict
+    )
     scales: Mapping[int, object | YcdFacialTrackSamples] = field(default_factory=dict)
     tinting: object | YcdFacialTrackSamples | None = None
 
@@ -438,7 +462,9 @@ class YcdCutsceneBuilder:
 
         if isinstance(source, CutFile):
             cut = source
-            source_name = name or Path(getattr(cut, "path", "") or "cutscene").stem or "cutscene"
+            source_name = (
+                name or Path(getattr(cut, "path", "") or "cutscene").stem or "cutscene"
+            )
         else:
             source_path = Path(source)
             source_name = name or source_path.stem
@@ -446,8 +472,19 @@ class YcdCutsceneBuilder:
 
         root = cut.root
         duration = float(root.fields.get("fTotalDuration", 0.0))
-        camera_cuts = [float(value) for value in root.fields.get("cameraCutList", []) if float(value) > 0.0]
-        return cls(source_name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version, game=game)
+        camera_cuts = [
+            float(value)
+            for value in root.fields.get("cameraCutList", [])
+            if float(value) > 0.0
+        ]
+        return cls(
+            source_name,
+            duration=duration,
+            camera_cuts=camera_cuts,
+            fps=fps,
+            version=version,
+            game=game,
+        )
 
     def _normalize_camera_cuts(self, camera_cuts: Sequence[float]) -> list[float]:
         result: list[float] = []
@@ -468,15 +505,15 @@ class YcdCutsceneBuilder:
 
     @property
     def total_frames(self) -> int:
-        return max(int(round(self.duration * self.fps)) + 1, 1)
+        return max(round(self.duration * self.fps) + 1, 1)
 
     @property
     def sections(self) -> list[YcdCutsceneSection]:
         boundaries = [0.0, *self.camera_cuts, self.duration]
         sections: list[YcdCutsceneSection] = []
-        for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
-            start_frame = int(round(start * self.fps))
-            end_frame = int(round(end * self.fps))
+        for index, (start, end) in enumerate(itertools.pairwise(boundaries)):
+            start_frame = round(start * self.fps)
+            end_frame = round(end * self.fps)
             sections.append(
                 YcdCutsceneSection(
                     index=index,
@@ -506,11 +543,20 @@ class YcdCutsceneBuilder:
         format: int | YcdTrackFormat | None = None,
     ) -> YcdCutsceneBuilder:
         track_value = int(track)
-        track_format = get_ycd_track_format(track_value) if format is None else YcdTrackFormat(int(format))
+        track_format = (
+            get_ycd_track_format(track_value)
+            if format is None
+            else YcdTrackFormat(int(format))
+        )
         component_count = _track_component_count(track_value, track_format)
         clip = self._get_or_create_clip(name)
-        if any(existing.track == track_value and existing.bone_id == int(bone_id) for existing in clip.tracks):
-            raise ValueError(f"Clip '{name}' already has track {track_value} for bone_id {bone_id}")
+        if any(
+            existing.track == track_value and existing.bone_id == int(bone_id)
+            for existing in clip.tracks
+        ):
+            raise ValueError(
+                f"Clip '{name}' already has track {track_value} for bone_id {bone_id}"
+            )
         clip.tracks.append(
             YcdCutsceneTrack(
                 track=track_value,
@@ -574,7 +620,8 @@ class YcdCutsceneBuilder:
         mover_position: object | None = None,
         mover_rotation: object | None = None,
         bone_id: int = 0,
-        bones: Mapping[int, YcdCutsceneBoneAnimation | Mapping[str, object]] | None = None,
+        bones: Mapping[int, YcdCutsceneBoneAnimation | Mapping[str, object]]
+        | None = None,
     ) -> YcdCutsceneBuilder:
         if bones:
             if mover_position is None:
@@ -623,7 +670,9 @@ class YcdCutsceneBuilder:
         return value if value.endswith("_dual") else f"{value}_dual"
 
     @staticmethod
-    def _facial_samples(value: object | YcdFacialTrackSamples) -> tuple[object, int | YcdTrackFormat | None]:
+    def _facial_samples(
+        value: object | YcdFacialTrackSamples,
+    ) -> tuple[object, int | YcdTrackFormat | None]:
         if isinstance(value, YcdFacialTrackSamples):
             return value.samples, value.format
         return value, None
@@ -658,7 +707,13 @@ class YcdCutsceneBuilder:
         for track, values in mappings:
             for control_id, value in values.items():
                 samples, format = self._facial_samples(value)
-                self.add_track(target_name, track=track, samples=samples, bone_id=int(control_id), format=format)
+                self.add_track(
+                    target_name,
+                    track=track,
+                    samples=samples,
+                    bone_id=int(control_id),
+                    format=format,
+                )
         if facial.tinting is not None:
             samples, format = self._facial_samples(facial.tinting)
             self.add_track(
@@ -682,9 +737,19 @@ class YcdCutsceneBuilder:
         rotation: object | None = None,
     ) -> YcdCutsceneBuilder:
         if position is not None:
-            self.add_track(name, track=YcdAnimationTrack.BONE_TRANSLATION, samples=position, bone_id=bone_id)
+            self.add_track(
+                name,
+                track=YcdAnimationTrack.BONE_TRANSLATION,
+                samples=position,
+                bone_id=bone_id,
+            )
         if rotation is not None:
-            self.add_track(name, track=YcdAnimationTrack.BONE_ROTATION, samples=rotation, bone_id=bone_id)
+            self.add_track(
+                name,
+                track=YcdAnimationTrack.BONE_ROTATION,
+                samples=rotation,
+                bone_id=bone_id,
+            )
         return self
 
     def build_section(self, index: int) -> Ycd:
@@ -698,20 +763,26 @@ class YcdCutsceneBuilder:
             short_name = f"{clip_spec.name}-{output_index}"
             animation_hash = MetaHash(short_name)
             bone_ids: list[YcdAnimationBoneId] = []
-            track_windows: list[tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]] = []
+            track_windows: list[
+                tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]
+            ] = []
             sequence_limit = min(
                 YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
                 max(section.frame_count, 1),
             )
             sample_frame_limit = sequence_limit
-            uses_camera_tracks = any(_is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks)
+            uses_camera_tracks = any(
+                _is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks
+            )
             sorted_tracks = list(clip_spec.tracks)
             if not uses_camera_tracks:
                 # GTA cutscene YCDs group object tracks by semantic track id,
                 # then by bone id. The runtime is stricter than the parser here.
                 sorted_tracks.sort(key=_cutscene_track_sort_key)
             for track_spec in sorted_tracks:
-                frame_samples = track_spec.samples[section.start_frame : section.end_frame + 1]
+                frame_samples = track_spec.samples[
+                    section.start_frame : section.end_frame + 1
+                ]
                 if not frame_samples:
                     continue
                 bone = YcdAnimationBoneId(
@@ -720,10 +791,19 @@ class YcdCutsceneBuilder:
                     format=track_spec.format,
                 )
                 bone_ids.append(bone)
-                track_windows.append((track_spec, _iter_sequence_sample_windows(frame_samples, frame_limit=sample_frame_limit)))
+                track_windows.append(
+                    (
+                        track_spec,
+                        _iter_sequence_sample_windows(
+                            frame_samples, frame_limit=sample_frame_limit
+                        ),
+                    )
+                )
             if not track_windows:
                 continue
-            sequence_count = max((len(windows) for _, windows in track_windows), default=0)
+            sequence_count = max(
+                (len(windows) for _, windows in track_windows), default=0
+            )
             sequences: list[YcdSequence] = []
             for sequence_index in range(sequence_count):
                 anim_sequences: list[YcdAnimSequence] = []
@@ -736,7 +816,9 @@ class YcdCutsceneBuilder:
                     anim_sequences.append(
                         YcdAnimSequence(
                             bone_id=bone_ids[track_index],
-                            channels=_make_channels(frame_samples, track=_track_spec.track),
+                            channels=_make_channels(
+                                frame_samples, track=_track_spec.track
+                            ),
                         )
                     )
                 if not anim_sequences:
@@ -786,7 +868,9 @@ class YcdCutsceneBuilder:
             )
 
         ycd = Ycd(
-            header=ResourceHeader(version=self.version, system_flags=0, graphics_flags=0),
+            header=ResourceHeader(
+                version=self.version, system_flags=0, graphics_flags=0
+            ),
             clips=clips,
             animations=animations,
             game=self.game,
@@ -816,7 +900,9 @@ def build_cutscene_sections(
     *,
     fps: float = YCD_CUTSCENE_DEFAULT_FPS,
 ) -> list[YcdCutsceneSection]:
-    return YcdCutsceneBuilder("cutscene", duration=duration, camera_cuts=camera_cuts or [], fps=fps).sections
+    return YcdCutsceneBuilder(
+        "cutscene", duration=duration, camera_cuts=camera_cuts or [], fps=fps
+    ).sections
 
 
 def build_cutscene_ycds(
@@ -828,7 +914,14 @@ def build_cutscene_ycds(
     version: int = YCD_CUTSCENE_DEFAULT_VERSION,
     game: str | GameTarget = GameTarget.GTA5,
 ) -> YcdCutsceneBuilder:
-    return YcdCutsceneBuilder(name, duration=duration, camera_cuts=camera_cuts, fps=fps, version=version, game=game)
+    return YcdCutsceneBuilder(
+        name,
+        duration=duration,
+        camera_cuts=camera_cuts,
+        fps=fps,
+        version=version,
+        game=game,
+    )
 
 
 __all__ = [

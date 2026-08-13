@@ -4,7 +4,7 @@ import dataclasses
 from collections.abc import Sequence
 
 from .. import _native as _native_backend
-from ..vector import aabb_center
+from ..vector import aabb_center, aabb_from_points, sphere_radius_from_points
 from .model import (
     BoundAabb,
     BoundBVH,
@@ -17,7 +17,6 @@ from .model import (
     BoundTransform,
     BoundType,
 )
-
 
 MAX_BOUND_VERTICES_PER_CHILD = 30000
 MAX_BOUND_TRIANGLES_PER_CHILD = 32000
@@ -41,7 +40,7 @@ def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float
 
 
 def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
-    return _native_backend._bounds_from_vertices(vertices)
+    return aabb_from_points(vertices)
 
 
 def center_from_bounds(minimum: Vector3, maximum: Vector3) -> Vector3:
@@ -49,7 +48,7 @@ def center_from_bounds(minimum: Vector3, maximum: Vector3) -> Vector3:
 
 
 def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> float:
-    return _native_backend._bounds_sphere_radius_from_vertices(center, vertices)
+    return sphere_radius_from_points(center, vertices)
 
 
 def identity_bound_transform() -> BoundTransform:
@@ -72,7 +71,9 @@ def chunk_bound_triangles(
     max_vertices_per_child: int = MAX_BOUND_VERTICES_PER_CHILD,
     max_triangles_per_child: int = MAX_BOUND_TRIANGLES_PER_CHILD,
 ) -> list[BoundTriangleChunk]:
-    if triangle_material_indices is not None and len(triangle_material_indices) != len(triangles):
+    if triangle_material_indices is not None and len(triangle_material_indices) != len(
+        triangles
+    ):
         raise ValueError("triangle_material_indices length must match triangle count")
 
     native_chunks = _native_backend._bounds_chunk_triangles(
@@ -135,7 +136,9 @@ def build_geometry_bvh_from_chunk(
     minimum, maximum = bounds_from_vertices(chunk.vertices)
     center = center_from_bounds(minimum, maximum)
     radius = sphere_radius_from_vertices(center, chunk.vertices)
-    areas = _native_backend._bounds_indexed_triangle_areas(chunk.vertices, chunk.triangles)
+    areas = _native_backend._bounds_indexed_triangle_areas(
+        chunk.vertices, chunk.triangles
+    )
     polygons = [
         BoundPolygonTriangle(
             polygon_type=BoundPolygonType.TRIANGLE,
@@ -275,12 +278,12 @@ def build_bound_from_triangles(
 
 
 __all__ = [
-    "BoundTriangle",
-    "BoundTriangleChunk",
     "DEFAULT_BOUND_COMPOSITE_FLAGS",
     "DEFAULT_BOUND_MATERIAL",
     "MAX_BOUND_TRIANGLES_PER_CHILD",
     "MAX_BOUND_VERTICES_PER_CHILD",
+    "BoundTriangle",
+    "BoundTriangleChunk",
     "Vector3",
     "bounds_from_vertices",
     "build_bound_from_triangles",
