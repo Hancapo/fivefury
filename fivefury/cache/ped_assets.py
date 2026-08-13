@@ -40,4 +40,32 @@ def matching_ped_assets(
     return sorted(matches, key=lambda item: ped_asset_relevance(item, model_stem))
 
 
-__all__ = ["matching_ped_assets", "ped_asset_relevance"]
+def ped_assets_for_model(
+    assets: Iterable[AssetRecord],
+    model_stem: str,
+) -> tuple[AssetRecord, ...]:
+    """Filter and rank a ped asset set once before repeated stem matching."""
+    prefix = f"{model_stem}_"
+    matches = []
+    for asset in assets:
+        parts = asset.path.replace("\\", "/").lower().split("/")
+        if any(part == model_stem or part.startswith(prefix) for part in parts):
+            matches.append(asset)
+    return tuple(
+        sorted(matches, key=lambda item: ped_asset_relevance(item, model_stem))
+    )
+
+
+def first_matching_ped_asset(
+    assets: Iterable[AssetRecord],
+    pattern: re.Pattern[str],
+) -> AssetRecord | None:
+    return next((asset for asset in assets if pattern.match(asset.stem.lower())), None)
+
+
+__all__ = [
+    "first_matching_ped_asset",
+    "matching_ped_assets",
+    "ped_asset_relevance",
+    "ped_assets_for_model",
+]

@@ -250,7 +250,7 @@ class _ArchetypeMap(Mapping[int, Any]):
         self._generation = -1
         self._hash_to_archetype: dict[int, Any] = {}
         self._asset_hash_to_archetypes: dict[int, tuple[Any, ...]] = {}
-        self._asset_hash_to_textures: dict[int, tuple[int, ...]] = {}
+        self._asset_hash_to_textures: Mapping[int, tuple[int, ...]] = {}
         self._texture_generation = -1
 
     @staticmethod

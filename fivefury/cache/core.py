@@ -112,6 +112,11 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         init=False,
         repr=False,
     )
+    _ped_init_asset_index: Mapping[int, tuple[int, ...]] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
     _payload_cache: OrderedDict[tuple[int, bool], bytes] = field(
         default_factory=OrderedDict,
         init=False,
@@ -222,6 +227,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._active_dlc_filter = None
         self._archive_lookup.clear()
         self._ped_outfit_catalog_cache.clear()
+        self._ped_init_asset_index = None
         self._clear_payload_cache()
         self._invalidate_views()
 
