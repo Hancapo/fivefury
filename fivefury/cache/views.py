@@ -8,10 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from ..common import hash_value
 from ..gamefile import GameFileType
-from ..gtxd import Gtxd, read_gtxd
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
-from ..ymt import Ymt
 from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name
 from .paths import path_stem as _path_stem
@@ -295,70 +293,10 @@ class _TextureParentMap(Mapping[int, int]):
         self._generation = -1
         self._hash_to_parent: dict[int, int] = {}
 
-    def _add_relation(self, child: str, parent: str, mapping: dict[int, int]) -> None:
-        child_name = str(child).strip().lower()
-        parent_name = str(parent).strip().lower()
-        if not child_name or not parent_name:
-            return
-        mapping[hash_value(child_name)] = hash_value(parent_name)
-
-    def _load_gtxd_relations(self, gtxd: Gtxd, mapping: dict[int, int]) -> None:
-        for relationship in gtxd.relationships:
-            self._add_relation(relationship.child, relationship.parent, mapping)
-
-    def _load_parsed_relations(self, parsed: Any, mapping: dict[int, int]) -> bool:
-        if isinstance(parsed, Gtxd):
-            self._load_gtxd_relations(parsed, mapping)
-            return True
-        if isinstance(parsed, Ymt) and parsed.gtxd is not None:
-            self._load_gtxd_relations(parsed.gtxd, mapping)
-            return True
-        relationships = getattr(parsed, "txd_relationships", None)
-        if relationships is not None:
-            for relationship in relationships:
-                self._add_relation(
-                    relationship.child,
-                    relationship.parent,
-                    mapping,
-                )
-            return True
-        content = getattr(parsed, "content", None)
-        if content is not None and content is not parsed:
-            return self._load_parsed_relations(content, mapping)
-        return False
-
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
             return
-        hash_to_parent: dict[int, int] = {}
-        candidates = [*self._cache.iter_assets(kind=GameFileType.GTXD)]
-        candidates.extend(self._cache.find_assets("vehicles.meta"))
-        candidates.extend(self._cache.find_assets("peds.meta"))
-        candidates.extend(
-            asset
-            for asset in self._cache.iter_assets(kind=GameFileType.YMT)
-            if asset.stem.lower() == "gtxd"
-            or asset.stem.lower().endswith("_gtxd")
-        )
-        for asset in candidates:
-            data = self._cache.read_bytes(asset, logical=True)
-            if not data:
-                continue
-            parsed = self._cache.get_file(asset)
-            if parsed is not None and self._load_parsed_relations(parsed.parsed, hash_to_parent):
-                continue
-            text = data.decode("utf-8", errors="ignore")
-            if "<" not in text:
-                continue
-            try:
-                self._load_gtxd_relations(read_gtxd(text), hash_to_parent)
-            except Exception as exc:  # noqa: BLE001 - malformed metadata is optional
-                self._cache._log(
-                    f"skip texture-parent metadata {asset.path}: "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                continue
-        self._hash_to_parent = hash_to_parent
+        self._hash_to_parent = self._cache.texture_graph.parent_map()
         self._generation = self._cache._view_generation
 
     def __len__(self) -> int:

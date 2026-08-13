@@ -9,7 +9,7 @@ import pytest
 from fivefury.cache import GameFileCache
 from fivefury.common import hash_value
 from fivefury.gamefile import GameFileType, guess_game_file_type
-from fivefury.gtxd import read_gtxd
+from fivefury.gtxd import Gtxd, read_gtxd
 from fivefury.meta import Meta
 from fivefury.pso import (
     PsoBlockBuilder,
@@ -331,3 +331,54 @@ def test_texture_parent_dict_reads_gtxd_ymt_as_ymt() -> None:
         assert cache.texture_parent_dict.get(hash_value("child_a")) == hash_value(
             "shared_parent"
         )
+
+
+def test_texture_graph_preserves_conflicting_sources_and_selects_precedence(
+    tmp_path: Path,
+) -> None:
+    preferred = tmp_path / "mods" / "common" / "data" / "gtxd.meta"
+    fallback = tmp_path / "update" / "common" / "data" / "gtxd.meta"
+    preferred.parent.mkdir(parents=True)
+    fallback.parent.mkdir(parents=True)
+    Gtxd.from_mapping({"child": "preferred_parent"}).save(preferred)
+    Gtxd.from_mapping({"child": "fallback_parent"}).save(fallback)
+    stream = tmp_path / "stream"
+    stream.mkdir()
+    (stream / "preferred_parent.ytd").write_bytes(b"RSC7")
+    (stream / "fallback_parent.ytd").write_bytes(b"RSC7")
+
+    cache = GameFileCache(tmp_path, use_index_cache=False)
+    cache.scan(use_index_cache=False)
+    graph = cache.texture_graph
+
+    edge = graph.selected_edge("child")
+    assert edge is not None
+    assert edge.parent == "preferred_parent"
+    assert len(graph.edges_from("child")) == 2
+    assert any(issue.code == "conflicting_parents" for issue in graph.issues)
+    assert cache.texture_parent_dict[hash_value("child")] == hash_value(
+        "preferred_parent"
+    )
+
+
+def test_texture_graph_reports_cycles_and_supports_reverse_queries(tmp_path: Path) -> None:
+    metadata = tmp_path / "common" / "data" / "gtxd.meta"
+    metadata.parent.mkdir(parents=True)
+    Gtxd.from_mapping({"child_a": "child_b", "child_b": "child_a"}).save(metadata)
+    stream = tmp_path / "stream"
+    stream.mkdir()
+    (stream / "child_a.ytd").write_bytes(b"RSC7")
+    (stream / "child_b.ytd").write_bytes(b"RSC7")
+
+    cache = GameFileCache(tmp_path, use_index_cache=False)
+    cache.scan(use_index_cache=False)
+    graph = cache.texture_graph
+
+    assert [edge.parent for edge in graph.iter_chain("child_a")] == [
+        "child_b",
+        "child_a",
+    ]
+    assert graph.descendants("child_a") == (
+        hash_value("child_b"),
+    )
+    assert any(issue.code == "parent_cycle" for issue in graph.issues)
