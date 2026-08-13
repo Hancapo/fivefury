@@ -7,6 +7,18 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Assimp and Impasse mesh APIs have been replaced by Trimesh scene import.
+
+### Added
+
+- In-memory Trimesh scene conversion for YDR and YNV authoring.
+
+### Changed
+
+- Mesh files, materials, instances, transforms, UVs, and vertex colours use one shared Trimesh frontend.
+
 ## [0.4.0] - 2026-08-13
 
 ### Breaking Changes
