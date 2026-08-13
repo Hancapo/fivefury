@@ -406,6 +406,36 @@ def _ydr_pack_vertex_buffer(
     )
 
 
+def _ydr_decode_vertex_buffer(
+    data: bytes,
+    vertex_count: int,
+    stride: int,
+    flags: int,
+    types_value: int,
+    component_offsets: tuple[int, ...] | None,
+) -> dict[str, object]:
+    return _ffi.ydr_decode_vertex_buffer(
+        data,
+        int(vertex_count),
+        int(stride),
+        int(flags),
+        int(types_value),
+        component_offsets,
+    )
+
+
+def _ydr_split_mesh_indices(
+    indices: list[int],
+    vertex_count: int,
+    max_vertices: int,
+) -> list[tuple[list[int], list[int]]] | None:
+    return _ffi.ydr_split_mesh_indices(
+        indices,
+        int(vertex_count),
+        int(max_vertices),
+    )
+
+
 def _bounds_build_bvh(
     items: list[tuple[tuple[float, float, float], tuple[float, float, float], int]],
     fallback_minimum: tuple[float, float, float],

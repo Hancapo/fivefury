@@ -81,6 +81,8 @@ PyObject* mod_bounds_build_bvh(PyObject*, PyObject* args);
 PyObject* mod_bounds_indexed_triangle_areas(PyObject*, PyObject* args);
 PyObject* mod_bounds_collect_triangles(PyObject*, PyObject* args);
 PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args);
+PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args);
+PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args);
 PyObject* mod_resource_layout_sections(PyObject*, PyObject* args);
 PyObject* mod_resource_pack_block_sizes(PyObject*, PyObject* args);
 PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args);

@@ -560,44 +560,19 @@ def _build_split_mesh(mesh: YdrMeshInput, vertex_indices: Sequence[int], remappe
 
 
 def _split_mesh_by_vertex_limit(mesh: YdrMeshInput, *, max_vertices: int = _MAX_MESH_UNIQUE_VERTICES) -> list[YdrMeshInput]:
-    indices = [int(index) for index in mesh.indices]
-    if not indices:
+    if not mesh.indices:
         return [mesh]
-    if len(indices) % 3 != 0:
-        raise ValueError('YDR writer currently requires triangle list indices')
-    if max(indices, default=-1) >= len(mesh.positions):
-        raise ValueError('Mesh indices reference a vertex outside positions')
-    used_vertices = len(set(indices))
-    if used_vertices <= max_vertices and max(indices, default=0) <= 0xFFFF:
+    chunks = _native_backend._ydr_split_mesh_indices(
+        mesh.indices,
+        len(mesh.positions),
+        max_vertices,
+    )
+    if chunks is None:
         return [mesh]
-
-    split_meshes: list[YdrMeshInput] = []
-    current_lookup: dict[int, int] = {}
-    current_vertices: list[int] = []
-    current_indices: list[int] = []
-
-    def flush_current() -> None:
-        if current_indices:
-            split_meshes.append(_build_split_mesh(mesh, current_vertices, current_indices))
-
-    for base in range(0, len(indices), 3):
-        triangle = indices[base : base + 3]
-        new_vertices = [index for index in triangle if index not in current_lookup]
-        if current_indices and len(current_vertices) + len(new_vertices) > max_vertices:
-            flush_current()
-            current_lookup = {}
-            current_vertices = []
-            current_indices = []
-        for index in triangle:
-            mapped_index = current_lookup.get(index)
-            if mapped_index is None:
-                mapped_index = len(current_vertices)
-                current_lookup[index] = mapped_index
-                current_vertices.append(index)
-            current_indices.append(mapped_index)
-
-    flush_current()
-    return split_meshes or [mesh]
+    return [
+        _build_split_mesh(mesh, vertex_indices, remapped_indices)
+        for vertex_indices, remapped_indices in chunks
+    ]
 
 
 def _prepare_meshes(

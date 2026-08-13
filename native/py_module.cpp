@@ -47,6 +47,8 @@ PyMethodDef module_methods[] = {
     {"bounds_indexed_triangle_areas", mod_bounds_indexed_triangle_areas, METH_VARARGS, nullptr},
     {"bounds_collect_triangles", mod_bounds_collect_triangles, METH_VARARGS, nullptr},
     {"ydr_pack_vertex_buffer", mod_ydr_pack_vertex_buffer, METH_VARARGS, nullptr},
+    {"ydr_decode_vertex_buffer", mod_ydr_decode_vertex_buffer, METH_VARARGS, nullptr},
+    {"ydr_split_mesh_indices", mod_ydr_split_mesh_indices, METH_VARARGS, nullptr},
     {"resource_layout_sections", mod_resource_layout_sections, METH_VARARGS, nullptr},
     {"resource_pack_block_sizes", mod_resource_pack_block_sizes, METH_VARARGS, nullptr},
     {"awc_build_peak_values", mod_awc_build_peak_values, METH_VARARGS, nullptr},
