@@ -15,8 +15,8 @@ license = "Unlicense"
 license-files = ["LICENSE"]
 dependencies = [
   "miniaudio>=1.71",
-  "numpy>=1.26",
-  "trimesh>=4.12,<5",
+  "numpy>=2.4.6,<3",
+  "trimesh>=5.0.0,<6",
 ]
 
 [tool.setuptools]

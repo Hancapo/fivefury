@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ..numeric import Float32Array
 from .model import Matrix4, YdrBone, YdrSkeleton
 
 _PED_PROCEDURAL_SIBLING_COPIES = (
@@ -230,15 +231,12 @@ def skeleton_skinning_transforms(
     )
     if len(skeleton.transformations_inverted) == len(skeleton.bones):
         inverse_bind = [
-            _affine_matrix4(matrix)
-            for matrix in skeleton.transformations_inverted
+            _affine_matrix4(matrix) for matrix in skeleton.transformations_inverted
         ]
     else:
         rest_absolute = skeleton_absolute_transforms(skeleton)
         inverse_bind = []
-        for bone, absolute in zip(
-            skeleton.bones, rest_absolute, strict=True
-        ):
+        for bone, absolute in zip(skeleton.bones, rest_absolute, strict=True):
             inverse_bind.append(
                 _affine_matrix4(bone.inverse_bind_transform)
                 if bone.inverse_bind_transform is not None
@@ -253,17 +251,25 @@ def skeleton_skinning_transforms(
 def skeleton_absolute_matrices(
     skeleton: YdrSkeleton | None,
     *,
-    local_transforms: Sequence[Matrix4] | np.ndarray | None = None,
-) -> np.ndarray:
+    local_transforms: Sequence[Matrix4] | Float32Array | None = None,
+) -> Float32Array:
     """Return cumulative RAGE row-vector transforms as a NumPy matrix array."""
     if skeleton is None or not skeleton.bones:
         return np.empty((0, 4, 4), dtype=np.float32)
     if local_transforms is not None:
         if len(local_transforms) != len(skeleton.bones):
             raise ValueError("local transform count must match skeleton bone count")
-        local = np.asarray(local_transforms, dtype=np.float32).copy()
+        local = np.asarray(
+            local_transforms,
+            dtype=np.float32,
+            copy=True,
+        )
     elif len(skeleton.transformations) == len(skeleton.bones):
-        local = np.asarray(skeleton.transformations, dtype=np.float32).copy()
+        local = np.asarray(
+            skeleton.transformations,
+            dtype=np.float32,
+            copy=True,
+        )
     else:
         local = np.asarray(
             [compose_bone_local_transform(bone) for bone in skeleton.bones],
@@ -275,7 +281,7 @@ def skeleton_absolute_matrices(
     resolved = np.zeros(len(skeleton.bones), dtype=bool)
     resolving = np.zeros(len(skeleton.bones), dtype=bool)
 
-    def resolve(index: int) -> np.ndarray:
+    def resolve(index: int) -> Float32Array:
         if resolved[index]:
             return absolute[index]
         if resolving[index]:
@@ -299,28 +305,35 @@ def skeleton_absolute_matrices(
 def skeleton_skinning_matrices(
     skeleton: YdrSkeleton | None,
     *,
-    local_transforms: Sequence[Matrix4] | np.ndarray | None = None,
-) -> np.ndarray:
+    local_transforms: Sequence[Matrix4] | Float32Array | None = None,
+) -> Float32Array:
     """Return inverse-bind multiplied animated matrices without Python 4x4 loops."""
     if skeleton is None or not skeleton.bones:
         return np.empty((0, 4, 4), dtype=np.float32)
-    animated = skeleton_absolute_matrices(
-        skeleton, local_transforms=local_transforms
-    )
+    animated = skeleton_absolute_matrices(skeleton, local_transforms=local_transforms)
     if len(skeleton.transformations_inverted) == len(skeleton.bones):
         inverse_bind = np.asarray(
-            skeleton.transformations_inverted, dtype=np.float32
-        ).copy()
+            skeleton.transformations_inverted,
+            dtype=np.float32,
+            copy=True,
+        )
         inverse_bind[:, :3, 3] = 0.0
         inverse_bind[:, 3, 3] = 1.0
     else:
         rest = skeleton_absolute_matrices(skeleton)
-        inverse_bind = np.empty_like(rest)
-        for index, bone in enumerate(skeleton.bones):
-            inverse_bind[index] = (
-                np.asarray(_affine_matrix4(bone.inverse_bind_transform), np.float32)
-                if bone.inverse_bind_transform is not None
-                else np.linalg.inv(rest[index])
+        inverse_bind = np.linalg.inv(rest)
+        custom_indices = [
+            index
+            for index, bone in enumerate(skeleton.bones)
+            if bone.inverse_bind_transform is not None
+        ]
+        if custom_indices:
+            inverse_bind[custom_indices] = np.asarray(
+                [
+                    _affine_matrix4(skeleton.bones[index].inverse_bind_transform)
+                    for index in custom_indices
+                ],
+                dtype=np.float32,
             )
     return inverse_bind @ animated
 

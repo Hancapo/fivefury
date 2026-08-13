@@ -18,6 +18,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Changed
 
 - Mesh files, materials, instances, transforms, UVs, and vertex colours use one shared Trimesh frontend.
+- NumPy 2.4 and Trimesh 5 are now the supported dependency versions.
+- Mesh indices and material slots reject lossy numeric conversions.
+
+### Performance
+
+- Mesh transforms, normal and tangent generation, and skeleton matrix calculations use vectorized NumPy kernels.
 
 ## [0.4.0] - 2026-08-13
 

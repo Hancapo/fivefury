@@ -118,9 +118,7 @@ def test_skeleton_skinning_transforms_use_cumulative_inverse_bind_pose() -> None
             (0.0, 0.0, 2.0, 1.0),
         ),
     ]
-    animated_skin = skeleton_skinning_transforms(
-        skeleton, local_transforms=animated
-    )
+    animated_skin = skeleton_skinning_transforms(skeleton, local_transforms=animated)
     assert animated_skin[child.index][3] == (0.0, 0.0, 1.0, 1.0)
 
 
@@ -142,9 +140,7 @@ def test_composed_rotated_locals_preserve_the_serialized_rest_pose() -> None:
         for bone in skeleton.bones
     ]
 
-    skinning = skeleton_skinning_transforms(
-        skeleton, local_transforms=local
-    )
+    skinning = skeleton_skinning_transforms(skeleton, local_transforms=local)
 
     identity = (
         (1.0, 0.0, 0.0, 0.0),
@@ -189,19 +185,11 @@ def test_numpy_skeleton_matrices_match_scalar_transform_contract() -> None:
         rotation=(0.2588190451, 0.0, 0.0, 0.9659258263),
         translation=(0.0, 0.0, 1.0),
     )
-    animated = [
-        compose_bone_local_transform(bone) for bone in skeleton.bones
-    ]
-    animated[1] = compose_local_transform(
-        (0.0, 0.0, 2.0), skeleton.bones[1].rotation
-    )
+    animated = [compose_bone_local_transform(bone) for bone in skeleton.bones]
+    animated[1] = compose_local_transform((0.0, 0.0, 2.0), skeleton.bones[1].rotation)
 
-    scalar_absolute = skeleton_absolute_transforms(
-        skeleton, local_transforms=animated
-    )
-    scalar_skinning = skeleton_skinning_transforms(
-        skeleton, local_transforms=animated
-    )
+    scalar_absolute = skeleton_absolute_transforms(skeleton, local_transforms=animated)
+    scalar_skinning = skeleton_skinning_transforms(skeleton, local_transforms=animated)
 
     assert np.allclose(
         skeleton_absolute_matrices(skeleton, local_transforms=animated),
@@ -213,3 +201,20 @@ def test_numpy_skeleton_matrices_match_scalar_transform_contract() -> None:
         scalar_skinning,
         atol=1e-6,
     )
+
+
+def test_numpy_skinning_matrices_preserve_custom_inverse_bind() -> None:
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root", translation=(1.0, 2.0, 3.0))
+    root.inverse_bind_transform = (
+        (1.0, 0.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0, 0.0),
+        (0.0, 0.0, 1.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+    result = skeleton_skinning_matrices(skeleton)
+
+    expected = np.asarray(compose_bone_local_transform(root))
+    expected[3, 3] = 1.0
+    np.testing.assert_allclose(result[0], expected)

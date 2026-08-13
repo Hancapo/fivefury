@@ -9,6 +9,7 @@ import trimesh
 from trimesh.visual.material import MultiMaterial, PBRMaterial, SimpleMaterial
 
 from ...colors import RGBAUnit, parse_css_rgba_unit
+from ...numeric import Int64Array, int64_array
 from ...texture import Texture
 from ...ytd import TextureFormat, Ytd
 from ..build_types import YdrMaterialInput
@@ -46,7 +47,11 @@ def _texture_name(value: object) -> str | None:
         if not value:
             return None
         value = value[-1]
-    raw = value.decode("utf-8", errors="ignore") if isinstance(value, bytes) else str(value)
+    raw = (
+        value.decode("utf-8", errors="ignore")
+        if isinstance(value, bytes)
+        else str(value)
+    )
     cleaned = raw.strip().strip('"').replace("\\", "/")
     if not cleaned:
         return None
@@ -151,26 +156,28 @@ def _material_slots(mesh: trimesh.Trimesh) -> list[object | None]:
 
 def iter_material_parts(
     mesh: trimesh.Trimesh,
-) -> Iterator[tuple[object | None, int, numpy.ndarray | None]]:
+) -> Iterator[tuple[object | None, int, Int64Array | None]]:
     faces = numpy.asarray(mesh.faces)
     if faces.ndim != 2 or faces.shape[1] != 3 or len(faces) == 0:
         return
     materials = _material_slots(mesh)
     raw_face_materials = getattr(mesh.visual, "face_materials", None)
     face_materials = (
-        numpy.asarray(raw_face_materials, dtype=numpy.int64)
+        int64_array(raw_face_materials, name="face material slots")
         if raw_face_materials is not None
         else numpy.empty(0, dtype=numpy.int64)
     )
     if len(materials) == 1 or face_materials.shape != (len(faces),):
         yield materials[0], 0, None
         return
-    for slot in numpy.unique(face_materials):
+    invalid = face_materials[(face_materials < 0) | (face_materials >= len(materials))]
+    if len(invalid):
+        raise ValueError(
+            f"Mesh references material slot {int(invalid[0])}, but only {len(materials)} exist"
+        )
+
+    for slot in numpy.unique(face_materials, sorted=True):
         slot_index = int(slot)
-        if slot_index < 0 or slot_index >= len(materials):
-            raise ValueError(
-                f"Mesh references material slot {slot_index}, but only {len(materials)} exist"
-            )
         face_indices = numpy.flatnonzero(face_materials == slot_index)
         if len(face_indices):
             yield materials[slot_index], slot_index, face_indices
@@ -225,9 +232,13 @@ class MaterialRegistry:
     default_shader: str | YdrShader | YdrGen9Shader
     shader: str | YdrShader | YdrGen9Shader | None
     colours_as_textures: bool
-    materials: list[YdrMaterialInput] = dataclasses.field(default_factory=list, init=False)
+    materials: list[YdrMaterialInput] = dataclasses.field(
+        default_factory=list, init=False
+    )
     embedded_textures: Ytd | None = dataclasses.field(default=None, init=False)
-    _names: dict[tuple[object, ...], str] = dataclasses.field(default_factory=dict, init=False)
+    _names: dict[tuple[object, ...], str] = dataclasses.field(
+        default_factory=dict, init=False
+    )
     _used_material_names: set[str] = dataclasses.field(default_factory=set, init=False)
     _used_texture_names: set[str] = dataclasses.field(default_factory=set, init=False)
 
@@ -250,9 +261,15 @@ class MaterialRegistry:
 
         raw_name = getattr(material, "name", None)
         fallback = f"{geometry_name}_material_{slot}"
-        name = _make_unique_name(str(raw_name).strip() if raw_name else fallback, self._used_material_names)
+        name = _make_unique_name(
+            str(raw_name).strip() if raw_name else fallback, self._used_material_names
+        )
         parsed = _parse_material(material, name=name, fallback_colour=colour)
-        if self.colours_as_textures and parsed.diffuse_texture is None and parsed.diffuse_color is not None:
+        if (
+            self.colours_as_textures
+            and parsed.diffuse_texture is None
+            and parsed.diffuse_color is not None
+        ):
             texture_name = _make_unique_name(
                 f"{name.strip().lower().replace(' ', '_')}_colour",
                 self._used_texture_names,
@@ -260,9 +277,15 @@ class MaterialRegistry:
             parsed.diffuse_texture = texture_name
             if self.embedded_textures is None:
                 self.embedded_textures = Ytd()
-            self.embedded_textures.texture(_solid_colour_texture(texture_name, parsed.diffuse_color))
+            self.embedded_textures.texture(
+                _solid_colour_texture(texture_name, parsed.diffuse_color)
+            )
 
-        selected_shader = self.shader if self.shader is not None else _infer_shader(parsed, self.default_shader)
+        selected_shader = (
+            self.shader
+            if self.shader is not None
+            else _infer_shader(parsed, self.default_shader)
+        )
         self.materials.append(parsed.to_ydr_material(shader=selected_shader))
         self._names[key] = name
         return name

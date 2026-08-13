@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import io
 from collections.abc import Iterator
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import BinaryIO, TypeAlias
 
 import numpy
 import trimesh
+
+from .numeric import Float64Array, Int64Array, float64_rows, int64_array
 
 MeshSource: TypeAlias = (
     str
@@ -26,11 +29,26 @@ class MeshInstance:
     node_name: str
     geometry_name: str
     mesh: trimesh.Trimesh
-    transform: numpy.ndarray
+    transform: Float64Array
 
 
+@functools.cache
 def supported_mesh_formats() -> tuple[str, ...]:
     return tuple(sorted(str(value).lower() for value in trimesh.available_formats()))
+
+
+def mesh_vertices(mesh: trimesh.Trimesh) -> Float64Array:
+    return float64_rows(mesh.vertices, 3, name="mesh vertices")
+
+
+def mesh_triangles(mesh: trimesh.Trimesh) -> Int64Array:
+    raw = numpy.asarray(mesh.faces, copy=None)
+    if raw.ndim != 2 or raw.shape[1] != 3:
+        raise ValueError("mesh faces must be a triangle index array")
+    faces = int64_array(raw, name="mesh faces")
+    if faces.size and (int(faces.min()) < 0 or int(faces.max()) >= len(mesh.vertices)):
+        raise ValueError("mesh faces contain out-of-range vertex indices")
+    return faces
 
 
 def _normalize_file_type(value: str) -> str:
@@ -39,7 +57,9 @@ def _normalize_file_type(value: str) -> str:
 
 def _path_file_type(path: Path) -> str:
     name = path.name.lower()
-    matches = [value for value in supported_mesh_formats() if name.endswith(f".{value}")]
+    matches = [
+        value for value in supported_mesh_formats() if name.endswith(f".{value}")
+    ]
     if not matches:
         supported = ", ".join(supported_mesh_formats())
         raise ValueError(
@@ -85,7 +105,9 @@ def load_mesh_scene(
         )
     except NotImplementedError as exc:
         source_type = resolved_type or "unknown"
-        raise ValueError(f"Trimesh does not support mesh file type {source_type!r}") from exc
+        raise ValueError(
+            f"Trimesh does not support mesh file type {source_type!r}"
+        ) from exc
 
 
 def iter_mesh_instances(scene: trimesh.Scene) -> Iterator[MeshInstance]:
@@ -128,5 +150,7 @@ __all__ = [
     "iter_mesh_instances",
     "load_mesh_scene",
     "mesh_source_name",
+    "mesh_triangles",
+    "mesh_vertices",
     "supported_mesh_formats",
 ]

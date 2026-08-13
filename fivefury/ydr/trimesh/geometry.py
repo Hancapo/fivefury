@@ -4,19 +4,29 @@ import numpy
 import trimesh
 
 from ...colors import parse_css_rgba_unit
-from ...matrix import gta_source_transform, transform_normals, transform_positions
+from ...matrix import (
+    gta_source_transform,
+    transform_normal_array,
+    transform_position_array,
+)
+from ...mesh_source import mesh_triangles, mesh_vertices
+from ...numeric import Float64Array, Int64Array, tuple_rows
 from ..build_types import YdrMeshInput
 
 
 def _vertex_colours(
     mesh: trimesh.Trimesh,
-    vertex_indices: numpy.ndarray | None,
+    vertex_indices: Int64Array | None,
 ) -> list[tuple[float, float, float, float]] | None:
     visual = mesh.visual
     if not bool(getattr(visual, "defined", False)):
         return None
     raw = numpy.asarray(getattr(visual, "vertex_colors", []))
-    if raw.ndim != 2 or raw.shape[0] != len(mesh.vertices) or raw.shape[1] not in (3, 4):
+    if (
+        raw.ndim != 2
+        or raw.shape[0] != len(mesh.vertices)
+        or raw.shape[1] not in (3, 4)
+    ):
         return None
     if vertex_indices is not None:
         raw = raw[vertex_indices]
@@ -25,8 +35,8 @@ def _vertex_colours(
 
 def _source_vertex_normals(
     mesh: trimesh.Trimesh,
-    vertex_indices: numpy.ndarray | None,
-) -> numpy.ndarray | None:
+    vertex_indices: Int64Array | None,
+) -> Float64Array | None:
     cache = getattr(getattr(mesh, "_cache", None), "cache", None)
     if not isinstance(cache, dict) or "vertex_normals" not in cache:
         return None
@@ -38,34 +48,31 @@ def _source_vertex_normals(
 
 def mesh_to_ydr_input(
     mesh: trimesh.Trimesh,
-    transform: numpy.ndarray,
+    transform: Float64Array,
     material_name: str,
     *,
     default_colour: tuple[float, float, float, float] | None,
-    face_indices: numpy.ndarray | None = None,
+    face_indices: Int64Array | None = None,
 ) -> YdrMeshInput:
-    all_vertices = numpy.asarray(mesh.vertices, dtype=numpy.float64)
-    faces = numpy.asarray(mesh.faces, dtype=numpy.int64)
-    if all_vertices.ndim != 2 or all_vertices.shape[1] != 3 or not numpy.isfinite(all_vertices).all():
-        raise ValueError("Trimesh vertices must be a finite Nx3 array")
-    if faces.ndim != 2 or faces.shape[1] != 3:
-        raise ValueError("Trimesh faces must be a triangle index array")
-    if faces.size and (int(faces.min()) < 0 or int(faces.max()) >= len(all_vertices)):
-        raise ValueError("Trimesh faces contain out-of-range vertex indices")
+    all_vertices = mesh_vertices(mesh)
+    faces = mesh_triangles(mesh)
     if face_indices is None:
         vertex_indices = None
         vertices = all_vertices
     else:
         faces = faces[face_indices]
-        vertex_indices, inverse = numpy.unique(faces.reshape(-1), return_inverse=True)
-        faces = inverse.reshape((-1, 3))
+        vertex_indices, faces = numpy.unique(
+            faces,
+            return_inverse=True,
+            sorted=True,
+        )
         vertices = all_vertices[vertex_indices]
 
     combined_transform = gta_source_transform(transform)
-    positions = transform_positions(vertices, combined_transform)
+    position_rows = transform_position_array(vertices, combined_transform)
     normals_source = _source_vertex_normals(mesh, vertex_indices)
-    normals = (
-        transform_normals(normals_source, combined_transform)
+    normal_rows = (
+        transform_normal_array(normals_source, combined_transform)
         if normals_source is not None
         else None
     )
@@ -77,7 +84,9 @@ def mesh_to_ydr_input(
     if uv.ndim == 2 and uv.shape[0] == len(all_vertices) and uv.shape[1] >= 2:
         if vertex_indices is not None:
             uv = uv[vertex_indices]
-        texcoords = [[(float(value[0]), 1.0 - float(value[1])) for value in uv]]
+        uv = uv[:, :2].copy()
+        uv[:, 1] = 1.0 - uv[:, 1]
+        texcoords = [tuple_rows(uv, columns=2)]
     else:
         texcoords = [[(0.0, 0.0)] * len(vertices)]
 
@@ -85,10 +94,12 @@ def mesh_to_ydr_input(
     if colours is None and default_colour is not None:
         colours = [default_colour] * len(vertices)
     return YdrMeshInput(
-        positions=positions,
-        indices=[int(value) for value in faces.reshape(-1)],
+        positions=tuple_rows(position_rows, columns=3),
+        indices=faces.reshape(-1).tolist(),
         material=material_name,
-        normals=normals,
+        normals=(
+            tuple_rows(normal_rows, columns=3) if normal_rows is not None else None
+        ),
         texcoords=texcoords,
         colours0=colours,
     )
