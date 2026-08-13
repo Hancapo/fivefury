@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-13
+
 ### Breaking Changes
 
 - Assimp and Impasse mesh APIs have been replaced by Trimesh scene import.
@@ -23,7 +25,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- Vectorized NumPy kernels make mesh normal generation about 7x faster, tangent generation about 4x faster, mesh transforms about 1.9x faster, and skeleton matrix inversion about 11x faster.
+- Mesh normal generation is about 7x faster.
+- Mesh tangent generation is about 4x faster.
+- Mesh transforms are about 1.9x faster.
+- Skeleton matrix inversion is about 11x faster.
 
 ## [0.4.0] - 2026-08-13
 
