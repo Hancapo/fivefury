@@ -19,7 +19,7 @@ pip install fivefury
 
 FiveFury requires Python 3.11 or newer.
 
-Mesh import through `assimp_to_ydr(...)` and navmesh import through `obj_to_nav(...)` additionally require `impasse` and a native Assimp library available through the environment. The regular binary readers, writers, and builders do not require Assimp.
+Static mesh import uses Trimesh and accepts file paths, bytes, `trimesh.Trimesh`, and `trimesh.Scene` objects. Supported source formats depend on Trimesh; call `supported_mesh_formats()` to inspect them at runtime.
 
 ## Supported workflows
 
@@ -30,7 +30,7 @@ Mesh import through `assimp_to_ydr(...)` and navmesh import through `obj_to_nav(
 | World placement | `YMAP`, `YTYP` | Entities, physics dictionaries, MLO instances and definitions, archetypes, rooms, portals, entity sets, car generators, occluders, timecycle modifiers, and LOD lights |
 | Streaming metadata | `YMF`, `GTXD`, `gta5_cache_y.dat` | Map/type dependencies, MLO registration, texture-dictionary parent chains, runtime PSO validation, and cache generation from in-memory or loose assets |
 | Collision | `YBN` | Primitive, composite, geometry, and BVH bounds; materials, octants, MLO room IDs, and collision generation from triangle meshes |
-| Navigation | `YND`, `YNV` | Road nodes and links, area partitioning, junction heightmaps, navmesh sectors/polygons/portals, in-memory cell builders, and Assimp/OBJ conversion |
+| Navigation | `YND`, `YNV` | Road nodes and links, area partitioning, junction heightmaps, navmesh sectors/polygons/portals, in-memory cell builders, and Trimesh conversion |
 | World data | `heightmap.dat`, `water.xml` | Quantized height grids, row RLE, water masks and queries, water surfaces, wave quads, and calming regions |
 | Animation | `YCD`, `YED` | Skeletal, object, UV, camera, root-motion, and bone-scale tracks; clip dictionaries; expression dictionaries and spring data |
 | Cutscenes | `.cut`, `.cuts` | Binary cutscene read/write, declarative scene authoring, validation, YCD section generation, and a readable CutScript round-trip format |
@@ -46,10 +46,10 @@ Additional discovery support is available for embedded `YPT` texture dictionarie
 Target-aware APIs use `GameTarget` instead of loose version labels:
 
 ```python
-from fivefury import GameTarget, YdrGen9Shader, assimp_to_ydr
+from fivefury import GameTarget, YdrGen9Shader, trimesh_to_ydr
 
-assimp_to_ydr(
-    "source/prop.fbx",
+trimesh_to_ydr(
+    "source/prop.glb",
     "stream/prop.ydr",
     game=GameTarget.GTA5_ENHANCED,
     shader=YdrGen9Shader.DEFAULT,

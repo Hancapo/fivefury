@@ -1,4 +1,3 @@
-from .assimp import AssimpMaterial, AssimpScene, assimp_to_ydr, read_assimp_scene
 from .build_types import (
     YdrBuild,
     YdrMaterialInput,
@@ -100,11 +99,10 @@ from .transforms import (
     skeleton_skinning_matrices,
     skeleton_skinning_transforms,
 )
+from .trimesh import TrimeshMaterial, TrimeshScene, read_trimesh_scene, trimesh_to_ydr
 
 __all__ = [
     "YDR_BONE_ANIMATABLE_FLAGS",
-    "AssimpMaterial",
-    "AssimpScene",
     "ColorChannel",
     "Gen9ShaderAdaptation",
     "RadialBoneRigRule",
@@ -117,6 +115,8 @@ __all__ = [
     "ShaderLayoutDefinition",
     "ShaderLibrary",
     "ShaderParameterDefinition",
+    "TrimeshMaterial",
+    "TrimeshScene",
     "Ydr",
     "YdrBone",
     "YdrBoneFlagName",
@@ -156,7 +156,6 @@ __all__ = [
     "YdrValidationIssue",
     "adapt_shader_to_gen9",
     "apply_ped_procedural_bone_fallbacks",
-    "assimp_to_ydr",
     "build_bound_from_render_geometry",
     "build_material_descriptor",
     "build_ydr_bytes",
@@ -178,9 +177,9 @@ __all__ = [
     "paint_vertices",
     "print_ydr_gen9_shader_info",
     "print_ydr_shader_info",
-    "read_assimp_scene",
     "read_gen9_shader_library",
     "read_shader_library",
+    "read_trimesh_scene",
     "read_ydr",
     "resolve_gen9_shader_reference",
     "resolve_shader_reference",
@@ -193,5 +192,6 @@ __all__ = [
     "skeleton_bone_flag_names",
     "skeleton_skinning_matrices",
     "skeleton_skinning_transforms",
+    "trimesh_to_ydr",
     "ydr_to_build",
 ]

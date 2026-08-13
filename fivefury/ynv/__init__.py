@@ -1,4 +1,3 @@
-from .assimp import assimp_to_ynvs, obj_to_nav
 from .authoring import (
     YNV_CELL_COUNT,
     YNV_CELL_SIZE,
@@ -47,6 +46,7 @@ from .runtime_headers import (
     YnvRuntimeProfile,
     get_ynv_runtime_profile,
 )
+from .trimesh import trimesh_to_ynvs
 from .writer import build_ynv_bytes, build_ynv_system_layout, save_ynv
 
 __all__ = [
@@ -83,7 +83,6 @@ __all__ = [
     "YnvSector",
     "YnvSectorData",
     "YnvSourcePolygon",
-    "assimp_to_ynvs",
     "build_ynv_bytes",
     "build_ynv_cell",
     "build_ynv_cells",
@@ -94,7 +93,7 @@ __all__ = [
     "get_ynv_file_coords",
     "get_ynv_runtime_profile",
     "identity_4x4",
-    "obj_to_nav",
     "read_ynv",
     "save_ynv",
+    "trimesh_to_ynvs",
 ]

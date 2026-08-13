@@ -3,10 +3,13 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+import numpy
 import pytest
+import trimesh
+from trimesh.visual.material import MultiMaterial, SimpleMaterial
+from trimesh.visual.texture import TextureVisuals
 
 from fivefury import (
-    AssimpScene,
     BoundSphere,
     BoundType,
     GameTarget,
@@ -32,13 +35,13 @@ from fivefury import (
     YdrSkeleton,
     YdrSkeletonBinding,
     Ytd,
-    assimp_to_ydr,
     calculate_bone_tag,
     calculate_skeleton_unknown_hashes,
     create_ydr,
-    read_assimp_scene,
+    read_trimesh_scene,
     read_ydr,
     skeleton_bone_flag_names,
+    trimesh_to_ydr,
 )
 from fivefury.resource import split_rsc7_sections
 from fivefury.ydr.gen9 import (
@@ -681,101 +684,44 @@ def test_unknown_shader_file_name_is_rejected() -> None:
         ).to_bytes()
 
 
-class _FakeMaterialProperty:
-    def __init__(self, key: str, data, semantic: int = 0) -> None:
-        self.key = key
-        self.data = data
-        self.semantic = semantic
-
-
-class _FakeMaterial:
-    def __init__(self, *properties: _FakeMaterialProperty) -> None:
-        self.properties = list(properties)
-
-
-class _FakeMesh:
-    def __init__(
-        self,
-        *,
-        vertices,
-        faces,
-        material,
-        normals=None,
-        tangents=None,
-        bitangents=None,
-        colors0=None,
-        texcoords0=None,
-        bones=None,
-    ) -> None:
-        self.vertices = list(vertices)
-        self.faces = [list(face) for face in faces]
-        self.material = material
-        self.normals = list(normals or [])
-        self.tangents = list(tangents or [])
-        self.bitangents = list(bitangents or [])
-        self.colors = [list(colors0)] + [None] * 7 if colors0 is not None else [None] * 8
-        self.texture_coords = [list(texcoords0)] + [None] * 7 if texcoords0 is not None else [None] * 8
-        self.bones = list(bones or [])
-
-
-class _FakeNode:
-    def __init__(self, *, meshes=None, children=None, transformation=None) -> None:
-        self.meshes = list(meshes or [])
-        self.children = list(children or [])
-        self.transformation = transformation or (
-            (1.0, 0.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0, 0.0),
-            (0.0, 0.0, 1.0, 0.0),
-            (0.0, 0.0, 0.0, 1.0),
-        )
-
-
-class _FakeScene:
-    def __init__(self, *, materials, meshes, root_node) -> None:
-        self.materials = list(materials)
-        self.meshes = list(meshes)
-        self.root_node = root_node
-
-
-def _make_fake_assimp_scene() -> _FakeScene:
-    material = _FakeMaterial(
-        _FakeMaterialProperty("?mat.name", "Facade"),
-        _FakeMaterialProperty("$tex.file", r"C:\textures\facade_d.dds", semantic=1),
-        _FakeMaterialProperty("$tex.file", r"C:\textures\facade_n.dds", semantic=6),
-        _FakeMaterialProperty("$tex.file", r"C:\textures\facade_s.dds", semantic=2),
+def _make_trimesh_scene(
+    *,
+    diffuse: tuple[int, int, int, int] = (255, 128, 64, 255),
+    textures: bool = True,
+) -> trimesh.Scene:
+    material_kwargs = (
+        {
+            "map_kd": r"C:\textures\facade_d.dds",
+            "map_bump": r"C:\textures\facade_n.dds",
+            "map_ks": r"C:\textures\facade_s.dds",
+        }
+        if textures
+        else {}
     )
-    mesh = _FakeMesh(
+    material = SimpleMaterial(name="Facade", diffuse=diffuse, **material_kwargs)
+    visual = TextureVisuals(
+        uv=numpy.array(((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))),
+        material=material,
+    )
+    mesh = trimesh.Trimesh(
         vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
         faces=((0, 1, 2),),
-        material=material,
-        normals=((0.0, 0.0, 1.0),) * 3,
-        tangents=((1.0, 0.0, 0.0),) * 3,
-        bitangents=((0.0, 1.0, 0.0),) * 3,
-        colors0=((1.0, 0.5, 0.25, 1.0),) * 3,
-        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        vertex_normals=((0.0, 0.0, 1.0),) * 3,
+        visual=visual,
+        process=False,
     )
-    node = _FakeNode(
-        meshes=[mesh],
-        transformation=(
-            (1.0, 0.0, 0.0, 2.0),
-            (0.0, 1.0, 0.0, 3.0),
-            (0.0, 0.0, 1.0, 4.0),
-            (0.0, 0.0, 0.0, 1.0),
-        ),
+    scene = trimesh.Scene()
+    scene.add_geometry(
+        mesh,
+        node_name="facade_node",
+        geom_name="facade_geometry",
+        transform=trimesh.transformations.translation_matrix((2.0, 3.0, 4.0)),
     )
-    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=node)
     return scene
 
 
-def test_read_assimp_scene_converts_fake_impasse_scene(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from fivefury.ydr import assimp as assimp_module
-
-    scene = _make_fake_assimp_scene()
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
-
-    source_path = tmp_path / "facade.obj"
-    source_path.write_bytes(b"fake")
-    imported = read_assimp_scene(source_path)
+def test_read_trimesh_scene_converts_native_scene() -> None:
+    imported = read_trimesh_scene(_make_trimesh_scene(), name="facade")
 
     assert imported.name == "facade"
     assert imported.materials[0].name == "Facade"
@@ -786,88 +732,130 @@ def test_read_assimp_scene_converts_fake_impasse_scene(monkeypatch: pytest.Monke
     assert imported.meshes[0].positions[0] == pytest.approx((2.0, -4.0, 3.0))
     assert imported.meshes[0].positions[1] == pytest.approx((3.0, -4.0, 3.0))
     assert imported.meshes[0].texcoords[0][2] == pytest.approx((0.0, 0.0))
-    assert imported.meshes[0].colours0[0] == pytest.approx((1.0, 0.5, 0.25, 1.0))
 
 
-def test_read_assimp_scene_can_convert_material_colours_to_embedded_textures(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_read_trimesh_scene_can_convert_material_colours_to_embedded_textures() -> None:
     pytest.importorskip("PIL")
     pytest.importorskip("texfury")
-    from fivefury.ydr import assimp as assimp_module
 
-    material = _FakeMaterial(
-        _FakeMaterialProperty("?mat.name", "FlatColor"),
-        _FakeMaterialProperty("$clr.diffuse", (0.25, 0.5, 0.75, 1.0)),
+    imported = read_trimesh_scene(
+        _make_trimesh_scene(diffuse=(64, 128, 191, 255), textures=False),
+        name="flat_colour",
+        material_colours_as_textures=True,
     )
-    mesh = _FakeMesh(
-        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-        faces=((0, 1, 2),),
-        material=material,
-        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-    )
-    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
-
-    source_path = tmp_path / "flat_colour.obj"
-    source_path.write_bytes(b"fake")
-
-    imported = read_assimp_scene(source_path, material_colours_as_textures=True)
 
     assert imported.embedded_textures is not None
     assert len(imported.embedded_textures.textures) == 1
     texture = imported.embedded_textures.textures[0]
-    assert texture.name == "flatcolor_colour"
+    assert texture.name == "facade_colour"
     assert texture.width == 4
     assert texture.height == 4
     assert texture.format == TextureFormat.BC1
     assert len(texture.data) == 8
-    assert imported.materials[0].textures["DiffuseSampler"] == "flatcolor_colour"
+    assert imported.materials[0].textures["DiffuseSampler"] == "facade_colour"
 
 
-@pytest.mark.parametrize("suffix", [".obj", ".fbx", ".x"])
-def test_read_assimp_scene_autodetects_supported_input_formats(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("suffix", ["obj", "ply", "stl"])
+def test_read_trimesh_scene_autodetects_native_formats(
     tmp_path: Path,
     suffix: str,
 ) -> None:
-    from fivefury.ydr import assimp as assimp_module
+    source_path = tmp_path / f"triangle.{suffix}"
+    payload = trimesh.creation.icosphere(subdivisions=1).export(file_type=suffix)
+    source_path.write_bytes(payload.encode() if isinstance(payload, str) else payload)
 
-    scene = _make_fake_assimp_scene()
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+    imported = read_trimesh_scene(source_path)
 
-    source_path = tmp_path / f"shared{suffix}"
+    assert imported.meshes
+    assert imported.name == "triangle"
+
+
+def test_read_trimesh_scene_rejects_unsupported_suffix(tmp_path: Path) -> None:
+    source_path = tmp_path / "shared.fbx"
     source_path.write_bytes(b"fake")
 
-    imported = read_assimp_scene(source_path)
-
-    assert isinstance(imported, AssimpScene)
-    assert imported.materials[0].textures["DiffuseSampler"] == "facade_d"
-    assert imported.materials[0].textures["BumpSampler"] == "facade_n"
-    assert imported.materials[0].textures["SpecSampler"] == "facade_s"
-    assert imported.meshes[0].positions[0] == pytest.approx((2.0, -4.0, 3.0))
+    with pytest.raises(ValueError, match="Trimesh does not support mesh source suffix"):
+        read_trimesh_scene(source_path)
 
 
-def test_read_assimp_scene_rejects_unsupported_suffix(tmp_path: Path) -> None:
-    source_path = tmp_path / "shared.3ds"
-    source_path.write_bytes(b"fake")
+def test_read_trimesh_scene_loads_typed_bytes() -> None:
+    payload = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
 
-    with pytest.raises(ValueError, match="Unsupported Assimp source suffix"):
-        read_assimp_scene(source_path)
+    imported = read_trimesh_scene(payload, file_type="obj", name="memory_triangle")
+
+    assert imported.name == "memory_triangle"
+    assert imported.meshes[0].indices == [0, 1, 2]
+    with pytest.raises(ValueError, match="file_type is required"):
+        read_trimesh_scene(payload)
 
 
-def test_assimp_to_ydr_roundtrip_uses_autodetected_input_format(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from fivefury.ydr import assimp as assimp_module
+def test_read_trimesh_scene_preserves_instances() -> None:
+    mesh = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+    scene = trimesh.Scene()
+    scene.add_geometry(mesh, node_name="left", geom_name="shared")
+    scene.graph.update(
+        frame_to="right",
+        frame_from=scene.graph.base_frame,
+        matrix=trimesh.transformations.translation_matrix((10.0, 0.0, 0.0)),
+        geometry="shared",
+    )
 
-    scene = _make_fake_assimp_scene()
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+    imported = read_trimesh_scene(scene, name="instances")
 
-    obj_path = tmp_path / "triangle.obj"
-    ydr_path = tmp_path / "triangle_obj.ydr"
-    obj_path.write_bytes(b"fake")
+    assert len(imported.meshes) == 2
+    minimum_x = sorted(min(position[0] for position in mesh.positions) for mesh in imported.meshes)
+    assert minimum_x == pytest.approx([-0.5, 9.5])
 
-    build = assimp_to_ydr(obj_path, ydr_path)
+
+def test_read_trimesh_scene_splits_face_materials() -> None:
+    materials = MultiMaterial(
+        [
+            SimpleMaterial(name="red", diffuse=(255, 0, 0, 255)),
+            SimpleMaterial(name="blue", diffuse=(0, 0, 255, 255)),
+        ]
+    )
+    mesh = trimesh.Trimesh(
+        vertices=((0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0)),
+        faces=((0, 1, 2), (1, 3, 2)),
+        vertex_normals=((0, 0, 1),) * 4,
+        visual=TextureVisuals(
+            uv=((0, 0), (1, 0), (0, 1), (1, 1)),
+            material=materials,
+            face_materials=(0, 1),
+        ),
+        process=False,
+    )
+
+    imported = read_trimesh_scene(mesh, name="materials")
+
+    assert [material.name for material in imported.materials] == ["red", "blue"]
+    assert [mesh.material for mesh in imported.meshes] == ["red", "blue"]
+    assert all(len(mesh.indices) == 3 for mesh in imported.meshes)
+    assert all(mesh.normals for mesh in imported.meshes)
+
+
+def test_read_trimesh_scene_uses_inverse_transpose_for_normals() -> None:
+    normal = (2**-0.5, 2**-0.5, 0.0)
+    mesh = trimesh.Trimesh(
+        vertices=((0, 0, 0), (1, 0, 0), (0, 0, 1)),
+        faces=((0, 1, 2),),
+        vertex_normals=(normal,) * 3,
+        process=False,
+    )
+    scene = trimesh.Scene()
+    scene.add_geometry(mesh, transform=numpy.diag((2.0, 1.0, 1.0, 1.0)))
+
+    imported = read_trimesh_scene(scene, name="scaled")
+
+    assert imported.meshes[0].normals[0] == pytest.approx(
+        (1.0 / 5**0.5, 0.0, 2.0 / 5**0.5)
+    )
+
+
+def test_trimesh_to_ydr_roundtrip_from_native_scene(tmp_path: Path) -> None:
+    ydr_path = tmp_path / "triangle.ydr"
+
+    build = trimesh_to_ydr(_make_trimesh_scene(), ydr_path, name="triangle")
     assert isinstance(build, YdrBuild)
     assert ydr_path.exists()
     ydr = read_ydr(ydr_path)
@@ -878,101 +866,64 @@ def test_assimp_to_ydr_roundtrip_uses_autodetected_input_format(monkeypatch: pyt
     assert ydr.meshes[0].indices == [0, 1, 2]
 
 
-def test_assimp_scene_to_ydr_accepts_enhanced_game_alias(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from fivefury.ydr import assimp as assimp_module
+def test_trimesh_to_ydr_fills_missing_uvs_and_normals(tmp_path: Path) -> None:
+    target = tmp_path / "box.ydr"
 
-    scene = _make_fake_assimp_scene()
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
+    trimesh_to_ydr(trimesh.creation.box(), target, name="box")
+    ydr = read_ydr(target)
 
-    obj_path = tmp_path / "triangle_scene.obj"
-    obj_path.write_bytes(b"fake")
-    imported = read_assimp_scene(obj_path, shader=YdrGen9Shader.DEFAULT)
+    assert ydr.meshes[0].normals
+    assert ydr.meshes[0].texcoords[0]
+    assert set(ydr.meshes[0].texcoords[0]) == {(0.0, 0.0)}
+
+
+def test_trimesh_scene_to_ydr_accepts_enhanced_game() -> None:
+    imported = read_trimesh_scene(
+        _make_trimesh_scene(),
+        name="triangle",
+        shader=YdrGen9Shader.DEFAULT,
+    )
     build = imported.to_ydr(game=GameTarget.GTA5_ENHANCED)
 
     assert build.version == 159
     assert build.materials[0].shader == YdrGen9Shader.DEFAULT
 
 
-def test_assimp_to_ydr_persists_embedded_colour_textures(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_trimesh_to_ydr_persists_embedded_colour_textures(tmp_path: Path) -> None:
     pytest.importorskip("PIL")
     pytest.importorskip("texfury")
-    from fivefury.ydr import assimp as assimp_module
-
-    material = _FakeMaterial(
-        _FakeMaterialProperty("?mat.name", "FlatColor"),
-        _FakeMaterialProperty("$clr.diffuse", (1.0, 0.0, 0.0, 0.5)),
-    )
-    mesh = _FakeMesh(
-        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-        faces=((0, 1, 2),),
-        material=material,
-        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-    )
-    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
-
-    source_path = tmp_path / "flat_colour.fbx"
     ydr_path = tmp_path / "flat_colour.ydr"
-    source_path.write_bytes(b"fake")
 
-    build = assimp_to_ydr(source_path, ydr_path, material_colours_as_textures=True)
+    build = trimesh_to_ydr(
+        _make_trimesh_scene(diffuse=(255, 0, 0, 128), textures=False),
+        ydr_path,
+        name="flat_colour",
+        material_colours_as_textures=True,
+    )
     ydr = read_ydr(ydr_path)
 
     assert build.embedded_textures is not None
     assert len(build.embedded_textures.textures) == 1
     assert ydr.embedded_textures is not None
-    assert ydr.embedded_textures.textures[0].name == "flatcolor_colour"
-    assert ydr.materials[0].texture_names == ["flatcolor_colour"]
+    assert ydr.embedded_textures.textures[0].name == "facade_colour"
+    assert ydr.materials[0].texture_names == ["facade_colour"]
 
 
-@pytest.mark.parametrize("suffix", [".obj", ".fbx", ".x"])
-def test_assimp_to_ydr_writes_enhanced_from_supported_inputs(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    suffix: str,
-) -> None:
-    from fivefury.ydr import assimp as assimp_module
+def test_trimesh_to_ydr_writes_enhanced(tmp_path: Path) -> None:
+    ydr_path = tmp_path / "enhanced.ydr"
 
-    material = _FakeMaterial(_FakeMaterialProperty("?mat.name", "Enhanced"))
-    mesh = _FakeMesh(
-        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-        faces=((0, 1, 2),),
-        material=material,
-        texcoords0=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    build = trimesh_to_ydr(
+        _make_trimesh_scene(textures=False),
+        ydr_path,
+        name="enhanced",
+        game=GameTarget.GTA5_ENHANCED,
+        shader=YdrGen9Shader.DEFAULT,
     )
-    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
-
-    source_path = tmp_path / f"enhanced{suffix}"
-    ydr_path = tmp_path / f"enhanced_{suffix[1:]}.ydr"
-    source_path.write_bytes(b"fake")
-
-    build = assimp_to_ydr(source_path, ydr_path, game=GameTarget.GTA5_ENHANCED, shader=YdrGen9Shader.DEFAULT)
     ydr = read_ydr(ydr_path)
 
     assert build.version == 159
     assert ydr.version == 159
     assert ydr.materials[0].resolved_shader_file_name == "default.sps"
-
-
-def test_read_assimp_scene_rejects_skinned_meshes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from fivefury.ydr import assimp as assimp_module
-
-    material = _FakeMaterial(_FakeMaterialProperty("?mat.name", "Skinned"))
-    mesh = _FakeMesh(
-        vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-        faces=((0, 1, 2),),
-        material=material,
-        bones=[object()],
-    )
-    scene = _FakeScene(materials=[material], meshes=[mesh], root_node=_FakeNode(meshes=[mesh]))
-    monkeypatch.setattr(assimp_module, "_read_impasse_scene", lambda source, processing=None: scene)
-
-    source_path = tmp_path / "skinned.fbx"
-    source_path.write_bytes(b"fake")
-
-    with pytest.raises(NotImplementedError, match="Skinned Assimp mesh import"):
-        read_assimp_scene(source_path)
 
 
 def test_writer_auto_splits_meshes_over_vertex_limit(tmp_path: Path) -> None:
