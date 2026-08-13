@@ -33,6 +33,7 @@ ext_modules = [
             "native/py_rpf.cpp",
             "native/py_vertex.cpp",
             "native/py_vertex_decode.cpp",
+            "native/py_skinning.cpp",
             "native/py_spatial_decode.cpp",
             "native/py_binary_document.cpp",
             "native/py_module.cpp",

@@ -58,6 +58,8 @@ PyMethodDef module_methods[] = {
     {"ydr_pack_vertex_buffer", mod_ydr_pack_vertex_buffer, METH_VARARGS, nullptr},
     {"ydr_decode_vertex_buffer", mod_ydr_decode_vertex_buffer, METH_VARARGS, nullptr},
     {"ydr_split_mesh_indices", mod_ydr_split_mesh_indices, METH_VARARGS, nullptr},
+    {"skin_compose_matrices", mod_skin_compose_matrices, METH_VARARGS, nullptr},
+    {"skin_vertices", mod_skin_vertices, METH_VARARGS, nullptr},
     {"bounds_decode_polygons", mod_bounds_decode_polygons, METH_VARARGS, nullptr},
     {"bounds_decode_bvh_records", mod_bounds_decode_bvh_records, METH_VARARGS, nullptr},
     {"ynv_decode_edge_list", mod_ynv_decode_edge_list, METH_VARARGS, nullptr},

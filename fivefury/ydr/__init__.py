@@ -89,6 +89,7 @@ from .shaders import (
     read_shader_library,
     resolve_shader_reference,
 )
+from ..skinning import SkinnedVertices, compose_skeleton_matrices, skin_vertices
 from .transforms import (
     apply_ped_procedural_bone_fallbacks,
     compose_bone_local_transform,
@@ -115,6 +116,7 @@ __all__ = [
     "ShaderLayoutDefinition",
     "ShaderLibrary",
     "ShaderParameterDefinition",
+    "SkinnedVertices",
     "TrimeshMaterial",
     "TrimeshScene",
     "Ydr",
@@ -165,6 +167,7 @@ __all__ = [
     "coerce_shader_name",
     "compose_bone_local_transform",
     "compose_local_transform",
+    "compose_skeleton_matrices",
     "create_ydr",
     "format_ydr_gen9_shader_info",
     "format_ydr_shader_info",
@@ -192,6 +195,7 @@ __all__ = [
     "skeleton_bone_flag_names",
     "skeleton_skinning_matrices",
     "skeleton_skinning_transforms",
+    "skin_vertices",
     "trimesh_to_ydr",
     "ydr_to_build",
 ]

@@ -482,6 +482,38 @@ def _ydr_split_mesh_indices(
     )
 
 
+def _skin_compose_matrices(
+    local_matrices: memoryview,
+    parent_indices: memoryview,
+    count: int,
+) -> bytearray:
+    return _ffi.skin_compose_matrices(local_matrices, parent_indices, int(count))
+
+
+def _skin_vertices(
+    positions: memoryview,
+    matrices: memoryview,
+    blend_indices: memoryview,
+    blend_weights: memoryview,
+    normals: memoryview | None,
+    vertex_count: int,
+    bone_count: int,
+    influence_count: int,
+    normalize_weights: bool,
+) -> tuple[bytearray, bytearray | None]:
+    return _ffi.skin_vertices(
+        positions,
+        matrices,
+        blend_indices,
+        blend_weights,
+        normals,
+        int(vertex_count),
+        int(bone_count),
+        int(influence_count),
+        bool(normalize_weights),
+    )
+
+
 def _bounds_decode_polygons(
     data: bytes,
     start: int,
