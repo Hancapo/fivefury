@@ -12,6 +12,15 @@ from .texture_graph import (
     TextureGraphIssue,
     TextureGraphIssueSeverity,
 )
+from .texture_resolution import (
+    TextureResolution,
+    TextureResolutionCandidate,
+    TextureResolutionIssue,
+    TextureResolutionSeverity,
+    TextureResolutionStatus,
+    TextureResolutionStep,
+    resolve_texture,
+)
 from .textures import TextureCatalog, TextureCatalogEntry
 from .views import AssetRecord, ScanStats
 
@@ -29,6 +38,13 @@ __all__ = [
     "TextureGraphIssue",
     "TextureGraphIssueSeverity",
     "TextureRef",
+    "TextureResolution",
+    "TextureResolutionCandidate",
+    "TextureResolutionIssue",
+    "TextureResolutionSeverity",
+    "TextureResolutionStatus",
+    "TextureResolutionStep",
     "_coerce_folder_prefixes",
     "_scan_archive_sources_batch",
+    "resolve_texture",
 ]

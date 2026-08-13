@@ -15,18 +15,22 @@
 
 #include "rpf_index.h"
 #include "rpf_scan.h"
+#include "texture_index.h"
 
 namespace fivefury_py {
 
 inline constexpr const char* INDEX_CAPSULE_NAME = "fivefury.CompactIndex";
 inline constexpr const char* CRYPTO_CAPSULE_NAME = "fivefury.NativeCryptoContext";
 inline constexpr const char* YED_PROGRAM_CAPSULE_NAME = "fivefury.YedProgram";
+inline constexpr const char* TEXTURE_INDEX_CAPSULE_NAME = "fivefury.TextureIndex";
 
 void index_capsule_destructor(PyObject* capsule);
 void crypto_capsule_destructor(PyObject* capsule);
+void texture_index_capsule_destructor(PyObject* capsule);
 
 fivefury_native::CompactIndex* require_index(PyObject* object);
 fivefury_native::NativeCryptoContext* require_crypto(PyObject* object);
+fivefury_native::TextureIndex* require_texture_index(PyObject* object);
 bool unicode_to_utf8(PyObject* object, std::string& out, const char* argument_name);
 PyObject* make_id_list(const std::vector<std::uint32_t>& ids);
 PyObject* serialize_index_state(const fivefury_native::CompactIndex& index);
@@ -60,6 +64,12 @@ PyObject* mod_index_import_state(PyObject*, PyObject* args);
 PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args);
 PyObject* mod_jenk_finalize_hash(PyObject*, PyObject* args);
 PyObject* mod_jenk_hash(PyObject*, PyObject* args);
+PyObject* mod_texture_index_new(PyObject*, PyObject*);
+PyObject* mod_texture_index_clear(PyObject*, PyObject* args);
+PyObject* mod_texture_index_count(PyObject*, PyObject* args);
+PyObject* mod_texture_index_add(PyObject*, PyObject* args);
+PyObject* mod_texture_index_find_texture(PyObject*, PyObject* args);
+PyObject* mod_texture_index_find_dictionary(PyObject*, PyObject* args);
 
 PyObject* mod_crypto_new(PyObject*, PyObject* args);
 PyObject* mod_crypto_can_decrypt(PyObject*, PyObject* args);
