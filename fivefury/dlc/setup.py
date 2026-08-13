@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..xml import (
-    add_items,
-    add_text,
-    add_value,
+    append_items,
+    append_text,
+    append_value,
     child_by_name,
     child_items,
     child_text,
@@ -50,8 +50,8 @@ class DlcContentChangeSetGroup:
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        add_text(element, "NameHash", self.name)
-        add_items(element, "ContentChangeSets", self.change_sets)
+        append_text(element, "NameHash", self.name)
+        append_items(element, "ContentChangeSets", self.change_sets)
         return element
 
     def include(self, *change_sets: str) -> DlcContentChangeSetGroup:
@@ -143,23 +143,23 @@ class DlcSetupData:
 
     def to_xml_element(self) -> ET.Element:
         root = ET.Element("SSetupData")
-        add_text(root, "deviceName", self.device_name)
-        add_text(root, "datFile", self.dat_file)
-        add_text(root, "timeStamp", self.time_stamp)
-        add_text(root, "nameHash", self.name_hash)
-        add_items(root, "contentChangeSets", self.content_change_sets)
+        append_text(root, "deviceName", self.device_name)
+        append_text(root, "datFile", self.dat_file)
+        append_text(root, "timeStamp", self.time_stamp)
+        append_text(root, "nameHash", self.name_hash)
+        append_items(root, "contentChangeSets", self.content_change_sets)
         groups = ET.SubElement(root, "contentChangeSetGroups")
         for group in self.content_change_set_groups:
             groups.append(group.to_xml_element())
-        add_text(root, "startupScript", self.startup_script)
-        add_value(root, "scriptCallstackSize", self.script_callstack_size)
-        add_text(root, "type", self.pack_type)
-        add_value(root, "order", self.order)
-        add_value(root, "minorOrder", self.minor_order)
-        add_value(root, "isLevelPack", self.is_level_pack)
-        add_text(root, "dependencyPackHash", self.dependency_pack_hash)
-        add_text(root, "requiredVersion", self.required_version)
-        add_value(root, "subPackCount", self.sub_pack_count)
+        append_text(root, "startupScript", self.startup_script)
+        append_value(root, "scriptCallstackSize", self.script_callstack_size)
+        append_text(root, "type", self.pack_type)
+        append_value(root, "order", self.order)
+        append_value(root, "minorOrder", self.minor_order)
+        append_value(root, "isLevelPack", self.is_level_pack)
+        append_text(root, "dependencyPackHash", self.dependency_pack_hash)
+        append_text(root, "requiredVersion", self.required_version)
+        append_value(root, "subPackCount", self.sub_pack_count)
         return root
 
     def to_xml_bytes(self) -> bytes:

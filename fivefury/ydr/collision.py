@@ -81,7 +81,7 @@ def set_bound_from_render_geometry(
     validation_errors = bound.validate()
     if validation_errors:
         raise ValueError(f"Generated bound validation failed: {validation_errors}")
-    ydr.set_bound(bound)
+    ydr.bound = bound
     return YdrCollisionStats(
         meshes=len(meshes),
         source_vertices=source_vertices,

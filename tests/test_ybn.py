@@ -362,7 +362,7 @@ def test_enhanced_ybn_runtime_headers_propagate_to_composite_children() -> None:
         angular_inertia=(0.0, 0.0, 0.0),
         volume=geometry.volume,
     )
-    root.add_child(geometry)
+    root.child(geometry)
     data = Ybn.from_bound(root, game=GameTarget.GTA5_ENHANCED).to_bytes()
     parsed = read_ybn(data)
 
@@ -634,7 +634,7 @@ def test_build_ybn_bytes_roundtrips_composite_bvh_when_child_count_is_six() -> N
     )
     for index in range(6):
         sphere = _make_sphere(center=(0.0, 0.0, 0.0), radius=0.25, material_index=7)
-        root.add_child(
+        root.child(
             sphere,
             transform=BoundTransform(
                 column1=(1.0, 0.0, 0.0),

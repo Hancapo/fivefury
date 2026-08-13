@@ -5,6 +5,7 @@ from .diagnostics import (
     DiagnosticSeverity,
     ValidationError,
     ValidationReport,
+    validation_report,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "ValidationReport",
     "asset_name",
     "canonical_asset_path",
+    "validation_report",
 ]

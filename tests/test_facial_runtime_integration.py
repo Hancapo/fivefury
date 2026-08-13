@@ -28,14 +28,14 @@ from fivefury.metahash import MetaHash
 
 def test_cut_ped_merged_facial_mode_resolves_dual_clip() -> None:
     animations = YcdCutsceneBuilder.create("facial_scene", duration=1.0)
-    animations.add_ped(
+    animations.ped(
         "actor",
         mover_position=(0.0, 0.0, 0.0),
         facial=YcdFacialTrackSet(controls={7: 0.5}),
     )
     scene = CutScene(scene_name="facial_scene", duration=1.0)
     scene.clip_dicts.extend(animations.build_ycds())
-    ped = scene.add_ped(
+    ped = scene.ped(
         "actor",
         animation_clip_base="actor",
         facial_animation=CutFacialAnimationMode.MERGED,
@@ -48,11 +48,11 @@ def test_cut_ped_merged_facial_mode_resolves_dual_clip() -> None:
 
 def test_cut_validation_rejects_non_runtime_facial_states() -> None:
     scene = CutScene(scene_name="facial_scene", duration=1.0)
-    separate = scene.add_ped("separate", animation_clip_base="separate")
+    separate = scene.ped("separate", animation_clip_base="separate")
     separate.found_face_animation = True
-    missing_base = scene.add_ped("0x12345678")
+    missing_base = scene.ped("0x12345678")
     missing_base.configure_facial_animation(CutFacialAnimationMode.MERGED)
-    missing_override = scene.add_ped("missing_override", animation_clip_base="override")
+    missing_override = scene.ped("missing_override", animation_clip_base="override")
     missing_override.override_face_animation = True
     missing_override.face_and_body_are_merged = True
 
@@ -63,7 +63,7 @@ def test_cut_validation_rejects_non_runtime_facial_states() -> None:
     assert "ped.face.override_filename.missing" in codes
 
     hashed = CutScene(scene_name="hashed_scene", duration=1.0)
-    hashed_ped = hashed.add_ped(
+    hashed_ped = hashed.ped(
         "0x87654321",
         anim_streaming_base=0x12345678,
     )

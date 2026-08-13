@@ -15,7 +15,7 @@ class RbfStructure:
     attributes: list[RbfNode] = dataclasses.field(default_factory=list)
     pending_attributes: int = 0
 
-    def add_child(self, value: RbfNode) -> None:
+    def consume(self, value: RbfNode) -> None:
         if self.pending_attributes > 0:
             self.pending_attributes -= 1
             self.attributes.append(value)
@@ -91,7 +91,7 @@ def read_rbf(source: bytes | str | Path) -> RbfStructure:
             offset += length
             if current is None:
                 raise ValueError("RBF bytes node outside a structure")
-            current.add_child(RbfBytes(value))
+            current.consume(RbfBytes(value))
             continue
 
         data_type = data[offset]
@@ -135,7 +135,7 @@ def _read_rbf_value(
     if data_type == 0:
         value = RbfStructure(name=name)
         if current is not None:
-            current.add_child(value)
+            current.consume(value)
             stack.append(current)
         offset += 4
         pending_attributes, offset = _read_i16(data, offset)
@@ -164,7 +164,7 @@ def _read_rbf_value(
         value = RbfValue(name=name, value=text)
     else:
         raise ValueError(f"Unsupported RBF data type 0x{data_type:02X}")
-    current.add_child(value)
+    current.consume(value)
     return value, offset
 
 

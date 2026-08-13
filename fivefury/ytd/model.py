@@ -96,7 +96,7 @@ class Ytd:
         except KeyError:
             return None
 
-    def add_texture(self, texture: Texture, *, replace: bool = True) -> Texture:
+    def texture(self, texture: Texture, *, replace: bool = True) -> Texture:
         existing = self.get_texture(texture.name)
         if existing is not None:
             if not replace:

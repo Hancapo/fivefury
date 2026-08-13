@@ -5,6 +5,7 @@ from typing import Any, TypeVar
 
 from ..game_target import GameTarget, coerce_game_target
 from .assets import AssetRef, AssetSet
+from .diagnostics import ValidationReport, validation_report
 
 AssetT = TypeVar("AssetT")
 
@@ -24,6 +25,9 @@ class BuildContext:
         if target is None and self.strict:
             return reference.require(self.assets)
         return target
+
+    def validate(self, asset: Any) -> ValidationReport:
+        return validation_report(asset, context=self)
 
 
 __all__ = ["BuildContext"]

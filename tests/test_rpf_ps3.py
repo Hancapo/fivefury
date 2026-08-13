@@ -61,7 +61,7 @@ class RpfPs3Tests(unittest.TestCase):
         from fivefury import create_rpf
 
         archive = create_rpf("compressed_text.rpf")
-        archive.add("data/readable.meta", b"<Meta>readable</Meta>", compress_binary=True)
+        archive.file("data/readable.meta", b"<Meta>readable</Meta>", compress_binary=True)
         packed = archive.to_bytes()
         reread = RpfArchive.from_bytes(packed, name="compressed_text.rpf")
         entry = reread.find_entry("data/readable.meta")

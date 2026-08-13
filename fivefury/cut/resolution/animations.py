@@ -72,5 +72,5 @@ def _resolve_ycds(
             continue
         ycds[section] = ycd
         assets[section] = asset
-        scene.attach_clip_dict(ycd)
+        scene.clip_dictionary(ycd)
     return ycds, assets

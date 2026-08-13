@@ -24,7 +24,7 @@ from fivefury.resource import ResourceHeader
 
 def _facial_ycd() -> Ycd:
     builder = YcdCutsceneBuilder.create("speech", duration=0.1, fps=30.0)
-    builder.add_ped(
+    builder.ped(
         "speaker",
         mover_position=(0.0, 0.0, 0.0),
         mover_rotation=(0.0, 0.0, 0.0, 1.0),

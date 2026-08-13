@@ -78,11 +78,11 @@ ymap.car_gen("sultan", (110.0, 205.0, 0.0), heading=90.0)
 ymap.save("example_map.ymap", auto_extents=True)
 
 archive = create_rpf("example_pack.rpf")
-archive.add("stream/example_map.ymap", ymap)
+archive.file("stream/example_map.ymap", ymap)
 archive.save("example_pack.rpf")
 ```
 
-Factories such as `entity(...)` and `car_gen(...)` append the new object to the owning `Ymap`. Prebuilt objects can instead be inserted with `ymap.add(item)` or directly through the corresponding typed collection.
+Factories such as `entity(...)` and `car_gen(...)` append the new object to the owning `Ymap`. Prebuilt objects are inserted directly through the corresponding typed collection, for example `ymap.entities.append(entity)`.
 
 ### Build a drawable from memory
 
@@ -164,11 +164,16 @@ cache.extract_asset_textures(asset, "out/textures")
 
 FiveFury keeps the authoring layer close to the data model:
 
-- Typed collections accept ordinary `append(...)` operations and most aggregate models also expose a generic `add(item)` dispatcher.
-- Semantic factories such as `entity(...)`, `car_gen(...)`, or `rectangle(...)` construct valid domain objects without stringly typed dictionaries.
-- `build()` derives normalized state, `validate()` reports structural issues, and `save()` performs binary serialization.
+- Typed collections use ordinary `append(...)` and `extend(...)` operations; there is no generic dispatcher that guesses the destination from a runtime type.
+- Singular noun factories such as `entity(...)`, `bone(...)`, `light(...)`, and `car_gen(...)` construct, register, and return one domain object.
+- One-to-one relationships use assignment, such as `ydr.bound = collision`; verbs are reserved for real operations such as `ensure_*`, `derive_*`, `normalize_*`, `bind_*`, and `resolve_*`.
+- `AssetRef`, `AssetSet`, and `BuildContext` provide one typed path for resolving dependencies between assets and selecting Legacy or Enhanced behavior.
+- `ValidationReport` carries stable diagnostic codes, severity, asset, and field paths instead of relying on unstructured output.
+- `build()` derives normalized state, `validate()` inspects it, and `save()` validates and performs atomic binary serialization.
 - Stable game-side values use enums for targets, shaders, LODs, flags, render masks, materials, and track formats.
 - Core writers use atomic replacement and reject known invalid references, ownership, pointers, or packed ranges before replacing the destination.
+
+The full naming, module-boundary, compatibility, performance, and review rules are normative in [`docs/STYLE_GUIDE.md`](docs/STYLE_GUIDE.md).
 
 ## Scope and guarantees
 

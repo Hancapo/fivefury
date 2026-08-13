@@ -12,9 +12,17 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - The incomplete `.cutxml` parser and scene-loading API have been removed.
 - Shared map extension models now live only in `fivefury.map_extensions`.
 - PSO value helpers moved from `fivefury.vehiclemeta.common` to `fivefury.pso_values`.
+- Generic `add(...)`, `add_*`, duplicate `create_*`, and ordinary `set_*` authoring aliases have been removed in favor of typed collections, singular noun factories, properties, and explicit domain verbs.
+- CUT and YCD builders now use `binding(...)`, `object(...)`, `track(...)`, `event(...)`, `ped(...)`, `prop(...)`, `camera(...)`, and other typed noun factories.
+- YMAP, YTYP, YDR, YBN, YTD, bounds, GTXD, RPF, Water, and cache models now expose one canonical insertion path per relationship.
+- `create_ymf_for_ymaps(...)` has been removed; use `build_ymf_for_ymaps(...)`.
+- YMAP and YMF cross-asset operations now receive a single `BuildContext` instead of separate YTYP, YBN, cache, and strictness arguments.
 
 ### Added
 
+- Shared `AssetRef`, `AssetSet`, and `BuildContext` primitives for typed cross-asset authoring.
+- Structured validation diagnostics with stable codes, severity, asset names, and field paths.
+- A strict authoring and implementation style guide covering naming, duplication, module boundaries, performance, validation, and compatibility policy.
 - Runtime-compatible YDR light extraction, LOD-light hashing, categorization, transforms, and source-bound validation.
 - Deterministic distant-light and LOD-light YMAP generation with spatial partitioning and script-controlled groups.
 - Lazy texture dictionary catalogs with searchable texture metadata and deferred pixel loading.

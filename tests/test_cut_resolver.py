@@ -53,7 +53,7 @@ def game_cache(request: pytest.FixtureRequest):
 
 def test_ped_variation_dependencies_include_props_without_default_equipment() -> None:
     scene = CutScene.create(duration=2.0)
-    scene.add_event(
+    scene.timeline_event(
         CutTimelineEvent(
             start=0.0,
             kind="set_variation",
@@ -68,7 +68,7 @@ def test_ped_variation_dependencies_include_props_without_default_equipment() ->
             },
         )
     )
-    scene.add_event(
+    scene.timeline_event(
         CutTimelineEvent(
             start=1.0,
             kind="set_variation",

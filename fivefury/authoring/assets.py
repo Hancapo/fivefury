@@ -104,6 +104,13 @@ class AssetSet(MutableMapping[str, object]):
         self._assets[canonical_asset_path(path)] = asset
         return asset
 
+    def of_type(self, asset_type: type[AssetT]) -> tuple[AssetT, ...]:
+        return tuple(
+            cast(AssetT, asset)
+            for asset in self._assets.values()
+            if isinstance(asset, asset_type)
+        )
+
     def resolve(self, reference: AssetRef[AssetT]) -> AssetT | None:
         if reference.path is not None:
             candidate = self._assets.get(reference.path)

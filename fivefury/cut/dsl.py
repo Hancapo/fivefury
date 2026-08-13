@@ -444,7 +444,7 @@ class _CutScriptParser:
             if binding.role == "asset_manager":
                 return binding
         scene = self._require_scene(line_no)
-        binding = scene.add_asset_manager("assets")
+        binding = scene.asset_manager("assets")
         self.bindings["assets"] = binding
         return binding
 
@@ -453,7 +453,7 @@ class _CutScriptParser:
             if binding.role == "animation_manager":
                 return binding
         scene = self._require_scene(line_no)
-        binding = scene.add_animation_manager("anims")
+        binding = scene.animation_manager("anims")
         self.bindings["anims"] = binding
         return binding
 
@@ -462,7 +462,7 @@ class _CutScriptParser:
             if binding.role == "audio":
                 return binding
         scene = self._require_scene(line_no)
-        binding = scene.add_audio("audio")
+        binding = scene.audio("audio")
         self.bindings["audio"] = binding
         return binding
 
@@ -471,7 +471,7 @@ class _CutScriptParser:
             if binding.role == "subtitle":
                 return binding
         scene = self._require_scene(line_no)
-        binding = scene.add_subtitle("subtitles")
+        binding = scene.subtitle("subtitles")
         self.bindings["subtitles"] = binding
         return binding
 
@@ -480,7 +480,7 @@ class _CutScriptParser:
             if binding.role == "fade":
                 return binding
         scene = self._require_scene(line_no)
-        binding = scene.add_fade("fade")
+        binding = scene.fade("fade")
         self.bindings["fade"] = binding
         return binding
 
@@ -545,43 +545,43 @@ class _CutScriptParser:
         if command == "ASSET_MANAGER":
             _expect_count(tokens, line_no, 2, "ASSET_MANAGER name")
             name = _block_name(tokens[1], line_no, "asset manager")
-            self._register(name, scene.add_asset_manager(name), line_no)
+            self._register(name, scene.asset_manager(name), line_no)
         elif command == "ANIM_MANAGER":
             _expect_count(tokens, line_no, 2, "ANIM_MANAGER name")
             name = _block_name(tokens[1], line_no, "animation manager")
-            self._register(name, scene.add_animation_manager(name), line_no)
+            self._register(name, scene.animation_manager(name), line_no)
         elif command == "CAMERA":
             _expect_count(tokens, line_no, 2, "CAMERA name")
             name = _block_name(tokens[1], line_no, "camera")
-            self._register(name, scene.add_camera(name), line_no)
+            self._register(name, scene.camera(name), line_no)
         elif command in _STREAMED_MODEL_COMMANDS:
             self.last_asset = self._parse_streamed_model(tokens, line_no)
         elif command == "LIGHT":
             _expect_count(tokens, line_no, 2, "LIGHT name")
             name = _block_name(tokens[1], line_no, "light")
-            light = scene.add_light(name, fields=self._default_light_fields())
+            light = scene.light(name, fields=self._default_light_fields())
             self._register(name, light, line_no)
             self.last_asset = light
         elif command == "AUDIO":
             _expect_count(tokens, line_no, 2, "AUDIO name")
             name = _block_name(tokens[1], line_no, "audio")
-            self._register(name, scene.add_audio(name), line_no)
+            self._register(name, scene.audio(name), line_no)
         elif command == "SUBTITLE":
             _expect_count(tokens, line_no, 2, "SUBTITLE name")
             name = _block_name(tokens[1], line_no, "subtitle")
-            self._register(name, scene.add_subtitle(name), line_no)
+            self._register(name, scene.subtitle(name), line_no)
         elif command == "FADE":
             _expect_count(tokens, line_no, 2, "FADE name")
             name = _block_name(tokens[1], line_no, "fade")
-            self._register(name, scene.add_fade(name), line_no)
+            self._register(name, scene.fade(name), line_no)
         elif command == "OVERLAY":
             _expect_count(tokens, line_no, 2, "OVERLAY name")
             name = _block_name(tokens[1], line_no, "overlay")
-            self._register(name, scene.add_overlay(name), line_no)
+            self._register(name, scene.overlay(name), line_no)
         elif command == "DECAL":
             _expect_count(tokens, line_no, 2, "DECAL name")
             name = _block_name(tokens[1], line_no, "decal")
-            self._register(name, scene.add_decal(name), line_no)
+            self._register(name, scene.decal(name), line_no)
         else:
             raise CutScriptError(line_no, f"unknown ASSETS command {tokens[0]!r}")
 
@@ -624,7 +624,7 @@ class _CutScriptParser:
             preset = preset or CutPropAnimationPreset.COMMON_PROP
         scene = self._require_scene(line_no)
         if base_command == "PROP":
-            binding = scene.add_prop(
+            binding = scene.prop(
                 name,
                 model_name=model_name,
                 ytyp_name=ytyp_name,
@@ -633,7 +633,7 @@ class _CutScriptParser:
             )
         else:
             binding_cls = CutPed if base_command == "PED" else CutVehicle
-            binding = scene.add_typed_binding(binding_cls, name)
+            binding = scene._typed_binding(binding_cls, name)
             assert isinstance(binding, (CutPed, CutVehicle))
             binding.configure_model_asset(
                 streaming_name=model_name,
@@ -1743,7 +1743,7 @@ def save_cutscript(
 
         attached.extend(read_ycd(candidate) for candidate in source_directory.glob("*.ycd"))
     for ycd in attached:
-        result.scene.attach_clip_dict(ycd)
+        result.scene.clip_dictionary(ycd)
     result.scene.save(target)
     return target
 

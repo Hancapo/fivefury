@@ -111,9 +111,9 @@ def test_container_and_typed_stem_prefix_indexes_avoid_global_search() -> None:
 
 def test_native_archive_scan_classifies_named_metadata(tmp_path: Path) -> None:
     archive = RpfArchive.empty("metadata.rpf")
-    archive.add_file("data/vehicles.meta", b"<CVehicleModelInfo__InitDataList />")
-    archive.add_file("data/peds.meta", b"<CPedModelInfo__InitDataList />")
-    archive.add_file("data/gtxd.meta", b"<CMapParentTxds />")
+    archive.file("data/vehicles.meta", b"<CVehicleModelInfo__InitDataList />")
+    archive.file("data/peds.meta", b"<CPedModelInfo__InitDataList />")
+    archive.file("data/gtxd.meta", b"<CMapParentTxds />")
     archive.save(tmp_path / "metadata.rpf")
 
     with GameFileCache(tmp_path, use_index_cache=False) as cache:

@@ -268,7 +268,7 @@ def test_dlc_list_and_extra_title_update_data_roundtrip() -> None:
 def test_declarative_dlc_pack_builds_dlc_rpf() -> None:
     pack = DlcPack("my_pack", setup=DlcSetupData.compat_pack("my_pack", order=60))
     nested = RpfArchive.empty("props.rpf")
-    nested.add_file("my_prop.bin", b"fake")
+    nested.file("my_prop.bin", b"fake")
 
     pack.rpf("x64/levels/gta5/props/props.rpf", nested, map_data=True)
     pack.ityp("x64/levels/gta5/props/my_pack.ityp")
@@ -379,7 +379,7 @@ def test_folder_asset_validation_checks_nested_rpfs(tmp_path) -> None:
     folder = tmp_path / "enhanced_pack"
     folder.mkdir()
     archive = RpfArchive.empty("models.rpf")
-    archive.add_file("legacy.ydr", build_rsc7(b"\0" * 16, version=165))
+    archive.file("legacy.ydr", build_rsc7(b"\0" * 16, version=165))
     archive.save(folder / "models.rpf")
 
     with pytest.raises(DlcValidationError, match="models.rpf/legacy.ydr"):
@@ -399,7 +399,7 @@ def test_folder_asset_validation_rejects_unreadable_nested_rpfs(tmp_path) -> Non
     folder = tmp_path / "enhanced_pack"
     folder.mkdir()
     archive = RpfArchive.empty("outer.rpf")
-    archive.add_file("broken.rpf", b"not an rpf")
+    archive.file("broken.rpf", b"not an rpf")
     archive.save(folder / "outer.rpf")
 
     with pytest.raises(DlcValidationError, match="outer.rpf/broken.rpf"):
@@ -423,8 +423,8 @@ def test_read_dlc_pack_uses_setup_dat_file_and_validation_reports_missing_refere
     pack.setup.group(DlcContentGroup.STARTUP, "BROKEN")
 
     archive = RpfArchive.empty("dlc.rpf")
-    archive.add_file("setup2.xml", pack.setup.to_xml_bytes())
-    archive.add_file("context.xml", pack.content.to_xml_bytes())
+    archive.file("setup2.xml", pack.setup.to_xml_bytes())
+    archive.file("context.xml", pack.content.to_xml_bytes())
 
     parsed = read_dlc_pack(archive)
     issues = validate_dlc_pack(parsed)

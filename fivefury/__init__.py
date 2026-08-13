@@ -17,6 +17,7 @@ from .authoring import (
     DiagnosticSeverity,
     ValidationError,
     ValidationReport,
+    validation_report,
 )
 from .awc import (
     AWC_CHUNK_FIELD_MASK,
@@ -995,7 +996,6 @@ from .ymf import (
     build_ymf,
     build_ymf_for_ymaps,
     build_ymf_manifest_for_ymaps,
-    create_ymf_for_ymaps,
     iter_ymf_relationships,
     read_ymf,
     read_ymf_xml,
@@ -2046,7 +2046,6 @@ __all__ = [
     "create_ydr",
     "create_yed",
     "create_yft",
-    "create_ymf_for_ymaps",
     "cut_light_fields_from_ydr_light",
     "cut_light_flags_from_ydr_flags",
     "cut_light_property_from_ydr_flags",
@@ -2272,6 +2271,7 @@ __all__ = [
     "validate_yft",
     "validate_yft_bytes",
     "validate_ymf_pso_layout",
+    "validation_report",
     "write_dlc_folder_metadata",
     "ydr_to_build",
     "ytyp_from_ydr_folder",

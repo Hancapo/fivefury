@@ -5,7 +5,7 @@ from typing import Any
 
 from ..metahash import HashLike, MetaHash, coerce_meta_hash
 from ..pso import PsoHashedString, PsoNode
-from ..xml import add_items, child_item_values
+from ..xml import append_items, child_item_values
 
 
 def _hash_text(value: MetaHash | HashLike) -> str:
@@ -57,4 +57,4 @@ def _hash_items(element: ET.Element, name: str) -> list[MetaHash]:
 
 
 def _append_hash_items(parent: ET.Element, name: str, values: list[MetaHash]) -> None:
-    add_items(parent, name, (_hash_text(value) for value in values), omit_empty=True)
+    append_items(parent, name, (_hash_text(value) for value in values), omit_empty=True)

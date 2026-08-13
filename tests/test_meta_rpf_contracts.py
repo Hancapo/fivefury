@@ -516,7 +516,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         entity = _make_entity("prop_tree_pine_01", position=(1.0, 2.0, 3.0), lod_dist=25.0)
         if entity is None:
             self.skipTest("Entity constructor not available")
-        ymap.add_entity(entity)
+        ymap.entities.append(entity)
 
         ymap.box_occluders = [
             _try_surface_constructor(
@@ -603,7 +603,7 @@ class MetaAndArchiveContractTests(PytestCompat):
 
         ymap = Ymap(name="typed_surfaces.ymap")
         entity = Entity(archetype_name="prop_tree_pine_01", position=(10.0, 20.0, 30.0), lod_dist=45.0)
-        entity.add_extension(
+        entity.extensions.append(
             ParticleEffectExtension(
                 name="fx_smoke",
                 offset_position=(1.0, 2.0, 3.0),
@@ -617,7 +617,7 @@ class MetaAndArchiveContractTests(PytestCompat):
                 color=0x11223344,
             )
         )
-        ymap.add_entity(entity)
+        ymap.entities.append(entity)
 
         batch = GrassBatch(
             batch_aabb=Aabb(minimum=(0.0, 0.0, 0.0), maximum=(20.0, 20.0, 10.0)),
@@ -628,7 +628,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             lod_inst_fade_range=15.0,
             orient_to_terrain=1.0,
         )
-        batch.add_instance(
+        batch.instances.append(
             GrassInstance(
                 position=(5.0, 6.0, 2.0),
                 normal=(0.0, 0.0, 1.0),
@@ -637,7 +637,7 @@ class MetaAndArchiveContractTests(PytestCompat):
                 ao=90,
             )
         )
-        ymap.add_grass_batch(batch)
+        ymap.ensure_instanced_data().grass_instance_list.append(batch)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "typed_surfaces.ymap"
@@ -727,7 +727,7 @@ class MetaAndArchiveContractTests(PytestCompat):
                 ),
             ]
         )
-        ymap.add_entity(entity)
+        ymap.entities.append(entity)
 
         parsed = Ymap.from_bytes(ymap.build(auto_extents=True).to_bytes())
         parsed_extensions = parsed.entities[0].extensions
@@ -759,7 +759,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             bs_centre=(0.0, 0.0, 0.0),
             bs_radius=2.0,
         )
-        archetype.add_extension(
+        archetype.extensions.append(
             ParticleEffectExtension(
                 name="fx_arch",
                 offset_position=(0.5, 0.0, 0.0),
@@ -772,7 +772,7 @@ class MetaAndArchiveContractTests(PytestCompat):
                 color=0x55667788,
             )
         )
-        ytyp.add_archetype(archetype)
+        ytyp.archetypes.append(archetype)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "typed_archetypes.ytyp"
@@ -957,7 +957,7 @@ class MetaAndArchiveContractTests(PytestCompat):
                 return data
 
         archive = create_rpf("auto_crypto.rpf")
-        archive.add_file("hello.txt", b"hello")
+        archive.file("hello.txt", b"hello")
         encrypted = bytearray(archive.to_bytes())
         struct.pack_into("<I", encrypted, 12, NG_ENCRYPTION)
 
@@ -1031,11 +1031,11 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("root.rpf")
-            archive.add_file("content.txt", b"hello world")
-            _, nested = archive.add_nested_archive("nested.rpf")
-            nested.add_file("inner.bin", b"\x01\x02\x03")
-            _, deeper = nested.add_nested_archive("deeper.rpf")
-            deeper.add_file("note.txt", b"nested")
+            archive.file("content.txt", b"hello world")
+            _, nested = archive.nested_archive("nested.rpf")
+            nested.file("inner.bin", b"\x01\x02\x03")
+            _, deeper = nested.nested_archive("deeper.rpf")
+            deeper.file("note.txt", b"nested")
 
             out_dir = root / "out"
             written = rpf_to_folder(archive, out_dir, mode=RpfExportMode.STANDALONE)
@@ -1053,8 +1053,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("modes.rpf")
-            archive.add_file("bin/data.bin", b"plain binary", compress_binary=True)
-            archive.add_file("maps/example.ymap", b"logical payload")
+            archive.file("bin/data.bin", b"plain binary", compress_binary=True)
+            archive.file("maps/example.ymap", b"logical payload")
 
             stored_dir = root / "stored"
             standalone_dir = root / "standalone"
@@ -1076,8 +1076,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         from fivefury import RpfArchive, create_rpf
 
         archive = create_rpf("root.rpf")
-        _, nested = archive.add_nested_archive("nested.rpf")
-        nested.add_file("inner.txt", b"lazy")
+        _, nested = archive.nested_archive("nested.rpf")
+        nested.file("inner.txt", b"lazy")
 
         parsed = RpfArchive.from_bytes(archive.to_bytes(), name="root.rpf")
         self.assertEqual(parsed.children, [])
@@ -1094,8 +1094,8 @@ class MetaAndArchiveContractTests(PytestCompat):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             archive = create_rpf("collisions.rpf")
-            archive.add_directory("shared")
-            archive.add_file("shared", b"file payload")
+            archive.directory("shared")
+            archive.file("shared", b"file payload")
 
             output = Path(tmpdir) / "suffix"
             written = archive.to_folder(output, conflict=RpfExtractionConflict.SUFFIX)
@@ -1112,11 +1112,11 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "in_place.rpf"
             source = create_rpf("in_place.rpf")
-            source.add_file("original.txt", b"original")
+            source.file("original.txt", b"original")
             source.save(path)
 
             with RpfArchive.from_path(path) as archive:
-                archive.add_file("added.txt", b"added")
+                archive.file("added.txt", b"added")
                 archive.save(path)
 
             with RpfArchive.from_path(path) as reread:
@@ -1129,7 +1129,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("default_export.rpf")
-            archive.add_file("maps/example.ymap", b"logical payload")
+            archive.file("maps/example.ymap", b"logical payload")
 
             out_dir = root / "out"
             archive.to_folder(out_dir)
@@ -1199,10 +1199,10 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("assets.rpf")
-            archive.add("stream/alpha.ydr", b"alpha")
-            archive.add("stream/bravo.ytd", b"bravo")
-            archive.add("stream/collision.ybn", b"collision")
-            archive.add("stream/pack.ydd", b"pack")
+            archive.file("stream/alpha.ydr", b"alpha")
+            archive.file("stream/bravo.ytd", b"bravo")
+            archive.file("stream/collision.ybn", b"collision")
+            archive.file("stream/pack.ydd", b"pack")
             archive.save(root / "assets.rpf")
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1229,8 +1229,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("assets.rpf")
-            archive.add("stream/alpha.ydr", b"alpha")
-            archive.add("stream/bravo.ytd", b"bravo")
+            archive.file("stream/alpha.ydr", b"alpha")
+            archive.file("stream/bravo.ytd", b"bravo")
             archive.save(root / "assets.rpf")
             write_bytes(root / "maps" / "charlie.ymap", b"charlie")
 
@@ -1263,8 +1263,8 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
             (root / "types").mkdir(parents=True, exist_ok=True)
             ytyp = Ytyp(name="example_types")
-            ytyp.add_archetype(Archetype(name="prop_tree_pine_01", lod_dist=100.0))
-            ytyp.add_archetype(Archetype(name="prop_sign_road_01", lod_dist=50.0))
+            ytyp.archetypes.append(Archetype(name="prop_tree_pine_01", lod_dist=100.0))
+            ytyp.archetypes.append(Archetype(name="prop_sign_road_01", lod_dist=50.0))
             ytyp.save(root / "types" / "example_types.ytyp")
 
             cache = GameFileCache(root, use_index_cache=False, max_loaded_files=0)
@@ -1290,7 +1290,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             )
 
             extra = Ytyp(name="more_types")
-            extra.add_archetype(Archetype(name="prop_bench_01", lod_dist=25.0))
+            extra.archetypes.append(Archetype(name="prop_bench_01", lod_dist=25.0))
             extra.save(root / "types" / "more_types.ytyp")
             cache.scan(use_index_cache=False)
 
@@ -1306,8 +1306,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("assets.rpf")
-            archive.add("stream/alpha.ydr", b"alpha")
-            archive.add("stream/bravo.ytd", b"bravo")
+            archive.file("stream/alpha.ydr", b"alpha")
+            archive.file("stream/bravo.ytd", b"bravo")
             archive.save(root / "assets.rpf")
             write_bytes(root / "maps" / "charlie.ymap", b"charlie")
 
@@ -1335,13 +1335,13 @@ class MetaAndArchiveContractTests(PytestCompat):
             (root / "maps").mkdir(parents=True, exist_ok=True)
             (root / "types").mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="example_map")
-            ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", guid=1))
+            ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", guid=1))
             ymap.recalculate_extents()
             ymap.recalculate_flags()
             ymap.save(root / "maps" / "example_map.ymap")
 
             ytyp = Ytyp(name="example_types")
-            ytyp.add_archetype(
+            ytyp.archetypes.append(
                 Archetype(
                     name="prop_tree_pine_01",
                     asset_name="prop_tree_pine_01",
@@ -1392,14 +1392,14 @@ class MetaAndArchiveContractTests(PytestCompat):
             external.mkdir(parents=True, exist_ok=True)
 
             ymap = Ymap(name="external_map")
-            ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", guid=1))
+            ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", guid=1))
             ymap.recalculate_extents()
             ymap.recalculate_flags()
             external_ymap = external / "external_map.ymap"
             ymap.save(external_ymap)
 
             ytyp = Ytyp(name="example_types")
-            ytyp.add_archetype(
+            ytyp.archetypes.append(
                 Archetype(
                     name="prop_tree_pine_01",
                     asset_name="prop_tree_pine_01",
@@ -1428,8 +1428,8 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
             archive_path = root / "assets.rpf"
             archive = create_rpf("assets.rpf")
-            archive.add("stream/alpha.ydr", b"alpha-bytes")
-            archive.add("stream/bravo.ytd", b"bravo-bytes")
+            archive.file("stream/alpha.ydr", b"alpha-bytes")
+            archive.file("stream/bravo.ytd", b"bravo-bytes")
             archive.save(archive_path)
             write_bytes(root / "maps" / "charlie.ymap", b"charlie-bytes")
 
@@ -1465,7 +1465,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
             archive_path = root / "assets.rpf"
             archive = create_rpf("assets.rpf")
-            archive.add("stream/example.ymap", b"payload-bytes")
+            archive.file("stream/example.ymap", b"payload-bytes")
             archive.save(archive_path)
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1493,15 +1493,15 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
 
             audio = create_rpf("audio_pack.rpf")
-            audio.add("x64/audio/sfx/test.awc", b"audio")
+            audio.file("x64/audio/sfx/test.awc", b"audio")
             audio.save(root / "audio_pack.rpf")
 
             vehicles = create_rpf("vehicle_pack.rpf")
-            vehicles.add("stream/vehicles.meta", b"vehicles")
+            vehicles.file("stream/vehicles.meta", b"vehicles")
             vehicles.save(root / "vehicle_pack.rpf")
 
             peds = create_rpf("ped_pack.rpf")
-            peds.add("stream/peds.ymt", b"peds")
+            peds.file("stream/peds.ymt", b"peds")
             peds.save(root / "ped_pack.rpf")
 
             write_bytes(root / "maps" / "example.ymap", b"map")
@@ -1528,19 +1528,19 @@ class MetaAndArchiveContractTests(PytestCompat):
             (root / "mods").mkdir(parents=True, exist_ok=True)
 
             audio = create_rpf("audio_rel.rpf")
-            audio.add("sfx/test.awc", b"audio")
+            audio.file("sfx/test.awc", b"audio")
             audio.save(root / "x64" / "audio" / "audio_rel.rpf")
 
             vehicles = create_rpf("vehicles.rpf")
-            vehicles.add("stream/vehicles.meta", b"vehicles")
+            vehicles.file("stream/vehicles.meta", b"vehicles")
             vehicles.save(root / "x64" / "levels" / "gta5" / "vehicles.rpf")
 
             peds = create_rpf("pedprops.rpf")
-            peds.add("stream/peds.ymt", b"peds")
+            peds.file("stream/peds.ymt", b"peds")
             peds.save(root / "x64" / "models" / "cdimages" / "pedprops.rpf")
 
             world = create_rpf("world.rpf")
-            world.add("stream/keep.ydr", b"keep")
+            world.file("stream/keep.ydr", b"keep")
             world.save(root / "mods" / "world.rpf")
 
             original = cache_module._scan_archive_sources_batch
@@ -1589,7 +1589,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             (root / "scratch").mkdir(parents=True, exist_ok=True)
 
             update_archive = create_rpf("update.rpf")
-            update_archive.add(
+            update_archive.file(
                 "common/data/dlclist.xml",
                 (
                     b"<SMandatoryPacksData><Paths>"
@@ -1601,15 +1601,15 @@ class MetaAndArchiveContractTests(PytestCompat):
             update_archive.save(root / "update" / "update.rpf")
 
             alpha = create_rpf("dlc.rpf")
-            alpha.add("x64/data/alpha.bin", b"alpha")
+            alpha.file("x64/data/alpha.bin", b"alpha")
             alpha.save(root / "update" / "x64" / "dlcpacks" / "mpalpha" / "dlc.rpf")
 
             beta = create_rpf("dlc.rpf")
-            beta.add("x64/data/beta.bin", b"beta")
+            beta.file("x64/data/beta.bin", b"beta")
             beta.save(root / "update" / "x64" / "dlcpacks" / "mpbeta" / "dlc.rpf")
 
             misc = create_rpf("misc.rpf")
-            misc.add("scratch/hidden.bin", b"hidden")
+            misc.file("scratch/hidden.bin", b"hidden")
             misc.save(root / "scratch" / "misc.rpf")
 
             cache = GameFileCache(root, dlc_level="mpalpha", exclude_folders="scratch")
@@ -1639,7 +1639,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             for archive_index in range(16):
                 archive = create_rpf(f"pack_{archive_index}.rpf")
                 for file_index in range(96):
-                    archive.add(
+                    archive.file(
                         f"stream/item_{archive_index}_{file_index}.ydr",
                         f"payload-{archive_index}-{file_index}".encode("ascii"),
                     )
@@ -1683,7 +1683,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             for archive_index in range(12):
                 archive = create_rpf(f"pack_{archive_index}.rpf")
                 for file_index in range(24):
-                    archive.add(
+                    archive.file(
                         f"stream/item_{archive_index}_{file_index}.ydr",
                         f"payload-{archive_index}-{file_index}".encode("ascii"),
                     )
@@ -1715,7 +1715,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
             for archive_index in range(4):
                 archive = create_rpf(f"pack_{archive_index}.rpf")
-                archive.add(f"stream/item_{archive_index}.ydr", f"payload-{archive_index}".encode("ascii"))
+                archive.file(f"stream/item_{archive_index}.ydr", f"payload-{archive_index}".encode("ascii"))
                 archive.save(root / f"pack_{archive_index}.rpf")
 
             cache = GameFileCache(root, use_index_cache=False, max_open_archives=2, scan_workers=2)
@@ -1739,7 +1739,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("pack.rpf")
-            archive.add("stream/a.ydr", b"a")
+            archive.file("stream/a.ydr", b"a")
             archive.save(root / "pack.rpf")
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1767,7 +1767,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("pack.rpf")
-            archive.add("stream/a.ydr", b"a")
+            archive.file("stream/a.ydr", b"a")
             archive.save(root / "pack.rpf")
             write_bytes(root / "maps" / "example.ymap", b"map")
 
@@ -1791,8 +1791,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("pack.rpf")
-            archive.add("stream/a.ydr", b"a")
-            archive.add("stream/b.ydr", b"b")
+            archive.file("stream/a.ydr", b"a")
+            archive.file("stream/b.ydr", b"b")
             archive.save(root / "pack.rpf")
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1809,8 +1809,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("cuts.rpf")
-            archive.add("cuts/sample.cut", b"cut")
-            archive.add("cuts/sample-0.ycd", b"ycd")
+            archive.file("cuts/sample.cut", b"cut")
+            archive.file("cuts/sample-0.ycd", b"ycd")
             archive.save(root / "cuts.rpf")
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1836,8 +1836,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("nav.rpf")
-            archive.add("nav/roads.YND", b"ynd")
-            archive.add("nav/mesh.YNV", b"ynv")
+            archive.file("nav/roads.YND", b"ynd")
+            archive.file("nav/mesh.YNV", b"ynv")
             archive.save(root / "nav.rpf")
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1863,9 +1863,9 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("pack.rpf")
-            archive.add("stream/a.ydr", b"a")
-            archive.add("stream/b.ydr", b"b")
-            archive.add("stream/c.ydr", b"c")
+            archive.file("stream/a.ydr", b"a")
+            archive.file("stream/b.ydr", b"b")
+            archive.file("stream/c.ydr", b"c")
             archive.save(root / "pack.rpf")
 
             cache = GameFileCache(root, use_index_cache=False, max_loaded_files=2)
@@ -1891,8 +1891,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("pack.rpf")
-            archive.add("stream/sample.bin", b"hello native cache", compress_binary=True)
-            archive.add("stream/test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
+            archive.file("stream/sample.bin", b"hello native cache", compress_binary=True)
+            archive.file("stream/test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
             archive.save(root / "pack.rpf")
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -1939,7 +1939,12 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertEqual(enhanced.textures[0].mip_count, 1)
 
     def test_ytd_texture_usage_survives_a_round_trip(self) -> None:
-        from fivefury.texture import BCFormat, Texture, TextureUsage, total_mip_data_size
+        from fivefury.texture import (
+            BCFormat,
+            Texture,
+            TextureUsage,
+            total_mip_data_size,
+        )
         from fivefury.ytd.model import Ytd
 
         data = bytes(total_mip_data_size(64, 64, BCFormat.BC1, 1))
@@ -1974,7 +1979,12 @@ class MetaAndArchiveContractTests(PytestCompat):
         import struct
 
         from fivefury.resource import split_rsc7_sections
-        from fivefury.texture import BCFormat, Texture, TextureUsage, total_mip_data_size
+        from fivefury.texture import (
+            BCFormat,
+            Texture,
+            TextureUsage,
+            total_mip_data_size,
+        )
         from fivefury.ytd.defs import DAT_VIRTUAL_BASE
         from fivefury.ytd.model import Ytd
 
@@ -2062,7 +2072,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         archive = RpfArchive.empty("large_resources.rpf")
 
         with patch.object(rpf_module, "_split_rsc7", return_value=(0, 0, 0, b"")):
-            archive.add_file("stream/large.ytd", resource)
+            archive.file("stream/large.ytd", resource)
             packed = archive.to_bytes()
 
         reread = RpfArchive.from_bytes(packed, name="large_resources.rpf")
@@ -2121,7 +2131,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             write_bytes(root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
 
             ytyp = Ytyp(name="types.ytyp")
-            ytyp.add_archetype(
+            ytyp.archetypes.append(
                 Archetype(
                     name="prop_tree_pine_01",
                     asset_name="prop_tree_pine_01",
@@ -2160,7 +2170,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             Gtxd.from_mapping({"child_dict": "parent_dict"}).save(root / "common" / "data" / "gtxd.meta")
 
             ytyp = Ytyp(name="types.ytyp")
-            ytyp.add_archetype(
+            ytyp.archetypes.append(
                 Archetype(
                     name="prop_tree_pine_01",
                     asset_name="prop_tree_pine_01",
@@ -2173,7 +2183,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             external = Path(tmpdir) / "external"
             external.mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="external_map.ymap")
-            ymap.add_entity(Entity(archetype_name="prop_tree_pine_01", position=(0.0, 0.0, 0.0), lod_dist=50.0))
+            ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", position=(0.0, 0.0, 0.0), lod_dist=50.0))
             ymap.save(external / "external_map.ymap", auto_extents=True)
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -2245,7 +2255,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             write_bytes(root / "stream" / "embedded_tree.ydr", _build_embedded_texture_resource("ydr", enhanced=False))
 
             ytyp = Ytyp(name="types.ytyp")
-            ytyp.add_archetype(
+            ytyp.archetypes.append(
                 Archetype(
                     name="embedded_tree",
                     asset_name="embedded_tree",
@@ -2257,7 +2267,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             external = Path(tmpdir) / "external"
             external.mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="external_map.ymap")
-            ymap.add_entity(Entity(archetype_name="embedded_tree", position=(0.0, 0.0, 0.0), lod_dist=50.0))
+            ymap.entities.append(Entity(archetype_name="embedded_tree", position=(0.0, 0.0, 0.0), lod_dist=50.0))
             ymap.save(external / "external_map.ymap", auto_extents=True)
 
             cache = GameFileCache(root, use_index_cache=False)

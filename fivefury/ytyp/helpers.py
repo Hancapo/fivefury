@@ -211,7 +211,7 @@ def ytyp_from_ydr_folder(
             bb_min=ydr.bounding_box_min,
             bb_max=ydr.bounding_box_max,
         )
-        ytyp.add_archetype(
+        ytyp.archetypes.append(
             BaseArchetypeDef(
                 name=model_name,
                 asset_name=model_name,

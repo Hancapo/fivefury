@@ -28,38 +28,38 @@ def test_cut_scene_writes_complete_object_model_without_template() -> None:
     weapon = CutWeapon("weapon_stream")
     weapon.cutscene_name = "weapon_actor"
     weapon.generic_weapon_type = 3
-    scene.add(weapon)
+    scene.binding(weapon)
 
     animated_light = CutAnimatedLight("animated_light")
     animated_light.anim_streaming_base = 7
-    scene.add(animated_light)
+    scene.binding(animated_light)
 
     particle = CutParticleEffect("particle_stream")
     particle.cutscene_name = "particle_actor"
     particle.effect_list = "core"
-    scene.add(particle)
+    scene.binding(particle)
 
     animated_particle = CutAnimatedParticleEffect("animated_particle_stream")
     animated_particle.cutscene_name = "animated_particle_actor"
     animated_particle.anim_streaming_base = 12
     animated_particle.effect_list = "scr_rcbarry2"
-    scene.add(animated_particle)
+    scene.binding(animated_particle)
 
     blocking = CutBlockingBounds("blocking")
     blocking.corners = ((-1.0, -2.0, 0.0), (1.0, -2.0, 0.0), (1.0, 2.0, 0.0), (-1.0, 2.0, 0.0))
     blocking.height = 4.5
-    scene.add(blocking)
+    scene.binding(blocking)
 
     removal = CutRemovalBounds("removal")
     removal.corners = ((-3.0, -4.0, 1.0), (3.0, -4.0, 1.0), (3.0, 4.0, 1.0), (-3.0, 4.0, 1.0))
     removal.height = 8.0
-    scene.add(removal)
+    scene.binding(removal)
 
     rayfire = CutRayfire("rayfire_stream")
     rayfire.cutscene_name = "rayfire_actor"
     rayfire.start_position = (10.0, 20.0, 30.0)
-    scene.add(rayfire)
-    scene.add(CutEventObject())
+    scene.binding(rayfire)
+    scene.binding(CutEventObject())
 
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
     objects = {node.type_name: node for node in rebuilt.objects}
@@ -81,7 +81,7 @@ def test_cut_scene_writes_complete_object_model_without_template() -> None:
 
 def test_cut_scene_writes_vehicle_variation_layouts_without_template() -> None:
     scene = CutScene.create(duration=5.0)
-    vehicle = scene.add_vehicle("vehicle")
+    vehicle = scene.vehicle("vehicle")
     scene.set_variation(
         0.0,
         vehicle,

@@ -577,7 +577,7 @@ def _validate_events(scene: CutScene, issues: list[CutSceneValidationIssue]) -> 
                 "error",
                 "event.target.required",
                 f"{name} requires a target {spec.default_target_role} object",
-                hint=f"Create scene.add_{spec.default_target_role}() or pass target=...",
+                            hint=f"Create scene.{spec.default_target_role}() or pass target=...",
             )
         elif (
             spec is not None

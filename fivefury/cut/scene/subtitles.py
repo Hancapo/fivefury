@@ -110,12 +110,12 @@ def install_subtitles(
             raise ValueError(f"unknown subtitle object id {subtitle}")
         subtitle_binding = binding
     else:
-        subtitle_binding = self.add(CutSubtitle(str(subtitle or dictionary_name)))
+        subtitle_binding = self.binding(CutSubtitle(str(subtitle or dictionary_name)))
 
     target = asset_manager
     if target is None:
         managers = self.bindings_for_role("asset_manager")
-        target = managers[0] if managers else self.add_asset_manager()
+        target = managers[0] if managers else self.asset_manager()
 
     events: list[CutTimelineEvent] = []
     if load_dictionary:

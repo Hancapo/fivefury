@@ -4,6 +4,7 @@ import dataclasses
 
 import pytest
 
+from fivefury import AssetSet, BuildContext
 from fivefury.bounds import BoundMaterialType, build_bound_from_triangles
 from fivefury.ybn import Ybn
 from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
@@ -65,6 +66,19 @@ def _valid_mlo_ybn(mlo: MloArchetypeDef, *, room: int | str = "main") -> Ybn:
         material=mlo.collision_material(room, BoundMaterialType.CONCRETE),
     )
     return Ybn.from_bound(bound, path="test_mlo.ybn")
+
+
+def _build_context(
+    ytyp: Ytyp,
+    ybn: Ybn | None = None,
+    *,
+    strict: bool = False,
+) -> BuildContext:
+    assets = AssetSet()
+    assets[f"{ytyp.name}.ytyp"] = ytyp
+    if ybn is not None:
+        assets[ybn.path or "test_mlo.ybn"] = ybn
+    return BuildContext(assets=assets, strict=strict)
 
 
 def test_mlo_build_synchronizes_room_portal_counts() -> None:
@@ -164,8 +178,9 @@ def test_mlo_declarative_objects_resolve_rooms_portals_and_instances() -> None:
     assert mlo.entities.index(room_entity) in room.attached_objects
     assert mlo.entities.index(portal_entity) in portal.attached_objects
     assert int(instance.archetype_name) == int(mlo.name)
-    ymap.build(ytyps=ytyp)
-    assert ymap.validate(ytyps=ytyp) == []
+    context = _build_context(ytyp)
+    ymap.build(context=context)
+    assert ymap.validate(context=context) == []
 
 
 def test_room_zero_accepts_more_attachments_than_the_vanilla_maximum() -> None:
@@ -207,14 +222,15 @@ def test_ymap_cross_validation_builds_exit_portals_and_checks_entity_sets() -> N
     )
 
     ybn = _valid_mlo_ybn(mlo)
-    data = ymap.to_bytes(ytyps=ytyp, ybns={"test_mlo": ybn})
+    context = _build_context(ytyp, ybn)
+    data = ymap.to_bytes(context=context)
     parsed = Ymap.from_bytes(data)
 
     assert instance.num_exit_portals == 1
     assert [int(item.name) for item in ymap.physics_dictionaries] == [int(mlo.physics_dictionary)]
     assert isinstance(parsed.entities[0], MloInstanceDef)
     assert parsed.entities[0].num_exit_portals == 1
-    assert parsed.validate(ytyps=ytyp, ybns={"test_mlo": ybn}) == []
+    assert parsed.validate(context=context) == []
 
 
 def test_mlo_physics_dictionary_and_static_bound_keep_distinct_names() -> None:
@@ -224,13 +240,14 @@ def test_mlo_physics_dictionary_and_static_bound_keep_distinct_names() -> None:
     ymap = Ymap(name="test_imap")
     ymap.mlo_instance(mlo)
 
-    ymap.to_bytes(ytyps=ytyp, ybns={mlo.name: ybn})
+    context = _build_context(ytyp, ybn)
+    ymap.to_bytes(context=context)
 
     assert [int(item.name) for item in ymap.physics_dictionaries] == [
         int(mlo.physics_dictionary)
     ]
     assert int(mlo.physics_dictionary) != int(mlo.name)
-    assert ymap.validate(ytyps=ytyp, ybns={mlo.name: ybn}) == []
+    assert ymap.validate(context=context) == []
 
 
 def test_ymap_cross_validation_rejects_missing_archetypes_and_sets() -> None:
@@ -242,12 +259,12 @@ def test_ymap_cross_validation_rejects_missing_archetypes_and_sets() -> None:
     )
     ymap = Ymap(name="test_imap", entities=[instance])
 
-    issues = ymap.validate(ytyps=ytyp)
+    issues = ymap.validate(context=_build_context(ytyp))
 
     assert any("group_id must be between 0 and 254" in issue for issue in issues)
     assert any("unknown default entity set" in issue for issue in issues)
 
-    missing_issues = ymap.validate(ytyps=Ytyp(name="other_ityp"))
+    missing_issues = ymap.validate(context=_build_context(Ytyp(name="other_ityp")))
     assert any("absent from the supplied YTYPs" in issue for issue in missing_issues)
 
 
@@ -258,7 +275,7 @@ def test_mlo_collision_uses_material_room_ids_and_archetype_filename() -> None:
     assert ybn.room_ids == {1}
     assert mlo.validate_collision(ybn) == []
 
-    ybn.set_room(2)
+    ybn.bind_room(2)
     ybn.path = "wrong_name.ybn"
     issues = mlo.validate_collision(ybn)
 
@@ -270,9 +287,10 @@ def test_ymap_mlo_validation_requires_supplied_static_bound() -> None:
     ytyp, _ = _valid_mlo_ytyp()
     ymap = Ymap(name="test_imap")
     ymap.mlo_instance("test_mlo")
-    ymap.build(ytyps=ytyp)
+    context = _build_context(ytyp, strict=True)
+    ymap.build(context=context)
 
-    issues = ymap.validate(ytyps=ytyp, ybns={})
+    issues = ymap.validate(context=context)
 
     assert any("has no YBN static bound" in issue for issue in issues)
 
@@ -284,7 +302,11 @@ def test_ymap_mlo_extents_use_transformed_archetype_bounds() -> None:
     ymap = Ymap(name="test_imap")
     ymap.mlo_instance("test_mlo", position=(100.0, 200.0, 10.0))
 
-    ymap.recalculate_extents(ytyps=ytyp, streaming_margin=0.0, include_lod_distance=False)
+    ymap.recalculate_extents(
+        context=_build_context(ytyp),
+        streaming_margin=0.0,
+        include_lod_distance=False,
+    )
 
     assert ymap.entities_extents_min == (95.0, 195.0, 9.0)
     assert ymap.entities_extents_max == (105.0, 205.0, 14.0)

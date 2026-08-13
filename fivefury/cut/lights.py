@@ -144,7 +144,7 @@ def ensure_ydr_embedded_lights(
         name = f"{name_prefix}_cut_light_{index}"
         if name in existing_names:
             continue
-        binding = scene.add_light(name, fields=cut_light_fields_from_ydr_light(light))
+        binding = scene.light(name, fields=cut_light_fields_from_ydr_light(light))
         scene.set_light(float(start), binding)
         existing_names.add(name)
         created.append(binding)

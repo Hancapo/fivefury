@@ -44,6 +44,17 @@ def test_asset_set_rejects_ambiguous_names_and_accidental_replacement() -> None:
         assets["a/example.ydr"] = ExampleAsset(3)
 
 
+def test_asset_set_selects_registered_assets_by_type() -> None:
+    assets = AssetSet()
+    first = ExampleAsset(1)
+    second = ExampleAsset(2)
+    assets["first.ydr"] = first
+    assets["second.ydr"] = second
+    assets["ignored.ytd"] = object()
+
+    assert assets.of_type(ExampleAsset) == (first, second)
+
+
 def test_asset_reference_enforces_its_runtime_type() -> None:
     assets = AssetSet()
     assets["example.ydr"] = object()
@@ -75,3 +86,14 @@ def test_validation_report_preserves_structured_diagnostics() -> None:
     with pytest.raises(ValidationError, match="asset.invalid") as raised:
         report.raise_for_errors()
     assert raised.value.report is report
+
+
+def test_build_context_adapts_string_validators_to_diagnostics() -> None:
+    class InvalidAsset:
+        def validate(self) -> list[str]:
+            return ["Broken field"]
+
+    report = BuildContext().validate(InvalidAsset())
+
+    assert report.errors[0].code == "invalidasset.invalid"
+    assert report.errors[0].message == "Broken field"

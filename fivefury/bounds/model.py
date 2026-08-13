@@ -1046,12 +1046,12 @@ class BoundGeometry(Bound):
     def has_octants(self) -> bool:
         return self.octants is not None and self.octants.has_items
 
-    def add_vertex(self, vertex: tuple[float, float, float]) -> tuple[float, float, float]:
+    def vertex(self, vertex: tuple[float, float, float]) -> tuple[float, float, float]:
         value = (float(vertex[0]), float(vertex[1]), float(vertex[2]))
         self.vertices.append(value)
         return value
 
-    def add_polygon(self, polygon: BoundPolygon) -> BoundPolygon:
+    def polygon(self, polygon: BoundPolygon) -> BoundPolygon:
         if polygon.index < 0:
             polygon.index = len(self.polygons)
         self.polygons.append(polygon)
@@ -1059,7 +1059,7 @@ class BoundGeometry(Bound):
             self.polygon_material_indices.append(int(polygon.material_index))
         return polygon
 
-    def add_material(self, material: BoundMaterial) -> BoundMaterial:
+    def material(self, material: BoundMaterial) -> BoundMaterial:
         self.materials.append(material)
         return material
 
@@ -1171,7 +1171,7 @@ class BoundComposite(Bound):
     def iter_children(self) -> Iterator[BoundChild]:
         yield from self.children
 
-    def add_child(
+    def child(
         self,
         bound: Bound,
         *,

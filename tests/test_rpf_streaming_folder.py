@@ -190,14 +190,14 @@ def test_game_file_cache_context_closes_lru_archive_handles(
 def test_rpf_directory_child_indexes_follow_add_replace_and_roundtrip() -> None:
     archive = RpfArchive.empty("indexed.rpf")
     for index in range(2_000):
-        archive.add(f"stream/asset_{index:04d}.bin", bytes([index & 0xFF]))
+        archive.file(f"stream/asset_{index:04d}.bin", bytes([index & 0xFF]))
 
     stream = archive.root.find_directory("STREAM")
     assert stream is not None
     assert len(stream.files) == 2_000
     assert stream.find_file("ASSET_1999.BIN") is stream.files[-1]
 
-    replacement = archive.add("stream/asset_1000.bin", b"replacement")
+    replacement = archive.file("stream/asset_1000.bin", b"replacement")
     assert len(stream.files) == 2_000
     assert stream.find_file("asset_1000.bin") is replacement
 

@@ -535,7 +535,7 @@ class YcdCutsceneBuilder:
             self._clips[key] = clip
         return clip
 
-    def add_track(
+    def track(
         self,
         name: str,
         *,
@@ -575,7 +575,7 @@ class YcdCutsceneBuilder:
         )
         return self
 
-    def add_camera(
+    def camera(
         self,
         name: str = "exportcamera",
         *,
@@ -610,10 +610,10 @@ class YcdCutsceneBuilder:
         }
         for track, samples in track_map.items():
             if samples is not None:
-                self.add_track(name, track=track, samples=samples, bone_id=0)
+                self.track(name, track=track, samples=samples, bone_id=0)
         return self
 
-    def add_object(
+    def object(
         self,
         name: str,
         *,
@@ -638,11 +638,11 @@ class YcdCutsceneBuilder:
         }
         for track, samples in track_map.items():
             if samples is not None:
-                self.add_track(name, track=track, samples=samples, bone_id=bone_id)
+                self.track(name, track=track, samples=samples, bone_id=bone_id)
         if bones:
             for current_bone_id, animation in bones.items():
                 bone_animation = _coerce_bone_animation(animation)
-                self.add_bone_animation(
+                self.bone_animation(
                     name,
                     bone_id=int(current_bone_id),
                     position=bone_animation.position,
@@ -650,10 +650,10 @@ class YcdCutsceneBuilder:
                 )
         return self
 
-    def add_prop(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
-        return self.add_object(name, **kwargs)
+    def prop(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
+        return self.object(name, **kwargs)
 
-    def add_ped(
+    def ped(
         self,
         name: str,
         *,
@@ -661,9 +661,9 @@ class YcdCutsceneBuilder:
         **kwargs: object,
     ) -> YcdCutsceneBuilder:
         clip_name = self.combined_facial_clip_name(name) if facial is not None else name
-        self.add_object(clip_name, **kwargs)
+        self.object(clip_name, **kwargs)
         if facial is not None:
-            self.add_facial_animation(clip_name, facial, merged=False)
+            self.facial_animation(clip_name, facial, merged=False)
         return self
 
     @staticmethod
@@ -679,7 +679,7 @@ class YcdCutsceneBuilder:
             return value.samples, value.format
         return value, None
 
-    def add_facial_animation(
+    def facial_animation(
         self,
         name: str,
         facial: YcdFacialTrackSet,
@@ -709,7 +709,7 @@ class YcdCutsceneBuilder:
         for track, values in mappings:
             for control_id, value in values.items():
                 samples, format = self._facial_samples(value)
-                self.add_track(
+                self.track(
                     target_name,
                     track=track,
                     samples=samples,
@@ -718,7 +718,7 @@ class YcdCutsceneBuilder:
                 )
         if facial.tinting is not None:
             samples, format = self._facial_samples(facial.tinting)
-            self.add_track(
+            self.track(
                 target_name,
                 track=YcdAnimationTrack.FACIAL_TINTING,
                 samples=samples,
@@ -727,10 +727,10 @@ class YcdCutsceneBuilder:
             )
         return self
 
-    def add_vehicle(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
-        return self.add_object(name, **kwargs)
+    def vehicle(self, name: str, **kwargs: object) -> YcdCutsceneBuilder:
+        return self.object(name, **kwargs)
 
-    def add_bone_animation(
+    def bone_animation(
         self,
         name: str,
         *,
@@ -739,14 +739,14 @@ class YcdCutsceneBuilder:
         rotation: object | None = None,
     ) -> YcdCutsceneBuilder:
         if position is not None:
-            self.add_track(
+            self.track(
                 name,
                 track=YcdAnimationTrack.BONE_TRANSLATION,
                 samples=position,
                 bone_id=bone_id,
             )
         if rotation is not None:
-            self.add_track(
+            self.track(
                 name,
                 track=YcdAnimationTrack.BONE_ROTATION,
                 samples=rotation,

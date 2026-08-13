@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from ..xml import (
-    add_value,
+    append_value,
     child_bool,
     child_float,
     child_int,
@@ -89,40 +89,40 @@ def read_water(source: bytes | str | Path) -> WaterData:
 
 
 def _write_bounds(item: ET.Element, quad: WaterComponent) -> None:
-    add_value(item, "minX", quad.min_x)
-    add_value(item, "maxX", quad.max_x)
-    add_value(item, "minY", quad.min_y)
-    add_value(item, "maxY", quad.max_y)
+    append_value(item, "minX", quad.min_x)
+    append_value(item, "maxX", quad.max_x)
+    append_value(item, "minY", quad.min_y)
+    append_value(item, "maxY", quad.max_y)
 
 
 def _water_quad_element(quad: WaterQuad) -> ET.Element:
     item = ET.Element("Item")
     _write_bounds(item, quad)
-    add_value(item, "Type", int(quad.type))
-    add_value(item, "IsInvisible", quad.is_invisible)
-    add_value(item, "HasLimitedDepth", quad.has_limited_depth)
-    add_value(item, "z", _float_text(quad.z))
-    add_value(item, "a1", quad.alpha_sw)
-    add_value(item, "a2", quad.alpha_se)
-    add_value(item, "a3", quad.alpha_ne)
-    add_value(item, "a4", quad.alpha_nw)
-    add_value(item, "NoStencil", quad.no_stencil)
+    append_value(item, "Type", int(quad.type))
+    append_value(item, "IsInvisible", quad.is_invisible)
+    append_value(item, "HasLimitedDepth", quad.has_limited_depth)
+    append_value(item, "z", _float_text(quad.z))
+    append_value(item, "a1", quad.alpha_sw)
+    append_value(item, "a2", quad.alpha_se)
+    append_value(item, "a3", quad.alpha_ne)
+    append_value(item, "a4", quad.alpha_nw)
+    append_value(item, "NoStencil", quad.no_stencil)
     return item
 
 
 def _calming_quad_element(quad: WaterCalmingQuad) -> ET.Element:
     item = ET.Element("Item")
     _write_bounds(item, quad)
-    add_value(item, "fDampening", _float_text(quad.dampening))
+    append_value(item, "fDampening", _float_text(quad.dampening))
     return item
 
 
 def _wave_quad_element(quad: WaterWaveQuad) -> ET.Element:
     item = ET.Element("Item")
     _write_bounds(item, quad)
-    add_value(item, "Amplitude", _float_text(quad.amplitude))
-    add_value(item, "XDirection", _float_text(quad.direction_x))
-    add_value(item, "YDirection", _float_text(quad.direction_y))
+    append_value(item, "Amplitude", _float_text(quad.amplitude))
+    append_value(item, "XDirection", _float_text(quad.direction_x))
+    append_value(item, "YDirection", _float_text(quad.direction_y))
     return item
 
 

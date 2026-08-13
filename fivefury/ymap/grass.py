@@ -150,9 +150,6 @@ class GrassInstanceBatch:
     def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
         return self.batch_aabb.bounds
 
-    def add_instance(self, instance: GrassInstance) -> GrassInstance:
-        self.instances.append(instance)
-        return instance
 
 
 @dataclasses.dataclass(slots=True)
@@ -182,9 +179,6 @@ class InstancedMapData:
             ],
         )
 
-    def add_grass_batch(self, batch: GrassInstanceBatch) -> GrassInstanceBatch:
-        self.grass_instance_list.append(batch)
-        return batch
 
 
 YMAP_GRASS_STRUCT_INFOS = [

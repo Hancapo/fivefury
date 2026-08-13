@@ -13,10 +13,6 @@ class ExtensionContainer:
     __slots__ = ()
     extensions: list[Any]
 
-    def add_extension(self, extension: Any) -> Any:
-        self.extensions.append(extension)
-        return extension
-
 
 @dataclasses.dataclass(slots=True)
 class LightAttrDef(MetaBackedStruct):

@@ -90,7 +90,7 @@ class TextureCatalog:
             )
             for descriptor in catalog
         ]
-        first_entry_id = self._index.add_many(
+        first_entry_id = self._index.bind_many(
             [entry.name_hash for entry in entries],
             dictionary_id,
         )

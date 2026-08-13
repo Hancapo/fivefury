@@ -78,8 +78,8 @@ class CutsceneProject:
     def __init__(self, scene: CutScene, animations: YcdCutsceneBuilder) -> None:
         self.scene = scene
         self.animations = animations
-        self.asset_manager = scene.add_asset_manager("assets")
-        self.animation_manager = scene.add_animation_manager("animations")
+        self.asset_manager = scene.asset_manager("assets")
+        self.animation_manager = scene.animation_manager("animations")
         self.scene.load_scene(
             0.0,
             CutLoadScenePayload(scene.scene_name or animations.name),
@@ -182,7 +182,7 @@ class CutsceneProject:
             raise ValueError("Animated cutscene objects require a clip name")
         if hasattr(binding, "animation_clip_base"):
             binding.animation_clip_base = clip_name
-        self.animations.add_object(
+        self.animations.object(
             clip_name,
             position=position,
             rotation=rotation,
@@ -210,13 +210,13 @@ class CutsceneProject:
         far_clip: float = 1000.0,
         **tracks: object,
     ) -> CutBinding:
-        camera = self.scene.add_camera(name)
+        camera = self.scene.camera(name)
         animated = any(
             value is not None
             for value in (position, rotation, field_of_view, *tracks.values())
         )
         if animated:
-            self.animations.add_camera(
+            self.animations.camera(
                 name,
                 position=position,
                 rotation=rotation,

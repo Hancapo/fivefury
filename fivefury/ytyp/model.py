@@ -10,7 +10,6 @@ from ..map_extensions import (
     extensions_to_meta,
 )
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
-from ..meta.backed import MetaBackedStruct
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..resource import build_rsc7
@@ -104,26 +103,6 @@ class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
     def resource_name(self, value: str) -> None:
         self.meta_name = str(value or "")
 
-    def add(self, item: Any) -> Any:
-        if isinstance(item, (BaseArchetypeDef, TimeArchetypeDef, MloArchetypeDef)):
-            return self.add_archetype(item)
-        if isinstance(item, YtypDependency):
-            self.dependencies.append(item)
-            return item
-        if isinstance(item, CompositeEntityType):
-            self.composite_entity_types.append(item)
-            return item
-        if isinstance(item, MetaBackedStruct):
-            return self.add_extension(item)
-        raise TypeError(f"Unsupported YTYP component: {type(item).__name__}")
-
-    def add_archetype(self, archetype: BaseArchetypeDef | TimeArchetypeDef | MloArchetypeDef) -> Any:
-        self.archetypes.append(archetype)
-        return archetype
-
-    def add_dependency(self, dependency: YtypDependency | MetaHash | HashLike) -> YtypDependency:
-        return self.dependency(dependency)
-
     def dependency(self, dependency: YtypDependency | MetaHash | HashLike) -> YtypDependency:
         dependency_ref = _coerce_dependency(dependency)
         self.dependencies.append(dependency_ref)
@@ -136,20 +115,17 @@ class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
 
     def archetype(self, name: HashLike, **kwargs: Any) -> BaseArchetypeDef:
         archetype = BaseArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
-        self.add_archetype(archetype)
+        self.archetypes.append(archetype)
         return archetype
-
-    def create_archetype(self, name: HashLike, **kwargs: Any) -> BaseArchetypeDef:
-        return self.archetype(name, **kwargs)
 
     def time_archetype(self, name: HashLike, **kwargs: Any) -> TimeArchetypeDef:
         archetype = TimeArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
-        self.add_archetype(archetype)
+        self.archetypes.append(archetype)
         return archetype
 
     def mlo_archetype(self, name: HashLike, **kwargs: Any) -> MloArchetypeDef:
         archetype = MloArchetypeDef(name=name, asset_name=kwargs.pop("asset_name", name), **kwargs)
-        self.add_archetype(archetype)
+        self.archetypes.append(archetype)
         return archetype
 
     def suggested_path(self) -> str:
@@ -223,7 +199,7 @@ class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
         validate: bool = True,
     ) -> RpfFileEntry:
         target = path if path is not None else self.suggested_path()
-        return archive.add_file(target, self.to_bytes(version=version, validate=validate))
+        return archive.file(target, self.to_bytes(version=version, validate=validate))
 
     def to_meta(self) -> Meta:
         return Meta(

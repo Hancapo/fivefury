@@ -48,12 +48,12 @@ def test_build_cutscene_sections_uses_camera_cuts() -> None:
 
 def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     builder = YcdCutsceneBuilder.create("demo_scene", duration=1.0, camera_cuts=[0.5], fps=30.0)
-    builder.add_camera(
+    builder.camera(
         position={0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 0.0, 0.0)},
         rotation=(0.0, 0.0, 0.0, 1.0),
         field_of_view={0.0: 40.0, 1.0: 60.0},
     )
-    builder.add_prop(
+    builder.prop(
         "prop_box",
         position={0.0: (1.0, 0.0, 0.0), 1.0: (1.0, 10.0, 0.0)},
         rotation=(0.0, 0.0, 0.0, 1.0),
@@ -150,7 +150,7 @@ def test_cutscene_builder_can_emit_one_late_streaming_section() -> None:
         section_index_start=12,
         fps=30.0,
     )
-    builder.add_camera(
+    builder.camera(
         position=(0.0, 0.0, 0.0),
         rotation=(0.0, 0.0, 0.0, 1.0),
         field_of_view=45.0,
@@ -164,7 +164,7 @@ def test_cutscene_builder_can_emit_one_late_streaming_section() -> None:
 
 def test_cutscene_builder_uses_explicit_streaming_cuts_from_scene() -> None:
     scene = CutScene.create(duration=6.0, camera_cut_list=[2.0, 4.0])
-    camera = scene.add_camera("exportcamera")
+    camera = scene.camera("exportcamera")
     scene.camera_cut(1.0, camera, CutCameraCutPayload("shot_0"))
     scene.camera_cut(3.0, camera, CutCameraCutPayload("shot_1"))
 
@@ -180,7 +180,7 @@ def test_cutscene_builder_writes_enhanced_runtime_headers() -> None:
         duration=1.0,
         game=GameTarget.GTA5_ENHANCED,
     )
-    builder.add_prop(
+    builder.prop(
         "prop_box",
         position=(0.0, 0.0, 0.0),
         rotation=(0.0, 0.0, 0.0, 1.0),
@@ -246,7 +246,7 @@ def test_cutscene_builder_returns_empty_when_no_animated_clips() -> None:
 
 def test_cutscene_builder_authors_merged_facial_tracks() -> None:
     builder = YcdCutsceneBuilder.create("facial_scene", duration=1.0, fps=30.0)
-    builder.add_ped(
+    builder.ped(
         "cs_actor",
         mover_position=(0.0, 0.0, 0.0),
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
@@ -289,12 +289,12 @@ def test_cutscene_builder_authors_merged_facial_tracks() -> None:
 
 def test_add_facial_animation_promotes_existing_body_clip_to_dual() -> None:
     builder = YcdCutsceneBuilder.create("facial_scene", duration=0.1, fps=30.0)
-    builder.add_ped(
+    builder.ped(
         "cs_actor",
         mover_position=(0.0, 0.0, 0.0),
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
     )
-    builder.add_facial_animation("cs_actor", YcdFacialTrackSet(controls={1: 1.0}))
+    builder.facial_animation("cs_actor", YcdFacialTrackSet(controls={1: 1.0}))
 
     ycd = builder.build_ycds()[0]
 
@@ -304,7 +304,7 @@ def test_add_facial_animation_promotes_existing_body_clip_to_dual() -> None:
 def test_cutscene_builder_preserves_static_negative_w_quaternion() -> None:
     authored = (0.752974, 0.058145, -0.440166, -0.485699)
     builder = YcdCutsceneBuilder.create("negative_w", duration=0.1, fps=30.0)
-    builder.add_prop("actor_q", rotation=authored)
+    builder.prop("actor_q", rotation=authored)
 
     rebuilt = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
     clip = rebuilt.get_clip("actor_q-0")
@@ -321,7 +321,7 @@ def test_cutscene_builder_preserves_static_negative_w_quaternion() -> None:
 
 def test_cutscene_builder_preserves_hashes_that_look_like_pointers() -> None:
     builder = YcdCutsceneBuilder.create("pointer_hash", duration=0.1, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "cc_cscakebox_i14__q012",
         position=(0.0, 0.0, 0.0),
         rotation=(0.0, 0.0, 0.0, 1.0),
@@ -339,7 +339,7 @@ def test_cutscene_builder_preserves_hashes_that_look_like_pointers() -> None:
 
 def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
     builder = YcdCutsceneBuilder.create("multi_bone_scene", duration=1.0, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "p_lamarneck_01_s",
         mover_position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 1.0, 0.0)},
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
@@ -379,7 +379,7 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
 
 def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None:
     builder = YcdCutsceneBuilder.create("bone_only_scene", duration=1.0, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "skinned_prop",
         bones={
             1: YcdCutsceneBoneAnimation(
@@ -401,7 +401,7 @@ def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None
 
 def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequences() -> None:
     builder = YcdCutsceneBuilder.create("long_scene", duration=24.4, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "skinned_prop",
         mover_position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
         mover_rotation=(0.0, 0.0, 0.0, 1.0),

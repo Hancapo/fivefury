@@ -328,7 +328,7 @@ def _build_material_inputs(
             parsed.diffuse_texture = texture_name
             if embedded_textures is None:
                 embedded_textures = Ytd()
-            embedded_textures.add_texture(_solid_colour_texfury_texture(texture_name, parsed.diffuse_color))
+            embedded_textures.texture(_solid_colour_texfury_texture(texture_name, parsed.diffuse_color))
         selected_shader = shader if shader is not None else _infer_shader(parsed, default_shader)
         material_inputs.append(parsed.to_ydr_material(shader=selected_shader))
         index_to_name[index] = name
@@ -467,7 +467,7 @@ def save_companion_ytyp(scene: AssimpScene, destination: str | Path, *, cutscene
         bb_max=bb_max,
     )
     ytyp = Ytyp(name=ytyp_name)
-    ytyp.add_archetype(
+    ytyp.archetypes.append(
         Archetype(
             name=base_name,
             asset_name=base_name,

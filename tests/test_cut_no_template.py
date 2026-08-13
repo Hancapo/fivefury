@@ -40,10 +40,10 @@ from fivefury.hashing import jenk_hash
 
 def test_cut_scene_builder_writes_without_template() -> None:
     scene = CutScene.create(duration=15.0, face_dir="x:/gta5/assets_ng/cuts/test/faces")
-    asset_manager = scene.add(CutAssetManager())
-    camera = scene.add(CutCamera("cam_orbit"))
-    actor = scene.add(CutPed("ped_sphere"))
-    subtitle = scene.add(CutSubtitle("subtitle_track"))
+    asset_manager = scene.binding(CutAssetManager())
+    camera = scene.binding(CutCamera("cam_orbit"))
+    actor = scene.binding(CutPed("ped_sphere"))
+    subtitle = scene.binding(CutSubtitle("subtitle_track"))
 
     scene.load_scene(0.0, CutLoadScenePayload("intro_scene"), target=asset_manager)
     scene.load_models(0.0, [actor.object_id], target=asset_manager)
@@ -77,7 +77,7 @@ def test_cut_scene_builder_writes_without_template() -> None:
 
 def test_cut_writer_preserves_fields_after_dynamic_structure_pointer() -> None:
     scene = CutScene.create(duration=5.0)
-    asset_manager = scene.add_asset_manager()
+    asset_manager = scene.asset_manager()
     scene.load_scene(
         0.0, CutLoadScenePayload("nested_attributes"), target=asset_manager
     )
@@ -99,7 +99,7 @@ def test_cut_writer_preserves_fields_after_dynamic_structure_pointer() -> None:
 
 def test_cut_writer_roundtrips_atstring_arrays() -> None:
     scene = CutScene.create(duration=5.0)
-    vehicle = scene.add_vehicle(
+    vehicle = scene.vehicle(
         "car", fields={"cRemoveBoneNameList": ["door_dside_f", "wheel_lf"]}
     )
 
@@ -126,9 +126,9 @@ def test_cut_decoder_uses_logical_pso_instead_of_stored_archive_bytes() -> None:
 
 def test_cut_scene_save_validation_allows_playable_minimal_scene() -> None:
     scene = CutScene.create(scene_name="playable", duration=5.0)
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("cam_main")
-    prop = scene.add_prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("cam_main")
+    prop = scene.prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
 
     scene.load_scene(0.0, CutLoadScenePayload("playable"), target=asset_manager)
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
@@ -151,9 +151,9 @@ def test_cut_scene_save_validation_allows_playable_minimal_scene() -> None:
 
 def test_cut_scene_save_validation_reports_missing_type_file() -> None:
     scene = CutScene.create(scene_name="bad_cut", duration=5.0)
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("cam_main")
-    prop = scene.add_prop("prop_a", model_name="prop_a")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("cam_main")
+    prop = scene.prop("prop_a", model_name="prop_a")
 
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
     scene.camera_cut(
@@ -175,10 +175,10 @@ def test_cut_scene_save_validation_reports_missing_type_file() -> None:
 
 def test_cut_scene_save_validation_reports_bad_animation_binding() -> None:
     scene = CutScene.create(scene_name="bad_anim", duration=5.0)
-    asset_manager = scene.add_asset_manager()
-    animation_manager = scene.add_animation_manager()
-    camera = scene.add_camera("cam_main")
-    prop = scene.add_prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
+    asset_manager = scene.asset_manager()
+    animation_manager = scene.animation_manager()
+    camera = scene.camera("cam_main")
+    prop = scene.prop("prop_a", model_name="prop_a", ytyp_name="prop_pack")
 
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
     scene.load_anim_dict(0.0, "bad_anim", target=animation_manager)
@@ -202,7 +202,7 @@ def test_cut_scene_save_validation_reports_bad_animation_binding() -> None:
 
 def test_cut_scene_installs_subtitle_track_and_gxt2() -> None:
     scene = CutScene.create(duration=6.0)
-    asset_manager = scene.add_asset_manager()
+    asset_manager = scene.asset_manager()
     track = scene.install_subtitles(
         "TEST_SUBS",
         [
@@ -235,9 +235,9 @@ def test_cut_scene_installs_subtitle_track_and_gxt2() -> None:
 
 def test_cut_scene_load_order_is_stable_with_subtitles() -> None:
     scene = CutScene.create(duration=6.0)
-    asset_manager = scene.add_asset_manager()
-    animation_manager = scene.add_animation_manager()
-    prop = scene.add_prop("prop_a")
+    asset_manager = scene.asset_manager()
+    animation_manager = scene.animation_manager()
+    prop = scene.prop("prop_a")
 
     scene.load_scene(0.0, CutLoadScenePayload("scene"), target=asset_manager)
     scene.load_models(0.0, [prop.object_id], target=asset_manager)
@@ -256,8 +256,8 @@ def test_cut_scene_load_order_is_stable_with_subtitles() -> None:
 
 def test_cut_scene_animation_manager_writes_without_template() -> None:
     scene = CutScene.create(duration=8.0)
-    animation_manager = scene.add(CutAnimationManager())
-    actor = scene.add(CutPed("ped_actor"))
+    animation_manager = scene.binding(CutAnimationManager())
+    actor = scene.binding(CutPed("ped_actor"))
 
     load_event = scene.load_anim_dict(0.0, "intro_dict", target=animation_manager)
     set_event = scene.set_anim(0.0, actor, target=animation_manager)
@@ -308,10 +308,10 @@ def test_cut_scene_animation_manager_writes_without_template() -> None:
 
 def test_cut_scene_preserves_authored_prop_startup_time() -> None:
     scene = CutScene.create(duration=8.0)
-    asset_manager = scene.add(CutAssetManager())
-    animation_manager = scene.add(CutAnimationManager())
-    camera = scene.add(CutCamera("cam"))
-    prop = scene.add(
+    asset_manager = scene.binding(CutAssetManager())
+    animation_manager = scene.binding(CutAnimationManager())
+    camera = scene.binding(CutCamera("cam"))
+    prop = scene.binding(
         CutProp("prop_local")
         .configure_model_asset(
             streaming_name="prop_stream",
@@ -351,10 +351,10 @@ def test_cut_scene_preserves_authored_prop_startup_time() -> None:
 
 def test_cut_event_args_use_complete_runtime_layouts() -> None:
     scene = CutScene.create(duration=5.0)
-    animation_manager = scene.add_animation_manager()
-    camera = scene.add_camera("cam")
-    parent = scene.add_prop("parent")
-    child = scene.add_prop("child")
+    animation_manager = scene.animation_manager()
+    camera = scene.camera("cam")
+    parent = scene.prop("parent")
+    child = scene.prop("child")
 
     scene.set_anim(0.0, child, clip_name="child_clip", target=animation_manager)
     scene.set_draw_distance(0.0, camera, CutDrawDistancePayload(0.1, 1500.0))
@@ -394,7 +394,7 @@ def test_cut_event_args_use_complete_runtime_layouts() -> None:
 
 def test_cut_camera_validation_accepts_minus_one_overrides() -> None:
     scene = CutScene.create(duration=1.0)
-    camera = scene.add_camera("cam")
+    camera = scene.camera("cam")
     scene.camera_cut(0.0, camera, CutCameraCutPayload("cam"))
 
     issues = validate_cut_scene(scene, strict=True)
@@ -488,7 +488,7 @@ def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
     project = CutsceneProject.create(
         "demo_scene", duration=2.0, camera_cuts=[1.0]
     )
-    prop = project.scene.add_prop(
+    prop = project.scene.prop(
         "box", model_name="prop_box", ytyp_name="demo_props"
     )
     project.animate(
@@ -538,8 +538,8 @@ def test_cutscene_high_level_save_cannot_skip_validation() -> None:
 
 def test_cutscene_rejects_wrong_event_target_role() -> None:
     scene = CutScene.create(scene_name="wrong_target", duration=1.0)
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("camera")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("camera")
     scene.load_scene(0.0, {"cName": "wrong_target"}, target=asset_manager)
     scene.camera_cut(0.0, camera, CutCameraCutPayload("camera"))
     scene.load_models(0.0, [], target=camera)
@@ -552,8 +552,8 @@ def test_cutscene_rejects_wrong_event_target_role() -> None:
 
 def test_cutscene_rejects_attachment_cycles() -> None:
     scene = CutScene.create(scene_name="attachment_cycle", duration=1.0)
-    first = scene.add_prop("first", model_name="first", ytyp_name="props")
-    second = scene.add_prop("second", model_name="second", ytyp_name="props")
+    first = scene.prop("first", model_name="first", ytyp_name="props")
+    second = scene.prop("second", model_name="second", ytyp_name="props")
     scene.set_attachment(0.0, first, second, "root")
     scene.set_attachment(0.0, second, first, "root")
 
@@ -564,7 +564,7 @@ def test_cutscene_rejects_attachment_cycles() -> None:
 
 def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None:
     project = CutsceneProject.create("dict_mismatch", duration=1.0)
-    prop = project.scene.add_prop(
+    prop = project.scene.prop(
         "box", model_name="prop_box", ytyp_name="demo_props"
     )
     project.animate(
@@ -591,7 +591,7 @@ def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None
 
 def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
     project = CutsceneProject.create("unloaded_model", duration=1.0)
-    prop = project.scene.add_prop(
+    prop = project.scene.prop(
         "box", model_name="prop_box", ytyp_name="demo_props"
     )
     project.animate(

@@ -421,7 +421,7 @@ class WaterData:
     def quads(self) -> list[WaterQuad]:
         return self.water_quads
 
-    def add(self, item: WaterComponent) -> WaterComponent:
+    def _append_component(self, item: WaterComponent) -> None:
         if isinstance(item, WaterQuad):
             self.water_quads.append(item)
         elif isinstance(item, WaterCalmingQuad):
@@ -430,11 +430,10 @@ class WaterData:
             self.wave_quads.append(item)
         else:
             raise TypeError(f"Unsupported water component: {type(item).__name__}")
-        return item
 
     def extend(self, items: Iterable[WaterComponent]) -> WaterData:
         for item in items:
-            self.add(item)
+            self._append_component(item)
         return self
 
     @property
@@ -552,9 +551,9 @@ def coerce_water_data(
     data = WaterData()
     if isinstance(value, (list, tuple)):
         for item in value:
-            data.add(item)
+            data._append_component(item)
     else:
-        data.add(value)
+        data._append_component(value)
     return data
 
 

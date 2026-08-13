@@ -4,6 +4,7 @@ import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..authoring import BuildContext, asset_name
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
@@ -54,7 +55,29 @@ from .utils import (
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..rpf import RpfArchive, RpfFileEntry
-    from ..ytyp import MloArchetypeDef
+    from ..ybn import Ybn
+    from ..ytyp import MloArchetypeDef, Ytyp
+
+
+def _context_dependencies(
+    context: BuildContext | None,
+) -> tuple[tuple[Ytyp, ...] | None, dict[str, Ybn] | None]:
+    if context is None:
+        return None, None
+
+    from ..ybn import Ybn
+    from ..ytyp import Ytyp
+
+    ytyps = context.assets.of_type(Ytyp)
+    ybns = {
+        asset_name(path): asset
+        for path, asset in context.assets.items()
+        if isinstance(asset, Ybn)
+    }
+    return (
+        ytyps or (() if context.strict else None),
+        ybns or ({} if context.strict else None),
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -96,13 +119,6 @@ class Ymap(MetaHashFieldsMixin):
     def resource_name(self, value: str) -> None:
         self.meta_name = str(value or "")
 
-    def add_entity(self, entity: EntityDef | MloInstanceDef) -> EntityDef | MloInstanceDef:
-        self.entities.append(entity)
-        return entity
-
-    def add_physics_dictionary(self, name: PhysicsDictionary | MetaHash | HashLike) -> PhysicsDictionary:
-        return self.physics_dictionary(name)
-
     def physics_dictionary(self, name: PhysicsDictionary | MetaHash | HashLike) -> PhysicsDictionary:
         dictionary = coerce_physics_dictionary(name)
         self.physics_dictionaries.append(dictionary)
@@ -110,11 +126,8 @@ class Ymap(MetaHashFieldsMixin):
 
     def entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
         entity = EntityDef(archetype_name=archetype_name, **kwargs)
-        self.add_entity(entity)
+        self.entities.append(entity)
         return entity
-
-    def create_entity(self, archetype_name: HashLike, **kwargs: Any) -> EntityDef:
-        return self.entity(archetype_name, **kwargs)
 
     def mlo_instance(
         self,
@@ -123,49 +136,8 @@ class Ymap(MetaHashFieldsMixin):
     ) -> MloInstanceDef:
         name = getattr(archetype_name, "name", archetype_name)
         entity = MloInstanceDef(archetype_name=name, **kwargs)
-        self.add_entity(entity)
+        self.entities.append(entity)
         return entity
-
-    def add(self, item: Any) -> Any:
-        return self._add_one(item)
-
-    def _add_one(self, item: Any) -> Any:
-        if isinstance(item, (EntityDef, MloInstanceDef)):
-            return self.add_entity(item)
-        if isinstance(item, PhysicsDictionary):
-            self.physics_dictionaries.append(item)
-            return item
-        if isinstance(item, ContainerLodDef):
-            return self.add_container_lod(item)
-        if isinstance(item, BoxOccluder):
-            return self.add_box_occluder(item)
-        if isinstance(item, OccludeModel):
-            return self.add_occlude_model(item)
-        if isinstance(item, GrassInstanceBatch):
-            return self.add_grass_batch(item)
-        if isinstance(item, LodLight):
-            return self.add_lod_light(item)
-        if isinstance(item, CarGen):
-            return self.add_car_gen(item)
-        if isinstance(item, TimeCycleModifier):
-            return self.add_time_cycle_modifier(item)
-        if isinstance(item, InstancedMapData):
-            self.instanced_data = item
-            return item
-        if isinstance(item, LodLightsSoa):
-            self.lod_lights = item
-            return item
-        if isinstance(item, DistantLodLightsSoa):
-            self.distant_lod_lights = item
-            return item
-        if isinstance(item, BlockDesc):
-            self.block = item
-            return item
-        raise TypeError(f"Unsupported YMAP component: {type(item).__name__}")
-
-    def add_box_occluder(self, occluder: BoxOccluder | dict[str, Any]) -> Any:
-        self.box_occluders.append(occluder)
-        return occluder
 
     def box_occluder(self, **kwargs: Any) -> BoxOccluder:
         if "position" in kwargs and "size" in kwargs:
@@ -176,15 +148,13 @@ class Ymap(MetaHashFieldsMixin):
             occ = BoxOccluder.from_box(position, size, angle, angle_mode)
         else:
             occ = BoxOccluder(**kwargs)
-        self.add_box_occluder(occ)
+        self.box_occluders.append(occ)
         return occ
 
-    def add_occlude_model(self, model: OccludeModel | dict[str, Any]) -> Any:
+    def occlude_model(self, **kwargs: Any) -> Any:
+        model = _coerce_occlude_model(**kwargs)
         self.occlude_models.append(model)
         return model
-
-    def occlude_model(self, **kwargs: Any) -> Any:
-        return self.add_occlude_model(_coerce_occlude_model(**kwargs))
 
     def occlude_box(
         self,
@@ -194,8 +164,7 @@ class Ymap(MetaHashFieldsMixin):
         flags: int = 0,
     ) -> list[OccludeModel]:
         models = OccludeModel.from_box(min_pos, max_pos, flags=flags)
-        for model in models:
-            self.add_occlude_model(model)
+        self.occlude_models.extend(models)
         return models
 
     def occlude_quad(
@@ -205,8 +174,7 @@ class Ymap(MetaHashFieldsMixin):
         flags: int = 0,
     ) -> list[OccludeModel]:
         models = OccludeModel.from_quad(corners, flags=flags)
-        for model in models:
-            self.add_occlude_model(model)
+        self.occlude_models.extend(models)
         return models
 
     def occlude_faces(
@@ -217,17 +185,12 @@ class Ymap(MetaHashFieldsMixin):
         flags: int = 0,
     ) -> list[OccludeModel]:
         models = OccludeModel.from_faces(vertices, faces, flags=flags)
-        for model in models:
-            self.add_occlude_model(model)
+        self.occlude_models.extend(models)
         return models
-
-    def add_container_lod(self, lod: ContainerLodDef) -> ContainerLodDef:
-        self.container_lods.append(lod)
-        return lod
 
     def container_lod(self, **kwargs: Any) -> ContainerLodDef:
         lod = ContainerLodDef(**kwargs)
-        self.add_container_lod(lod)
+        self.container_lods.append(lod)
         return lod
 
     def ensure_instanced_data(self) -> InstancedMapData:
@@ -236,11 +199,10 @@ class Ymap(MetaHashFieldsMixin):
         self.instanced_data = InstancedMapData.from_meta(self.instanced_data) if isinstance(self.instanced_data, dict) else InstancedMapData()
         return self.instanced_data
 
-    def add_grass_batch(self, batch: GrassInstanceBatch) -> GrassInstanceBatch:
-        return self.ensure_instanced_data().add_grass_batch(batch)
-
     def grass_batch(self, **kwargs: Any) -> GrassInstanceBatch:
-        return self.add_grass_batch(GrassInstanceBatch(**kwargs))
+        batch = GrassInstanceBatch(**kwargs)
+        self.ensure_instanced_data().grass_instance_list.append(batch)
+        return batch
 
     def ensure_lod_lights(self) -> LodLightsSoa:
         if isinstance(self.lod_lights, LodLightsSoa):
@@ -258,18 +220,20 @@ class Ymap(MetaHashFieldsMixin):
         )
         return self.distant_lod_lights
 
-    def add_lod_light(self, light: LodLight) -> LodLight:
+    def _append_lod_light(self, light: LodLight) -> LodLight:
         self.ensure_lod_lights().append(light)
         self.ensure_distant_lod_lights().append(light.position, light.rgbi)
         return light
 
-    def lod_light(self, **kwargs: Any) -> LodLight:
-        light = _coerce_lod_light(**kwargs)
-        if isinstance(light, LodLightsSoa):
-            self.lod_lights = light
+    def lod_light(self, light: LodLight | None = None, **kwargs: Any) -> LodLight:
+        if light is not None and kwargs:
+            raise TypeError("Pass a LodLight or its fields, not both")
+        resolved = light or _coerce_lod_light(**kwargs)
+        if isinstance(resolved, LodLightsSoa):
+            self.lod_lights = resolved
             return LodLight()
-        self.add_lod_light(light)
-        return light
+        self._append_lod_light(resolved)
+        return resolved
 
     def iter_lod_lights(self) -> list[LodLight]:
         lod = self.ensure_lod_lights() if self.lod_lights is not None else LodLightsSoa()
@@ -332,18 +296,10 @@ class Ymap(MetaHashFieldsMixin):
         self.distant_lod_lights = normalized_distant
         return self
 
-    def add_car_gen(self, car_gen: CarGen) -> CarGen:
-        self.car_generators.append(car_gen)
-        return car_gen
-
     def car_gen(self, car_model: HashLike, position: tuple[float, float, float], heading: float = 0.0, **kwargs: Any) -> CarGen:
         cg = CarGen.create(car_model, position, heading, **kwargs)
-        self.add_car_gen(cg)
+        self.car_generators.append(cg)
         return cg
-
-    def add_time_cycle_modifier(self, modifier: TimeCycleModifier) -> TimeCycleModifier:
-        self.time_cycle_modifiers.append(modifier)
-        return modifier
 
     def time_cycle_modifier(
         self,
@@ -353,7 +309,7 @@ class Ymap(MetaHashFieldsMixin):
         **kwargs: Any,
     ) -> TimeCycleModifier:
         modifier = TimeCycleModifier.create(name, position, size, **kwargs)
-        self.add_time_cycle_modifier(modifier)
+        self.time_cycle_modifiers.append(modifier)
         return modifier
 
     def suggested_path(self) -> str:
@@ -364,9 +320,10 @@ class Ymap(MetaHashFieldsMixin):
         *,
         streaming_margin: float = 20.0,
         include_lod_distance: bool = True,
-        ytyps: Any = None,
+        context: BuildContext | None = None,
     ) -> Ymap:
         bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
+        ytyps, _ = _context_dependencies(context)
         archetypes = archetypes_by_hash(ytyps)
         for entity in self.entities:
             position = tuple(getattr(entity, "position", (0.0, 0.0, 0.0)))
@@ -465,22 +422,23 @@ class Ymap(MetaHashFieldsMixin):
         *,
         auto_extents: bool = False,
         auto_flags: bool = True,
-        ytyps: Any = None,
-        ybns: Any = None,
+        context: BuildContext | None = None,
     ) -> Ymap:
+        ytyps, _ = _context_dependencies(context)
         build_ymap_mlo_instances(self, ytyps)
         self.normalize_lod_lights()
         if auto_extents:
-            self.recalculate_extents(ytyps=ytyps)
+            self.recalculate_extents(context=context)
         if auto_flags:
             self.recalculate_flags()
         self.name = _ensure_base_name(self.name, ".ymap")
         return self
 
-    def validate_mlos(self, *, ytyps: Any = None, ybns: Any = None) -> list[str]:
+    def validate_mlos(self, *, context: BuildContext | None = None) -> list[str]:
+        ytyps, ybns = _context_dependencies(context)
         return validate_ymap_mlo_instances(self, ytyps, ybns)
 
-    def validate(self, *, ytyps: Any = None, ybns: Any = None) -> list[str]:
+    def validate(self, *, context: BuildContext | None = None) -> list[str]:
         issues: list[str] = []
         lod_count = len(self.lod_lights) if isinstance(self.lod_lights, LodLightsSoa) else 0
         distant_count = len(self.distant_lod_lights) if isinstance(self.distant_lod_lights, DistantLodLightsSoa) else 0
@@ -496,7 +454,7 @@ class Ymap(MetaHashFieldsMixin):
                     break
                 if not light.is_street_light:
                     seen_non_street = True
-        issues.extend(self.validate_mlos(ytyps=ytyps, ybns=ybns))
+        issues.extend(self.validate_mlos(context=context))
         return issues
 
     def to_meta_root(self) -> dict[str, Any]:
@@ -531,12 +489,11 @@ class Ymap(MetaHashFieldsMixin):
         *,
         version: int = 2,
         validate: bool = True,
-        ytyps: Any = None,
-        ybns: Any = None,
+        context: BuildContext | None = None,
     ) -> bytes:
-        self.build(ytyps=ytyps, ybns=ybns)
+        self.build(context=context)
         if validate:
-            issues = self.validate(ytyps=ytyps, ybns=ybns)
+            issues = self.validate(context=context)
             if issues:
                 raise ValueError("Invalid YMAP:\n- " + "\n- ".join(issues))
         builder = MetaBuilder(struct_infos=YMAP_STRUCT_INFOS, enum_infos=YMAP_ENUM_INFOS, name=self.meta_name or "")
@@ -552,16 +509,15 @@ class Ymap(MetaHashFieldsMixin):
         auto_extents: bool = False,
         auto_flags: bool = True,
         validate: bool = True,
-        ytyps: Any = None,
-        ybns: Any = None,
+        context: BuildContext | None = None,
     ) -> Path:
         if auto_extents:
-            self.recalculate_extents(ytyps=ytyps)
+            self.recalculate_extents(context=context)
         if auto_flags:
             self.recalculate_flags()
         destination = Path(path) if path is not None else Path(self.suggested_path())
         destination.write_bytes(
-            self.to_bytes(version=version, validate=validate, ytyps=ytyps, ybns=ybns)
+            self.to_bytes(version=version, validate=validate, context=context)
         )
         return destination
 
@@ -574,17 +530,16 @@ class Ymap(MetaHashFieldsMixin):
         auto_extents: bool = False,
         auto_flags: bool = True,
         validate: bool = True,
-        ytyps: Any = None,
-        ybns: Any = None,
+        context: BuildContext | None = None,
     ) -> RpfFileEntry:
         if auto_extents:
-            self.recalculate_extents(ytyps=ytyps)
+            self.recalculate_extents(context=context)
         if auto_flags:
             self.recalculate_flags()
         target = path if path is not None else self.suggested_path()
-        return archive.add_file(
+        return archive.file(
             target,
-            self.to_bytes(version=version, validate=validate, ytyps=ytyps, ybns=ybns),
+            self.to_bytes(version=version, validate=validate, context=context),
         )
 
     def to_meta(self) -> Meta:
