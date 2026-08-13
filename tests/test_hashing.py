@@ -69,8 +69,8 @@ class HashingContractTests(PytestCompat):
         from fivefury._native import CompactIndex
 
         index = CompactIndex()
-        index.add("maps/alpha.ymap", 1, 10, 10)
-        index.add("types/beta.ytyp", 2, 20, 20)
+        index.record("maps/alpha.ymap", 1, 10, 10)
+        index.record("types/beta.ytyp", 2, 20, 20)
 
         self.assertEqual(index.paths(), ["maps/alpha.ymap", "types/beta.ytyp"])
 

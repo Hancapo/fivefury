@@ -22,7 +22,7 @@ def _lod_light() -> LodLight:
 
 def test_typed_lod_light_authoring_roundtrip() -> None:
     source = Ymap(name="typed_lights")
-    source.add_lod_light(_lod_light())
+    source.lod_light(_lod_light())
 
     parsed = Ymap.from_bytes(source.to_bytes())
 

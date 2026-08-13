@@ -447,7 +447,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         if loose_path is not None:
             flags |= _FLAG_LOOSE
         asset_id = int(
-            self._index.add(
+            self._index.record(
                 normalized_path,
                 int(kind),
                 int(size),

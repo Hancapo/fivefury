@@ -605,7 +605,7 @@ class RpfArchive:
             current = found
         return current
 
-    def add_directory(self, path: str | Path) -> RpfDirectoryEntry:
+    def directory(self, path: str | Path) -> RpfDirectoryEntry:
         normalized = _normalize_path(path)
         if not normalized:
             return self.root
@@ -623,7 +623,7 @@ class RpfArchive:
         self._invalidate_index()
         return entry
 
-    def add_nested_archive(
+    def nested_archive(
         self, path: str | Path
     ) -> tuple[RpfBinaryFileEntry, RpfArchive]:
         normalized = _normalize_path(path)
@@ -656,7 +656,7 @@ class RpfArchive:
         self._invalidate_index()
         return entry, child
 
-    def add_file(
+    def file(
         self,
         path: str | Path,
         data: bytes | bytearray | memoryview | object,
@@ -748,7 +748,7 @@ class RpfArchive:
         self._invalidate_index()
         return entry
 
-    def add_file_path(
+    def file_path(
         self,
         path: str | Path,
         source_path: str | Path,
@@ -771,7 +771,7 @@ class RpfArchive:
             parent.remove_file(existing)
 
         if leaf_lower.endswith(".rpf") and _is_rpf7(header):
-            return self.add_file(normalized, source.read_bytes())
+            return self.file(normalized, source.read_bytes())
         if _is_rsc7(header):
             _magic, _version, system_flags, graphics_flags = struct.unpack(
                 "<4I",
@@ -788,7 +788,7 @@ class RpfArchive:
                 _source_path=source,
             )
         elif leaf_lower.endswith((".ymap", ".ytyp")):
-            return self.add_file(normalized, source.read_bytes())
+            return self.file(normalized, source.read_bytes())
         else:
             entry = RpfBinaryFileEntry(
                 name=leaf,
@@ -802,63 +802,6 @@ class RpfArchive:
         parent.append_file(entry)
         self._invalidate_index()
         return entry
-
-    def add_object(
-        self,
-        path: str | Path,
-        value: bytes | bytearray | memoryview | object,
-        *,
-        compress_binary: bool = False,
-    ) -> RpfFileEntry:
-        return self.add_file(path, value, compress_binary=compress_binary)
-
-    def add(
-        self,
-        path: str | Path,
-        value: bytes | bytearray | memoryview | object,
-        *,
-        compress_binary: bool = False,
-    ) -> RpfFileEntry:
-        return self.add_file(path, value, compress_binary=compress_binary)
-
-    def add_game_file(
-        self,
-        path: str | Path,
-        value: bytes | bytearray | memoryview | object,
-        *,
-        compress_binary: bool = False,
-    ) -> RpfFileEntry:
-        return self.add_file(path, value, compress_binary=compress_binary)
-
-    def add_asset(
-        self,
-        path: str | Path,
-        value: bytes | bytearray | memoryview | object,
-        *,
-        compress_binary: bool = False,
-    ) -> RpfFileEntry:
-        return self.add_file(path, value, compress_binary=compress_binary)
-
-    def add_ymap(
-        self,
-        path: str | Path,
-        ymap: object,
-        *,
-        version: int = 2,
-        auto_extents: bool = False,
-    ) -> RpfFileEntry:
-        if auto_extents and hasattr(ymap, "recalculate_extents"):
-            ymap.recalculate_extents()  # type: ignore[attr-defined]
-        if not hasattr(ymap, "to_bytes"):
-            raise TypeError("ymap must expose to_bytes(version=...)")
-        return self.add_file(path, ymap.to_bytes(version=version))  # type: ignore[attr-defined]
-
-    def add_ytyp(
-        self, path: str | Path, ytyp: object, *, version: int = 2
-    ) -> RpfFileEntry:
-        if not hasattr(ytyp, "to_bytes"):
-            raise TypeError("ytyp must expose to_bytes(version=...)")
-        return self.add_file(path, ytyp.to_bytes(version=version))  # type: ignore[attr-defined]
 
     def _collect_entries(self) -> list[RpfEntry]:
         ordered: list[RpfEntry] = [self.root]

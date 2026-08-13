@@ -290,8 +290,8 @@ def test_cutscene_ped_profile_writes_and_roundtrips_root_classes() -> None:
 
 def test_full_ped_profile_writes_and_roundtrips_runtime_classes() -> None:
     profile = LEGACY_YDD_FULL_PED_RUNTIME_PROFILE
-    skeleton = YdrSkeleton.create()
-    skeleton.add_bone("root", tag=0)
+    skeleton = YdrSkeleton()
+    skeleton.bone("root", tag=0)
     source = Ydd.from_drawables(
         {
             "head_000_r": _simple_drawable(

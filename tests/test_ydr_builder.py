@@ -41,7 +41,10 @@ from fivefury import (
     skeleton_bone_flag_names,
 )
 from fivefury.resource import split_rsc7_sections
-from fivefury.ydr.gen9 import ShaderGen9ParameterDefinition, decode_gen9_vertex_declaration
+from fivefury.ydr.gen9 import (
+    ShaderGen9ParameterDefinition,
+    decode_gen9_vertex_declaration,
+)
 from fivefury.ydr.resource_headers import GEN9_DRAWABLE_HEADERS
 from fivefury.ydr.write_materials import _coerce_gen9_cbuffer_bytes
 from tests.helpers import configured_path, reference_root
@@ -240,9 +243,9 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
 
 
 def test_rigid_bone_binding_is_applied_to_drawable_bounds(tmp_path: Path) -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root")
-    skeleton.add_bone("piece", parent=root, translation=(10.0, 2.0, 3.0))
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root")
+    skeleton.bone("piece", parent=root, translation=(10.0, 2.0, 3.0))
     build = create_ydr(
         meshes=[_triangle_mesh()],
         skeleton=skeleton,
@@ -278,10 +281,10 @@ def test_create_ydr_writes_legacy_texture_base_contract(tmp_path: Path) -> None:
 
 
 def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
-    skeleton = YdrSkeleton.create()
-    root_bone = skeleton.add_bone("root")
+    skeleton = YdrSkeleton()
+    root_bone = skeleton.bone("root")
     joints = YdrJoints()
-    joints.add_rotation_limit(
+    joints.rotation_limit(
         bone_id=root_bone.tag,
         min=(-1.0, -0.5, -0.25),
         max=(1.0, 0.5, 0.25),
@@ -289,7 +292,7 @@ def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
         num_control_points=2,
         joint_dofs=3,
     )
-    joints.add_translation_limit(
+    joints.translation_limit(
         bone_id=root_bone.tag,
         min=(-0.1, -0.2, -0.3),
         max=(0.1, 0.2, 0.3),
@@ -482,7 +485,7 @@ def test_ydr_build_from_meshes_can_add_models_declaratively() -> None:
         flags=7,
     )
 
-    added = build.add_model(
+    added = build.model(
         [_offset_triangle_mesh(2.0, material="main")],
         lod=YdrLod.MEDIUM,
         render_mask=YdrRenderMask.SHELL,
@@ -1173,19 +1176,19 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
         material_textures={"DiffuseSampler": "test_diffuse"},
         name="light_helpers",
     )
-    point = build.add_light(YdrLight.point(
+    point = build.light(YdrLight.point(
         position=(1.0, 2.0, 3.0),
         color=(10, 20, 30),
         intensity=4.0,
         falloff=25.0,
     ))
-    spot = build.add_light(YdrLight.spot(
+    spot = build.light(YdrLight.spot(
         position=(4.0, 5.0, 6.0),
         direction=(0.0, 0.0, -1.0),
         cone_inner_angle=0.2,
         cone_outer_angle=0.6,
     ))
-    capsule = build.add_light(YdrLight.capsule(position=(7.0, 8.0, 9.0), extent=(0.0, 0.0, 3.0)))
+    capsule = build.light(YdrLight.capsule(position=(7.0, 8.0, 9.0), extent=(0.0, 0.0, 3.0)))
 
     assert point.light_type is YdrLightType.POINT
     assert spot.light_type is YdrLightType.SPOT
@@ -1204,7 +1207,7 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
     assert ydr.lights[1].cone_outer_angle == pytest.approx(0.6)
     assert ydr.lights[2].extent == pytest.approx((0.0, 0.0, 3.0))
 
-    parsed_spot = ydr.add_light(YdrLight.spot(position=(10.0, 0.0, 0.0), cone_outer_angle=1.0))
+    parsed_spot = ydr.light(YdrLight.spot(position=(10.0, 0.0, 0.0), cone_outer_angle=1.0))
     assert parsed_spot.light_type is YdrLightType.SPOT
     assert len(ydr.lights) == 4
     ydr.clear_lights()
@@ -1622,13 +1625,13 @@ def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
 
 
 def _simple_skeleton() -> YdrSkeleton:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone(
+    skeleton = YdrSkeleton()
+    root = skeleton.bone(
         "root",
         tag=0,
         flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
     )
-    skeleton.add_bone(
+    skeleton.bone(
         "child",
         parent=root,
         tag=1,
@@ -1639,8 +1642,8 @@ def _simple_skeleton() -> YdrSkeleton:
 
 
 def _hashable_skeleton() -> YdrSkeleton:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone(
+    skeleton = YdrSkeleton()
+    root = skeleton.bone(
         "root",
         tag=0,
         flags=YdrBoneFlags.ROT_X | YdrBoneFlags.TRANS_Y | YdrBoneFlags.HAS_CHILD,
@@ -1648,7 +1651,7 @@ def _hashable_skeleton() -> YdrSkeleton:
         rotation=(0.0, 0.0, 0.0, 1.0),
         scale=(1.0, 1.0, 1.0),
     )
-    mid = skeleton.add_bone(
+    mid = skeleton.bone(
         "mid",
         parent=root,
         tag=11,
@@ -1657,7 +1660,7 @@ def _hashable_skeleton() -> YdrSkeleton:
         rotation=(0.1, 0.2, 0.3, 0.9),
         scale=(1.0, 2.0, 1.0),
     )
-    skeleton.add_bone(
+    skeleton.bone(
         "leaf",
         parent=mid,
         tag=12,
@@ -1686,9 +1689,9 @@ def _tiny_embedded_ytd() -> Ytd:
 
 
 def test_declarative_skeleton_helpers() -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root")
-    child = skeleton.add_bone("child", parent="root", translation=(0.0, 1.0, 0.0))
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root")
+    child = skeleton.bone("child", parent="root", translation=(0.0, 1.0, 0.0))
     skeleton.build()
 
     assert root.flags == (
@@ -1710,7 +1713,7 @@ def test_declarative_skeleton_helpers() -> None:
     assert skeleton.require_bone(child.tag) is child
 
     ydr = Ydr(version=165)
-    bone = ydr.add_bone("weapon_root")
+    bone = ydr.bone("weapon_root")
     assert ydr.has_skeleton is True
     assert bone.name == "weapon_root"
     assert ydr.get_bone_by_name("weapon_root") is bone
@@ -2113,8 +2116,8 @@ def test_bind_model_to_bone_helper_roundtrip(tmp_path: Path) -> None:
     build.save(ydr_path)
     ydr = read_ydr(ydr_path)
 
-    root = ydr.add_bone("root", tag=0)
-    child = ydr.add_bone("child", parent=root, tag=1)
+    root = ydr.bone("root", tag=0)
+    child = ydr.bone("child", parent=root, tag=1)
     ydr.ensure_skeleton().build()
     ydr.bind_model_to_bone(0, child)
 
@@ -2176,10 +2179,10 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
         (0, 1, 2, 4),
         (1, 2, 3, 4),
     ]
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root", tag=0)
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root", tag=0)
     for index in range(1, 5):
-        skeleton.add_bone(f"bone_{index}", parent=root, tag=index)
+        skeleton.bone(f"bone_{index}", parent=root, tag=index)
     skeleton.build()
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(
@@ -2303,7 +2306,7 @@ def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
     build.save(path)
     ydr = read_ydr(path)
 
-    added = ydr.add_embedded_texture(
+    added = ydr.embedded_texture(
         name="helper_embedded",
         data=bytes([0, 255, 0, 255] * 16),
         width=4,
@@ -2313,7 +2316,7 @@ def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
     assert added.name == "helper_embedded"
     assert ydr.get_embedded_texture("helper_embedded") is not None
 
-    ydr.add_embedded_texture(
+    ydr.embedded_texture(
         Texture.from_raw(
             bytes([0, 0, 255, 255] * 16),
             width=4,
@@ -2328,16 +2331,14 @@ def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
     assert ydr.remove_embedded_texture("helper_embedded") is True
     assert ydr.get_embedded_texture("helper_embedded") is None
 
-    ydr.set_bound(
-        BoundSphere(
-            bound_type=BoundType.SPHERE,
-            box_min=(-1.0, -1.0, -1.0),
-            box_max=(1.0, 1.0, 1.0),
-            box_center=(0.0, 0.0, 0.0),
-            sphere_center=(0.0, 0.0, 0.0),
-            sphere_radius=1.0,
-            margin=0.0,
-        )
+    ydr.bound = BoundSphere(
+        bound_type=BoundType.SPHERE,
+        box_min=(-1.0, -1.0, -1.0),
+        box_max=(1.0, 1.0, 1.0),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        sphere_radius=1.0,
+        margin=0.0,
     )
     assert isinstance(ydr.bound, BoundSphere)
     ydr.clear_bound()
@@ -2354,8 +2355,8 @@ def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
     build.save(path)
     ydr = read_ydr(path)
 
-    root = ydr.add_bone("root", tag=0)
-    child = ydr.add_bone("child", parent=root, tag=1)
+    root = ydr.bone("root", tag=0)
+    child = ydr.bone("child", parent=root, tag=1)
     ydr.ensure_skeleton().build()
     ydr.set_model_skin(0)
     mesh = ydr.meshes[0]
@@ -2417,12 +2418,12 @@ def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
 
 
 def test_ydr_writer_normalizes_root_bone_id(tmp_path: Path) -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root", tag=0xB692)
-    child = skeleton.add_bone("child", parent=root, tag=0x1A7F)
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root", tag=0xB692)
+    child = skeleton.bone("child", parent=root, tag=0x1A7F)
     skeleton.build()
     joints = YdrJoints()
-    joints.add_rotation_limit(bone_id=root.tag)
+    joints.rotation_limit(bone_id=root.tag)
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(
             meshes=[_skinned_triangle_mesh(material="main")],
@@ -2492,7 +2493,7 @@ def test_ydr_writer_recalculates_skeleton_unknown_hashes_by_default(tmp_path: Pa
 def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
     skeleton = _simple_skeleton()
     joints = YdrJoints()
-    joints.add_rotation_limit(
+    joints.rotation_limit(
         bone_id=0,
         min=(-0.1, -0.2, -0.3),
         max=(0.1, 0.2, 0.3),
@@ -2500,7 +2501,7 @@ def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
         num_control_points=2,
         joint_dofs=3,
     )
-    joints.add_translation_limit(
+    joints.translation_limit(
         bone_id=1,
         min=(-1.0, -2.0, -3.0),
         max=(1.0, 2.0, 3.0),
@@ -2547,8 +2548,8 @@ def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
 def test_joints_validation_detects_unknown_bones() -> None:
     ydr = Ydr(version=165)
     ydr.joints = YdrJoints()
-    ydr.joints.add_rotation_limit(bone_id=77)
-    ydr.joints.add_translation_limit(bone_id=88)
+    ydr.joints.rotation_limit(bone_id=77)
+    ydr.joints.translation_limit(bone_id=88)
 
     issues = ydr.validate()
 
@@ -2557,18 +2558,21 @@ def test_joints_validation_detects_unknown_bones() -> None:
 
 def test_skeleton_incremental_and_batch_bone_building() -> None:
     skeleton = YdrSkeleton()
-    root = skeleton.add_bone("root", tag=0)
-    child = skeleton.add_bone("child", parent=root, tag=10)
+    root = skeleton.bone("root", tag=0)
+    child = skeleton.bone("child", parent=root, tag=10)
 
     assert skeleton.get_bone_by_tag(10) is child
     assert skeleton.get_bone_by_name("CHILD") is child
     assert root.flags & YdrBoneFlags.HAS_CHILD
     assert skeleton.parent_indices == [-1, 0]
 
-    skeleton.add_bones(
-        YdrBone(name="batch_a", tag=20, parent_index=0),
-        YdrBone(name="batch_b", tag=30, parent_index=0),
+    skeleton.bones.extend(
+        (
+            YdrBone(name="batch_a", tag=20, parent_index=0),
+            YdrBone(name="batch_b", tag=30, parent_index=0),
+        )
     )
+    skeleton.build()
 
     assert [bone.index for bone in skeleton.bones] == [0, 1, 2, 3]
     assert skeleton.get_bone_by_tag(30).name == "batch_b"

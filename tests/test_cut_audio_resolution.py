@@ -32,7 +32,7 @@ def test_audio_container_hint_comes_from_the_target_audio_object() -> None:
         )
     )
     reference = MetaHash("opaque_audio_event").uint
-    scene.add_event(
+    scene.timeline_event(
         CutTimelineEvent(
             start=0.0,
             kind="audio_cue",

@@ -24,7 +24,7 @@ An aggregate may expose a singular noun as a convenience factory. The factory co
 ```python
 entity = ymap.entity("harbor_lamp", position=(10.0, 20.0, 5.0))
 bone = skeleton.bone("root")
-material = ydr.material("body", shader=YdrShader.DEFAULT)
+physics = ymap.physics_dictionary("harbor_collision")
 ```
 
 Do not expose `add_*`, generic `add()`, or duplicate `create_*` aliases. Existing objects use `append`, `extend`, mapping assignment, or a domain relationship verb. A noun factory must not silently perform unrelated derivations.
@@ -72,7 +72,7 @@ References preserve names and type intent. Binary writers convert them into the 
 Public validation uses `ValidationReport` and typed `Diagnostic` values. A diagnostic has a stable code, severity, message, asset, and field path. Do not return bare strings, mix warnings with errors, print from validators, or mutate objects while validating.
 
 ```python
-report = asset.validate(context)
+report = context.validate(asset)
 report.raise_for_errors()
 ```
 
@@ -134,6 +134,102 @@ FiveFury favors a coherent current API over compatibility with accidental histor
 4. Record the breaking change concisely in the changelog.
 
 Tests validate the intended API. They are not a reason to preserve obsolete code.
+
+## Migration examples
+
+The removed forms below are shown only to make the API change explicit. They are not compatibility aliases.
+
+### Typed collections and noun factories
+
+Before, a YMAP mixed generic dispatch, format-specific insertion methods, and duplicate factories:
+
+```python
+ymap.add(entity)
+ymap.add_entity(entity)
+created = ymap.create_entity("harbor_lamp", position=(10.0, 20.0, 5.0))
+```
+
+Now existing values use the collection and convenience construction uses one singular noun:
+
+```python
+ymap.entities.append(entity)
+created = ymap.entity("harbor_lamp", position=(10.0, 20.0, 5.0))
+```
+
+### Relationships and ordinary assignment
+
+Before, relationship setters and insertion verbs obscured ordinary object ownership:
+
+```python
+ydr.set_bound(collision)
+skeleton.add_bone(Bone("root"))
+ydr.add_light(light)
+```
+
+Now assignment expresses ownership, while singular nouns construct or register children:
+
+```python
+ydr.bound = collision
+root = skeleton.bone("root")
+ydr.light(light)
+```
+
+### Cross-asset operations
+
+Before, every layer forwarded an expanding parameter group:
+
+```python
+ymap.to_bytes(ytyps=[ytyp], ybns={"interior": ybn})
+manifest = build_ymf_for_ymaps(ymaps, cache=cache, ytyps=[ytyp], ybns=ybns)
+```
+
+Now assets and resolution state travel together:
+
+```python
+assets = AssetSet()
+assets["stream/interior.ytyp"] = ytyp
+assets["stream/interior.ybn"] = ybn
+context = BuildContext(assets=assets, cache=cache)
+
+data = ymap.to_bytes(context=context)
+manifest = build_ymf_for_ymaps(ymaps, context=context)
+```
+
+### CUT authoring
+
+Before, construction mixed `add_*`, `create_*`, and generic dispatch:
+
+```python
+scene.add_prop("stage", model="stage01")
+scene.add_camera("main_camera")
+scene.add_event(camera_cut)
+```
+
+Now domain nouns and an explicit timeline operation describe the same scene:
+
+```python
+stage = scene.prop("stage", model="stage01")
+camera = scene.camera("main_camera")
+scene.timeline_event(camera_cut)
+```
+
+### Archives and validation
+
+Before, archives had multiple insertion aliases and validators exposed unrelated result shapes:
+
+```python
+archive.add_file("stream/model.ydr", data)
+archive.add_asset("stream/model.ydr", data)
+issues = asset.validate()
+```
+
+Now archive insertion has one name and validation has one structured result:
+
+```python
+archive.file("stream/model.ydr", data)
+report = context.validate(asset)
+report.raise_for_errors()
+```
 
 ## Review checklist
 

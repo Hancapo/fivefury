@@ -6,9 +6,9 @@ import itertools
 import math
 import struct
 import zlib
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Union
 
 from ..bounds import Bound
 from ..buckets import at_hash_bucket_capacity
@@ -231,10 +231,6 @@ class YdrSkeleton:
     _last_child_by_parent: dict[int, int] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _lookup_bone_count: int = dataclasses.field(default=-1, init=False, repr=False)
 
-    @classmethod
-    def create(cls) -> YdrSkeleton:
-        return cls()
-
     @property
     def bone_count(self) -> int:
         return len(self.bones)
@@ -295,7 +291,7 @@ class YdrSkeleton:
             raise KeyError(f"Unknown YDR bone '{value}'")
         return bone
 
-    def add_bone(
+    def bone(
         self,
         name: str,
         *,
@@ -342,16 +338,6 @@ class YdrSkeleton:
         self._last_child_by_parent[parent_index] = index
         self._lookup_bone_count = len(self.bones)
         return bone
-
-    def add_bones(self, *bones: YdrBone) -> YdrSkeleton:
-        """Append existing bone declarations and rebuild hierarchy data once."""
-
-        self.bones.extend(bones)
-        return self.build()
-
-    def extend_bones(self, bones: Iterable[YdrBone]) -> YdrSkeleton:
-        self.bones.extend(bones)
-        return self.build()
 
     def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
         resolved: list[YdrBone] = []
@@ -542,7 +528,7 @@ class YdrJoints:
             limit.build()
         return self
 
-    def add_rotation_limit(
+    def rotation_limit(
         self,
         *,
         bone_id: int,
@@ -563,7 +549,7 @@ class YdrJoints:
         self.rotation_limits.append(limit)
         return limit
 
-    def add_translation_limit(
+    def translation_limit(
         self,
         *,
         bone_id: int,
@@ -1256,7 +1242,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
 
     def ensure_skeleton(self) -> YdrSkeleton:
         if self.skeleton is None:
-            self.skeleton = YdrSkeleton.create()
+            self.skeleton = YdrSkeleton()
         return self.skeleton
 
     def ensure_joints(self) -> YdrJoints:
@@ -1279,7 +1265,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
             return None
         return self.skeleton.get_bone_by_name(name)
 
-    def add_bone(
+    def bone(
         self,
         name: str,
         *,
@@ -1290,7 +1276,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
         scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
     ) -> YdrBone:
-        return self.ensure_skeleton().add_bone(
+        return self.ensure_skeleton().bone(
             name,
             parent=parent,
             tag=tag,
@@ -1300,30 +1286,22 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
             scale=scale,
         )
 
-    def add_bones(self, *bones: YdrBone) -> Ydr:
-        self.ensure_skeleton().add_bones(*bones)
-        return self
-
-    def set_joints(self, joints: YdrJoints) -> YdrJoints:
-        self.joints = joints
-        return joints
-
     def clear_joints(self) -> Ydr:
         self.joints = None
         return self
 
-    def add_light(
-        self,
-        light: YdrLight,
-    ) -> YdrLight:
-        self.lights.append(light)
-        return light
+    def light(self, light: YdrLight | None = None, **kwargs: Any) -> YdrLight:
+        resolved = light or YdrLight(**kwargs)
+        if light is not None and kwargs:
+            raise TypeError("Pass a YdrLight or its fields, not both")
+        self.lights.append(resolved)
+        return resolved
 
     def clear_lights(self) -> Ydr:
         self.lights.clear()
         return self
 
-    def add_rotation_limit(
+    def rotation_limit(
         self,
         *,
         bone_id: int,
@@ -1333,7 +1311,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         num_control_points: int = 1,
         joint_dofs: int = 3,
     ) -> YdrJointRotationLimit:
-        return self.ensure_joints().add_rotation_limit(
+        return self.ensure_joints().rotation_limit(
             bone_id=bone_id,
             min=min,
             max=max,
@@ -1342,14 +1320,14 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
             joint_dofs=joint_dofs,
         )
 
-    def add_translation_limit(
+    def translation_limit(
         self,
         *,
         bone_id: int,
         min: tuple[float, float, float] = (0.0, 0.0, 0.0),
         max: tuple[float, float, float] = (0.0, 0.0, 0.0),
     ) -> YdrJointTranslationLimit:
-        return self.ensure_joints().add_translation_limit(
+        return self.ensure_joints().translation_limit(
             bone_id=bone_id,
             min=min,
             max=max,
@@ -1397,7 +1375,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         except KeyError:
             return None
 
-    def add_embedded_texture(
+    def embedded_texture(
         self,
         texture: Texture | None = None,
         *,
@@ -1438,10 +1416,6 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         if not self.embedded_textures.textures:
             self.embedded_textures = None
         return len(self.embedded_textures.textures) != previous if self.embedded_textures is not None else previous > 0
-
-    def set_bound(self, bound: Bound) -> Bound:
-        self.bound = bound
-        return bound
 
     def build_bound_from_render_geometry(
         self,

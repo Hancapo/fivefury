@@ -83,19 +83,19 @@ def _relocate_embedded_texture_dictionary(
     virtual_delta = dict_offset
     physical_delta = graphics_offset
 
-    def add_virtual_ptr(relative_offset: int) -> None:
+    def record_virtual_ptr(relative_offset: int) -> None:
         value = int.from_bytes(output[dict_offset + relative_offset : dict_offset + relative_offset + 8], 'little')
         if value:
             output[dict_offset + relative_offset : dict_offset + relative_offset + 8] = (value + virtual_delta).to_bytes(8, 'little')
 
-    def add_physical_ptr(relative_offset: int) -> None:
+    def record_physical_ptr(relative_offset: int) -> None:
         value = int.from_bytes(output[dict_offset + relative_offset : dict_offset + relative_offset + 8], 'little')
         if value:
             output[dict_offset + relative_offset : dict_offset + relative_offset + 8] = (value + physical_delta).to_bytes(8, 'little')
 
     output[dict_offset + 0x08 : dict_offset + 0x10] = b'\0' * 8
-    add_virtual_ptr(0x20)
-    add_virtual_ptr(0x30)
+    record_virtual_ptr(0x20)
+    record_virtual_ptr(0x30)
     for index in range(count):
         ptr_pos = dict_offset + ptrs_offset + (index * 8)
         tex_ptr = int.from_bytes(output[ptr_pos : ptr_pos + 8], 'little')
@@ -106,12 +106,12 @@ def _relocate_embedded_texture_dictionary(
             virtual_data[ptrs_offset + (index * 8) : ptrs_offset + (index * 8) + 8],
             'little',
         ) - DAT_VIRTUAL_BASE
-        add_virtual_ptr(tex_off + 0x28)
+        record_virtual_ptr(tex_off + 0x28)
         if enhanced:
-            add_virtual_ptr(tex_off + 0x30)
-            add_physical_ptr(tex_off + 0x38)
+            record_virtual_ptr(tex_off + 0x30)
+            record_physical_ptr(tex_off + 0x38)
         else:
-            add_physical_ptr(tex_off + 0x70)
+            record_physical_ptr(tex_off + 0x70)
     return bytes(output[dict_offset:])
 
 

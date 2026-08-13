@@ -3,7 +3,6 @@ from __future__ import annotations
 from .builder import (
     build_ymf_for_ymaps,
     build_ymf_manifest_for_ymaps,
-    create_ymf_for_ymaps,
 )
 from .enums import (
     ManifestFlags,
@@ -65,7 +64,6 @@ __all__ = [
     "build_ymf",
     "build_ymf_for_ymaps",
     "build_ymf_manifest_for_ymaps",
-    "create_ymf_for_ymaps",
     "iter_ymf_relationships",
     "read_ymf",
     "read_ymf_xml",

@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive
 from ..xml import (
-    add_items,
-    add_text,
+    append_items,
+    append_text,
     child_by_name,
     child_items,
     child_text,
@@ -59,7 +59,7 @@ class DlcList:
 
     def to_xml_element(self) -> ET.Element:
         root = ET.Element("SMandatoryPacksData")
-        add_items(root, "Paths", self.paths)
+        append_items(root, "Paths", self.paths)
         return root
 
     def to_xml_bytes(self) -> bytes:
@@ -90,8 +90,8 @@ class DlcPatchMount:
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item", {"type": "SExtraTitleUpdateMount"})
-        add_text(element, "deviceName", self.device_name)
-        add_text(element, "path", self.path)
+        append_text(element, "deviceName", self.device_name)
+        append_text(element, "path", self.path)
         return element
 
 
@@ -215,10 +215,10 @@ class DlcPack:
             self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)
         )
         assert self.setup is not None
-        archive.add_file("setup2.xml", self.setup.to_xml_bytes())
-        archive.add_file(self.setup.dat_file or "content.xml", self.content.to_xml_bytes())
+        archive.file("setup2.xml", self.setup.to_xml_bytes())
+        archive.file(self.setup.dat_file or "content.xml", self.content.to_xml_bytes())
         for path, value in self.files.items():
-            archive.add_file(path, value)
+            archive.file(path, value)
         return archive
 
     def to_bytes(
@@ -305,16 +305,16 @@ class DlcPatch:
     ) -> RpfArchive:
         assert self.setup is not None
         root = self.patch_root
-        archive.add_file(f"{root}/setup2.xml", self.setup.to_xml_bytes())
-        archive.add_file(
+        archive.file(f"{root}/setup2.xml", self.setup.to_xml_bytes())
+        archive.file(
             f"{root}/{self.setup.dat_file or 'content.xml'}",
             self.content.to_xml_bytes(),
         )
         for path, value in self.files.items():
-            archive.add_file(f"{root}/{path}", value)
+            archive.file(f"{root}/{path}", value)
         if include_mount_manifest:
             manifest = DlcExtraTitleUpdateData(mounts=[self.patch_mount])
-            archive.add_file(
+            archive.file(
                 "common/data/extratitleupdatedata.meta",
                 manifest.to_xml_bytes(),
             )

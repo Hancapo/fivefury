@@ -156,7 +156,7 @@ class YdrBuild:
             embedded_textures=embedded_textures,
             bound=bound,
         )
-        build.add_model(
+        build.model(
             meshes,
             lod=normalized_lod,
             render_mask=render_mask,
@@ -166,7 +166,7 @@ class YdrBuild:
         )
         return build
 
-    def add_model(
+    def model(
         self,
         meshes: Sequence[YdrMeshInput],
         *,
@@ -188,12 +188,14 @@ class YdrBuild:
             self.lod_distances[normalized_lod] = float(lod_distance)
         return model
 
-    def add_light(
-        self,
-        light: YdrLight,
-    ) -> YdrLight:
-        self.lights.append(light)
-        return light
+    def light(self, light: YdrLight | None = None, **kwargs: object) -> YdrLight:
+        from .model import YdrLight
+
+        resolved = light or YdrLight(**kwargs)
+        if light is not None and kwargs:
+            raise TypeError("Pass a YdrLight or its fields, not both")
+        self.lights.append(resolved)
+        return resolved
 
     def clear_lights(self) -> YdrBuild:
         self.lights.clear()

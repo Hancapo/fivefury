@@ -14,14 +14,14 @@ from fivefury.ydr import (
 
 
 def test_ped_thigh_roll_fallback_copies_untracked_sibling_pose() -> None:
-    skeleton = YdrSkeleton.create()
-    pelvis = skeleton.add_bone("SKEL_Pelvis")
-    thigh = skeleton.add_bone(
+    skeleton = YdrSkeleton()
+    pelvis = skeleton.bone("SKEL_Pelvis")
+    thigh = skeleton.bone(
         "SKEL_L_Thigh",
         parent=pelvis,
         translation=(0.1, 0.0, -0.1),
     )
-    thigh_roll = skeleton.add_bone(
+    thigh_roll = skeleton.bone(
         "RB_L_ThighRoll",
         parent=pelvis,
         translation=(0.1, 0.0, -0.1),
@@ -38,10 +38,10 @@ def test_ped_thigh_roll_fallback_copies_untracked_sibling_pose() -> None:
 
 
 def test_explicit_ped_thigh_roll_track_wins_over_procedural_fallback() -> None:
-    skeleton = YdrSkeleton.create()
-    pelvis = skeleton.add_bone("SKEL_Pelvis")
-    thigh = skeleton.add_bone("SKEL_R_Thigh", parent=pelvis)
-    thigh_roll = skeleton.add_bone("RB_R_ThighRoll", parent=pelvis)
+    skeleton = YdrSkeleton()
+    pelvis = skeleton.bone("SKEL_Pelvis")
+    thigh = skeleton.bone("SKEL_R_Thigh", parent=pelvis)
+    thigh_roll = skeleton.bone("RB_R_ThighRoll", parent=pelvis)
     local = [compose_bone_local_transform(bone) for bone in skeleton.bones]
     explicit_roll = compose_local_transform(
         thigh_roll.translation,
@@ -63,9 +63,9 @@ def test_explicit_ped_thigh_roll_track_wins_over_procedural_fallback() -> None:
 
 
 def test_skeleton_absolute_transforms_compose_parent_translation() -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root", translation=(2.0, 0.0, 0.0))
-    child = skeleton.add_bone(
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root", translation=(2.0, 0.0, 0.0))
+    child = skeleton.bone(
         "child",
         parent=root,
         translation=(0.0, 0.0, 1.0),
@@ -82,9 +82,9 @@ def test_skeleton_absolute_transforms_compose_parent_translation() -> None:
 
 
 def test_skeleton_absolute_transforms_reject_cycles() -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root")
-    child = skeleton.add_bone("child", parent=root)
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root")
+    child = skeleton.bone("child", parent=root)
     root.parent_index = child.index
 
     try:
@@ -96,9 +96,9 @@ def test_skeleton_absolute_transforms_reject_cycles() -> None:
 
 
 def test_skeleton_skinning_transforms_use_cumulative_inverse_bind_pose() -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone("root", translation=(2.0, 0.0, 0.0))
-    child = skeleton.add_bone("child", parent=root, translation=(0.0, 0.0, 1.0))
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root", translation=(2.0, 0.0, 0.0))
+    child = skeleton.bone("child", parent=root, translation=(0.0, 0.0, 1.0))
 
     rest_skin = skeleton_skinning_transforms(skeleton)
     for matrix in rest_skin:
@@ -125,13 +125,13 @@ def test_skeleton_skinning_transforms_use_cumulative_inverse_bind_pose() -> None
 
 
 def test_composed_rotated_locals_preserve_the_serialized_rest_pose() -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone(
+    skeleton = YdrSkeleton()
+    root = skeleton.bone(
         "root",
         rotation=(0.0, 0.0, 0.3826834324, 0.9238795325),
         translation=(1.0, 2.0, 3.0),
     )
-    child = skeleton.add_bone(
+    child = skeleton.bone(
         "child",
         parent=root,
         rotation=(0.2588190451, 0.0, 0.0, 0.9659258263),
@@ -177,13 +177,13 @@ def test_compose_local_transform_matches_rage_row_rotation_convention() -> None:
 
 
 def test_numpy_skeleton_matrices_match_scalar_transform_contract() -> None:
-    skeleton = YdrSkeleton.create()
-    root = skeleton.add_bone(
+    skeleton = YdrSkeleton()
+    root = skeleton.bone(
         "root",
         rotation=(0.0, 0.0, 0.3826834324, 0.9238795325),
         translation=(1.0, 2.0, 3.0),
     )
-    skeleton.add_bone(
+    skeleton.bone(
         "child",
         parent=root,
         rotation=(0.2588190451, 0.0, 0.0, 0.9659258263),

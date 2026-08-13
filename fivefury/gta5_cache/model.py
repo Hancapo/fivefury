@@ -271,25 +271,6 @@ class Gta5CacheY:
         if not isinstance(self.mode, Gta5CacheMode):
             self.mode = Gta5CacheMode(self.mode)
 
-    def add(
-        self,
-        item: Gta5CacheFileDate
-        | Gta5CacheMapData
-        | Gta5CacheInteriorProxy
-        | Gta5CacheBound,
-    ) -> Any:
-        if isinstance(item, Gta5CacheFileDate):
-            self.file_dates.append(item)
-        elif isinstance(item, Gta5CacheMapData):
-            self.map_data.append(item)
-        elif isinstance(item, Gta5CacheInteriorProxy):
-            self.interior_proxies.append(item)
-        elif isinstance(item, Gta5CacheBound):
-            self.bounds.append(item)
-        else:
-            raise TypeError(f"unsupported GTA5 cache item: {type(item).__name__}")
-        return item
-
     def validate(self) -> list[str]:
         issues: list[str] = []
         if self.version != GTA5_CACHE_VERSION:

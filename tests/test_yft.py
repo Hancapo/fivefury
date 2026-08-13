@@ -321,9 +321,9 @@ def test_yft_shared_matrix_set_roundtrip():
         materials=[YdrMaterialInput(name="default")],
         name="matrix_fragment",
     )
-    skeleton = YdrSkeleton.create()
-    skeleton.add_bone("root")
-    skeleton.add_bone("child", parent="root", translation=(0.0, 0.0, 1.0))
+    skeleton = YdrSkeleton()
+    skeleton.bone("root")
+    skeleton.bone("child", parent="root", translation=(0.0, 0.0, 1.0))
     drawable.skeleton = skeleton
     source = create_yft(drawable, name="matrix_fragment")
 

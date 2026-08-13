@@ -122,8 +122,8 @@ def test_water_declarative_components_and_generic_add() -> None:
     )
     water = create_water(surface)
 
-    assert water.add(calming) is calming
-    assert water.add(wave) is wave
+    water.calming_quads.append(calming)
+    water.wave_quads.append(wave)
     assert water.quads is water.water_quads
     assert surface.area == 5000.0
     assert math.isclose(wave.direction_x, 0.0, abs_tol=1e-12)

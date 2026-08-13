@@ -1244,7 +1244,7 @@ def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
 
 def test_cutscene_builder_splits_long_skeletal_props_into_vanilla_sized_sequences() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "miku_hatsune_metal",
         mover_position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
         mover_rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.0, 1.0)},
@@ -1274,7 +1274,7 @@ def test_cutscene_builder_splits_long_skeletal_props_into_vanilla_sized_sequence
 
 def test_cutscene_builder_orders_object_tracks_like_game_ycds() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "miku_hatsune_metal",
         mover_position={0.0: (0.0, 0.0, 0.0), 1.0: (1.0, 0.0, 0.0)},
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
@@ -1301,7 +1301,7 @@ def test_cutscene_builder_orders_object_tracks_like_game_ycds() -> None:
 
 def test_cutscene_builder_preserves_camera_sequence_splitting() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
-    builder.add_camera(
+    builder.camera(
         "exportcamera",
         position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
         rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.7071068, 0.7071068)},

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from ..xml import (
     XML_DECLARATION,
-    add_element_items,
-    add_items,
-    add_text,
-    add_value,
+    append_element_items,
+    append_items,
+    append_text,
+    append_value,
     bool_text,
     child_by_name,
     child_int,
@@ -27,10 +27,10 @@ from ..xml import (
 
 __all__ = [
     "XML_DECLARATION",
-    "add_element_items",
-    "add_items",
-    "add_text",
-    "add_value",
+    "append_element_items",
+    "append_items",
+    "append_text",
+    "append_value",
     "bool_text",
     "child_by_name",
     "child_int",

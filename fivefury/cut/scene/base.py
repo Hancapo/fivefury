@@ -68,15 +68,13 @@ class CutScene:
     def bindings_for_role(self, role: str) -> list[CutBinding]:
         return [item for item in self.bindings if item.role == role]
 
-    def attach_clip_dict(self, ycd: object) -> None:
+    def clip_dictionary(self, ycd: object) -> object:
         from ...ycd.model import Ycd
 
         if not isinstance(ycd, Ycd):
             raise TypeError(f"expected Ycd, got {type(ycd).__name__}")
         self.clip_dicts.append(ycd)
-
-    def add_clip_dict(self, ycd: object) -> None:
-        self.attach_clip_dict(ycd)
+        return ycd
 
     def get_clip(self, value: int | str) -> YcdClip | None:
         key = MetaHash(value).uint
@@ -362,7 +360,7 @@ class CutScene:
     def validate(self, *, strict: bool = False) -> list[str]:
         return [issue.format() for issue in self.validation_report(strict=strict)]
 
-    def add(self, binding: CutBinding) -> CutBinding:
+    def binding(self, binding: CutBinding) -> CutBinding:
         if binding.object_id < 0:
             binding.object_id = self.next_object_id()
         self.bindings = [
@@ -371,10 +369,7 @@ class CutScene:
         self.bindings.sort(key=lambda item: item.object_id)
         return binding
 
-    def add_binding(self, binding: CutBinding) -> CutBinding:
-        return self.add(binding)
-
-    def add_typed_binding(
+    def _typed_binding(
         self,
         binding_cls: type[CutBinding],
         name: str | None = None,
@@ -386,10 +381,10 @@ class CutScene:
             self.next_object_id() if object_id is None else int(object_id)
         )
         if issubclass(binding_cls, _TypedCutBinding):
-            return self.add(
+            return self.binding(
                 binding_cls(name=name, object_id=resolved_object_id, fields=fields)
             )
-        return self.add(
+        return self.binding(
             binding_cls(
                 object_id=resolved_object_id,
                 type_name="",
@@ -399,7 +394,7 @@ class CutScene:
             )
         )
 
-    def add_object(
+    def object(
         self,
         role_or_type: str,
         *,
@@ -414,7 +409,7 @@ class CutScene:
         object_id = self.next_object_id() if object_id is None else int(object_id)
         binding_class = _BINDING_CLASS_BY_TYPE.get(resolved_type)
         if binding_class is not None:
-            return self.add(
+            return self.binding(
                 binding_class(name=name, object_id=object_id, fields=fields)
             )
         binding = CutBinding.new(
@@ -424,9 +419,9 @@ class CutScene:
             role=_object_role(resolved_type),
             fields=fields,
         )
-        return self.add(binding)
+        return self.binding(binding)
 
-    def add_track(
+    def track(
         self, key: str, *, name: str | None = None, kind: str | None = None
     ) -> CutTrack:
         existing = self.get_track(key)
@@ -439,10 +434,10 @@ class CutScene:
         self.tracks.sort(key=lambda item: item.key)
         return track
 
-    def add_event(self, timeline_event: CutTimelineEvent) -> CutTimelineEvent:
+    def timeline_event(self, timeline_event: CutTimelineEvent) -> CutTimelineEvent:
         track = self.get_track(timeline_event.track)
         if track is None:
-            track = self.add_track(timeline_event.track, kind=timeline_event.kind)
+            track = self.track(timeline_event.track, kind=timeline_event.kind)
         if (
             timeline_event.kind
             and track.kind != timeline_event.kind
@@ -455,7 +450,7 @@ class CutScene:
         )
         return timeline_event
 
-    def create_event(
+    def event(
         self,
         event: str | int | CutEventType,
         *,
@@ -509,7 +504,7 @@ class CutScene:
             is_load_event=is_load_event,
             args_type=args_type,
         )
-        return self.add_event(timeline_event)
+        return self.timeline_event(timeline_event)
 
     def validate_animations(self, *, cut_index: int = 0) -> list[str]:
         if not self.clip_dicts:
@@ -616,7 +611,7 @@ def _make_binding_adder(binding_cls: type[CutBinding]):
         object_id: int | None = None,
         fields: dict[str, Any] | None = None,
     ):
-        return self.add_typed_binding(
+        return self._typed_binding(
             binding_cls, name, object_id=object_id, fields=fields
         )
 
@@ -627,10 +622,10 @@ for _role, _property_name in _ROLE_PROPERTY_NAMES.items():
     setattr(CutScene, _property_name, _make_role_property(_role))
 
 for _role, _binding_cls in _BINDING_ADDERS.items():
-    setattr(CutScene, f"add_{_role}", _make_binding_adder(_binding_cls))
+    setattr(CutScene, _role, _make_binding_adder(_binding_cls))
 
 
-def add_ped(
+def ped(
     self: CutScene,
     name: str | None = None,
     *,
@@ -648,7 +643,7 @@ def add_ped(
     ytyp_name: str | None = None,
     fields: dict[str, Any] | None = None,
 ) -> CutPed:
-    ped = self.add_typed_binding(CutPed, name, object_id=object_id, fields=fields)
+    ped = self._typed_binding(CutPed, name, object_id=object_id, fields=fields)
     assert isinstance(ped, CutPed)
     ped.configure_model_asset(
         cutscene_name=cutscene_name,
@@ -674,10 +669,10 @@ def add_ped(
     return ped
 
 
-CutScene.add_ped = add_ped
+CutScene.ped = ped
 
 
-def add_prop(
+def prop(
     self: CutScene,
     name: str | None = None,
     *,
@@ -707,7 +702,7 @@ def add_prop(
     type_file_strategy: CutTypeFileStrategy | str | None = None,
     fields: dict[str, Any] | None = None,
 ) -> CutProp:
-    prop = self.add_typed_binding(CutProp, name, object_id=object_id, fields=fields)
+    prop = self._typed_binding(CutProp, name, object_id=object_id, fields=fields)
     assert isinstance(prop, CutProp)
     if animation_preset is not None:
         prop.apply_animation_preset(animation_preset)
@@ -748,62 +743,4 @@ def add_prop(
     return prop
 
 
-CutScene.add_prop = add_prop
-
-
-def add_prop_from_runtime_asset(
-    self: CutScene,
-    *,
-    model: Any | None = None,
-    archetype: Any | None = None,
-    ytyp: Any | None = None,
-    type_source: Any | None = None,
-    type_file_strategy: CutTypeFileStrategy | str | None = None,
-    name: str | None = None,
-    object_id: int | None = None,
-    animation_preset: CutPropAnimationPreset | str | None = None,
-    cutscene_name: str | None = None,
-    scene_name: str | None = None,
-    animation_clip_base: str | None = None,
-    anim_streaming_base: int | None = None,
-    animation_streaming_base: int | None = None,
-    anim_export_ctrl_spec_file: str | None = None,
-    animation_export_spec_file: str | None = None,
-    face_export_ctrl_spec_file: str | None = None,
-    face_animation_export_spec_file: str | None = None,
-    anim_compression_file: str | None = None,
-    animation_compression_filename: str | None = None,
-    handle: str | None = None,
-    object_handle: str | None = None,
-    fields: dict[str, Any] | None = None,
-) -> CutProp:
-    return add_prop(
-        self,
-        name=name,
-        object_id=object_id,
-        animation_preset=animation_preset,
-        cutscene_name=cutscene_name if cutscene_name is not None else scene_name,
-        model=model,
-        archetype=archetype,
-        ytyp=ytyp,
-        type_source=type_source,
-        type_file_strategy=type_file_strategy,
-        animation_clip_base=animation_clip_base,
-        anim_streaming_base=anim_streaming_base
-        if anim_streaming_base is not None
-        else animation_streaming_base,
-        anim_export_ctrl_spec_file=anim_export_ctrl_spec_file
-        if anim_export_ctrl_spec_file is not None
-        else animation_export_spec_file,
-        face_export_ctrl_spec_file=face_export_ctrl_spec_file
-        if face_export_ctrl_spec_file is not None
-        else face_animation_export_spec_file,
-        anim_compression_file=anim_compression_file
-        if anim_compression_file is not None
-        else animation_compression_filename,
-        handle=handle if handle is not None else object_handle,
-        fields=fields,
-    )
-
-
-CutScene.add_prop_from_runtime_asset = add_prop_from_runtime_asset
+CutScene.prop = prop

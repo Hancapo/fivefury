@@ -127,7 +127,7 @@ def child_item_values(element: ET.Element, name: str, factory: Callable[[str], T
     return [factory(item) for item in child_item_texts(element, name)]
 
 
-def add_text(parent: ET.Element, tag: str, text: object = "") -> ET.Element:
+def append_text(parent: ET.Element, tag: str, text: object = "") -> ET.Element:
     element = ET.SubElement(parent, tag)
     value = coerce_enum_value(text)
     if value:
@@ -135,23 +135,23 @@ def add_text(parent: ET.Element, tag: str, text: object = "") -> ET.Element:
     return element
 
 
-def add_value(parent: ET.Element, tag: str, value: object) -> ET.Element:
+def append_value(parent: ET.Element, tag: str, value: object) -> ET.Element:
     element = ET.SubElement(parent, tag)
     element.set("value", bool_text(value) if isinstance(value, bool) else str(value))
     return element
 
 
-def add_items(parent: ET.Element, tag: str, items: Iterable[object], *, omit_empty: bool = False) -> ET.Element | None:
+def append_items(parent: ET.Element, tag: str, items: Iterable[object], *, omit_empty: bool = False) -> ET.Element | None:
     values = list(items)
     if omit_empty and not values:
         return None
     element = ET.SubElement(parent, tag)
     for item in values:
-        add_text(element, "Item", coerce_enum_value(item))
+        append_text(element, "Item", coerce_enum_value(item))
     return element
 
 
-def add_element_items(parent: ET.Element, tag: str, items: Iterable[ET.Element]) -> ET.Element:
+def append_element_items(parent: ET.Element, tag: str, items: Iterable[ET.Element]) -> ET.Element:
     element = ET.SubElement(parent, tag)
     for item in items:
         item.tag = "Item"
@@ -205,10 +205,10 @@ def save_xml(root: ET.Element, destination: str | Path) -> Path:
 __all__ = [
     "XML_DECLARATION",
     "XmlSource",
-    "add_element_items",
-    "add_items",
-    "add_text",
-    "add_value",
+    "append_element_items",
+    "append_items",
+    "append_text",
+    "append_value",
     "bool_text",
     "child_bool",
     "child_by_name",

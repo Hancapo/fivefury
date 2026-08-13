@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from ..authoring import BuildContext, asset_name
 from ..metahash import HashLike, MetaHash
 from ..ymap.mlo_validation import mlo_collisions_by_hash
 from .enums import ManifestFlags
@@ -15,20 +16,17 @@ from .model import (
 from .resource import Ymf
 
 
-def create_ymf_for_ymaps(
+def build_ymf_for_ymaps(
     ymaps: Iterable[Any] | None = None,
     *,
-    cache: Any | None = None,
-    ytyps: Iterable[Any] = (),
+    context: BuildContext | None = None,
     dependencies: Mapping[HashLike, Iterable[HashLike]] | None = None,
-    ybns: Any = None,
     interior_bounds: Mapping[HashLike, Iterable[HashLike]] | None = None,
     interior_ymaps: Iterable[HashLike] = (),
     infer_interior_flags: bool = True,
     infer_interior_bounds: bool = True,
     include_empty_imaps: bool = False,
     include_ytyp_dependencies: bool = True,
-    strict: bool = False,
     permanent_ytyps: Iterable[HashLike] = (),
     name: str = "_manifest",
 ) -> Ymf:
@@ -41,40 +39,33 @@ def create_ymf_for_ymaps(
 
     manifest = build_ymf_manifest_for_ymaps(
         ymaps,
-        cache=cache,
-        ytyps=ytyps,
+        context=context,
         dependencies=dependencies,
-        ybns=ybns,
         interior_bounds=interior_bounds,
         interior_ymaps=interior_ymaps,
         infer_interior_flags=infer_interior_flags,
         infer_interior_bounds=infer_interior_bounds,
         include_empty_imaps=include_empty_imaps,
         include_ytyp_dependencies=include_ytyp_dependencies,
-        strict=strict,
     )
     return Ymf.from_manifest(manifest, name=name, permanent_ytyps=permanent_ytyps)
-
-
-def build_ymf_for_ymaps(*args: Any, **kwargs: Any) -> Ymf:
-    return create_ymf_for_ymaps(*args, **kwargs)
 
 
 def build_ymf_manifest_for_ymaps(
     ymaps: Iterable[Any] | None = None,
     *,
-    cache: Any | None = None,
-    ytyps: Iterable[Any] = (),
+    context: BuildContext | None = None,
     dependencies: Mapping[HashLike, Iterable[HashLike]] | None = None,
-    ybns: Any = None,
     interior_bounds: Mapping[HashLike, Iterable[HashLike]] | None = None,
     interior_ymaps: Iterable[HashLike] = (),
     infer_interior_flags: bool = True,
     infer_interior_bounds: bool = True,
     include_empty_imaps: bool = False,
     include_ytyp_dependencies: bool = True,
-    strict: bool = False,
 ) -> PackFileMetaData:
+    context = context or BuildContext(strict=False)
+    cache = context.cache
+    ytyps, ybns = _context_assets(context)
     archetype_to_ytyp, ytyp_dependency_map, archetypes = _build_ytyp_dependency_index(
         cache=cache,
         ytyps=ytyps,
@@ -116,7 +107,7 @@ def build_ymf_manifest_for_ymaps(
                 flags |= ManifestFlags.INTERIOR_DATA
             imap_entries.append(ImapDependencies(imap_name=ymap_name, ityp_dependencies=dependency_names, flags=flags))
 
-    if strict and missing_archetypes:
+    if context.strict and missing_archetypes:
         details = ", ".join(
             f"0x{ymap_hash:08X}: {', '.join(f'0x{item:08X}' for item in sorted(archetypes))}"
             for ymap_hash, archetypes in sorted(missing_archetypes.items())
@@ -151,6 +142,20 @@ def build_ymf_manifest_for_ymaps(
         imap_dependencies_2=imap_entries,
         ityp_dependencies_2=ityp_entries,
         interiors=interior_entries,
+    )
+
+
+def _context_assets(context: BuildContext) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    from ..ybn import Ybn
+    from ..ytyp import Ytyp
+
+    return (
+        context.assets.of_type(Ytyp),
+        {
+            asset_name(path): asset
+            for path, asset in context.assets.items()
+            if isinstance(asset, Ybn)
+        },
     )
 
 

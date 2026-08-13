@@ -63,7 +63,7 @@ def small_ymap_bytes():
     """A small YMAP with 5 entities, serialized to bytes."""
     ymap = Ymap(name="bench_map")
     for i in range(5):
-        ymap.add_entity(
+        ymap.entities.append(
             Entity(
                 archetype_name=f"prop_bench_{i}",
                 position=(float(i), 0.0, 0.0),
@@ -80,7 +80,7 @@ def medium_ymap_bytes():
     """A medium YMAP with 100 entities, serialized to bytes."""
     ymap = Ymap(name="bench_map_medium")
     for i in range(100):
-        ymap.add_entity(
+        ymap.entities.append(
             Entity(
                 archetype_name=f"prop_medium_{i:04d}",
                 position=(float(i), float(i % 10), 0.0),
@@ -97,7 +97,7 @@ def large_ymap():
     """A large YMAP with 500 entities (in-memory object)."""
     ymap = Ymap(name="bench_map_large")
     for i in range(500):
-        ymap.add_entity(
+        ymap.entities.append(
             Entity(
                 archetype_name=f"prop_large_{i:04d}",
                 position=(float(i), float(i % 50), float(i % 10)),
@@ -193,7 +193,7 @@ class TestYmapSerializationPerf:
         def run():
             ymap = Ymap(name="perf_test")
             for i in range(500):
-                ymap.add_entity(
+                ymap.entities.append(
                     Entity(
                         archetype_name=f"prop_perf_{i:04d}",
                         position=(float(i), 0.0, 0.0),
@@ -238,7 +238,7 @@ class TestYtypPerf:
         def run():
             ytyp = Ytyp(name="perf_types")
             for i in range(50):
-                ytyp.add_archetype(
+                ytyp.archetypes.append(
                     Archetype(
                         name=f"arch_{i:04d}",
                         lod_dist=120.0,
@@ -264,7 +264,7 @@ class TestRpfBuildPerf:
         def run():
             archive = create_rpf("bench.rpf")
             for i in range(50):
-                archive.add(f"data/file_{i:04d}.dat", f"content {i}".encode())
+                archive.file(f"data/file_{i:04d}.dat", f"content {i}".encode())
             buf = archive.to_bytes()
             assert len(buf) > 0
         benchmark(run)
@@ -276,7 +276,7 @@ class TestRpfBuildPerf:
             for i in range(10):
                 ymap = Ymap.from_bytes(small_ymap_bytes)
                 ymap.meta_name = f"map_{i:04d}"
-                archive.add(f"stream/map_{i:04d}.ymap", ymap)
+                archive.file(f"stream/map_{i:04d}.ymap", ymap)
             archive.to_bytes()
         benchmark(run)
 
@@ -431,7 +431,7 @@ class TestRpfChildIndexPerf:
         def run():
             archive = create_rpf("idx_test.rpf")
             for i in range(5_000):
-                archive.add(f"stream/file_{i:04d}.dat", b"x" * 64)
+                archive.file(f"stream/file_{i:04d}.dat", b"x" * 64)
         benchmark(run)
 
 

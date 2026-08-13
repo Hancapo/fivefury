@@ -54,10 +54,6 @@ class Ybn:
     def to_bytes(self) -> bytes:
         return build_ybn_bytes(self, game=self.game, version=self.version)
 
-    def set_bound(self, bound: Bound) -> Bound:
-        self.bound = bound
-        return bound
-
     def build(self) -> Ybn:
         self.bound = self.bound.build()
         return self
@@ -82,7 +78,7 @@ class Ybn:
     def room_ids(self) -> frozenset[int]:
         return collision_room_ids(self)
 
-    def set_room(self, room_id: int) -> Ybn:
+    def bind_room(self, room_id: int) -> Ybn:
         set_collision_room(self, room_id)
         return self
 

@@ -22,11 +22,11 @@ def _ensure_container_path(
     for segment in parts:
         if segment.lower().endswith(".rpf"):
             full = f"{relative_path}/{segment}" if relative_path else segment
-            _, archive = archive.add_nested_archive(full)
+            _, archive = archive.nested_archive(full)
             relative_path = ""
             continue
         relative_path = f"{relative_path}/{segment}" if relative_path else segment
-        archive.add_directory(relative_path)
+        archive.directory(relative_path)
     return archive, relative_path
 
 
@@ -40,7 +40,7 @@ def _insert_file_path(
     archive, relative_path = _ensure_container_path(current, parts[:-1])
     leaf = parts[-1]
     full = f"{relative_path}/{leaf}" if relative_path else leaf
-    archive.add_file(full, data)
+    archive.file(full, data)
 
 
 def _insert_source_path(
@@ -53,7 +53,7 @@ def _insert_source_path(
     archive, relative_path = _ensure_container_path(current, parts[:-1])
     leaf = parts[-1]
     full = f"{relative_path}/{leaf}" if relative_path else leaf
-    archive.add_file_path(full, source_path)
+    archive.file_path(full, source_path)
 
 
 def _ensure_directory_path(current: RpfArchive, parts: list[str]) -> None:

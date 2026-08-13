@@ -182,20 +182,20 @@ def test_cut_event_name_lookup() -> None:
 
 def test_cut_scene_builder_from_scratch() -> None:
     scene = CutScene.create(duration=15.0, face_dir="x:/gta5/assets_ng/cuts/test/faces")
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("cam_orbit")
-    actor = scene.add_ped("ped_sphere")
-    subtitle = scene.add_subtitle("subtitle_track")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("cam_orbit")
+    actor = scene.ped("ped_sphere")
+    subtitle = scene.subtitle("subtitle_track")
 
-    scene.create_event("load_scene", start=0.0, target=asset_manager)
-    scene.create_event(
+    scene.event("load_scene", start=0.0, target=asset_manager)
+    scene.event(
         "load_models",
         start=0.0,
         target=asset_manager,
         payload={"iObjectIdList": [actor.object_id]},
     )
-    scene.create_event("camera_cut", start=0.0, target=camera, label="cam_orbit")
-    scene.create_event(
+    scene.event("camera_cut", start=0.0, target=camera, label="cam_orbit")
+    scene.event(
         "show_subtitle",
         start=0.0,
         target=subtitle,
@@ -217,11 +217,11 @@ def test_cut_scene_builder_from_scratch() -> None:
 
 def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("cam_main")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("cam_main")
 
     scene.load_scene(0.0, payload={"cName": "sample_scene"}, target=asset_manager)
-    scene.create_event("camera_cut", start=1.0, target=camera, label="cam_main")
+    scene.event("camera_cut", start=1.0, target=camera, label="cam_main")
 
     cut = scene_to_cut(scene)
     root = cut.root.fields
@@ -263,7 +263,7 @@ def test_cut_scene_builder_propagates_relocation_offset() -> None:
     scene = CutScene.create(
         scene_name="offset_scene", duration=2.5, offset=(10.0, 20.0, 100.0)
     )
-    asset_manager = scene.add_asset_manager()
+    asset_manager = scene.asset_manager()
 
     scene.load_scene(0.0, payload={"cName": "offset_scene"}, target=asset_manager)
 
@@ -286,11 +286,11 @@ def test_cut_scene_builder_only_sections_by_camera_cuts_when_explicit() -> None:
     scene = CutScene.create(
         scene_name="sample_scene", duration=2.5, camera_cut_list=[1.0]
     )
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("cam_main")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("cam_main")
 
     scene.load_scene(0.0, payload={"cName": "sample_scene"}, target=asset_manager)
-    scene.create_event("camera_cut", start=1.0, target=camera, label="cam_main")
+    scene.event("camera_cut", start=1.0, target=camera, label="cam_main")
 
     cut = scene_to_cut(scene)
     root = cut.root.fields
@@ -306,7 +306,7 @@ def test_cut_scene_builder_keeps_explicit_streaming_cuts_separate_from_shots() -
         duration=6.0,
         camera_cut_list=[2.0, 4.0],
     )
-    camera = scene.add_camera("exportcamera")
+    camera = scene.camera("exportcamera")
     scene.camera_cut(1.0, camera, CutCameraCutPayload("shot_0"))
     scene.camera_cut(3.0, camera, CutCameraCutPayload("shot_1"))
 
@@ -317,7 +317,7 @@ def test_cut_scene_builder_keeps_explicit_streaming_cuts_separate_from_shots() -
 
 def test_cut_scene_builder_uses_external_concat_for_streamed_props() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
-    scene.add_prop("prop_a")
+    scene.prop("prop_a")
 
     cut = scene_to_cut(scene)
     flags = CutSceneFlags(cut.root.fields["iCutsceneFlags"][0])
@@ -330,9 +330,9 @@ def test_cut_scene_builder_uses_external_concat_for_streamed_props() -> None:
 
 def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
-    asset_manager = scene.add_asset_manager()
-    animation_manager = scene.add_animation_manager()
-    prop = scene.add_prop("prop_a")
+    asset_manager = scene.asset_manager()
+    animation_manager = scene.animation_manager()
+    prop = scene.prop("prop_a")
 
     scene.load_anim_dict(0.0, "sample_scene", target=animation_manager)
     scene.load_scene(0.0, payload={"cName": "sample_scene"}, target=asset_manager)
@@ -349,11 +349,11 @@ def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
 
 def test_cut_scene_builder_writes_initial_anim_events_before_camera_cut() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
-    animation_manager = scene.add_animation_manager()
-    camera = scene.add_camera("cam_main")
-    prop = scene.add_prop("prop_a")
+    animation_manager = scene.animation_manager()
+    camera = scene.camera("cam_main")
+    prop = scene.prop("prop_a")
 
-    scene.create_event("camera_cut", start=0.0, target=camera, label="cam_main")
+    scene.event("camera_cut", start=0.0, target=camera, label="cam_main")
     scene.set_anim(0.0, prop, target=animation_manager)
 
     cut = scene_to_cut(scene)
@@ -368,9 +368,9 @@ def test_cut_scene_builder_supports_real_asset_group_and_overlay_events() -> Non
     scene = CutScene.create(
         duration=20.0, face_dir="x:/gta5/assets_ng/cuts/test_plus/faces"
     )
-    asset_manager = scene.add_asset_manager()
-    overlay = scene.add_object("overlay", name="overlay_track")
-    particle_fx = scene.add_object("rage__cutfParticleEffectObject", name="core_fx")
+    asset_manager = scene.asset_manager()
+    overlay = scene.object("overlay", name="overlay_track")
+    particle_fx = scene.object("rage__cutfParticleEffectObject", name="core_fx")
 
     scene.load_scene(0.0, payload={"cName": "test_plus"})
     scene.load_particle_effects(0.0, [particle_fx], target=asset_manager)
@@ -448,8 +448,8 @@ def test_cut_scene_builder_supports_variation_events_with_real_template() -> Non
     scene = CutScene.create(
         duration=8.0, face_dir="x:/gta5/assets_ng/cuts/test_variation/faces"
     )
-    asset_manager = scene.add_asset_manager()
-    ped = scene.add_ped("ped_plus")
+    asset_manager = scene.asset_manager()
+    ped = scene.ped("ped_plus")
 
     scene.load_scene(0.0, payload={"cName": "test_variation"})
     scene.load_models(0.0, [ped.object_id], target=asset_manager)
@@ -478,14 +478,14 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     scene = CutScene.create(
         duration=12.0, face_dir="x:/gta5/assets_ng/cuts/test_fx/faces"
     )
-    asset_manager = scene.add_asset_manager()
-    camera = scene.add_camera("cam_fx")
-    hidden = scene.add_object("hidden_object", name="hidden_target")
-    bounds = scene.add_object("blocking_bounds", name="blocker")
+    asset_manager = scene.asset_manager()
+    camera = scene.camera("cam_fx")
+    hidden = scene.object("hidden_object", name="hidden_target")
+    bounds = scene.object("blocking_bounds", name="blocker")
 
     scene.load_scene(0.0, payload={"cName": "test_fx"})
     scene.load_models(0.0, [hidden.object_id, bounds.object_id], target=asset_manager)
-    scene.add_blocking_bounds(0.0, bounds)
+    scene.install_blocking_bounds(0.0, bounds)
     scene.hide_objects(0.0, hidden)
     scene.enable_dof(0.0, camera)
     scene.enable_cascade_shadow_bounds(
@@ -545,9 +545,9 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     scene = CutScene.create(
         duration=6.0, face_dir="x:/gta5/assets_ng/cuts/test_decal/faces"
     )
-    decal = scene.add_decal("blood_mark")
-    light = scene.add_light("fx_light")
-    hidden = scene.add_object(
+    decal = scene.decal("blood_mark")
+    light = scene.light("fx_light")
+    hidden = scene.object(
         "hidden_object",
         name="hidden_target",
         fields={"vPosition": (0.0, 0.0, 0.0), "fRadius": 1.5},
@@ -656,7 +656,7 @@ def test_cut_prop_binding_exposes_real_streaming_fields() -> None:
     scene = CutScene.create(
         duration=4.0, face_dir="x:/gta5/assets_ng/cuts/test_prop/faces"
     )
-    prop = scene.add_prop(
+    prop = scene.prop(
         "prop_stream",
         cutscene_name="prop_local",
         anim_streaming_base=0x1234,
@@ -703,7 +703,7 @@ def test_cut_prop_binding_exposes_real_streaming_fields() -> None:
 
 def test_cut_ped_does_not_require_type_file() -> None:
     scene = CutScene.create(duration=4.0)
-    scene.add_ped("cs_test")
+    scene.ped("cs_test")
 
     issues = scene.validation_report(strict=True)
 
@@ -717,7 +717,7 @@ def test_cut_ped_does_not_require_type_file() -> None:
 
 def test_cut_prop_binding_supports_clear_aliases_for_real_fields() -> None:
     scene = CutScene.create(duration=1.0)
-    prop = scene.add_prop(
+    prop = scene.prop(
         model_name="prop_npc_phone",
         scene_name="phone_local",
         animation_streaming_base=0xE99D162E,
@@ -742,7 +742,7 @@ def test_cut_prop_binding_supports_clear_aliases_for_real_fields() -> None:
 
 def test_cut_prop_animation_presets_are_selectable() -> None:
     scene = CutScene.create(duration=1.0)
-    prop = scene.add_prop(
+    prop = scene.prop(
         model_name="prop_npc_phone",
         animation_preset=CutPropAnimationPreset.COMMON_PROP,
     )
@@ -761,7 +761,7 @@ def test_cut_prop_animation_presets_are_selectable() -> None:
 
 
 def test_cut_prop_animation_clip_base_defaults_to_model_name() -> None:
-    prop = CutScene.create().add_prop(
+    prop = CutScene.create().prop(
         name="mmd_model_001",
         model=r"assets/miku_hatsune_metal.ydr",
         scene_name="mmd_model_001",
@@ -776,20 +776,20 @@ def test_cut_prop_animation_clip_base_defaults_to_model_name() -> None:
 
 def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
     scene = CutScene.create(duration=1.0)
-    manager = scene.add_animation_manager()
-    prop = scene.add_prop(
+    manager = scene.animation_manager()
+    prop = scene.prop(
         name="mmd_model_001",
         model=r"assets/miku_hatsune_metal.ydr",
         scene_name="mmd_model_001",
         animation_preset=CutPropAnimationPreset.COMMON_PROP,
     )
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "miku_hatsune_metal",
         mover_position=(0.0, 0.0, 0.0),
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
     )
-    scene.attach_clip_dict(builder.build_ycds()[0])
+    scene.clip_dictionary(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)
 
     assert scene.validate_animations() == []
@@ -797,8 +797,8 @@ def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
 
 def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None:
     scene = CutScene.create(duration=2.0, camera_cut_list=[1.0])
-    manager = scene.add_animation_manager()
-    prop = scene.add_prop(
+    manager = scene.animation_manager()
+    prop = scene.prop(
         name="target",
         model=r"assets/target.ydr",
         scene_name="target",
@@ -806,15 +806,15 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
     )
 
     first = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=0)
-    first.add_prop(
+    first.prop(
         "decoy", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0)
     )
     second = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=1)
-    second.add_prop(
+    second.prop(
         "target", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0)
     )
-    scene.attach_clip_dict(first.build_ycds()[0])
-    scene.attach_clip_dict(second.build_ycds()[0])
+    scene.clip_dictionary(first.build_ycds()[0])
+    scene.clip_dictionary(second.build_ycds()[0])
     scene.set_anim(1.0, prop, target=manager)
 
     assert scene.validate_animations() == []
@@ -827,20 +827,20 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
 
 def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
     scene = CutScene.create(duration=1.0)
-    manager = scene.add_animation_manager()
-    prop = scene.add_prop(
+    manager = scene.animation_manager()
+    prop = scene.prop(
         name="mmd_model_001",
         model=r"assets/miku_hatsune_metal.ydr",
         scene_name="mmd_model_001",
         animation_preset=CutPropAnimationPreset.COMMON_PROP,
     )
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
-    builder.add_prop(
+    builder.prop(
         "mmd_model_001",
         mover_position=(0.0, 0.0, 0.0),
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
     )
-    scene.attach_clip_dict(builder.build_ycds()[0])
+    scene.clip_dictionary(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)
 
     assert any(
@@ -861,7 +861,7 @@ def test_cut_prop_animation_alternative_presets_match_real_cut_patterns(
     expected_export: int,
     expected_comp: int,
 ) -> None:
-    prop = CutScene.create().add_prop(model_name="prop_test", animation_preset=preset)
+    prop = CutScene.create().prop(model_name="prop_test", animation_preset=preset)
     assert prop.fields["cAnimExportCtrlSpecFile"].hash == expected_export
     assert prop.fields["cFaceExportCtrlSpecFile"].hash == 0
     assert prop.fields["cAnimCompressionFile"].hash == expected_comp
@@ -869,7 +869,7 @@ def test_cut_prop_animation_alternative_presets_match_real_cut_patterns(
 
 def test_cut_prop_can_be_built_from_runtime_sources_with_explicit_ytyp() -> None:
     scene = CutScene.create(duration=1.0)
-    prop = scene.add_prop(
+    prop = scene.prop(
         model=r"update/x64/dlcpacks/mpchristmas2018/dlc.rpf/x64/levels/gta5/props/prop_arena_cutscene.rpf/xs_prop_arena_clipboard_01a.ydr",
         ytyp=r"update/x64/dlcpacks/mpchristmas2018/dlc.rpf/x64/levels/gta5/props/prop_arena_cutscene.rpf/xs_prop_arena_cutscene.ytyp",
         scene_name="clipboard_local",
@@ -882,7 +882,7 @@ def test_cut_prop_can_be_built_from_runtime_sources_with_explicit_ytyp() -> None
 
 def test_cut_prop_runtime_source_auto_falls_back_to_container_stem() -> None:
     scene = CutScene.create(duration=1.0)
-    prop = scene.add_prop_from_runtime_asset(
+    prop = scene.prop(
         model=r"update/x64/dlcpacks/mpgunrunning/dlc.rpf/x64/levels/gta5/props/prop_gr_crates.rpf/gr_prop_gr_torque_wrench_01a.ydr",
         scene_name="wrench_local",
     )
@@ -893,7 +893,7 @@ def test_cut_prop_runtime_source_auto_falls_back_to_container_stem() -> None:
 
 
 def test_cut_prop_runtime_source_can_disable_type_file_inference() -> None:
-    prop = CutScene.create().add_prop(
+    prop = CutScene.create().prop(
         model=r"x64c.rpf/levels/gta5/props/lev_des/lev_des.rpf/prop_npc_phone.ydr",
         type_file_strategy=CutTypeFileStrategy.NONE,
     )
@@ -904,13 +904,13 @@ def test_cut_prop_runtime_source_can_disable_type_file_inference() -> None:
 
 def test_cut_all_event_ids_have_serializable_specs() -> None:
     scene = CutScene.create(scene_name="all_events_smoke", duration=1.0)
-    scene.add_asset_manager()
-    scene.add_animation_manager()
-    scene.add_camera("camera")
-    scene.add_fade("fade")
-    scene.add_light("light")
-    scene.add_object("subtitle", name="subtitle")
-    scene.add_prop("prop", model_name="prop")
+    scene.asset_manager()
+    scene.animation_manager()
+    scene.camera("camera")
+    scene.fade("fade")
+    scene.light("light")
+    scene.object("subtitle", name="subtitle")
+    scene.prop("prop", model_name="prop")
 
     missing_specs = [
         name
@@ -925,7 +925,7 @@ def test_cut_all_event_ids_have_serializable_specs() -> None:
         elif name == "unload_scene":
             scene.unload_scene(0.0, CutLoadScenePayload("all_events_smoke"))
         else:
-            scene.create_event(name, start=0.0)
+            scene.event(name, start=0.0)
 
     summary = read_cut(build_cut_bytes(scene_to_cut(scene))).summary()
     assert summary.load_event_count + summary.event_count == len(CUT_EVENT_ID_TO_NAME)

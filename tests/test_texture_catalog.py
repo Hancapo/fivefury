@@ -95,7 +95,7 @@ def test_contextual_resolver_prefers_declared_dictionary_before_gtxd_parent(
     metadata.parent.mkdir(parents=True)
     Gtxd.from_mapping({"child": "parent"}).save(metadata)
     ytyp = Ytyp(name="types")
-    ytyp.add_archetype(
+    ytyp.archetypes.append(
         Archetype(
             name="prop",
             asset_name="prop",
@@ -160,8 +160,8 @@ def test_contextual_resolver_reports_invalid_context(tmp_path) -> None:
 def test_native_texture_index_preserves_duplicates_and_dictionary_ids() -> None:
     index = NativeTextureIndex()
 
-    assert index.add_many([0x10, 0x10, 0x20], 7) == 0
-    assert index.add(0x10, 8) == 3
+    assert index.bind_many([0x10, 0x10, 0x20], 7) == 0
+    assert index.bind(0x10, 8) == 3
     assert index.find_texture(0x10) == [0, 1, 3]
     assert index.find_dictionary(7) == [0, 1, 2]
     assert index.find_dictionary(8) == [3]

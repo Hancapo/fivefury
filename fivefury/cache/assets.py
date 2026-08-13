@@ -177,14 +177,22 @@ class GameFileCacheAssetMixin:
                 extracted.append(result)
         return extracted
 
-    def create_ymf_for_ymaps(self, ymaps: Any | None = None, **kwargs: Any) -> Any:
-        from ..ymf import create_ymf_for_ymaps
+    def build_ymf_for_ymaps(
+        self,
+        ymaps: Any | None = None,
+        *,
+        context: Any | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        from ..authoring import BuildContext
+        from ..ymf import build_ymf_for_ymaps
 
         sources = None if ymaps is None else (ymaps if isinstance(ymaps, (list, tuple, set)) else [ymaps])
-        return create_ymf_for_ymaps(sources, cache=self, **kwargs)
-
-    def build_ymf_for_ymaps(self, ymaps: Any | None = None, **kwargs: Any) -> Any:
-        return self.create_ymf_for_ymaps(ymaps, **kwargs)
+        if context is None:
+            context = BuildContext(cache=self, strict=False)
+        elif context.cache is not self:
+            raise ValueError("BuildContext.cache must be this GameFileCache")
+        return build_ymf_for_ymaps(sources, context=context, **kwargs)
 
     def _coerce_ytd(self, value: Any) -> Ytd | None:
         if isinstance(value, Ytd):

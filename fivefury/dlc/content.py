@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..xml import (
-    add_items,
-    add_text,
-    add_value,
+    append_items,
+    append_text,
+    append_value,
     child_by_name,
     child_text,
     child_value,
@@ -38,7 +38,7 @@ def _add_optional_value(
     value: bool | str | None,
 ) -> None:
     if value is not None:
-        add_value(parent, tag, value)
+        append_value(parent, tag, value)
 
 
 @dataclass(slots=True)
@@ -55,8 +55,8 @@ class DlcResourceReference:
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        add_text(element, "AssetName", self.asset_name)
-        add_text(element, "Extension", self.extension)
+        append_text(element, "AssetName", self.asset_name)
+        append_text(element, "Extension", self.extension)
         return element
 
 
@@ -74,8 +74,8 @@ class DlcExecutionCondition:
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        add_text(element, "name", self.name)
-        add_value(element, "condition", self.condition)
+        append_text(element, "name", self.name)
+        append_value(element, "condition", self.condition)
         return element
 
 
@@ -100,7 +100,7 @@ class DlcExecutionConditions:
         active = ET.SubElement(element, "activeChangesetConditions")
         for condition in self.active_change_set_conditions:
             active.append(condition.to_xml_element())
-        add_text(element, "genericConditions", self.generic_conditions)
+        append_text(element, "genericConditions", self.generic_conditions)
         return element
 
 
@@ -138,15 +138,15 @@ class DlcChangeSetData:
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        add_text(element, "associatedMap", self.associated_map)
-        add_items(element, "filesToInvalidate", self.files_to_invalidate)
-        add_items(element, "filesToDisable", self.files_to_disable)
-        add_items(element, "filesToEnable", self.files_to_enable)
-        add_items(element, "txdToLoad", self.txd_to_load)
-        add_items(element, "txdToUnload", self.txd_to_unload)
+        append_text(element, "associatedMap", self.associated_map)
+        append_items(element, "filesToInvalidate", self.files_to_invalidate)
+        append_items(element, "filesToDisable", self.files_to_disable)
+        append_items(element, "filesToEnable", self.files_to_enable)
+        append_items(element, "txdToLoad", self.txd_to_load)
+        append_items(element, "txdToUnload", self.txd_to_unload)
         _add_resource_references(element, "residentResources", self.resident_resources)
         _add_resource_references(element, "unregisterResources", self.unregister_resources)
-        add_items(element, "dataFilesToLoad", self.data_files_to_load)
+        append_items(element, "dataFilesToLoad", self.data_files_to_load)
         return element
 
 
@@ -213,21 +213,21 @@ class DlcContentChangeSet:
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        add_text(element, "changeSetName", self.name)
+        append_text(element, "changeSetName", self.name)
         map_data = ET.SubElement(element, "mapChangeSetData")
         for item in self.map_change_set_data:
             map_data.append(item.to_xml_element())
-        add_items(element, "filesToInvalidate", self.files_to_invalidate)
-        add_items(element, "filesToDisable", self.files_to_disable)
-        add_items(element, "filesToEnable", self.files_to_enable)
-        add_items(element, "txdToLoad", self.txd_to_load)
-        add_items(element, "txdToUnload", self.txd_to_unload)
+        append_items(element, "filesToInvalidate", self.files_to_invalidate)
+        append_items(element, "filesToDisable", self.files_to_disable)
+        append_items(element, "filesToEnable", self.files_to_enable)
+        append_items(element, "txdToLoad", self.txd_to_load)
+        append_items(element, "txdToUnload", self.txd_to_unload)
         _add_resource_references(element, "residentResources", self.resident_resources)
         _add_resource_references(element, "unregisterResources", self.unregister_resources)
-        add_items(element, "dataFilesToLoad", self.data_files_to_load)
+        append_items(element, "dataFilesToLoad", self.data_files_to_load)
         _add_optional_value(element, "requiresLoadingScreen", self.requires_loading_screen)
         if self.loading_screen_context is not None:
-            add_text(element, "loadingScreenContext", self.loading_screen_context)
+            append_text(element, "loadingScreenContext", self.loading_screen_context)
         if self.execution_conditions is not None:
             element.append(self.execution_conditions.to_xml_element())
         _add_optional_value(element, "useCacheLoader", self.use_cache_loader)
@@ -283,10 +283,10 @@ class DlcContentFile:
     def to_xml_element(self) -> ET.Element:
         attributes = {"platform": self.platform} if self.platform else {}
         element = ET.Element("Item", attributes)
-        add_text(element, "filename", self.filename)
-        add_text(element, "fileType", self.file_type)
+        append_text(element, "filename", self.filename)
+        append_text(element, "fileType", self.file_type)
         if self.register_as:
-            add_text(element, "registerAs", self.register_as)
+            append_text(element, "registerAs", self.register_as)
         _add_optional_value(element, "locked", self.locked)
         _add_optional_value(element, "loadCompletely", self.load_completely)
         _add_optional_value(element, "overlay", self.overlay)
@@ -295,9 +295,9 @@ class DlcContentFile:
         _add_optional_value(element, "persistent", self.persistent)
         _add_optional_value(element, "enforceLsnSorting", self.enforce_lsn_sorting)
         if self.contents is not None:
-            add_text(element, "contents", self.contents)
+            append_text(element, "contents", self.contents)
         if self.install_partition is not None:
-            add_text(element, "installPartition", self.install_partition)
+            append_text(element, "installPartition", self.install_partition)
         return element
 
 
@@ -421,19 +421,19 @@ class DlcContentXml:
 
     def to_xml_element(self) -> ET.Element:
         root = ET.Element("CDataFileMgr__ContentsOfDataFileXml")
-        add_items(root, "disabledFiles", self.disabled_files)
+        append_items(root, "disabledFiles", self.disabled_files)
         included_xml = ET.SubElement(root, "includedXmlFiles")
         for item in self.included_xml_files:
             included_xml.append(item.to_xml_element())
-        add_items(root, "includedDataFiles", self.included_data_files)
+        append_items(root, "includedDataFiles", self.included_data_files)
         files = ET.SubElement(root, "dataFiles")
         for data_file in self.data_files:
             files.append(data_file.to_xml_element())
         change_sets = ET.SubElement(root, "contentChangeSets")
         for change_set in self.content_change_sets:
             change_sets.append(change_set.to_xml_element())
-        add_items(root, "patchFiles", self.patch_files)
-        add_items(root, "allowedFolders", self.allowed_folders)
+        append_items(root, "patchFiles", self.patch_files)
+        append_items(root, "allowedFolders", self.allowed_folders)
         return root
 
     def to_xml_bytes(self) -> bytes:

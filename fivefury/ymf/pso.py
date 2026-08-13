@@ -215,7 +215,7 @@ def build_ymf_pso(
         tuple[PsoBlockBuilder, int, list[MetaHash | HashLike]]
     ] = []
 
-    def add_struct_array(
+    def struct_array(
         root_offset: int, type_hash: int, payloads: Iterable[_PsoPayload]
     ) -> None:
         items = list(payloads)
@@ -230,22 +230,22 @@ def build_ymf_pso(
                 )
         array_blocks.append((root_offset, type_hash, block, len(items)))
 
-    add_struct_array(
+    struct_array(
         0,
         YMF_PSO_MAP_DATA_GROUP,
         (_pack_pso_map_data_group(item) for item in manifest.map_data_groups),
     )
-    add_struct_array(
+    struct_array(
         16,
         YMF_PSO_HD_TXD_BINDING,
         (_pack_pso_hd_txd_binding(item) for item in manifest.hd_txd_bindings),
     )
-    add_struct_array(
+    struct_array(
         32,
         YMF_PSO_IMAP_DEPENDENCY,
         (_pack_pso_imap_dependency(item) for item in manifest.imap_dependencies),
     )
-    add_struct_array(
+    struct_array(
         48,
         YMF_PSO_IMAP_DEPENDENCIES,
         (
@@ -253,7 +253,7 @@ def build_ymf_pso(
             for item in manifest.imap_dependencies_2
         ),
     )
-    add_struct_array(
+    struct_array(
         64,
         YMF_PSO_ITYP_DEPENDENCIES,
         (
@@ -261,7 +261,7 @@ def build_ymf_pso(
             for item in manifest.ityp_dependencies_2
         ),
     )
-    add_struct_array(
+    struct_array(
         80,
         YMF_PSO_INTERIOR_BOUNDS,
         (_pack_pso_interior_bounds(item) for item in manifest.interiors),

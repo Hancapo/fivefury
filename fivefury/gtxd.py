@@ -9,7 +9,7 @@ from typing import Any
 from .common import hash_value
 from .rbf import RbfStructure, is_rbf, rbf_string_field, read_rbf, read_rbf_bytes
 from .xml import (
-    add_text,
+    append_text,
     child_text,
     descendant_by_name,
     item_elements,
@@ -39,8 +39,8 @@ class TxdRelationship:
 
     def to_xml_element(self) -> ET.Element:
         item = ET.Element("Item")
-        add_text(item, "parent", self.parent)
-        add_text(item, "child", self.child)
+        append_text(item, "parent", self.parent)
+        append_text(item, "child", self.child)
         return item
 
 
@@ -125,14 +125,11 @@ class Gtxd:
     def save(self, path: str | Path) -> Path:
         return save_xml(self.to_xml_element(), path)
 
-    def add_relationship(self, child: str, parent: str) -> TxdRelationship:
+    def relationship(self, child: str, parent: str) -> TxdRelationship:
         relationship = TxdRelationship(child=child, parent=parent)
         self.remove_child(child)
         self.relationships.append(relationship)
         return relationship
-
-    def add(self, child: str, parent: str) -> TxdRelationship:
-        return self.add_relationship(child, parent)
 
     def remove_child(self, child: str) -> bool:
         normalized = normalize_txd_name(child)
@@ -209,7 +206,7 @@ def create_gtxd(relationships: Mapping[str, str] | Iterable[tuple[str, str]] | N
     if relationships is not None:
         gtxd = Gtxd.from_mapping(relationships)
     for child, parent in kwargs.items():
-        gtxd.add_relationship(child, parent)
+        gtxd.relationship(child, parent)
     return gtxd
 
 

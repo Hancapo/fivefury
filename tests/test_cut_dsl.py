@@ -145,7 +145,7 @@ SAVE "miku_test.cut"
 
 def _sample_ycds():
     builder = YcdCutsceneBuilder.create("miku_test", duration=14.0)
-    builder.add_prop(
+    builder.prop(
         "miku_hatsune",
         mover_position=(0.0, 0.0, 0.0),
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
@@ -173,7 +173,7 @@ def test_cutscript_parses_video_editor_style_script() -> None:
 def test_cutscript_writes_valid_cut_bytes() -> None:
     scene = parse_cutscript(DSL_SAMPLE).scene
     for ycd in _sample_ycds():
-        scene.attach_clip_dict(ycd)
+        scene.clip_dictionary(ycd)
 
     cut = read_cut(scene.to_bytes())
 

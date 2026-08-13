@@ -23,7 +23,7 @@ class CompactIndex:
     def clear(self) -> None:
         _ffi.index_clear(self._capsule)
 
-    def add(
+    def record(
         self,
         path: str,
         kind: int,
@@ -137,7 +137,7 @@ class NativeTextureIndex:
     def clear(self) -> None:
         _ffi.texture_index_clear(self._capsule)
 
-    def add(self, texture_hash: int, dictionary_id: int) -> int:
+    def bind(self, texture_hash: int, dictionary_id: int) -> int:
         return int(
             _ffi.texture_index_add(
                 self._capsule,
@@ -146,7 +146,7 @@ class NativeTextureIndex:
             )
         )
 
-    def add_many(self, texture_hashes: list[int], dictionary_id: int) -> int:
+    def bind_many(self, texture_hashes: list[int], dictionary_id: int) -> int:
         return int(
             _ffi.texture_index_add_many(
                 self._capsule,

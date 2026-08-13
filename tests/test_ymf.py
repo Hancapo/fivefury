@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fivefury import AssetSet, BuildContext
 from fivefury.gamefile import GameFileType
 from fivefury.pso import (
     PMAP,
@@ -14,6 +15,7 @@ from fivefury.pso import (
     parse_psch_enums,
     parse_sections,
 )
+from fivefury.ybn import Ybn
 from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
 from fivefury.ymf import (
     YMF_HOURS_ON_OFF_MASK,
@@ -33,8 +35,8 @@ from fivefury.ymf import (
     PackFileMetaDataImapGroupType,
     YmfRelationshipType,
     build_ymf,
+    build_ymf_for_ymaps,
     build_ymf_manifest_for_ymaps,
-    create_ymf_for_ymaps,
     iter_ymf_relationships,
     read_ymf,
     read_ymf_xml,
@@ -43,6 +45,17 @@ from fivefury.ymf import (
 from fivefury.ytyp import Archetype, MloArchetypeDef, MloRoomDef, Ytyp, YtypDependency
 
 YMF_FIXTURES = Path(__file__).with_name("fixtures") / "ymf"
+
+
+def _build_context(
+    *assets: tuple[str, object],
+    cache: object | None = None,
+    strict: bool = False,
+) -> BuildContext:
+    asset_set = AssetSet()
+    for path, asset in assets:
+        asset_set[path] = asset
+    return BuildContext(assets=asset_set, cache=cache, strict=strict)
 
 
 class _FakeAsset:
@@ -252,8 +265,8 @@ def test_ymf_rewrite_preserves_unknown_pso_sections() -> None:
 
 def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
     ymap = Ymap(name="city_imap")
-    ymap.add_entity(EntityDef(archetype_name="prop_a"))
-    ymap.add_entity(EntityDef(archetype_name="prop_b"))
+    ymap.entities.append(EntityDef(archetype_name="prop_a"))
+    ymap.entities.append(EntityDef(archetype_name="prop_b"))
     ytyp = Ytyp(
         name="city_ityp",
         archetypes=[Archetype(name="prop_a"), Archetype(name="prop_b")],
@@ -261,7 +274,9 @@ def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
     )
     cache = _FakeCache([(_FakeAsset("city_ityp", GameFileType.YTYP), ytyp)])
 
-    manifest = build_ymf_manifest_for_ymaps([ymap], cache=cache)
+    manifest = build_ymf_manifest_for_ymaps(
+        [ymap], context=_build_context(cache=cache)
+    )
 
     assert len(manifest.imap_dependencies_2) == 1
     assert str(manifest.imap_dependencies_2[0].imap_name) == "city_imap"
@@ -275,15 +290,15 @@ def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
     ] == ["shared_ityp"]
 
 
-def test_create_ymf_for_ymaps_can_use_cached_ymaps_and_marks_interiors() -> None:
+def test_build_ymf_for_ymaps_can_use_cached_ymaps_and_marks_interiors() -> None:
     ymap = Ymap(name=0)
-    ymap.add_entity(MloInstanceDef(archetype_name="mlo_arch"))
+    ymap.entities.append(MloInstanceDef(archetype_name="mlo_arch"))
     ytyp = Ytyp(name=0, archetypes=[Archetype(name="mlo_arch")])
     ymap_asset = _FakeAsset("interior_imap", GameFileType.YMAP)
     ytyp_asset = _FakeAsset("interior_ityp", GameFileType.YTYP)
     cache = _FakeCache([(ymap_asset, ymap), (ytyp_asset, ytyp)])
 
-    ymf = create_ymf_for_ymaps(cache=cache)
+    ymf = build_ymf_for_ymaps(context=_build_context(cache=cache))
     manifest = ymf.manifest
 
     assert ymf.name == "_manifest"
@@ -319,7 +334,9 @@ def test_build_ymf_manifest_marks_the_ytyp_holding_an_mlo_as_an_interior_type() 
         name="custom_imap", entities=[MloInstanceDef(archetype_name="custom_mlo")]
     )
 
-    manifest = build_ymf_manifest_for_ymaps([ymap], ytyps=[ytyp])
+    manifest = build_ymf_manifest_for_ymaps(
+        [ymap], context=_build_context(("custom_ityp.ytyp", ytyp))
+    )
 
     interior_types = [
         entry
@@ -335,7 +352,9 @@ def test_build_ymf_manifest_leaves_plain_ytyps_unflagged() -> None:
     ytyp = Ytyp(name="plain_ityp", archetypes=[Archetype(name="prop")])
     ymap = Ymap(name="plain_imap", entities=[EntityDef(archetype_name="prop")])
 
-    manifest = build_ymf_manifest_for_ymaps([ymap], ytyps=[ytyp])
+    manifest = build_ymf_manifest_for_ymaps(
+        [ymap], context=_build_context(("plain_ityp.ytyp", ytyp))
+    )
 
     assert all(
         entry.flags is not ManifestFlags.INTERIOR_DATA
@@ -356,8 +375,13 @@ def test_build_ymf_manifest_registers_mlo_static_bounds_when_ybn_is_packaged() -
 
     manifest = build_ymf_manifest_for_ymaps(
         [ymap],
-        ytyps=[ytyp],
-        ybns={"custom_mlo": object()},
+        context=_build_context(
+            ("custom_ityp.ytyp", ytyp),
+            (
+                "custom_mlo.ybn",
+                Ybn(43, None, path="custom_mlo.ybn"),
+            ),
+        ),
     )
 
     assert len(manifest.interiors) == 1
@@ -372,8 +396,13 @@ def test_build_ymf_manifest_registers_standalone_mlo_rpf_without_ymap() -> None:
 
     manifest = build_ymf_manifest_for_ymaps(
         [],
-        ytyps=[ytyp],
-        ybns={"custom_mlo": object()},
+        context=_build_context(
+            ("custom_ityp.ytyp", ytyp),
+            (
+                "custom_mlo.ybn",
+                Ybn(43, None, path="custom_mlo.ybn"),
+            ),
+        ),
     )
 
     assert [
