@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import Any
 
 from ..colors import CssColor
@@ -23,6 +24,7 @@ MAX_LOD_LIGHT_CONE_ANGLE = 180.0
 MAX_LOD_LIGHT_CORONA_INTENSITY = 32.0
 MAX_LOD_LIGHT_CAPSULE_EXTENT = 140.0
 MAX_LOD_LIGHT_INTENSITY = 40.0
+MAX_LOD_LIGHT_ARRAY_COUNT = 0xFFFF
 
 
 @dataclasses.dataclass(slots=True)
@@ -161,6 +163,10 @@ class LodLightsSoa:
     def validate(self) -> list[str]:
         expected = len(self.direction)
         issues: list[str] = []
+        if expected > MAX_LOD_LIGHT_ARRAY_COUNT:
+            issues.append(
+                f"LODLightsSOA has {expected} entries; maximum is {MAX_LOD_LIGHT_ARRAY_COUNT}"
+            )
         for name in (
             "falloff",
             "falloff_exponent",
@@ -173,6 +179,17 @@ class LodLightsSoa:
             actual = len(getattr(self, name))
             if actual != expected:
                 issues.append(f"LODLightsSOA.{name} has {actual} entries; expected {expected}")
+        if any(not all(math.isfinite(component) for component in value) for value in self.direction):
+            issues.append("LODLightsSOA.direction contains non-finite values")
+        if any(not math.isfinite(value) for value in (*self.falloff, *self.falloff_exponent)):
+            issues.append("LODLightsSOA falloff arrays contain non-finite values")
+        if any(not 0 <= int(value) <= 0xFFFFFFFF for value in self.time_and_state_flags):
+            issues.append("LODLightsSOA.timeAndStateFlags contains values outside uint32")
+        if any(not 0 <= int(value) <= 0xFFFFFFFF for value in self.hash):
+            issues.append("LODLightsSOA.hash contains values outside uint32")
+        for name in ("cone_inner_angle", "cone_outer_angle_or_cap_ext", "corona_intensity"):
+            if any(not 0 <= int(value) <= 0xFF for value in getattr(self, name)):
+                issues.append(f"LODLightsSOA.{name} contains values outside uint8")
         return issues
 
     def to_meta(self) -> dict[str, Any]:
@@ -230,12 +247,20 @@ class DistantLodLightsSoa:
 
     def validate(self) -> list[str]:
         issues: list[str] = []
+        if len(self.position) > MAX_LOD_LIGHT_ARRAY_COUNT:
+            issues.append(
+                f"DistantLODLightsSOA has {len(self.position)} entries; maximum is {MAX_LOD_LIGHT_ARRAY_COUNT}"
+            )
         if len(self.RGBI) != len(self.position):
             issues.append(
                 f"DistantLODLightsSOA.RGBI has {len(self.RGBI)} entries; expected {len(self.position)}"
             )
         if not 0 <= int(self.num_street_lights) <= len(self.position):
             issues.append("DistantLODLightsSOA.numStreetLights must fit the distant light count")
+        if any(not all(math.isfinite(component) for component in value) for value in self.position):
+            issues.append("DistantLODLightsSOA.position contains non-finite values")
+        if any(not 0 <= int(value) <= 0xFFFFFFFF for value in self.RGBI):
+            issues.append("DistantLODLightsSOA.RGBI contains values outside uint32")
         return issues
 
     def to_meta(self) -> dict[str, Any]:
@@ -337,6 +362,7 @@ DistantLodLights = DistantLodLightsSoa
 
 
 __all__ = [
+    "MAX_LOD_LIGHT_ARRAY_COUNT",
     "MAX_LOD_LIGHT_CAPSULE_EXTENT",
     "MAX_LOD_LIGHT_CONE_ANGLE",
     "MAX_LOD_LIGHT_CORONA_INTENSITY",

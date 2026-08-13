@@ -49,6 +49,22 @@ class GeneratedLodLight:
         return self.light.is_street_light
 
 
+@dataclasses.dataclass(slots=True)
+class LodLightSourceInstance:
+    ydr: Ydr
+    entity: EntityDef
+    archetype_bounds: Aabb3
+    model_name: str = ""
+
+    def extract(self) -> list[GeneratedLodLight]:
+        return extract_lod_lights(
+            self.ydr,
+            self.entity,
+            archetype_bounds=self.archetype_bounds,
+            model_name=self.model_name,
+        )
+
+
 def calculate_lod_light_hash(entity_bounds: Aabb3, light_index: int) -> int:
     if light_index < 0:
         raise ValueError("light_index must be non-negative")
@@ -288,6 +304,7 @@ def _quantize_hash_bound(value: float) -> int:
 
 __all__ = [
     "GeneratedLodLight",
+    "LodLightSourceInstance",
     "calculate_light_physical_bounds",
     "calculate_lod_light_category",
     "calculate_lod_light_hash",

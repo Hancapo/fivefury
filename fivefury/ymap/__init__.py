@@ -50,6 +50,7 @@ from .grass import (
 )
 from .io import read_ymap, save_ymap
 from .lights import (
+    MAX_LOD_LIGHT_ARRAY_COUNT,
     MAX_LOD_LIGHT_CAPSULE_EXTENT,
     MAX_LOD_LIGHT_CONE_ANGLE,
     MAX_LOD_LIGHT_CORONA_INTENSITY,
@@ -60,14 +61,27 @@ from .lights import (
     LodLights,
     LodLightsSoa,
 )
+from .lodlight_builder import (
+    LOD_LIGHT_VISIBILITY_RADII,
+    LodLightMapPair,
+    build_lod_light_maps,
+    build_lod_light_maps_from_sources,
+    save_lod_light_maps,
+)
 from .lodlight_generation import (
     GeneratedLodLight,
+    LodLightSourceInstance,
     calculate_light_physical_bounds,
     calculate_lod_light_category,
     calculate_lod_light_hash,
     extract_lod_light,
     extract_lod_lights,
     validate_lod_light_source_bounds,
+)
+from .lodlight_partition import (
+    MAX_LOD_LIGHTS_PER_CELL,
+    partition_lod_lights,
+    partition_lod_lights_by_category,
 )
 from .model import Ymap
 from .occluders import AngleMode, BoxOccluder, OccludeModel
@@ -78,6 +92,9 @@ MloInstance = MloInstanceDef
 Block = BlockDesc
 
 __all__ = [
+    "LOD_LIGHT_VISIBILITY_RADII",
+    "MAX_LOD_LIGHTS_PER_CELL",
+    "MAX_LOD_LIGHT_ARRAY_COUNT",
     "MAX_LOD_LIGHT_CAPSULE_EXTENT",
     "MAX_LOD_LIGHT_CONE_ANGLE",
     "MAX_LOD_LIGHT_CORONA_INTENSITY",
@@ -117,6 +134,8 @@ __all__ = [
     "LightExtension",
     "LightShaftExtension",
     "LodLight",
+    "LodLightMapPair",
+    "LodLightSourceInstance",
     "LodLights",
     "LodLightsSoa",
     "MloInstance",
@@ -145,12 +164,17 @@ __all__ = [
     "YmapLodLightType",
     "YmapMloInstanceFlags",
     "YmapPriorityLevel",
+    "build_lod_light_maps",
+    "build_lod_light_maps_from_sources",
     "calculate_light_physical_bounds",
     "calculate_lod_light_category",
     "calculate_lod_light_hash",
     "extract_lod_light",
     "extract_lod_lights",
+    "partition_lod_lights",
+    "partition_lod_lights_by_category",
     "read_ymap",
+    "save_lod_light_maps",
     "save_ymap",
     "validate_lod_light_source_bounds",
 ]
