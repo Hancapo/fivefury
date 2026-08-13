@@ -93,6 +93,10 @@ PyObject* mod_awc_build_pcm_wav(PyObject*, PyObject* args);
 PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args);
 PyObject* mod_yed_compile(PyObject*, PyObject* args);
 PyObject* mod_yed_evaluate(PyObject*, PyObject* args);
+PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args);
+PyObject* mod_ycd_encode_frame_channels(PyObject*, PyObject* args);
+PyObject* mod_ycd_decode_quantized_values(PyObject*, PyObject* args);
+PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;

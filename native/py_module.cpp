@@ -59,6 +59,10 @@ PyMethodDef module_methods[] = {
     {"awc_extract_multichannel_blocks", mod_awc_extract_multichannel_blocks, METH_VARARGS, nullptr},
     {"yed_compile", mod_yed_compile, METH_VARARGS, nullptr},
     {"yed_evaluate", mod_yed_evaluate, METH_VARARGS, nullptr},
+    {"ycd_decode_frame_channels", mod_ycd_decode_frame_channels, METH_VARARGS, nullptr},
+    {"ycd_encode_frame_channels", mod_ycd_encode_frame_channels, METH_VARARGS, nullptr},
+    {"ycd_decode_quantized_values", mod_ycd_decode_quantized_values, METH_VARARGS, nullptr},
+    {"ycd_decode_linear_values", mod_ycd_decode_linear_values, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 
