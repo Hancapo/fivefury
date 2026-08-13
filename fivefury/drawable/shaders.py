@@ -5,6 +5,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ..hashing import jenk_hash
+from ..xml import child_items, child_text, item_elements, parse_xml_root
 
 
 def parameter_component_count(type_name: str | None) -> int:
@@ -194,35 +195,24 @@ def _parse_parameter(item: ET.Element) -> ShaderParameterDefinition:
 
 def _parse_shader(item: ET.Element) -> ShaderDefinition:
     file_names_by_bucket: dict[int, list[str]] = {}
-    if (container := item.find("FileName")) is not None:
-        for file_item in container.findall("Item"):
-            if value := (file_item.text or "").strip():
-                file_names_by_bucket.setdefault(int(file_item.get("bucket", "0")), []).append(value)
-    layout_container = item.find("Layout")
-    parameter_container = item.find("Parameters")
+    for file_item in child_items(item, "FileName"):
+        if value := (file_item.text or "").strip():
+            file_names_by_bucket.setdefault(int(file_item.get("bucket", "0")), []).append(value)
     return ShaderDefinition(
-        name=(item.findtext("Name") or "").strip(),
+        name=child_text(item, "Name"),
         file_names_by_bucket={bucket: tuple(values) for bucket, values in file_names_by_bucket.items()},
-        layouts=(
-            tuple(
-                ShaderLayoutDefinition(layout.get("type", ""), tuple(child.tag for child in layout if child.tag))
-                for layout in layout_container.findall("Item")
-            )
-            if layout_container is not None
-            else ()
+        layouts=tuple(
+            ShaderLayoutDefinition(layout.get("type", ""), tuple(child.tag for child in layout if child.tag))
+            for layout in child_items(item, "Layout")
         ),
-        parameters=(
-            tuple(_parse_parameter(parameter) for parameter in parameter_container.findall("Item"))
-            if parameter_container is not None
-            else ()
-        ),
+        parameters=tuple(_parse_parameter(parameter) for parameter in child_items(item, "Parameters")),
     )
 
 
 def read_shader_library(path: str | Path | None = None) -> ShaderLibrary:
     source = Path(path) if path is not None else Path(__file__).with_name("Shaders.xml")
-    root = ET.fromstring(source.read_text(encoding="utf-8"))
-    return ShaderLibrary(tuple(_parse_shader(item) for item in root.findall("Item")))
+    root = parse_xml_root(source)
+    return ShaderLibrary(tuple(_parse_shader(item) for item in item_elements(root)))
 
 
 _DEFAULT_SHADER_LIBRARY: ShaderLibrary | None = None

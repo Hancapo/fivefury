@@ -10,6 +10,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ..hashing import jenk_hash
+from ..xml import child_items, child_text, item_elements, parse_xml_root
 from .defs import COMPONENT_SIZES, VertexComponentType
 from .gen9_shader_enums import YdrGen9Shader, coerce_gen9_shader_name
 
@@ -326,22 +327,20 @@ def read_gen9_shader_library(
 ) -> ShaderGen9Library:
     xml_path = Path(path) if path is not None else _G9_XML_PATH
     defaults_by_shader = _read_gen9_parameter_defaults(defaults_path)
-    root = ET.fromstring(xml_path.read_text(encoding='utf-8'))
+    root = parse_xml_root(xml_path)
     shaders: list[ShaderGen9Definition] = []
-    for item in root.findall('Item'):
-        name = str(item.findtext('Name') or '').strip()
-        file_name = str(item.findtext('FileName') or '').strip()
-        buffer_sizes_text = str(item.findtext('BufferSizes') or '').strip()
+    for item in item_elements(root):
+        name = child_text(item, 'Name')
+        file_name = child_text(item, 'FileName')
+        buffer_sizes_text = child_text(item, 'BufferSizes')
         if buffer_sizes_text:
             buffer_sizes = tuple(int(part) for part in re.split(r'[\s,]+', buffer_sizes_text) if part.strip())
         else:
             buffer_sizes = ()
-        parameters_node = item.find('Parameters')
         shader_defaults = defaults_by_shader.get(name.lower(), {})
-        parameters = (
-            tuple(_parse_shader_parameter(node, shader_defaults) for node in parameters_node.findall('Item'))
-            if parameters_node is not None
-            else ()
+        parameters = tuple(
+            _parse_shader_parameter(node, shader_defaults)
+            for node in child_items(item, 'Parameters')
         )
         shaders.append(
             ShaderGen9Definition(
