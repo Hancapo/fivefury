@@ -5,7 +5,8 @@ import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from ..colors import parse_css_argb, parse_css_rgb_unit
 from ..hashing import jenk_partial_hash
@@ -169,7 +170,7 @@ def _tokenize(line: str, line_no: int) -> list[str]:
 
 
 def _block_name(value: str, line_no: int, label: str) -> str:
-    name = value[:-1] if value.endswith(":") else value
+    name = value.removesuffix(":")
     if not name:
         raise CutScriptError(line_no, f"{label} name cannot be empty")
     return name
@@ -659,9 +660,7 @@ class _CutScriptParser:
         _expect_count(tokens, line_no, 2, f"{command} value")
         if command == "MODEL":
             binding.model_name = tokens[1]  # type: ignore[attr-defined]
-        elif command == "YTYP":
-            binding.ytyp_name = tokens[1]  # type: ignore[attr-defined]
-        elif command == "TYPE_FILE":
+        elif command == "YTYP" or command == "TYPE_FILE":
             binding.ytyp_name = tokens[1]  # type: ignore[attr-defined]
         elif command == "ANIM_BASE":
             binding.animation_clip_base = tokens[1]  # type: ignore[attr-defined]
@@ -1751,8 +1750,8 @@ def save_cutscript(
 
 
 __all__ = [
-    "CutScriptHashResolver",
     "CutScriptError",
+    "CutScriptHashResolver",
     "CutScriptResult",
     "cut_to_cutscript",
     "cutscene_from_cutscript",

@@ -15,7 +15,7 @@ class YmtAabb:
     maximum_w: float = 0.0
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtAabb":
+    def from_value(cls, value: Any) -> YmtAabb:
         if isinstance(value, PsoNode):
             return cls.from_mapping(value.fields or {})
         if isinstance(value, dict):
@@ -23,7 +23,7 @@ class YmtAabb:
         return cls()
 
     @classmethod
-    def from_mapping(cls, value: dict[str, Any]) -> "YmtAabb":
+    def from_mapping(cls, value: dict[str, Any]) -> YmtAabb:
         minimum = _vec4(_field(value, "min", "hash_FE2F0903"), default=(0.0, 0.0, 0.0, 0.0))
         maximum = _vec4(_field(value, "max", "hash_606EDCC4"), default=(0.0, 0.0, 0.0, 0.0))
         return cls(
@@ -44,7 +44,7 @@ class YmtScenarioPointRegionDef:
     aabb: YmtAabb = dataclasses.field(default_factory=YmtAabb)
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtScenarioPointRegionDef":
+    def from_value(cls, value: Any) -> YmtScenarioPointRegionDef:
         fields = _fields(value)
         return cls(
             name=MetaHash(_hash_value(_field(fields, "Name", "hash_ACE6443E"))),
@@ -58,7 +58,7 @@ class YmtScenarioPointGroup:
     enabled_by_default: bool = False
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtScenarioPointGroup":
+    def from_value(cls, value: Any) -> YmtScenarioPointGroup:
         fields = _fields(value)
         return cls(
             name=MetaHash(_hash_value(_field(fields, "Name", "hash_ACE6443E"))),
@@ -75,7 +75,7 @@ class YmtScenarioPointManifest:
     raw: PsoNode | None = None
 
     @classmethod
-    def from_pso_node(cls, node: PsoNode) -> "YmtScenarioPointManifest":
+    def from_pso_node(cls, node: PsoNode) -> YmtScenarioPointManifest:
         fields = node.fields or {}
         return cls(
             version_number=int(_field(fields, "VersionNumber", "hash_4D0627BB", default=0) or 0),

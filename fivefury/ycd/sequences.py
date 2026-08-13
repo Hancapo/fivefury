@@ -34,15 +34,14 @@ from .sequence_tracks import (
 )
 
 __all__ = [
-    "YcdAnimationTrack",
-    "YcdTrackFormat",
-    "YcdChannelType",
     "CAMERA_TRACK_IDS",
-    "ROOT_MOTION_TRACK_IDS",
     "FACIAL_TRACK_IDS",
+    "ROOT_MOTION_TRACK_IDS",
     "YcdAnimChannel",
     "YcdAnimSequence",
+    "YcdAnimationTrack",
     "YcdCachedQuaternionChannel",
+    "YcdChannelType",
     "YcdIndirectQuantizeFloatChannel",
     "YcdLinearFloatChannel",
     "YcdQuantizeFloatChannel",
@@ -51,6 +50,7 @@ __all__ = [
     "YcdStaticFloatChannel",
     "YcdStaticQuaternionChannel",
     "YcdStaticVector3Channel",
+    "YcdTrackFormat",
     "build_sequence_data",
     "channel_frame_bits",
     "get_ycd_track_format",
@@ -59,8 +59,8 @@ __all__ = [
     "is_ycd_facial_track",
     "is_ycd_object_track",
     "is_ycd_position_track",
-    "is_ycd_rotation_track",
     "is_ycd_root_motion_track",
+    "is_ycd_rotation_track",
     "is_ycd_uv_track",
     "parse_sequence_data",
 ]

@@ -29,7 +29,7 @@ class Aabb:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "Aabb":
+    def from_meta(cls, value: Any) -> Aabb:
         if not isinstance(value, dict):
             return cls()
         minimum = tuple(value.get("min", (0.0, 0.0, 0.0, 0.0)))
@@ -66,7 +66,7 @@ class GrassInstance:
         self.color = parse_css_rgb(self.color)
 
     @classmethod
-    def from_meta(cls, value: Any, batch_aabb: Aabb) -> "GrassInstance":
+    def from_meta(cls, value: Any, batch_aabb: Aabb) -> GrassInstance:
         if not isinstance(value, dict):
             return cls()
         packed_position = tuple(value.get("Position", (0, 0, 0)))
@@ -131,7 +131,7 @@ class GrassInstanceBatch:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "GrassInstanceBatch":
+    def from_meta(cls, value: Any) -> GrassInstanceBatch:
         if not isinstance(value, dict):
             return cls()
         batch_aabb = Aabb.from_meta(value.get("BatchAABB"))
@@ -170,7 +170,7 @@ class InstancedMapData:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "InstancedMapData":
+    def from_meta(cls, value: Any) -> InstancedMapData:
         if not isinstance(value, dict):
             return cls()
         return cls(
@@ -254,12 +254,12 @@ InstancedData = InstancedMapData
 
 
 __all__ = [
-    "Aabb",
     "BATCH_VERT_MULTIPLIER",
+    "YMAP_GRASS_STRUCT_INFOS",
+    "Aabb",
     "GrassBatch",
     "GrassInstance",
     "GrassInstanceBatch",
     "InstancedData",
     "InstancedMapData",
-    "YMAP_GRASS_STRUCT_INFOS",
 ]

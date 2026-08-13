@@ -68,15 +68,15 @@ class Gxt2:
             self.update(entries)
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str | Path | None = None) -> "Gxt2":
+    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str | Path | None = None) -> Gxt2:
         return read_gxt2(data, path=path)
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "Gxt2":
+    def from_file(cls, path: str | Path) -> Gxt2:
         return read_gxt2(path)
 
     @classmethod
-    def from_text(cls, text: str, *, path: str | Path | None = None) -> "Gxt2":
+    def from_text(cls, text: str, *, path: str | Path | None = None) -> Gxt2:
         gxt = cls(path=path)
         for line_number, source_line in enumerate(text.splitlines(), start=1):
             line = source_line.strip()
@@ -90,7 +90,7 @@ class Gxt2:
         return gxt
 
     @classmethod
-    def from_mapping(cls, entries: Mapping[HashLike, str], *, path: str | Path | None = None) -> "Gxt2":
+    def from_mapping(cls, entries: Mapping[HashLike, str], *, path: str | Path | None = None) -> Gxt2:
         return cls(entries, path=path)
 
     @property

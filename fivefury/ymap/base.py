@@ -19,7 +19,7 @@ class PhysicsDictionary(MetaHashFieldsMixin):
         return self.name
 
     @classmethod
-    def from_meta(cls, value: MetaHash | HashLike) -> "PhysicsDictionary":
+    def from_meta(cls, value: MetaHash | HashLike) -> PhysicsDictionary:
         return cls(name=value)
 
     def __int__(self) -> int:
@@ -50,7 +50,7 @@ class BlockDesc:
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "BlockDesc":
+    def from_meta(cls, value: Any) -> BlockDesc:
         if not isinstance(value, dict):
             return cls()
         return cls(
@@ -80,7 +80,7 @@ class ContainerLodDef(MetaHashFieldsMixin):
         }
 
     @classmethod
-    def from_meta(cls, value: Any) -> "ContainerLodDef":
+    def from_meta(cls, value: Any) -> ContainerLodDef:
         if not isinstance(value, dict):
             return cls()
         return cls(

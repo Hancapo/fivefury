@@ -6,7 +6,8 @@ import math
 import struct
 import zlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator, Sequence, Union
+from typing import TYPE_CHECKING, Union
+from collections.abc import Iterable, Iterator, Sequence
 
 from ..bounds import Bound
 from ..buckets import at_hash_bucket_capacity
@@ -176,14 +177,14 @@ class YdrSkeleton:
     _lookup_bone_count: int = dataclasses.field(default=-1, init=False, repr=False)
 
     @classmethod
-    def create(cls) -> "YdrSkeleton":
+    def create(cls) -> YdrSkeleton:
         return cls()
 
     @property
     def bone_count(self) -> int:
         return len(self.bones)
 
-    def build(self) -> "YdrSkeleton":
+    def build(self) -> YdrSkeleton:
         for index, bone in enumerate(self.bones):
             bone.index = index
             bone.next_sibling_index = -1
@@ -287,13 +288,13 @@ class YdrSkeleton:
         self._lookup_bone_count = len(self.bones)
         return bone
 
-    def add_bones(self, *bones: YdrBone) -> "YdrSkeleton":
+    def add_bones(self, *bones: YdrBone) -> YdrSkeleton:
         """Append existing bone declarations and rebuild hierarchy data once."""
 
         self.bones.extend(bones)
         return self.build()
 
-    def extend_bones(self, bones: Iterable[YdrBone]) -> "YdrSkeleton":
+    def extend_bones(self, bones: Iterable[YdrBone]) -> YdrSkeleton:
         self.bones.extend(bones)
         return self.build()
 
@@ -310,7 +311,7 @@ class YdrSkeleton:
     def calculate_unknown_hashes(self) -> tuple[int, int, int]:
         return calculate_skeleton_unknown_hashes(self)
 
-    def recalculate_unknown_hashes(self) -> "YdrSkeleton":
+    def recalculate_unknown_hashes(self) -> YdrSkeleton:
         self.unknown_50h, self.unknown_54h, self.unknown_58h = calculate_skeleton_unknown_hashes(self)
         return self
 
@@ -425,7 +426,7 @@ class YdrJointRotationLimit:
     unknown_b4h: float = -math.pi
     unknown_b8h: float = math.pi
 
-    def build(self) -> "YdrJointRotationLimit":
+    def build(self) -> YdrJointRotationLimit:
         self.min = tuple(float(v) for v in self.min)
         self.max = tuple(float(v) for v in self.max)
         self.num_control_points = int(self.num_control_points)
@@ -448,7 +449,7 @@ class YdrJointTranslationLimit:
     unknown_2ch: int = 0
     unknown_3ch: int = 0
 
-    def build(self) -> "YdrJointTranslationLimit":
+    def build(self) -> YdrJointTranslationLimit:
         self.min = tuple(float(v) for v in self.min)
         self.max = tuple(float(v) for v in self.max)
         return self
@@ -471,7 +472,7 @@ class YdrJoints:
     def has_limits(self) -> bool:
         return bool(self.rotation_limits or self.translation_limits)
 
-    def build(self) -> "YdrJoints":
+    def build(self) -> YdrJoints:
         self.vft = int(self.vft)
         self.unknown_4h = int(self.unknown_4h)
         self.unknown_8h = int(self.unknown_8h)
@@ -650,7 +651,7 @@ class YdrLight:
         group_id: int = 0,
         time_flags: int = 0,
         **overrides: object,
-    ) -> "YdrLight":
+    ) -> YdrLight:
         return cls(
             position=tuple(float(v) for v in position),
             color=parse_css_rgb(color),
@@ -680,7 +681,7 @@ class YdrLight:
         group_id: int = 0,
         time_flags: int = 0,
         **overrides: object,
-    ) -> "YdrLight":
+    ) -> YdrLight:
         return cls(
             position=tuple(float(v) for v in position),
             direction=tuple(float(v) for v in direction),
@@ -711,7 +712,7 @@ class YdrLight:
         group_id: int = 0,
         time_flags: int = 0,
         **overrides: object,
-    ) -> "YdrLight":
+    ) -> YdrLight:
         return cls(
             position=tuple(float(v) for v in position),
             extent=tuple(float(v) for v in extent),
@@ -776,7 +777,7 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
 
         return build_material_descriptor(self)
 
-    def ycd_uv_binding(self, *, object_name: str) -> "YcdUvClipBinding":
+    def ycd_uv_binding(self, *, object_name: str) -> YcdUvClipBinding:
         from ..ycd import YcdUvClipBinding
 
         return YcdUvClipBinding(object_name=str(object_name), slot_index=self.slot_index)
@@ -892,7 +893,7 @@ class YdrMaterial(DrawableMaterial[YdrMaterialParameterRef]):
         parameters: dict[str, NumericParameterValue | None] | None = None,
         preserve_values: bool = True,
         shader_library: ShaderLibrary | None = None,
-    ) -> "YdrMaterial":
+    ) -> YdrMaterial:
         if shader is not None or render_bucket is not None:
             self._set_shader(
                 shader or self.resolved_shader_file_name or self.shader_name or "default.sps",
@@ -965,7 +966,7 @@ class YdrMesh(DrawableMesh[YdrMaterial]):
             return []
         return skeleton.resolve_bone_ids(self.bone_ids)
 
-    def set_bone_ids(self, bone_ids: Sequence[int | YdrBone | str], *, skeleton: YdrSkeleton | None = None) -> "YdrMesh":
+    def set_bone_ids(self, bone_ids: Sequence[int | YdrBone | str], *, skeleton: YdrSkeleton | None = None) -> YdrMesh:
         resolved: list[int] = []
         for item in bone_ids:
             if isinstance(item, YdrBone):
@@ -986,7 +987,7 @@ class YdrMesh(DrawableMesh[YdrMaterial]):
         weights: Sequence[tuple[float, float, float, float]] | None = None,
         indices: Sequence[tuple[int, int, int, int]] | None = None,
         skeleton: YdrSkeleton | None = None,
-    ) -> "YdrMesh":
+    ) -> YdrMesh:
         if bone_ids is not None:
             self.set_bone_ids(bone_ids, skeleton=skeleton)
         if weights is not None:
@@ -995,7 +996,7 @@ class YdrMesh(DrawableMesh[YdrMaterial]):
             self.blend_indices = [tuple(int(component) for component in index) for index in indices]
         return self
 
-    def clear_skin(self) -> "YdrMesh":
+    def clear_skin(self) -> YdrMesh:
         self.blend_weights = []
         self.blend_indices = []
         self.bone_ids = []
@@ -1047,13 +1048,13 @@ class YdrModel(DrawableModel[YdrMesh, YdrMaterial]):
     def skeleton_binding_value(self) -> int:
         return int(self.skeleton_binding)
 
-    def ycd_uv_binding(self, material: str | int, *, object_name: str) -> "YcdUvClipBinding":
+    def ycd_uv_binding(self, material: str | int, *, object_name: str) -> YcdUvClipBinding:
         resolved = self.get_material(material)
         if resolved is None:
             raise KeyError(f"Unknown YDR model material '{material}'")
         return resolved.ycd_uv_binding(object_name=object_name)
 
-    def ycd_uv_bindings(self, *, object_name: str) -> list["YcdUvClipBinding"]:
+    def ycd_uv_bindings(self, *, object_name: str) -> list[YcdUvClipBinding]:
         return [material.ycd_uv_binding(object_name=object_name) for material in self.materials]
 
     def set_skin_binding(
@@ -1063,7 +1064,7 @@ class YdrModel(DrawableModel[YdrMesh, YdrMaterial]):
         has_skin: int = 1,
         unknown_1: int = 0x11,
         unknown_2: int = 0,
-    ) -> "YdrModel":
+    ) -> YdrModel:
         self.skeleton_binding = YdrSkeletonBinding(
             unknown_1=int(unknown_1) & 0xFF,
             has_skin=int(has_skin) & 0xFF,
@@ -1079,7 +1080,7 @@ class YdrModel(DrawableModel[YdrMesh, YdrMaterial]):
         skeleton: YdrSkeleton | None = None,
         unknown_1: int = 0,
         unknown_2: int = 0,
-    ) -> "YdrModel":
+    ) -> YdrModel:
         if isinstance(bone, YdrBone):
             bone_index = int(bone.index)
         elif isinstance(bone, str):
@@ -1095,7 +1096,7 @@ class YdrModel(DrawableModel[YdrMesh, YdrMaterial]):
         )
         return self
 
-    def clear_skin_binding(self) -> "YdrModel":
+    def clear_skin_binding(self) -> YdrModel:
         self.skeleton_binding = YdrSkeletonBinding()
         return self
 
@@ -1138,7 +1139,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         DrawableAsset.__post_init__(self)
         self.render_mask_flags = {coerce_lod(lod): int(flags) for lod, flags in self.render_mask_flags.items()}
 
-    def build(self) -> "Ydr":
+    def build(self) -> Ydr:
         if self.skeleton is not None:
             self.skeleton.build()
             self.normalize_skeleton_bone_ids()
@@ -1154,12 +1155,12 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         return self
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> "Ydr":
+    def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> Ydr:
         from . import read_ydr
 
         return read_ydr(data, path=path)
 
-    def normalize_skeleton_bone_ids(self) -> "Ydr":
+    def normalize_skeleton_bone_ids(self) -> Ydr:
         if self.skeleton is None or not self.skeleton.bones:
             return self
         root = self.skeleton.bones[0]
@@ -1179,13 +1180,13 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self.skeleton._rebuild_bone_lookups()
         return self
 
-    def ycd_uv_binding(self, material: str | int, *, object_name: str | None = None) -> "YcdUvClipBinding":
+    def ycd_uv_binding(self, material: str | int, *, object_name: str | None = None) -> YcdUvClipBinding:
         resolved = self.get_material(material)
         if resolved is None:
             raise KeyError(f"Unknown YDR material '{material}'")
         return resolved.ycd_uv_binding(object_name=object_name or self.name)
 
-    def ycd_uv_bindings(self, *, object_name: str | None = None) -> list["YcdUvClipBinding"]:
+    def ycd_uv_bindings(self, *, object_name: str | None = None) -> list[YcdUvClipBinding]:
         binding_object_name = object_name or self.name
         return [material.ycd_uv_binding(object_name=binding_object_name) for material in self.materials]
 
@@ -1243,7 +1244,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
             scale=scale,
         )
 
-    def add_bones(self, *bones: YdrBone) -> "Ydr":
+    def add_bones(self, *bones: YdrBone) -> Ydr:
         self.ensure_skeleton().add_bones(*bones)
         return self
 
@@ -1251,7 +1252,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self.joints = joints
         return joints
 
-    def clear_joints(self) -> "Ydr":
+    def clear_joints(self) -> Ydr:
         self.joints = None
         return self
 
@@ -1262,7 +1263,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self.lights.append(light)
         return light
 
-    def clear_lights(self) -> "Ydr":
+    def clear_lights(self) -> Ydr:
         self.lights.clear()
         return self
 
@@ -1390,9 +1391,9 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self,
         *,
         lod: YdrLod | str | None = None,
-        material: "BoundMaterial | None" = None,
-        composite_flags: "BoundCompositeFlags | None" = None,
-    ) -> "BoundComposite":
+        material: BoundMaterial | None = None,
+        composite_flags: BoundCompositeFlags | None = None,
+    ) -> BoundComposite:
         from .collision import build_bound_from_render_geometry
 
         return build_bound_from_render_geometry(
@@ -1406,9 +1407,9 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self,
         *,
         lod: YdrLod | str | None = None,
-        material: "BoundMaterial | None" = None,
-        composite_flags: "BoundCompositeFlags | None" = None,
-    ) -> "YdrCollisionStats":
+        material: BoundMaterial | None = None,
+        composite_flags: BoundCompositeFlags | None = None,
+    ) -> YdrCollisionStats:
         from .collision import set_bound_from_render_geometry
 
         return set_bound_from_render_geometry(
@@ -1418,7 +1419,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
             composite_flags=composite_flags,
         )
 
-    def clear_bound(self) -> "Ydr":
+    def clear_bound(self) -> Ydr:
         self.bound = None
         return self
 
@@ -1461,7 +1462,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
             unknown_2=unknown_2,
         )
 
-    def clear_embedded_textures(self) -> "Ydr":
+    def clear_embedded_textures(self) -> Ydr:
         self.embedded_textures = None
         return self
 
@@ -1790,10 +1791,10 @@ def paint_vertices(
 
 
 __all__ = [
+    "YDR_BONE_ANIMATABLE_FLAGS",
     "Color4",
     "ColorChannel",
     "Ydr",
-    "YDR_BONE_ANIMATABLE_FLAGS",
     "YdrBone",
     "YdrBoneFlagName",
     "YdrBoneFlags",

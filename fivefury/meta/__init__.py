@@ -41,7 +41,7 @@ class MetaPointer:
     offset: int
 
     @classmethod
-    def from_uint64(cls, value: int) -> "MetaPointer":
+    def from_uint64(cls, value: int) -> MetaPointer:
         return cls(value & 0xFFF, (value >> 12) & 0xFFFFF)
 
     @property
@@ -61,7 +61,7 @@ class MetaArrayRef:
     unknown: int = 0
 
     @classmethod
-    def from_bytes(cls, data: bytes, offset: int) -> "MetaArrayRef":
+    def from_bytes(cls, data: bytes, offset: int) -> MetaArrayRef:
         pointer_value, count, capacity, unknown = struct.unpack_from("<QHHI", data, offset)
         return cls(MetaPointer.from_uint64(pointer_value), count, capacity, unknown)
 
@@ -74,7 +74,7 @@ class MetaDataRef:
     pointer: MetaPointer
 
     @classmethod
-    def from_bytes(cls, data: bytes, offset: int) -> "MetaDataRef":
+    def from_bytes(cls, data: bytes, offset: int) -> MetaDataRef:
         (pointer_value,) = struct.unpack_from("<Q", data, offset)
         return cls(MetaPointer.from_uint64(pointer_value))
 
@@ -92,7 +92,7 @@ class MetaFieldInfo:
     reference_key: int
 
     @classmethod
-    def from_bytes(cls, data: bytes, offset: int) -> "MetaFieldInfo":
+    def from_bytes(cls, data: bytes, offset: int) -> MetaFieldInfo:
         name_hash, data_offset, data_type, unknown_9h, ref_index, ref_key = struct.unpack_from(
             "<IIBBH I".replace(" ", ""), data, offset
         )
@@ -173,8 +173,8 @@ class RawStruct:
 
 
 
-from .builder import MetaBuilder, build_meta_system  # noqa: E402
-from .read import ParsedMeta, read_meta  # noqa: E402
+from .builder import MetaBuilder, build_meta_system
+from .read import ParsedMeta, read_meta
 
 @dataclasses.dataclass(slots=True)
 class Meta:
@@ -225,7 +225,7 @@ class Meta:
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Meta":
+    def from_bytes(cls, data: bytes) -> Meta:
         parsed = ParsedMeta.from_bytes(data)
         meta = cls(
             Name=parsed.name,
@@ -238,7 +238,7 @@ class Meta:
         return meta
 
 
-from .resource import MetaResource  # noqa: E402
+from .resource import MetaResource
 
 
 __all__ = [
@@ -256,6 +256,11 @@ __all__ = [
     "META_TYPE_NAME_STRING",
     "META_TYPE_NAME_UINT",
     "META_TYPE_NAME_USHORT",
+    "RESOURCE_FILE_BASE_SIZE",
+    "RESOURCE_PAGES_INFO_SIZE",
+    "STRUCTS_BY_HASH",
+    "SYSTEM_BASE",
+    "EnumDef",
     "Meta",
     "MetaArrayRef",
     "MetaBuilder",
@@ -270,11 +275,6 @@ __all__ = [
     "MetaStructInfo",
     "ParsedMeta",
     "RawStruct",
-    "RESOURCE_FILE_BASE_SIZE",
-    "RESOURCE_PAGES_INFO_SIZE",
-    "STRUCTS_BY_HASH",
-    "SYSTEM_BASE",
-    "EnumDef",
     "StructDef",
     "build_meta_system",
     "read_meta",

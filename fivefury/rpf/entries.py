@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .utils import _resource_flags_from_size, _size_from_resource_flags
 
@@ -23,7 +23,7 @@ class RpfResourcePageFlags:
         return self.value & 0xF
 
     @classmethod
-    def from_size(cls, size: int, version: int = 0) -> "RpfResourcePageFlags":
+    def from_size(cls, size: int, version: int = 0) -> RpfResourcePageFlags:
         return cls(_resource_flags_from_size(size, version))
 
 
@@ -31,9 +31,9 @@ class RpfResourcePageFlags:
 class RpfEntry:
     name: str = ""
     path: str = ""
-    parent: Optional["RpfDirectoryEntry"] = None
+    parent: RpfDirectoryEntry | None = None
     name_offset: int = 0
-    _archive: Optional["RpfArchive"] = field(default=None, repr=False, compare=False)
+    _archive: RpfArchive | None = field(default=None, repr=False, compare=False)
 
     @property
     def name_lower(self) -> str:
@@ -66,12 +66,12 @@ class RpfEntry:
 class RpfDirectoryEntry(RpfEntry):
     entries_index: int = 0
     entries_count: int = 0
-    directories: list["RpfDirectoryEntry"] = field(default_factory=list)
-    files: list["RpfFileEntry"] = field(default_factory=list)
-    _directories_by_name: dict[str, "RpfDirectoryEntry"] = field(
+    directories: list[RpfDirectoryEntry] = field(default_factory=list)
+    files: list[RpfFileEntry] = field(default_factory=list)
+    _directories_by_name: dict[str, RpfDirectoryEntry] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
-    _files_by_name: dict[str, "RpfFileEntry"] = field(
+    _files_by_name: dict[str, RpfFileEntry] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
 
@@ -91,21 +91,21 @@ class RpfDirectoryEntry(RpfEntry):
         self._directories_by_name.clear()
         self._files_by_name.clear()
 
-    def find_directory(self, name: str) -> "RpfDirectoryEntry | None":
+    def find_directory(self, name: str) -> RpfDirectoryEntry | None:
         return self._directories_by_name.get(name.lower())
 
-    def find_file(self, name: str) -> "RpfFileEntry | None":
+    def find_file(self, name: str) -> RpfFileEntry | None:
         return self._files_by_name.get(name.lower())
 
-    def append_directory(self, entry: "RpfDirectoryEntry") -> None:
+    def append_directory(self, entry: RpfDirectoryEntry) -> None:
         self.directories.append(entry)
         self._directories_by_name[entry.name.lower()] = entry
 
-    def append_file(self, entry: "RpfFileEntry") -> None:
+    def append_file(self, entry: RpfFileEntry) -> None:
         self.files.append(entry)
         self._files_by_name[entry.name.lower()] = entry
 
-    def remove_file(self, entry: "RpfFileEntry") -> None:
+    def remove_file(self, entry: RpfFileEntry) -> None:
         self.files.remove(entry)
         self._files_by_name.pop(entry.name.lower(), None)
 
@@ -142,7 +142,7 @@ class RpfFileEntry(RpfEntry):
 class RpfBinaryFileEntry(RpfFileEntry):
     file_uncompressed_size: int = 0
     encryption_type: int = 0
-    child_archive: Optional["RpfArchive"] = field(
+    child_archive: RpfArchive | None = field(
         default=None, repr=False, compare=False
     )
     _data: bytes | None = field(default=None, repr=False, compare=False)
@@ -158,7 +158,7 @@ class RpfBinaryFileEntry(RpfFileEntry):
 class RpfResourceFileEntry(RpfFileEntry):
     system_flags: RpfResourcePageFlags = field(default_factory=RpfResourcePageFlags)
     graphics_flags: RpfResourcePageFlags = field(default_factory=RpfResourcePageFlags)
-    child_archive: Optional["RpfArchive"] = field(
+    child_archive: RpfArchive | None = field(
         default=None, repr=False, compare=False
     )
     _data: bytes | None = field(default=None, repr=False, compare=False)

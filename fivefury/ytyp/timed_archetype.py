@@ -41,7 +41,7 @@ class TimeArchetypeDef(BaseArchetypeDef):
         return data
 
     @classmethod
-    def from_meta(cls, value: Any) -> "TimeArchetypeDef":
+    def from_meta(cls, value: Any) -> TimeArchetypeDef:
         base = BaseArchetypeDef.from_meta(value)
         return cls(**dataclasses.asdict(base), time_flags=coerce_time_archetype_flags(int(value.get("timeFlags", 0))))
 

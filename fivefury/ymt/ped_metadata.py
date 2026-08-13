@@ -24,7 +24,7 @@ class YmtPedInitData:
     raw: Any = None
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtPedInitData":
+    def from_value(cls, value: Any) -> YmtPedInitData:
         fields = _fields(value)
         return cls(
             name=_meta_hash(_field(fields, "Name", "0xACE6443E", "hash_ACE6443E")),
@@ -52,7 +52,7 @@ class YmtPedMetadata:
     raw: Any = None
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtPedMetadata":
+    def from_value(cls, value: Any) -> YmtPedMetadata:
         fields = _fields(value)
         return cls(
             resident_txd=_string(_field(fields, "residentTxd", "0x405BBE59", "hash_405BBE59")),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntFlag
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 
 class CutSceneFlags(IntFlag):
@@ -69,8 +69,8 @@ def unpack_cutscene_flags(value: Iterable[int] | int | None) -> CutSceneFlags:
 
 
 __all__ = [
-    "CutSceneFlags",
     "DEFAULT_PLAYABLE_CUTSCENE_FLAGS",
+    "CutSceneFlags",
     "pack_cutscene_flags",
     "unpack_cutscene_flags",
 ]

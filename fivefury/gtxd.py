@@ -54,7 +54,7 @@ class Gtxd:
         self.relationships = [coerce_txd_relationship(item) for item in self.relationships]
 
     @classmethod
-    def from_xml(cls, source: str | bytes | Path) -> "Gtxd":
+    def from_xml(cls, source: str | bytes | Path) -> Gtxd:
         text = read_xml_text(source)
         root = ET.fromstring(text)
         relationships: list[TxdRelationship] = []
@@ -72,12 +72,12 @@ class Gtxd:
         return cls(relationships=relationships, source="xml")
 
     @classmethod
-    def from_rbf(cls, source: bytes | str | Path) -> "Gtxd":
+    def from_rbf(cls, source: bytes | str | Path) -> Gtxd:
         root = read_rbf(source)
         return cls.from_rbf_root(root)
 
     @classmethod
-    def from_rbf_root(cls, root: RbfStructure) -> "Gtxd":
+    def from_rbf_root(cls, root: RbfStructure) -> Gtxd:
         if root.name != "CMapParentTxds":
             raise ValueError(f"Expected CMapParentTxds RBF root, got {root.name!r}")
         relationships: list[TxdRelationship] = []
@@ -96,7 +96,7 @@ class Gtxd:
         return cls(relationships=relationships, source="rbf")
 
     @classmethod
-    def from_mapping(cls, relationships: Mapping[str, str] | Iterable[tuple[str, str]]) -> "Gtxd":
+    def from_mapping(cls, relationships: Mapping[str, str] | Iterable[tuple[str, str]]) -> Gtxd:
         if isinstance(relationships, Mapping):
             items = relationships.items()
         else:

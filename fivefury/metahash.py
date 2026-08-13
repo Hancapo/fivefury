@@ -7,10 +7,10 @@ from .hashing import jenk_hash
 
 
 class MetaHash:
-    __slots__ = ("_value", "_cached_uint")
+    __slots__ = ("_cached_uint", "_value")
 
     @classmethod
-    def from_value(cls, value: "HashLike | None" = 0, *, text: str | None = None) -> "MetaHash":
+    def from_value(cls, value: HashLike | None = 0, *, text: str | None = None) -> MetaHash:
         if isinstance(value, MetaHash):
             if text is None:
                 text = value.text
@@ -20,7 +20,7 @@ class MetaHash:
             return cls(normalized if normalized else value)
         return cls(value)
 
-    def __init__(self, value: "HashLike | None" = 0) -> None:
+    def __init__(self, value: HashLike | None = 0) -> None:
         if isinstance(value, MetaHash):
             self._value = value.raw
             self._cached_uint = value._cached_uint

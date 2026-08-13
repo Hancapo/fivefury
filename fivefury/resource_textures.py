@@ -12,11 +12,11 @@ from .assets import (
 )
 
 __all__ = [
+    "RESOURCE_TEXTURE_ASSET_TYPES",
     "EmbeddedTextureDictionary",
     "ResourceTextureAsset",
-    "RESOURCE_TEXTURE_ASSET_TYPES",
-    "YdrAsset",
     "YddAsset",
+    "YdrAsset",
     "YftAsset",
     "YptAsset",
     "iter_embedded_texture_dictionaries",

@@ -13,7 +13,7 @@ class YmtStreamingRequestCommonSet:
     raw: Any = None
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtStreamingRequestCommonSet":
+    def from_value(cls, value: Any) -> YmtStreamingRequestCommonSet:
         fields = _fields(value)
         return cls(requests=_hash_list(_field(fields, "Requests", "0xA3859DF2", "hash_A3859DF2")), raw=value)
 
@@ -30,7 +30,7 @@ class YmtStreamingRequestFrame:
     raw: Any = None
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtStreamingRequestFrame":
+    def from_value(cls, value: Any) -> YmtStreamingRequestFrame:
         fields = _fields(value)
         return cls(
             add_list=_hash_list(_field(fields, "AddList", "0x1381EA1A", "hash_1381EA1A")),
@@ -52,7 +52,7 @@ class YmtStreamingRequestRecord:
     raw: Any = None
 
     @classmethod
-    def from_value(cls, value: Any) -> "YmtStreamingRequestRecord":
+    def from_value(cls, value: Any) -> YmtStreamingRequestRecord:
         fields = _fields(value)
         return cls(
             frames=[YmtStreamingRequestFrame.from_value(item) for item in _list(_field(fields, "Frames", "0x18F9F2AF", "hash_18F9F2AF"))],

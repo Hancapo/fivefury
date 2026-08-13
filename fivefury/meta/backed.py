@@ -16,7 +16,7 @@ def _snake_to_camel(value: str) -> str:
 class MetaBackedStruct:
     META_NAME: ClassVar[str] = ""
     META_FIELD_MAP: ClassVar[dict[str, str]] = {}
-    META_LIST_TYPES: ClassVar[dict[str, type["MetaBackedStruct"]]] = {}
+    META_LIST_TYPES: ClassVar[dict[str, type[MetaBackedStruct]]] = {}
 
     def to_meta(self) -> dict[str, Any]:
         data: dict[str, Any] = {"_meta_name_hash": meta_name(self.META_NAME)}
@@ -34,7 +34,7 @@ class MetaBackedStruct:
         return value
 
     @classmethod
-    def from_meta(cls, value: Any) -> "MetaBackedStruct":
+    def from_meta(cls, value: Any) -> MetaBackedStruct:
         if not isinstance(value, Mapping):
             return cls()
         kwargs: dict[str, Any] = {}

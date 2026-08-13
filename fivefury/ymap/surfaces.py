@@ -29,9 +29,13 @@ YMAP_SURFACE_STRUCT_INFOS = YMAP_GRASS_STRUCT_INFOS
 
 
 __all__ = [
+    "BATCH_VERT_MULTIPLIER",
+    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
+    "MAX_LOD_LIGHT_CONE_ANGLE",
+    "MAX_LOD_LIGHT_CORONA_INTENSITY",
+    "YMAP_SURFACE_STRUCT_INFOS",
     "Aabb",
     "AngleMode",
-    "BATCH_VERT_MULTIPLIER",
     "BoxOccluder",
     "DistantLodLights",
     "DistantLodLightsSoa",
@@ -43,11 +47,7 @@ __all__ = [
     "LodLight",
     "LodLights",
     "LodLightsSoa",
-    "MAX_LOD_LIGHT_CAPSULE_EXTENT",
-    "MAX_LOD_LIGHT_CONE_ANGLE",
-    "MAX_LOD_LIGHT_CORONA_INTENSITY",
     "OccludeModel",
-    "YMAP_SURFACE_STRUCT_INFOS",
     "_coerce_lod_light",
     "_coerce_lod_lights",
     "_coerce_occlude_model",

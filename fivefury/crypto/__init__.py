@@ -31,7 +31,7 @@ AES_ENCRYPTION: Final[int] = 0x0FFFFFF9
 PS3_AES_ENCRYPTION: Final[int] = 0x0FFFFFF8
 NG_ENCRYPTION: Final[int] = 0x0FEFFFFF
 
-_default_crypto: "GameCrypto | None" = None
+_default_crypto: GameCrypto | None = None
 
 
 @dataclass(slots=True)
@@ -54,7 +54,7 @@ class GameCrypto:
         self.awc_key = tuple(int(value) & 0xFFFFFFFF for value in self.awc_key) if self.awc_key is not None else None
 
     @classmethod
-    def from_aes_key(cls, aes_key: bytes | str, *, magic_path: str | Path | None = None) -> "GameCrypto":
+    def from_aes_key(cls, aes_key: bytes | str, *, magic_path: str | Path | None = None) -> GameCrypto:
         if isinstance(aes_key, str):
             aes_bytes = base64.b64decode(aes_key)
         else:
@@ -119,7 +119,7 @@ class GameCrypto:
         gen9: bool = False,
         cache_path: str | Path | None = None,
         use_cache: bool = True,
-    ) -> "GameCrypto":
+    ) -> GameCrypto:
         exe_path = _resolve_exe_path(root_or_exe, gen9=gen9).resolve()
         cache = Path(cache_path) if cache_path is not None else _default_cache_path()
         cache_key = str(exe_path).lower()
@@ -194,7 +194,7 @@ class GameCrypto:
 
         return self.native_context().decrypt_data(data, encryption, entry_name, entry_length, _get_lut())
 
-    def clone_for_worker(self) -> "GameCrypto":
+    def clone_for_worker(self) -> GameCrypto:
         clone = object.__new__(GameCrypto)
         clone.aes_key = self.aes_key
         clone.ng_keys = self.ng_keys
@@ -301,15 +301,15 @@ def load_game_keys(
 
 __all__ = [
     "AES_ENCRYPTION",
-    "GameCrypto",
     "NG_ENCRYPTION",
     "NONE_ENCRYPTION",
     "OPEN_ENCRYPTION",
     "PS3_AES_ENCRYPTION",
+    "GameCrypto",
+    "_build_windows_aes_decryptor",
     "clear_game_crypto",
     "ensure_game_crypto",
     "get_game_crypto",
     "load_game_keys",
     "set_game_crypto",
-    "_build_windows_aes_decryptor",
 ]

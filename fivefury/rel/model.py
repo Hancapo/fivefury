@@ -394,7 +394,7 @@ class RelSoundHeader:
         return bool(self.flags & (1 << index))
 
     @classmethod
-    def from_bytes(cls, data: bytes, offset: int = 0) -> tuple["RelSoundHeader", int]:
+    def from_bytes(cls, data: bytes, offset: int = 0) -> tuple[RelSoundHeader, int]:
         pos = offset
         flags = struct.unpack_from("<I", data, offset)[0]
         offset += 4

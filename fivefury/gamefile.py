@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive, RpfFileEntry
@@ -109,8 +110,8 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
 class GameFile:
     path: str
     kind: GameFileType = GameFileType.UNKNOWN
-    entry: Optional["RpfFileEntry"] = None
-    archive: Optional["RpfArchive"] = None
+    entry: RpfFileEntry | None = None
+    archive: RpfArchive | None = None
     raw: bytes | None = None
     parsed: Any = None
     loaded: bool = False

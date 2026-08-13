@@ -110,12 +110,12 @@ _USAGE_MASK = 0x1F
 _USAGE_FLAGS_SHIFT = 5
 
 
-def pack_usage_data(usage: "TextureUsage | int", usage_flags: int) -> int:
+def pack_usage_data(usage: TextureUsage | int, usage_flags: int) -> int:
     """Combine a usage and its flags into the UsageData word stored at 0x40."""
     return ((int(usage_flags) << _USAGE_FLAGS_SHIFT) | (int(usage) & _USAGE_MASK)) & 0xFFFFFFFF
 
 
-def unpack_usage_data(usage_data: int) -> tuple["TextureUsage", int]:
+def unpack_usage_data(usage_data: int) -> tuple[TextureUsage, int]:
     """Split a UsageData word into its usage and flag halves."""
     value = int(usage_data) & 0xFFFFFFFF
     raw_usage = value & _USAGE_MASK
@@ -126,7 +126,7 @@ def unpack_usage_data(usage_data: int) -> tuple["TextureUsage", int]:
     return usage, value >> _USAGE_FLAGS_SHIFT
 
 
-def coerce_texture_usage(value: "TextureUsage | int | str") -> "TextureUsage":
+def coerce_texture_usage(value: TextureUsage | int | str) -> TextureUsage:
     if isinstance(value, TextureUsage):
         return value
     if isinstance(value, str):
@@ -425,10 +425,6 @@ def _build_dds_bytes(texture: Texture) -> bytes:
 __all__ = [
     "DAT_PHYSICAL_BASE",
     "DAT_VIRTUAL_BASE",
-    "DxgiFormat",
-    "Rsc8TextureFormat",
-    "TextureFormat",
-    "TextureUsage",
     "_BLOCK_BYTES",
     "_ENHANCED_DIM_2D",
     "_ENHANCED_FLAGS",
@@ -446,6 +442,10 @@ __all__ = [
     "_RSC8_TO_FORMAT",
     "_YTD_RSC7_VERSION_GEN9",
     "_YTD_RSC7_VERSION_LEGACY",
+    "DxgiFormat",
+    "Rsc8TextureFormat",
+    "TextureFormat",
+    "TextureUsage",
     "_build_dds_bytes",
     "_build_mip_info",
     "_is_block_compressed",

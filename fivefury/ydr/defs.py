@@ -76,7 +76,7 @@ class YdrSkeletonBinding:
     bone_index: int = 0
 
     @classmethod
-    def from_int(cls, value: int) -> "YdrSkeletonBinding":
+    def from_int(cls, value: int) -> YdrSkeletonBinding:
         raw = int(value) & 0xFFFFFFFF
         return cls(
             unknown_1=raw & 0xFF,
@@ -92,7 +92,7 @@ class YdrSkeletonBinding:
         bone_index: int = 0,
         unknown_1: int = 0x11,
         unknown_2: int = 0,
-    ) -> "YdrSkeletonBinding":
+    ) -> YdrSkeletonBinding:
         return cls(
             unknown_1=int(unknown_1) & 0xFF,
             has_skin=1,
@@ -107,7 +107,7 @@ class YdrSkeletonBinding:
         bone_index: int = 0,
         unknown_1: int = 0,
         unknown_2: int = 0,
-    ) -> "YdrSkeletonBinding":
+    ) -> YdrSkeletonBinding:
         return cls(
             unknown_1=int(unknown_1) & 0xFF,
             has_skin=0,
@@ -143,7 +143,7 @@ class YdrSkeletonBinding:
         return NotImplemented
 
 
-def coerce_skeleton_binding(value: "YdrSkeletonBinding | int") -> YdrSkeletonBinding:
+def coerce_skeleton_binding(value: YdrSkeletonBinding | int) -> YdrSkeletonBinding:
     if isinstance(value, YdrSkeletonBinding):
         return YdrSkeletonBinding(
             unknown_1=int(value.unknown_1) & 0xFF,
@@ -154,11 +154,11 @@ def coerce_skeleton_binding(value: "YdrSkeletonBinding | int") -> YdrSkeletonBin
     return YdrSkeletonBinding.from_int(int(value))
 
 
-def coerce_lod(value: "YdrLod | str") -> YdrLod:
+def coerce_lod(value: YdrLod | str) -> YdrLod:
     return coerce_drawable_lod(value)
 
 
-def coerce_render_mask(value: "YdrRenderMask | int") -> int:
+def coerce_render_mask(value: YdrRenderMask | int) -> int:
     if isinstance(value, YdrRenderMask):
         return int(value)
     return max(0, min(255, int(value)))
@@ -193,12 +193,12 @@ __all__ = [
     "DAT_VIRTUAL_BASE",
     "LOD_ORDER",
     "LOD_POINTER_OFFSETS",
+    "VertexComponentType",
+    "VertexSemantic",
     "YdrLod",
     "YdrRenderMask",
     "YdrSkeletonBinding",
     "coerce_lod",
     "coerce_render_mask",
     "coerce_skeleton_binding",
-    "VertexComponentType",
-    "VertexSemantic",
 ]
