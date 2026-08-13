@@ -13,6 +13,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Changed
 - YCD sequence bitstreams are decoded and encoded by the native backend.
 - YDR and YFT vertex decoding and oversized mesh splitting use the native backend.
+- Bounds polygon and BVH records, plus YNV edge lists, are decoded by the native backend.
 
 ## [0.3.16] - 2026-08-12
 

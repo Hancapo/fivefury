@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+from .. import _native as _native_backend
 from ..binary import i16, u16, u32, u64, vec3, vec4
 from ..resource import (
     RSC7_MAGIC,
@@ -15,6 +16,7 @@ from ..resource import (
 from .model import (
     Ynv,
     YnvAabb,
+    YnvAdjacencyType,
     YnvContentFlags,
     YnvEdge,
     YnvEdgePart,
@@ -297,20 +299,37 @@ def read_ynv(
     edges_info, _edge_header_count, edge_parts_pointer, edge_parts_count = (
         _read_list_header(system_data, edges_pointer)
     )
-    edges = _read_list_items(
-        system_data,
-        list_parts_pointer=edge_parts_pointer,
-        list_parts_count=edge_parts_count,
-        item_size=_EDGE_SIZE,
-        decode_item=lambda payload, offset: YnvEdge(
-            poly1=YnvEdgePart.from_value(
-                u32(payload, offset + 0x00), adjacent_area_ids
+    edges = [
+        YnvEdge(
+            poly1=YnvEdgePart(
+                area_id=area_id1,
+                poly_id=poly_id1,
+                adjacency_type=YnvAdjacencyType(adjacency_type1),
+                detail_flags=detail_flags1,
             ),
-            poly2=YnvEdgePart.from_value(
-                u32(payload, offset + 0x04), adjacent_area_ids
+            poly2=YnvEdgePart(
+                area_id=area_id2,
+                poly_id=poly_id2,
+                adjacency_type=YnvAdjacencyType(adjacency_type2),
+                detail_flags=detail_flags2,
             ),
-        ),
-    )
+        )
+        for (
+            area_id1,
+            poly_id1,
+            adjacency_type1,
+            detail_flags1,
+            area_id2,
+            poly_id2,
+            adjacency_type2,
+            detail_flags2,
+        ) in _native_backend._ynv_decode_edge_list(
+            system_data,
+            edge_parts_pointer,
+            edge_parts_count,
+            adjacent_area_ids,
+        )
+    ]
     if int(edges_indices_count):
         edges = edges[: int(edges_indices_count)]
 
