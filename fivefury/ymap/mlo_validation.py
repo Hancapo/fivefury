@@ -4,19 +4,12 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from ..binary import fits_unsigned
 from ..metahash import MetaHash
 from ..ybn import validate_mlo_collision
-from ..ytyp.mlo_validation import UINT32_MAX, build_mlo_archetype, exit_portal_count
+from ..ytyp.mlo_validation import build_mlo_archetype, exit_portal_count
 from .base import PhysicsDictionary
 from .entities import MloInstanceDef
-
-
-def _valid_uint32(value: Any) -> bool:
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return False
-    return 0 <= number <= UINT32_MAX
 
 
 def _iter_ytyps(ytyps: Any) -> Iterable[Any]:
@@ -75,9 +68,9 @@ def validate_mlo_instance(instance: MloInstanceDef, archetype: Any | None = None
     issues: list[str] = []
     if not 0 <= int(instance.group_id) < 255:
         issues.append(f"{label} group_id must be between 0 and 254")
-    if not _valid_uint32(instance.floor_id):
+    if not fits_unsigned(instance.floor_id, 32):
         issues.append(f"{label} floor_id is outside the uint32 range")
-    if not _valid_uint32(instance.num_exit_portals):
+    if not fits_unsigned(instance.num_exit_portals, 32):
         issues.append(f"{label} num_exit_portals is outside the uint32 range")
 
     if archetype is None:

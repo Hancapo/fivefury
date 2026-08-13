@@ -4,7 +4,11 @@ import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..map_extensions import extensions_from_meta, extensions_to_meta
+from ..map_extensions import (
+    ExtensionContainer,
+    extensions_from_meta,
+    extensions_to_meta,
+)
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.backed import MetaBackedStruct
 from ..meta.defs import meta_name
@@ -77,7 +81,7 @@ def _coerce_composite_entity_type(item: CompositeEntityType | Any) -> CompositeE
 
 
 @dataclasses.dataclass(slots=True)
-class Ytyp(MetaHashFieldsMixin):
+class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
     _hash_fields = ("name",)
 
     extensions: list[Any] = dataclasses.field(default_factory=list)
@@ -124,10 +128,6 @@ class Ytyp(MetaHashFieldsMixin):
         dependency_ref = _coerce_dependency(dependency)
         self.dependencies.append(dependency_ref)
         return dependency_ref
-
-    def add_extension(self, extension: Any) -> Any:
-        self.extensions.append(extension)
-        return extension
 
     def composite_entity_type(self, value: CompositeEntityType | Any) -> CompositeEntityType:
         composite = _coerce_composite_entity_type(value)

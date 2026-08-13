@@ -76,6 +76,16 @@ def align(value: int, alignment: int) -> int:
     return value if remainder == 0 else value + alignment - remainder
 
 
+def fits_unsigned(value: object, bits: int) -> bool:
+    if bits <= 0:
+        raise ValueError("bits must be positive")
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return 0 <= number < (1 << bits)
+
+
 def pad_bytes(data: bytes, alignment: int, fill: bytes = b"\x00") -> bytes:
     padded = align(len(data), alignment)
     if padded == len(data):
@@ -249,6 +259,7 @@ __all__ = [
     "align",
     "f32",
     "f32_be",
+    "fits_unsigned",
     "i16",
     "i32",
     "i32_be",

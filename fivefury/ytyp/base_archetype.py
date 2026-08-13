@@ -3,7 +3,11 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from ..map_extensions import extensions_from_meta, extensions_to_meta
+from ..map_extensions import (
+    ExtensionContainer,
+    extensions_from_meta,
+    extensions_to_meta,
+)
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .asset_types import ArchetypeAssetType, coerce_archetype_asset_type
@@ -11,7 +15,7 @@ from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 
 
 @dataclasses.dataclass(slots=True)
-class BaseArchetypeDef(MetaHashFieldsMixin):
+class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
     _hash_fields = ("name", "texture_dictionary", "clip_dictionary", "drawable_dictionary", "physics_dictionary", "asset_name")
 
     lod_dist: float = 0.0
@@ -48,10 +52,6 @@ class BaseArchetypeDef(MetaHashFieldsMixin):
                 bb_min=self.bb_min,
                 bb_max=self.bb_max,
             )
-
-    def add_extension(self, extension: Any) -> Any:
-        self.extensions.append(extension)
-        return extension
 
     def to_meta(self) -> dict[str, Any]:
         return {
