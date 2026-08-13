@@ -12,7 +12,7 @@ authors = [
   { name = "Codex" },
 ]
 license = "Unlicense"
-license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+license-files = ["LICENSE"]
 dependencies = [
   "miniaudio>=1.71",
   "numpy>=1.26",
@@ -25,7 +25,7 @@ include-package-data = true
 include = ["fivefury*"]
 
 [tool.setuptools.package-data]
-fivefury = ["data/*.dat", "drawable/*.xml", "ydr/*.json", "ydr/*.xml"]
+fivefury = ["data/*.dat", "drawable/*.xml", "ydr/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

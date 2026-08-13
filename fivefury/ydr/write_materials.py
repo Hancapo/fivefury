@@ -125,7 +125,13 @@ def _normalize_gen9_textures(gen9_definition, normalized_textures) -> dict[str, 
     return textures
 
 
-def _merge_gen9_defaults(shader_definition, gen9_definition, parameters, *, render_bucket: int) -> dict[str, object]:
+def _merge_gen9_material_parameters(
+    shader_definition,
+    gen9_definition,
+    parameters,
+    *,
+    render_bucket: int,
+) -> dict[str, object]:
     merged: dict[str, object] = {}
     for definition in gen9_definition.cbuffer_parameters:
         if definition.default_value is not None:
@@ -193,7 +199,7 @@ def prepare_materials(
             normalized_textures = _normalize_gen9_textures(gen9_definition, normalize_material_textures(material.textures))
             normalized_parameters = _normalize_gen9_parameters(
                 gen9_definition,
-                _merge_gen9_defaults(
+                _merge_gen9_material_parameters(
                     shader_definition,
                     gen9_definition,
                     {str(name): value for name, value in material.parameters.items()},

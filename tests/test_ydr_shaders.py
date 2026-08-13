@@ -9,11 +9,15 @@ from fivefury import (
     get_ydr_gen9_shader_info,
     get_ydr_shader_info,
 )
+from fivefury.hashing import jenk_hash
 from fivefury.ydr.gen9 import (
     ShaderParamTypeG9,
     build_runtime_gen9_shader_definition,
     read_gen9_shader_library,
 )
+from fivefury.ydr.gen9_material_presets import GEN9_MATERIAL_PARAMETERS
+from fivefury.ydr.gen9_semantics import GEN9_RESOLVED_PARAMETER_NAMES
+from fivefury.ydr.write_materials import _coerce_gen9_cbuffer_bytes
 
 _CANONICAL_CONVERSION_SHADERS = (
     "alpha.sps",
@@ -182,7 +186,7 @@ def test_gen9_environment_texture_names_preserve_legacy_binding() -> None:
         assert parameter.semantic_hash == 0x757E2A27
 
 
-def test_gen9_library_exposes_asset_derived_parameter_defaults() -> None:
+def test_gen9_library_exposes_material_preset_parameters() -> None:
     parameter = read_gen9_shader_library().require_shader("glass_emissive").require_parameter("hardalphablend")
 
     assert parameter.default_value == (1.0, 0.0, 0.0, 0.0)
@@ -191,3 +195,32 @@ def test_gen9_library_exposes_asset_derived_parameter_defaults() -> None:
     hard_alpha = next(parameter for parameter in info.cbuffer_parameters if parameter.name == "hardalphablend")
     assert hard_alpha.default_value == (1.0, 0.0, 0.0, 0.0)
     assert "default=(1.0, 0.0, 0.0, 0.0)" in format_ydr_gen9_shader_info(info)
+
+
+def test_gen9_material_presets_resolve_to_declared_cbuffers() -> None:
+    library = read_gen9_shader_library()
+
+    assert len(GEN9_MATERIAL_PARAMETERS) == 112
+    assert sum(len(parameters) for parameters in GEN9_MATERIAL_PARAMETERS.values()) == 167
+
+    for shader_name, preset_parameters in GEN9_MATERIAL_PARAMETERS.items():
+        shader = library.require_shader(shader_name)
+        for semantic_hash, expected in preset_parameters.items():
+            parameter = shader.require_parameter(semantic_hash)
+            assert parameter.kind_enum is ShaderParamTypeG9.CBUFFER
+            assert parameter.default_value == expected
+            assert len(
+                _coerce_gen9_cbuffer_bytes(expected, parameter=parameter)
+            ) == int(parameter.param_length)
+
+
+def test_gen9_resolved_parameter_names_preserve_serialized_hashes() -> None:
+    library = read_gen9_shader_library()
+
+    for semantic_hash, expected_name in GEN9_RESOLVED_PARAMETER_NAMES.items():
+        assert int(jenk_hash(expected_name)) == semantic_hash
+        parameter = library.get_parameter(semantic_hash)
+        assert parameter is not None
+        assert parameter.name == expected_name
+        assert parameter.semantic_hash == semantic_hash
+        assert parameter.pack_info()[:4] == semantic_hash.to_bytes(4, "little")
