@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..ycd import Ycd, YcdClipAnimation
+from ..ycd.model import Ycd, YcdClipAnimation
 
 
 def validate_awc_lipsync(ycd: Ycd) -> list[str]:

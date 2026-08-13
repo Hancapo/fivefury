@@ -5,7 +5,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..cut import CutFile, CutScene, read_cut
+from ..cut.model import CutFile
+from ..cut.pso import read_cut
+from ..cut.scene.base import CutScene
 from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
