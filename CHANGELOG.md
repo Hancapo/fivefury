@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-13
+
 ### Breaking Changes
 
 - The incomplete `.cutxml` parser and scene-loading API have been removed.
