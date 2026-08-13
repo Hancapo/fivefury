@@ -4,6 +4,11 @@ from collections.abc import Callable
 from typing import Any
 
 from ..binary import (
+    BinaryDocument,
+    BinaryEndian,
+    BinaryScalarType,
+)
+from ..binary import (
     f32_be as _f32,
 )
 from ..binary import (
@@ -11,9 +16,6 @@ from ..binary import (
 )
 from ..binary import (
     i64_be as _i64,
-)
-from ..binary import (
-    read_c_string,
 )
 from ..binary import (
     u16_be as _u16,
@@ -74,6 +76,7 @@ class PsoReader:
         self.name_resolver = name_resolver or default_hash_name
         self.sections = parse_sections(data)
         self.psin = self.sections[PSIN]
+        self.psin_document = BinaryDocument(self.psin)
         self.blocks, self.root_block_id = parse_pmap(self.sections[PMAP])
         self.structs = parse_psch(self.sections[PSCH])
 
@@ -85,7 +88,7 @@ class PsoReader:
         if block is None:
             return b"\x00" * size
         start = block.offset + pointer.offset
-        return self.psin[start : start + size]
+        return self.psin_document.slice(start, size)
 
     def _read_c_string_pointer(self, pointer: PsoPointer, length: int | None = None) -> str:
         if pointer.is_null:
@@ -94,14 +97,11 @@ class PsoReader:
         if block is None:
             return ""
         start = block.offset + pointer.offset
-        if length is None:
-            return read_c_string(self.psin, start)
-        return self.psin[start : start + length].split(b"\x00", 1)[0].decode("ascii", errors="ignore")
+        return self.psin_document.c_string(start, length)
 
     def _read_inline_string(self, absolute_offset: int, entry: PsoEntry) -> str:
         length = (entry.reference_key >> 16) & 0xFFFF
-        end = absolute_offset + length
-        return self.psin[absolute_offset:end].split(b"\x00", 1)[0].decode("ascii", errors="ignore")
+        return self.psin_document.c_string(absolute_offset, length)
 
     def _read_string(self, absolute_offset: int, entry: PsoEntry) -> str | PsoHashedString:
         if entry.subtype == 0:
@@ -235,26 +235,46 @@ class PsoReader:
             return self._trim_trailing_empty_values(values) if inline else values
 
         if array_info.type_id in {PsoDataTypeBool, PsoDataTypeUByte}:
-            return [self.psin[base + index] if array_info.type_id == PsoDataTypeUByte else self.psin[base + index] != 0 for index in range(count)]
+            values = self.psin_document.read_array(
+                base,
+                count,
+                BinaryScalarType.UNSIGNED_BYTE,
+                endian=BinaryEndian.BIG,
+            )
+            return values if array_info.type_id == PsoDataTypeUByte else [bool(value) for value in values]
         if array_info.type_id == PsoDataTypeUShort:
-            return [_u16(self.psin, base + index * 2) for index in range(count)]
+            return self.psin_document.read_array(
+                base, count, BinaryScalarType.UNSIGNED_SHORT, endian=BinaryEndian.BIG
+            )
         if array_info.type_id == PsoDataTypeSInt:
-            return [_i32(self.psin, base + index * 4) for index in range(count)]
+            return self.psin_document.read_array(
+                base, count, BinaryScalarType.SIGNED_INT, endian=BinaryEndian.BIG
+            )
         if array_info.type_id == PsoDataTypeUInt:
-            return [_u32(self.psin, base + index * 4) for index in range(count)]
+            return self.psin_document.read_array(
+                base, count, BinaryScalarType.UNSIGNED_INT, endian=BinaryEndian.BIG
+            )
         if array_info.type_id == PsoDataTypeFloat:
-            return [_f32(self.psin, base + index * 4) for index in range(count)]
+            return self.psin_document.read_array(
+                base, count, BinaryScalarType.FLOAT, endian=BinaryEndian.BIG
+            )
         if array_info.type_id == PsoDataTypeFloat2:
-            return [(_f32(self.psin, base + index * 8), _f32(self.psin, base + index * 8 + 4)) for index in range(count)]
+            return self.psin_document.read_array(
+                base,
+                count,
+                BinaryScalarType.FLOAT,
+                endian=BinaryEndian.BIG,
+                components=2,
+            )
         if array_info.type_id == PsoDataTypeFloat3:
-            return [
-                (
-                    _f32(self.psin, base + index * 16),
-                    _f32(self.psin, base + index * 16 + 4),
-                    _f32(self.psin, base + index * 16 + 8),
-                )
-                for index in range(count)
-            ]
+            return self.psin_document.read_array(
+                base,
+                count,
+                BinaryScalarType.FLOAT,
+                endian=BinaryEndian.BIG,
+                stride=16,
+                components=3,
+            )
         if array_info.type_id == PsoDataTypeString:
             if array_info.subtype in {7, 8}:
                 return [PsoHashedString(hash=_u32(self.psin, base + index * 4)) for index in range(count)]

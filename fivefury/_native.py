@@ -468,6 +468,42 @@ def _ynv_decode_edge_list(
     )
 
 
+def _binary_document_new(data: bytes) -> object:
+    return _ffi.binary_document_new(data)
+
+
+def _binary_document_size(document: object) -> int:
+    return int(_ffi.binary_document_size(document))
+
+
+def _binary_document_slice(document: object, offset: int, length: int) -> bytes:
+    return _ffi.binary_document_slice(document, int(offset), int(length))
+
+
+def _binary_document_c_string(document: object, offset: int, maximum: int) -> bytes:
+    return _ffi.binary_document_c_string(document, int(offset), int(maximum))
+
+
+def _binary_document_read_array(
+    document: object,
+    offset: int,
+    count: int,
+    scalar_type: int,
+    endian: int,
+    stride: int,
+    components: int,
+) -> list[object]:
+    return _ffi.binary_document_read_array(
+        document,
+        int(offset),
+        int(count),
+        int(scalar_type),
+        int(endian),
+        int(stride),
+        int(components),
+    )
+
+
 def _bounds_build_bvh(
     items: list[tuple[tuple[float, float, float], tuple[float, float, float], int]],
     fallback_minimum: tuple[float, float, float],

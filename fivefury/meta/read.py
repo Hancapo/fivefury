@@ -4,6 +4,7 @@ import dataclasses
 import struct
 from typing import Any
 
+from ..binary import BinaryDocument, BinaryScalarType
 from ..resource import parse_rsc7
 from . import (
     FLOAT_XYZ_NAME_HASH,
@@ -255,12 +256,14 @@ class ParsedMeta:
         end = len(block.data)
         data = block.data[start:end]
         element_type = array_info.data_type
+        document = BinaryDocument(block.data)
         if element_type is MetaDataType.STRUCTURE_POINTER:
-            items = []
-            for index in range(array_ref.count):
-                pointer_value = struct.unpack_from("<Q", data, index * 8)[0]
-                items.append(self._resolve_struct_pointer(MetaPointer.from_uint64(pointer_value)))
-            return items
+            return [
+                self._resolve_struct_pointer(MetaPointer.from_uint64(int(pointer_value)))
+                for pointer_value in document.read_array(
+                    start, array_ref.count, BinaryScalarType.UNSIGNED_LONG
+                )
+            ]
         if element_type is MetaDataType.STRUCTURE:
             nested_hash = array_info.reference_key
             nested_info = self.struct_infos.get(nested_hash)
@@ -274,20 +277,23 @@ class ParsedMeta:
                 items.append(self._decode_inline_structure(nested_hash, chunk))
             return items
         if element_type is MetaDataType.FLOAT:
-            return [value[0] for value in struct.iter_unpack("<f", data[: array_ref.count * 4])]
+            return document.read_array(start, array_ref.count, BinaryScalarType.FLOAT)
         if element_type is MetaDataType.UNSIGNED_INT:
-            return [value[0] for value in struct.iter_unpack("<I", data[: array_ref.count * 4])]
+            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_INT)
         if element_type is MetaDataType.UNSIGNED_SHORT:
-            return [value[0] for value in struct.iter_unpack("<H", data[: array_ref.count * 2])]
+            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_SHORT)
         if element_type is MetaDataType.UNSIGNED_BYTE:
-            return list(data[: array_ref.count])
+            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_BYTE)
         if element_type is MetaDataType.HASH:
-            return [value[0] for value in struct.iter_unpack("<I", data[: array_ref.count * 4])]
+            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_INT)
         if element_type is MetaDataType.FLOAT_XYZ:
-            return [
-                struct.unpack_from("<fff", data, index * 16)
-                for index in range(array_ref.count)
-            ]
+            return document.read_array(
+                start,
+                array_ref.count,
+                BinaryScalarType.FLOAT,
+                stride=16,
+                components=3,
+            )
         return bytes(data)
 
 
