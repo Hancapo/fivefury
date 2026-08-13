@@ -4,7 +4,7 @@ import dataclasses
 from typing import Any
 
 from ..metahash import MetaHash
-from .common import field, items, meta_hash, number, text
+from ..pso_values import field, items, meta_hash, number, text
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

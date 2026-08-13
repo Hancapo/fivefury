@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from ..metahash import MetaHash
-from .common import (
+from ..pso_values import (
     field,
     fields,
     items,

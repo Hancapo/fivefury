@@ -4,7 +4,11 @@ import dataclasses
 from typing import Any
 
 from ..metahash import MetaHash
-from ..pso import PsoHashedString, PsoNode
+from ..pso_values import field as _field
+from ..pso_values import fields as _fields
+from ..pso_values import hash_value as _hash_value
+from ..pso_values import list_value as _list
+from ..pso_values import vector
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -36,8 +40,8 @@ class YmtStreamingRequestFrame:
             add_list=_hash_list(_field(fields, "AddList", "0x1381EA1A", "hash_1381EA1A")),
             remove_list=_hash_list(_field(fields, "RemoveList", "0xC9027173", "hash_C9027173")),
             promote_to_hd_list=_hash_list(_field(fields, "PromoteToHDList", "0x356A8659", "hash_356A8659")),
-            camera_position=_vec3(_field(fields, "CamPos", "0x1547E980", "hash_1547E980")),
-            camera_direction=_vec3(_field(fields, "CamDir", "0x0C8908A1", "hash_0C8908A1")),
+            camera_position=vector(_field(fields, "CamPos", "0x1547E980", "hash_1547E980")),
+            camera_direction=vector(_field(fields, "CamDir", "0x0C8908A1", "hash_0C8908A1")),
             common_add_sets=[int(item) for item in _list(_field(fields, "CommonAddSets", "0x690D1327", "hash_690D1327"))],
             flags=int(_field(fields, "Flags", "0x4B5C4FC2", "hash_4B5C4FC2", default=0) or 0),
             raw=value,
@@ -85,45 +89,8 @@ class YmtStreamingRequestRecord:
         return result
 
 
-def _fields(value: Any) -> dict[str, Any]:
-    if isinstance(value, PsoNode):
-        return value.fields or {}
-    if isinstance(value, dict):
-        return value
-    return {}
-
-
-def _field(fields: dict[str, Any], *names: str, default: Any = None) -> Any:
-    for name in names:
-        if name in fields:
-            return fields[name]
-    return default
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def _hash_value(value: Any) -> int:
-    if isinstance(value, PsoHashedString):
-        return value.hash
-    if isinstance(value, MetaHash):
-        return value.uint
-    if isinstance(value, str):
-        return MetaHash(value).uint
-    return int(value or 0)
-
-
 def _hash_list(value: Any) -> list[MetaHash]:
     return [MetaHash(_hash_value(item)) for item in _list(value)]
-
-
-def _vec3(value: Any) -> tuple[float, float, float]:
-    if isinstance(value, tuple | list):
-        items = [float(item) for item in value[:3]]
-        items.extend([0.0] * (3 - len(items)))
-        return (items[0], items[1], items[2])
-    return (0.0, 0.0, 0.0)
 
 
 __all__ = [

@@ -4,7 +4,12 @@ import dataclasses
 from typing import Any
 
 from ..metahash import MetaHash
-from ..pso import PsoHashedString, PsoNode
+from ..pso import PsoNode
+from ..pso_values import field as _field
+from ..pso_values import fields as _fields
+from ..pso_values import hash_value as _hash_value
+from ..pso_values import list_value as _list
+from ..pso_values import vector
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -24,8 +29,8 @@ class YmtAabb:
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> YmtAabb:
-        minimum = _vec4(_field(value, "min", "hash_FE2F0903"), default=(0.0, 0.0, 0.0, 0.0))
-        maximum = _vec4(_field(value, "max", "hash_606EDCC4"), default=(0.0, 0.0, 0.0, 0.0))
+        minimum = vector(_field(value, "min", "hash_FE2F0903"), 4)
+        maximum = vector(_field(value, "max", "hash_606EDCC4"), 4)
         return cls(
             minimum=minimum[:3],
             maximum=maximum[:3],
@@ -92,43 +97,6 @@ class YmtScenarioPointManifest:
     @property
     def group_names(self) -> list[MetaHash]:
         return [group.name for group in self.groups]
-
-
-def _fields(value: Any) -> dict[str, Any]:
-    if isinstance(value, PsoNode):
-        return value.fields or {}
-    if isinstance(value, dict):
-        return value
-    return {}
-
-
-def _field(fields: dict[str, Any], *names: str, default: Any = None) -> Any:
-    for name in names:
-        if name in fields:
-            return fields[name]
-    return default
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def _hash_value(value: Any) -> int:
-    if isinstance(value, PsoHashedString):
-        return value.hash
-    if isinstance(value, MetaHash):
-        return value.uint
-    if isinstance(value, str):
-        return MetaHash(value).uint
-    return int(value or 0)
-
-
-def _vec4(value: Any, *, default: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
-    if isinstance(value, tuple | list):
-        items = [float(item) for item in value[:4]]
-        items.extend(default[len(items) :])
-        return (items[0], items[1], items[2], items[3])
-    return default
 
 
 __all__ = [

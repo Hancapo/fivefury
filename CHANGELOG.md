@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- PSO value helpers moved from `fivefury.vehiclemeta.common` to `fivefury.pso_values`.
+
 ### Added
 
 - Lazy texture dictionary catalogs with searchable texture metadata and deferred pixel loading.
@@ -16,6 +20,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- PSO-backed formats share field, hash, text, list, and vector coercion helpers.
 - YMAP and YTYP extensions share one implementation instead of parallel copies.
 - Internal imports, control flow, and type validation are normalized across formats.
 - Internal format readers no longer depend on package facade import order.

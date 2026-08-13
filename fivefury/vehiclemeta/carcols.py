@@ -4,7 +4,16 @@ import dataclasses
 from typing import Any
 
 from ..metahash import MetaHash
-from .common import boolean, enum_value, field, items, meta_hash, number, text, vector
+from ..pso_values import (
+    boolean,
+    enum_value,
+    field,
+    items,
+    meta_hash,
+    number,
+    text,
+    vector,
+)
 from .enums import VehicleModCameraPosition, VehicleModKitType, VehicleModType
 from .variations import LicensePlateProbability, plate_probabilities
 

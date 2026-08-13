@@ -8,8 +8,8 @@ from typing import Any
 from ..hashing import jenk_hash
 from ..meta.resource import MetaResource
 from ..pso import PsoDocument, PsoReader, is_pso
+from ..pso_values import make_name_resolver
 from .carcols import VehicleCarCols, VehicleModColors
-from .common import make_name_resolver
 from .handling import HandlingDataManager
 from .variations import VehicleModelInfoVariation
 from .vehicles import VehicleInitDataList

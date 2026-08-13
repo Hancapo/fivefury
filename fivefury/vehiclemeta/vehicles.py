@@ -5,7 +5,16 @@ from typing import Any
 
 from ..gtxd import TxdRelationship
 from ..metahash import MetaHash
-from .common import boolean, enum_value, field, items, meta_hash, number, text, vector
+from ..pso_values import (
+    boolean,
+    enum_value,
+    field,
+    items,
+    meta_hash,
+    number,
+    text,
+    vector,
+)
 from .enums import (
     VehicleClass,
     VehicleDashboardType,
