@@ -5,12 +5,12 @@ import struct
 from collections.abc import Mapping
 from typing import Any
 
-from ..hashing import jenk_hash
 from ..resource import build_rsc7
 from .defs import (
     ENUMS_BY_HASH,
     GRAPHICS_BASE,
     KNOWN_STRUCTS,
+    META_NAME_MAP,
     META_NAME_REVERSE,
     META_TYPE_NAME_ARRAYINFO,
     META_TYPE_NAME_BYTE,
@@ -31,7 +31,7 @@ META_FILE_VFT = 0x405BC808
 META_ROOT_SIZE = 112
 RESOURCE_FILE_BASE_SIZE = 16
 RESOURCE_PAGES_INFO_SIZE = 16
-FLOAT_XYZ_NAME_HASH = jenk_hash("FloatXYZ")
+FLOAT_XYZ_NAME_HASH = META_NAME_MAP["FloatXYZ"]
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

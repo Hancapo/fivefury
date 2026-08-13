@@ -22,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- YMAP LOD and distant-light maps serialize and validate independently, matching the parent-child streaming layout.
 - Gen9 material initialization uses named presets with stable serialized hashes.
 - XML source handling, navigation, coercion, formatting, and atomic persistence share common helpers.
 - DLC, Water, YMF, GTXD, and expression-set XML models use the shared XML layer.
@@ -48,6 +49,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - GameFileCache keeps a byte-bounded LRU of decoded asset payloads.
 - YBN page-layout convergence reuses prepared geometry BVHs between passes.
 - Shared vector math owns interpolation, quaternion canonicalization, distances, point bounds, and sphere radii.
+
+### Fixed
+
+- Typed YMAP LOD-light vector arrays serialize through the public authoring API.
 
 ## [0.3.16] - 2026-08-12
 
