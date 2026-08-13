@@ -5,44 +5,46 @@ from pathlib import Path
 import numpy
 
 from ..game_target import GameTarget
-from ..matrix import gta_source_transform, transform_positions
+from ..matrix import gta_source_transform, transform_position_array
 from ..mesh_source import (
     MeshSource,
     iter_mesh_instances,
     load_mesh_scene,
     mesh_source_name,
+    mesh_triangles,
+    mesh_vertices,
 )
 from .authoring import YnvSourcePolygon, build_ynv_cells, get_ynv_file_coords
 from .model import Ynv
 
 
-def _scene_polygons(source: MeshSource, *, file_type: str | None, process: bool) -> list[YnvSourcePolygon]:
+def _scene_polygons(
+    source: MeshSource, *, file_type: str | None, process: bool
+) -> list[YnvSourcePolygon]:
     scene = load_mesh_scene(source, file_type=file_type, process=process)
     polygons: list[YnvSourcePolygon] = []
     for instance in iter_mesh_instances(scene):
         mesh = instance.mesh
-        vertices = numpy.asarray(mesh.vertices, dtype=numpy.float64)
-        faces = numpy.asarray(mesh.faces, dtype=numpy.int64)
-        if vertices.ndim != 2 or vertices.shape[1] != 3 or not numpy.isfinite(vertices).all():
-            raise ValueError(f"Mesh {instance.geometry_name!r} has invalid vertices")
-        if faces.ndim != 2 or faces.shape[1] != 3:
-            raise ValueError(f"Mesh {instance.geometry_name!r} is not triangulated")
-        if faces.size and (int(faces.min()) < 0 or int(faces.max()) >= len(vertices)):
-            raise ValueError(f"Mesh {instance.geometry_name!r} has out-of-range indices")
+        try:
+            vertices = mesh_vertices(mesh)
+            faces = mesh_triangles(mesh)
+        except ValueError as exc:
+            raise ValueError(f"Mesh {instance.geometry_name!r}: {exc}") from exc
         transform = gta_source_transform(instance.transform)
-        positions = transform_positions(vertices, transform)
-        reverse_winding = numpy.linalg.det(transform[:3, :3]) < 0.0
-        for face_index, face in enumerate(faces):
-            if reverse_winding:
-                face = face[::-1]
+        positions = transform_position_array(vertices, transform)
+        if numpy.linalg.det(transform[:3, :3]) < 0.0:
+            faces = faces[:, ::-1]
+        for face_index, face_positions in enumerate(positions[faces].tolist()):
             polygons.append(
                 YnvSourcePolygon(
-                    vertices=[positions[int(vertex_index)] for vertex_index in face],
+                    vertices=face_positions,
                     source_key=(instance.node_name, instance.geometry_name, face_index),
                 )
             )
     if not polygons:
-        raise ValueError(f"Mesh source {mesh_source_name(source)!r} does not contain triangles")
+        raise ValueError(
+            f"Mesh source {mesh_source_name(source)!r} does not contain triangles"
+        )
     return polygons
 
 
@@ -58,7 +60,9 @@ def trimesh_to_ynvs(
         ynv
         for ynv, _ in build_ynv_cells(
             _scene_polygons(source, file_type=file_type, process=process),
-            source_path=str(source) if isinstance(source, (str, Path)) else mesh_source_name(source),
+            source_path=str(source)
+            if isinstance(source, (str, Path))
+            else mesh_source_name(source),
             game=game,
         )
     ]

@@ -45,6 +45,10 @@ tests/*
 !tests/test_yld.py
 !tests/test_vehiclemeta.py
 !tests/test_mlo.py
+!tests/test_matrix.py
+!tests/test_mesh_math.py
+!tests/test_numeric.py
+!tests/test_trimesh_materials.py
 !tests/test_water.py
 !tests/test_xml.py
 !tests/test_heightmap.py

@@ -7,14 +7,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 from .. import _native as _native_backend
+from ..mesh_math import (
+    generate_vertex_normals,
+    generate_vertex_tangents,
+    triangle_array,
+)
 from ..vector import (
     aabb_center,
     aabb_from_points,
     sphere_radius_from_points,
-    vec_cross,
-    vec_dot,
-    vec_normalize,
-    vec_sub,
 )
 from .build_types import (
     YdrBuild,
@@ -212,88 +213,6 @@ def normalize_materials(
     if material_textures is not None:
         default_textures.update(dict(material_textures))
     return [YdrMaterialInput(name="default", shader=shader, textures=default_textures)]
-
-
-def _generate_normals(
-    positions: Sequence[tuple[float, float, float]], indices: Sequence[int]
-) -> list[tuple[float, float, float]]:
-    accum = [[0.0, 0.0, 0.0] for _ in positions]
-    for base in range(0, len(indices), 3):
-        i0, i1, i2 = indices[base : base + 3]
-        if i0 >= len(positions) or i1 >= len(positions) or i2 >= len(positions):
-            continue
-        normal = vec_cross(
-            vec_sub(positions[i1], positions[i0]), vec_sub(positions[i2], positions[i0])
-        )
-        for index in (i0, i1, i2):
-            accum[index][0] += normal[0]
-            accum[index][1] += normal[1]
-            accum[index][2] += normal[2]
-    return [vec_normalize((value[0], value[1], value[2])) for value in accum]
-
-
-def _generate_tangents(
-    positions: Sequence[tuple[float, float, float]],
-    normals: Sequence[tuple[float, float, float]],
-    texcoords: Sequence[tuple[float, float]],
-    indices: Sequence[int],
-) -> list[tuple[float, float, float, float]]:
-    tan1 = [[0.0, 0.0, 0.0] for _ in positions]
-    tan2 = [[0.0, 0.0, 0.0] for _ in positions]
-    for base in range(0, len(indices), 3):
-        i0, i1, i2 = indices[base : base + 3]
-        if max(i0, i1, i2) >= len(positions) or max(i0, i1, i2) >= len(texcoords):
-            continue
-        p0, p1, p2 = positions[i0], positions[i1], positions[i2]
-        uv0, uv1, uv2 = texcoords[i0], texcoords[i1], texcoords[i2]
-        x1, y1, z1 = vec_sub(p1, p0)
-        x2, y2, z2 = vec_sub(p2, p0)
-        s1 = uv1[0] - uv0[0]
-        t1 = uv1[1] - uv0[1]
-        s2 = uv2[0] - uv0[0]
-        t2 = uv2[1] - uv0[1]
-        determinant = (s1 * t2) - (s2 * t1)
-        if abs(determinant) <= 1e-8:
-            continue
-        r = 1.0 / determinant
-        tangent = (
-            (t2 * x1 - t1 * x2) * r,
-            (t2 * y1 - t1 * y2) * r,
-            (t2 * z1 - t1 * z2) * r,
-        )
-        bitangent = (
-            (s1 * x2 - s2 * x1) * r,
-            (s1 * y2 - s2 * y1) * r,
-            (s1 * z2 - s2 * z1) * r,
-        )
-        for index in (i0, i1, i2):
-            tan1[index][0] += tangent[0]
-            tan1[index][1] += tangent[1]
-            tan1[index][2] += tangent[2]
-            tan2[index][0] += bitangent[0]
-            tan2[index][1] += bitangent[1]
-            tan2[index][2] += bitangent[2]
-
-    tangents: list[tuple[float, float, float, float]] = []
-    for index, normal in enumerate(normals):
-        t = (tan1[index][0], tan1[index][1], tan1[index][2])
-        projected = (
-            t[0] - normal[0] * vec_dot(normal, t),
-            t[1] - normal[1] * vec_dot(normal, t),
-            t[2] - normal[2] * vec_dot(normal, t),
-        )
-        tangent3 = vec_normalize(projected, fallback=(1.0, 0.0, 0.0))
-        handedness = (
-            1.0
-            if vec_dot(
-                vec_cross(normal, tangent3),
-                (tan2[index][0], tan2[index][1], tan2[index][2]),
-            )
-            >= 0.0
-            else -1.0
-        )
-        tangents.append((tangent3[0], tangent3[1], tangent3[2], handedness))
-    return tangents
 
 
 def _semantic_enum(name: str) -> VertexSemantic:
@@ -651,17 +570,19 @@ def _build_split_mesh(
 def _split_mesh_by_vertex_limit(
     mesh: YdrMeshInput, *, max_vertices: int = _MAX_MESH_UNIQUE_VERTICES
 ) -> list[YdrMeshInput]:
-    if not mesh.indices:
-        return [mesh]
+    indices = triangle_array(mesh.indices, len(mesh.positions)).reshape(-1).tolist()
+    normalized = dataclasses.replace(mesh, indices=indices)
+    if not indices:
+        return [normalized]
     chunks = _native_backend._ydr_split_mesh_indices(
-        mesh.indices,
+        indices,
         len(mesh.positions),
         max_vertices,
     )
     if chunks is None:
-        return [mesh]
+        return [normalized]
     return [
-        _build_split_mesh(mesh, vertex_indices, remapped_indices)
+        _build_split_mesh(normalized, vertex_indices, remapped_indices)
         for vertex_indices, remapped_indices in chunks
     ]
 
@@ -679,10 +600,6 @@ def _prepare_meshes(
     prepared: list[PreparedMesh] = []
     for source_mesh in meshes:
         for mesh in _split_mesh_by_vertex_limit(source_mesh):
-            if len(mesh.indices) % 3 != 0:
-                raise ValueError("YDR writer currently requires triangle list indices")
-            if max(mesh.indices, default=-1) >= len(mesh.positions):
-                raise ValueError("Mesh indices reference a vertex outside positions")
             material_key = mesh.material.lower()
             if material_key not in material_lookup:
                 raise ValueError(f"Mesh references unknown material '{mesh.material}'")
@@ -778,7 +695,7 @@ def _prepare_meshes(
 
             if not normals:
                 normals = (
-                    _generate_normals(positions, indices)
+                    generate_vertex_normals(positions, indices)
                     if generate_normals
                     else [(0.0, 0.0, 1.0)] * len(positions)
                 )
@@ -851,7 +768,7 @@ def _prepare_meshes(
                         raise ValueError(
                             f"Material '{material.name}' requires tangents but mesh has no UV0 to generate them"
                         )
-                    tangents = _generate_tangents(
+                    tangents = generate_vertex_tangents(
                         positions, normals, texcoords[0], indices
                     )
                 if len(tangents) != len(positions):
