@@ -58,6 +58,11 @@ def children_by_name(element: ET.Element, name: str) -> list[ET.Element]:
     return [child for child in element if child.tag.lower() == target]
 
 
+def descendant_by_name(element: ET.Element, name: str) -> ET.Element | None:
+    target = name.lower()
+    return next((child for child in element.iter() if child.tag.lower() == target), None)
+
+
 def element_text(element: ET.Element | None, default: str = "") -> str:
     return default if element is None else (element.text or "").strip()
 
@@ -216,6 +221,7 @@ __all__ = [
     "child_value",
     "children_by_name",
     "coerce_enum_value",
+    "descendant_by_name",
     "element_text",
     "element_value",
     "element_xml",

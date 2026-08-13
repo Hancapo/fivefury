@@ -12,9 +12,10 @@ from ..xml import (
     add_items,
     add_text,
     child_by_name,
+    child_items,
     child_text,
     item_texts,
-    read_xml_text,
+    parse_xml_root,
     xml_bytes,
 )
 from .content import (
@@ -48,7 +49,7 @@ class DlcList:
 
     @classmethod
     def from_xml(cls, source: bytes | str | Path) -> DlcList:
-        root = ET.fromstring(read_xml_text(source))
+        root = parse_xml_root(source)
         return cls(paths=item_texts(child_by_name(root, "Paths")))
 
     def include(self, pack_name: str, *, mount: str = "dlcpacks") -> DlcList:
@@ -100,14 +101,11 @@ class DlcExtraTitleUpdateData:
 
     @classmethod
     def from_xml(cls, source: bytes | str | Path) -> DlcExtraTitleUpdateData:
-        root = ET.fromstring(read_xml_text(source))
-        mounts = child_by_name(root, "Mounts")
-        mount_items = list(mounts) if mounts is not None else []
+        root = parse_xml_root(source)
         return cls(
             mounts=[
                 DlcPatchMount.from_xml_element(item)
-                for item in mount_items
-                if item.tag.lower() == "item"
+                for item in child_items(root, "Mounts")
             ]
         )
 

@@ -22,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Changed
 
 - XML source handling, navigation, coercion, formatting, and atomic persistence share common helpers.
+- DLC, Water, YMF, GTXD, and expression-set XML models use the shared XML layer.
 - AWC reading and writing use isolated container, table, stream, chunk-layout, and payload phases.
 - RPF archive implementation is separated from its public package facade.
 - Reports, extension containers, and unsigned-field validation share common infrastructure.

@@ -9,12 +9,13 @@ from ..xml import (
     add_text,
     add_value,
     child_by_name,
+    child_items,
     child_text,
     child_value,
     coerce_enum_value,
     item_texts,
     parse_bool,
-    read_xml_text,
+    parse_xml_root,
     xml_bytes,
 )
 from .enums import DlcContentGroup, DlcPackType
@@ -92,9 +93,7 @@ class DlcSetupData:
 
     @classmethod
     def from_xml(cls, source: bytes | str | Path) -> DlcSetupData:
-        root = ET.fromstring(read_xml_text(source))
-        groups = child_by_name(root, "contentChangeSetGroups")
-        group_items = list(groups) if groups is not None else []
+        root = parse_xml_root(source)
         return cls(
             device_name=child_text(root, "deviceName"),
             dat_file=child_text(root, "datFile", "content.xml"),
@@ -103,8 +102,7 @@ class DlcSetupData:
             content_change_sets=item_texts(child_by_name(root, "contentChangeSets")),
             content_change_set_groups=[
                 DlcContentChangeSetGroup.from_xml_element(item)
-                for item in group_items
-                if item.tag.lower() == "item"
+                for item in child_items(root, "contentChangeSetGroups")
             ],
             startup_script=child_text(root, "startupScript"),
             script_callstack_size=_int_text(child_value(root, "scriptCallstackSize")),
