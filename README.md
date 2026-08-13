@@ -110,6 +110,33 @@ ydr.save("example_drawable.ydr")
 
 `read_ydr(...)` returns an editable asset with material, texture, bound, light, skeleton, and skinning helpers. Render geometry can also be converted into an embedded collision bound with `ydr.ensure_bound_from_render_geometry()`.
 
+### Skin vertices on the GPU
+
+```python
+from fivefury import GpuShaderLanguage, GpuSkinning
+
+gpu = GpuSkinning(
+    positions,
+    blend_indices,
+    blend_weights,
+    normals=normals,
+)
+
+# Upload these immutable streams when the mesh is created.
+positions = gpu.streams.positions
+influences = gpu.streams.influences
+normals = gpu.streams.normals
+
+# Reuse the palette and upload only its contents each frame.
+palette = gpu.palette(bone_count)
+gpu.pack_palette(skinning_matrices, output=palette)
+
+shader = gpu.compute_shader(GpuShaderLanguage.GLSL)
+groups = gpu.dispatch_groups()
+```
+
+`GpuSkinning` packs four bone indices and normalized weights into eight bytes per vertex and exposes specialized GLSL or HLSL vertex and compute sources. Compute output remains GPU-resident; renderers should bind the returned streams and palette using `GpuSkinningBindings` and avoid reading deformed vertices back to Python.
+
 ### Generate collision
 
 ```python

@@ -518,6 +518,14 @@ def _skin_vertices_into(
     )
 
 
+def _skin_pack_palette_into(
+    matrices: object,
+    output: object,
+    bone_count: int,
+) -> None:
+    _ffi.skin_pack_palette_into(matrices, output, int(bone_count))
+
+
 def _bounds_decode_polygons(
     data: bytes,
     start: int,

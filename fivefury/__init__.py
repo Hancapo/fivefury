@@ -387,6 +387,14 @@ from .drawable import (
 )
 from .game_target import GameTarget, coerce_game_target
 from .gamefile import GameFile, GameFileType
+from .gpu_skinning import (
+    GPU_SKINNING_INFLUENCES,
+    GPU_SKINNING_LOCAL_SIZE,
+    GpuShaderLanguage,
+    GpuSkinning,
+    GpuSkinningBindings,
+    GpuSkinningStreams,
+)
 from .gta5_cache import (
     GTA5_CACHE_BOUND_ENTRY_SIZE,
     GTA5_CACHE_DLC_MAX_SIZE,
@@ -1219,6 +1227,8 @@ __all__ = [
     "GEN9_YED_RUNTIME_PROFILE",
     "GEN9_YND_RUNTIME_PROFILE",
     "GEN9_YNV_RUNTIME_PROFILE",
+    "GPU_SKINNING_INFLUENCES",
+    "GPU_SKINNING_LOCAL_SIZE",
     "GTA5_CACHE_BOUND_ENTRY_SIZE",
     "GTA5_CACHE_DLC_MAX_SIZE",
     "GTA5_CACHE_HEADER_SIZE",
@@ -1556,6 +1566,10 @@ __all__ = [
     "GameTarget",
     "Gen9ShaderAdaptation",
     "GeneratedLodLight",
+    "GpuShaderLanguage",
+    "GpuSkinning",
+    "GpuSkinningBindings",
+    "GpuSkinningStreams",
     "GrassBatch",
     "GrassInstance",
     "GrassInstanceBatch",
