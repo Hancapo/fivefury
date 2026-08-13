@@ -1,19 +1,4 @@
-from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
-from .cargens import CarGen, CarGenerator
-from .defs import YMAP_ENUM_INFOS, YMAP_STRUCT_INFOS
-from .entities import EntityDef, MloInstanceDef
-from .enums import (
-    YmapCarGenFlags,
-    YmapContentFlags,
-    YmapEntityFlags,
-    YmapFlags,
-    YmapLodLevel,
-    YmapLodLightCategory,
-    YmapLodLightType,
-    YmapMloInstanceFlags,
-    YmapPriorityLevel,
-)
-from .extensions import (
+from ..map_extensions import (
     AudioCollisionSettingsExtension,
     AudioEmitterExtension,
     BuoyancyExtension,
@@ -39,6 +24,21 @@ from .extensions import (
     VerletClothCustomBoundsExtension,
     WalkDontWalkExtension,
     WindDisturbanceExtension,
+)
+from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
+from .cargens import CarGen, CarGenerator
+from .defs import YMAP_ENUM_INFOS, YMAP_STRUCT_INFOS
+from .entities import EntityDef, MloInstanceDef
+from .enums import (
+    YmapCarGenFlags,
+    YmapContentFlags,
+    YmapEntityFlags,
+    YmapFlags,
+    YmapLodLevel,
+    YmapLodLightCategory,
+    YmapLodLightType,
+    YmapMloInstanceFlags,
+    YmapPriorityLevel,
 )
 from .grass import (
     Aabb,

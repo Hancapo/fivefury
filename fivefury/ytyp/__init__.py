@@ -1,7 +1,4 @@
-from .asset_types import ArchetypeAssetType, coerce_archetype_asset_type
-from .base_archetype import Archetype, BaseArchetypeDef
-from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
-from .extensions import (
+from ..map_extensions import (
     AudioCollisionSettingsExtension,
     AudioEmitterExtension,
     BuoyancyExtension,
@@ -28,6 +25,9 @@ from .extensions import (
     WalkDontWalkExtension,
     WindDisturbanceExtension,
 )
+from .asset_types import ArchetypeAssetType, coerce_archetype_asset_type
+from .base_archetype import Archetype, BaseArchetypeDef
+from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .flags import (
     ArchetypeFlags,
     MloInstanceFlags,
