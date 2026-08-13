@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
+from ...cache.ped_index import load_ped_init_index, save_ped_init_index
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
 from ...yed import (
@@ -33,8 +35,59 @@ def _ped_init_data_by_model(
     cache: GameFileCache,
     issues: list[CutsceneResolveIssue],
     cancellation: CutsceneResolutionCancellation | None,
+    required_hashes: set[int],
 ) -> dict[int, tuple[int, list[PedInitMatch]]]:
+    cached_index = getattr(cache, "_ped_init_asset_index", None)
+    if cached_index is None:
+        try:
+            cached_index = load_ped_init_index(cache.get_index_cache_path())
+        except (AttributeError, OSError):
+            cached_index = None
+        if cached_index is not None:
+            with suppress(AttributeError):
+                cache._ped_init_asset_index = cached_index
+
+    if cached_index is not None:
+        asset_ids = {
+            asset_id
+            for reference_hash in required_hashes
+            for asset_id in cached_index.get(reference_hash, ())
+        }
+        matches: dict[int, tuple[int, list[PedInitMatch]]] = {}
+        try:
+            assets = [cache._record_from_id(asset_id) for asset_id in asset_ids]
+        except (AttributeError, IndexError):
+            cached_index = None
+        else:
+            for asset in sorted(assets, key=_source_rank):
+                check_cutscene_resolution_cancelled(cancellation)
+                game_file = _load_file(cache, asset, issues)
+                metadata = getattr(
+                    getattr(game_file, "parsed", None), "ped_metadata", None
+                )
+                if metadata is None:
+                    continue
+                source_tier = _source_rank(asset)[0]
+                for item in metadata.init_datas:
+                    reference_hash = int(getattr(item.name, "uint", 0))
+                    if (
+                        reference_hash not in required_hashes
+                        or asset.id not in cached_index.get(reference_hash, ())
+                    ):
+                        continue
+                    existing = matches.get(reference_hash)
+                    if existing is None:
+                        matches[reference_hash] = (
+                            source_tier,
+                            [(asset, game_file, item)],
+                        )
+                    else:
+                        existing[1].append((asset, game_file, item))
+            return matches
+
     matches: dict[int, tuple[int, list[PedInitMatch]]] = {}
+    asset_ids_by_model: dict[int, tuple[int, list[int]]] = {}
+    indexable = True
     for asset in sorted(
         cache.find_assets("peds.ymt", kind=GameFileType.YMT),
         key=_source_rank,
@@ -45,6 +98,9 @@ def _ped_init_data_by_model(
         if metadata is None:
             continue
         source_tier = _source_rank(asset)[0]
+        asset_id = getattr(asset, "id", None)
+        if not isinstance(asset_id, int):
+            indexable = False
         for item in metadata.init_datas:
             reference_hash = int(getattr(item.name, "uint", 0))
             existing = matches.get(reference_hash)
@@ -53,8 +109,27 @@ def _ped_init_data_by_model(
                     source_tier,
                     [(asset, game_file, item)],
                 )
+                if isinstance(asset_id, int):
+                    asset_ids_by_model[reference_hash] = (source_tier, [asset_id])
             elif source_tier == existing[0]:
                 existing[1].append((asset, game_file, item))
+                if isinstance(asset_id, int):
+                    indexed = asset_ids_by_model.setdefault(
+                        reference_hash,
+                        (source_tier, []),
+                    )[1]
+                    if asset_id not in indexed:
+                        indexed.append(asset_id)
+    compact_index = {
+        reference_hash: tuple(asset_ids)
+        for reference_hash, (_, asset_ids) in asset_ids_by_model.items()
+    }
+    if indexable:
+        try:
+            save_ped_init_index(cache.get_index_cache_path(), compact_index)
+            cache._ped_init_asset_index = compact_index
+        except (AttributeError, OSError):
+            pass
     return matches
 
 
@@ -269,14 +344,24 @@ def _resolve_ped_expression_resources(
     *,
     cancellation: CutsceneResolutionCancellation | None = None,
 ) -> None:
-    metadata_matches = _ped_init_data_by_model(cache, issues, cancellation)
+    ped_bindings = tuple(
+        (object_id, resolved)
+        for object_id, resolved in resolved_bindings.items()
+        if resolved.binding.role == "ped"
+    )
+    if not ped_bindings:
+        return
+    metadata_matches = _ped_init_data_by_model(
+        cache,
+        issues,
+        cancellation,
+        {int(resolved.reference_hash or 0) for _, resolved in ped_bindings},
+    )
     expression_sets: dict[int, ExpressionSetMatch] | None = None
     expression_set_metadata_available = False
 
-    for object_id, resolved in resolved_bindings.items():
+    for object_id, resolved in ped_bindings:
         check_cutscene_resolution_cancelled(cancellation)
-        if resolved.binding.role != "ped":
-            continue
         if not _select_ped_init_data(
             resolved,
             metadata_matches.get(int(resolved.reference_hash or 0)),

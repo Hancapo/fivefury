@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - CUT parsing is about 2.4x faster.
 - Persistent archetype texture indexes make repeated cutscene asset resolution about 14x faster.
+- Lazy relationship sidecars make warm cutscene dependency resolution about 1.2x faster.
 - Native vertex skinning is about 16x faster.
 - Native skeleton hierarchy composition is about 79x faster.
 

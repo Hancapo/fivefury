@@ -4,7 +4,7 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from ...cache.ped_assets import matching_ped_assets
+from ...cache.ped_assets import first_matching_ped_asset, ped_assets_for_model
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
 from ...ymt import PedPropAnchor, iter_ped_drawables, ped_prop_file_stem
@@ -116,6 +116,8 @@ def _ped_component_variations(
     scene: CutScene,
     object_id: int,
     initial: Mapping[int, tuple[int, int]] | None = None,
+    *,
+    event_variations: Mapping[int, Mapping[int, set[tuple[int, int]]]] | None = None,
 ) -> dict[int, set[tuple[int, int]]]:
     result: dict[int, set[tuple[int, int]]] = {
         component: {(0, 0)} for component in _PED_COMPONENT_PREFIXES
@@ -126,19 +128,35 @@ def _ped_component_variations(
         drawable, texture = variation
         if drawable >= 0:
             result.setdefault(component, set()).add((int(drawable), int(texture)))
+    indexed = (
+        _index_ped_component_variations(scene)
+        if event_variations is None
+        else event_variations
+    )
+    for component, values in indexed.get(object_id, {}).items():
+        result.setdefault(component, set()).update(values)
+    return result
+
+
+def _index_ped_component_variations(
+    scene: CutScene,
+) -> dict[int, dict[int, set[tuple[int, int]]]]:
+    result: dict[int, dict[int, set[tuple[int, int]]]] = {}
     for event in scene.timeline:
         if event.event_name != "set_variation":
             continue
         target = event.payload.get("iObjectId", event.target_id)
-        if target != object_id:
-            continue
         component = event.payload.get("iComponent")
         drawable = event.payload.get("iDrawable")
         texture = event.payload.get("iTexture", 0)
-        if component not in _PED_VARIATION_PREFIXES or not isinstance(drawable, int):
+        if (
+            not isinstance(target, int)
+            or component not in _PED_VARIATION_PREFIXES
+            or not isinstance(drawable, int)
+        ):
             continue
         if drawable >= 0:
-            result.setdefault(component, set()).add(
+            result.setdefault(target, {}).setdefault(component, set()).add(
                 (drawable, int(texture) if isinstance(texture, int) else 0)
             )
     return result
@@ -153,7 +171,9 @@ def _resolve_ped_components(
     *,
     cancellation: CutsceneResolutionCancellation | None = None,
 ) -> None:
-    search_cache: dict[tuple[str, GameFileType], list[AssetRecord]] = {}
+    search_cache: dict[tuple[str, GameFileType], tuple[AssetRecord, ...]] = {}
+    match_cache: dict[tuple[str, GameFileType, str], AssetRecord | None] = {}
+    event_variations = _index_ped_component_variations(scene)
     for object_id, resolved in resolved_bindings.items():
         check_cutscene_resolution_cancelled(cancellation)
         if resolved.binding.role != "ped" or resolved.reference_hash is None:
@@ -163,7 +183,10 @@ def _resolve_ped_components(
             continue
         model_stem = model_asset.stem.lower()
         variations = _ped_component_variations(
-            scene, object_id, (initial_ped_variations or {}).get(object_id)
+            scene,
+            object_id,
+            (initial_ped_variations or {}).get(object_id),
+            event_variations=event_variations,
         )
         exact_component_stems: dict[tuple[int, int], str] = {}
         variation_file = resolved.files.get(GameFileType.YMT)
@@ -186,10 +209,13 @@ def _resolve_ped_components(
         for kind in (GameFileType.YDD, GameFileType.YTD):
             key = (model_stem, kind)
             if key not in search_cache:
-                search_cache[key] = cache.find_container_assets(
+                search_cache[key] = ped_assets_for_model(
+                    cache.find_container_assets(
+                        model_stem,
+                        kind=kind,
+                        include_prefixed=True,
+                    ),
                     model_stem,
-                    kind=kind,
-                    include_prefixed=True,
                 )
         ydd_assets = search_cache[(model_stem, GameFileType.YDD)]
         ytd_assets = search_cache[(model_stem, GameFileType.YTD)]
@@ -214,36 +240,38 @@ def _resolve_ped_components(
                 # A same-name YDD already contains clothing components, but ped
                 # props always live in separate streamed-ped-prop dictionaries.
                 if component >= 12 or not has_component_dictionary:
-                    model_matches = matching_ped_assets(
-                        ydd_assets, model_stem, model_pattern
-                    )
-                    if model_matches:
-                        asset = model_matches[0]
-                        if asset.path not in seen_models:
-                            seen_models.add(asset.path)
-                            game_file = _load_file(
-                                cache, asset, issues, object_id=object_id
-                            )
-                            if game_file is not None:
-                                resolved.component_assets.append(asset)
-                                resolved.component_files.append(game_file)
-                texture_letter = chr(ord("a") + max(0, min(25, texture_index)))
-                texture_pattern = re.compile(
-                    rf"^{prefix}_diff_{drawable:03d}_{texture_letter}(?:_|$)"
-                )
-                texture_matches = matching_ped_assets(
-                    ytd_assets, model_stem, texture_pattern
-                )
-                if texture_matches:
-                    asset = texture_matches[0]
-                    if asset.path not in seen_textures:
-                        seen_textures.add(asset.path)
+                    match_key = (model_stem, GameFileType.YDD, model_pattern.pattern)
+                    if match_key not in match_cache:
+                        match_cache[match_key] = first_matching_ped_asset(
+                            ydd_assets, model_pattern
+                        )
+                    asset = match_cache[match_key]
+                    if asset is not None and asset.path not in seen_models:
+                        seen_models.add(asset.path)
                         game_file = _load_file(
                             cache, asset, issues, object_id=object_id
                         )
                         if game_file is not None:
-                            resolved.component_texture_assets.append(asset)
-                            resolved.component_texture_files.append(game_file)
+                            resolved.component_assets.append(asset)
+                            resolved.component_files.append(game_file)
+                texture_letter = chr(ord("a") + max(0, min(25, texture_index)))
+                texture_pattern = re.compile(
+                    rf"^{prefix}_diff_{drawable:03d}_{texture_letter}(?:_|$)"
+                )
+                match_key = (model_stem, GameFileType.YTD, texture_pattern.pattern)
+                if match_key not in match_cache:
+                    match_cache[match_key] = first_matching_ped_asset(
+                        ytd_assets, texture_pattern
+                    )
+                asset = match_cache[match_key]
+                if asset is not None and asset.path not in seen_textures:
+                    seen_textures.add(asset.path)
+                    game_file = _load_file(
+                        cache, asset, issues, object_id=object_id
+                    )
+                    if game_file is not None:
+                        resolved.component_texture_assets.append(asset)
+                        resolved.component_texture_files.append(game_file)
         if not resolved.component_files and not has_component_dictionary:
             issues.append(
                 CutsceneResolveIssue(
