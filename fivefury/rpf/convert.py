@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, BinaryIO
 from .utils import _normalize_path
 
 if TYPE_CHECKING:  # pragma: no cover
-    from . import RpfArchive, RpfExportMode, RpfExtractionConflict
+    from .archive import RpfArchive
+    from .modes import RpfExportMode, RpfExtractionConflict
 
 
 def _ensure_container_path(
@@ -73,7 +74,7 @@ def _iter_directory_paths(root: Path) -> Iterator[Path]:
 
 
 def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> RpfArchive:
-    from . import RpfArchive
+    from .archive import RpfArchive
 
     archive = RpfArchive.empty(name)
     for info in sorted(zf.infolist(), key=lambda i: i.filename.lower()):
@@ -89,7 +90,7 @@ def _zip_to_rpf(zf: zipfile.ZipFile, *, name: str) -> RpfArchive:
 
 
 def _directory_to_rpf(source_dir: str | Path, *, name: str) -> RpfArchive:
-    from . import RpfArchive
+    from .archive import RpfArchive
 
     root = Path(source_dir).resolve(strict=True)
     if not root.is_dir():
@@ -108,7 +109,7 @@ def _directory_to_rpf(source_dir: str | Path, *, name: str) -> RpfArchive:
 def _coerce_archive(
     source: str | Path | bytes | BinaryIO | RpfArchive,
 ) -> RpfArchive:
-    from . import RpfArchive
+    from .archive import RpfArchive
 
     if isinstance(source, RpfArchive):
         return source
@@ -124,7 +125,7 @@ def load_rpf(source: str | Path | bytes | BinaryIO) -> RpfArchive:
 
 
 def create_rpf(name: str = "archive.rpf") -> RpfArchive:
-    from . import RpfArchive
+    from .archive import RpfArchive
 
     return RpfArchive.empty(name)
 
@@ -136,7 +137,8 @@ def rpf_to_zip(
     mode: RpfExportMode | None = None,
     recurse_nested: bool = True,
 ) -> bytes:
-    from . import RpfArchive, RpfExportMode
+    from .archive import RpfArchive
+    from .modes import RpfExportMode
 
     archive = _coerce_archive(rpf_source)
     try:
@@ -156,7 +158,8 @@ def rpf_to_folder(
     recurse_nested: bool = True,
     conflict: RpfExtractionConflict | None = None,
 ) -> list[Path]:
-    from . import RpfArchive, RpfExportMode, RpfExtractionConflict
+    from .archive import RpfArchive
+    from .modes import RpfExportMode, RpfExtractionConflict
 
     archive = _coerce_archive(rpf_source)
     try:

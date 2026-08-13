@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Any
 from ..common import hash_value
 from ..gamefile import GameFileType
 from ..metahash import MetaHash
-from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
+from ..rpf import RpfArchive, RpfFileEntry
+from ..rpf.utils import _normalize_key
 from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name
 from .paths import path_stem as _path_stem

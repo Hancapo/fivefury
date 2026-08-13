@@ -21,6 +21,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- RPF archive implementation is separated from its public package facade.
 - Reports, extension containers, and unsigned-field validation share common infrastructure.
 - PSO-backed formats share field, hash, text, list, and vector coercion helpers.
 - YMAP and YTYP extensions share one implementation instead of parallel copies.

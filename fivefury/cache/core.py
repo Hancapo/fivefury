@@ -29,8 +29,8 @@ from ..rpf import (
     RpfEntry,
     RpfFileEntry,
     RpfResourceFileEntry,
-    _normalize_key,
 )
+from ..rpf.utils import _normalize_key
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .io import GameFileCacheIOMixin
 from .kinds import coerce_game_file_kind as _coerce_kind
