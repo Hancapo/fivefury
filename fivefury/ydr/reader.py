@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+from .. import _native as _native_backend
 from ..binary import f32 as _f32
 from ..binary import read_c_string
 from ..binary import u16 as _u16
@@ -24,13 +25,10 @@ from ..resource import (
 )
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import (
-    COMPONENT_SIZES,
     DAT_PHYSICAL_BASE,
     DAT_VIRTUAL_BASE,
     LOD_ORDER,
     LOD_POINTER_OFFSETS,
-    VertexComponentType,
-    VertexSemantic,
     YdrLod,
     YdrSkeletonBinding,
 )
@@ -104,74 +102,6 @@ def _resolve_name(hash_value: int) -> str | None:
     return resolve_hash(hash_value)
 
 
-def _component_type(types_value: int, semantic_index: int) -> int:
-    return int((int(types_value) >> (semantic_index * 4)) & 0xF)
-
-
-def _component_offset(flags: int, types_value: int, semantic_index: int) -> int:
-    offset = 0
-    for index in range(semantic_index):
-        if (flags >> index) & 0x1:
-            offset += COMPONENT_SIZES.get(_component_type(types_value, index), 0)
-    return offset
-
-
-def _decode_half_tuple(data: bytes, offset: int, count: int) -> tuple[float, ...]:
-    fmt = "<" + ("e" * count)
-    size = 2 * count
-    if offset < 0 or offset + size > len(data):
-        raise ValueError("half tuple is truncated")
-    return struct.unpack_from(fmt, data, offset)
-
-
-def _decode_colour(data: bytes, offset: int) -> tuple[float, float, float, float]:
-    if offset < 0 or offset + 4 > len(data):
-        raise ValueError("colour is truncated")
-    rgba = struct.unpack_from("<4B", data, offset)
-    return tuple(channel / 255.0 for channel in rgba)
-
-
-def _decode_ubyte4(data: bytes, offset: int) -> tuple[int, int, int, int]:
-    if offset < 0 or offset + 4 > len(data):
-        raise ValueError("ubyte4 is truncated")
-    return struct.unpack_from("<4B", data, offset)
-
-
-def _decode_skin_ubyte4(data: bytes, offset: int) -> tuple[int, int, int, int]:
-    z, y, x, w = _decode_ubyte4(data, offset)
-    return (x, y, z, w)
-
-
-def _decode_snorm(data: bytes, offset: int) -> tuple[float, float, float, float]:
-    if offset < 0 or offset + 4 > len(data):
-        raise ValueError("snorm is truncated")
-    values = struct.unpack_from("<4b", data, offset)
-    return tuple(max(-1.0, component / 127.0) for component in values)
-
-
-def _decode_component(data: bytes, offset: int, component_type: int):
-    kind = VertexComponentType(component_type)
-    if kind is VertexComponentType.FLOAT:
-        return (struct.unpack_from("<f", data, offset)[0],)
-    if kind is VertexComponentType.FLOAT2:
-        return struct.unpack_from("<2f", data, offset)
-    if kind is VertexComponentType.FLOAT3:
-        return struct.unpack_from("<3f", data, offset)
-    if kind is VertexComponentType.FLOAT4:
-        return struct.unpack_from("<4f", data, offset)
-    if kind is VertexComponentType.HALF2:
-        return _decode_half_tuple(data, offset, 2)
-    if kind is VertexComponentType.HALF4:
-        return _decode_half_tuple(data, offset, 4)
-    if kind is VertexComponentType.COLOUR:
-        return _decode_colour(data, offset)
-    if kind is VertexComponentType.UBYTE4:
-        return _decode_ubyte4(data, offset)
-    if kind is VertexComponentType.RGBA8_SNORM:
-        return _decode_snorm(data, offset)
-    return None
-
-
 def _decode_parameter_value(data_type: int, data_pointer: int, system_data: bytes, *, type_name: str | None) -> object | None:
     if data_type <= 0 or not data_pointer:
         return None
@@ -198,75 +128,14 @@ def _decode_vertices(
     *,
     component_offsets: tuple[int, ...] | None = None,
 ) -> dict[str, object]:
-    if stride <= 0:
-        raise ValueError("vertex stride must be positive")
-    available = len(vertex_bytes) // stride
-    count = min(int(vertex_count), available)
-
-    positions: list[tuple[float, float, float]] = []
-    normals: list[tuple[float, float, float]] = []
-    tangents: list[tuple[float, float, float, float]] = []
-    texcoords: list[list[tuple[float, float]]] = [[] for _ in range(8)]
-    max_texcoord_index = -1
-    colours0: list[tuple[float, float, float, float]] = []
-    colours1: list[tuple[float, float, float, float]] = []
-    blend_weights: list[tuple[float, float, float, float]] = []
-    blend_indices: list[tuple[int, int, int, int]] = []
-
-    for vertex_index in range(count):
-        base = vertex_index * stride
-        for semantic_index in range(16):
-            if ((flags >> semantic_index) & 0x1) == 0:
-                continue
-            component_type = _component_type(types_value, semantic_index)
-            component_offset = (
-                component_offsets[semantic_index]
-                if component_offsets is not None
-                else _component_offset(flags, types_value, semantic_index)
-            )
-            semantic = VertexSemantic(semantic_index)
-            if semantic is VertexSemantic.BLEND_INDICES and COMPONENT_SIZES.get(component_type) == 4:
-                blend_indices.append(tuple(int(component) for component in _decode_skin_ubyte4(vertex_bytes, base + component_offset)))
-                continue
-            if semantic is VertexSemantic.BLEND_WEIGHTS and component_type == int(VertexComponentType.COLOUR):
-                raw = _decode_skin_ubyte4(vertex_bytes, base + component_offset)
-                blend_weights.append(tuple(component / 255.0 for component in raw))
-                continue
-            value = _decode_component(vertex_bytes, base + component_offset, component_type)
-            if value is None:
-                continue
-            if semantic is VertexSemantic.POSITION:
-                positions.append(tuple(float(component) for component in value[:3]))
-            elif semantic is VertexSemantic.NORMAL:
-                normals.append(tuple(float(component) for component in value[:3]))
-            elif semantic is VertexSemantic.TANGENT and len(value) >= 4:
-                tangents.append(tuple(float(component) for component in value[:4]))
-            elif semantic is VertexSemantic.COLOUR0:
-                colours0.append(tuple(float(component) for component in value[:4]))
-            elif semantic is VertexSemantic.COLOUR1:
-                colours1.append(tuple(float(component) for component in value[:4]))
-            elif semantic is VertexSemantic.BLEND_INDICES:
-                blend_indices.append(tuple(int(component) for component in value[:4]))
-            elif semantic is VertexSemantic.BLEND_WEIGHTS:
-                if isinstance(value[0], int):
-                    blend_weights.append(tuple(int(component) / 255.0 for component in value[:4]))
-                else:
-                    blend_weights.append(tuple(float(component) for component in value[:4]))
-            elif VertexSemantic.TEXCOORD0 <= semantic <= VertexSemantic.TEXCOORD7:
-                texcoord_index = semantic_index - int(VertexSemantic.TEXCOORD0)
-                max_texcoord_index = max(max_texcoord_index, texcoord_index)
-                texcoords[texcoord_index].append((float(value[0]), float(value[1])))
-
-    return {
-        "positions": positions,
-        "normals": normals,
-        "tangents": tangents,
-        "texcoords": texcoords[: max_texcoord_index + 1] if max_texcoord_index >= 0 else [],
-        "colours0": colours0,
-        "colours1": colours1,
-        "blend_weights": blend_weights,
-        "blend_indices": blend_indices,
-    }
+    return _native_backend._ydr_decode_vertex_buffer(
+        vertex_bytes,
+        vertex_count,
+        stride,
+        flags,
+        types_value,
+        component_offsets,
+    )
 
 
 def _parse_model_list(pointer: int, system_data: bytes) -> list[int]:
