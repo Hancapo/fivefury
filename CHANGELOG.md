@@ -23,7 +23,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- Mesh transforms, normal and tangent generation, and skeleton matrix calculations use vectorized NumPy kernels.
+- Vectorized NumPy kernels make mesh normal generation about 7x faster, tangent generation about 4x faster, million-vertex transforms about 1.9x faster, and 512-matrix skeleton inversion about 11x faster in local benchmarks.
 
 ## [0.4.0] - 2026-08-13
 
@@ -72,13 +72,17 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- RPF construction uses constant-time directory and file child lookup.
-- Hash registration, cache path export, and texture indexing use native batch operations.
-- META block assembly avoids repeated buffer copies and field-name conversions.
-- YCD track interpolation uses a shared native batch vector and quaternion kernel.
+- Native YCD bitstream decoding reduced the largest installed Enhanced YCD load from 34.74 s to 2.16 s, about 16x faster.
+- Native vertex decoding reduced representative YDR loading from 0.914 s to 0.298 s and YFT loading from 2.840 s to 0.400 s, about 3.1x and 7.1x faster.
+- Native bounds and navmesh decoding reduced representative YBN loading from 1.087 s to 0.379 s and YNV loading from 0.520 s to 0.126 s, about 2.9x and 4.1x faster.
+- Native binary documents decode one million unsigned integers about 2.4x faster.
+- RPF construction uses constant-time child lookup and inserts 5,000 sibling entries in about 8.5 ms.
+- Native batch hashing processes 100,000 values about 2.2x faster than scalar FFI calls.
+- META block assembly reduced a 1,000-entity YMAP serialization benchmark from 29.68 ms to 26.73 ms.
+- Native batch vector and quaternion interpolation is about 16.6x faster across 10,000 YCD samples.
 - GameFileCache keeps a byte-bounded LRU of decoded asset payloads.
-- YBN page-layout convergence reuses prepared geometry BVHs between passes.
-- Shared vector math owns interpolation, quaternion canonicalization, distances, point bounds, and sphere radii.
+- Reusing prepared BVHs reduced a 20,000-triangle YBN write benchmark from 334.57 ms to 251.94 ms, about 25% faster.
+- Native bulk point bounds are about 4x faster than the replaced Python loop.
 
 ### Fixed
 
