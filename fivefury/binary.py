@@ -3,6 +3,70 @@ from __future__ import annotations
 import io
 import struct
 from collections.abc import Iterable
+from enum import IntEnum
+
+from . import _native as _native_backend
+
+
+class BinaryEndian(IntEnum):
+    LITTLE = 0
+    BIG = 1
+
+
+class BinaryScalarType(IntEnum):
+    UNSIGNED_BYTE = 0
+    SIGNED_BYTE = 1
+    UNSIGNED_SHORT = 2
+    SIGNED_SHORT = 3
+    UNSIGNED_INT = 4
+    SIGNED_INT = 5
+    UNSIGNED_LONG = 6
+    SIGNED_LONG = 7
+    FLOAT = 8
+
+
+class BinaryDocument:
+    """Immutable native view over binary data with checked bulk reads."""
+
+    __slots__ = ("_data", "_native")
+
+    def __init__(self, data: bytes | bytearray | memoryview):
+        self._data = data if isinstance(data, bytes) else bytes(data)
+        self._native = _native_backend._binary_document_new(self._data)
+
+    def __len__(self) -> int:
+        return _native_backend._binary_document_size(self._native)
+
+    def slice(self, offset: int, length: int) -> bytes:
+        return _native_backend._binary_document_slice(self._native, offset, length)
+
+    def c_string(self, offset: int, maximum: int | None = None) -> str:
+        raw = _native_backend._binary_document_c_string(
+            self._native,
+            offset,
+            -1 if maximum is None else maximum,
+        )
+        return raw.decode("ascii", errors="ignore")
+
+    def read_array(
+        self,
+        offset: int,
+        count: int,
+        scalar_type: BinaryScalarType,
+        *,
+        endian: BinaryEndian = BinaryEndian.LITTLE,
+        stride: int = 0,
+        components: int = 1,
+    ) -> list[object]:
+        return _native_backend._binary_document_read_array(
+            self._native,
+            offset,
+            count,
+            int(scalar_type),
+            int(endian),
+            stride,
+            components,
+        )
 
 
 def align(value: int, alignment: int) -> int:
@@ -174,3 +238,39 @@ class ByteWriter:
 
     def getvalue(self) -> bytes:
         return self._buffer.getvalue()
+
+
+__all__ = [
+    "BinaryDocument",
+    "BinaryEndian",
+    "BinaryScalarType",
+    "ByteReader",
+    "ByteWriter",
+    "align",
+    "f32",
+    "f32_be",
+    "i16",
+    "i32",
+    "i32_be",
+    "i64_be",
+    "iter_unpack",
+    "pack_f32_be",
+    "pack_i32_be",
+    "pack_i64_be",
+    "pack_struct",
+    "pack_u16_be",
+    "pack_u24",
+    "pack_u32_be",
+    "pad_bytes",
+    "read_c_string",
+    "u16",
+    "u16_be",
+    "u32",
+    "u32_be",
+    "u64",
+    "u64_be",
+    "unpack_struct",
+    "unpack_u24",
+    "vec3",
+    "vec4",
+]
