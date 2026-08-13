@@ -122,6 +122,40 @@ class CompactIndex:
         _ffi.index_import_state(self._capsule, bytes(payload))
 
 
+class NativeTextureIndex:
+    __slots__ = ("_capsule",)
+
+    def __init__(self) -> None:
+        self._capsule = _ffi.texture_index_new()
+
+    def __len__(self) -> int:
+        return int(_ffi.texture_index_count(self._capsule))
+
+    def clear(self) -> None:
+        _ffi.texture_index_clear(self._capsule)
+
+    def add(self, texture_hash: int, dictionary_id: int) -> int:
+        return int(
+            _ffi.texture_index_add(
+                self._capsule,
+                int(texture_hash) & 0xFFFFFFFF,
+                int(dictionary_id) & 0xFFFFFFFF,
+            )
+        )
+
+    def find_texture(self, texture_hash: int) -> list[int]:
+        return _ffi.texture_index_find_texture(
+            self._capsule,
+            int(texture_hash) & 0xFFFFFFFF,
+        )
+
+    def find_dictionary(self, dictionary_id: int) -> list[int]:
+        return _ffi.texture_index_find_dictionary(
+            self._capsule,
+            int(dictionary_id) & 0xFFFFFFFF,
+        )
+
+
 class NativeCryptoContext:
     __slots__ = ("_capsule",)
 

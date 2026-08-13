@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .._native import NativeTextureIndex
 from ..common import hash_value
 from ..gamefile import GameFileType
 from ..ytd import Texture, TextureDescriptor, YtdCatalog, read_ytd_catalog
@@ -35,8 +36,9 @@ class TextureCatalog:
     cache: GameFileCache = field(repr=False)
     _generation: int = field(default=-1, init=False, repr=False)
     _dictionaries: dict[str, YtdCatalog] = field(default_factory=dict, init=False, repr=False)
-    _entries_by_hash: dict[int, list[TextureCatalogEntry]] = field(default_factory=dict, init=False, repr=False)
-    _entries_by_dictionary: dict[int, list[TextureCatalogEntry]] = field(default_factory=dict, init=False, repr=False)
+    _dictionary_ids: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    _entries: list[TextureCatalogEntry] = field(default_factory=list, init=False, repr=False)
+    _index: NativeTextureIndex = field(default_factory=NativeTextureIndex, init=False, repr=False)
     _complete: bool = field(default=False, init=False, repr=False)
     errors: dict[str, str] = field(default_factory=dict, init=False)
 
@@ -45,8 +47,9 @@ class TextureCatalog:
         if self._generation == generation:
             return
         self._dictionaries.clear()
-        self._entries_by_hash.clear()
-        self._entries_by_dictionary.clear()
+        self._dictionary_ids.clear()
+        self._entries.clear()
+        self._index.clear()
         self.errors.clear()
         self._complete = False
         self._generation = generation
@@ -76,6 +79,8 @@ class TextureCatalog:
             self.errors[asset.path] = f"{type(exc).__name__}: {exc}"
             return None
         self._dictionaries[asset.path] = catalog
+        dictionary_id = len(self._dictionary_ids)
+        self._dictionary_ids[asset.path] = dictionary_id
         entries = [
             TextureCatalogEntry(
                 descriptor=descriptor,
@@ -85,9 +90,11 @@ class TextureCatalog:
             )
             for descriptor in catalog
         ]
-        self._entries_by_dictionary.setdefault(asset.short_hash, []).extend(entries)
         for entry in entries:
-            self._entries_by_hash.setdefault(entry.name_hash, []).append(entry)
+            entry_id = self._index.add(entry.name_hash, dictionary_id)
+            if entry_id != len(self._entries):
+                raise RuntimeError("Native texture index entry order diverged from its catalog")
+            self._entries.append(entry)
         return catalog
 
     def build(self, dictionaries: Any | None = None) -> TextureCatalog:
@@ -114,10 +121,11 @@ class TextureCatalog:
             if asset is None:
                 return
             self.index_dictionary(asset)
-            yield from self._entries_by_dictionary.get(asset.short_hash, ())
+            dictionary_id = self._dictionary_ids[asset.path]
+            for entry_id in self._index.find_dictionary(dictionary_id):
+                yield self._entries[entry_id]
             return
-        for entries in self._entries_by_dictionary.values():
-            yield from entries
+        yield from self._entries
 
     def find(self, value: str | int, *, dictionary: Any | None = None) -> list[TextureCatalogEntry]:
         self._ensure_generation()
@@ -126,7 +134,7 @@ class TextureCatalog:
             return [entry for entry in self.iter_entries(dictionary) if entry.name_hash == target_hash]
         if not self._complete:
             self.build()
-        matches = list(self._entries_by_hash.get(target_hash, ()))
+        matches = [self._entries[entry_id] for entry_id in self._index.find_texture(target_hash)]
         matches.sort(
             key=lambda entry: asset_source_rank(
                 self.cache.get_asset(entry.dictionary_path, kind=GameFileType.YTD)

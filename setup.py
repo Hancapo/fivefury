@@ -27,6 +27,7 @@ ext_modules = [
             "native/crypto_magic.cpp",
             "native/resource_layout.cpp",
             "native/py_index.cpp",
+            "native/py_texture_index.cpp",
             "native/py_crypto.cpp",
             "native/py_rpf.cpp",
             "native/py_vertex.cpp",
@@ -39,6 +40,7 @@ ext_modules = [
             "native/rpf_index.cpp",
             "native/rpf_read.cpp",
             "native/rpf_scan.cpp",
+            "native/texture_index.cpp",
         ],
         include_dirs=["native"],
         define_macros=[

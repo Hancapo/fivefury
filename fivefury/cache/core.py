@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         CutsceneResolutionTrace,
     )
     from ..cut.resolve import CutsceneAssetBundle
+    from .texture_resolution import TextureResolution
 
 from ..crypto import GameCrypto
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
@@ -692,6 +693,11 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             cancellation=cancellation,
             trace=trace,
         )
+
+    def resolve_texture(self, value: str | int, **kwargs: Any) -> TextureResolution:
+        from .texture_resolution import resolve_texture
+
+        return resolve_texture(self, value, **kwargs)
 
     def resolve_ped_outfit_catalog(
         self,
