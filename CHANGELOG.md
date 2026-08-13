@@ -8,6 +8,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [Unreleased]
 
 ### Added
+
+- Lazy texture dictionary catalogs with searchable texture metadata and deferred pixel loading.
 - Lazy ped outfit catalogs with on-demand component and prop resolution.
 
 ### Changed

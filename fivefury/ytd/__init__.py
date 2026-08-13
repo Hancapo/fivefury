@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import align, read_c_string
+from ..binary import align
 from ..hashing import jenk_hash
 from ..resource import (
     RSC7_MAGIC,
@@ -13,11 +13,14 @@ from ..resource import (
     split_rsc7_sections,
     virtual_to_offset,
 )
+from .catalog import (
+    TextureDescriptor,
+    YtdCatalog,
+    _read_texture_descriptors,
+    read_embedded_ytd_catalog,
+    read_ytd_catalog,
+)
 from .defs import (
-    DAT_PHYSICAL_BASE,
-    DAT_VIRTUAL_BASE,
-    TextureFormat,
-    TextureUsage,
     _BLOCK_BYTES,
     _ENHANCED_DIM_2D,
     _ENHANCED_FLAGS,
@@ -32,14 +35,14 @@ from .defs import (
     _GEN9_TEXTURE_DICTIONARY_VERSIONS,
     _GTAV_TEX_SIZE,
     _LEGACY_TEXTURE_DICTIONARY_VERSIONS,
-    _RSC8_TO_FORMAT,
     _YTD_RSC7_VERSION_GEN9,
     _YTD_RSC7_VERSION_LEGACY,
+    DAT_PHYSICAL_BASE,
+    DAT_VIRTUAL_BASE,
+    TextureFormat,
+    TextureUsage,
     _is_block_compressed,
-    _mip_data_size,
-    _resolve_legacy_format,
     _row_pitch,
-    _total_mip_data_size,
     coerce_texture_usage,
     pack_usage_data,
     unpack_usage_data,
@@ -87,49 +90,17 @@ def _select_texture_dictionary_parser(system_data: bytes, graphics_data: bytes, 
             else:
                 _parse_gen9_texture_dictionary_at(system_data, graphics_data, dict_off)
             return variant
-        except Exception:
+        except (ValueError, struct.error):
             continue
     raise ValueError("Unsupported embedded texture dictionary layout")
 
 
 def _parse_legacy_texture_dictionary_at(virtual_data: bytes, physical_data: bytes, dict_off: int) -> Ytd:
-    if dict_off < 0 or dict_off + 0x40 > len(virtual_data):
-        raise ValueError("Legacy texture dictionary offset is out of range")
-    count = struct.unpack_from("<H", virtual_data, dict_off + 0x28)[0]
-    items_ptr = struct.unpack_from("<Q", virtual_data, dict_off + 0x30)[0]
-    if count < 0 or count > 0x4000 or not _is_valid_virtual_ptr(items_ptr, virtual_data):
-        raise ValueError("Legacy texture dictionary has an invalid item table")
-    items_off = _v2o(items_ptr)
-    if items_off + (count * 8) > len(virtual_data):
-        raise ValueError("Legacy texture pointer table is truncated")
     ytd = Ytd(game="gta5")
-
-    for index in range(count):
-        tex_ptr = struct.unpack_from("<Q", virtual_data, items_off + (index * 8))[0]
-        if not _is_valid_virtual_ptr(tex_ptr, virtual_data):
-            raise ValueError("Legacy texture pointer is out of range")
-        tex_off = _v2o(tex_ptr)
-        name_ptr = struct.unpack_from("<Q", virtual_data, tex_off + 0x28)[0]
-        if not _is_valid_virtual_ptr(name_ptr, virtual_data):
-            raise ValueError("Legacy texture name pointer is out of range")
-        name = read_c_string(virtual_data, _v2o(name_ptr))
-        width = struct.unpack_from("<h", virtual_data, tex_off + 0x50)[0]
-        height = struct.unpack_from("<h", virtual_data, tex_off + 0x52)[0]
-        format_value = struct.unpack_from("<I", virtual_data, tex_off + 0x58)[0]
-        mip_count = virtual_data[tex_off + 0x5D]
-        usage, usage_flags = unpack_usage_data(
-            struct.unpack_from("<I", virtual_data, tex_off + 0x40)[0]
-        )
-        data_ptr = struct.unpack_from("<Q", virtual_data, tex_off + 0x70)[0]
-        if width <= 0 or height <= 0 or mip_count <= 0:
-            raise ValueError("Legacy texture dictionary contains invalid texture metadata")
-
-        texture_format = _resolve_legacy_format(format_value)
-        if texture_format is None:
-            raise ValueError(f"Unsupported GTA V YTD format 0x{format_value:08X} in '{name}'")
-
-        phys_off = _p2o(data_ptr)
-        data_size = _total_mip_data_size(width, height, texture_format, mip_count)
+    for entry in _read_texture_descriptors(virtual_data, version=_YTD_RSC7_VERSION_LEGACY, offset=dict_off):
+        descriptor = entry.descriptor
+        phys_off = entry.data_offset
+        data_size = descriptor.data_size
         if phys_off < 0:
             raise ValueError("Legacy texture pixel data is out of range")
         if phys_off < len(physical_data):
@@ -141,56 +112,24 @@ def _parse_legacy_texture_dictionary_at(virtual_data: bytes, physical_data: byte
         ytd.textures.append(
             Texture.from_raw(
                 pixel_data,
-                width,
-                height,
-                texture_format,
-                mip_count,
-                name=name,
-                usage=usage,
-                usage_flags=usage_flags,
+                descriptor.width,
+                descriptor.height,
+                descriptor.format,
+                descriptor.mip_count,
+                name=descriptor.name,
+                usage=descriptor.usage,
+                usage_flags=descriptor.usage_flags,
             )
         )
     return ytd
 
 
 def _parse_gen9_texture_dictionary_at(virtual_data: bytes, physical_data: bytes, dict_off: int) -> Ytd:
-    if dict_off < 0 or dict_off + 0x40 > len(virtual_data):
-        raise ValueError("Gen9 texture dictionary offset is out of range")
-    count = struct.unpack_from("<H", virtual_data, dict_off + 0x28)[0]
-    items_ptr = struct.unpack_from("<Q", virtual_data, dict_off + 0x30)[0]
-    if count < 0 or count > 0x4000 or not _is_valid_virtual_ptr(items_ptr, virtual_data):
-        raise ValueError("Gen9 texture dictionary has an invalid item table")
-    items_off = _v2o(items_ptr)
-    if items_off + (count * 8) > len(virtual_data):
-        raise ValueError("Gen9 texture pointer table is truncated")
     ytd = Ytd(game="gta5_enhanced")
-
-    for index in range(count):
-        tex_ptr = struct.unpack_from("<Q", virtual_data, items_off + (index * 8))[0]
-        if not _is_valid_virtual_ptr(tex_ptr, virtual_data):
-            raise ValueError("Gen9 texture pointer is out of range")
-        tex_off = _v2o(tex_ptr)
-        name_ptr = struct.unpack_from("<Q", virtual_data, tex_off + 0x28)[0]
-        if not _is_valid_virtual_ptr(name_ptr, virtual_data):
-            raise ValueError("Gen9 texture name pointer is out of range")
-        name = read_c_string(virtual_data, _v2o(name_ptr))
-        width = struct.unpack_from("<H", virtual_data, tex_off + 0x18)[0]
-        height = struct.unpack_from("<H", virtual_data, tex_off + 0x1A)[0]
-        format_value = virtual_data[tex_off + 0x1F]
-        mip_count = virtual_data[tex_off + 0x22]
-        usage, usage_flags = unpack_usage_data(
-            struct.unpack_from("<I", virtual_data, tex_off + 0x40)[0]
-        )
-        data_ptr = struct.unpack_from("<Q", virtual_data, tex_off + 0x38)[0]
-        if width <= 0 or height <= 0 or mip_count <= 0:
-            raise ValueError("Gen9 texture dictionary contains invalid texture metadata")
-
-        texture_format = _RSC8_TO_FORMAT.get(format_value)
-        if texture_format is None:
-            raise ValueError(f"Unsupported GTA V Enhanced YTD format 0x{format_value:02X} in '{name}'")
-
-        phys_off = _p2o(data_ptr)
-        data_size = _total_mip_data_size(width, height, texture_format, mip_count)
+    for entry in _read_texture_descriptors(virtual_data, version=_YTD_RSC7_VERSION_GEN9, offset=dict_off):
+        descriptor = entry.descriptor
+        phys_off = entry.data_offset
+        data_size = descriptor.data_size
         if phys_off < 0:
             raise ValueError("Gen9 texture pixel data is out of range")
         if phys_off < len(physical_data):
@@ -202,13 +141,13 @@ def _parse_gen9_texture_dictionary_at(virtual_data: bytes, physical_data: bytes,
         ytd.textures.append(
             Texture.from_raw(
                 pixel_data,
-                width,
-                height,
-                texture_format,
-                mip_count,
-                name=name,
-                usage=usage,
-                usage_flags=usage_flags,
+                descriptor.width,
+                descriptor.height,
+                descriptor.format,
+                descriptor.mip_count,
+                name=descriptor.name,
+                usage=descriptor.usage,
+                usage_flags=descriptor.usage_flags,
             )
         )
     return ytd
@@ -433,13 +372,17 @@ def save_ytd(ytd: Ytd, path: str | Path, *, game: str | None = None) -> Path:
 
 __all__ = [
     "Texture",
+    "TextureDescriptor",
     "TextureFormat",
     "TextureUsage",
     "Ytd",
+    "YtdCatalog",
     "coerce_texture_usage",
     "pack_usage_data",
     "read_embedded_texture_dictionary",
+    "read_embedded_ytd_catalog",
     "read_ytd",
+    "read_ytd_catalog",
     "save_ytd",
     "unpack_usage_data",
 ]

@@ -62,7 +62,14 @@ from .bounds import (
     sphere_radius_from_vertices,
     triangle_area,
 )
-from .cache import AssetRecord, GameFileCache, ScanStats, TextureRef
+from .cache import (
+    AssetRecord,
+    GameFileCache,
+    ScanStats,
+    TextureCatalog,
+    TextureCatalogEntry,
+    TextureRef,
+)
 from .gta5_cache import (
     GTA5_CACHE_BOUND_ENTRY_SIZE,
     GTA5_CACHE_DLC_MAX_SIZE,
@@ -1012,7 +1019,18 @@ from .yed import (
     validate_ped_expression_binding,
     validate_yed,
 )
-from .ytd import Texture, TextureFormat, TextureUsage, Ytd, read_ytd, save_ytd
+from .ytd import (
+    Texture,
+    TextureDescriptor,
+    TextureFormat,
+    TextureUsage,
+    Ytd,
+    YtdCatalog,
+    read_embedded_ytd_catalog,
+    read_ytd,
+    read_ytd_catalog,
+    save_ytd,
+)
 from .ymf import (
     YMF_HOURS_ON_OFF_MASK,
     YMF_MAX_ARRAY_ITEMS,
@@ -1581,6 +1599,9 @@ __all__ = [
     "SpawnPointOverrideExtension",
     "SwayableEffectExtension",
     "Texture",
+    "TextureCatalog",
+    "TextureCatalogEntry",
+    "TextureDescriptor",
     "TextureFormat",
     "TextureUsage",
     "TimeArchetypeFlags",
@@ -1952,6 +1973,7 @@ __all__ = [
     "ContainerLodDef",
     "YddAsset",
     "Ytd",
+    "YtdCatalog",
     "YftAsset",
     "YptAsset",
     "Ytyp",
@@ -2082,6 +2104,8 @@ __all__ = [
     "read_ymf_xml",
     "read_ymt",
     "read_ytd",
+    "read_ytd_catalog",
+    "read_embedded_ytd_catalog",
     "read_ytyp",
     "YmtContentType",
     "YmtFormat",
