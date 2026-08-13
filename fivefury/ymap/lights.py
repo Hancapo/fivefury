@@ -4,7 +4,6 @@ import dataclasses
 from typing import Any
 
 from ..colors import CssColor
-from ..hashing import jenk_hash
 from ..meta.defs import meta_name
 from .enums import (
     YmapLodLightCategory,
@@ -23,6 +22,7 @@ from .packing import (
 MAX_LOD_LIGHT_CONE_ANGLE = 180.0
 MAX_LOD_LIGHT_CORONA_INTENSITY = 32.0
 MAX_LOD_LIGHT_CAPSULE_EXTENT = 140.0
+MAX_LOD_LIGHT_INTENSITY = 40.0
 
 
 @dataclasses.dataclass(slots=True)
@@ -32,7 +32,7 @@ class LodLight:
     falloff: float = 1.0
     falloff_exponent: float = 1.0
     time_and_state_flags: int = 0
-    hash: int | str = 0
+    hash: int = 0
     cone_inner_angle: int = 0
     cone_outer_angle_or_cap_ext: int = 0
     corona_intensity: int = 0
@@ -150,7 +150,7 @@ class LodLightsSoa:
     falloff: list[float] = dataclasses.field(default_factory=list)
     falloff_exponent: list[float] = dataclasses.field(default_factory=list)
     time_and_state_flags: list[int] = dataclasses.field(default_factory=list)
-    hash: list[int | str] = dataclasses.field(default_factory=list)
+    hash: list[int] = dataclasses.field(default_factory=list)
     cone_inner_angle: list[int] = dataclasses.field(default_factory=list)
     cone_outer_angle_or_cap_ext: list[int] = dataclasses.field(default_factory=list)
     corona_intensity: list[int] = dataclasses.field(default_factory=list)
@@ -181,7 +181,7 @@ class LodLightsSoa:
             "falloff": self.falloff,
             "falloffExponent": self.falloff_exponent,
             "timeAndStateFlags": [int(value) for value in self.time_and_state_flags],
-            "hash": [jenk_hash(value) if isinstance(value, str) else int(value) for value in self.hash],
+            "hash": [int(value) for value in self.hash],
             "coneInnerAngle": [int(value) for value in self.cone_inner_angle],
             "coneOuterAngleOrCapExt": [int(value) for value in self.cone_outer_angle_or_cap_ext],
             "coronaIntensity": [int(value) for value in self.corona_intensity],
@@ -340,6 +340,7 @@ __all__ = [
     "MAX_LOD_LIGHT_CAPSULE_EXTENT",
     "MAX_LOD_LIGHT_CONE_ANGLE",
     "MAX_LOD_LIGHT_CORONA_INTENSITY",
+    "MAX_LOD_LIGHT_INTENSITY",
     "DistantLodLights",
     "DistantLodLightsSoa",
     "LodLight",

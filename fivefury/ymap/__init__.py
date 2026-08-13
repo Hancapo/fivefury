@@ -53,11 +53,21 @@ from .lights import (
     MAX_LOD_LIGHT_CAPSULE_EXTENT,
     MAX_LOD_LIGHT_CONE_ANGLE,
     MAX_LOD_LIGHT_CORONA_INTENSITY,
+    MAX_LOD_LIGHT_INTENSITY,
     DistantLodLights,
     DistantLodLightsSoa,
     LodLight,
     LodLights,
     LodLightsSoa,
+)
+from .lodlight_generation import (
+    GeneratedLodLight,
+    calculate_light_physical_bounds,
+    calculate_lod_light_category,
+    calculate_lod_light_hash,
+    extract_lod_light,
+    extract_lod_lights,
+    validate_lod_light_source_bounds,
 )
 from .model import Ymap
 from .occluders import AngleMode, BoxOccluder, OccludeModel
@@ -71,6 +81,7 @@ __all__ = [
     "MAX_LOD_LIGHT_CAPSULE_EXTENT",
     "MAX_LOD_LIGHT_CONE_ANGLE",
     "MAX_LOD_LIGHT_CORONA_INTENSITY",
+    "MAX_LOD_LIGHT_INTENSITY",
     "YMAP_ENUM_INFOS",
     "YMAP_STRUCT_INFOS",
     "Aabb",
@@ -94,6 +105,7 @@ __all__ = [
     "EntityDef",
     "ExplosionEffectExtension",
     "ExpressionExtension",
+    "GeneratedLodLight",
     "GrassBatch",
     "GrassInstance",
     "GrassInstanceBatch",
@@ -133,6 +145,12 @@ __all__ = [
     "YmapLodLightType",
     "YmapMloInstanceFlags",
     "YmapPriorityLevel",
+    "calculate_light_physical_bounds",
+    "calculate_lod_light_category",
+    "calculate_lod_light_hash",
+    "extract_lod_light",
+    "extract_lod_lights",
     "read_ymap",
     "save_ymap",
+    "validate_lod_light_source_bounds",
 ]
