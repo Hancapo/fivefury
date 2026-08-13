@@ -20,6 +20,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Bounds polygon and BVH records, plus YNV edge lists, are decoded by the native backend.
 - PSO and Meta readers use a native binary document for checked bulk array decoding.
 
+### Performance
+
+- RPF construction uses constant-time directory and file child lookup.
+
 ## [0.3.16] - 2026-08-12
 
 ### Fixed

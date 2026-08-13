@@ -422,15 +422,15 @@ class TestMetaBuilderBlockPerf:
 
 
 # ---------------------------------------------------------------------------
-# 12. RPF _rebuild_index — called per add_file
+# 12. RPF child indexing during bulk archive construction
 # ---------------------------------------------------------------------------
 
-class TestRpfRebuildIndexPerf:
-    def test_rebuild_index_100_files(self, benchmark):
-        """Build an RPF adding 100 files (rebuild_index called each time)."""
+class TestRpfChildIndexPerf:
+    def test_add_5000_files(self, benchmark):
+        """Bulk insertion must remain linear in the number of sibling files."""
         def run():
             archive = create_rpf("idx_test.rpf")
-            for i in range(100):
+            for i in range(5_000):
                 archive.add(f"stream/file_{i:04d}.dat", b"x" * 64)
         benchmark(run)
 

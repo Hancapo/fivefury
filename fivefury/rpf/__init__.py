@@ -366,14 +366,13 @@ class RpfArchive:
                 child.path = f"{prefix}/{child.name}" if prefix else child.name
                 child._archive = self
                 if isinstance(child, RpfDirectoryEntry):
-                    child.directories.clear()
-                    child.files.clear()
-                    dir_entry.directories.append(child)
+                    child.clear_children()
+                    dir_entry.append_directory(child)
                     build_dir(child, child.path)
                 else:
                     if child.name_lower.endswith(".ysc"):
                         child.is_encrypted = True
-                    dir_entry.files.append(child)
+                    dir_entry.append_file(child)
                     if child.name_lower.endswith(".rpf"):
                         self._nested_entries.append(child)
 
@@ -596,15 +595,12 @@ class RpfArchive:
         built: list[str] = []
         for segment in segments:
             built.append(segment)
-            segment_lower = segment.lower()
-            found = next(
-                (d for d in current.directories if d.name_lower == segment_lower), None
-            )
+            found = current.find_directory(segment)
             if found is None:
                 found = RpfDirectoryEntry(
                     name=segment, path="/".join(built), parent=current, _archive=self
                 )
-                current.directories.append(found)
+                current.append_directory(found)
             current = found
         return current
 
@@ -616,16 +612,13 @@ class RpfArchive:
             normalized.rsplit("/", 1) if "/" in normalized else ("", normalized)
         )
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
-        leaf_lower = leaf.lower()
-        existing = next(
-            (d for d in parent.directories if d.name_lower == leaf_lower), None
-        )
+        existing = parent.find_directory(leaf)
         if existing is not None:
             return existing
         entry = RpfDirectoryEntry(
             name=leaf, path=normalized, parent=parent, _archive=self
         )
-        parent.directories.append(entry)
+        parent.append_directory(entry)
         self._invalidate_index()
         return entry
 
@@ -638,7 +631,7 @@ class RpfArchive:
         )
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
         leaf_lower = leaf.lower()
-        entry = next((f for f in parent.files if f.name_lower == leaf_lower), None)
+        entry = parent.find_file(leaf_lower)
         if isinstance(entry, RpfBinaryFileEntry) and entry.child_archive is not None:
             return entry, entry.child_archive
         if entry is None:
@@ -650,7 +643,7 @@ class RpfArchive:
                 file_size=0,
                 _archive=self,
             )
-            parent.files.append(entry)
+            parent.append_file(entry)
         child_prefix = (
             f"{self.prefix}/{normalized}".strip("/") if self.prefix else normalized
         )
@@ -676,9 +669,9 @@ class RpfArchive:
         )
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
         leaf_lower = leaf.lower()
-        existing = next((f for f in parent.files if f.name_lower == leaf_lower), None)
+        existing = parent.find_file(leaf_lower)
         if existing is not None:
-            parent.files.remove(existing)
+            parent.remove_file(existing)
         if leaf_lower.endswith(".rpf") and _is_rpf7(data):
             entry = RpfBinaryFileEntry(
                 name=leaf,
@@ -750,7 +743,7 @@ class RpfArchive:
                     _archive=self,
                     _data=data,
                 )
-        parent.files.append(entry)
+        parent.append_file(entry)
         self._invalidate_index()
         return entry
 
@@ -772,12 +765,9 @@ class RpfArchive:
         )
         parent = self._ensure_dir(parent_path.split("/") if parent_path else [])
         leaf_lower = leaf.lower()
-        existing = next(
-            (item for item in parent.files if item.name_lower == leaf_lower),
-            None,
-        )
+        existing = parent.find_file(leaf_lower)
         if existing is not None:
-            parent.files.remove(existing)
+            parent.remove_file(existing)
 
         if leaf_lower.endswith(".rpf") and _is_rpf7(header):
             return self.add_file(normalized, source.read_bytes())
@@ -808,7 +798,7 @@ class RpfArchive:
                 _archive=self,
                 _source_path=source,
             )
-        parent.files.append(entry)
+        parent.append_file(entry)
         self._invalidate_index()
         return entry
 
