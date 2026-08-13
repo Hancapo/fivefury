@@ -85,7 +85,7 @@ from .event_api import (
     unload_scene,
     unload_subtitles,
 )
-from .io import cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
+from .io import cut_to_scene, read_cut_scene, scene_to_cut
 from .subtitles import (
     CutSubtitleCue,
     CutSubtitleTrack,
@@ -158,7 +158,6 @@ __all__ = [
     "play_audio",
     "play_particle_effect",
     "read_cut_scene",
-    "read_cutxml_scene",
     "remove_blocking_bounds",
     "remove_decal",
     "remove_removal_bounds",

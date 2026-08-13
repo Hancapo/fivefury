@@ -30,7 +30,6 @@ from fivefury import (
     get_cut_event_name,
     read_cut,
     read_cut_scene,
-    read_cutxml,
     scene_to_cut,
 )
 from fivefury.cut.events import CUT_EVENT_ID_TO_NAME, get_cut_event_spec
@@ -38,19 +37,14 @@ from fivefury.gamefile import guess_game_file_type
 from fivefury.hashing import jenk_hash, jenk_partial_hash
 from tests.helpers import reference_root
 
-TESTS_DIR = Path(__file__).resolve().parent
 CUT_REFERENCE_DIR = reference_root() / "cut"
 CUT_PATH = CUT_REFERENCE_DIR / "mp_int_mcs_18_a1.cut"
-CUTXML_PATH = TESTS_DIR / "mp_int_mcs_18_a1.cutxml"
 LAMAR_CUT_PATH = CUT_REFERENCE_DIR / "lamar_1_int.cut"
 EF_CUT_PATH = CUT_REFERENCE_DIR / "ef_1_rcm.cut"
 
 
 requires_cut = pytest.mark.skipif(
     not CUT_PATH.is_file(), reason="binary CUT sample not available"
-)
-requires_cutxml = pytest.mark.skipif(
-    not CUTXML_PATH.is_file(), reason="CUT XML sample not available"
 )
 
 
@@ -66,12 +60,18 @@ def _counts(cut: CutFile) -> dict[str, int]:
     }
 
 
-@requires_cutxml
-def test_read_cutxml_smoke() -> None:
-    cutxml = read_cutxml(CUTXML_PATH)
+@requires_cut
+def test_read_cut_real_asset_shape() -> None:
+    cut = read_cut(CUT_PATH)
 
-    assert cutxml.root.type_name == "rage__cutfCutsceneFile2"
-    assert _counts(cutxml) == {
+    assert cut.root.type_name == "rage__cutfCutsceneFile2"
+    assert isclose(
+        cut.root.fields["fTotalDuration"], 64.36666870117188, rel_tol=0.0, abs_tol=1e-6
+    )
+    assert (
+        cut.root.fields["cFaceDir"] == r"x:/gta5/assets_ng\cuts\MP_INT_MCS_18_A1\faces"
+    )
+    assert _counts(cut) == {
         "objects": 11,
         "load_events": 6,
         "events": 32,
@@ -79,26 +79,6 @@ def test_read_cutxml_smoke() -> None:
         "concat": 1,
         "discard": 1,
     }
-
-
-@requires_cut
-@requires_cutxml
-def test_read_cut_matches_cutxml_shape() -> None:
-    cut = read_cut(CUT_PATH)
-    cutxml = read_cutxml(CUTXML_PATH)
-
-    assert cut.root.type_name == cutxml.root.type_name
-    assert isclose(
-        cut.root.fields["fTotalDuration"], 64.36666870117188, rel_tol=0.0, abs_tol=1e-6
-    )
-    assert (
-        cut.root.fields["cFaceDir"] == r"x:/gta5/assets_ng\cuts\MP_INT_MCS_18_A1\faces"
-    )
-    assert _counts(cut) == _counts(cutxml)
-    assert (
-        cut.root.fields["pCutsceneObjects"][0].type_name
-        == cutxml.root.fields["pCutsceneObjects"][0].type_name
-    )
     assert cut.root.fields["concatDataList"][0].fields["cSceneName"] == CutHashedString(
         hash=972297886
     )

@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- The incomplete `.cutxml` parser and scene-loading API have been removed.
 - Shared map extension models now live only in `fivefury.map_extensions`.
 - PSO value helpers moved from `fivefury.vehiclemeta.common` to `fivefury.pso_values`.
 

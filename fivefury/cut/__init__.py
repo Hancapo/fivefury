@@ -128,13 +128,11 @@ from .scene import (
     build_subtitle_gxt2,
     cut_to_scene,
     read_cut_scene,
-    read_cutxml_scene,
     scene_to_cut,
     subtitle_cues_from_text,
     validate_cut_scene,
 )
 from .write import build_cut_bytes, save_cut
-from .xml import read_cutxml
 
 __all__ = [
     "CUT_FPS",
@@ -253,8 +251,6 @@ __all__ = [
     "read_cut",
     "read_cut_scene",
     "read_cutscript",
-    "read_cutxml",
-    "read_cutxml_scene",
     "resolve_cutscene_assets",
     "save_cut",
     "save_cut_as_cutscript",
