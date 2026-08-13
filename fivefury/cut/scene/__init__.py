@@ -43,7 +43,6 @@ from .core import (
     CutScene,
     cut_to_scene,
     read_cut_scene,
-    read_cutxml_scene,
     scene_to_cut,
 )
 from .subtitles import (
@@ -106,7 +105,6 @@ __all__ = [
     "cut_to_scene",
     "ensure_ydr_embedded_lights",
     "read_cut_scene",
-    "read_cutxml_scene",
     "scene_to_cut",
     "subtitle_cues_from_text",
     "validate_cut_scene",

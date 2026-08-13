@@ -11,7 +11,6 @@ from ..flags import (
 )
 from ..model import CutFile, CutHashedString, CutNode
 from ..pso import read_cut
-from ..xml import read_cutxml
 from .base import CutScene
 from .bindings import _binding_from_node
 from .shared import _clone_value, _coerce_name, _freeze_value, _hashed_string
@@ -66,9 +65,6 @@ def _scene_input_to_cut(data: CutScene | CutFile | bytes | str | Path) -> CutFil
         return scene_to_cut(data)
     if isinstance(data, CutFile):
         return data
-    path = Path(data) if isinstance(data, (str, Path)) else None
-    if path is not None and path.suffix.lower() == ".cutxml":
-        return read_cutxml(path)
     return read_cut(data)
 
 
@@ -76,12 +72,6 @@ def read_cut_scene(data: CutScene | CutFile | bytes | str | Path) -> CutScene:
     if isinstance(data, CutScene):
         return data
     return cut_to_scene(_scene_input_to_cut(data))
-
-
-def read_cutxml_scene(data: CutFile | bytes | str | Path) -> CutScene:
-    if isinstance(data, CutFile):
-        return cut_to_scene(data)
-    return cut_to_scene(read_cutxml(data))
 
 
 def _default_root(cut: CutFile | None) -> CutNode:
@@ -203,7 +193,7 @@ def _hash_value(value: object) -> int:
         return 0
     try:
         return int(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
