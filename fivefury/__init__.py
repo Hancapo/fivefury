@@ -463,7 +463,7 @@ from .gtxd import (
     read_gtxd_bytes,
     save_gtxd,
 )
-from .hashing import jenk_hash
+from .hashing import jenk_hash, jenk_hash_many
 from .metahash import HashString, MetaHash
 from .meta import Meta, read_meta
 from .rel import (
@@ -536,6 +536,7 @@ from .resolver import (
     register_names,
     register_names_file,
     register_path_name,
+    register_paths,
     register_path_names,
     resolve_hash,
     resolve_name,
@@ -2048,6 +2049,7 @@ __all__ = [
     "hash_matches",
     "iter_embedded_texture_dictionaries",
     "jenk_hash",
+    "jenk_hash_many",
     "list_embedded_texture_dictionaries",
     "load_game_keys",
     "load_rpf",
@@ -2140,6 +2142,7 @@ __all__ = [
     "register_names",
     "register_names_file",
     "register_path_name",
+    "register_paths",
     "register_path_names",
     "resolve_hash",
     "resolve_name",

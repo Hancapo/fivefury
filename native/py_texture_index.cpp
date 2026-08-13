@@ -77,6 +77,55 @@ PyObject* mod_texture_index_add(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_texture_index_add_many(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    PyObject* hashes_object = nullptr;
+    unsigned int dictionary_id = 0;
+    if (!PyArg_ParseTuple(
+            args,
+            "OOI:texture_index_add_many",
+            &capsule,
+            &hashes_object,
+            &dictionary_id
+        )) {
+        return nullptr;
+    }
+    auto* index = require_texture_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    PyObject* sequence = PySequence_Fast(hashes_object, "texture_hashes must be a sequence");
+    if (sequence == nullptr) {
+        return nullptr;
+    }
+    const auto count = PySequence_Size(sequence);
+    std::vector<std::uint32_t> hashes;
+    hashes.reserve(static_cast<std::size_t>(count));
+    for (Py_ssize_t item_index = 0; item_index < count; ++item_index) {
+        PyObject* item = PySequence_GetItem(sequence, item_index);
+        if (item == nullptr) {
+            Py_DECREF(sequence);
+            return nullptr;
+        }
+        const auto value = PyLong_AsUnsignedLong(item);
+        Py_DECREF(item);
+        if (PyErr_Occurred() != nullptr || value > 0xFFFFFFFFUL) {
+            Py_DECREF(sequence);
+            if (PyErr_Occurred() == nullptr) {
+                PyErr_SetString(PyExc_OverflowError, "texture hash must fit in uint32");
+            }
+            return nullptr;
+        }
+        hashes.push_back(static_cast<std::uint32_t>(value));
+    }
+    Py_DECREF(sequence);
+    try {
+        return PyLong_FromUnsignedLong(index->add_many(hashes, dictionary_id));
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_texture_index_find_texture(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     unsigned int texture_hash = 0;

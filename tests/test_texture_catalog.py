@@ -160,11 +160,11 @@ def test_contextual_resolver_reports_invalid_context(tmp_path) -> None:
 def test_native_texture_index_preserves_duplicates_and_dictionary_ids() -> None:
     index = NativeTextureIndex()
 
-    assert index.add(0x10, 7) == 0
-    assert index.add(0x10, 8) == 1
-    assert index.add(0x20, 7) == 2
-    assert index.find_texture(0x10) == [0, 1]
-    assert index.find_dictionary(7) == [0, 2]
+    assert index.add_many([0x10, 0x10, 0x20], 7) == 0
+    assert index.add(0x10, 8) == 3
+    assert index.find_texture(0x10) == [0, 1, 3]
+    assert index.find_dictionary(7) == [0, 1, 2]
+    assert index.find_dictionary(8) == [3]
 
     index.clear()
     assert len(index) == 0

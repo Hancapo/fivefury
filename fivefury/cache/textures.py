@@ -90,11 +90,13 @@ class TextureCatalog:
             )
             for descriptor in catalog
         ]
-        for entry in entries:
-            entry_id = self._index.add(entry.name_hash, dictionary_id)
-            if entry_id != len(self._entries):
-                raise RuntimeError("Native texture index entry order diverged from its catalog")
-            self._entries.append(entry)
+        first_entry_id = self._index.add_many(
+            [entry.name_hash for entry in entries],
+            dictionary_id,
+        )
+        if first_entry_id != len(self._entries):
+            raise RuntimeError("Native texture index entry order diverged from its catalog")
+        self._entries.extend(entries)
         return catalog
 
     def build(self, dictionaries: Any | None = None) -> TextureCatalog:

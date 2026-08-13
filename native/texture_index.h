@@ -11,6 +11,10 @@ namespace fivefury_native {
 class TextureIndex {
 public:
     std::uint32_t add(std::uint32_t texture_hash, std::uint32_t dictionary_id);
+    std::uint32_t add_many(
+        const std::vector<std::uint32_t>& texture_hashes,
+        std::uint32_t dictionary_id
+    );
     void clear();
     std::size_t count() const noexcept;
     std::vector<std::uint32_t> find_texture(std::uint32_t texture_hash) const;

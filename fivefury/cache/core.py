@@ -334,8 +334,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         if target is None:
             return 0
         before = len(target.hash_to_name)
-        for asset_id in range(self.asset_count):
-            target.register_path_name(self._index.get_path(asset_id))
+        target.register_paths(self._index.paths())
         added = len(target.hash_to_name) - before
         self._log(f"resolver populated added={added}")
         return added

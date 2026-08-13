@@ -94,6 +94,9 @@ class CompactIndex:
     def get_path(self, asset_id: int) -> str:
         return _ffi.index_get_path(self._capsule, int(asset_id))
 
+    def paths(self) -> list[str]:
+        return _ffi.index_export_paths(self._capsule)
+
     def get_kind(self, asset_id: int) -> int:
         return _ffi.index_get_kind(self._capsule, int(asset_id))
 
@@ -139,6 +142,15 @@ class NativeTextureIndex:
             _ffi.texture_index_add(
                 self._capsule,
                 int(texture_hash) & 0xFFFFFFFF,
+                int(dictionary_id) & 0xFFFFFFFF,
+            )
+        )
+
+    def add_many(self, texture_hashes: list[int], dictionary_id: int) -> int:
+        return int(
+            _ffi.texture_index_add_many(
+                self._capsule,
+                [int(value) & 0xFFFFFFFF for value in texture_hashes],
                 int(dictionary_id) & 0xFFFFFFFF,
             )
         )

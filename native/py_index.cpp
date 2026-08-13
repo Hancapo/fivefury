@@ -371,6 +371,39 @@ PyObject* mod_index_get_path(PyObject*, PyObject* args) {
     }
 }
 
+PyObject* mod_index_export_paths(PyObject*, PyObject* args) {
+    PyObject* capsule = nullptr;
+    if (!PyArg_ParseTuple(args, "O:index_export_paths", &capsule)) {
+        return nullptr;
+    }
+    auto* index = require_index(capsule);
+    if (index == nullptr) {
+        return nullptr;
+    }
+    try {
+        const auto paths = index->export_paths();
+        PyObject* result = PyList_New(static_cast<Py_ssize_t>(paths.size()));
+        if (result == nullptr) {
+            return nullptr;
+        }
+        for (Py_ssize_t item_index = 0; item_index < static_cast<Py_ssize_t>(paths.size()); ++item_index) {
+            const auto& path = paths[static_cast<std::size_t>(item_index)];
+            PyObject* value = PyUnicode_FromStringAndSize(
+                path.data(),
+                static_cast<Py_ssize_t>(path.size())
+            );
+            if (value == nullptr || PyList_SetItem(result, item_index, value) < 0) {
+                Py_XDECREF(value);
+                Py_DECREF(result);
+                return nullptr;
+            }
+        }
+        return result;
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
+
 PyObject* mod_index_get_kind(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
     unsigned int asset_id = 0;
@@ -590,6 +623,58 @@ PyObject* mod_jenk_hash(PyObject*, PyObject* args) {
     );
     PyBuffer_Release(&lut_buffer);
     return PyLong_FromUnsignedLong(result);
+}
+
+PyObject* mod_jenk_hash_many(PyObject*, PyObject* args) {
+    PyObject* values_object = nullptr;
+    PyObject* lut_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OO:jenk_hash_many", &values_object, &lut_object)) {
+        return nullptr;
+    }
+    PyObject* sequence = PySequence_Fast(values_object, "values must be a sequence of strings");
+    if (sequence == nullptr) {
+        return nullptr;
+    }
+    Py_buffer lut_buffer{};
+    if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
+        Py_DECREF(sequence);
+        return nullptr;
+    }
+    if (lut_buffer.len < 256) {
+        PyBuffer_Release(&lut_buffer);
+        Py_DECREF(sequence);
+        PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
+        return nullptr;
+    }
+    const auto count = PySequence_Size(sequence);
+    std::vector<std::string> values;
+    values.reserve(static_cast<std::size_t>(count));
+    for (Py_ssize_t item_index = 0; item_index < count; ++item_index) {
+        PyObject* item = PySequence_GetItem(sequence, item_index);
+        if (item == nullptr) {
+            PyBuffer_Release(&lut_buffer);
+            Py_DECREF(sequence);
+            return nullptr;
+        }
+        std::string value;
+        const auto converted = unicode_to_utf8(item, value, "value");
+        Py_DECREF(item);
+        if (!converted) {
+            PyBuffer_Release(&lut_buffer);
+            Py_DECREF(sequence);
+            return nullptr;
+        }
+        values.push_back(std::move(value));
+    }
+    Py_DECREF(sequence);
+    const std::string_view lut(static_cast<const char*>(lut_buffer.buf), 256);
+    std::vector<std::uint32_t> hashes;
+    hashes.reserve(values.size());
+    for (const auto& value : values) {
+        hashes.push_back(jenk_hash(value, lut));
+    }
+    PyBuffer_Release(&lut_buffer);
+    return make_id_list(hashes);
 }
 
 }  // namespace fivefury_py
