@@ -19,6 +19,7 @@ from .authoring import (
     ValidationReport,
     validation_report,
 )
+from .skinning import SkinnedVertices, compose_skeleton_matrices, skin_vertices
 from .awc import (
     AWC_CHUNK_FIELD_MASK,
     AWC_DEFAULT_FLAGS,
@@ -2250,6 +2251,7 @@ __all__ = [
     "save_ytyp",
     "scan_yft_corpus",
     "scene_to_cut",
+    "skin_vertices",
     "set_bound_from_render_geometry",
     "set_collision_room",
     "set_ped_drawable_cloth",
@@ -2260,6 +2262,8 @@ __all__ = [
     "skeleton_bone_flag_names",
     "skeleton_skinning_matrices",
     "skeleton_skinning_transforms",
+    "compose_skeleton_matrices",
+    "SkinnedVertices",
     "sphere_radius_from_vertices",
     "split_ps3_rsc7_sections",
     "subtitle_cues_from_text",

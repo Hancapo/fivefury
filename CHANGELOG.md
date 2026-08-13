@@ -7,6 +7,15 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Batch vertex skinning for positions and normals.
+
+### Performance
+
+- Native vertex skinning is about 16x faster.
+- Native skeleton hierarchy composition is about 79x faster.
+
 ## [0.4.1] - 2026-08-13
 
 ### Breaking Changes

@@ -6,6 +6,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from ..numeric import Float32Array
+from ..skinning import compose_skeleton_matrices
 from .model import Matrix4, YdrBone, YdrSkeleton
 
 _PED_PROCEDURAL_SIBLING_COPIES = (
@@ -277,29 +278,12 @@ def skeleton_absolute_matrices(
         )
     local[:, :3, 3] = 0.0
     local[:, 3, 3] = 1.0
-    absolute = np.empty_like(local)
-    resolved = np.zeros(len(skeleton.bones), dtype=bool)
-    resolving = np.zeros(len(skeleton.bones), dtype=bool)
-
-    def resolve(index: int) -> Float32Array:
-        if resolved[index]:
-            return absolute[index]
-        if resolving[index]:
-            raise ValueError("Skeleton bone hierarchy contains a cycle")
-        resolving[index] = True
-        parent = int(skeleton.bones[index].parent_index)
-        absolute[index] = (
-            local[index] @ resolve(parent)
-            if 0 <= parent < len(skeleton.bones) and parent != index
-            else local[index]
-        )
-        resolving[index] = False
-        resolved[index] = True
-        return absolute[index]
-
-    for bone_index in range(len(skeleton.bones)):
-        resolve(bone_index)
-    return absolute
+    parents = np.fromiter(
+        (int(bone.parent_index) for bone in skeleton.bones),
+        dtype=np.int32,
+        count=len(skeleton.bones),
+    )
+    return compose_skeleton_matrices(local, parents)
 
 
 def skeleton_skinning_matrices(

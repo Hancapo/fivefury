@@ -96,6 +96,8 @@ PyObject* mod_bounds_collect_triangles(PyObject*, PyObject* args);
 PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args);
 PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args);
 PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args);
+PyObject* mod_skin_compose_matrices(PyObject*, PyObject* args);
+PyObject* mod_skin_vertices(PyObject*, PyObject* args);
 PyObject* mod_bounds_decode_polygons(PyObject*, PyObject* args);
 PyObject* mod_bounds_decode_bvh_records(PyObject*, PyObject* args);
 PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args);
