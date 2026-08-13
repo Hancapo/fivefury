@@ -5,10 +5,10 @@ import os
 import struct
 import tempfile
 import zipfile
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Optional
-from collections.abc import Iterable, Iterator
+from typing import BinaryIO, Self
 
 from ..crypto import (
     AES_ENCRYPTION,
@@ -212,7 +212,7 @@ class RpfArchive:
         for child in self.children:
             child.close()
 
-    def __enter__(self) -> RpfArchive:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -352,7 +352,7 @@ class RpfArchive:
 
         root = entries[0]
         if not isinstance(root, RpfDirectoryEntry):
-            raise ValueError("Root RPF entry must be a directory")
+            raise TypeError("Root RPF entry must be a directory")
         root.name = ""
         root.path = ""
         root.parent = None

@@ -8,7 +8,13 @@ from typing import ClassVar, TypeAlias
 
 from ..common import hash_value
 from ..metahash import MetaHash
-from .enums import Dat10RelType, Dat16RelType, Dat22RelType, Dat54SoundType, RelDatFileType
+from .enums import (
+    Dat10RelType,
+    Dat16RelType,
+    Dat22RelType,
+    Dat54SoundType,
+    RelDatFileType,
+)
 
 RelHashLike: TypeAlias = int | MetaHash | str
 

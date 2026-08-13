@@ -4,14 +4,20 @@ import struct
 from pathlib import Path
 
 from ..binary import align, read_c_string
-from .enums import Dat10RelType, Dat16RelType, Dat22RelType, Dat54SoundType, RelDatFileType
+from .enums import (
+    Dat10RelType,
+    Dat16RelType,
+    Dat22RelType,
+    Dat54SoundType,
+    RelDatFileType,
+)
 from .model import (
-    Dat16Curve,
-    Dat22Category,
     Dat10Synth,
     Dat10SynthPreset,
     Dat10SynthPresetVariable,
     Dat10SynthVariable,
+    Dat16Curve,
+    Dat22Category,
     Dat54AutomationNoteMapRange,
     Dat54AutomationNoteMapSound,
     Dat54AutomationSound,
@@ -29,6 +35,9 @@ from .model import (
     Dat54ModularSynthSound,
     Dat54ModularSynthSoundVariable,
     Dat54MultitrackSound,
+    Dat54ParameterTransform,
+    Dat54ParameterTransformBlock,
+    Dat54ParameterTransformSound,
     Dat54RandomizedSound,
     Dat54RandomizedVariation,
     Dat54SequentialSound,
@@ -38,9 +47,6 @@ from .model import (
     Dat54SoundSetItem,
     Dat54SoundSetList,
     Dat54StreamingSound,
-    Dat54ParameterTransform,
-    Dat54ParameterTransformBlock,
-    Dat54ParameterTransformSound,
     Dat54VariableBlockSound,
     Dat54VariableCurveSound,
     Dat54VariableData,

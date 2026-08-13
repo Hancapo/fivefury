@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections.abc import Callable, Iterable
 from enum import IntFlag
 from pathlib import Path
 from typing import TypeVar
-from collections.abc import Callable, Iterable
-
 
 XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
 T = TypeVar("T")

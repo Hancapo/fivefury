@@ -3,7 +3,12 @@ from __future__ import annotations
 import math
 import struct
 
-from .model import CdrEdgeStream, CdrEdgeStreamAttribute, CdrVertexFormat, CdrVertexSemantic
+from .model import (
+    CdrEdgeStream,
+    CdrEdgeStreamAttribute,
+    CdrVertexFormat,
+    CdrVertexSemantic,
+)
 
 _FVF_TYPE_SIZES = (2, 4, 6, 8, 4, 8, 12, 16, 4, 4, 4, 0, 0, 0, 4, 8)
 _DYNAMIC_ORDER = (

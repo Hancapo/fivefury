@@ -4,11 +4,11 @@ from ..colors import CssColor, parse_css_rgb
 
 
 def clamp_byte(value: float) -> int:
-    return max(0, min(255, int(round(value))))
+    return max(0, min(255, round(value)))
 
 
 def clamp_ushort(value: float) -> int:
-    return max(0, min(65535, int(round(value))))
+    return max(0, min(65535, round(value)))
 
 
 def pack_rgbi(colour: tuple[int, int, int] | CssColor, intensity: int) -> int:

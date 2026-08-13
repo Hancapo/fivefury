@@ -7,9 +7,9 @@ from typing import Any
 from ..colors import CssColor, parse_css_rgb
 from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
-from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
+from ..meta.utils import meta_array_info as _arrayinfo
+from ..meta.utils import meta_field_entry as _entry
 from .packing import clamp_byte, clamp_ushort
-
 
 BATCH_VERT_MULTIPLIER = 0.00001525878
 

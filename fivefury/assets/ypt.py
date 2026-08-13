@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import ClassVar
 from collections.abc import Iterator
+from typing import ClassVar
 
 from ..gamefile import GameFileType
-from .base import _u64, ResourceTextureAsset
+from .base import ResourceTextureAsset, _u64
 
 
 @dataclasses.dataclass(slots=True)

@@ -94,7 +94,7 @@ class TextureDictionaryGraph:
             if data:
                 try:
                     relationships = tuple(read_gtxd(data).relationships)
-                except Exception:  # noqa: BLE001 - malformed optional metadata
+                except Exception:
                     relationships = ()
         if not relationships:
             self._issues.append(

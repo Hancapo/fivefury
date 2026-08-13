@@ -16,6 +16,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- Internal imports, control flow, and type validation are normalized across formats.
 - Internal format readers no longer depend on package facade import order.
 - Internal annotations, exports, imports, and collection helpers follow the current Python style.
 - YCD sequence bitstreams are decoded and encoded by the native backend.

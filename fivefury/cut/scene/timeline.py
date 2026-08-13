@@ -4,7 +4,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...common import hash_value
-from ..events import CutEventBehavior, CutEventType, get_cut_event_enum_name, get_cut_event_id, get_cut_event_name, get_cut_event_spec
+from ..events import (
+    CutEventBehavior,
+    CutEventType,
+    get_cut_event_enum_name,
+    get_cut_event_id,
+    get_cut_event_name,
+    get_cut_event_spec,
+)
 from ..model import CutHashedString, CutNode, CutResolvedEvent
 from ..payloads import CutEventPayload
 from .bindings import CutBinding

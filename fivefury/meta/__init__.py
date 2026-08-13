@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import struct
 import dataclasses
+import struct
 from collections.abc import Mapping
 from typing import Any
 
+from ..hashing import jenk_hash
+from ..resource import build_rsc7
 from .defs import (
     ENUMS_BY_HASH,
     GRAPHICS_BASE,
@@ -24,9 +26,6 @@ from .defs import (
     MetaDataType,
     StructDef,
 )
-from ..hashing import jenk_hash
-from ..resource import build_rsc7
-
 
 META_FILE_VFT = 0x405BC808
 META_ROOT_SIZE = 112
@@ -176,6 +175,7 @@ class RawStruct:
 from .builder import MetaBuilder, build_meta_system
 from .read import ParsedMeta, read_meta
 
+
 @dataclasses.dataclass(slots=True)
 class Meta:
     Name: str = ""
@@ -239,7 +239,6 @@ class Meta:
 
 
 from .resource import MetaResource
-
 
 __all__ = [
     "ENUMS_BY_HASH",

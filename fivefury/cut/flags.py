@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from enum import IntFlag
 from collections.abc import Iterable, Sequence
+from enum import IntFlag
 
 
 class CutSceneFlags(IntFlag):

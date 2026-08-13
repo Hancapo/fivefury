@@ -80,7 +80,7 @@ class Gxt2:
         gxt = cls(path=path)
         for line_number, source_line in enumerate(text.splitlines(), start=1):
             line = source_line.strip()
-            if not line or line.startswith("#") or line.startswith("//"):
+            if not line or line.startswith(("#", "//")):
                 continue
             if "=" not in line:
                 raise ValueError(f"Invalid GXT2 text line {line_number}: expected 'key = text'")

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
 from ..common import ByteSource
 from ..ydr import RadialBoneRigRule, Ydr, YdrSkeleton, rig_ydr_to_bones_radially
 from .model import Ydd, YddDrawable
 from .reader import read_ydd
-
 
 BODY_JIGGLE_BREAST_BONES: tuple[str, str] = ("SPR_R_Breast", "SPR_L_Breast")
 BODY_JIGGLE_BUTT_BONES: tuple[str, str] = ("SM_R_BackSkirtRoll", "SM_L_BackSkirtRoll")

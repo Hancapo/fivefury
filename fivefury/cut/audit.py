@@ -114,7 +114,7 @@ def audit_cutscene_resolution(
         except CutsceneResolutionCancelled:
             trace.finish()
             raise
-        except Exception as exc:  # noqa: BLE001 - audit records every malformed asset
+        except Exception as exc:
             trace.finish()
             entry = CutsceneAuditEntry(
                 path=asset.path,

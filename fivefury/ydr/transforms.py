@@ -7,7 +7,6 @@ import numpy as np
 
 from .model import Matrix4, YdrBone, YdrSkeleton
 
-
 _PED_PROCEDURAL_SIBLING_COPIES = (
     ("SKEL_L_Thigh", "RB_L_ThighRoll"),
     ("SKEL_R_Thigh", "RB_R_ThighRoll"),

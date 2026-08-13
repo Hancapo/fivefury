@@ -59,7 +59,7 @@ class FlexibleIntEnum(IntEnum):
     @classmethod
     def _missing_(cls, value: object) -> FlexibleIntEnum:
         if not isinstance(value, int):
-            raise ValueError(f"{value!r} is not a valid {cls.__name__}")
+            raise TypeError(f"{value!r} is not a valid {cls.__name__}")
         member = int.__new__(cls, value)
         member._name_ = f"UNKNOWN_{value}"
         member._value_ = value

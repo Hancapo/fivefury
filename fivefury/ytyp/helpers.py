@@ -5,13 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from ..metahash import HashLike, MetaHash
-
 from .asset_types import ArchetypeAssetType
 from .base_archetype import BaseArchetypeDef
 from .flags import ArchetypeFlags, TimeArchetypeFlags
 from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 from .model import Ytyp
-
 
 CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS = ArchetypeFlags.IS_TYPE_OBJECT
 CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS = ArchetypeFlags.IS_TYPE_OBJECT | ArchetypeFlags.USE_AMBIENT_SCALE
@@ -20,7 +18,7 @@ CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS = ArchetypeFlags.IS_TYPE_OBJECT | Archety
 def cutscene_prop_flags(
     *,
     animated: bool = True,
-    extra: int | ArchetypeFlags = ArchetypeFlags(0),
+    extra: int | ArchetypeFlags = 0,
 ) -> ArchetypeFlags:
     flags = CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS if animated else CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS
     return flags | ArchetypeFlags(int(extra))

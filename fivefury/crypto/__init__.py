@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
+from ..hashing import jenk_hash
 from .backends import _AesEcbCipher, _build_windows_aes_decryptor
 from .keys import (
     _AES_KEY_SHA1,
@@ -23,7 +24,6 @@ from .keys import (
     _save_cache,
     _search_sha1_window,
 )
-from ..hashing import jenk_hash
 
 NONE_ENCRYPTION: Final[int] = 0
 OPEN_ENCRYPTION: Final[int] = 0x4E45504F
@@ -128,11 +128,14 @@ class GameCrypto:
             data = _load_cache(cache)
             item = data.get(cache_key)
             stat = exe_path.stat()
-            if isinstance(item, dict):
-                if int(item.get("size", -1)) == stat.st_size and int(item.get("mtime_ns", -1)) == stat.st_mtime_ns:
-                    encoded = item.get("aes_key")
-                    if isinstance(encoded, str):
-                        aes_key = base64.b64decode(encoded)
+            if (
+                isinstance(item, dict)
+                and int(item.get("size", -1)) == stat.st_size
+                and int(item.get("mtime_ns", -1)) == stat.st_mtime_ns
+            ):
+                encoded = item.get("aes_key")
+                if isinstance(encoded, str):
+                    aes_key = base64.b64decode(encoded)
         if aes_key is None:
             aes_key = _search_sha1_window(exe_path, _AES_KEY_SHA1, length=32)
             if use_cache:

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import ClassVar
 from collections.abc import Iterator
+from typing import ClassVar
 
 from ..gamefile import GameFileType
-from .base import _DAT_VIRTUAL_BASE, _drawable_texture_dictionary_pointer, ResourceTextureAsset
+from .base import (
+    _DAT_VIRTUAL_BASE,
+    ResourceTextureAsset,
+    _drawable_texture_dictionary_pointer,
+)
 
 
 @dataclasses.dataclass(slots=True)

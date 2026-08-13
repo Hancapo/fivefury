@@ -12,8 +12,13 @@ from .enums import (
     coerce_ymap_lod_light_category,
     coerce_ymap_lod_light_type,
 )
-from .packing import clamp_byte, pack_lod_light_u8, pack_rgbi, unpack_lod_light_u8, unpack_rgbi
-
+from .packing import (
+    clamp_byte,
+    pack_lod_light_u8,
+    pack_rgbi,
+    unpack_lod_light_u8,
+    unpack_rgbi,
+)
 
 MAX_LOD_LIGHT_CONE_ANGLE = 180.0
 MAX_LOD_LIGHT_CORONA_INTENSITY = 32.0

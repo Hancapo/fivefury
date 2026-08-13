@@ -86,7 +86,13 @@ from .event_api import (
     unload_subtitles,
 )
 from .io import cut_to_scene, read_cut_scene, read_cutxml_scene, scene_to_cut
-from .subtitles import CutSubtitleCue, CutSubtitleTrack, build_subtitle_gxt2, install_subtitles, subtitle_cues_from_text
+from .subtitles import (
+    CutSubtitleCue,
+    CutSubtitleTrack,
+    build_subtitle_gxt2,
+    install_subtitles,
+    subtitle_cues_from_text,
+)
 
 CutScene.install_subtitles = install_subtitles
 

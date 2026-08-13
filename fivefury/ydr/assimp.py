@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable, Sequence
 
 import numpy
 
-from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput
-from .builder import save_ydr
-from .defs import YdrLod
-from .gen9_shader_enums import YdrGen9Shader
-from .shader_enums import YdrShader
-from .write_geometry import compute_bounds
 from ..game_target import GameTarget, coerce_game_target
 from ..texture import Texture
 from ..ytd import TextureFormat, Ytd
 from ..ytyp import Archetype, Ytyp, cutscene_prop_flags
 from ..ytyp.archetypes import ArchetypeAssetType
 from ..ytyp.lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
+from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput
+from .builder import save_ydr
+from .defs import YdrLod
+from .gen9_shader_enums import YdrGen9Shader
+from .shader_enums import YdrShader
+from .write_geometry import compute_bounds
 
 _LEGACY_YDR_VERSION = 165
 _ENHANCED_YDR_VERSION = 159
@@ -199,7 +199,7 @@ def _colour4(value: Any) -> tuple[float, float, float, float] | None:
 
 
 def _byte_from_unit(value: float) -> int:
-    return int(round(_clamp_unit(value) * 255.0)) & 0xFF
+    return round(_clamp_unit(value) * 255.0) & 0xFF
 
 
 def _solid_colour_texfury_texture(name: str, colour: tuple[float, float, float, float]) -> Texture:

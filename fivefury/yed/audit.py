@@ -71,7 +71,7 @@ def audit_yed_paths(
     for path in iter_yed_files(paths):
         try:
             reports.append(audit_yed_file(path, skeleton=skeleton))
-        except Exception as exc:  # noqa: BLE001 - audits record malformed inputs.
+        except Exception as exc:
             reports.append(
                 YedAuditReport(
                     path=str(path),
@@ -107,7 +107,7 @@ def audit_yed_cache(
             if not isinstance(parsed, Yed):
                 raise TypeError("asset did not decode to Yed")
             reports.append(audit_yed(parsed, skeleton=skeleton))
-        except Exception as exc:  # noqa: BLE001 - audits record malformed inputs.
+        except Exception as exc:
             reports.append(
                 YedAuditReport(
                     path=str(getattr(asset, "path", "")),

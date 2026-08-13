@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from .grass import (
-    Aabb,
     BATCH_VERT_MULTIPLIER,
+    YMAP_GRASS_STRUCT_INFOS,
+    Aabb,
     GrassBatch,
     GrassInstance,
     GrassInstanceBatch,
     InstancedData,
     InstancedMapData,
-    YMAP_GRASS_STRUCT_INFOS,
 )
 from .lights import (
     MAX_LOD_LIGHT_CAPSULE_EXTENT,
@@ -23,7 +23,6 @@ from .lights import (
     _coerce_lod_lights,
 )
 from .occluders import AngleMode, BoxOccluder, OccludeModel, _coerce_occlude_model
-
 
 YMAP_SURFACE_STRUCT_INFOS = YMAP_GRASS_STRUCT_INFOS
 

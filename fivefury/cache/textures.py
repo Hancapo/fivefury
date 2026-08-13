@@ -75,7 +75,7 @@ class TextureCatalog:
             return None
         try:
             catalog = read_ytd_catalog(data)
-        except Exception as exc:  # noqa: BLE001 - catalog records malformed assets
+        except Exception as exc:
             self.errors[asset.path] = f"{type(exc).__name__}: {exc}"
             return None
         self._dictionaries[asset.path] = catalog

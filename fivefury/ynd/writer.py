@@ -124,9 +124,9 @@ def build_ynd_system_layout(
         offset = nodes_offset + (index * _NODE_SIZE) if nodes_offset else 0
         link_id = current_link_index if node.links else 0
         current_link_index += len(node.links)
-        position_x = int(round(node.position[0] * 4.0))
-        position_y = int(round(node.position[1] * 4.0))
-        position_z = int(round(node.position[2] * 32.0))
+        position_x = round(node.position[0] * 4.0)
+        position_y = round(node.position[1] * 4.0)
+        position_z = round(node.position[2] * 32.0)
         writer.write(
             offset,
             pack_struct(
@@ -159,10 +159,10 @@ def build_ynd_system_layout(
             writer.pack_into(
                 "hhhhHBB",
                 junction_offset,
-                int(round(junction.max_z * 32.0)),
-                int(round(junction.position[0] * 4.0)),
-                int(round(junction.position[1] * 4.0)),
-                int(round(junction.min_z * 32.0)),
+                round(junction.max_z * 32.0),
+                round(junction.position[0] * 4.0),
+                round(junction.position[1] * 4.0),
+                round(junction.min_z * 32.0),
                 int(heightmap_cursor),
                 int(junction.heightmap_dim_x),
                 int(junction.heightmap_dim_y),

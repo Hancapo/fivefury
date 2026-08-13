@@ -4,8 +4,8 @@ import dataclasses
 import math
 from typing import Any
 
-from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .enums import YmapCarGenFlags, coerce_ymap_cargen_flags
 
 

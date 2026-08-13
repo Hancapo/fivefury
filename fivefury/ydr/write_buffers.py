@@ -5,10 +5,10 @@ import dataclasses
 from ..binary import align
 from ..resource import ResourceWriter
 from .gen9 import (
-    ShaderResourceViewDimensionG9,
     _G9_INDEX_BUFFER_BIND_FLAGS,
     _G9_VERTEX_BUFFER_BIND_FLAGS,
     _G9_VERTEX_BUFFER_BIND_FLAGS_SKINNED,
+    ShaderResourceViewDimensionG9,
     build_gen9_vertex_declaration,
     build_shader_resource_view_g9,
 )

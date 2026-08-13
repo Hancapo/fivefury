@@ -11,8 +11,6 @@ from ..pso import (
     PSIG,
     PSIN,
     STRE,
-    PsoArrayHeader as _PsoArrayHeader,
-    PsoBlock as _PsoBlock,
     PsoDataTypeArray,
     PsoDataTypeBool,
     PsoDataTypeEnum,
@@ -34,14 +32,32 @@ from ..pso import (
     PsoDataTypeUByte,
     PsoDataTypeUInt,
     PsoDataTypeUShort,
-    PsoEntry as _PsoEntry,
     PsoHashedString,
     PsoNode,
-    PsoPointer as _PsoPointer,
     PsoReader,
+)
+from ..pso import (
+    PsoArrayHeader as _PsoArrayHeader,
+)
+from ..pso import (
+    PsoBlock as _PsoBlock,
+)
+from ..pso import (
+    PsoEntry as _PsoEntry,
+)
+from ..pso import (
+    PsoPointer as _PsoPointer,
+)
+from ..pso import (
     PsoStruct as _PsoStruct,
+)
+from ..pso import (
     decode_array_header as _decode_array_header,
+)
+from ..pso import (
     decode_pointer as _decode_pointer,
+)
+from ..pso import (
     decode_pointer_word as _decode_pointer_word,
 )
 from .model import CutFile, CutHashedString, CutNode

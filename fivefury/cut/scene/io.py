@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..events import get_cut_event_sort_rank
-from ..flags import CutSceneFlags, DEFAULT_PLAYABLE_CUTSCENE_FLAGS, pack_cutscene_flags, unpack_cutscene_flags
+from ..flags import (
+    DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
+    CutSceneFlags,
+    pack_cutscene_flags,
+    unpack_cutscene_flags,
+)
 from ..model import CutFile, CutHashedString, CutNode
 from ..pso import read_cut
 from ..xml import read_cutxml
@@ -11,7 +16,6 @@ from .base import CutScene
 from .bindings import _binding_from_node
 from .shared import _clone_value, _coerce_name, _freeze_value, _hashed_string
 from .timeline import CutTrack, _timeline_event_from_resolved
-
 
 _CUTSCENE_FPS = 30.0
 _CONCAT_DATA_TYPE_HASH = 1737539928
@@ -245,7 +249,7 @@ def _resolved_cutscene_flags(scene: CutScene, camera_cut_list: list[float]) -> l
 def _range_end(scene: CutScene) -> int:
     if scene.range_end is not None:
         return int(scene.range_end)
-    return max(0, int(round(float(scene.duration or 0.0) * _CUTSCENE_FPS)))
+    return max(0, round(float(scene.duration or 0.0) * _CUTSCENE_FPS))
 
 
 def _concat_data(scene: CutScene, scene_name: str, range_start: int, range_end: int) -> list[CutNode]:

@@ -5,9 +5,10 @@ from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from ..colors import CssColor, parse_css_argb, parse_css_rgb
-from ..meta.backed import MetaBackedStruct
 from ..meta import RawStruct
+from ..meta.backed import MetaBackedStruct
 from .extension_defs import YTYP_EXTENSION_STRUCT_INFOS
+
 
 @dataclasses.dataclass(slots=True)
 class LightAttrDef(MetaBackedStruct):

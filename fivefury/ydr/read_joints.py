@@ -4,8 +4,8 @@ from collections.abc import Callable
 
 from .model import (
     YdrJointRotationLimit,
-    YdrJointTranslationLimit,
     YdrJoints,
+    YdrJointTranslationLimit,
 )
 
 _ROTATION_LIMIT_SIZE = 0xC0

@@ -10,13 +10,17 @@ from ..pso import (
     PsoDataTypeFloat,
     PsoDataTypeFloat3,
     PsoDataTypeFloat4,
+    PsoDataTypeSInt,
     PsoDataTypeString,
     PsoDataTypeStructure,
     PsoDataTypeUByte,
     PsoDataTypeUInt,
-    PsoDataTypeSInt,
     PsoDataTypeUShort,
+)
+from ..pso import (
     PsoEntry as _PsoEntry,
+)
+from ..pso import (
     PsoStruct as _PsoStruct,
 )
 from ..pso.schema import serialize_psch as _serialize_psch

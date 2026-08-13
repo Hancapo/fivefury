@@ -117,7 +117,7 @@ def _resolve_subtitle_dictionaries(
             check_cutscene_resolution_cancelled(cancellation)
             try:
                 game_file = cache.load_asset(asset)
-            except Exception as exc:  # noqa: BLE001 - candidate selection is best effort
+            except Exception as exc:
                 game_file = None
                 _ = exc
             if game_file is None or game_file.parsed is None:

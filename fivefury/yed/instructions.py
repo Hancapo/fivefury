@@ -230,7 +230,7 @@ def parse_instruction_buffers(
                     operands=operands,
                 )
             )
-        except Exception as exc:  # noqa: BLE001 - preserve malformed VM data.
+        except Exception as exc:
             instructions.append(
                 YedInstruction(
                     opcode,

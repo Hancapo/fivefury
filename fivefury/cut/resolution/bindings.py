@@ -328,7 +328,7 @@ def _resolve_binding_texture_chains(
                     resolved.texture_files.append(game_file)
             except CutsceneResolutionCancelled:
                 raise
-            except Exception as exc:  # noqa: BLE001 - dependency failures become diagnostics
+            except Exception as exc:
                 issues.append(
                     CutsceneResolveIssue(
                         severity="warning",

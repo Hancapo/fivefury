@@ -1,8 +1,19 @@
-from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput, create_ydr
-from .builder import build_ydr_bytes, save_ydr, ydr_to_build
-from .collision import YdrCollisionStats, build_bound_from_render_geometry, set_bound_from_render_geometry
-from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding
 from .assimp import AssimpMaterial, AssimpScene, assimp_to_ydr, read_assimp_scene
+from .build_types import (
+    YdrBuild,
+    YdrMaterialInput,
+    YdrMeshInput,
+    YdrModelInput,
+    YdrTextureInput,
+    create_ydr,
+)
+from .builder import build_ydr_bytes, save_ydr, ydr_to_build
+from .collision import (
+    YdrCollisionStats,
+    build_bound_from_render_geometry,
+    set_bound_from_render_geometry,
+)
+from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding
 from .gen9 import (
     ShaderGen9Definition,
     ShaderGen9Library,
@@ -20,18 +31,23 @@ from .gen9_shader_info import (
     get_ydr_gen9_shader_info,
     print_ydr_gen9_shader_info,
 )
-from .materials import YdrMaterialDescriptor, YdrMaterialLayout, YdrMaterialParameter, build_material_descriptor
+from .materials import (
+    YdrMaterialDescriptor,
+    YdrMaterialLayout,
+    YdrMaterialParameter,
+    build_material_descriptor,
+)
 from .model import (
+    YDR_BONE_ANIMATABLE_FLAGS,
     ColorChannel,
     Ydr,
-    YDR_BONE_ANIMATABLE_FLAGS,
     YdrBone,
     YdrBoneFlagName,
     YdrBoneFlags,
     YdrJointControlPoint,
     YdrJointRotationLimit,
-    YdrJointTranslationLimit,
     YdrJoints,
+    YdrJointTranslationLimit,
     YdrLight,
     YdrLightType,
     YdrMaterial,

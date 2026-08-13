@@ -45,7 +45,7 @@ def coerce_parameter_inline(
     expected_count: int = 1,
 ) -> tuple[int, bytes]:
     if isinstance(value, str):
-        raise ValueError('String shader parameters are not supported by the YDR builder yet')
+        raise TypeError('String shader parameters are not supported by the YDR builder yet')
     if isinstance(value, tuple) and value and isinstance(value[0], tuple):
         vectors = [_coerce_parameter_vector(item) for item in value]
     else:
@@ -66,7 +66,7 @@ def _coerce_gen9_cbuffer_bytes(
     if length <= 0:
         return b''
     if isinstance(value, str):
-        raise ValueError(f"String Gen9 shader parameter '{parameter.name}' is not supported")
+        raise TypeError(f"String Gen9 shader parameter '{parameter.name}' is not supported")
     if isinstance(value, tuple) and value and isinstance(value[0], tuple):
         vectors = [_coerce_parameter_vector(item) for item in value]
         expected_vectors = max(1, length // 16)
