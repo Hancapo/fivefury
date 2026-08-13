@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, TypeVar
 
-from ..hashing import jenk_hash
-from ..meta.defs import META_NAME_REVERSE
-from ..metahash import MetaHash
-from ..pso import PsoHashedString, PsoNode
+from .hashing import jenk_hash
+from .meta.defs import META_NAME_REVERSE
+from .metahash import MetaHash
+from .pso import PsoHashedString, PsoNode
 
 T = TypeVar("T")
 
@@ -35,7 +35,11 @@ def field(value: Any, name: str, *aliases: str, default: Any = None) -> Any:
 
 def items(value: Any, name: str, *aliases: str) -> list[Any]:
     result = field(value, name, *aliases)
-    return list(result) if isinstance(result, (list, tuple)) else []
+    return list_value(result)
+
+
+def list_value(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, (list, tuple)) else []
 
 
 def text(value: Any) -> str:
@@ -56,6 +60,10 @@ def meta_hash(value: Any) -> MetaHash:
     return MetaHash(int(value or 0))
 
 
+def hash_value(value: Any) -> int:
+    return meta_hash(value).uint
+
+
 def number(value: Any, default: T) -> T:
     try:
         return type(default)(value)
@@ -67,11 +75,19 @@ def boolean(value: Any, default: bool = False) -> bool:
     return default if value is None else bool(value)
 
 
-def vector(value: Any, size: int = 3) -> tuple[float, ...]:
+def vector(
+    value: Any,
+    size: int = 3,
+    *,
+    default: tuple[float, ...] | None = None,
+) -> tuple[float, ...]:
+    fallback = default if default is not None else (0.0,) * size
+    if len(fallback) != size:
+        raise ValueError("vector default length must match size")
     if not isinstance(value, (list, tuple)):
-        return (0.0,) * size
+        return fallback
     values = [float(component) for component in value[:size]]
-    return tuple(values + [0.0] * (size - len(values)))
+    return tuple(values) + fallback[len(values) :]
 
 
 def enum_value(enum_type: type[T], value: Any, default: T) -> T | int:
@@ -105,7 +121,9 @@ __all__ = [
     "enum_value",
     "field",
     "fields",
+    "hash_value",
     "items",
+    "list_value",
     "make_name_resolver",
     "meta_hash",
     "node_type_name",

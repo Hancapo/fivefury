@@ -5,7 +5,11 @@ from typing import Any
 
 from ..gtxd import TxdRelationship
 from ..metahash import MetaHash
-from ..pso import PsoHashedString, PsoNode
+from ..pso_values import field as _field
+from ..pso_values import fields as _fields
+from ..pso_values import list_value as _list
+from ..pso_values import meta_hash as _meta_hash
+from ..pso_values import text as _string
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -66,43 +70,6 @@ class YmtPedMetadata:
     @property
     def ped_names(self) -> list[MetaHash]:
         return [item.name for item in self.init_datas]
-
-
-def _fields(value: Any) -> dict[str, Any]:
-    if isinstance(value, PsoNode):
-        return value.fields or {}
-    if isinstance(value, dict):
-        return value
-    return {}
-
-
-def _field(fields: dict[str, Any], *names: str, default: Any = None) -> Any:
-    for name in names:
-        if name in fields:
-            return fields[name]
-    return default
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def _string(value: Any) -> str:
-    if isinstance(value, PsoHashedString):
-        return str(MetaHash(value.hash))
-    if isinstance(value, MetaHash):
-        return str(value)
-    return str(value or "")
-
-
-def _meta_hash(value: Any) -> MetaHash:
-    if isinstance(value, PsoHashedString):
-        return MetaHash(value.hash)
-    if isinstance(value, MetaHash):
-        return value
-    if isinstance(value, str):
-        return MetaHash(value)
-    return MetaHash(int(value or 0))
 
 
 def _txd_relationships(value: Any) -> list[TxdRelationship]:
