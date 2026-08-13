@@ -8,7 +8,7 @@ from .entries import RpfBinaryFileEntry, RpfDirectoryEntry, RpfResourceFileEntry
 from .utils import RPF_BLOCK_SIZE, RPF_MAGIC, _ceil_div
 
 if TYPE_CHECKING:
-    from . import RpfArchive
+    from .archive import RpfArchive
 
 
 def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:

@@ -14,7 +14,8 @@ from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_ind
 from ..crypto import GameCrypto, load_game_keys
 from ..gamefile import GameFileType, guess_game_file_type
 from ..hashing import _get_lut
-from ..rpf import RpfArchive, RpfFileEntry, _normalize_key
+from ..rpf import RpfArchive, RpfFileEntry
+from ..rpf.utils import _normalize_key
 
 _SCAN_INDEX_VERSION = 12
 _SCAN_GC_INTERVAL = 8

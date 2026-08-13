@@ -20,9 +20,8 @@ from ..rpf import (
     RpfArchive,
     RpfEntry,
     RpfFileEntry,
-    _decompress_deflate,
-    _normalize_key,
 )
+from ..rpf.utils import _decompress_deflate, _normalize_key
 from ..vehiclemeta.resource import read_vehicle_meta
 from ..water.io import read_water
 from ..ybn import read_ybn

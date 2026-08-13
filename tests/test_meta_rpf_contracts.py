@@ -962,7 +962,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         struct.pack_into("<I", encrypted, 12, NG_ENCRYPTION)
 
         clear_game_crypto()
-        with patch("fivefury.rpf.ensure_game_crypto", return_value=_FakeCrypto()) as mocked:
+        with patch("fivefury.rpf.archive.ensure_game_crypto", return_value=_FakeCrypto()) as mocked:
             parsed = RpfArchive.from_bytes(bytes(encrypted), name="auto_crypto.rpf")
 
         mocked.assert_called_once()
@@ -2052,7 +2052,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertGreaterEqual(header.graphics_size, len(data))
 
     def test_rpf_writer_supports_large_resource_entries(self) -> None:
-        import fivefury.rpf as rpf_module
+        import fivefury.rpf.archive as rpf_module
         from fivefury.rpf import RpfArchive
         from fivefury.rpf.entries import RpfResourceFileEntry
         from fivefury.rpf.utils import RSC7_MAGIC
