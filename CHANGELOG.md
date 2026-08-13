@@ -25,6 +25,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - RPF construction uses constant-time directory and file child lookup.
 - Hash registration, cache path export, and texture indexing use native batch operations.
 - META block assembly avoids repeated buffer copies and field-name conversions.
+- YCD track interpolation uses a shared native batch vector and quaternion kernel.
 
 ## [0.3.16] - 2026-08-12
 

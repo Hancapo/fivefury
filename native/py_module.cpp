@@ -82,6 +82,7 @@ PyMethodDef module_methods[] = {
     {"ycd_encode_frame_channels", mod_ycd_encode_frame_channels, METH_VARARGS, nullptr},
     {"ycd_decode_quantized_values", mod_ycd_decode_quantized_values, METH_VARARGS, nullptr},
     {"ycd_decode_linear_values", mod_ycd_decode_linear_values, METH_VARARGS, nullptr},
+    {"vector_interpolate_many", mod_vector_interpolate_many, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 

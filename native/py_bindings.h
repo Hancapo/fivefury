@@ -120,6 +120,7 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args);
 PyObject* mod_ycd_encode_frame_channels(PyObject*, PyObject* args);
 PyObject* mod_ycd_decode_quantized_values(PyObject*, PyObject* args);
 PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args);
+PyObject* mod_vector_interpolate_many(PyObject*, PyObject* args);
 
 extern PyMethodDef module_methods[];
 extern PyModuleDef module_def;
