@@ -46,6 +46,7 @@ tests/*
 !tests/test_vehiclemeta.py
 !tests/test_mlo.py
 !tests/test_water.py
+!tests/test_xml.py
 !tests/test_heightmap.py
 .claude/
 fivefury-*/
