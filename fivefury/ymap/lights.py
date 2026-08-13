@@ -158,6 +158,23 @@ class LodLightsSoa:
     def __len__(self) -> int:
         return len(self.direction)
 
+    def validate(self) -> list[str]:
+        expected = len(self.direction)
+        issues: list[str] = []
+        for name in (
+            "falloff",
+            "falloff_exponent",
+            "time_and_state_flags",
+            "hash",
+            "cone_inner_angle",
+            "cone_outer_angle_or_cap_ext",
+            "corona_intensity",
+        ):
+            actual = len(getattr(self, name))
+            if actual != expected:
+                issues.append(f"LODLightsSOA.{name} has {actual} entries; expected {expected}")
+        return issues
+
     def to_meta(self) -> dict[str, Any]:
         return {
             "direction": self.direction,
@@ -210,6 +227,16 @@ class DistantLodLightsSoa:
 
     def __len__(self) -> int:
         return len(self.position)
+
+    def validate(self) -> list[str]:
+        issues: list[str] = []
+        if len(self.RGBI) != len(self.position):
+            issues.append(
+                f"DistantLODLightsSOA.RGBI has {len(self.RGBI)} entries; expected {len(self.position)}"
+            )
+        if not 0 <= int(self.num_street_lights) <= len(self.position):
+            issues.append("DistantLODLightsSOA.numStreetLights must fit the distant light count")
+        return issues
 
     def to_meta(self) -> dict[str, Any]:
         return {

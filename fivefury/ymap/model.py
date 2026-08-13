@@ -301,17 +301,20 @@ class Ymap(MetaHashFieldsMixin):
         lod_count = len(lod) if isinstance(lod, LodLightsSoa) else 0
         distant_count = len(distant) if isinstance(distant, DistantLodLightsSoa) else 0
 
-        if lod_count == 0:
-            if isinstance(distant, DistantLodLightsSoa):
-                distant.clamp_street_light_count()
-            return self
+        issues: list[str] = []
+        if isinstance(lod, LodLightsSoa):
+            issues.extend(lod.validate())
+        if isinstance(distant, DistantLodLightsSoa):
+            issues.extend(distant.validate())
+        if issues:
+            raise ValueError("Invalid YMAP light arrays:\n- " + "\n- ".join(issues))
 
-        if not isinstance(distant, DistantLodLightsSoa) or distant_count == 0:
-            raise ValueError("YMAP LOD lights require matching DistantLODLightsSOA entries for positions and RGBI")
+        # The game stores distant parents and LOD children in separate YMAPs.
+        # Reordering is only safe when both paired arrays are present together.
+        if lod_count == 0 or distant_count == 0:
+            return self
         if distant_count != lod_count:
-            raise ValueError(
-                f"YMAP LOD light count mismatch: LODLightsSOA has {lod_count} entries but DistantLODLightsSOA has {distant_count}"
-            )
+            return self
 
         ordered_lights = self.iter_lod_lights()
         street_lights = [light for light in ordered_lights if light.is_street_light]
@@ -479,21 +482,12 @@ class Ymap(MetaHashFieldsMixin):
 
     def validate(self, *, ytyps: Any = None, ybns: Any = None) -> list[str]:
         issues: list[str] = []
-        if not self.entities and not self.box_occluders and not self.occlude_models and not self.car_generators:
-            issues.append("YMAP has no entities or surfaces")
         lod_count = len(self.lod_lights) if isinstance(self.lod_lights, LodLightsSoa) else 0
         distant_count = len(self.distant_lod_lights) if isinstance(self.distant_lod_lights, DistantLodLightsSoa) else 0
-        if lod_count > 0 and distant_count == 0:
-            issues.append("YMAP LODLightsSOA requires matching DistantLODLightsSOA entries")
-        elif lod_count > 0 and lod_count != distant_count:
-            issues.append(
-                f"YMAP LOD light count mismatch: LODLightsSOA has {lod_count} entries but DistantLODLightsSOA has {distant_count}"
-            )
-        if (
-            isinstance(self.distant_lod_lights, DistantLodLightsSoa)
-            and self.distant_lod_lights.num_street_lights > len(self.distant_lod_lights)
-        ):
-            issues.append("YMAP DistantLODLightsSOA numStreetLights exceeds the distant light count")
+        if isinstance(self.lod_lights, LodLightsSoa):
+            issues.extend(self.lod_lights.validate())
+        if isinstance(self.distant_lod_lights, DistantLodLightsSoa):
+            issues.extend(self.distant_lod_lights.validate())
         if lod_count > 0 and distant_count == lod_count:
             seen_non_street = False
             for light in self.iter_lod_lights():
@@ -542,9 +536,9 @@ class Ymap(MetaHashFieldsMixin):
     ) -> bytes:
         self.build(ytyps=ytyps, ybns=ybns)
         if validate:
-            issues = self.validate_mlos(ytyps=ytyps, ybns=ybns)
+            issues = self.validate(ytyps=ytyps, ybns=ybns)
             if issues:
-                raise ValueError("Invalid YMAP MLO:\n- " + "\n- ".join(issues))
+                raise ValueError("Invalid YMAP:\n- " + "\n- ".join(issues))
         builder = MetaBuilder(struct_infos=YMAP_STRUCT_INFOS, enum_infos=YMAP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapData"), root_value=self.to_meta_root())
         system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)
