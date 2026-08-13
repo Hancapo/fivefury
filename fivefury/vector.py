@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterable
 
+from . import _native_abi3 as _ffi
+
 Vector3 = tuple[float, float, float]
 Vector4 = tuple[float, float, float, float]
 Quaternion = tuple[float, float, float, float]
@@ -172,6 +174,20 @@ def quat_nlerp(start: Quaternion, end: Quaternion, amount: float) -> Quaternion:
     )
     fallback = normalized_start if alpha <= 0.5 else normalized_end
     return quat_normalize(blended, fallback=fallback)
+
+
+def interpolate_vector4_many(
+    starts: Iterable[Vector4],
+    ends: Iterable[Vector4],
+    amount: float,
+    rotations: Iterable[bool],
+) -> list[Vector4]:
+    return _ffi.vector_interpolate_many(
+        list(starts),
+        list(ends),
+        float(amount),
+        list(rotations),
+    )
 
 
 def vec_min(values: Iterable[Vector3]) -> Vector3:

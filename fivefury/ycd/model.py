@@ -9,7 +9,7 @@ from ..buckets import at_hash_bucket_capacity
 from ..game_target import GameTarget
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
-from ..vector import quat_nlerp
+from ..vector import interpolate_vector4_many
 from .sequences import (
     YcdAnimationTrack,
     YcdAnimSequence,
@@ -479,17 +479,21 @@ class YcdAnimation:
             return values0
         values1 = self._evaluate_integer_tracks(pos.frame1, track=track)
         keys = set(values0) | set(values1)
-        result: dict[tuple[int, int], tuple[float, float, float, float]] = {}
+        ordered_keys: list[tuple[int, int]] = []
+        starts: list[tuple[float, float, float, float]] = []
+        ends: list[tuple[float, float, float, float]] = []
+        rotations: list[bool] = []
         for key in keys:
             v0 = values0.get(key, values1.get(key))
             v1 = values1.get(key, values0.get(key))
             if v0 is None or v1 is None:
                 continue
-            if is_ycd_rotation_track(key[1]):
-                result[key] = quat_nlerp(v0, v1, pos.alpha1)
-            else:
-                result[key] = _lerp_vector4(v0, v1, pos.alpha1)
-        return result
+            ordered_keys.append(key)
+            starts.append(v0)
+            ends.append(v1)
+            rotations.append(is_ycd_rotation_track(key[1]))
+        values = interpolate_vector4_many(starts, ends, pos.alpha1, rotations)
+        return dict(zip(ordered_keys, values, strict=True))
 
     def _evaluate_integer_tracks(self, frame: int, *, track: int | YcdAnimationTrack | None = None) -> dict[tuple[int, int], tuple[float, float, float, float]]:
         result: dict[tuple[int, int], tuple[float, float, float, float]] = {}
@@ -1075,20 +1079,6 @@ def create_ycd_uv_clip(
         end_time=float(end_time),
         rate=float(rate),
         animation=animation,
-    )
-
-
-def _lerp_vector4(
-    value0: tuple[float, float, float, float],
-    value1: tuple[float, float, float, float],
-    alpha1: float,
-) -> tuple[float, float, float, float]:
-    alpha0 = 1.0 - float(alpha1)
-    return (
-        float((value0[0] * alpha0) + (value1[0] * alpha1)),
-        float((value0[1] * alpha0) + (value1[1] * alpha1)),
-        float((value0[2] * alpha0) + (value1[2] * alpha1)),
-        float((value0[3] * alpha0) + (value1[3] * alpha1)),
     )
 
 

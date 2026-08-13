@@ -23,6 +23,15 @@ inline Vec4 vec4_sub(const Vec4& left, const Vec4& right) {
     return {left.x - right.x, left.y - right.y, left.z - right.z, left.w - right.w};
 }
 
+inline Vec4 vec4_lerp(const Vec4& start, const Vec4& end, const double amount) {
+    return {
+        start.x + (end.x - start.x) * amount,
+        start.y + (end.y - start.y) * amount,
+        start.z + (end.z - start.z) * amount,
+        start.w + (end.w - start.w) * amount,
+    };
+}
+
 inline Vec4 quat_normalize(const Vec4& value) {
     const auto length = std::sqrt(
         value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w
@@ -85,16 +94,15 @@ inline Vec4 quat_to_euler_xyz(const Vec4& value) {
 }
 
 inline Vec4 quat_nlerp(const Vec4& start, Vec4 end, double amount) {
-    const auto dot = start.x * end.x + start.y * end.y + start.z * end.z + start.w * end.w;
+    const auto alpha = std::isfinite(amount) ? std::clamp(amount, 0.0, 1.0) : 0.0;
+    const auto normalized_start = quat_normalize(start);
+    end = quat_normalize(end);
+    const auto dot = normalized_start.x * end.x + normalized_start.y * end.y +
+                     normalized_start.z * end.z + normalized_start.w * end.w;
     if (dot < 0.0) {
         end = {-end.x, -end.y, -end.z, -end.w};
     }
-    return quat_normalize({
-        start.x + (end.x - start.x) * amount,
-        start.y + (end.y - start.y) * amount,
-        start.z + (end.z - start.z) * amount,
-        start.w + (end.w - start.w) * amount,
-    });
+    return quat_normalize(vec4_lerp(normalized_start, end, alpha));
 }
 
 inline Vec4 quat_rotate_vector(const Vec4& rotation, const Vec4& value) {
