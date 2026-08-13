@@ -436,6 +436,38 @@ def _ydr_split_mesh_indices(
     )
 
 
+def _bounds_decode_polygons(
+    data: bytes,
+    start: int,
+    count: int,
+) -> list[tuple[int, bytes, tuple[object, ...]]]:
+    return _ffi.bounds_decode_polygons(data, int(start), int(count))
+
+
+def _bounds_decode_bvh_records(
+    data: bytes,
+    start: int,
+    count: int,
+    center: tuple[float, float, float],
+    quantum: tuple[float, float, float],
+) -> list[tuple[tuple[float, float, float], tuple[float, float, float], int, int]]:
+    return _ffi.bounds_decode_bvh_records(data, int(start), int(count), center, quantum)
+
+
+def _ynv_decode_edge_list(
+    data: bytes,
+    list_parts_pointer: int,
+    list_parts_count: int,
+    adjacent_area_ids: list[int],
+) -> list[tuple[int, int, int, int, int, int, int, int]]:
+    return _ffi.ynv_decode_edge_list(
+        data,
+        int(list_parts_pointer),
+        int(list_parts_count),
+        adjacent_area_ids,
+    )
+
+
 def _bounds_build_bvh(
     items: list[tuple[tuple[float, float, float], tuple[float, float, float], int]],
     fallback_minimum: tuple[float, float, float],

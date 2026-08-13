@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 
+from .. import _native as _native_backend
 from ..binary import f32, u16, u32, u64, vec3, vec4
 from ..resource import (
     checked_virtual_offset,
@@ -64,18 +65,6 @@ def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[in
     return read_virtual_pointer_array(system_data, pointer, count, base=0x50000000)
 
 
-def _dequantize_bvh_point(
-    quantized: tuple[int, int, int],
-    center: tuple[float, float, float],
-    quantum: tuple[float, float, float],
-) -> tuple[float, float, float]:
-    return (
-        center[0] + (quantized[0] * quantum[0]),
-        center[1] + (quantized[1] * quantum[1]),
-        center[2] + (quantized[2] * quantum[2]),
-    )
-
-
 def _read_vertices(
     pointer: int,
     count: int,
@@ -101,82 +90,72 @@ def _read_vertices(
     ]
 
 
-def _decode_polygon(index: int, raw: bytes) -> BoundPolygon:
-    raw_bytes = bytearray(raw)
-    polygon_type_value = raw_bytes[0] & 0x07
-    raw_bytes[0] &= 0xF8
-    raw = bytes(raw_bytes)
-    try:
-        polygon_type = BoundPolygonType(polygon_type_value)
-    except ValueError:
-        polygon_type = BoundPolygonType.TRIANGLE
+def _build_polygon(
+    index: int,
+    polygon_type_value: int,
+    raw: bytes,
+    values: tuple[object, ...],
+) -> BoundPolygon:
+    polygon_type = BoundPolygonType(polygon_type_value)
     common = {
         "polygon_type": polygon_type,
         "raw": raw,
         "index": index,
     }
     if polygon_type is BoundPolygonType.TRIANGLE:
-        tri_area, tri_index1, tri_index2, tri_index3, edge_index1, edge_index2, edge_index3 = struct.unpack_from("<f6H", raw, 0)
+        tri_area, tri_index1, tri_index2, tri_index3, edge_index1, edge_index2, edge_index3 = values
         return BoundPolygonTriangle(
             **common,
-            tri_area=tri_area,
-            tri_index1=tri_index1,
-            tri_index2=tri_index2,
-            tri_index3=tri_index3,
-            edge_index1=edge_index1,
-            edge_index2=edge_index2,
-            edge_index3=edge_index3,
+            tri_area=float(tri_area),
+            tri_index1=int(tri_index1),
+            tri_index2=int(tri_index2),
+            tri_index3=int(tri_index3),
+            edge_index1=int(edge_index1),
+            edge_index2=int(edge_index2),
+            edge_index3=int(edge_index3),
         )
     if polygon_type is BoundPolygonType.SPHERE:
-        sphere_type, sphere_index = struct.unpack_from("<HH", raw, 0)
-        sphere_radius = struct.unpack_from("<f", raw, 4)[0]
-        unused0, unused1 = struct.unpack_from("<II", raw, 8)
+        sphere_type, sphere_index, sphere_radius, unused0, unused1 = values
         return BoundPolygonSphere(
             **common,
-            sphere_type=sphere_type,
-            sphere_index=sphere_index,
-            sphere_radius=sphere_radius,
-            unused0=unused0,
-            unused1=unused1,
+            sphere_type=int(sphere_type),
+            sphere_index=int(sphere_index),
+            sphere_radius=float(sphere_radius),
+            unused0=int(unused0),
+            unused1=int(unused1),
         )
     if polygon_type is BoundPolygonType.CAPSULE:
-        capsule_type, capsule_index1 = struct.unpack_from("<HH", raw, 0)
-        capsule_radius = struct.unpack_from("<f", raw, 4)[0]
-        capsule_index2, unused0 = struct.unpack_from("<HH", raw, 8)
-        unused1 = struct.unpack_from("<I", raw, 12)[0]
+        capsule_type, capsule_index1, capsule_radius, capsule_index2, unused0, unused1 = values
         return BoundPolygonCapsule(
             **common,
-            capsule_type=capsule_type,
-            capsule_index1=capsule_index1,
-            capsule_radius=capsule_radius,
-            capsule_index2=capsule_index2,
-            unused0=unused0,
-            unused1=unused1,
+            capsule_type=int(capsule_type),
+            capsule_index1=int(capsule_index1),
+            capsule_radius=float(capsule_radius),
+            capsule_index2=int(capsule_index2),
+            unused0=int(unused0),
+            unused1=int(unused1),
         )
     if polygon_type is BoundPolygonType.BOX:
-        box_type, box_index1, box_index2, box_index3, box_index4, unused0 = struct.unpack_from("<I4hI", raw, 0)
+        box_type, box_index1, box_index2, box_index3, box_index4, unused0 = values
         return BoundPolygonBox(
             **common,
-            box_type=box_type,
-            box_index1=box_index1,
-            box_index2=box_index2,
-            box_index3=box_index3,
-            box_index4=box_index4,
-            unused0=unused0,
+            box_type=int(box_type),
+            box_index1=int(box_index1),
+            box_index2=int(box_index2),
+            box_index3=int(box_index3),
+            box_index4=int(box_index4),
+            unused0=int(unused0),
         )
     if polygon_type is BoundPolygonType.CYLINDER:
-        cylinder_type, cylinder_index1 = struct.unpack_from("<HH", raw, 0)
-        cylinder_radius = struct.unpack_from("<f", raw, 4)[0]
-        cylinder_index2, unused0 = struct.unpack_from("<HH", raw, 8)
-        unused1 = struct.unpack_from("<I", raw, 12)[0]
+        cylinder_type, cylinder_index1, cylinder_radius, cylinder_index2, unused0, unused1 = values
         return BoundPolygonCylinder(
             **common,
-            cylinder_type=cylinder_type,
-            cylinder_index1=cylinder_index1,
-            cylinder_radius=cylinder_radius,
-            cylinder_index2=cylinder_index2,
-            unused0=unused0,
-            unused1=unused1,
+            cylinder_type=int(cylinder_type),
+            cylinder_index1=int(cylinder_index1),
+            cylinder_radius=float(cylinder_radius),
+            cylinder_index2=int(cylinder_index2),
+            unused0=int(unused0),
+            unused1=int(unused1),
         )
     return BoundPolygon(**common)
 
@@ -188,11 +167,11 @@ def _read_polygon_types(pointer: int, count: int, system_data: bytes) -> list[Bo
     end = start + (count * 16)
     if end > len(system_data):
         raise ValueError("polygon array is truncated")
-    polygons: list[BoundPolygon] = []
-    for index in range(count):
-        raw = system_data[start + (index * 16) : start + ((index + 1) * 16)]
-        polygons.append(_decode_polygon(index, raw))
-    return polygons
+    records = _native_backend._bounds_decode_polygons(system_data, start, count)
+    return [
+        _build_polygon(index, polygon_type, raw, values)
+        for index, (polygon_type, raw, values) in enumerate(records)
+    ]
 
 
 def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
@@ -215,17 +194,12 @@ def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
         end = start + (nodes_count * 16)
         if end > len(system_data):
             raise ValueError("BVH node array is truncated")
-        for qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, item_id, item_count in struct.iter_unpack(
-            "<6hHH", system_data[start:end]
-        ):
-            nodes.append(
-                BoundBvhNode(
-                    minimum=_dequantize_bvh_point((qmin_x, qmin_y, qmin_z), center, quantum),
-                    maximum=_dequantize_bvh_point((qmax_x, qmax_y, qmax_z), center, quantum),
-                    item_id=item_id,
-                    item_count=item_count,
-                )
+        nodes = [
+            BoundBvhNode(minimum=record_minimum, maximum=record_maximum, item_id=item_id, item_count=item_count)
+            for record_minimum, record_maximum, item_id, item_count in _native_backend._bounds_decode_bvh_records(
+                system_data, start, nodes_count, center, quantum
             )
+        ]
 
     trees: list[BoundBvhTree] = []
     if trees_pointer and trees_count > 0:
@@ -233,17 +207,12 @@ def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
         end = start + (trees_count * 16)
         if end > len(system_data):
             raise ValueError("BVH tree array is truncated")
-        for qmin_x, qmin_y, qmin_z, qmax_x, qmax_y, qmax_z, node_index, node_index2 in struct.iter_unpack(
-            "<6hHH", system_data[start:end]
-        ):
-            trees.append(
-                BoundBvhTree(
-                    minimum=_dequantize_bvh_point((qmin_x, qmin_y, qmin_z), center, quantum),
-                    maximum=_dequantize_bvh_point((qmax_x, qmax_y, qmax_z), center, quantum),
-                    node_index=node_index,
-                    node_index2=node_index2,
-                )
+        trees = [
+            BoundBvhTree(minimum=record_minimum, maximum=record_maximum, node_index=node_index, node_index2=node_index2)
+            for record_minimum, record_maximum, node_index, node_index2 in _native_backend._bounds_decode_bvh_records(
+                system_data, start, trees_count, center, quantum
             )
+        ]
 
     return BoundBvh(
         minimum=minimum,
