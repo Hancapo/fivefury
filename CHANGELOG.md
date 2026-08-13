@@ -22,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- Gen9 material initialization uses named presets with stable serialized hashes.
 - XML source handling, navigation, coercion, formatting, and atomic persistence share common helpers.
 - DLC, Water, YMF, GTXD, and expression-set XML models use the shared XML layer.
 - CUT and legacy/Enhanced shader XML loaders use the shared XML frontend.
