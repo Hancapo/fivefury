@@ -28,6 +28,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YCD track interpolation uses a shared native batch vector and quaternion kernel.
 - GameFileCache keeps a byte-bounded LRU of decoded asset payloads.
 - YBN page-layout convergence reuses prepared geometry BVHs between passes.
+- Shared vector math owns interpolation, quaternion canonicalization, distances, point bounds, and sphere radii.
 
 ## [0.3.16] - 2026-08-12
 

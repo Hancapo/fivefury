@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-import math
 from collections.abc import Iterable, Sequence
 
+from ..vector import vec_distance
 from .defs import YdrLod, coerce_lod
 from .model import Ydr, YdrBone, YdrMesh, YdrModel, YdrSkeleton
-
 
 Vec3 = tuple[float, float, float]
 Vec4 = tuple[float, float, float, float]
@@ -65,7 +64,9 @@ def _bone_center(bone: YdrBone, skeleton: YdrSkeleton | None) -> Vec3:
     return tuple(float(value) for value in bone.translation)
 
 
-def _resolve_rule(rule: RadialBoneRigRule, skeleton: YdrSkeleton | None) -> _ResolvedRule:
+def _resolve_rule(
+    rule: RadialBoneRigRule, skeleton: YdrSkeleton | None
+) -> _ResolvedRule:
     bone = rule.bone
     resolved_bone: YdrBone | None = None
     if isinstance(bone, YdrBone):
@@ -79,10 +80,21 @@ def _resolve_rule(rule: RadialBoneRigRule, skeleton: YdrSkeleton | None) -> _Res
     else:
         bone_tag = int(bone)
         if skeleton is not None:
-            resolved_bone = skeleton.get_bone_by_tag(bone_tag) or skeleton.get_bone_by_index(bone_tag)
+            resolved_bone = skeleton.get_bone_by_tag(
+                bone_tag
+            ) or skeleton.get_bone_by_index(bone_tag)
     if rule.center is None and resolved_bone is None:
-        raise ValueError("center= is required when radial rigging by numeric bone without a matching skeleton bone")
-    center = tuple(float(value) for value in (rule.center if rule.center is not None else _bone_center(resolved_bone, skeleton)))
+        raise ValueError(
+            "center= is required when radial rigging by numeric bone without a matching skeleton bone"
+        )
+    center = tuple(
+        float(value)
+        for value in (
+            rule.center
+            if rule.center is not None
+            else _bone_center(resolved_bone, skeleton)
+        )
+    )
     return _ResolvedRule(
         bone_tag=bone_tag,
         bone_index=int(resolved_bone.index) if resolved_bone is not None else None,
@@ -94,12 +106,8 @@ def _resolve_rule(rule: RadialBoneRigRule, skeleton: YdrSkeleton | None) -> _Res
     )
 
 
-def _distance(a: Vec3, b: Vec3) -> float:
-    return math.sqrt(sum((float(a[index]) - float(b[index])) ** 2 for index in range(3)))
-
-
 def _falloff_weight(rule: _ResolvedRule, position: Vec3) -> float:
-    t = max(0.0, min(1.0, 1.0 - (_distance(position, rule.center) / rule.radius)))
+    t = max(0.0, min(1.0, 1.0 - (vec_distance(position, rule.center) / rule.radius)))
     if t <= 0.0:
         return 0.0
     if rule.falloff is RadialRigFalloff.CONSTANT:
@@ -111,7 +119,9 @@ def _falloff_weight(rule: _ResolvedRule, position: Vec3) -> float:
     return max(0.0, min(1.0, value * rule.strength))
 
 
-def _ensure_tuple4(values: Sequence[float | int], fill: float = 0.0) -> tuple[float, float, float, float]:
+def _ensure_tuple4(
+    values: Sequence[float | int], fill: float = 0.0
+) -> tuple[float, float, float, float]:
     padded = [float(value) for value in values[:4]]
     padded.extend([float(fill)] * (4 - len(padded)))
     return (padded[0], padded[1], padded[2], padded[3])
@@ -123,9 +133,15 @@ def _ensure_index4(values: Sequence[int], fill: int = 0) -> Index4:
     return (padded[0], padded[1], padded[2], padded[3])
 
 
-def _normalise_influences(influences: dict[int, float], max_influences: int) -> tuple[Vec4, Index4]:
+def _normalise_influences(
+    influences: dict[int, float], max_influences: int
+) -> tuple[Vec4, Index4]:
     ranked = sorted(
-        ((int(index), max(0.0, float(weight))) for index, weight in influences.items() if float(weight) > 0.0),
+        (
+            (int(index), max(0.0, float(weight)))
+            for index, weight in influences.items()
+            if float(weight) > 0.0
+        ),
         key=lambda item: item[1],
         reverse=True,
     )[:max_influences]
@@ -152,12 +168,24 @@ def _mesh_palette_index(mesh: YdrMesh, rule: _ResolvedRule) -> tuple[int, bool]:
 
 def _default_skin(mesh: YdrMesh) -> tuple[list[Vec4], list[Index4]]:
     vertex_count = len(mesh.positions)
-    weights = list(mesh.blend_weights) if mesh.blend_weights else [(1.0, 0.0, 0.0, 0.0)] * vertex_count
-    indices = list(mesh.blend_indices) if mesh.blend_indices else [(0, 0, 0, 0)] * vertex_count
+    weights = (
+        list(mesh.blend_weights)
+        if mesh.blend_weights
+        else [(1.0, 0.0, 0.0, 0.0)] * vertex_count
+    )
+    indices = (
+        list(mesh.blend_indices)
+        if mesh.blend_indices
+        else [(0, 0, 0, 0)] * vertex_count
+    )
     if len(weights) != vertex_count:
-        raise ValueError("blend_weights length must match positions length before radial rigging")
+        raise ValueError(
+            "blend_weights length must match positions length before radial rigging"
+        )
     if len(indices) != vertex_count:
-        raise ValueError("blend_indices length must match positions length before radial rigging")
+        raise ValueError(
+            "blend_indices length must match positions length before radial rigging"
+        )
     if not mesh.bone_ids:
         mesh.bone_ids.append(0)
     return (weights, indices)
@@ -195,7 +223,9 @@ def rig_mesh_to_bones_radially(
                 continue
             current = {
                 int(index): float(weight)
-                for index, weight in zip(indices[vertex_index], weights[vertex_index], strict=True)
+                for index, weight in zip(
+                    indices[vertex_index], weights[vertex_index], strict=True
+                )
                 if float(weight) > 0.0
             }
             if rule.replace_existing:
@@ -204,12 +234,18 @@ def rig_mesh_to_bones_radially(
                 scale = max(0.0, 1.0 - amount)
                 current = {index: weight * scale for index, weight in current.items()}
                 current[palette_index] = current.get(palette_index, 0.0) + amount
-            weights[vertex_index], indices[vertex_index] = _normalise_influences(current, max_influences)
+            weights[vertex_index], indices[vertex_index] = _normalise_influences(
+                current, max_influences
+            )
             vertices_changed += 1
     if vertices_changed:
         mesh.blend_weights = weights
         mesh.blend_indices = indices
-    return RadialRigReport(meshes=int(vertices_changed > 0), vertices=vertices_changed, bones_added=bones_added)
+    return RadialRigReport(
+        meshes=int(vertices_changed > 0),
+        vertices=vertices_changed,
+        bones_added=bones_added,
+    )
 
 
 def _iter_models(ydr: Ydr, lod: YdrLod | str | None = None) -> Iterable[YdrModel]:
@@ -251,7 +287,9 @@ def rig_ydr_to_bones_radially(
             model_vertices += report.vertices
         if model_vertices and not candidate.has_skin:
             candidate.set_skin_binding()
-    return RadialRigReport(meshes=total_meshes, vertices=total_vertices, bones_added=total_bones_added)
+    return RadialRigReport(
+        meshes=total_meshes, vertices=total_vertices, bones_added=total_bones_added
+    )
 
 
 __all__ = [

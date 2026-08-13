@@ -7,7 +7,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 from .. import _native as _native_backend
-from ..vector import vec_cross, vec_dot, vec_normalize, vec_sub
+from ..vector import (
+    aabb_center,
+    aabb_from_points,
+    sphere_radius_from_points,
+    vec_cross,
+    vec_dot,
+    vec_normalize,
+    vec_sub,
+)
 from .build_types import (
     YdrBuild,
     YdrMaterialInput,
@@ -90,7 +98,9 @@ class PreparedMaterial:
     shader_file_name: str
     render_bucket: int
     textures: dict[str, YdrTextureInput | None]
-    parameters: dict[str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str]
+    parameters: dict[
+        str, float | tuple[float, ...] | tuple[tuple[float, ...], ...] | int | str
+    ]
     gen9_definition: ShaderGen9Definition | None = None
 
 
@@ -121,7 +131,9 @@ class PreparedModel:
     meshes: list[PreparedMesh]
     render_mask: int = int(YdrRenderMask.STATIC_PROP)
     flags: int = 0
-    skeleton_binding: YdrSkeletonBinding = dataclasses.field(default_factory=YdrSkeletonBinding)
+    skeleton_binding: YdrSkeletonBinding = dataclasses.field(
+        default_factory=YdrSkeletonBinding
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -149,7 +161,11 @@ def coerce_texture_input(
     if value is None:
         return None
     if isinstance(value, YdrTextureInput):
-        return YdrTextureInput(name=coerce_texture_name(value.name), embedded=bool(value.embedded), source=value.source)
+        return YdrTextureInput(
+            name=coerce_texture_name(value.name),
+            embedded=bool(value.embedded),
+            source=value.source,
+        )
     return YdrTextureInput(name=coerce_texture_name(value))
 
 
@@ -164,7 +180,9 @@ def normalize_material_textures(
     return normalized
 
 
-def resolve_shader(shader_value: str, render_bucket: int, shader_library: ShaderLibrary) -> tuple[ShaderDefinition, str, int]:
+def resolve_shader(
+    shader_value: str, render_bucket: int, shader_library: ShaderLibrary
+) -> tuple[ShaderDefinition, str, int]:
     return resolve_shader_reference(shader_value, render_bucket, shader_library)
 
 
@@ -175,7 +193,7 @@ def normalize_materials(
     material_textures: Mapping[str, str | Path | YdrTextureInput | None] | None,
 ) -> list[YdrMaterialInput]:
     if materials is not None and material_textures is not None:
-        raise ValueError('Pass either materials= or material_textures=, not both')
+        raise ValueError("Pass either materials= or material_textures=, not both")
     if materials is not None:
         return [
             YdrMaterialInput(
@@ -193,16 +211,20 @@ def normalize_materials(
     default_textures: dict[str, str | Path | YdrTextureInput | None] = {}
     if material_textures is not None:
         default_textures.update(dict(material_textures))
-    return [YdrMaterialInput(name='default', shader=shader, textures=default_textures)]
+    return [YdrMaterialInput(name="default", shader=shader, textures=default_textures)]
 
 
-def _generate_normals(positions: Sequence[tuple[float, float, float]], indices: Sequence[int]) -> list[tuple[float, float, float]]:
+def _generate_normals(
+    positions: Sequence[tuple[float, float, float]], indices: Sequence[int]
+) -> list[tuple[float, float, float]]:
     accum = [[0.0, 0.0, 0.0] for _ in positions]
     for base in range(0, len(indices), 3):
         i0, i1, i2 = indices[base : base + 3]
         if i0 >= len(positions) or i1 >= len(positions) or i2 >= len(positions):
             continue
-        normal = vec_cross(vec_sub(positions[i1], positions[i0]), vec_sub(positions[i2], positions[i0]))
+        normal = vec_cross(
+            vec_sub(positions[i1], positions[i0]), vec_sub(positions[i2], positions[i0])
+        )
         for index in (i0, i1, i2):
             accum[index][0] += normal[0]
             accum[index][1] += normal[1]
@@ -234,8 +256,16 @@ def _generate_tangents(
         if abs(determinant) <= 1e-8:
             continue
         r = 1.0 / determinant
-        tangent = ((t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r, (t2 * z1 - t1 * z2) * r)
-        bitangent = ((s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r, (s1 * z2 - s2 * z1) * r)
+        tangent = (
+            (t2 * x1 - t1 * x2) * r,
+            (t2 * y1 - t1 * y2) * r,
+            (t2 * z1 - t1 * z2) * r,
+        )
+        bitangent = (
+            (s1 * x2 - s2 * x1) * r,
+            (s1 * y2 - s2 * y1) * r,
+            (s1 * z2 - s2 * z1) * r,
+        )
         for index in (i0, i1, i2):
             tan1[index][0] += tangent[0]
             tan1[index][1] += tangent[1]
@@ -253,7 +283,15 @@ def _generate_tangents(
             t[2] - normal[2] * vec_dot(normal, t),
         )
         tangent3 = vec_normalize(projected, fallback=(1.0, 0.0, 0.0))
-        handedness = 1.0 if vec_dot(vec_cross(normal, tangent3), (tan2[index][0], tan2[index][1], tan2[index][2])) >= 0.0 else -1.0
+        handedness = (
+            1.0
+            if vec_dot(
+                vec_cross(normal, tangent3),
+                (tan2[index][0], tan2[index][1], tan2[index][2]),
+            )
+            >= 0.0
+            else -1.0
+        )
         tangents.append((tangent3[0], tangent3[1], tangent3[2], handedness))
     return tangents
 
@@ -268,7 +306,9 @@ def _component_size(component_type: VertexComponentType) -> int:
     if size is None:
         raise ValueError(f"Unsupported vertex component type: {component_type}")
     if size <= 0 and component_type is not VertexComponentType.NOTHING:
-        raise ValueError(f"Unsupported zero-sized vertex component type: {component_type}")
+        raise ValueError(
+            f"Unsupported zero-sized vertex component type: {component_type}"
+        )
     return size
 
 
@@ -281,42 +321,66 @@ def _canonical_component_type(
         if mapped is None:
             raise ValueError(f"Unsupported vertex semantic: {semantic}")
         return mapped
-    if semantic is VertexSemantic.BLEND_INDICES and component_type is VertexComponentType.UBYTE4:
+    if (
+        semantic is VertexSemantic.BLEND_INDICES
+        and component_type is VertexComponentType.UBYTE4
+    ):
         return VertexComponentType.COLOUR
     return component_type
 
 
-def _semantics_from_flags_types(flags: int, types_value: int) -> list[tuple[VertexSemantic, VertexComponentType]]:
+def _semantics_from_flags_types(
+    flags: int, types_value: int
+) -> list[tuple[VertexSemantic, VertexComponentType]]:
     semantics: list[tuple[VertexSemantic, VertexComponentType]] = []
     for semantic_index in range(16):
         if ((int(flags) >> semantic_index) & 0x1) == 0:
             continue
-        component_type = VertexComponentType((int(types_value) >> (semantic_index * 4)) & 0xF)
+        component_type = VertexComponentType(
+            (int(types_value) >> (semantic_index * 4)) & 0xF
+        )
         semantics.append((VertexSemantic(semantic_index), component_type))
     return semantics
 
 
 def _stride_from_flags_types(flags: int, types_value: int) -> int:
-    return sum(_component_size(component_type) for _semantic, component_type in _semantics_from_flags_types(flags, types_value))
+    return sum(
+        _component_size(component_type)
+        for _semantic, component_type in _semantics_from_flags_types(flags, types_value)
+    )
 
 
-def _select_layout(shader_definition: ShaderDefinition, *, used_uv_indices: set[int], skinned: bool = False) -> ShaderLayoutDefinition:
+def _select_layout(
+    shader_definition: ShaderDefinition,
+    *,
+    used_uv_indices: set[int],
+    skinned: bool = False,
+) -> ShaderLayoutDefinition:
     for layout in shader_definition.layouts:
         semantics = {semantic.lower() for semantic in layout.semantics}
-        has_blend = 'blendweights' in semantics or 'blendindices' in semantics
+        has_blend = "blendweights" in semantics or "blendindices" in semantics
         if skinned and not has_blend:
             continue
         if not skinned and has_blend:
             continue
-        if any(f'texcoord{uv_index}' not in semantics for uv_index in used_uv_indices):
+        if any(f"texcoord{uv_index}" not in semantics for uv_index in used_uv_indices):
             continue
         return layout
-    kind = 'skinned' if skinned else 'static'
-    raise ValueError(f"No supported {kind} layout found for shader '{shader_definition.name}'")
+    kind = "skinned" if skinned else "static"
+    raise ValueError(
+        f"No supported {kind} layout found for shader '{shader_definition.name}'"
+    )
 
 
-def select_layout(shader_definition: ShaderDefinition, *, used_uv_indices: set[int], skinned: bool = False) -> ShaderLayoutDefinition:
-    return _select_layout(shader_definition, used_uv_indices=used_uv_indices, skinned=skinned)
+def select_layout(
+    shader_definition: ShaderDefinition,
+    *,
+    used_uv_indices: set[int],
+    skinned: bool = False,
+) -> ShaderLayoutDefinition:
+    return _select_layout(
+        shader_definition, used_uv_indices=used_uv_indices, skinned=skinned
+    )
 
 
 def _encode_vertex_bytes(
@@ -373,7 +437,10 @@ def _encode_vertex_bytes(
     ]
 
     packed = _native_backend._ydr_pack_vertex_buffer(
-        [(int(semantic), int(component_type)) for semantic, component_type in semantics],
+        [
+            (int(semantic), int(component_type))
+            for semantic, component_type in semantics
+        ],
         positions,
         normals,
         texcoords,
@@ -399,22 +466,31 @@ def _encode_vertex_bytes_from_layout(
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
 ) -> tuple[int, int, int, bytes]:
     component_by_semantic: dict[VertexSemantic, VertexComponentType] = {
-        semantic: component_type for semantic, component_type in _CANONICAL_COMPONENT_TYPES.items()
+        semantic: component_type
+        for semantic, component_type in _CANONICAL_COMPONENT_TYPES.items()
     }
     if blend_weights:
-        component_by_semantic[VertexSemantic.BLEND_WEIGHTS] = _canonical_component_type(VertexSemantic.BLEND_WEIGHTS)
+        component_by_semantic[VertexSemantic.BLEND_WEIGHTS] = _canonical_component_type(
+            VertexSemantic.BLEND_WEIGHTS
+        )
     if blend_indices:
-        component_by_semantic[VertexSemantic.BLEND_INDICES] = _canonical_component_type(VertexSemantic.BLEND_INDICES)
+        component_by_semantic[VertexSemantic.BLEND_INDICES] = _canonical_component_type(
+            VertexSemantic.BLEND_INDICES
+        )
     for channel_index in range(min(8, len(texcoords))):
         if texcoords[channel_index]:
-            component_by_semantic[VertexSemantic(int(VertexSemantic.TEXCOORD0) + channel_index)] = VertexComponentType.FLOAT2
+            component_by_semantic[
+                VertexSemantic(int(VertexSemantic.TEXCOORD0) + channel_index)
+            ] = VertexComponentType.FLOAT2
 
     semantics: list[tuple[VertexSemantic, VertexComponentType]] = []
     for semantic_name in layout.semantics:
         semantic = _semantic_enum(semantic_name)
         component_type = component_by_semantic.get(semantic)
         if component_type is None:
-            raise ValueError(f"Unsupported layout semantic '{semantic_name}' for YDR builder")
+            raise ValueError(
+                f"Unsupported layout semantic '{semantic_name}' for YDR builder"
+            )
         semantics.append((semantic, component_type))
     semantics.sort(key=lambda item: int(item[0]))
     return _encode_vertex_bytes(
@@ -460,12 +536,19 @@ def _encode_vertex_bytes_from_declaration(
     )
 
 
-def compute_bounds(positions: Sequence[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], float]:
+def compute_bounds(
+    positions: Sequence[tuple[float, float, float]],
+) -> tuple[
+    tuple[float, float, float],
+    tuple[float, float, float],
+    tuple[float, float, float],
+    float,
+]:
     if not positions:
         return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0
-    bb_min, bb_max = _native_backend._bounds_from_vertices(positions)
-    centre = ((bb_min[0] + bb_max[0]) * 0.5, (bb_min[1] + bb_max[1]) * 0.5, (bb_min[2] + bb_max[2]) * 0.5)
-    radius = _native_backend._bounds_sphere_radius_from_vertices(centre, positions)
+    bb_min, bb_max = aabb_from_points(positions)
+    centre = aabb_center(bb_min, bb_max)
+    radius = sphere_radius_from_points(centre, positions)
     return centre, bb_min, bb_max, radius
 
 
@@ -496,17 +579,19 @@ def compute_model_collection_bounds(
             position_groups.append(
                 mesh.positions
                 if transform is None
-                else [_transform_position(position, transform) for position in mesh.positions]
+                else [
+                    _transform_position(position, transform)
+                    for position in mesh.positions
+                ]
             )
     if not position_groups:
         return compute_bounds(())
-    mesh_bounds = [_native_backend._bounds_from_vertices(positions) for positions in position_groups]
+    mesh_bounds = [aabb_from_points(positions) for positions in position_groups]
     bb_min = tuple(min(bounds[0][axis] for bounds in mesh_bounds) for axis in range(3))
     bb_max = tuple(max(bounds[1][axis] for bounds in mesh_bounds) for axis in range(3))
-    centre = tuple((bb_min[axis] + bb_max[axis]) * 0.5 for axis in range(3))
+    centre = aabb_center(bb_min, bb_max)
     radius = max(
-        _native_backend._bounds_sphere_radius_from_vertices(centre, positions)
-        for positions in position_groups
+        sphere_radius_from_points(centre, positions) for positions in position_groups
     )
     return centre, bb_min, bb_max, radius
 
@@ -525,7 +610,9 @@ def _transform_position(
     )
 
 
-def _copy_vertex_channel(channel: Sequence[T] | None, vertex_indices: Sequence[int]) -> list[T] | None:
+def _copy_vertex_channel(
+    channel: Sequence[T] | None, vertex_indices: Sequence[int]
+) -> list[T] | None:
     if channel is None:
         return None
     return [channel[index] for index in vertex_indices]
@@ -540,7 +627,9 @@ def _copy_texcoord_channels(
     return [[channel[index] for index in vertex_indices] for channel in channels]
 
 
-def _build_split_mesh(mesh: YdrMeshInput, vertex_indices: Sequence[int], remapped_indices: Sequence[int]) -> YdrMeshInput:
+def _build_split_mesh(
+    mesh: YdrMeshInput, vertex_indices: Sequence[int], remapped_indices: Sequence[int]
+) -> YdrMeshInput:
     return YdrMeshInput(
         positions=[mesh.positions[index] for index in vertex_indices],
         indices=list(remapped_indices),
@@ -559,7 +648,9 @@ def _build_split_mesh(mesh: YdrMeshInput, vertex_indices: Sequence[int], remappe
     )
 
 
-def _split_mesh_by_vertex_limit(mesh: YdrMeshInput, *, max_vertices: int = _MAX_MESH_UNIQUE_VERTICES) -> list[YdrMeshInput]:
+def _split_mesh_by_vertex_limit(
+    mesh: YdrMeshInput, *, max_vertices: int = _MAX_MESH_UNIQUE_VERTICES
+) -> list[YdrMeshInput]:
     if not mesh.indices:
         return [mesh]
     chunks = _native_backend._ydr_split_mesh_indices(
@@ -589,9 +680,9 @@ def _prepare_meshes(
     for source_mesh in meshes:
         for mesh in _split_mesh_by_vertex_limit(source_mesh):
             if len(mesh.indices) % 3 != 0:
-                raise ValueError('YDR writer currently requires triangle list indices')
+                raise ValueError("YDR writer currently requires triangle list indices")
             if max(mesh.indices, default=-1) >= len(mesh.positions):
-                raise ValueError('Mesh indices reference a vertex outside positions')
+                raise ValueError("Mesh indices reference a vertex outside positions")
             material_key = mesh.material.lower()
             if material_key not in material_lookup:
                 raise ValueError(f"Mesh references unknown material '{mesh.material}'")
@@ -599,48 +690,100 @@ def _prepare_meshes(
 
             positions = [tuple(map(float, position)) for position in mesh.positions]
             indices = [int(index) for index in mesh.indices]
-            normals = [tuple(map(float, normal)) for normal in mesh.normals] if mesh.normals is not None else []
-            texcoords = [[(float(u), float(v)) for u, v in channel] for channel in (mesh.texcoords or [])]
-            tangents = [tuple(map(float, tangent)) for tangent in mesh.tangents] if mesh.tangents is not None else []
-            colours0 = [tuple(map(float, colour)) for colour in mesh.colours0] if mesh.colours0 is not None else []
-            colours1 = [tuple(map(float, colour)) for colour in mesh.colours1] if mesh.colours1 is not None else []
-            blend_weights = [tuple(map(float, w)) for w in mesh.blend_weights] if mesh.blend_weights is not None else []
-            blend_indices = [tuple(map(int, bi)) for bi in mesh.blend_indices] if mesh.blend_indices is not None else []
-            bone_ids = [int(b) for b in mesh.bone_ids] if mesh.bone_ids is not None else []
+            normals = (
+                [tuple(map(float, normal)) for normal in mesh.normals]
+                if mesh.normals is not None
+                else []
+            )
+            texcoords = [
+                [(float(u), float(v)) for u, v in channel]
+                for channel in (mesh.texcoords or [])
+            ]
+            tangents = (
+                [tuple(map(float, tangent)) for tangent in mesh.tangents]
+                if mesh.tangents is not None
+                else []
+            )
+            colours0 = (
+                [tuple(map(float, colour)) for colour in mesh.colours0]
+                if mesh.colours0 is not None
+                else []
+            )
+            colours1 = (
+                [tuple(map(float, colour)) for colour in mesh.colours1]
+                if mesh.colours1 is not None
+                else []
+            )
+            blend_weights = (
+                [tuple(map(float, w)) for w in mesh.blend_weights]
+                if mesh.blend_weights is not None
+                else []
+            )
+            blend_indices = (
+                [tuple(map(int, bi)) for bi in mesh.blend_indices]
+                if mesh.blend_indices is not None
+                else []
+            )
+            bone_ids = (
+                [int(b) for b in mesh.bone_ids] if mesh.bone_ids is not None else []
+            )
             skinned = bool(blend_weights)
 
             if skinned:
                 if not blend_indices:
-                    raise ValueError('Mesh has blend_weights but no blend_indices')
+                    raise ValueError("Mesh has blend_weights but no blend_indices")
                 if len(blend_weights) != len(positions):
-                    raise ValueError('Mesh blend_weights length must match positions length')
+                    raise ValueError(
+                        "Mesh blend_weights length must match positions length"
+                    )
                 if len(blend_indices) != len(positions):
-                    raise ValueError('Mesh blend_indices length must match positions length')
+                    raise ValueError(
+                        "Mesh blend_indices length must match positions length"
+                    )
                 if skeleton is not None and getattr(skeleton, "bones", None):
                     bone_count = len(skeleton.bones)
                     if bone_count > 255:
-                        raise ValueError("Skinned YDR models currently support at most 255 bones per skeleton")
-                    source_palette = list(bone_ids) if bone_ids else list(range(bone_count))
-                    resolved_palette = [_resolve_palette_bone_index(bone_id, skeleton) for bone_id in source_palette]
+                        raise ValueError(
+                            "Skinned YDR models currently support at most 255 bones per skeleton"
+                        )
+                    source_palette = (
+                        list(bone_ids) if bone_ids else list(range(bone_count))
+                    )
+                    resolved_palette = [
+                        _resolve_palette_bone_index(bone_id, skeleton)
+                        for bone_id in source_palette
+                    ]
                     remapped_indices: list[tuple[int, int, int, int]] = []
-                    for vertex_indices, vertex_weights in zip(blend_indices, blend_weights, strict=True):
+                    for vertex_indices, vertex_weights in zip(
+                        blend_indices, blend_weights, strict=True
+                    ):
                         remapped: list[int] = []
-                        for palette_index, weight in zip(vertex_indices, vertex_weights, strict=True):
+                        for palette_index, weight in zip(
+                            vertex_indices, vertex_weights, strict=True
+                        ):
                             index = int(palette_index)
                             if float(weight) <= 0.0:
                                 remapped.append(0)
                                 continue
                             if index < 0 or index >= len(resolved_palette):
-                                raise ValueError(f"Vertex blend index {index} is outside the mesh bone palette")
+                                raise ValueError(
+                                    f"Vertex blend index {index} is outside the mesh bone palette"
+                                )
                             remapped.append(int(resolved_palette[index]))
-                        remapped_indices.append((remapped[0], remapped[1], remapped[2], remapped[3]))
+                        remapped_indices.append(
+                            (remapped[0], remapped[1], remapped[2], remapped[3])
+                        )
                     blend_indices = remapped_indices
                     bone_ids = list(range(bone_count))
 
             if not normals:
-                normals = _generate_normals(positions, indices) if generate_normals else [(0.0, 0.0, 1.0)] * len(positions)
+                normals = (
+                    _generate_normals(positions, indices)
+                    if generate_normals
+                    else [(0.0, 0.0, 1.0)] * len(positions)
+                )
             if len(normals) != len(positions):
-                raise ValueError('Mesh normals length must match positions length')
+                raise ValueError("Mesh normals length must match positions length")
 
             material_texture_slots = {
                 slot.lower()
@@ -652,28 +795,37 @@ def _prepare_meshes(
                 for parameter in material.shader_definition.texture_parameters
                 if parameter.name.lower() in material_texture_slots
             }
-            layout = _select_layout(material.shader_definition, used_uv_indices=used_uv_indices, skinned=skinned)
+            layout = _select_layout(
+                material.shader_definition,
+                used_uv_indices=used_uv_indices,
+                skinned=skinned,
+            )
             expected_semantics = {semantic.lower() for semantic in layout.semantics}
-            if mesh.declaration_flags is not None and mesh.declaration_types is not None:
+            if (
+                mesh.declaration_flags is not None
+                and mesh.declaration_types is not None
+            ):
                 expected_semantics.update(
                     semantic.name.lower()
-                    for semantic, _component_type in _semantics_from_flags_types(int(mesh.declaration_flags), int(mesh.declaration_types))
+                    for semantic, _component_type in _semantics_from_flags_types(
+                        int(mesh.declaration_flags), int(mesh.declaration_types)
+                    )
                 )
 
-            if fill_vertex_colours and not colours0 and 'colour0' in expected_semantics:
+            if fill_vertex_colours and not colours0 and "colour0" in expected_semantics:
                 colours0 = [(1.0, 1.0, 1.0, 1.0)] * len(positions)
-            if fill_vertex_colours and not colours1 and 'colour1' in expected_semantics:
+            if fill_vertex_colours and not colours1 and "colour1" in expected_semantics:
                 colours1 = [(1.0, 1.0, 1.0, 1.0)] * len(positions)
             if colours0 and len(colours0) != len(positions):
-                raise ValueError('Mesh colours0 length must match positions length')
+                raise ValueError("Mesh colours0 length must match positions length")
             if colours1 and len(colours1) != len(positions):
-                raise ValueError('Mesh colours1 length must match positions length')
+                raise ValueError("Mesh colours1 length must match positions length")
 
             for parameter in material.shader_definition.texture_parameters:
                 if parameter.name.lower() not in material_texture_slots:
                     continue
                 uv_index = int(parameter.uv_index or 0)
-                semantic_name = f'texcoord{uv_index}'
+                semantic_name = f"texcoord{uv_index}"
                 if semantic_name not in expected_semantics:
                     raise ValueError(
                         f"Shader layout for material '{material.name}' does not expose {semantic_name} required by slot '{parameter.name}'"
@@ -683,55 +835,72 @@ def _prepare_meshes(
                         f"Mesh for material '{material.name}' is missing UV channel {uv_index} required by slot '{parameter.name}'"
                     )
                 if len(texcoords[uv_index]) != len(positions):
-                    raise ValueError(f'Mesh UV channel {uv_index} length must match positions length')
+                    raise ValueError(
+                        f"Mesh UV channel {uv_index} length must match positions length"
+                    )
 
             for channel_index, channel in enumerate(texcoords):
                 if channel and len(channel) != len(positions):
-                    raise ValueError(f'Mesh UV channel {channel_index} length must match positions length')
+                    raise ValueError(
+                        f"Mesh UV channel {channel_index} length must match positions length"
+                    )
 
-            if 'tangent' in expected_semantics:
+            if "tangent" in expected_semantics:
                 if not tangents and generate_tangents:
                     if not texcoords or not texcoords[0]:
-                        raise ValueError(f"Material '{material.name}' requires tangents but mesh has no UV0 to generate them")
-                    tangents = _generate_tangents(positions, normals, texcoords[0], indices)
+                        raise ValueError(
+                            f"Material '{material.name}' requires tangents but mesh has no UV0 to generate them"
+                        )
+                    tangents = _generate_tangents(
+                        positions, normals, texcoords[0], indices
+                    )
                 if len(tangents) != len(positions):
-                    raise ValueError('Mesh tangents length must match positions length')
+                    raise ValueError("Mesh tangents length must match positions length")
             else:
                 tangents = []
 
-            if 'colour0' not in expected_semantics:
+            if "colour0" not in expected_semantics:
                 colours0 = []
-            if 'colour1' not in expected_semantics:
+            if "colour1" not in expected_semantics:
                 colours1 = []
 
-            if mesh.declaration_flags is not None and mesh.declaration_types is not None:
-                flags, types_value, stride, vertex_bytes = _encode_vertex_bytes_from_declaration(
-                    int(mesh.declaration_flags),
-                    int(mesh.declaration_types),
-                    positions,
-                    normals,
-                    texcoords,
-                    tangents,
-                    colours0,
-                    colours1,
-                    blend_weights=blend_weights or None,
-                    blend_indices=blend_indices or None,
+            if (
+                mesh.declaration_flags is not None
+                and mesh.declaration_types is not None
+            ):
+                flags, types_value, stride, vertex_bytes = (
+                    _encode_vertex_bytes_from_declaration(
+                        int(mesh.declaration_flags),
+                        int(mesh.declaration_types),
+                        positions,
+                        normals,
+                        texcoords,
+                        tangents,
+                        colours0,
+                        colours1,
+                        blend_weights=blend_weights or None,
+                        blend_indices=blend_indices or None,
+                    )
                 )
             else:
-                flags, types_value, stride, vertex_bytes = _encode_vertex_bytes_from_layout(
-                    layout,
-                    positions,
-                    normals,
-                    texcoords,
-                    tangents,
-                    colours0,
-                    colours1,
-                    blend_weights=blend_weights or None,
-                    blend_indices=blend_indices or None,
+                flags, types_value, stride, vertex_bytes = (
+                    _encode_vertex_bytes_from_layout(
+                        layout,
+                        positions,
+                        normals,
+                        texcoords,
+                        tangents,
+                        colours0,
+                        colours1,
+                        blend_weights=blend_weights or None,
+                        blend_indices=blend_indices or None,
+                    )
                 )
             if max(indices, default=0) > 0xFFFF:
-                raise ValueError('YDR writer currently supports at most 65535 unique vertices per mesh')
-            index_bytes = struct.pack(f'<{len(indices)}H', *indices) if indices else b''
+                raise ValueError(
+                    "YDR writer currently supports at most 65535 unique vertices per mesh"
+                )
+            index_bytes = struct.pack(f"<{len(indices)}H", *indices) if indices else b""
 
             prepared.append(
                 PreparedMesh(
@@ -778,7 +947,9 @@ def _normalize_skinned_model_palette(model: PreparedModel, skeleton) -> None:
         return
     bone_count = len(skeleton.bones)
     if bone_count > 255:
-        raise ValueError("Skinned YDR models currently support at most 255 bones per skeleton")
+        raise ValueError(
+            "Skinned YDR models currently support at most 255 bones per skeleton"
+        )
 
     model_has_skin = False
     for mesh in model.meshes:
@@ -810,7 +981,9 @@ def default_root_render_mask_flags(
 ) -> int:
     render_mask = 0
     base_bucket_mask = 0
-    material_buckets = {int(material.index): int(material.render_bucket) for material in materials}
+    material_buckets = {
+        int(material.index): int(material.render_bucket) for material in materials
+    }
     for model in models:
         render_mask |= int(model.render_mask) & 0xFF
         for mesh in model.meshes:
@@ -818,14 +991,16 @@ def default_root_render_mask_flags(
             if render_bucket is None:
                 continue
             if not 0 <= render_bucket < 8:
-                raise ValueError(f"YDR render bucket must be between 0 and 7, got {render_bucket}")
+                raise ValueError(
+                    f"YDR render bucket must be between 0 and 7, got {render_bucket}"
+                )
             base_bucket_mask |= 1 << render_bucket
     return ((render_mask & 0xFF) << 8) | (base_bucket_mask & 0xFF)
 
 
 def drawable_name(source_name: str) -> str:
-    base = source_name.strip() or 'drawable'
-    return base if base.lower().endswith('.#dr') else f'{base}.#dr'
+    base = source_name.strip() or "drawable"
+    return base if base.lower().endswith(".#dr") else f"{base}.#dr"
 
 
 def prepare_build(
@@ -878,20 +1053,20 @@ def prepare_build(
 
 
 __all__ = [
-    'PreparedLods',
-    'PreparedMaterial',
-    'PreparedMesh',
-    'PreparedModel',
-    'ShaderParameterEntry',
-    'compute_bounds',
-    'compute_model_collection_bounds',
-    'default_root_render_mask_flags',
-    'drawable_name',
-    'normalize_lods',
-    'normalize_material_textures',
-    'normalize_materials',
-    'prepare_build',
-    'prepare_meshes',
-    'resolve_shader',
-    'select_layout',
+    "PreparedLods",
+    "PreparedMaterial",
+    "PreparedMesh",
+    "PreparedModel",
+    "ShaderParameterEntry",
+    "compute_bounds",
+    "compute_model_collection_bounds",
+    "default_root_render_mask_flags",
+    "drawable_name",
+    "normalize_lods",
+    "normalize_material_textures",
+    "normalize_materials",
+    "prepare_build",
+    "prepare_meshes",
+    "resolve_shader",
+    "select_layout",
 ]
