@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from ..binary import fits_unsigned
 from ..common import atomic_write_bytes
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 
@@ -56,7 +57,7 @@ def _aabb_issues(
 
 
 def _uint_issue(label: str, value: int, bits: int) -> str | None:
-    if not 0 <= int(value) < (1 << bits):
+    if not fits_unsigned(value, bits):
         return f"{label} is outside the uint{bits} range"
     return None
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ..binary import fits_unsigned
 from .flags import PortalFlags
 
 INVALID_ENTITY_INDEX = 0xFFFFFFFF
@@ -16,7 +17,6 @@ INVALID_ENTITY_INDEX = 0xFFFFFFFF
 MAX_MLO_PORTALS = 255
 MAX_MLO_ROOMS = 31
 PORTAL_LOCATION_BIT = 1 << 31
-UINT32_MAX = (1 << 32) - 1
 
 
 def _is_finite_vector(value: Any, size: int) -> bool:
@@ -24,14 +24,6 @@ def _is_finite_vector(value: Any, size: int) -> bool:
         return len(value) == size and all(math.isfinite(float(component)) for component in value)
     except (TypeError, ValueError):
         return False
-
-
-def _valid_uint32(value: Any) -> bool:
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return False
-    return 0 <= number <= UINT32_MAX
 
 
 def _archetype_label(archetype: Any) -> str:
@@ -70,7 +62,7 @@ def validate_mlo_archetype(archetype: Any) -> list[str]:
         issues.append(
             f"{label} has {len(portals)} portals; the runtime supports at most {MAX_MLO_PORTALS}"
         )
-    if not _valid_uint32(archetype.mlo_flags):
+    if not fits_unsigned(archetype.mlo_flags, 32):
         issues.append(f"{label} mlo_flags is outside the uint32 range")
 
     room_names: set[str] = set()
@@ -118,7 +110,7 @@ def validate_mlo_archetype(archetype: Any) -> list[str]:
             issues.append(f"{path} corners must contain three finite coordinates")
         if not 0 <= int(portal.mirror_priority) <= 3:
             issues.append(f"{path} mirror_priority must be between 0 and 3")
-        if not _valid_uint32(portal.opacity):
+        if not fits_unsigned(portal.opacity, 32):
             issues.append(f"{path} opacity is outside the uint32 range")
 
         seen_here: set[int] = set()
@@ -159,7 +151,7 @@ def validate_mlo_archetype(archetype: Any) -> list[str]:
                 f"{path} has {len(entity_set.locations)} locations for {len(entity_set.entities)} entities"
             )
         for location_index, encoded_location in enumerate(entity_set.locations):
-            if not _valid_uint32(encoded_location):
+            if not fits_unsigned(encoded_location, 32):
                 issues.append(f"{path} locations[{location_index}] is outside the uint32 range")
                 continue
             encoded_location = int(encoded_location)
@@ -182,7 +174,7 @@ def validate_mlo_archetype(archetype: Any) -> list[str]:
             issues.append(f"{path} sphere must contain four finite coordinates")
         if not math.isfinite(float(modifier.percentage)) or not math.isfinite(float(modifier.range)):
             issues.append(f"{path} percentage and range must be finite")
-        if not _valid_uint32(modifier.start_hour) or not _valid_uint32(modifier.end_hour):
+        if not fits_unsigned(modifier.start_hour, 32) or not fits_unsigned(modifier.end_hour, 32):
             issues.append(f"{path} hours must fit in uint32")
 
     return issues

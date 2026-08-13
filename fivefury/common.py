@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from enum import IntEnum
 from pathlib import Path
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 from .hashing import jenk_hash
 from .metahash import MetaHash
@@ -55,6 +56,19 @@ def clip_short_name(name: str) -> str:
     return normalized.lower()
 
 
+class JsonReport:
+    __slots__ = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=False)
+
+    def save_json(self, path: str | Path) -> Path:
+        return atomic_write_bytes(path, (self.to_json() + "\n").encode())
+
+
 class FlexibleIntEnum(IntEnum):
     @classmethod
     def _missing_(cls, value: object) -> FlexibleIntEnum:
@@ -69,6 +83,7 @@ class FlexibleIntEnum(IntEnum):
 __all__ = [
     "ByteSource",
     "FlexibleIntEnum",
+    "JsonReport",
     "atomic_write_bytes",
     "clip_short_name",
     "hash_value",

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..common import JsonReport
 from ..gamefile import GameFileType
 from .resolution.runtime import (
     CutsceneResolutionCancellation,
@@ -36,7 +35,7 @@ class CutsceneAuditEntry:
 
 
 @dataclass(slots=True)
-class CutsceneAuditReport:
+class CutsceneAuditReport(JsonReport):
     root: str | None
     started_at: float
     elapsed_seconds: float = 0.0
@@ -64,16 +63,6 @@ class CutsceneAuditReport:
             "failed": self.failed,
             "entries": [asdict(entry) | {"ok": entry.ok} for entry in self.entries],
         }
-
-    def to_json(self, *, indent: int | None = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent, sort_keys=False)
-
-    def save_json(self, path: str | Path) -> Path:
-        destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(self.to_json() + "\n", encoding="utf-8")
-        return destination
-
 
 def audit_cutscene_resolution(
     cache: GameFileCache,
@@ -114,7 +103,7 @@ def audit_cutscene_resolution(
         except CutsceneResolutionCancelled:
             trace.finish()
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             trace.finish()
             entry = CutsceneAuditEntry(
                 path=asset.path,

@@ -3,7 +3,11 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from ..map_extensions import extensions_from_meta, extensions_to_meta
+from ..map_extensions import (
+    ExtensionContainer,
+    extensions_from_meta,
+    extensions_to_meta,
+)
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .enums import (
@@ -19,7 +23,7 @@ from .enums import (
 
 
 @dataclasses.dataclass(slots=True)
-class EntityDef(MetaHashFieldsMixin):
+class EntityDef(MetaHashFieldsMixin, ExtensionContainer):
     _hash_fields = ("archetype_name",)
 
     archetype_name: MetaHash | HashLike = 0
@@ -44,10 +48,6 @@ class EntityDef(MetaHashFieldsMixin):
         self.flags = coerce_ymap_entity_flags(self.flags)
         self.lod_level = coerce_ymap_lod_level(self.lod_level)
         self.priority_level = coerce_ymap_priority_level(self.priority_level)
-
-    def add_extension(self, extension: Any) -> Any:
-        self.extensions.append(extension)
-        return extension
 
     def to_meta(self) -> dict[str, Any]:
         return {

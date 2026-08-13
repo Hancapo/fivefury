@@ -4,7 +4,12 @@ import struct
 
 import pytest
 
-from fivefury.binary import BinaryDocument, BinaryEndian, BinaryScalarType
+from fivefury.binary import (
+    BinaryDocument,
+    BinaryEndian,
+    BinaryScalarType,
+    fits_unsigned,
+)
 
 
 def test_binary_document_reads_checked_slices_and_strings() -> None:
@@ -43,3 +48,14 @@ def test_binary_document_rejects_truncated_arrays() -> None:
 
     with pytest.raises(ValueError, match="truncated"):
         document.read_array(0, 2, BinaryScalarType.UNSIGNED_INT)
+
+
+def test_fits_unsigned_handles_binary_limits_and_invalid_values() -> None:
+    assert fits_unsigned(0, 8)
+    assert fits_unsigned(255, 8)
+    assert not fits_unsigned(-1, 8)
+    assert not fits_unsigned(256, 8)
+    assert not fits_unsigned(float("inf"), 8)
+
+    with pytest.raises(ValueError, match="positive"):
+        fits_unsigned(0, 0)

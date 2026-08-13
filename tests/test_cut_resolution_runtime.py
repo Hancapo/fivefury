@@ -46,6 +46,8 @@ def test_cutscene_resolution_trace_records_resolver_phases(tmp_path) -> None:
         "audio",
     ]
     assert json.loads(trace.to_json())["elapsed_ns"] == trace.elapsed_ns
+    destination = trace.save_json(tmp_path / "reports" / "trace.json")
+    assert json.loads(destination.read_text())["elapsed_ns"] == trace.elapsed_ns
 
 
 def test_cutscene_resolution_cancellation_is_not_an_audit_failure(tmp_path) -> None:
