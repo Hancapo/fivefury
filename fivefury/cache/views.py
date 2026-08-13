@@ -11,6 +11,12 @@ from ..gamefile import GameFileType
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry
 from ..rpf.utils import _normalize_key
+from .archetype_index import (
+    load_asset_texture_index,
+    load_texture_parent_index,
+    save_asset_texture_index,
+    save_texture_parent_index,
+)
 from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name
 from .paths import path_stem as _path_stem
@@ -230,12 +236,70 @@ class _KindHashRecordMap(Mapping[int, AssetRecord]):
 
 
 class _ArchetypeMap(Mapping[int, Any]):
-    __slots__ = ("_cache", "_generation", "_hash_to_archetype")
+    __slots__ = (
+        "_asset_hash_to_archetypes",
+        "_asset_hash_to_textures",
+        "_cache",
+        "_generation",
+        "_hash_to_archetype",
+        "_texture_generation",
+    )
 
     def __init__(self, cache: GameFileCache) -> None:
         self._cache = cache
         self._generation = -1
         self._hash_to_archetype: dict[int, Any] = {}
+        self._asset_hash_to_archetypes: dict[int, tuple[Any, ...]] = {}
+        self._asset_hash_to_textures: dict[int, tuple[int, ...]] = {}
+        self._texture_generation = -1
+
+    @staticmethod
+    def _hash_field(value: Any) -> int:
+        try:
+            return int(value or 0) & 0xFFFFFFFF
+        except (TypeError, ValueError, OverflowError):
+            return 0
+
+    def _build_relationship_indexes(self) -> None:
+        archetypes: dict[int, list[Any]] = {}
+        textures: dict[int, set[int]] = {}
+        for archetype in self._hash_to_archetype.values():
+            texture_hash = self._hash_field(
+                getattr(archetype, "texture_dictionary", None)
+            )
+            keys = {
+                self._hash_field(getattr(archetype, "name", None)),
+                self._hash_field(getattr(archetype, "asset_name", None)),
+            }
+            keys.discard(0)
+            for key in keys:
+                archetypes.setdefault(key, []).append(archetype)
+                if texture_hash:
+                    textures.setdefault(key, set()).add(texture_hash)
+        self._asset_hash_to_archetypes = {
+            key: tuple(values) for key, values in archetypes.items()
+        }
+        self._asset_hash_to_textures = {
+            key: tuple(sorted(values)) for key, values in textures.items()
+        }
+        self._texture_generation = self._cache._view_generation
+
+    def _load_texture_index(self) -> bool:
+        values = load_asset_texture_index(self._cache.get_index_cache_path())
+        if values is None:
+            return False
+        self._asset_hash_to_textures = values
+        self._texture_generation = self._cache._view_generation
+        return True
+
+    def _save_texture_index(self) -> None:
+        try:
+            save_asset_texture_index(
+                self._cache.get_index_cache_path(),
+                self._asset_hash_to_textures,
+            )
+        except OSError:
+            pass
 
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
@@ -262,6 +326,41 @@ class _ArchetypeMap(Mapping[int, Any]):
                 hash_to_archetype[name_hash] = archetype
         self._hash_to_archetype = hash_to_archetype
         self._generation = self._cache._view_generation
+        self._build_relationship_indexes()
+        self._save_texture_index()
+
+    def _ensure_texture_index(self) -> None:
+        if self._texture_generation == self._cache._view_generation:
+            return
+        if self._load_texture_index():
+            return
+        self._ensure_index()
+
+    def for_asset_hashes(self, values: set[int]) -> tuple[Any, ...]:
+        self._ensure_index()
+        result: list[Any] = []
+        seen: set[int] = set()
+        for value in values:
+            for archetype in self._asset_hash_to_archetypes.get(int(value), ()):
+                identity = id(archetype)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                result.append(archetype)
+        return tuple(result)
+
+    def texture_dictionaries_for_asset_hashes(
+        self,
+        values: set[int],
+    ) -> tuple[int, ...]:
+        self._ensure_texture_index()
+        return tuple(
+            dict.fromkeys(
+                texture_hash
+                for value in values
+                for texture_hash in self._asset_hash_to_textures.get(int(value), ())
+            )
+        )
 
     def __len__(self) -> int:
         self._ensure_index()
@@ -297,7 +396,19 @@ class _TextureParentMap(Mapping[int, int]):
     def _ensure_index(self) -> None:
         if self._generation == self._cache._view_generation:
             return
+        cached = load_texture_parent_index(self._cache.get_index_cache_path())
+        if cached is not None:
+            self._hash_to_parent = cached
+            self._generation = self._cache._view_generation
+            return
         self._hash_to_parent = self._cache.texture_graph.parent_map()
+        try:
+            save_texture_parent_index(
+                self._cache.get_index_cache_path(),
+                self._hash_to_parent,
+            )
+        except OSError:
+            pass
         self._generation = self._cache._view_generation
 
     def __len__(self) -> int:

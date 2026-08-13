@@ -895,9 +895,10 @@ _BINDING_ADDERS = {
 
 
 def _binding_from_node(node: CutNode) -> CutBinding:
+    raw = _clone_value(node)
     fields = {
-        key: _clone_value(value)
-        for key, value in node.fields.items()
+        key: value
+        for key, value in raw.fields.items()
         if key != "iObjectId"
     }
     if node.type_name in {
@@ -922,7 +923,7 @@ def _binding_from_node(node: CutNode) -> CutBinding:
             name=name,
             object_id=int(node.fields.get("iObjectId", -1)),
             fields=fields,
-            raw=_clone_value(node),
+            raw=raw,
         )
     return CutBinding(
         object_id=int(node.fields.get("iObjectId", -1)),
@@ -930,5 +931,5 @@ def _binding_from_node(node: CutNode) -> CutBinding:
         role=_object_role(node.type_name),
         name=name,
         fields=fields,
-        raw=_clone_value(node),
+        raw=raw,
     )

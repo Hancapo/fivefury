@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
 
 from ..binary import (
@@ -70,6 +71,11 @@ def default_hash_name(hash_value: int) -> str:
     return f"hash_{hash_value:08X}"
 
 
+@lru_cache(maxsize=64)
+def _cached_schema(data: bytes) -> tuple[dict[int, Any], dict[int, Any]]:
+    return parse_psch(data), parse_psch_enums(data)
+
+
 class PsoReader:
     def __init__(self, data: bytes, *, name_resolver: Callable[[int], str] | None = None):
         self.data = data
@@ -78,10 +84,37 @@ class PsoReader:
         self.psin = self.sections[PSIN]
         self.psin_document = BinaryDocument(self.psin)
         self.blocks, self.root_block_id = parse_pmap(self.sections[PMAP])
-        self.structs = parse_psch(self.sections[PSCH])
+        self.structs, self.enums = _cached_schema(self.sections[PSCH])
+        self._names: dict[int, str] = {}
 
     def _name(self, hash_value: int) -> str:
-        return self.name_resolver(hash_value)
+        cached = self._names.get(hash_value)
+        if cached is None:
+            cached = self.name_resolver(hash_value)
+            self._names[hash_value] = cached
+        return cached
+
+    def _hashed_string(self, hash_value: int) -> PsoHashedString:
+        return PsoHashedString(hash=hash_value)
+
+    def _node(
+        self,
+        type_hash: int,
+        fields: dict[str, Any] | None = None,
+    ) -> PsoNode:
+        return PsoNode(
+            type_name=self._name(type_hash),
+            type_hash=type_hash,
+            fields=fields or {},
+        )
+
+    def _node_fields(self, value: Any) -> dict[str, Any] | None:
+        return value.fields if isinstance(value, PsoNode) else None
+
+    def _empty_hashed_string(self, value: Any) -> bool | None:
+        if isinstance(value, PsoHashedString):
+            return value.hash == 0 and not value.text
+        return None
 
     def _block_slice(self, pointer: PsoPointer, size: int) -> bytes:
         block = self._get_block(pointer.block_id)
@@ -113,7 +146,7 @@ class PsoReader:
             count = max(0, header.count - 1)
             return self._read_c_string_pointer(header.pointer, count)
         if entry.subtype in {7, 8}:
-            return PsoHashedString(hash=_u32(self.psin, absolute_offset))
+            return self._hashed_string(_u32(self.psin, absolute_offset))
         return ""
 
     def _read_scalar(self, absolute_offset: int, type_id: int) -> Any:
@@ -173,14 +206,16 @@ class PsoReader:
             return value == 0
         if isinstance(value, str):
             return value == ""
-        if isinstance(value, PsoHashedString):
-            return value.hash == 0 and not value.text
+        empty_hashed_string = self._empty_hashed_string(value)
+        if empty_hashed_string is not None:
+            return empty_hashed_string
         if isinstance(value, tuple):
             return all(self._is_empty_value(item) for item in value)
         if isinstance(value, list):
             return all(self._is_empty_value(item) for item in value)
-        if isinstance(value, PsoNode):
-            return all(self._is_empty_value(item) for item in (value.fields or {}).values())
+        node_fields = self._node_fields(value)
+        if node_fields is not None:
+            return all(self._is_empty_value(item) for item in node_fields.values())
         return False
 
     def _trim_trailing_empty_values(self, values: list[Any]) -> list[Any]:
@@ -277,7 +312,10 @@ class PsoReader:
             )
         if array_info.type_id == PsoDataTypeString:
             if array_info.subtype in {7, 8}:
-                return [PsoHashedString(hash=_u32(self.psin, base + index * 4)) for index in range(count)]
+                return [
+                    self._hashed_string(_u32(self.psin, base + index * 4))
+                    for index in range(count)
+                ]
             if array_info.subtype in {2, 3}:
                 values: list[str] = []
                 stride = 8 if array_info.subtype == 2 else 16
@@ -294,10 +332,10 @@ class PsoReader:
     def _read_structure(self, type_hash: int, block_id: int, relative_offset: int) -> PsoNode:
         struct_info = self.structs.get(type_hash)
         if struct_info is None:
-            return PsoNode(type_name=self._name(type_hash), type_hash=type_hash, fields={})
+            return self._node(type_hash)
         block = self._get_block(block_id)
         if block is None:
-            return PsoNode(type_name=self._name(type_hash), type_hash=type_hash, fields={})
+            return self._node(type_hash)
         base = block.offset + relative_offset
         fields: dict[str, Any] = {}
         array_info: PsoEntry | None = None
@@ -322,7 +360,7 @@ class PsoReader:
                 fields[name] = None
             else:
                 fields[name] = self._read_scalar(absolute_offset, entry.type_id)
-        return PsoNode(type_name=self._name(type_hash), type_hash=type_hash, fields=fields)
+        return self._node(type_hash, fields)
 
     def read(self) -> PsoDocument:
         root_block = self.blocks[self.root_block_id]
@@ -340,7 +378,7 @@ class PsoReader:
                     if ident != PSIN and ident != PMAP
                 },
                 "structs": self.structs,
-                "enums": parse_psch_enums(self.sections[PSCH]),
+                "enums": self.enums,
                 "root_type_hash": root_block.name_hash,
                 "psin_prefix": bytes(self.sections[PSIN][8:16]),
                 "pmap_unknown": _u16(self.sections[PMAP], 14),

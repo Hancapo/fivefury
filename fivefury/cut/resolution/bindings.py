@@ -280,11 +280,8 @@ def _resolve_binding_texture_chains(
             continue
 
         if model_root is not None:
-            for archetype in cache._iter_archetypes_for_query(model_root):
+            for declared in cache.texture_dictionary_hashes_for_asset(model_root):
                 check_cutscene_resolution_cancelled(cancellation)
-                declared = getattr(archetype, "texture_dictionary", None)
-                if declared in (None, "", 0):
-                    continue
                 if cache.get_asset(declared, kind=GameFileType.YTD) is None:
                     declared_hash = MetaHash(declared)
                     issues.append(

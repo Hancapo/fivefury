@@ -257,17 +257,37 @@ class GameFileCacheAssetMixin:
             return
 
         target_hashes = {asset.short_hash, asset.name_hash}
-        for archetype in self.archetype_dict.values():
-            try:
-                asset_name_hash = int(getattr(archetype, "asset_name", 0) or 0)
-            except Exception:
-                asset_name_hash = 0
-            try:
-                name_hash = int(getattr(archetype, "name", 0) or 0)
-            except Exception:
-                name_hash = 0
-            if asset_name_hash in target_hashes or name_hash in target_hashes:
+        view = self.archetype_dict
+        finder = getattr(view, "for_asset_hashes", None)
+        if callable(finder):
+            yield from finder(target_hashes)
+            return
+        for archetype in view.values():
+            if int(getattr(archetype, "asset_name", 0) or 0) in target_hashes:
                 yield archetype
+
+    def texture_dictionary_hashes_for_asset(
+        self,
+        query: Any,
+    ) -> tuple[int | MetaHash, ...]:
+        asset = self._coerce_asset(query)
+        if asset is None or asset.kind not in {
+            GameFileType.YDR,
+            GameFileType.YDD,
+            GameFileType.YFT,
+        }:
+            return ()
+        view = self.archetype_dict
+        finder = getattr(view, "texture_dictionaries_for_asset_hashes", None)
+        if not callable(finder):
+            return tuple(
+                dict.fromkeys(
+                    getattr(archetype, "texture_dictionary", 0)
+                    for archetype in self._iter_archetypes_for_query(asset)
+                    if getattr(archetype, "texture_dictionary", None) not in (None, "", 0)
+                )
+            )
+        return finder({asset.short_hash, asset.name_hash})
 
     def _iter_texture_dict_chain_assets(self, value: int | str | MetaHash) -> Iterator[tuple[AssetRecord, int]]:
         seen_hashes: set[int] = set()
@@ -322,6 +342,31 @@ class GameFileCacheAssetMixin:
                         continue
                     seen_paths.add(ytd_asset.path)
                     yield ytd_asset, depth
+            return
+
+        query_asset = self._coerce_asset(query)
+        if query_asset is not None and query_asset.kind in {
+            GameFileType.YDR,
+            GameFileType.YDD,
+            GameFileType.YFT,
+        }:
+            for texture_dictionary in self.texture_dictionary_hashes_for_asset(
+                query_asset
+            ):
+                if include_parents:
+                    chain = self._iter_texture_dict_chain_assets(texture_dictionary)
+                else:
+                    direct = preferred_asset(
+                        self,
+                        texture_dictionary,
+                        GameFileType.YTD,
+                    )
+                    chain = () if direct is None else ((direct, 0),)
+                for asset, depth in chain:
+                    if asset.path in seen_paths:
+                        continue
+                    seen_paths.add(asset.path)
+                    yield asset, depth
             return
 
         for archetype in self._iter_archetypes_for_query(query):
