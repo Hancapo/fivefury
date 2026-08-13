@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+from ..xml import parse_xml_root
 from .model import CutFile, CutNode
 
 _INTEGER_RE = re.compile(r"^-?(?:0x[0-9A-Fa-f]+|\d+)$")
@@ -83,17 +84,7 @@ def _parse_element(element: ET.Element) -> Any:
 
 
 def read_cutxml(data: str | bytes | Path) -> CutFile:
-    if isinstance(data, Path):
-        text = data.read_text(encoding="utf-8")
-    elif isinstance(data, bytes):
-        text = data.decode("utf-8")
-    else:
-        path = Path(data)
-        if path.is_file():
-            text = path.read_text(encoding="utf-8")
-        else:
-            text = data
-    root = ET.fromstring(text)
+    root = parse_xml_root(data)
     parsed = _parse_element(root)
     if not isinstance(parsed, CutNode):
         parsed = CutNode(type_name=root.tag, fields={"value": parsed})
