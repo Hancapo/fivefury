@@ -490,23 +490,27 @@ def _skin_compose_matrices(
     return _ffi.skin_compose_matrices(local_matrices, parent_indices, int(count))
 
 
-def _skin_vertices(
-    positions: memoryview,
-    matrices: memoryview,
-    blend_indices: memoryview,
-    blend_weights: memoryview,
-    normals: memoryview | None,
+def _skin_vertices_into(
+    positions: object,
+    matrices: object,
+    blend_indices: object,
+    blend_weights: object,
+    normals: object | None,
+    output_positions: object,
+    output_normals: object | None,
     vertex_count: int,
     bone_count: int,
     influence_count: int,
     normalize_weights: bool,
-) -> tuple[bytearray, bytearray | None]:
-    return _ffi.skin_vertices(
+) -> None:
+    _ffi.skin_vertices_into(
         positions,
         matrices,
         blend_indices,
         blend_weights,
         normals,
+        output_positions,
+        output_normals,
         int(vertex_count),
         int(bone_count),
         int(influence_count),
