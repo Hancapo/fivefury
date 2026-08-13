@@ -16,6 +16,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Runtime-compatible YDR light extraction, LOD-light hashing, categorization, transforms, and source-bound validation.
+- Deterministic distant-light and LOD-light YMAP generation with spatial partitioning and script-controlled groups.
 - Lazy texture dictionary catalogs with searchable texture metadata and deferred pixel loading.
 - Texture dictionary relationship graphs with source precedence, conflict, cycle, and missing-parent diagnostics.
 - Contextual texture resolution across embedded dictionaries, archetypes, GTXD parents, same-name dictionaries, and explicit global fallback.
