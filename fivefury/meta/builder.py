@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import struct
 from collections.abc import Iterable, Mapping
+from functools import cache
 from typing import Any
 
 from ..binary import align, pad_bytes
@@ -42,7 +43,7 @@ from .utils import array_info_for_field
 @dataclasses.dataclass(slots=True)
 class _WritableBlock:
     name_hash: int
-    data: bytes = b""
+    data: bytearray = dataclasses.field(default_factory=bytearray)
 
 
 class MetaBuilder:
@@ -127,7 +128,7 @@ class MetaBuilder:
         return block_id
 
     def _set_block(self, block_id: int, data: bytes) -> None:
-        self.blocks[block_id - 1].data = pad_bytes(data, 16)
+        self.blocks[block_id - 1].data = bytearray(pad_bytes(data, 16))
 
     def _add_block(
         self,
@@ -144,10 +145,10 @@ class MetaBuilder:
                 if len(block.data) >= self.MAX_BLOCK_LENGTH:
                     continue
                 pointer = MetaPointer(block_id=index + 1, offset=len(block.data))
-                self.blocks[index].data = block.data + item
+                block.data.extend(item)
                 return pointer
         block_id = self._reserve_block(name_hash)
-        self.blocks[block_id - 1].data = item
+        self.blocks[block_id - 1].data.extend(item)
         return MetaPointer(block_id=block_id, offset=0)
 
     def _lookup_struct_info(self, name_hash: int) -> MetaStructInfo:
@@ -548,6 +549,7 @@ def _value_struct_hash(value: Any, *, fallback: int) -> int:
     raise ValueError("Structure hash is required for pointer/inline structure encoding")
 
 
+@cache
 def _camel_to_snake(value: str) -> str:
     chars: list[str] = []
     for index, char in enumerate(value):

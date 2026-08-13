@@ -107,7 +107,8 @@ class MetaFieldInfo:
 
     @property
     def name(self) -> str:
-        return META_NAME_REVERSE.get(self.name_hash, f"0x{self.name_hash:08X}")
+        name = META_NAME_REVERSE.get(self.name_hash)
+        return name if name is not None else f"0x{self.name_hash:08X}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -122,7 +123,8 @@ class MetaStructInfo:
 
     @property
     def name(self) -> str:
-        return META_NAME_REVERSE.get(self.name_hash, f"0x{self.name_hash:08X}")
+        name = META_NAME_REVERSE.get(self.name_hash)
+        return name if name is not None else f"0x{self.name_hash:08X}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -132,7 +134,8 @@ class MetaEnumEntry:
 
     @property
     def name(self) -> str:
-        return META_NAME_REVERSE.get(self.name_hash, f"0x{self.name_hash:08X}")
+        name = META_NAME_REVERSE.get(self.name_hash)
+        return name if name is not None else f"0x{self.name_hash:08X}"
 
 
 @dataclasses.dataclass(slots=True)
