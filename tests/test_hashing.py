@@ -55,6 +55,25 @@ class HashingContractTests(PytestCompat):
         self.assertEqual(_hash_value(symbol, "CMapData"), _hash_value(symbol, "cmapdata"))
         self.assertEqual(_hash_value(symbol, "ymap"), 0xCBADADE4)
 
+    def test_jenk_hash_many_matches_scalar_hashing(self) -> None:
+        from fivefury.hashing import jenk_hash, jenk_hash_many
+
+        values = ["", "test", b"CMapData", "prop_tree_pine_01"]
+
+        self.assertEqual(
+            jenk_hash_many(value for value in values),
+            [jenk_hash(value) for value in values],
+        )
+
+    def test_compact_index_exports_paths_in_insertion_order(self) -> None:
+        from fivefury._native import CompactIndex
+
+        index = CompactIndex()
+        index.add("maps/alpha.ymap", 1, 10, 10)
+        index.add("types/beta.ytyp", 2, 20, 20)
+
+        self.assertEqual(index.paths(), ["maps/alpha.ymap", "types/beta.ytyp"])
+
     def test_jenk_partial_hash_known_vectors(self) -> None:
         from fivefury.hashing import jenk_finalize_hash, jenk_hash, jenk_partial_hash
 

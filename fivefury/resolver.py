@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
-from .hashing import jenk_hash
+from .hashing import jenk_hash, jenk_hash_many
 from .metahash import MetaHash
 
 
@@ -50,11 +50,11 @@ class HashResolver:
         return name_hash
 
     def register_names(self, names: Iterable[str]) -> list[int]:
-        hashes: list[int] = []
-        for name in names:
-            name_hash = self.register_name(name)
-            if name_hash is not None:
-                hashes.append(name_hash)
+        normalized_names = [normalized for name in names if (normalized := _normalize_name(name))]
+        hashes = jenk_hash_many(normalized_names)
+        for normalized, name_hash in zip(normalized_names, hashes, strict=True):
+            self.name_to_hash[normalized] = name_hash
+            self.hash_to_name.setdefault(name_hash, normalized)
         return hashes
 
     def register_names_file(
@@ -69,24 +69,24 @@ class HashResolver:
         )
 
     def register_path_name(self, path: str | Path) -> list[int]:
-        pure = Path(str(path).replace("\\", "/"))
+        return self.register_paths((path,))
+
+    def register_paths(self, paths: Iterable[str | Path]) -> list[int]:
         names: list[str] = []
-        if pure.stem:
-            names.append(pure.stem)
-        if pure.name and pure.suffix == "":
-            names.append(pure.name)
+        for path in paths:
+            pure = Path(str(path).replace("\\", "/"))
+            if pure.stem:
+                names.append(pure.stem)
+            if pure.name and pure.suffix == "":
+                names.append(pure.name)
         return self.register_names(names)
 
     def register_path_names(self, root: str | Path, *, recursive: bool = True) -> list[int]:
         root_path = Path(root)
         if root_path.is_file():
             return self.register_path_name(root_path)
-        hashes: list[int] = []
         iterator = root_path.rglob("*") if recursive else root_path.iterdir()
-        for path in iterator:
-            if path.is_file():
-                hashes.extend(self.register_path_name(path))
-        return hashes
+        return self.register_paths(path for path in iterator if path.is_file())
 
     def resolve_hash(self, value: int | MetaHash) -> str | None:
         return self.hash_to_name.get(int(value))
@@ -146,6 +146,10 @@ def register_path_name(path: str | Path) -> list[int]:
     return _GLOBAL_HASH_RESOLVER.register_path_name(path)
 
 
+def register_paths(paths: Iterable[str | Path]) -> list[int]:
+    return _GLOBAL_HASH_RESOLVER.register_paths(paths)
+
+
 def register_path_names(root: str | Path, *, recursive: bool = True) -> list[int]:
     return _GLOBAL_HASH_RESOLVER.register_path_names(root, recursive=recursive)
 
@@ -172,6 +176,7 @@ __all__ = [
     "register_names_file",
     "register_path_name",
     "register_path_names",
+    "register_paths",
     "resolve_hash",
     "resolve_name",
 ]

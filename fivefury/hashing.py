@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.resources
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Final
@@ -43,8 +44,18 @@ def jenk_hash(value: str | bytes, *, encoding: str = "utf-8") -> int:
     return _ffi.jenk_hash(text, _get_lut())
 
 
+def jenk_hash_many(
+    values: Iterable[str | bytes],
+    *,
+    encoding: str = "utf-8",
+) -> list[int]:
+    texts = [value if isinstance(value, str) else value.decode(encoding) for value in values]
+    return _ffi.jenk_hash_many(texts, _get_lut())
+
+
 __all__ = [
-    "jenk_hash",
-    "jenk_partial_hash",
     "jenk_finalize_hash",
+    "jenk_hash",
+    "jenk_hash_many",
+    "jenk_partial_hash",
 ]
