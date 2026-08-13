@@ -26,6 +26,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Hash registration, cache path export, and texture indexing use native batch operations.
 - META block assembly avoids repeated buffer copies and field-name conversions.
 - YCD track interpolation uses a shared native batch vector and quaternion kernel.
+- GameFileCache keeps a byte-bounded LRU of decoded asset payloads.
+- YBN page-layout convergence reuses prepared geometry BVHs between passes.
 
 ## [0.3.16] - 2026-08-12
 

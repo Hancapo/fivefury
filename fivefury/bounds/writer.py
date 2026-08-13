@@ -179,12 +179,17 @@ def _write_bound(
     offset: int | None = None,
     ref_counts: Mapping[int, int] | None = None,
     file_vft_resolver: BoundFileVftResolver | None = None,
+    prepared_bvhs: dict[int, tuple[BoundBvh, list[BoundPolygon], list[int]]] | None = None,
 ) -> int:
     prepared_bvh = None
     if isinstance(bound, BoundComposite):
         _refresh_composite_metrics(bound)
     elif isinstance(bound, BoundBVH):
-        prepared_bvh = _refresh_geometry_bvh_metrics(bound)
+        prepared_bvh = prepared_bvhs.get(id(bound)) if prepared_bvhs is not None else None
+        if prepared_bvh is None:
+            prepared_bvh = _refresh_geometry_bvh_metrics(bound)
+            if prepared_bvhs is not None:
+                prepared_bvhs[id(bound)] = prepared_bvh
     bound_offset = 0 if offset is None else offset
     if offset is None:
         bound_offset = writer.alloc(_bound_size(bound), 16)
@@ -202,6 +207,7 @@ def _write_bound(
             bound,
             ref_counts=ref_counts,
             file_vft_resolver=file_vft_resolver,
+            prepared_bvhs=prepared_bvhs,
         )
     elif isinstance(bound, BoundBVH):
         _write_geometry(writer, bound_offset, bound, with_bvh=True, prepared=prepared_bvh)
@@ -237,6 +243,7 @@ def _write_composite(
     *,
     ref_counts: Mapping[int, int] | None = None,
     file_vft_resolver: BoundFileVftResolver | None = None,
+    prepared_bvhs: dict[int, tuple[BoundBvh, list[BoundPolygon], list[int]]] | None = None,
 ) -> None:
     child_offsets = [
         _write_bound(
@@ -244,6 +251,7 @@ def _write_composite(
             child.bound,
             ref_counts=ref_counts,
             file_vft_resolver=file_vft_resolver,
+            prepared_bvhs=prepared_bvhs,
         )
         if child.bound is not None
         else 0
@@ -913,9 +921,16 @@ def build_bound_system_layout(
     *,
     root_pages_info: BoundResourcePagesInfo | None = None,
     file_vft_resolver: BoundFileVftResolver | None = None,
+    _prepared_bvhs: dict[int, tuple[BoundBvh, list[BoundPolygon], list[int]]] | None = None,
 ) -> tuple[bytes, list[ResourceBlockSpan]]:
     writer = ResourceWriter(_bound_size(bound))
-    _write_bound(writer, bound, offset=0, file_vft_resolver=file_vft_resolver)
+    _write_bound(
+        writer,
+        bound,
+        offset=0,
+        file_vft_resolver=file_vft_resolver,
+        prepared_bvhs=_prepared_bvhs,
+    )
     if root_pages_info is not None:
         pages_info_offset = write_resource_pages_info(writer, root_pages_info)
         _write_resource_file_base(
