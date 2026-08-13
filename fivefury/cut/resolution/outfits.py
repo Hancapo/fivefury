@@ -335,7 +335,7 @@ def _load_selected_file(
 ) -> GameFile | None:
     try:
         return cache.load_asset(asset)
-    except Exception as exc:  # noqa: BLE001 - asset failures are diagnostics
+    except Exception as exc:
         issues.append(
             _issue(
                 "outfit.asset_load_failed",

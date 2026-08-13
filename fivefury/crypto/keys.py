@@ -9,8 +9,8 @@ import struct
 from pathlib import Path
 from typing import Final
 
-from .backends import _AesEcbCipher, _decompress_any, _to_signed_i32
 from .._native import crypto_magic_mask
+from .backends import _AesEcbCipher, _decompress_any, _to_signed_i32
 
 _AES_KEY_SHA1: Final[bytes] = bytes(
     [0xA0, 0x79, 0x61, 0x28, 0xA7, 0x75, 0x72, 0x0A, 0xC2, 0x04, 0xD9, 0x81, 0x9F, 0x68, 0xC1, 0x72, 0xE3, 0x95, 0x2C, 0x6D]
@@ -26,13 +26,14 @@ _DEFAULT_AWC_KEY: Final[tuple[int, int, int, int]] = (4165194522, 2330575623, 17
 
 
 def _search_sha1_window(exe_path: Path, digest: bytes, *, length: int, align: int = 8) -> bytes:
-    with exe_path.open("rb") as fh:
-        with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-            limit = max(0, len(mm) - length + 1)
-            for offset in range(0, limit, align):
-                block = mm[offset : offset + length]
-                if hashlib.sha1(block).digest() == digest:
-                    return bytes(block)
+    with exe_path.open("rb") as fh, mmap.mmap(
+        fh.fileno(), 0, access=mmap.ACCESS_READ
+    ) as mm:
+        limit = max(0, len(mm) - length + 1)
+        for offset in range(0, limit, align):
+            block = mm[offset : offset + length]
+            if hashlib.sha1(block).digest() == digest:
+                return bytes(block)
     raise ValueError(f"Unable to locate AES key in {exe_path}")
 
 

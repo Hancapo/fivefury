@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
@@ -464,7 +465,7 @@ def _validate_sections(
                 boundaries.append(next_boundary)
                 next_boundary += section_duration
     boundaries.append(range_end)
-    for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+    for index, (start, end) in enumerate(itertools.pairwise(boundaries)):
         if end - start < CUT_MINIMUM_SECTION_DURATION - 1e-4:
             _issue(
                 issues,
@@ -1027,17 +1028,17 @@ def _validate_assets(scene: CutScene, issues: list[CutSceneValidationIssue]) -> 
 
 def _validate_flags(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
     flags = _scene_flags(scene)
-    if CutSceneFlags.IS_SECTIONED in flags:
-        if (
-            scene.section_by_time_slice_duration is not None
-            and float(scene.section_by_time_slice_duration) <= 0.0
-        ):
-            _issue(
-                issues,
-                "error",
-                "flags.sectioned.invalid_duration",
-                "IS_SECTIONED requires a positive section duration",
-            )
+    if (
+        CutSceneFlags.IS_SECTIONED in flags
+        and scene.section_by_time_slice_duration is not None
+        and float(scene.section_by_time_slice_duration) <= 0.0
+    ):
+        _issue(
+            issues,
+            "error",
+            "flags.sectioned.invalid_duration",
+            "IS_SECTIONED requires a positive section duration",
+        )
     if CutSceneFlags.NO_AMBIENT_LIGHTS in flags and scene.lights:
         _issue(
             issues,

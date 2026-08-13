@@ -6,9 +6,9 @@ import os
 import pickle
 import re
 import time
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterator, Sequence
 
 from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index
 from ..crypto import GameCrypto, load_game_keys
@@ -42,33 +42,25 @@ def _asset_category_mask(path: str | Path) -> int:
         mask |= _SKIP_AUDIO
 
     if (
-        name == "vehicles.rpf"
+        name in {"handling.meta", "vehicles.meta", "vehicles.rpf", "vfxvehicleinfo.ymt"}
         or "/vehicles.rpf/" in normalized
         or "/vehicles/" in normalized
         or "/vehiclemods/" in normalized
         or "/streamedvehicles/" in normalized
-        or name.startswith("streamedvehicles")
-        or name.startswith("vehiclemods")
-        or name == "vehicles.meta"
-        or name.startswith("vehiclelayouts")
-        or name.startswith("carvariations")
-        or name.startswith("carcols")
-        or name == "handling.meta"
-        or name == "vfxvehicleinfo.ymt"
+        or name.startswith(
+            ("carcols", "carvariations", "streamedvehicles", "vehiclelayouts", "vehiclemods")
+        )
     ):
         mask |= _SKIP_VEHICLES
 
     if (
-        name == "peds.rpf"
-        or name == "pedprops.rpf"
+        name in {"peds.meta", "peds.rpf", "peds.ymt", "pedprops.rpf"}
         or "/peds.rpf/" in normalized
         or "/streamedpeds_" in normalized
         or "/componentpeds_" in normalized
         or "/pedprops/" in normalized
         or "/peds/" in normalized
-        or name.startswith("streamedpeds_")
-        or name.startswith("componentpeds_")
-        or name in {"peds.meta", "peds.ymt"}
+        or name.startswith(("componentpeds_", "streamedpeds_"))
     ):
         mask |= _SKIP_PEDS
 

@@ -1,6 +1,5 @@
 from .asset_types import ArchetypeAssetType, coerce_archetype_asset_type
 from .base_archetype import Archetype, BaseArchetypeDef
-from .timed_archetype import TimeArchetype, TimeArchetypeDef, coerce_time_archetype_flags
 from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .extensions import (
     AudioCollisionSettingsExtension,
@@ -10,8 +9,8 @@ from .extensions import (
     ClimbHandHoldExtension,
     DecalExtension,
     DoorExtension,
-    ExpressionExtension,
     ExplosionEffectExtension,
+    ExpressionExtension,
     LadderExtension,
     LightAttrDef,
     LightEffectExtension,
@@ -29,7 +28,14 @@ from .extensions import (
     WalkDontWalkExtension,
     WindDisturbanceExtension,
 )
-from .flags import ArchetypeFlags, MloInstanceFlags, MloInteriorFlags, PortalFlags, RoomFlags, TimeArchetypeFlags
+from .flags import (
+    ArchetypeFlags,
+    MloInstanceFlags,
+    MloInteriorFlags,
+    PortalFlags,
+    RoomFlags,
+    TimeArchetypeFlags,
+)
 from .helpers import (
     CUTSCENE_ANIMATED_PROP_ARCHETYPE_FLAGS,
     CUTSCENE_STATIC_PROP_ARCHETYPE_FLAGS,
@@ -61,6 +67,11 @@ from .mlo import (
     Room,
 )
 from .model import CompositeEntityType, Ytyp, YtypDependency, read_ytyp, save_ytyp
+from .timed_archetype import (
+    TimeArchetype,
+    TimeArchetypeDef,
+    coerce_time_archetype_flags,
+)
 
 __all__ = [
     "ARCHETYPE_HD_TEXTURE_RADIUS_SCALE",

@@ -77,7 +77,7 @@ def _read_list_header(
         item_count,
         unknown_0ch,
         list_parts_pointer,
-        list_offsets_pointer,
+        _list_offsets_pointer,
         list_parts_count,
         unknown_24h,
         unknown_28h,

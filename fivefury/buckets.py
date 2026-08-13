@@ -3,7 +3,6 @@ from __future__ import annotations
 from bisect import bisect_right
 from typing import Final
 
-
 AT_HASH_BUCKET_CAPACITIES: Final[tuple[int, ...]] = (
     11,
     29,

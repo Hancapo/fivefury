@@ -46,7 +46,7 @@ _FUNCTION_RE = re.compile(r"^(rgba?|hsla?)\((.*)\)$", re.IGNORECASE)
 
 
 def _clamp_byte(value: float) -> int:
-    return max(0, min(255, int(round(float(value)))))
+    return max(0, min(255, round(float(value))))
 
 
 def _clamp_unit(value: float) -> float:

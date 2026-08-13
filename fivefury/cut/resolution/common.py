@@ -29,7 +29,7 @@ def _load_file(
 ) -> GameFile | None:
     try:
         result = cache.load_asset(asset)
-    except Exception as exc:  # noqa: BLE001 - dependency failures become structured issues
+    except Exception as exc:
         issues.append(
             CutsceneResolveIssue(
                 severity="warning",

@@ -15,15 +15,15 @@ from .model import (
     CdrIndexFlavor,
     CdrJointControlPoint,
     CdrJointRotationLimit,
-    CdrJointVectorLimit,
     CdrJoints,
+    CdrJointVectorLimit,
     CdrLod,
     CdrMaterial,
     CdrMaterialParameter,
     CdrMesh,
     CdrModel,
-    CdrSkinningFlavor,
     CdrSkeleton,
+    CdrSkinningFlavor,
 )
 from .resource import Ps3ResourceView, split_ps3_rsc7_sections
 from .shaders import (
@@ -31,7 +31,13 @@ from .shaders import (
     get_cdr_shader_definition,
     resolve_cdr_shader_file_name,
 )
-from .vertices import decode_edge_vertices, decode_fvf_vertices, decompress_edge_indices, parse_edge_stream, parse_fvf
+from .vertices import (
+    decode_edge_vertices,
+    decode_fvf_vertices,
+    decompress_edge_indices,
+    parse_edge_stream,
+    parse_fvf,
+)
 
 _ROOT_SIZE = 0x80
 _LOD_POINTER_OFFSETS = dict(zip(CDR_LOD_ORDER, (0x40, 0x44, 0x48, 0x4C), strict=True))

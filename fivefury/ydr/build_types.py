@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
-from collections.abc import Mapping, Sequence
 
 from ..bounds import Bound
 from ..ytd import Ytd
-from .defs import YdrLod, YdrRenderMask, YdrSkeletonBinding, coerce_lod, coerce_render_mask, coerce_skeleton_binding
+from .defs import (
+    YdrLod,
+    YdrRenderMask,
+    YdrSkeletonBinding,
+    coerce_lod,
+    coerce_render_mask,
+    coerce_skeleton_binding,
+)
 from .gen9_shader_enums import YdrGen9Shader
 from .shader_enums import YdrShader
 

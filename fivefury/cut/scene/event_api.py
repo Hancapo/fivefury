@@ -4,9 +4,9 @@ from collections.abc import Iterable
 
 from ..events import CutEventType
 from ..payloads import (
-    CutAttachmentPayload,
     CutAnimationDictPayload,
     CutAnimationTargetPayload,
+    CutAttachmentPayload,
     CutBoolValuePayload,
     CutCameraCutPayload,
     CutCascadeShadowPayload,
@@ -16,8 +16,8 @@ from ..payloads import (
     CutFloatValuePayload,
     CutLoadScenePayload,
     CutNamePayload,
-    CutObjectNamePayload,
     CutObjectIdListPayload,
+    CutObjectNamePayload,
     CutObjectTargetPayload,
     CutObjectVariationPayload,
     CutPlayParticleEffectPayload,

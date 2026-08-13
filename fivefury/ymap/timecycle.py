@@ -3,8 +3,8 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..meta.defs import meta_name
+from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..vector import aabb_center, aabb_from_center_size, aabb_size
 
 

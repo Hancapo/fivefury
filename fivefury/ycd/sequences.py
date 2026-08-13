@@ -28,8 +28,8 @@ from .sequence_tracks import (
     is_ycd_facial_track,
     is_ycd_object_track,
     is_ycd_position_track,
-    is_ycd_rotation_track,
     is_ycd_root_motion_track,
+    is_ycd_rotation_track,
     is_ycd_uv_track,
 )
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from ..vector import aabb_radius
 
-
 DEFAULT_ARCHETYPE_LOD_DIST = 100.0
 DEFAULT_ARCHETYPE_HD_TEXTURE_DIST = 50.0
 ARCHETYPE_LOD_RADIUS_SCALE = 3.0

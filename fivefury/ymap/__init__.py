@@ -1,6 +1,7 @@
 from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
 from .cargens import CarGen, CarGenerator
 from .defs import YMAP_ENUM_INFOS, YMAP_STRUCT_INFOS
+from .entities import EntityDef, MloInstanceDef
 from .enums import (
     YmapCarGenFlags,
     YmapContentFlags,
@@ -12,7 +13,6 @@ from .enums import (
     YmapMloInstanceFlags,
     YmapPriorityLevel,
 )
-from .entities import EntityDef, MloInstanceDef
 from .extensions import (
     AudioCollisionSettingsExtension,
     AudioEmitterExtension,
@@ -21,8 +21,8 @@ from .extensions import (
     ClimbHandHoldExtension,
     DecalExtension,
     DoorExtension,
-    ExpressionExtension,
     ExplosionEffectExtension,
+    ExpressionExtension,
     LadderExtension,
     LightAttrDef,
     LightEffectExtension,
@@ -40,7 +40,14 @@ from .extensions import (
     WalkDontWalkExtension,
     WindDisturbanceExtension,
 )
-from .grass import Aabb, GrassBatch, GrassInstance, GrassInstanceBatch, InstancedData, InstancedMapData
+from .grass import (
+    Aabb,
+    GrassBatch,
+    GrassInstance,
+    GrassInstanceBatch,
+    InstancedData,
+    InstancedMapData,
+)
 from .io import read_ymap, save_ymap
 from .lights import (
     MAX_LOD_LIGHT_CAPSULE_EXTENT,

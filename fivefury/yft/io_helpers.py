@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from ..binary import f32 as _f32, read_c_string
+from ..binary import f32 as _f32
+from ..binary import read_c_string
 from ..resource import read_virtual_pointer_array, virtual_to_offset
 from .constants import BOUNDING_SPHERE_OFFSET, DAT_VIRTUAL_BASE
 

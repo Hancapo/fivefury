@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import math
 import shlex
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterable
 
 from ..colors import parse_css_argb, parse_css_rgb_unit
 from ..hashing import jenk_partial_hash

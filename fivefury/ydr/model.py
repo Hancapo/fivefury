@@ -2,26 +2,45 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import itertools
 import math
 import struct
 import zlib
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Union
-from collections.abc import Iterable, Iterator, Sequence
 
 from ..bounds import Bound
 from ..buckets import at_hash_bucket_capacity
 from ..colors import CssColor, parse_css_rgb, parse_css_rgba_unit
-from ..drawable import DrawableAsset, DrawableMaterial, DrawableMesh, DrawableModel, DrawableParameter
+from ..drawable import (
+    DrawableAsset,
+    DrawableMaterial,
+    DrawableMesh,
+    DrawableModel,
+    DrawableParameter,
+)
 from ..hashing import jenk_hash
 from ..ytd import Texture, TextureFormat, Ytd
-from .defs import LOD_ORDER, YdrLod, YdrSkeletonBinding, coerce_lod, coerce_skeleton_binding
+from .defs import (
+    LOD_ORDER,
+    YdrLod,
+    YdrSkeletonBinding,
+    coerce_lod,
+    coerce_skeleton_binding,
+)
 from .shaders import ShaderDefinition
 
 if TYPE_CHECKING:
     from ..bounds import BoundComposite, BoundCompositeFlags, BoundMaterial
     from ..ycd import YcdUvClipBinding
-    from .build_types import YdrBuild, YdrMaterialInput, YdrMeshInput, YdrModelInput, YdrTextureInput
+    from .build_types import (
+        YdrBuild,
+        YdrMaterialInput,
+        YdrMeshInput,
+        YdrModelInput,
+        YdrTextureInput,
+    )
     from .collision import YdrCollisionStats
     from .gen9 import ShaderGen9Definition
     from .materials import YdrMaterialDescriptor
@@ -196,7 +215,7 @@ class YdrSkeleton:
             if parent_index >= 0 and children:
                 parent_bone = self.bones[parent_index]
                 parent_bone.flags = YdrBoneFlags(int(parent_bone.flags) | int(YdrBoneFlags.HAS_CHILD))
-            for current, nxt in zip(children, children[1:]):
+            for current, nxt in itertools.pairwise(children):
                 current.next_sibling_index = int(nxt.index)
         self.parent_indices = [int(item.parent_index) for item in self.bones]
         self.child_indices = []

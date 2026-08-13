@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
-from ..meta.utils import meta_array_info as _arrayinfo, meta_field_entry as _entry
+from ..meta.utils import meta_array_info as _arrayinfo
+from ..meta.utils import meta_field_entry as _entry
 
 YMAP_EXTENSION_STRUCT_INFOS = [
     MetaStructInfo(

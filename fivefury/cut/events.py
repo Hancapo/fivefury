@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import Any
 
-
 _CUT_EVENT_ENUMS = [
     "CUTSCENE_LOAD_SCENE_EVENT",
     "CUTSCENE_UNLOAD_SCENE_EVENT",

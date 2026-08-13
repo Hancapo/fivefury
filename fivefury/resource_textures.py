@@ -1,6 +1,6 @@
 from .assets import (
-    EmbeddedTextureDictionary,
     RESOURCE_TEXTURE_ASSET_TYPES,
+    EmbeddedTextureDictionary,
     ResourceTextureAsset,
     YddAsset,
     YdrAsset,

@@ -4,7 +4,6 @@ from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..ymap.defs import _arrayinfo, _entry, _enum_info
 
-
 YTYP_STRUCT_INFOS = [
     MetaStructInfo(
         name_hash=meta_name("CBaseArchetypeDef"),

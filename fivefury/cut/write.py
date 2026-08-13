@@ -5,9 +5,17 @@ from typing import Any
 
 from ..binary import (
     pack_f32_be as _f32,
+)
+from ..binary import (
     pack_i32_be as _i32,
+)
+from ..binary import (
     pack_i64_be as _i64,
+)
+from ..binary import (
     pack_u16_be as _u16,
+)
+from ..binary import (
     pack_u32_be as _u32,
 )
 from ..common import atomic_write_bytes, hash_value
@@ -36,15 +44,23 @@ from ..pso import (
     PsoDataTypeUByte,
     PsoDataTypeUInt,
     PsoDataTypeUShort,
-    PsoBlockBuilder as _BlockBuilder,
-    PsoEntry as _PsoEntry,
-    PsoPointerPatch as _Patch,
-    PsoStruct as _PsoStruct,
     build_chks_section,
     build_pmap_section,
     build_psin_section,
     finalize_sections_with_checksum,
     patch_pointers,
+)
+from ..pso import (
+    PsoBlockBuilder as _BlockBuilder,
+)
+from ..pso import (
+    PsoEntry as _PsoEntry,
+)
+from ..pso import (
+    PsoPointerPatch as _Patch,
+)
+from ..pso import (
+    PsoStruct as _PsoStruct,
 )
 from ..pso.schema import serialize_psch as _serialize_psch
 from .limits import CUT_MAX_PSO_ARRAY_ITEMS
@@ -445,7 +461,7 @@ class _CutWriter:
         return [self.blocks[name_hash] for name_hash in ordered_hashes]
 
     def build(self) -> bytes:
-        _, root_rel = self._alloc_structure(self.root_type_hash, self.cut.root)
+        self._alloc_structure(self.root_type_hash, self.cut.root)
         ordered_blocks = self._ordered_blocks()
         block_ids = {block.name_hash: index + 1 for index, block in enumerate(ordered_blocks)}
 
