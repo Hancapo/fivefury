@@ -4,6 +4,7 @@ import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..map_extensions import extensions_from_meta, extensions_to_meta
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.backed import MetaBackedStruct
 from ..meta.defs import meta_name
@@ -14,7 +15,6 @@ from ..ymap.utils import suggest_resource_path
 from .base_archetype import BaseArchetypeDef
 from .defs import YTYP_ENUM_INFOS, YTYP_STRUCT_INFOS
 from .extension_defs import YTYP_EXTENSION_STRUCT_INFOS
-from .extensions import extensions_from_meta, extensions_to_meta
 from .mlo import MloArchetypeDef
 from .timed_archetype import TimeArchetypeDef
 

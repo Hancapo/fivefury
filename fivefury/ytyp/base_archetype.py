@@ -3,10 +3,10 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from ..map_extensions import extensions_from_meta, extensions_to_meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .asset_types import ArchetypeAssetType, coerce_archetype_asset_type
-from .extensions import extensions_from_meta, extensions_to_meta
 from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 
 

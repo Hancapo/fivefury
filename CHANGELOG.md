@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- Shared map extension models now live only in `fivefury.map_extensions`.
 - PSO value helpers moved from `fivefury.vehiclemeta.common` to `fivefury.pso_values`.
 
 ### Added

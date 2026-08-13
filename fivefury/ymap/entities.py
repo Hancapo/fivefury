@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from ..map_extensions import extensions_from_meta, extensions_to_meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from .enums import (
@@ -15,7 +16,6 @@ from .enums import (
     coerce_ymap_mlo_instance_flags,
     coerce_ymap_priority_level,
 )
-from .extensions import extensions_from_meta, extensions_to_meta
 
 
 @dataclasses.dataclass(slots=True)
