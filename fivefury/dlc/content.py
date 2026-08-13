@@ -11,9 +11,10 @@ from ..xml import (
     child_by_name,
     child_text,
     child_value,
+    item_elements,
     item_texts,
     parse_bool,
-    read_xml_text,
+    parse_xml_root,
     xml_bytes,
 )
 from .enums import (
@@ -22,12 +23,6 @@ from .enums import (
     DlcInstallPartition,
     DlcLoadingScreenContext,
 )
-
-
-def _item_elements(element: ET.Element | None) -> list[ET.Element]:
-    if element is None:
-        return []
-    return [item for item in element if item.tag.lower() == "item"]
 
 
 def _optional_bool(element: ET.Element, name: str) -> bool | None:
@@ -95,7 +90,7 @@ class DlcExecutionConditions:
         return cls(
             active_change_set_conditions=[
                 DlcExecutionCondition.from_xml_element(item)
-                for item in _item_elements(active)
+                for item in item_elements(active)
             ],
             generic_conditions=child_text(element, "genericConditions"),
         )
@@ -132,11 +127,11 @@ class DlcChangeSetData:
             txd_to_unload=item_texts(child_by_name(element, "txdToUnload")),
             resident_resources=[
                 DlcResourceReference.from_xml_element(item)
-                for item in _item_elements(child_by_name(element, "residentResources"))
+                for item in item_elements(child_by_name(element, "residentResources"))
             ],
             unregister_resources=[
                 DlcResourceReference.from_xml_element(item)
-                for item in _item_elements(child_by_name(element, "unregisterResources"))
+                for item in item_elements(child_by_name(element, "unregisterResources"))
             ],
             data_files_to_load=item_texts(child_by_name(element, "dataFilesToLoad")),
         )
@@ -190,7 +185,7 @@ class DlcContentChangeSet:
             name=child_text(element, "changeSetName"),
             map_change_set_data=[
                 DlcChangeSetData.from_xml_element(item)
-                for item in _item_elements(map_data)
+                for item in item_elements(map_data)
             ],
             files_to_enable=item_texts(child_by_name(element, "filesToEnable")),
             files_to_disable=item_texts(child_by_name(element, "filesToDisable")),
@@ -199,11 +194,11 @@ class DlcContentChangeSet:
             txd_to_unload=item_texts(child_by_name(element, "txdToUnload")),
             resident_resources=[
                 DlcResourceReference.from_xml_element(item)
-                for item in _item_elements(child_by_name(element, "residentResources"))
+                for item in item_elements(child_by_name(element, "residentResources"))
             ],
             unregister_resources=[
                 DlcResourceReference.from_xml_element(item)
-                for item in _item_elements(child_by_name(element, "unregisterResources"))
+                for item in item_elements(child_by_name(element, "unregisterResources"))
             ],
             data_files_to_load=item_texts(child_by_name(element, "dataFilesToLoad")),
             requires_loading_screen=_optional_bool(element, "requiresLoadingScreen"),
@@ -316,7 +311,7 @@ class DlcContentFileArray:
         return cls(
             data_files=[
                 DlcContentFile.from_xml_element(item)
-                for item in _item_elements(data_files)
+                for item in item_elements(data_files)
             ]
         )
 
@@ -340,7 +335,7 @@ class DlcContentXml:
 
     @classmethod
     def from_xml(cls, source: bytes | str | Path) -> DlcContentXml:
-        root = ET.fromstring(read_xml_text(source))
+        root = parse_xml_root(source)
         included_xml = child_by_name(root, "includedXmlFiles")
         data_files = child_by_name(root, "dataFiles")
         change_sets = child_by_name(root, "contentChangeSets")
@@ -348,16 +343,16 @@ class DlcContentXml:
             disabled_files=item_texts(child_by_name(root, "disabledFiles")),
             included_xml_files=[
                 DlcContentFileArray.from_xml_element(item)
-                for item in _item_elements(included_xml)
+                for item in item_elements(included_xml)
             ],
             included_data_files=item_texts(child_by_name(root, "includedDataFiles")),
             data_files=[
                 DlcContentFile.from_xml_element(item)
-                for item in _item_elements(data_files)
+                for item in item_elements(data_files)
             ],
             content_change_sets=[
                 DlcContentChangeSet.from_xml_element(item)
-                for item in _item_elements(change_sets)
+                for item in item_elements(change_sets)
             ],
             patch_files=item_texts(child_by_name(root, "patchFiles")),
             allowed_folders=item_texts(child_by_name(root, "allowedFolders")),

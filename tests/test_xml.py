@@ -6,6 +6,7 @@ from fivefury.xml import (
     child_bool,
     child_float,
     child_items,
+    descendant_by_name,
     element_text,
     element_value,
     parse_xml_root,
@@ -20,6 +21,7 @@ def test_xml_helpers_accept_binary_views_and_case_insensitive_items() -> None:
     assert child_bool(root, "enabled")
     assert child_float(root, "scale") == 2.5
     assert [element_text(item) for item in child_items(root, "values")] == ["A", "B"]
+    assert descendant_by_name(root, "item").text == "A"
     assert element_value(root.find("Enabled")) == "true"
 
 

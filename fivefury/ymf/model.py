@@ -11,7 +11,9 @@ from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..xml import (
     add_element_items,
+    add_text,
     child_int,
+    child_items,
     child_text,
     flag_text,
     parse_flag_names,
@@ -92,9 +94,9 @@ class HdTxdAssetBinding(MetaHashFieldsMixin):
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        ET.SubElement(element, "assetType").text = self.asset_type.name
-        ET.SubElement(element, "targetAsset").text = _hash_text(self.target_asset)
-        ET.SubElement(element, "HDTxd").text = _hash_text(self.hd_txd)
+        add_text(element, "assetType", self.asset_type.name)
+        add_text(element, "targetAsset", _hash_text(self.target_asset))
+        add_text(element, "HDTxd", _hash_text(self.hd_txd))
         return element
 
     @classmethod
@@ -153,10 +155,10 @@ class MapDataGroup(MetaHashFieldsMixin):
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        ET.SubElement(element, "Name").text = _hash_text(self.name)
+        add_text(element, "Name", _hash_text(self.name))
         _append_hash_items(element, "Bounds", self.bounds)
         if self.flags:
-            ET.SubElement(element, "Flags").text = flag_text(self.flags)
+            add_text(element, "Flags", flag_text(self.flags))
         _append_hash_items(element, "WeatherTypes", self.weather_types)
         if self.hours_on_off:
             ET.SubElement(element, "HoursOnOff").set("value", str(int(self.hours_on_off)))
@@ -199,10 +201,10 @@ class ImapDependency(MetaHashFieldsMixin):
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        ET.SubElement(element, "imapName").text = _hash_text(self.imap_name)
-        ET.SubElement(element, "itypName").text = _hash_text(self.ityp_name)
+        add_text(element, "imapName", _hash_text(self.imap_name))
+        add_text(element, "itypName", _hash_text(self.ityp_name))
         if self.pack_file_name:
-            ET.SubElement(element, "packFileName").text = _hash_text(self.pack_file_name)
+            add_text(element, "packFileName", _hash_text(self.pack_file_name))
         return element
 
     @classmethod
@@ -244,8 +246,8 @@ class ImapDependencies(MetaHashFieldsMixin):
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        ET.SubElement(element, "imapName").text = _hash_text(self.imap_name)
-        ET.SubElement(element, "manifestFlags").text = flag_text(self.flags)
+        add_text(element, "imapName", _hash_text(self.imap_name))
+        add_text(element, "manifestFlags", flag_text(self.flags))
         _append_hash_items(element, "itypDepArray", self.ityp_dependencies)
         return element
 
@@ -288,8 +290,8 @@ class ItypDependencies(MetaHashFieldsMixin):
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        ET.SubElement(element, "itypName").text = _hash_text(self.ityp_name)
-        ET.SubElement(element, "manifestFlags").text = flag_text(self.flags)
+        add_text(element, "itypName", _hash_text(self.ityp_name))
+        add_text(element, "manifestFlags", flag_text(self.flags))
         _append_hash_items(element, "itypDepArray", self.ityp_dependencies)
         return element
 
@@ -338,7 +340,7 @@ class InteriorBoundsFile(MetaHashFieldsMixin):
 
     def to_xml_element(self) -> ET.Element:
         element = ET.Element("Item")
-        ET.SubElement(element, "Name").text = _hash_text(self.name)
+        add_text(element, "Name", _hash_text(self.name))
         _append_hash_items(element, "Bounds", self.bounds)
         return element
 
@@ -553,10 +555,10 @@ class PackFileMetaData:
         if root.tag != "CPackFileMetaData":
             raise ValueError(f"Unsupported YMF XML root: {root.tag}")
         return cls(
-            map_data_groups=[MapDataGroup.from_xml_element(item) for item in root.findall("./MapDataGroups/Item")],
-            hd_txd_bindings=[HdTxdAssetBinding.from_xml_element(item) for item in root.findall("./HDTxdBindingArray/Item")],
-            imap_dependencies=[ImapDependency.from_xml_element(item) for item in root.findall("./imapDependencies/Item")],
-            imap_dependencies_2=[ImapDependencies.from_xml_element(item) for item in root.findall("./imapDependencies_2/Item")],
-            ityp_dependencies_2=[ItypDependencies.from_xml_element(item) for item in root.findall("./itypDependencies_2/Item")],
-            interiors=[InteriorBoundsFile.from_xml_element(item) for item in root.findall("./Interiors/Item")],
+            map_data_groups=[MapDataGroup.from_xml_element(item) for item in child_items(root, "MapDataGroups")],
+            hd_txd_bindings=[HdTxdAssetBinding.from_xml_element(item) for item in child_items(root, "HDTxdBindingArray")],
+            imap_dependencies=[ImapDependency.from_xml_element(item) for item in child_items(root, "imapDependencies")],
+            imap_dependencies_2=[ImapDependencies.from_xml_element(item) for item in child_items(root, "imapDependencies_2")],
+            ityp_dependencies_2=[ItypDependencies.from_xml_element(item) for item in child_items(root, "itypDependencies_2")],
+            interiors=[InteriorBoundsFile.from_xml_element(item) for item in child_items(root, "Interiors")],
         )

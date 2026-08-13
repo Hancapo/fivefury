@@ -5,7 +5,14 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ..metahash import HashLike, MetaHash
-from ..xml import child_by_name, child_text, parse_xml_root, read_xml_text
+from ..xml import (
+    child_by_name,
+    child_text,
+    element_xml,
+    item_elements,
+    parse_xml_root,
+    read_xml_text,
+)
 
 NULL_EXPRESSION_HASH = MetaHash("null").uint
 
@@ -69,7 +76,7 @@ def _raw_field(element: ET.Element) -> ExpressionSetRawField:
         name=element.tag,
         text=(element.text or "").strip(),
         attributes=tuple(element.attrib.items()),
-        xml=ET.tostring(element, encoding="unicode"),
+        xml=element_xml(element),
     )
 
 
@@ -77,11 +84,10 @@ def _parse_expression_set(element: ET.Element) -> PedExpressionSet:
     raw_name = element.attrib.get("key", "").strip()
     raw_dictionary_name = child_text(element, "dictionaryName")
     expressions_element = child_by_name(element, "expressions")
-    expression_items = () if expressions_element is None else expressions_element
     raw_expression_names = tuple(
         (child.text or "").strip()
-        for child in expression_items
-        if child.tag.casefold() == "item" and (child.text or "").strip()
+        for child in item_elements(expressions_element)
+        if (child.text or "").strip()
     )
     known_tags = {"dictionaryname", "expressions"}
     return PedExpressionSet(
@@ -97,7 +103,7 @@ def _parse_expression_set(element: ET.Element) -> PedExpressionSet:
             for child in element
             if child.tag.casefold() not in known_tags
         ),
-        raw_xml=ET.tostring(element, encoding="unicode"),
+        raw_xml=element_xml(element),
     )
 
 
@@ -108,12 +114,9 @@ def read_ped_expression_sets(
 ) -> PedExpressionSetMetadata:
     text = read_xml_text(source)
     root = parse_xml_root(text)
-    container = child_by_name(root, "expressionSets")
-    set_items = () if container is None else container
     expression_sets = tuple(
         _parse_expression_set(element)
-        for element in set_items
-        if element.tag.casefold() == "item"
+        for element in item_elements(child_by_name(root, "expressionSets"))
     )
     known_root_tags = {"expressionsets"}
     return PedExpressionSetMetadata(

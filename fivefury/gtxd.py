@@ -8,7 +8,16 @@ from typing import Any
 
 from .common import hash_value
 from .rbf import RbfStructure, is_rbf, rbf_string_field, read_rbf, read_rbf_bytes
-from .xml import child_text, read_xml_text, xml_bytes
+from .xml import (
+    add_text,
+    child_text,
+    descendant_by_name,
+    item_elements,
+    parse_xml_root,
+    read_xml_text,
+    save_xml,
+    xml_bytes,
+)
 
 
 @dataclasses.dataclass(slots=True)
@@ -30,10 +39,8 @@ class TxdRelationship:
 
     def to_xml_element(self) -> ET.Element:
         item = ET.Element("Item")
-        parent = ET.SubElement(item, "parent")
-        parent.text = self.parent
-        child = ET.SubElement(item, "child")
-        child.text = self.child
+        add_text(item, "parent", self.parent)
+        add_text(item, "child", self.child)
         return item
 
 
@@ -55,11 +62,10 @@ class Gtxd:
 
     @classmethod
     def from_xml(cls, source: str | bytes | Path) -> Gtxd:
-        text = read_xml_text(source)
-        root = ET.fromstring(text)
+        root = parse_xml_root(source)
         relationships: list[TxdRelationship] = []
         seen_children: set[str] = set()
-        for item in root.findall(".//txdRelationships/Item") + root.findall(".//txdRelationships/item"):
+        for item in item_elements(descendant_by_name(root, "txdRelationships")):
             parent = child_text(item, "parent")
             child = child_text(item, "child")
             if not parent or not child:
@@ -117,10 +123,7 @@ class Gtxd:
         return self.to_xml_bytes()
 
     def save(self, path: str | Path) -> Path:
-        output = Path(path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(self.to_bytes())
-        return output
+        return save_xml(self.to_xml_element(), path)
 
     def add_relationship(self, child: str, parent: str) -> TxdRelationship:
         relationship = TxdRelationship(child=child, parent=parent)

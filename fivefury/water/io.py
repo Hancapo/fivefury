@@ -5,10 +5,10 @@ from pathlib import Path
 
 from ..xml import (
     add_value,
-    child_by_name,
-    child_value,
-    children_by_name,
-    parse_bool,
+    child_bool,
+    child_float,
+    child_int,
+    child_items,
     parse_xml_root,
     xml_bytes,
 )
@@ -22,71 +22,52 @@ from .model import (
 )
 
 
-def _int_value(element: ET.Element, name: str, default: int = 0) -> int:
-    text = child_value(element, name, str(default))
-    try:
-        return int(text, 0)
-    except ValueError:
-        return default
-
-
-def _float_value(element: ET.Element, name: str, default: float = 0.0) -> float:
-    text = child_value(element, name, str(default))
-    try:
-        return float(text)
-    except ValueError:
-        return default
-
-
 def _float_text(value: float) -> str:
     text = format(float(value), ".9g")
     return text if "." in text or "e" in text.lower() else f"{text}.0"
 
 
 def _item_elements(root: ET.Element, section_name: str) -> list[ET.Element]:
-    section = child_by_name(root, section_name)
-    if section is None:
-        return []
-    return [item for item in children_by_name(section, "Item") if len(item)]
+    return [item for item in child_items(root, section_name) if len(item)]
 
 
 def _read_water_quad(item: ET.Element) -> WaterQuad:
     return WaterQuad(
-        min_x=_int_value(item, "minX"),
-        min_y=_int_value(item, "minY"),
-        max_x=_int_value(item, "maxX"),
-        max_y=_int_value(item, "maxY"),
-        type=_int_value(item, "Type"),
-        is_invisible=parse_bool(child_value(item, "IsInvisible")),
-        has_limited_depth=parse_bool(child_value(item, "HasLimitedDepth")),
-        z=_float_value(item, "z"),
-        alpha_sw=_int_value(item, "a1", 26),
-        alpha_se=_int_value(item, "a2", 26),
-        alpha_ne=_int_value(item, "a3", 26),
-        alpha_nw=_int_value(item, "a4", 26),
-        no_stencil=parse_bool(child_value(item, "NoStencil")),
+        min_x=child_int(item, "minX"),
+        min_y=child_int(item, "minY"),
+        max_x=child_int(item, "maxX"),
+        max_y=child_int(item, "maxY"),
+        type=child_int(item, "Type"),
+        is_invisible=child_bool(item, "IsInvisible"),
+        has_limited_depth=child_bool(item, "HasLimitedDepth"),
+        z=child_float(item, "z"),
+        alpha_sw=child_int(item, "a1", 26),
+        alpha_se=child_int(item, "a2", 26),
+        alpha_ne=child_int(item, "a3", 26),
+        alpha_nw=child_int(item, "a4", 26),
+        no_stencil=child_bool(item, "NoStencil"),
     )
 
 
 def _read_calming_quad(item: ET.Element) -> WaterCalmingQuad:
     return WaterCalmingQuad(
-        min_x=_int_value(item, "minX"),
-        min_y=_int_value(item, "minY"),
-        max_x=_int_value(item, "maxX"),
-        max_y=_int_value(item, "maxY"),
-        dampening=_float_value(item, "fDampening"),
+        min_x=child_int(item, "minX"),
+        min_y=child_int(item, "minY"),
+        max_x=child_int(item, "maxX"),
+        max_y=child_int(item, "maxY"),
+        dampening=child_float(item, "fDampening"),
     )
 
 
 def _read_wave_quad(item: ET.Element) -> WaterWaveQuad:
     return WaterWaveQuad(
-        min_x=_int_value(item, "minX"),
-        min_y=_int_value(item, "minY"),
-        max_x=_int_value(item, "maxX"),
-        max_y=_int_value(item, "maxY"),
-        amplitude=_float_value(item, "Amplitude"),
-        direction_x=_float_value(item, "XDirection"),
-        direction_y=_float_value(item, "YDirection"),
+        min_x=child_int(item, "minX"),
+        min_y=child_int(item, "minY"),
+        max_x=child_int(item, "maxX"),
+        max_y=child_int(item, "maxY"),
+        amplitude=child_float(item, "Amplitude"),
+        direction_x=child_float(item, "XDirection"),
+        direction_y=child_float(item, "YDirection"),
     )
 
 
