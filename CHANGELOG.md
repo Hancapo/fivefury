@@ -10,6 +10,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 - Lazy ped outfit catalogs with on-demand component and prop resolution.
 
+### Changed
+- YCD sequence bitstreams are decoded and encoded by the native backend.
+
 ## [0.3.16] - 2026-08-12
 
 ### Fixed

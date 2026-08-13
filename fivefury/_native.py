@@ -180,6 +180,70 @@ class NativeYedProgram:
         )
 
 
+def _ycd_decode_frame_channels(
+    data: bytes,
+    num_frames: int,
+    frame_offset: int,
+    frame_length: int,
+    descriptors: list[tuple[int, int, int, float, float]],
+) -> list[list[float] | list[int]]:
+    return _ffi.ycd_decode_frame_channels(
+        data,
+        int(num_frames),
+        int(frame_offset),
+        int(frame_length),
+        descriptors,
+    )
+
+
+def _ycd_encode_frame_channels(
+    num_frames: int,
+    descriptors: list[tuple[int, int, list[float] | list[int]]],
+) -> tuple[bytes, int]:
+    data, frame_length = _ffi.ycd_encode_frame_channels(
+        int(num_frames), descriptors
+    )
+    return bytes(data), int(frame_length)
+
+
+def _ycd_decode_quantized_values(
+    data: bytes,
+    bit_offset: int,
+    count: int,
+    bit_count: int,
+    quantum: float,
+    offset: float,
+) -> tuple[list[float], list[int]]:
+    return _ffi.ycd_decode_quantized_values(
+        data,
+        int(bit_offset),
+        int(count),
+        int(bit_count),
+        float(quantum),
+        float(offset),
+    )
+
+
+def _ycd_decode_linear_values(
+    data: bytes,
+    bit_offset: int,
+    num_frames: int,
+    chunk_size: int,
+    counts: int,
+    quantum: float,
+    offset: float,
+) -> tuple[list[float], list[int]]:
+    return _ffi.ycd_decode_linear_values(
+        data,
+        int(bit_offset),
+        int(num_frames),
+        int(chunk_size),
+        int(counts),
+        float(quantum),
+        float(offset),
+    )
+
+
 def crypto_magic_mask(seed: int, length: int, rounds: int = 4) -> bytes:
     return _ffi.crypto_magic_mask(int(seed), int(length), int(rounds))
 

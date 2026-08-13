@@ -3,7 +3,10 @@ from __future__ import annotations
 import math
 import struct
 
-from ..binary import f32 as _f32, i32 as _i32, u16 as _u16
+from .. import _native as _native_backend
+from ..binary import f32 as _f32
+from ..binary import i32 as _i32
+from ..binary import u16 as _u16
 from .sequence_channels import (
     YcdAnimChannel,
     YcdAnimSequence,
@@ -19,8 +22,7 @@ from .sequence_channels import (
     YcdStaticVector3Channel,
     channel_frame_bits,
 )
-from .sequence_tracks import YcdAnimationTrack
-from .sequence_tracks import is_ycd_object_track, is_ycd_uv_track
+from .sequence_tracks import YcdAnimationTrack, is_ycd_object_track, is_ycd_uv_track
 
 
 class _ChannelDataReader:
@@ -542,18 +544,24 @@ def build_sequence_data(sequence: object) -> bytes:
             _write_channel(channel, writer, track)
         writer.align_channel_item_data(len(channels), len(anim_sequences))
 
-    for frame in range(num_frames):
-        writer.begin_frame(frame)
-        for channel_list in channel_lists:
-            for channel in channel_list or []:
-                _write_channel_frame(channel, writer)
-        writer.end_frame()
-
     frame_bit_offset = 0
+    frame_descriptors: list[tuple[int, int, list[float] | list[int]]] = []
     for channel_list in channel_lists:
         for channel in channel_list or []:
             channel.frame_offset = frame_bit_offset
-            frame_bit_offset += channel_frame_bits(channel)
+            bit_count = channel_frame_bits(channel)
+            frame_bit_offset += bit_count
+            if isinstance(channel, YcdRawFloatChannel):
+                frame_descriptors.append((int(channel.channel_type), bit_count, channel.values))
+            elif isinstance(channel, YcdQuantizeFloatChannel):
+                frame_descriptors.append((int(channel.channel_type), bit_count, channel.value_list))
+            elif isinstance(channel, YcdIndirectQuantizeFloatChannel):
+                frame_descriptors.append((int(channel.channel_type), bit_count, channel.frames))
+
+    frame_data, writer.frame_length = _native_backend._ycd_encode_frame_channels(
+        num_frames,
+        frame_descriptors,
+    )
 
     root_position_refs, root_rotation_refs = _build_root_motion_refs(anim_sequences)
     for root_ref in root_position_refs:
@@ -562,7 +570,6 @@ def build_sequence_data(sequence: object) -> bytes:
         writer.write_channel_item_data_bytes(root_ref.raw_bytes)
 
     main_data = writer.get_main_data_bytes()
-    frame_data = writer.get_frame_data_bytes()
     channel_list_data = writer.get_channel_list_data_bytes()
     channel_item_data = writer.get_channel_item_data_bytes()
     raw_data = main_data + frame_data + channel_list_data + channel_item_data
@@ -658,11 +665,16 @@ def _read_channel(channel: YcdAnimChannel, reader: _ChannelDataReader) -> None:
         num_values = min(num_values0, num_values1) if channel.value_bits > 0 else 0
         channel.values = [0.0] * num_values
         channel.value_list = [0] * num_values
-        reader.bit_position = reader.position * 8
-        for index in range(num_values):
-            bits = reader.read_bits(channel.value_bits)
-            channel.values[index] = (bits * channel.quantum) + channel.offset
-            channel.value_list[index] = bits
+        channel.values, channel.value_list = (
+            _native_backend._ycd_decode_quantized_values(
+                reader.data,
+                reader.position * 8,
+                num_values,
+                channel.value_bits,
+                channel.quantum,
+                channel.offset,
+            )
+        )
         reader.position += channel.num_ints * 4
         return
     if isinstance(channel, YcdLinearFloatChannel):
@@ -670,48 +682,15 @@ def _read_channel(channel: YcdAnimChannel, reader: _ChannelDataReader) -> None:
         channel.counts = reader.read_int32()
         channel.quantum = reader.read_single()
         channel.offset = reader.read_single()
-        bit = reader.position * 8
-        count1 = channel.counts & 0xFF
-        count2 = (channel.counts >> 8) & 0xFF
-        count3 = (channel.counts >> 16) & 0xFF
-        stream_length = len(reader.data) * 8
-        chunk_size = max(reader.chunk_size, 1)
-        num_chunks = (chunk_size + reader.num_frames - 1) // chunk_size
-        delta_offset = bit + (num_chunks * (count1 + count2))
-        reader.bit_position = bit
-        chunk_offsets = [reader.read_bits(count1) if count1 > 0 else 0 for _ in range(num_chunks)]
-        chunk_values = [reader.read_bits(count2) if count2 > 0 else 0 for _ in range(num_chunks)]
-        frame_values = [0.0] * reader.num_frames
-        frame_bits = [0] * reader.num_frames
-        for chunk_index in range(num_chunks):
-            doffs = chunk_offsets[chunk_index] + delta_offset
-            value = chunk_values[chunk_index]
-            chunk_start = chunk_index * chunk_size
-            reader.bit_position = doffs
-            increment = 0
-            for local_frame in range(chunk_size):
-                frame_index = chunk_start + local_frame
-                if frame_index >= reader.num_frames:
-                    break
-                frame_values[frame_index] = (value * channel.quantum) + channel.offset
-                frame_bits[frame_index] = value
-                if (local_frame + 1) >= chunk_size:
-                    break
-                delta = reader.read_bits(count3) if count3 != 0 else 0
-                start_offset = reader.bit_position
-                max_offset = stream_length
-                bit_found = 0
-                while bit_found == 0:
-                    bit_found = reader.read_bits(1)
-                    if reader.bit_position >= max_offset:
-                        break
-                delta |= (reader.bit_position - start_offset - 1) << count3
-                if delta != 0 and reader.read_bits(1) == 1:
-                    delta = -delta
-                increment += delta
-                value += increment
-        channel.values = frame_values
-        channel.value_list = frame_bits
+        channel.values, channel.value_list = _native_backend._ycd_decode_linear_values(
+            reader.data,
+            reader.position * 8,
+            reader.num_frames,
+            max(reader.chunk_size, 1),
+            channel.counts,
+            channel.quantum,
+            channel.offset,
+        )
         reader.position -= 16
         reader.position += channel.num_ints * 4
         return
@@ -782,11 +761,35 @@ def parse_sequence_data(
             channel_list.append((channel.sequence_index, channel.channel_index, channel))
         reader.align_channel_data_offset(channel_count)
 
-    for frame in range(num_frames):
-        reader.begin_frame(frame)
-        for channels in channel_groups:
-            for channel in channels:
-                _read_channel_frame(channel, reader)
+    dynamic_channels: list[YcdAnimChannel] = []
+    frame_descriptors: list[tuple[int, int, int, float, float]] = []
+    for channels in channel_groups:
+        for channel in channels:
+            bit_count = channel_frame_bits(channel)
+            if bit_count <= 0:
+                continue
+            dynamic_channels.append(channel)
+            frame_descriptors.append(
+                (
+                    int(channel.channel_type),
+                    int(channel.frame_offset),
+                    bit_count,
+                    float(getattr(channel, "quantum", 0.0)),
+                    float(getattr(channel, "offset", 0.0)),
+                )
+            )
+    decoded_frames = _native_backend._ycd_decode_frame_channels(
+        raw_data,
+        num_frames,
+        frame_offset,
+        frame_length,
+        frame_descriptors,
+    )
+    for channel, values in zip(dynamic_channels, decoded_frames, strict=True):
+        if isinstance(channel, YcdIndirectQuantizeFloatChannel):
+            channel.frames = [int(value) for value in values]
+        else:
+            channel.values = [float(value) for value in values]
 
     if channel_list:
         sequence_count = max(sequence_index for sequence_index, _, _ in channel_list) + 1
