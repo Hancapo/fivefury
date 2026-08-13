@@ -74,6 +74,42 @@ class YdrLightType(enum.IntEnum):
     CAPSULE = 4
 
 
+class YdrLightFlags(enum.IntFlag):
+    NONE = 0
+    INTERIOR_ONLY = 1 << 0
+    EXTERIOR_ONLY = 1 << 1
+    DONT_USE_IN_CUTSCENE = 1 << 2
+    VEHICLE = 1 << 3
+    FX = 1 << 4
+    TEXTURE_PROJECTION = 1 << 5
+    CAST_SHADOWS = 1 << 6
+    CAST_STATIC_GEOM_SHADOWS = 1 << 7
+    CAST_DYNAMIC_GEOM_SHADOWS = 1 << 8
+    CALC_FROM_SUN = 1 << 9
+    ENABLE_BUZZING = 1 << 10
+    FORCE_BUZZING = 1 << 11
+    DRAW_VOLUME = 1 << 12
+    NO_SPECULAR = 1 << 13
+    BOTH_INTERIOR_AND_EXTERIOR = 1 << 14
+    CORONA_ONLY = 1 << 15
+    NOT_IN_REFLECTION = 1 << 16
+    ONLY_IN_REFLECTION = 1 << 17
+    USE_CULL_PLANE = 1 << 18
+    USE_VOLUME_OUTER_COLOUR = 1 << 19
+    CAST_HIGHER_RES_SHADOWS = 1 << 20
+    CAST_ONLY_LOWRES_SHADOWS = 1 << 21
+    FAR_LOD_LIGHT = 1 << 22
+    DONT_LIGHT_ALPHA = 1 << 23
+    CAST_SHADOWS_IF_POSSIBLE = 1 << 24
+    CUTSCENE = 1 << 25
+    MOVING_LIGHT_SOURCE = 1 << 26
+    USE_VEHICLE_TWIN = 1 << 27
+    FORCE_MEDIUM_LOD_LIGHT = 1 << 28
+    CORONA_ONLY_LOD_LIGHT = 1 << 29
+    DELAY_RENDER = 1 << 30
+    ALREADY_TESTED_FOR_OCCLUSION = 1 << 31
+
+
 class YdrBoneFlags(enum.IntFlag):
     NONE = 0
     ROT_X = 0x1
@@ -615,7 +651,7 @@ class YdrLight:
     color: tuple[int, int, int] | CssColor = (255, 255, 255)
     flashiness: int = 0
     intensity: float = 1.0
-    flags: int = 0
+    flags: YdrLightFlags | int = YdrLightFlags.NONE
     bone_id: int = 0
     light_type: YdrLightType = YdrLightType.POINT
     group_id: int = 0
@@ -656,6 +692,7 @@ class YdrLight:
     def __post_init__(self) -> None:
         self.color = parse_css_rgb(self.color)
         self.volume_outer_color = parse_css_rgb(self.volume_outer_color)
+        self.flags = YdrLightFlags(int(self.flags))
 
     @classmethod
     def point(
