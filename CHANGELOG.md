@@ -21,6 +21,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- AWC reading and writing use isolated container, table, stream, chunk-layout, and payload phases.
 - RPF archive implementation is separated from its public package facade.
 - Reports, extension containers, and unsigned-field validation share common infrastructure.
 - PSO-backed formats share field, hash, text, list, and vector coercion helpers.
