@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..binary import u32_be as _u32
 from ..pso import (
@@ -32,8 +32,6 @@ from ..pso import (
     PsoDataTypeUByte,
     PsoDataTypeUInt,
     PsoDataTypeUShort,
-    PsoHashedString,
-    PsoNode,
     PsoReader,
 )
 from ..pso import (
@@ -104,33 +102,39 @@ __all__ = [
 ]
 
 
-def _to_cut_value(value: Any) -> Any:
-    if isinstance(value, PsoHashedString):
-        return CutHashedString(hash=value.hash, text=value.text)
-    if isinstance(value, PsoNode):
-        return _to_cut_node(value)
-    if isinstance(value, list):
-        return [_to_cut_value(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_to_cut_value(item) for item in value)
-    return value
-
-
-def _to_cut_node(node: PsoNode) -> CutNode:
-    return CutNode(
-        type_name=node.type_name,
-        type_hash=node.type_hash,
-        fields={name: _to_cut_value(value) for name, value in (node.fields or {}).items()},
-    )
-
-
 class _PsoReader(PsoReader):
     def __init__(self, data: bytes):
         super().__init__(data, name_resolver=hash_name)
 
+    def _hashed_string(self, hash_value: int) -> CutHashedString:
+        return CutHashedString(hash=hash_value)
+
+    def _node(
+        self,
+        type_hash: int,
+        fields: dict[str, Any] | None = None,
+    ) -> CutNode:
+        return CutNode(
+            type_name=self._name(type_hash),
+            type_hash=type_hash,
+            fields=fields or {},
+        )
+
+    def _node_fields(self, value: Any) -> dict[str, Any] | None:
+        return value.fields if isinstance(value, CutNode) else None
+
+    def _empty_hashed_string(self, value: Any) -> bool | None:
+        if isinstance(value, CutHashedString):
+            return value.hash == 0 and not value.text
+        return None
+
     def read_cut(self) -> CutFile:
         document = self.read()
-        return CutFile(root=_to_cut_node(document.root), source="cut", metadata=document.metadata)
+        return CutFile(
+            root=cast(CutNode, document.root),
+            source="cut",
+            metadata=document.metadata,
+        )
 
 
 def read_cut(data: bytes | str | Path) -> CutFile:

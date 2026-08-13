@@ -238,10 +238,26 @@ def _timeline_event_from_resolved(resolved: CutResolvedEvent, bindings_by_id: di
     object_role = binding.role if binding is not None else (_object_role(resolved.object.type_name) if resolved.object is not None else None)
     kind = _event_category(resolved)
     track_key, _ = _track_identity(kind, object_role, object_name, object_id if isinstance(object_id, int) else None, is_load_event=resolved.is_load_event)
-    args_payload = {}
-    if resolved.event_args is not None:
-        args_payload = {key: _clone_value(value) for key, value in resolved.event_args.fields.items() if key not in _ARGS_BASE_FIELDS}
-    event_payload = {key: _clone_value(value) for key, value in event.fields.items() if key not in _EVENT_BASE_FIELDS}
+    raw_event = _clone_value(resolved.event)
+    raw_args = (
+        _clone_value(resolved.event_args)
+        if resolved.event_args is not None
+        else None
+    )
+    args_payload = (
+        {
+            key: value
+            for key, value in raw_args.fields.items()
+            if key not in _ARGS_BASE_FIELDS
+        }
+        if raw_args is not None
+        else {}
+    )
+    event_payload = {
+        key: value
+        for key, value in raw_event.fields.items()
+        if key not in _EVENT_BASE_FIELDS
+    }
     return CutTimelineEvent(
         start=float(event.fields.get("fTime", 0.0) or 0.0),
         kind=kind,
@@ -260,9 +276,9 @@ def _timeline_event_from_resolved(resolved: CutResolvedEvent, bindings_by_id: di
         event_payload=event_payload,
         is_load_event=resolved.is_load_event,
         raw=CutResolvedEvent(
-            event=_clone_value(resolved.event),
-            object=_clone_value(resolved.object) if resolved.object is not None else None,
-            event_args=_clone_value(resolved.event_args) if resolved.event_args is not None else None,
+            event=raw_event,
+            object=binding.raw if binding is not None else None,
+            event_args=raw_args,
             is_load_event=resolved.is_load_event,
         ),
     )

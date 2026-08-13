@@ -68,19 +68,19 @@ class CutFile:
 
     @property
     def objects(self) -> list[CutNode]:
-        return list(self.root.fields.get("pCutsceneObjects", []))
+        return self.root.fields.get("pCutsceneObjects", [])
 
     @property
     def load_events(self) -> list[CutNode]:
-        return list(self.root.fields.get("pCutsceneLoadEventList", []))
+        return self.root.fields.get("pCutsceneLoadEventList", [])
 
     @property
     def events(self) -> list[CutNode]:
-        return list(self.root.fields.get("pCutsceneEventList", []))
+        return self.root.fields.get("pCutsceneEventList", [])
 
     @property
     def event_args(self) -> list[CutNode]:
-        return list(self.root.fields.get("pCutsceneEventArgsList", []))
+        return self.root.fields.get("pCutsceneEventArgsList", [])
 
     @property
     def objects_by_id(self) -> dict[int, CutNode]:
@@ -113,12 +113,31 @@ class CutFile:
         )
 
     def iter_resolved_events(self, *, include_load_events: bool = True, include_events: bool = True):
+        objects = self.objects_by_id
+        event_args = self.event_args
+
+        def resolve(event: CutNode, *, is_load_event: bool) -> CutResolvedEvent:
+            object_id = event.fields.get("iObjectId")
+            event_args_index = event.fields.get("iEventArgsIndex")
+            args = (
+                event_args[event_args_index]
+                if isinstance(event_args_index, int)
+                and 0 <= event_args_index < len(event_args)
+                else None
+            )
+            return CutResolvedEvent(
+                event=event,
+                object=objects.get(object_id) if isinstance(object_id, int) else None,
+                event_args=args,
+                is_load_event=is_load_event,
+            )
+
         if include_load_events:
             for event in self.load_events:
-                yield self.resolve_event(event, is_load_event=True)
+                yield resolve(event, is_load_event=True)
         if include_events:
             for event in self.events:
-                yield self.resolve_event(event, is_load_event=False)
+                yield resolve(event, is_load_event=False)
 
     def summary(self) -> CutSummary:
         return CutSummary(

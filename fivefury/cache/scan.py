@@ -196,6 +196,13 @@ class GameFileCacheScanMixin:
         path = self.get_index_cache_path()
         if path.is_file():
             path.unlink()
+        from .archetype_index import (
+            asset_texture_index_path,
+            texture_parent_index_path,
+        )
+
+        asset_texture_index_path(path).unlink(missing_ok=True)
+        texture_parent_index_path(path).unlink(missing_ok=True)
 
     def _normalized_dlc_level(self) -> str | int | None:
         value = self.dlc_level

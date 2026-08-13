@@ -165,6 +165,11 @@ def _clone_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_clone_value(item) for item in value]
     if isinstance(value, tuple):
+        if all(
+            item is None or isinstance(item, (bool, int, float, str))
+            for item in value
+        ):
+            return value
         return tuple(_clone_value(item) for item in value)
     if isinstance(value, dict):
         return {key: _clone_value(item) for key, item in value.items()}
