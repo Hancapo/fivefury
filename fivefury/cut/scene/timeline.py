@@ -37,6 +37,7 @@ class CutTimelineEvent:
     start: float
     kind: str
     track: str
+    order: int | None = None
     behavior: CutEventBehavior = CutEventBehavior.INSTANT
     event_name: str | None = None
     event_enum_name: str | None = None

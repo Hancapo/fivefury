@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import Protocol
 
+from ..hashing import jenk_continue_hash, jenk_finalize_hash, jenk_partial_hash
 from ..metahash import MetaHash
 from .reference_values import field_reference
 from .scene.base import CutScene
@@ -14,6 +15,26 @@ _AUDIO_CONTAINER_VARIANTS = (
     "_mastered_replay",
     "_mastered_replay_only",
     "_mastered_trimmed",
+)
+
+_CUTSCENE_SOUND_SUFFIXES = (
+    "",
+    "_EDITED",
+    "_MASTERED_TRIMMED",
+    "_MASTERED",
+    "_MASTERED_ONLY",
+    "_MASTERED_REPLAY",
+    "_MASTERED_REPLAY_ONLY",
+    "_CUSTOM_REPLAY",
+)
+
+_SYNCED_SCENE_SOUND_SUFFIXES = (
+    "_CUSTOM",
+    "_SYNC_MASTERED",
+    "_SYNC_MASTERED_TRIMMED",
+    "_SYNC_MASTERED_ONLY",
+    "_SYNC_MASTERED_REPLAY",
+    "_SYNC_MASTERED_REPLAY_ONLY",
 )
 
 
@@ -37,11 +58,55 @@ def cut_event_references(
     return tuple(values)
 
 
+def _audio_binding_reference(
+    scene: CutScene,
+    target_id: int | None,
+) -> str | int | None:
+    if target_id is None:
+        return None
+    binding = scene.get_binding(target_id)
+    if binding is None or binding.role != "audio":
+        return None
+    return field_reference(binding.fields.get("cName")) or binding.name
+
+
+def cut_audio_references(scene: CutScene) -> tuple[str | int, ...]:
+    values: list[str | int] = []
+    seen: set[str | int] = set()
+    for event in scene.timeline:
+        if event.event_name not in {"load_audio", "play_audio"}:
+            continue
+        value = _audio_binding_reference(scene, event.target_id)
+        if value is not None and value not in seen:
+            seen.add(value)
+            values.append(value)
+    return tuple(values)
+
+
 def cut_audio_reference_hash(reference: str | int) -> int:
     if isinstance(reference, str):
         stem = PurePosixPath(reference.replace("\\", "/")).stem.casefold()
         return MetaHash(stem).uint
     return int(reference) & 0xFFFFFFFF
+
+
+def cut_audio_sound_hashes(reference: str | int) -> tuple[int, ...]:
+    if isinstance(reference, str):
+        path = PurePosixPath(reference.replace("\\", "/"))
+        display_name = str(path.with_suffix("")) if path.suffix else str(path)
+        partial_hash = jenk_partial_hash(f"CUTSCENES_{display_name.upper()}")
+        candidates: list[int] = []
+    else:
+        partial_hash = int(reference) & 0xFFFFFFFF
+        candidates = [partial_hash]
+    for suffix in _CUTSCENE_SOUND_SUFFIXES + _SYNCED_SCENE_SOUND_SUFFIXES:
+        continued = (
+            partial_hash
+            if not suffix
+            else jenk_continue_hash(partial_hash, suffix)
+        )
+        candidates.append(jenk_finalize_hash(continued))
+    return tuple(dict.fromkeys(candidates))
 
 
 def cut_audio_asset_reference_hashes(asset: _NamedAsset) -> tuple[int, ...]:
@@ -68,15 +133,18 @@ def cut_audio_container_hints(
     references: tuple[str | int, ...],
 ) -> dict[str | int, tuple[str, ...]]:
     wanted = set(references)
-    bindings = {binding.object_id: binding for binding in scene.bindings}
     hints: dict[str | int, list[str]] = {reference: [] for reference in references}
     for event in scene.timeline:
         if event.event_name not in {"load_audio", "play_audio"}:
             continue
-        reference = field_reference(event.payload.get("cName"))
+        reference = _audio_binding_reference(scene, event.target_id)
         if reference not in wanted:
             continue
-        binding = bindings.get(event.target_id)
+        binding = (
+            scene.get_binding(event.target_id)
+            if event.target_id is not None
+            else None
+        )
         values = (
             event.target_name,
             getattr(binding, "name", None),
@@ -109,5 +177,7 @@ __all__ = [
     "cut_audio_container_hints",
     "cut_audio_hint_rank",
     "cut_audio_reference_hash",
+    "cut_audio_references",
+    "cut_audio_sound_hashes",
     "cut_event_references",
 ]

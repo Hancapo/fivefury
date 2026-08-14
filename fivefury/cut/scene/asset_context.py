@@ -31,6 +31,7 @@ class CutContextAsset:
     kind: GameFileType
     _value: object | None = None
     _loader: Callable[[], object | None] | None = None
+    source_rank: tuple[int, str] = (-1, "")
 
     @property
     def stem(self) -> str:
@@ -53,9 +54,19 @@ class CutAssetContext:
     def _explicit_assets(self) -> Iterator[CutContextAsset]:
         for path, value in self.context.assets.items():
             if isinstance(value, GameFile):
-                yield CutContextAsset(path, value.kind, value.parsed)
+                yield CutContextAsset(
+                    path,
+                    value.kind,
+                    value.parsed,
+                    source_rank=(-1, path.casefold()),
+                )
             else:
-                yield CutContextAsset(path, guess_game_file_type(path), value)
+                yield CutContextAsset(
+                    path,
+                    guess_game_file_type(path),
+                    value,
+                    source_rank=(-1, path.casefold()),
+                )
 
     @staticmethod
     def _contains_drawable(asset: CutContextAsset, reference: str | int) -> bool:
@@ -92,6 +103,7 @@ class CutAssetContext:
                 record.path,
                 kind,
                 _loader=lambda record=record: self._load_cache_asset(record),
+                source_rank=asset_source_rank(record),
             )
         return None
 
@@ -113,12 +125,20 @@ class CutAssetContext:
             result: tuple[CutContextAsset, ...] = ()
         else:
             result = tuple(
-                CutContextAsset(
-                    record.path,
-                    kind,
-                    _loader=lambda record=record: self._load_cache_asset(record),
+                sorted(
+                    (
+                        CutContextAsset(
+                            record.path,
+                            kind,
+                            _loader=lambda record=record: self._load_cache_asset(
+                                record
+                            ),
+                            source_rank=asset_source_rank(record),
+                        )
+                        for record in cache.iter_assets(kind)
+                    ),
+                    key=lambda asset: asset.source_rank,
                 )
-                for record in cache.iter_assets(kind)
             )
         self._cache_assets[kind] = result
         return result

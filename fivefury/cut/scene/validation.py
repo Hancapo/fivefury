@@ -6,7 +6,7 @@ from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
 
 from ...hashing import jenk_hash, jenk_partial_hash
-from ..events import get_cut_event_name, get_cut_event_sort_rank, get_cut_event_spec
+from ..events import get_cut_event_name, get_cut_event_spec
 from ..flags import (
     DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
     CutSceneFlags,
@@ -148,10 +148,7 @@ def _has_loaded_model(scene: CutScene, object_id: int, time: float) -> bool:
             if event.event_name in {"load_models", "unload_models"}
             and float(event.start) <= time
         ),
-        key=lambda event: (
-            float(event.start),
-            get_cut_event_sort_rank(event.event_id),
-        ),
+        key=lambda event: float(event.start),
     )
     for event in events:
         if object_id in _event_object_id_list(event):
@@ -168,10 +165,7 @@ def _active_animation_dicts(scene: CutScene, time: float) -> set[str]:
             if event.event_name in {"load_anim_dict", "unload_anim_dict"}
             and float(event.start) <= time
         ),
-        key=lambda event: (
-            float(event.start),
-            get_cut_event_sort_rank(event.event_id),
-        ),
+        key=lambda event: float(event.start),
     )
     for event in events:
         name = (event.label or _name(event.payload.get("cName")) or "").lower()

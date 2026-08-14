@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..events import get_cut_event_sort_rank
 from ..flags import (
     DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
     CutSceneFlags,
@@ -25,8 +24,9 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
     bindings = [_binding_from_node(node) for node in cut.objects]
     bindings_by_id = {item.object_id: item for item in bindings}
     tracks_by_key: dict[str, CutTrack] = {}
-    for resolved in cut.iter_resolved_events():
+    for order, resolved in enumerate(cut.iter_resolved_events()):
         timeline_event = _timeline_event_from_resolved(resolved, bindings_by_id)
+        timeline_event.order = order
         track = tracks_by_key.get(timeline_event.track)
         if track is None:
             name = timeline_event.track.split(":", 1)[-1].replace("_", " ").title()
@@ -35,9 +35,7 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
         track.events.append(timeline_event)
     tracks = list(tracks_by_key.values())
     for track in tracks:
-        track.events.sort(
-            key=lambda item: (item.start, get_cut_event_sort_rank(item.event_id))
-        )
+        track.events.sort(key=lambda item: item.start)
     root = cut.root.fields
     return CutScene(
         scene_name=None,
@@ -145,12 +143,8 @@ def _timeline_camera_cut_list(scene: CutScene) -> list[float]:
     return result
 
 
-def _event_sort_key(event: CutNode) -> tuple[float, int]:
-    event_id = int(event.fields.get("iEventId", -1))
-    return (
-        float(event.fields.get("fTime", 0.0) or 0.0),
-        get_cut_event_sort_rank(event_id),
-    )
+def _event_sort_key(event: CutNode) -> float:
+    return float(event.fields.get("fTime", 0.0) or 0.0)
 
 
 def _scene_offset(scene: CutScene) -> tuple[float, float, float]:

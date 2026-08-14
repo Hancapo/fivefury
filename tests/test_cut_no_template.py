@@ -23,6 +23,7 @@ from fivefury import (
     CutProp,
     CutPropAnimationPreset,
     CutScene,
+    CutsceneAssets,
     CutSceneFlags,
     CutsceneProject,
     CutSceneValidationError,
@@ -265,6 +266,28 @@ def test_cut_scene_load_order_is_stable_with_subtitles() -> None:
     assert [event.fields["iEventId"] for event in rebuilt.load_events] == [0, 6, 2]
 
 
+def test_cut_scene_preserves_authored_order_for_simultaneous_events() -> None:
+    scene = CutScene.create(duration=2.0)
+    asset_manager = scene.asset_manager()
+    animation_manager = scene.animation_manager()
+    prop = scene.prop("prop_a")
+
+    scene.load_anim_dict(0.0, "scene", target=animation_manager)
+    scene.load_models(0.0, [prop.object_id], target=asset_manager)
+    scene.load_scene(0.0, CutLoadScenePayload("scene"), target=asset_manager)
+
+    first = read_cut(build_cut_bytes(scene_to_cut(scene)))
+    second = read_cut(build_cut_bytes(scene_to_cut(read_cut_scene(first))))
+
+    expected = [
+        int(CutEventType.LOAD_ANIM_DICT),
+        int(CutEventType.LOAD_MODELS),
+        int(CutEventType.LOAD_SCENE),
+    ]
+    assert [event.fields["iEventId"] for event in first.load_events] == expected
+    assert [event.fields["iEventId"] for event in second.load_events] == expected
+
+
 def test_cut_scene_animation_manager_writes_without_template() -> None:
     scene = CutScene.create(duration=8.0)
     animation_manager = scene.binding(CutAnimationManager())
@@ -341,9 +364,9 @@ def test_cut_scene_preserves_authored_prop_startup_time() -> None:
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
 
     assert [event.fields["iEventId"] for event in rebuilt.load_events] == [
+        int(CutEventType.LOAD_ANIM_DICT),
         int(CutEventType.LOAD_SCENE),
         int(CutEventType.LOAD_MODELS),
-        int(CutEventType.LOAD_ANIM_DICT),
     ]
     assert [
         (event.fields["fTime"], event.fields["iEventId"])
@@ -720,6 +743,17 @@ def test_cutscene_asset_validation_resolves_serialized_loose_assets(tmp_path) ->
     context = BuildContext(assets=AssetSet.from_directory(tmp_path))
 
     report = _cutscene_prop_project().build().validate(context=context)
+
+    assert report.valid
+
+
+def test_cutscene_asset_validation_resolves_loose_ycd() -> None:
+    authored = _cutscene_prop_project().build()
+    context = _cutscene_prop_context()
+    for ycd in authored.ycds:
+        context.assets[f"stream/{ycd.path}"] = ycd
+
+    report = CutsceneAssets(authored.scene).validate(context=context)
 
     assert report.valid
 

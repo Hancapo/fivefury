@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from ...hashing import jenk_partial_hash
 from ...metahash import MetaHash
-from ..events import CutEventType, get_cut_event_sort_rank, get_cut_event_spec
+from ..events import CutEventType, get_cut_event_spec
 from ..flags import CutSceneFlags
 from ..model import CutFile
 from ..payloads import CutEventPayload
@@ -213,9 +213,7 @@ class CutScene:
         values: list[CutTimelineEvent] = []
         for track in self.tracks:
             values.extend(track.events)
-        return sorted(
-            values, key=lambda item: (item.start, item.track, item.label or "")
-        )
+        return sorted(values, key=lambda item: (item.start, item.order or 0))
 
     @property
     def state_events(self) -> list[CutTimelineEvent]:
@@ -459,6 +457,16 @@ class CutScene:
         return track
 
     def timeline_event(self, timeline_event: CutTimelineEvent) -> CutTimelineEvent:
+        if timeline_event.order is None:
+            timeline_event.order = max(
+                (
+                    int(event.order)
+                    for track in self.tracks
+                    for event in track.events
+                    if event.order is not None
+                ),
+                default=-1,
+            ) + 1
         track = self.get_track(timeline_event.track)
         if track is None:
             track = self.track(timeline_event.track, kind=timeline_event.kind)
@@ -469,9 +477,7 @@ class CutScene:
         ):
             track.kind = timeline_event.kind
         track.events.append(timeline_event)
-        track.events.sort(
-            key=lambda item: (item.start, get_cut_event_sort_rank(item.event_id))
-        )
+        track.events.sort(key=lambda item: item.start)
         return timeline_event
 
     def event(

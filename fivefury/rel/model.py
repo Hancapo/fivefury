@@ -452,6 +452,15 @@ class Dat54Sound(RelItem):
     def hash_base_adjustment(self) -> int:
         return 1 + self.header.byte_length()
 
+    def sound_hashes(self) -> list[int]:
+        return []
+
+    def audio_container_hashes(self) -> list[int]:
+        return []
+
+    def audio_stream_hashes(self) -> list[int]:
+        return []
+
 
 @dataclass(slots=True)
 class Dat54LoopingSound(Dat54Sound):
@@ -477,6 +486,9 @@ class Dat54LoopingSound(Dat54Sound):
     def hash_table_offsets(self) -> list[int]:
         return [6]
 
+    def sound_hashes(self) -> list[int]:
+        return [rel_hash(self.child_sound)]
+
 
 @dataclass(slots=True)
 class Dat54SimpleSound(Dat54Sound):
@@ -495,6 +507,9 @@ class Dat54SimpleSound(Dat54Sound):
 
     def audio_container_hashes(self) -> list[int]:
         return [rel_hash(self.container_name)]
+
+    def audio_stream_hashes(self) -> list[int]:
+        return [rel_hash(self.file_name)]
 
 
 @dataclass(slots=True)
@@ -780,6 +795,9 @@ class Dat54AutomationSound(Dat54Sound):
 
     def audio_container_hashes(self) -> list[int]:
         return [rel_hash(self.container_name)]
+
+    def audio_stream_hashes(self) -> list[int]:
+        return [rel_hash(self.file_name)]
 
 
 @dataclass(slots=True)
