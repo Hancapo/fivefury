@@ -33,6 +33,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- YED component reads use runtime defaults for missing facial, generic, and bone tracks.
 - Animated CUT instances can share one streamed model while resolving distinct sectioned YCD clips.
 - CUT templates can be used when writing attached YCD dictionaries.
 - CUT audio resolution handles metadata bank references and multichannel sound graphs.
