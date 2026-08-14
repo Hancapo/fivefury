@@ -15,6 +15,7 @@ from .enums import (
     Dat54SoundType,
     RelDatFileType,
 )
+from .limits import checked_count
 
 RelHashLike: TypeAlias = int | MetaHash | str
 
@@ -183,7 +184,10 @@ class Dat10SynthPreset(Dat10RelItem):
         self.type_id = int(Dat10RelType.SYNTH_PRESET)
 
     def to_data(self) -> bytes:
-        return self.dat10_header_bytes() + bytes([len(self.variables) & 0xFF]) + b"".join(v.to_bytes() for v in self.variables)
+        count = checked_count(self.variables, 255, "SynthPreset variables")
+        return self.dat10_header_bytes() + bytes([count]) + b"".join(
+            variable.to_bytes() for variable in self.variables
+        )
 
 
 @dataclass(slots=True)
@@ -326,6 +330,11 @@ class Dat22Category(Dat22RelItem):
         self.type_id = int(Dat22RelType.CATEGORY)
 
     def to_data(self) -> bytes:
+        subcategory_count = checked_count(
+            self.subcategories,
+            255,
+            "Category subcategories",
+        )
         values = [
             int(self.parent_overrides),
             int(self.volume),
@@ -345,7 +354,7 @@ class Dat22Category(Dat22RelItem):
             int(self.underwater_wet_level),
             int(self.stoned_wet_level),
             int(self.timer) & 0xFF,
-            len(self.subcategories) & 0xFF,
+            subcategory_count,
         ]
         data = bytearray(self.typed_name_header_bytes())
         data += struct.pack("<hhhhIhIhhhhhhhhhhBB", *values)
@@ -475,7 +484,7 @@ class Dat54LoopingSound(Dat54Sound):
 
     def sound_payload_bytes(self) -> bytes:
         return struct.pack(
-            "<hhhII",
+            "<hHHII",
             int(self.loop_count),
             int(self.loop_count_variance),
             int(self.loop_point),
@@ -514,11 +523,18 @@ class Dat54SimpleSound(Dat54Sound):
 
 @dataclass(slots=True)
 class Dat54ChildListSound(Dat54Sound):
+    MAX_CHILD_SOUNDS: ClassVar[int] = 255
+
     child_sounds: list[RelHashLike] = field(default_factory=list)
     child_offset: int = 0
 
     def sound_payload_bytes(self) -> bytes:
-        data = bytearray(bytes([len(self.child_sounds) & 0xFF]))
+        count = checked_count(
+            self.child_sounds,
+            self.MAX_CHILD_SOUNDS,
+            f"{type(self).__name__} child_sounds",
+        )
+        data = bytearray(bytes([count]))
         data += b"".join(struct.pack("<I", rel_hash(sound)) for sound in self.child_sounds)
         return bytes(data)
 
@@ -531,6 +547,8 @@ class Dat54ChildListSound(Dat54Sound):
 
 @dataclass(slots=True)
 class Dat54SequentialSound(Dat54ChildListSound):
+    MAX_CHILD_SOUNDS: ClassVar[int] = 255
+
     def __post_init__(self) -> None:
         self.type_id = int(Dat54SoundType.SEQUENTIAL_SOUND)
         self.child_offset = 0
@@ -538,6 +556,8 @@ class Dat54SequentialSound(Dat54ChildListSound):
 
 @dataclass(slots=True)
 class Dat54MultitrackSound(Dat54ChildListSound):
+    MAX_CHILD_SOUNDS: ClassVar[int] = 8
+
     def __post_init__(self) -> None:
         self.type_id = int(Dat54SoundType.MULTITRACK_SOUND)
         self.child_offset = 0
@@ -545,6 +565,8 @@ class Dat54MultitrackSound(Dat54ChildListSound):
 
 @dataclass(slots=True)
 class Dat54StreamingSound(Dat54ChildListSound):
+    MAX_CHILD_SOUNDS: ClassVar[int] = 32
+
     duration: int = 0
 
     def __post_init__(self) -> None:
@@ -552,7 +574,7 @@ class Dat54StreamingSound(Dat54ChildListSound):
         self.child_offset = 4
 
     def sound_payload_bytes(self) -> bytes:
-        return struct.pack("<i", int(self.duration)) + Dat54ChildListSound.sound_payload_bytes(self)
+        return struct.pack("<I", int(self.duration)) + Dat54ChildListSound.sound_payload_bytes(self)
 
 
 @dataclass(slots=True)
@@ -566,6 +588,8 @@ class Dat54WrapperVariable:
 
 @dataclass(slots=True)
 class Dat54WrapperSound(Dat54Sound):
+    MAX_VARIABLES: ClassVar[int] = 8
+
     child_sound: RelHashLike = 0
     last_play_time: int = 0
     fallback_sound: RelHashLike = 0
@@ -576,14 +600,19 @@ class Dat54WrapperSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.WRAPPER_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        variable_count = checked_count(
+            self.variables,
+            self.MAX_VARIABLES,
+            "WrapperSound variables",
+        )
         return (
             struct.pack(
-                "<IiIhB",
+                "<IIIHB",
                 rel_hash(self.child_sound),
                 int(self.last_play_time),
                 rel_hash(self.fallback_sound),
                 int(self.min_repeat_time),
-                len(self.variables) & 0xFF,
+                variable_count,
             )
             + b"".join(variable.to_bytes() for variable in self.variables)
         )
@@ -606,6 +635,9 @@ class Dat54RandomizedVariation:
 
 @dataclass(slots=True)
 class Dat54RandomizedSound(Dat54Sound):
+    MAX_HISTORY: ClassVar[int] = 254
+    MAX_VARIATIONS: ClassVar[int] = 254
+
     history_index: int = 0
     history_space: bytes = b""
     variations: list[Dat54RandomizedVariation] = field(default_factory=list)
@@ -614,15 +646,25 @@ class Dat54RandomizedSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.RANDOMIZED_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        history_count = checked_count(
+            self.history_space,
+            self.MAX_HISTORY,
+            "RandomizedSound history_space",
+        )
+        variation_count = checked_count(
+            self.variations,
+            self.MAX_VARIATIONS,
+            "RandomizedSound variations",
+        )
         data = bytearray(
             struct.pack(
                 "<BB",
                 int(self.history_index) & 0xFF,
-                len(self.history_space) & 0xFF,
+                history_count,
             )
         )
         data += bytes(self.history_space)
-        data += bytes([len(self.variations) & 0xFF])
+        data += bytes([variation_count])
         data += b"".join(variation.to_bytes() for variation in self.variations)
         return bytes(data)
 
@@ -646,32 +688,56 @@ class Dat54ModularSynthSoundVariable:
 
 @dataclass(slots=True)
 class Dat54ModularSynthSound(Dat54Sound):
+    MAX_ENVIRONMENT_SOUNDS: ClassVar[int] = 4
+    MAX_EXPOSED_VARIABLES: ClassVar[int] = 64
+
     synth_sound: RelHashLike = 0
     synth_preset: RelHashLike = 0
     playback_time_limit: float = 0.0
     virtualisation_mode: int = 0
-    track_count: int = 0
-    environment_sounds: list[RelHashLike] = field(default_factory=lambda: [0, 0, 0, 0])
+    environment_sound_count: int | None = None
+    environment_sounds: list[RelHashLike] = field(default_factory=list)
     exposed_variables: list[Dat54ModularSynthSoundVariable] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat54SoundType.MODULAR_SYNTH_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
-        env = [rel_hash(value) for value in self.environment_sounds[:4]]
-        env.extend([0] * (4 - len(env)))
+        checked_count(
+            self.environment_sounds,
+            self.MAX_ENVIRONMENT_SOUNDS,
+            "ModularSynthSound environment_sounds",
+        )
+        environment_count = (
+            len(self.environment_sounds)
+            if self.environment_sound_count is None
+            else int(self.environment_sound_count)
+        )
+        if not 0 <= environment_count <= self.MAX_ENVIRONMENT_SOUNDS:
+            raise ValueError(
+                "ModularSynthSound environment_sound_count supports at most 4 entries"
+            )
+        exposed_count = checked_count(
+            self.exposed_variables,
+            self.MAX_EXPOSED_VARIABLES,
+            "ModularSynthSound exposed_variables",
+        )
+        environment_sounds = [rel_hash(value) for value in self.environment_sounds]
+        environment_sounds.extend(
+            [0] * (self.MAX_ENVIRONMENT_SOUNDS - len(environment_sounds))
+        )
         data = bytearray(
             struct.pack(
-                "<IIfii4I",
+                "<IIfB3xI4I",
                 rel_hash(self.synth_sound),
                 rel_hash(self.synth_preset),
                 float(self.playback_time_limit),
                 int(self.virtualisation_mode),
-                int(self.track_count),
-                *env,
+                environment_count,
+                *environment_sounds,
             )
         )
-        data += struct.pack("<i", len(self.exposed_variables))
+        data += struct.pack("<I", exposed_count)
         data += b"".join(v.to_bytes() for v in self.exposed_variables)
         return bytes(data)
 
@@ -693,6 +759,8 @@ class Dat54SoundSetItem:
 
 @dataclass(slots=True)
 class Dat54SoundSet(Dat54Sound):
+    MAX_SOUND_SETS: ClassVar[int] = 1000
+
     sound_sets: list[Dat54SoundSetItem] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -700,7 +768,8 @@ class Dat54SoundSet(Dat54Sound):
 
     def sound_payload_bytes(self) -> bytes:
         ordered = sorted(self.sound_sets, key=lambda item: rel_hash(item.script_name))
-        return struct.pack("<i", len(ordered)) + b"".join(item.to_bytes() for item in ordered)
+        count = checked_count(ordered, self.MAX_SOUND_SETS, "SoundSet sound_sets")
+        return struct.pack("<I", count) + b"".join(item.to_bytes() for item in ordered)
 
     def hash_table_offsets(self) -> list[int]:
         return [8 + i * 8 for i in range(len(self.sound_sets))]
@@ -711,13 +780,22 @@ class Dat54SoundSet(Dat54Sound):
 
 @dataclass(slots=True)
 class Dat54SoundSetList(Dat54Sound):
+    MAX_SOUND_SETS: ClassVar[int] = 65535
+
     sound_sets: list[RelHashLike] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat54SoundType.SOUND_SET_LIST)
 
     def sound_payload_bytes(self) -> bytes:
-        return struct.pack("<I", len(self.sound_sets)) + b"".join(struct.pack("<I", rel_hash(sound)) for sound in self.sound_sets)
+        count = checked_count(
+            self.sound_sets,
+            self.MAX_SOUND_SETS,
+            "SoundSetList sound_sets",
+        )
+        return struct.pack("<I", count) + b"".join(
+            struct.pack("<I", rel_hash(sound)) for sound in self.sound_sets
+        )
 
     def hash_table_offsets(self) -> list[int]:
         return [4 + i * 4 for i in range(len(self.sound_sets))]
@@ -728,15 +806,22 @@ class Dat54SoundSetList(Dat54Sound):
 
 @dataclass(slots=True)
 class Dat54SoundHashList(Dat54Sound):
-    unk_short: int = 0
+    MAX_SOUND_HASHES: ClassVar[int] = 65535
+
+    current_sound_index: int = 0
     sound_hashes_list: list[RelHashLike] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat54SoundType.SOUND_HASH_LIST)
 
     def sound_payload_bytes(self) -> bytes:
+        count = checked_count(
+            self.sound_hashes_list,
+            self.MAX_SOUND_HASHES,
+            "SoundHashList sound_hashes_list",
+        )
         return (
-            struct.pack("<HI", int(self.unk_short) & 0xFFFF, len(self.sound_hashes_list))
+            struct.pack("<HI", int(self.current_sound_index), count)
             + b"".join(struct.pack("<I", rel_hash(sound)) for sound in self.sound_hashes_list)
         )
 
@@ -750,11 +835,13 @@ class Dat54AutomationSoundVariableOutput:
     variable: RelHashLike = 0
 
     def to_bytes(self) -> bytes:
-        return struct.pack("<iI", int(self.channel), rel_hash(self.variable))
+        return struct.pack("<II", int(self.channel), rel_hash(self.variable))
 
 
 @dataclass(slots=True)
 class Dat54AutomationSound(Dat54Sound):
+    MAX_VARIABLE_OUTPUTS: ClassVar[int] = 8
+
     fallback_sound: RelHashLike = 0
     playback_rate: float = 1.0
     playback_rate_variance: float = 0.0
@@ -768,9 +855,14 @@ class Dat54AutomationSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.AUTOMATION_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        output_count = checked_count(
+            self.variable_outputs,
+            self.MAX_VARIABLE_OUTPUTS,
+            "AutomationSound variable_outputs",
+        )
         data = bytearray(
             struct.pack(
-                "<IffIIIIi",
+                "<IffIIIII",
                 rel_hash(self.fallback_sound),
                 float(self.playback_rate),
                 float(self.playback_rate_variance),
@@ -778,7 +870,7 @@ class Dat54AutomationSound(Dat54Sound):
                 rel_hash(self.note_map),
                 rel_hash(self.container_name),
                 rel_hash(self.file_name),
-                len(self.variable_outputs),
+                output_count,
             )
         )
         data += b"".join(output.to_bytes() for output in self.variable_outputs)
@@ -819,13 +911,20 @@ class Dat54AutomationNoteMapRange:
 
 @dataclass(slots=True)
 class Dat54AutomationNoteMapSound(Dat54Sound):
+    MAX_RANGES: ClassVar[int] = 128
+
     ranges: list[Dat54AutomationNoteMapRange] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat54SoundType.AUTOMATION_NOTE_MAP_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
-        return bytes([len(self.ranges) & 0xFF]) + b"".join(item.to_bytes() for item in self.ranges)
+        count = checked_count(
+            self.ranges,
+            self.MAX_RANGES,
+            "AutomationNoteMapSound ranges",
+        )
+        return bytes([count]) + b"".join(item.to_bytes() for item in self.ranges)
 
     def hash_table_offsets(self) -> list[int]:
         return [4 + i * 7 for i in range(len(self.ranges))]
@@ -968,6 +1067,8 @@ class Dat54VariableData:
 
 @dataclass(slots=True)
 class Dat54VariableBlockSound(Dat54Sound):
+    MAX_VARIABLES: ClassVar[int] = 20
+
     child_sound: RelHashLike = 0
     variables: list[Dat54VariableData] = field(default_factory=list)
 
@@ -975,8 +1076,13 @@ class Dat54VariableBlockSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.VARIABLE_BLOCK_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        variable_count = checked_count(
+            self.variables,
+            self.MAX_VARIABLES,
+            "VariableBlockSound variables",
+        )
         return (
-            struct.pack("<IB", rel_hash(self.child_sound), len(self.variables) & 0xFF)
+            struct.pack("<IB", rel_hash(self.child_sound), variable_count)
             + b"".join(variable.to_bytes() for variable in self.variables)
         )
 
@@ -1014,6 +1120,8 @@ class Dat54MathOperation:
 
 @dataclass(slots=True)
 class Dat54MathOperationSound(Dat54Sound):
+    MAX_OPERATIONS: ClassVar[int] = 10
+
     child_sound: RelHashLike = 0
     operations: list[Dat54MathOperation] = field(default_factory=list)
 
@@ -1021,8 +1129,13 @@ class Dat54MathOperationSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.MATH_OPERATION_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        operation_count = checked_count(
+            self.operations,
+            self.MAX_OPERATIONS,
+            "MathOperationSound operations",
+        )
         return (
-            struct.pack("<Ii", rel_hash(self.child_sound), len(self.operations))
+            struct.pack("<IB", rel_hash(self.child_sound), operation_count)
             + b"".join(operation.to_bytes() for operation in self.operations)
         )
 
@@ -1035,23 +1148,30 @@ class Dat54MathOperationSound(Dat54Sound):
 
 @dataclass(slots=True)
 class Dat54ParameterTransform:
+    MAX_TRANSFORM_POINTS: ClassVar[int] = 16
+
     smooth_rate: float = 0.0
-    transform_type: int = 0
-    transform_type_parameter: RelHashLike = 0
+    destination: int = 0
+    output_variable: RelHashLike = 0
     output_range_min: float = 0.0
     output_range_max: float = 0.0
     vectors: list[tuple[float, float]] = field(default_factory=list)
 
     def to_bytes(self) -> bytes:
+        vector_count = checked_count(
+            self.vectors,
+            self.MAX_TRANSFORM_POINTS,
+            "ParameterTransform vectors",
+        )
         data = bytearray(
             struct.pack(
-                "<fiIffi",
+                "<fB3xIffI",
                 float(self.smooth_rate),
-                int(self.transform_type),
-                rel_hash(self.transform_type_parameter),
+                int(self.destination),
+                rel_hash(self.output_variable),
                 float(self.output_range_min),
                 float(self.output_range_max),
-                len(self.vectors),
+                vector_count,
             )
         )
         for x, y in self.vectors:
@@ -1061,19 +1181,26 @@ class Dat54ParameterTransform:
 
 @dataclass(slots=True)
 class Dat54ParameterTransformBlock:
+    MAX_OUTPUTS: ClassVar[int] = 4
+
     input_parameter: RelHashLike = 0
     input_range_min: float = 0.0
     input_range_max: float = 0.0
     transforms: list[Dat54ParameterTransform] = field(default_factory=list)
 
     def to_bytes(self) -> bytes:
+        transform_count = checked_count(
+            self.transforms,
+            self.MAX_OUTPUTS,
+            "ParameterTransformBlock transforms",
+        )
         return (
             struct.pack(
-                "<Iffi",
+                "<IffI",
                 rel_hash(self.input_parameter),
                 float(self.input_range_min),
                 float(self.input_range_max),
-                len(self.transforms),
+                transform_count,
             )
             + b"".join(transform.to_bytes() for transform in self.transforms)
         )
@@ -1081,6 +1208,8 @@ class Dat54ParameterTransformBlock:
 
 @dataclass(slots=True)
 class Dat54ParameterTransformSound(Dat54Sound):
+    MAX_PARAMETER_TRANSFORMS: ClassVar[int] = 16
+
     child_sound: RelHashLike = 0
     parameter_transforms: list[Dat54ParameterTransformBlock] = field(default_factory=list)
 
@@ -1088,8 +1217,13 @@ class Dat54ParameterTransformSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.PARAMETER_TRANSFORM_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        transform_count = checked_count(
+            self.parameter_transforms,
+            self.MAX_PARAMETER_TRANSFORMS,
+            "ParameterTransformSound parameter_transforms",
+        )
         return (
-            struct.pack("<Ii", rel_hash(self.child_sound), len(self.parameter_transforms))
+            struct.pack("<II", rel_hash(self.child_sound), transform_count)
             + b"".join(transform.to_bytes() for transform in self.parameter_transforms)
         )
 
@@ -1119,7 +1253,7 @@ class Dat54Fluctuator:
 
     def to_bytes(self) -> bytes:
         return struct.pack(
-            "<BBI" + "f" * 11,
+            "<BBI8fIIf",
             int(self.mode) & 0xFF,
             int(self.destination) & 0xFF,
             rel_hash(self.output_variable),
@@ -1131,14 +1265,16 @@ class Dat54Fluctuator:
             float(self.band_two_maximum),
             float(self.intra_band_flip_probability),
             float(self.inter_band_flip_probability),
-            float(self.min_switch_time),
-            float(self.max_switch_time),
+            int(self.min_switch_time),
+            int(self.max_switch_time),
             float(self.initial_value),
         )
 
 
 @dataclass(slots=True)
 class Dat54FluctuatorSound(Dat54Sound):
+    MAX_FLUCTUATORS: ClassVar[int] = 4
+
     child_sound: RelHashLike = 0
     fluctuators: list[Dat54Fluctuator] = field(default_factory=list)
 
@@ -1146,8 +1282,13 @@ class Dat54FluctuatorSound(Dat54Sound):
         self.type_id = int(Dat54SoundType.FLUCTUATOR_SOUND)
 
     def sound_payload_bytes(self) -> bytes:
+        fluctuator_count = checked_count(
+            self.fluctuators,
+            self.MAX_FLUCTUATORS,
+            "FluctuatorSound fluctuators",
+        )
         return (
-            struct.pack("<Ii", rel_hash(self.child_sound), len(self.fluctuators))
+            struct.pack("<II", rel_hash(self.child_sound), fluctuator_count)
             + b"".join(fluctuator.to_bytes() for fluctuator in self.fluctuators)
         )
 
@@ -1160,6 +1301,8 @@ class Dat54FluctuatorSound(Dat54Sound):
 
 @dataclass(slots=True)
 class Dat54ExternalStreamSound(Dat54ChildListSound):
+    MAX_CHILD_SOUNDS: ClassVar[int] = 4
+
     environment_sound_1: RelHashLike = 0
     environment_sound_2: RelHashLike = 0
     environment_sound_3: RelHashLike = 0
