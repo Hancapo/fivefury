@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +10,8 @@ from fivefury import (
     YED_FACIAL_ROOT_BONE_ID,
     CutFacialAnimationMode,
     CutScene,
+    GameFileCache,
+    YcdAnimationTrack,
     YcdCutsceneBuilder,
     YcdFacialTrackSet,
     YedInstruction,
@@ -24,6 +28,9 @@ from fivefury import (
     validate_yed,
 )
 from fivefury.metahash import MetaHash
+
+_ENHANCED_ROOT_VALUE = os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH")
+_ENHANCED_ROOT = Path(_ENHANCED_ROOT_VALUE) if _ENHANCED_ROOT_VALUE else None
 
 
 def test_cut_ped_merged_facial_mode_resolves_dual_clip() -> None:
@@ -191,3 +198,74 @@ def test_yed_conditional_branches_match_rage_zero_semantics(
 
     assert result.output_tracks[(1, 0)][0] == pytest.approx(expected)
     assert result.issues == []
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail YED regression",
+)
+def test_retail_facial_component_defaults_preserve_analog_bone_scales() -> None:
+    assert _ENHANCED_ROOT is not None
+    scale_track = int(YcdAnimationTrack.BONE_SCALE)
+    programs = ("head_000_r", "teef_000_u")
+    local_time = 4.76666697099119
+
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        load_audio=False,
+        load_peds=True,
+        load_vehicles=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        bundle = cache.resolve_cutscene("pro_mcs_5.cut")
+
+        brad = bundle.bindings[2]
+        brad_clip = bundle.scene.clip_for_binding(brad.binding, cut_index=3)
+        assert brad_clip is not None and brad_clip.animation is not None
+        brad_skeleton = brad.model.main_drawable.skeleton
+        brad_result = evaluate_yed(
+            brad.expression_dictionary,
+            programs,
+            brad_clip.animation.evaluate_tracks(143),
+            skeleton=brad_skeleton,
+            time=local_time,
+            delta_time=1.0 / 30.0,
+        )
+
+        player = bundle.bindings[3]
+        player_clip = bundle.scene.clip_for_binding(player.binding, cut_index=3)
+        assert player_clip is not None and player_clip.animation is not None
+        player_result = evaluate_yed(
+            player.expression_dictionary,
+            programs,
+            player_clip.animation.evaluate_tracks(143),
+            skeleton=player.model.main_drawable.skeleton,
+            time=local_time,
+            delta_time=1.0 / 30.0,
+        )
+
+    analog_tags = {
+        int(bone.tag)
+        for bone in brad_skeleton.bones
+        if "analog" in str(bone.name).casefold()
+    }
+    analog_scales = {
+        bone_id: value
+        for (bone_id, track), value in brad_result.output_tracks.items()
+        if bone_id in analog_tags and track == scale_track
+    }
+
+    assert len(analog_tags) == 16
+    assert set(analog_scales) == analog_tags
+    assert all(
+        value == pytest.approx((1.0, 1.0, 1.0, 1.0))
+        for value in analog_scales.values()
+    )
+    assert analog_scales[20943] == pytest.approx((1.0, 1.0, 1.0, 1.0))
+    assert player_result.output_tracks[(20943, scale_track)] == pytest.approx(
+        (0.9998352745, 1.0018154658, 1.0003070484, 1.0),
+        abs=1e-9,
+    )
+    assert brad_result.issues == []
+    assert player_result.issues == []
