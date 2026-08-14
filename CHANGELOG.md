@@ -48,7 +48,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Cached REL sound indexes avoid repeated metadata scans during CUT resolution.
 - Compact influence streams reduce static GPU upload storage by 75%.
 - Three-row affine palettes reduce per-frame bone uploads by 25%.
-- GPU-resident compute skinning is up to 164x faster than reusable CPU skinning for one million vertices on an RTX 4090.
+- GPU-resident compute skinning is up to 164x faster than reusable CPU skinning for one million vertices on a high-end Ada Lovelace GPU.
 
 ## [0.4.2] - 2026-08-13
 
