@@ -4,7 +4,9 @@ import struct
 from pathlib import Path
 
 from ..binary import align, read_c_string
+from .config_parsing import parse_dat4_config_item
 from .enums import (
+    Dat4ConfigType,
     Dat10RelType,
     Dat16RelType,
     Dat22RelType,
@@ -1322,8 +1324,14 @@ def _parse_item(
     index: RelIndexHash,
     data_block: bytes,
     name_by_offset: dict[int, str],
+    *,
+    is_audio_config: bool = False,
 ) -> RelItem:
     raw = data_block[index.offset : index.offset + index.length]
+    if rel_type == int(RelDatFileType.DAT4) and is_audio_config:
+        item = parse_dat4_config_item(index, raw, name_by_offset)
+        if item is not None:
+            return item
     if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
         return _parse_dat10_item(index, raw, name_by_offset)
     if rel_type == int(RelDatFileType.DAT16_CURVES):
@@ -1415,9 +1423,18 @@ def read_rel(
         else []
     )
     items = [
-        _parse_item(rel_type_value, index, data_block, name_by_offset)
+        _parse_item(
+            rel_type_value,
+            index,
+            data_block,
+            name_by_offset,
+            is_audio_config=is_audio_config,
+        )
         for index in index_hashes
     ]
+    if is_audio_config:
+        for item, index in zip(items, index_strings, strict=True):
+            item.name = index.name
     return RelFile(
         rel_type=RelDatFileType(rel_type_value),
         version=version,
@@ -1434,6 +1451,8 @@ def read_rel(
 
 
 def _prepare_name_table(rel: RelFile) -> tuple[list[str], dict[str, int]]:
+    if rel.is_audio_config:
+        return [], {}
     names: list[str] = []
     for name in rel.name_table:
         if name not in names:
@@ -1461,7 +1480,7 @@ def _data_order_items(rel: RelFile) -> list[RelItem]:
 def _build_data_block(rel: RelFile) -> bytes:
     data = bytearray(struct.pack("<I", rel.version & 0xFFFFFFFF))
     for item in _data_order_items(rel):
-        alignment = _rel_item_alignment(int(rel.rel_type), item.type_id)
+        alignment = _rel_item_alignment(rel, item.type_id)
         target_offset = max(item.data_offset, align(len(data), alignment))
         data += b"\x00" * (target_offset - len(data))
         item_data = item.to_data()
@@ -1498,9 +1517,12 @@ _GAME_REL_ALIGN_4 = frozenset(
 )
 
 
-def _rel_item_alignment(rel_type: int, type_id: int) -> int:
+def _rel_item_alignment(rel: RelFile, type_id: int) -> int:
+    rel_type = int(rel.rel_type)
     if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
         return 4
+    if rel.is_audio_config and rel_type == int(RelDatFileType.DAT4):
+        return 16 if type_id == int(Dat4ConfigType.VECTOR3) else 1
     if rel_type in {
         int(RelDatFileType.DAT149),
         int(RelDatFileType.DAT150),

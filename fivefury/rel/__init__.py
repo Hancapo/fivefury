@@ -1,4 +1,19 @@
+from .config_types import (
+    Dat4ConfigErPass,
+    Dat4ConfigErSettings,
+    Dat4ConfigFloat,
+    Dat4ConfigInt,
+    Dat4ConfigItem,
+    Dat4ConfigString,
+    Dat4ConfigUnsignedInt,
+    Dat4ConfigVariable,
+    Dat4ConfigVariableList,
+    Dat4ConfigVector3,
+    Dat4ConfigWaveSlot,
+    Dat4ConfigWaveSlotsList,
+)
 from .enums import (
+    Dat4ConfigType,
     Dat10RelType,
     Dat16RelType,
     Dat22RelType,
@@ -100,6 +115,19 @@ from .sound_types import (
 )
 
 __all__ = [
+    "Dat4ConfigErPass",
+    "Dat4ConfigErSettings",
+    "Dat4ConfigFloat",
+    "Dat4ConfigInt",
+    "Dat4ConfigItem",
+    "Dat4ConfigString",
+    "Dat4ConfigType",
+    "Dat4ConfigUnsignedInt",
+    "Dat4ConfigVariable",
+    "Dat4ConfigVariableList",
+    "Dat4ConfigVector3",
+    "Dat4ConfigWaveSlot",
+    "Dat4ConfigWaveSlotsList",
     "Dat10RelItem",
     "Dat10RelType",
     "Dat10Synth",

@@ -15,6 +15,18 @@ class RelDatFileType(FlexibleIntEnum):
     DAT151 = 151
 
 
+class Dat4ConfigType(FlexibleIntEnum):
+    INT = 0
+    UNSIGNED_INT = 1
+    FLOAT = 2
+    STRING = 3
+    VECTOR3 = 5
+    VARIABLE_LIST = 7
+    WAVE_SLOT = 8
+    WAVE_SLOTS_LIST = 9
+    ER_SETTINGS = 10
+
+
 class Dat10RelType(FlexibleIntEnum):
     SYNTH_PRESET = 1
     SYNTH = 3
