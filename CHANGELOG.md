@@ -11,6 +11,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - GPU-resident vertex and compute skinning for GLSL and HLSL renderers.
 - Compact four-influence streams and reusable three-row bone palettes for GPU upload.
+- Typed loose-file and loose-directory loading for cross-asset authoring contexts.
 
 ### Fixed
 

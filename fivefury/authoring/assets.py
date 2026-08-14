@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Generic, TypeVar, cast
 
+from ..gamefile import GameFile
 from ..hashing import jenk_hash
 
 AssetT = TypeVar("AssetT")
@@ -104,11 +105,34 @@ class AssetSet(MutableMapping[str, object]):
         self._assets[canonical_asset_path(path)] = asset
         return asset
 
+    @classmethod
+    def from_directory(cls, directory: str | Path) -> AssetSet:
+        root = Path(directory)
+        if not root.is_dir():
+            raise NotADirectoryError(root)
+        assets = cls()
+        for source in sorted(
+            (path for path in root.rglob("*") if path.is_file()),
+            key=lambda path: path.relative_to(root).as_posix().casefold(),
+        ):
+            assets.file(source, path=source.relative_to(root))
+        return assets
+
+    def file(
+        self,
+        source: str | Path,
+        *,
+        path: str | Path | None = None,
+    ) -> GameFile:
+        game_file = GameFile.from_path(source, path=path)
+        self[game_file.path] = game_file
+        return game_file
+
     def of_type(self, asset_type: type[AssetT]) -> tuple[AssetT, ...]:
         return tuple(
-            cast(AssetT, asset)
+            cast(AssetT, target)
             for asset in self._assets.values()
-            if isinstance(asset, asset_type)
+            if isinstance((target := self._target(asset)), asset_type)
         )
 
     def resolve(self, reference: AssetRef[AssetT]) -> AssetT | None:
@@ -118,12 +142,13 @@ class AssetSet(MutableMapping[str, object]):
                 return self._check_type(reference, candidate)
 
         matches = [
-            candidate
+            target
             for path, candidate in self._assets.items()
+            if (target := self._target(candidate)) is not None
             if asset_name(path) == reference.name
             and (
                 reference.asset_type is None
-                or isinstance(candidate, reference.asset_type)
+                or isinstance(target, reference.asset_type)
             )
         ]
         if len(matches) > 1:
@@ -137,6 +162,7 @@ class AssetSet(MutableMapping[str, object]):
 
     @staticmethod
     def _check_type(reference: AssetRef[AssetT], candidate: object) -> AssetT:
+        candidate = AssetSet._target(candidate)
         if reference.asset_type is not None and not isinstance(
             candidate, reference.asset_type
         ):
@@ -145,6 +171,10 @@ class AssetSet(MutableMapping[str, object]):
                 f"expected {reference.asset_type.__name__}"
             )
         return cast(AssetT, candidate)
+
+    @staticmethod
+    def _target(candidate: object) -> object:
+        return candidate.parsed if isinstance(candidate, GameFile) else candidate
 
 
 __all__ = ["AssetRef", "AssetSet", "asset_name", "canonical_asset_path"]
