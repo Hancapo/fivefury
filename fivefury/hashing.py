@@ -36,6 +36,20 @@ def jenk_partial_hash(value: str | bytes, *, encoding: str = "utf-8") -> int:
     return _ffi.jenk_partial_hash(text, _get_lut())
 
 
+def jenk_continue_hash(
+    partial_hash: int,
+    value: str | bytes,
+    *,
+    encoding: str = "utf-8",
+) -> int:
+    text = value if isinstance(value, str) else value.decode(encoding)
+    return _ffi.jenk_continue_hash(
+        int(partial_hash) & _UINT32_MASK,
+        text,
+        _get_lut(),
+    )
+
+
 def jenk_finalize_hash(partial_hash: int) -> int:
     return _ffi.jenk_finalize_hash(int(partial_hash) & 0xFFFFFFFF)
 
@@ -113,6 +127,7 @@ def jenkins_hash_words(words: Iterable[int], *, initial_value: int = 0) -> int:
 
 
 __all__ = [
+    "jenk_continue_hash",
     "jenk_finalize_hash",
     "jenk_hash",
     "jenk_hash_many",

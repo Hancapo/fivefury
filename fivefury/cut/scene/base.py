@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from ...ycd.model import Ycd, YcdAnimation, YcdClip
     from .authoring import CutsceneAssets
 
-from ...hashing import jenk_finalize_hash, jenk_partial_hash
+from ...hashing import jenk_partial_hash
 from ...metahash import MetaHash
 from ..events import CutEventType, get_cut_event_sort_rank, get_cut_event_spec
 from ..flags import CutSceneFlags
@@ -98,6 +98,24 @@ class CutScene:
             merged.update(ycd.build_cutscene_map(cut_index))
         return merged
 
+    def clip_for_streaming_base(
+        self,
+        anim_streaming_base: int,
+        *,
+        cut_index: int = 0,
+        combined_facial: bool = False,
+    ) -> YcdClip | None:
+        """Resolve an exact technical clip from a serialized partial hash."""
+        for ycd in self.clip_dicts:
+            clip = ycd.get_cutscene_clip(
+                anim_streaming_base,
+                cut_index,
+                combined_facial=combined_facial,
+            )
+            if clip is not None:
+                return clip
+        return None
+
     def clip_for_binding(
         self, binding: CutBinding | int, *, cut_index: int = 0
     ) -> YcdClip | None:
@@ -119,7 +137,9 @@ class CutScene:
             getattr(resolved, "animation_clip_base", None),
         )
         if animation_clip_base:
-            clip = clips.get(MetaHash(animation_clip_base).uint)
+            clip = self.get_clip(f"{animation_clip_base}-{int(cut_index)}")
+            if clip is None:
+                clip = clips.get(MetaHash(animation_clip_base).uint)
             if clip is not None:
                 return clip
         animation_streaming_base = getattr(
@@ -129,7 +149,16 @@ class CutScene:
             animation_streaming_base = resolved.fields.get("AnimStreamingBase")
         if animation_streaming_base not in (None, "", 0):
             try:
-                return clips.get(jenk_finalize_hash(int(animation_streaming_base)))
+                combined_facial = (
+                    isinstance(resolved, CutPed)
+                    and resolved.has_face_animation
+                    and resolved.face_and_body_are_merged
+                )
+                return self.clip_for_streaming_base(
+                    int(animation_streaming_base),
+                    cut_index=cut_index,
+                    combined_facial=combined_facial,
+                )
             except (TypeError, ValueError):
                 return None
         for candidate in (
@@ -553,9 +582,6 @@ class CutScene:
                         bound, "animation_streaming_base", None
                     )
                     if anim_streaming_base not in (None, "", 0):
-                        candidate_hashes.append(
-                            jenk_finalize_hash(int(anim_streaming_base))
-                        )
                         candidate_labels.append(
                             f"AnimStreamingBase=0x{int(anim_streaming_base):08X}"
                         )
@@ -571,11 +597,24 @@ class CutScene:
                         for ycd in self.clip_dicts
                     )
                     clip_map = self.available_clips(cut_index=active_cut_index)
-                    hashed_clip_missing = candidate_hashes and not any(
-                        key in clip_map for key in candidate_hashes
+                    has_streaming_base = anim_streaming_base not in (None, "", 0)
+                    fallback_clip_missing = (
+                        not has_streaming_base
+                        and bool(candidate_hashes)
+                        and not any(key in clip_map for key in candidate_hashes)
+                    )
+                    streaming_clip_missing = (
+                        not animation_clip_base
+                        and has_streaming_base
+                        and self.clip_for_binding(
+                            bound,
+                            cut_index=active_cut_index,
+                        )
+                        is None
                     )
                     if exact_clip_missing or (
-                        not animation_clip_base and hashed_clip_missing
+                        not animation_clip_base
+                        and (streaming_clip_missing or fallback_clip_missing)
                     ):
                         label = (
                             " / ".join(dict.fromkeys(candidate_labels)) or f"id={oid}"

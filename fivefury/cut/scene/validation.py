@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
 
-from ...hashing import jenk_finalize_hash, jenk_hash, jenk_partial_hash
+from ...hashing import jenk_hash, jenk_partial_hash
 from ..events import get_cut_event_name, get_cut_event_sort_rank, get_cut_event_spec
 from ..flags import (
     DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
@@ -898,9 +898,10 @@ def _validate_animations(
             active_cut_index = _technical_cut_index(
                 scene.camera_cut_list, float(event.start)
             )
-            clip_map = scene.available_clips(cut_index=active_cut_index)
-            expected_hash = jenk_finalize_hash(anim_streaming_base)
-            if expected_hash not in clip_map:
+            if (
+                scene.clip_for_binding(binding, cut_index=active_cut_index)
+                is None
+            ):
                 _issue(
                     issues,
                     "error",

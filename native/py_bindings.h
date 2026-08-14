@@ -63,6 +63,7 @@ PyObject* mod_index_get_short_hash(PyObject*, PyObject* args);
 PyObject* mod_index_export_state(PyObject*, PyObject* args);
 PyObject* mod_index_import_state(PyObject*, PyObject* args);
 PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args);
+PyObject* mod_jenk_continue_hash(PyObject*, PyObject* args);
 PyObject* mod_jenk_finalize_hash(PyObject*, PyObject* args);
 PyObject* mod_jenk_hash(PyObject*, PyObject* args);
 PyObject* mod_jenk_hash_many(PyObject*, PyObject* args);
