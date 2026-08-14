@@ -18,8 +18,8 @@ from fivefury import (
     YmtPedInitData,
     YmtPedMetadata,
 )
+from fivefury.cut.asset_kinds import CUT_MODEL_KINDS_BY_ROLE
 from fivefury.cut.resolution.bindings import (
-    _MODEL_KINDS_BY_ROLE,
     _ped_component_variations,
     _resolve_binding_texture_chains,
 )
@@ -502,7 +502,7 @@ def _ped_metadata_file(*items: YmtPedInitData):
 
 
 def test_ped_yed_is_not_guessed_from_the_model_hash() -> None:
-    assert GameFileType.YED not in _MODEL_KINDS_BY_ROLE["ped"]
+    assert GameFileType.YED not in CUT_MODEL_KINDS_BY_ROLE["ped"]
 
 
 def test_ped_expression_resolution_uses_highest_source_precedence(

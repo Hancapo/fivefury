@@ -7,11 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `CutsceneAssets.validate()` now returns a non-mutating `ValidationReport`; mutable finalization belongs to `build()`.
+
 ### Added
 
 - GPU-resident vertex and compute skinning for GLSL and HLSL renderers.
 - Compact four-influence streams and reusable three-row bone palettes for GPU upload.
 - Typed loose-file and loose-directory loading for cross-asset authoring contexts.
+- Context-aware CUT project validation for YCDs, streamed models, archetypes, skeletons, facial tracks, and audio containers.
 
 ### Fixed
 
