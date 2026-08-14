@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..buckets import at_hash_bucket_capacity
 from ..game_target import GameTarget
+from ..hashing import jenk_continue_hash, jenk_finalize_hash
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from ..vector import interpolate_vector4_many
@@ -30,6 +31,23 @@ from .sequences import (
 
 YCD_UV_CLIP_MARKER = "_uv_"
 YCD_UV_UNKNOWN1C = 0x6B002400
+
+
+def build_ycd_cutscene_clip_hash(
+    anim_streaming_base: int,
+    cut_index: int,
+    *,
+    combined_facial: bool = False,
+) -> MetaHash:
+    index = int(cut_index)
+    if index < 0:
+        raise ValueError("YCD cutscene clip index cannot be negative")
+    marker = "_dual" if combined_facial else ""
+    partial = jenk_continue_hash(
+        int(anim_streaming_base),
+        f"{marker}-{index}",
+    )
+    return MetaHash(jenk_finalize_hash(partial))
 
 
 def _normalize_ycd_clip_name(value: str) -> str:
@@ -910,14 +928,35 @@ class Ycd:
                 return animation
         return None
 
+    def get_cutscene_clip(
+        self,
+        anim_streaming_base: int,
+        cut_index: int,
+        *,
+        combined_facial: bool = False,
+    ) -> YcdClip | None:
+        clip_hash = build_ycd_cutscene_clip_hash(
+            anim_streaming_base,
+            cut_index,
+            combined_facial=combined_facial,
+        )
+        return self.clip_map.get(clip_hash.uint)
+
     def build_cutscene_map(self, cut_index: int) -> dict[int, YcdClip]:
         suffix = f"-{int(cut_index)}"
         result: dict[int, YcdClip] = {}
         for clip in self.clips:
+            full_name = (
+                str(clip.name or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+            )
+            if full_name.endswith(suffix):
+                full_base = full_name[: -len(suffix)].removesuffix("_dual")
+                if full_base:
+                    result[MetaHash(full_base).uint] = clip
             short_name = clip.short_name
             short_name = short_name.removesuffix(suffix)
             short_name = short_name.removesuffix("_dual")
-            result[MetaHash(short_name).uint] = clip
+            result.setdefault(MetaHash(short_name).uint, clip)
         return result
 
     def validate(self) -> Ycd:
@@ -1034,6 +1073,7 @@ __all__ = [
     "YcdUvAnimationSample",
     "YcdUvClipBinding",
     "YcdUvTransformSample",
+    "build_ycd_cutscene_clip_hash",
     "build_ycd_uv_clip_hash",
     "build_ycd_uv_clip_name",
     "create_ycd_uv_clip",

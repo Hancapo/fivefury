@@ -41,6 +41,7 @@ PyMethodDef module_methods[] = {
     {"read_rpf_entry", mod_read_rpf_entry, METH_VARARGS, nullptr},
     {"read_rpf_entry_variants", mod_read_rpf_entry_variants, METH_VARARGS, nullptr},
     {"jenk_partial_hash", mod_jenk_partial_hash, METH_VARARGS, nullptr},
+    {"jenk_continue_hash", mod_jenk_continue_hash, METH_VARARGS, nullptr},
     {"jenk_finalize_hash", mod_jenk_finalize_hash, METH_VARARGS, nullptr},
     {"jenk_hash", mod_jenk_hash, METH_VARARGS, nullptr},
     {"jenk_hash_many", mod_jenk_hash_many, METH_VARARGS, nullptr},

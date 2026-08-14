@@ -12,6 +12,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - GPU-resident vertex and compute skinning for GLSL and HLSL renderers.
 - Compact four-influence streams and reusable three-row bone palettes for GPU upload.
 
+### Fixed
+
+- Animated CUT instances can share one streamed model while resolving distinct sectioned YCD clips.
+
 ### Performance
 
 - Compact influence streams reduce static GPU upload storage by 75%.

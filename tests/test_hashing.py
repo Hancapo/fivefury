@@ -94,6 +94,21 @@ class HashingContractTests(PytestCompat):
         self.assertEqual(jenk_finalize_hash(0xC5FA439C), 0x62CAD9F0)
         self.assertEqual(jenk_finalize_hash(0x1C5FA439C), 0x62CAD9F0)
 
+    def test_jenk_continue_hash_extends_serialized_partial_state(self) -> None:
+        from fivefury.hashing import (
+            jenk_continue_hash,
+            jenk_finalize_hash,
+            jenk_hash,
+            jenk_partial_hash,
+        )
+
+        partial = jenk_partial_hash("prop_box.001")
+
+        self.assertEqual(
+            jenk_finalize_hash(jenk_continue_hash(partial, "-3")),
+            jenk_hash("prop_box.001-3"),
+        )
+
     def test_crypto_magic_mask_known_vectors(self) -> None:
         from fivefury._native import crypto_magic_mask
 
