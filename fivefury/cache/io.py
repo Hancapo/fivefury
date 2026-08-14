@@ -66,7 +66,12 @@ def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: Game
     return _decode_or_fallback(kind, data, data, decoder)
 
 
-def _decode_payload(path: str, data: bytes, *, raw: bytes | None = None) -> tuple[Any, GameFileType]:
+def decode_game_file_payload(
+    path: str,
+    data: bytes,
+    *,
+    raw: bytes | None = None,
+) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
     name = Path(path).name.lower()
     if name == "gta5_cache_y.dat":
@@ -276,7 +281,11 @@ class GameFileCacheIOMixin:
             logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
             ext = asset.extension
             raw_source = standalone_native if ext in {".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
-            parsed, kind = _decode_payload(asset.path, logical_native, raw=raw_source)
+            parsed, kind = decode_game_file_payload(
+                asset.path,
+                logical_native,
+                raw=raw_source,
+            )
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
             game_file = GameFile(
@@ -301,7 +310,11 @@ class GameFileCacheIOMixin:
             raw_source = None
             if asset.path.lower().endswith((".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
                 raw_source = entry._archive.read_entry_standalone(entry)
-            parsed, kind = _decode_payload(asset.path, logical, raw=raw_source)
+            parsed, kind = decode_game_file_payload(
+                asset.path,
+                logical,
+                raw=raw_source,
+            )
             game_file = GameFile(
                 path=asset.path,
                 kind=kind,
@@ -319,7 +332,7 @@ class GameFileCacheIOMixin:
             return None
         self._log(f"read file {asset.path}")
         data = loose.read_bytes()
-        parsed, kind = _decode_payload(asset.path, data)
+        parsed, kind = decode_game_file_payload(asset.path, data)
         game_file = GameFile(path=asset.path, kind=kind, raw=data, parsed=parsed, loaded=True)
         self._remember_file(asset.key, game_file)
         return game_file

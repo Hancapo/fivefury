@@ -32,7 +32,7 @@ from fivefury import (
     scene_to_cut,
     validate_cut_scene,
 )
-from fivefury.cache.io import _decode_payload
+from fivefury.cache.io import decode_game_file_payload
 from fivefury.cut.limits import CUT_MAX_CONCATENATED_SCENES, CUT_MAX_PSO_ARRAY_ITEMS
 from fivefury.gamefile import GameFileType
 from fivefury.hashing import jenk_hash
@@ -116,7 +116,7 @@ def test_cut_writer_roundtrips_atstring_arrays() -> None:
 def test_cut_decoder_uses_logical_pso_instead_of_stored_archive_bytes() -> None:
     logical = scene_to_cut(CutScene.create(duration=5.0)).to_bytes()
 
-    parsed, kind = _decode_payload(
+    parsed, kind = decode_game_file_payload(
         "example.cut", logical, raw=b"compressed archive payload"
     )
 

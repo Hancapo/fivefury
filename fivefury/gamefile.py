@@ -117,6 +117,30 @@ class GameFile:
     loaded: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @classmethod
+    def from_path(
+        cls,
+        source: str | Path,
+        *,
+        path: str | Path | None = None,
+    ) -> GameFile:
+        source_path = Path(source)
+        if not source_path.is_file():
+            raise FileNotFoundError(source_path)
+        logical_path = str(path or source_path.name).replace("\\", "/")
+        data = source_path.read_bytes()
+        from .cache.io import decode_game_file_payload
+
+        parsed, kind = decode_game_file_payload(logical_path, data)
+        return cls(
+            path=logical_path,
+            kind=kind,
+            raw=data,
+            parsed=parsed,
+            loaded=True,
+            metadata={"source_path": str(source_path.resolve())},
+        )
+
     @property
     def name(self) -> str:
         return Path(self.path).name
