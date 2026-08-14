@@ -88,6 +88,21 @@ def test_clip_for_binding_distinguishes_shared_model_animation_bases() -> None:
     assert clip_b.name.startswith("actor_b-")
 
 
+def test_cutscene_assets_accept_template_with_attached_ycds() -> None:
+    project, _ = _duplicate_prop_project()
+    baseline = project.build(cut_name="baseline.cut").build_files()
+    template = baseline["baseline.cut"]
+
+    files = project.build(cut_name="templated.cut").build_files(template=template)
+    rebuilt = read_cut_scene(files["templated.cut"])
+    rebuilt_ycds = [read_ycd(data) for name, data in files.items() if name.endswith(".ycd")]
+
+    assert rebuilt.duration == 1.0
+    assert rebuilt.timeline
+    assert rebuilt_ycds
+    assert all(ycd.clips for ycd in rebuilt_ycds)
+
+
 def test_clip_for_binding_does_not_fall_back_from_unresolved_stream_base() -> None:
     builder = YcdCutsceneBuilder.create("shared_model", duration=1.0)
     builder.ped("shared_model", mover_position=(0.0, 0.0, 0.0))

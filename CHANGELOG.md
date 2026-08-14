@@ -17,10 +17,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Compact four-influence streams and reusable three-row bone palettes for GPU upload.
 - Typed loose-file and loose-directory loading for cross-asset authoring contexts.
 - Context-aware CUT project validation for YCDs, streamed models, archetypes, skeletons, facial tracks, and audio containers.
+- Graphics-page YCD reading.
 
 ### Fixed
 
 - Animated CUT instances can share one streamed model while resolving distinct sectioned YCD clips.
+- CUT templates can be used when writing attached YCD dictionaries.
 
 ### Performance
 

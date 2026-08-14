@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import struct
 
 import pytest
 
@@ -33,10 +34,14 @@ from fivefury import (
     get_ycd_track_format,
     parse_ycd_uv_clip_binding,
     read_ycd,
+    read_ycd_embedded_resource,
 )
 from fivefury.resource import (
+    RSC7_PHYSICAL_BASE,
     ResourceHeader,
+    build_rsc7,
     get_resource_total_page_count,
+    parse_rsc7,
     split_rsc7_sections,
 )
 from fivefury.ycd.sequence_channels import (
@@ -182,6 +187,83 @@ def test_ycd_writer_preserves_address_shaped_hash_map_keys(
     assert rebuilt.clips[0].hash.uint == hash_value
     assert rebuilt.clips[0].animation_hash.uint == hash_value
     assert rebuilt.validate() is rebuilt
+
+
+def test_ycd_reader_resolves_sequence_from_graphics_pages() -> None:
+    animation = _two_frame_animation(
+        YcdAnimationTrack.BONE_TRANSLATION,
+        (1.0, 2.0, 3.0, 0.0),
+        (4.0, 5.0, 6.0, 0.0),
+    )
+    animation.hash = MetaHash("graphics_animation")
+    clip = YcdClipAnimation(
+        hash=MetaHash("graphics_clip"),
+        name="graphics_clip.clip",
+        short_name="graphics_clip",
+        clip_type=YcdClipType.ANIMATION,
+        animation_hash=animation.hash,
+        animation=animation,
+    )
+    raw = build_ycd_bytes(
+        Ycd(header=_ycd_header(), clips=[clip], animations=[animation])
+    )
+    header, system_data, _ = split_rsc7_sections(raw)
+    system = bytearray(system_data)
+
+    animations_map = int.from_bytes(system[0x18:0x20], "little") - 0x50000000
+    buckets_pointer = (
+        int.from_bytes(system[animations_map + 0x18 : animations_map + 0x20], "little")
+        - 0x50000000
+    )
+    bucket_capacity = int.from_bytes(
+        system[animations_map + 0x20 : animations_map + 0x22], "little"
+    )
+    bucket_pointers = struct.unpack_from(f"<{bucket_capacity}Q", system, buckets_pointer)
+    map_entry = next(pointer for pointer in bucket_pointers if pointer) - 0x50000000
+    animation_pointer = (
+        int.from_bytes(system[map_entry + 0x08 : map_entry + 0x10], "little")
+        - 0x50000000
+    )
+    sequence_array = (
+        int.from_bytes(
+            system[animation_pointer + 0x40 : animation_pointer + 0x48], "little"
+        )
+        - 0x50000000
+    )
+    sequence_pointer = int.from_bytes(
+        system[sequence_array : sequence_array + 8], "little"
+    )
+    sequence_offset = sequence_pointer - 0x50000000
+    sequence_size = 0x20 + int.from_bytes(
+        system[sequence_offset + 0x04 : sequence_offset + 0x08], "little"
+    )
+    graphics_data = bytes(system[sequence_offset : sequence_offset + sequence_size])
+    system[sequence_array : sequence_array + 8] = RSC7_PHYSICAL_BASE.to_bytes(
+        8, "little"
+    )
+
+    graphics_ycd = build_rsc7(
+        bytes(system),
+        version=header.version,
+        graphics_data=graphics_data,
+        system_flags=header.system_flags,
+    )
+    rebuilt = read_ycd(graphics_ycd)
+    embedded_header, embedded_payload = parse_rsc7(graphics_ycd)
+    embedded = embedded_header.pack() + embedded_payload
+    embedded_rebuilt = read_ycd_embedded_resource(embedded)
+
+    expected = animation.evaluate_tracks(0.5)
+    track_key = next(iter(expected))
+    assert rebuilt.header.graphics_size >= len(graphics_data)
+    assert rebuilt.animations[0].evaluate_tracks(0.5)[track_key] == pytest.approx(
+        expected[track_key]
+    )
+    assert embedded_rebuilt.animations[0].evaluate_tracks(0.5)[
+        track_key
+    ] == pytest.approx(
+        expected[track_key]
+    )
 
 
 @requires_ycd_sample
