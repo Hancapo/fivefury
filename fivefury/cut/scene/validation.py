@@ -1021,6 +1021,64 @@ def _validate_assets(scene: CutScene, issues: list[CutSceneValidationIssue]) -> 
             )
 
 
+def _validate_audio_timeline(
+    scene: CutScene,
+    issues: list[CutSceneValidationIssue],
+    *,
+    strict: bool,
+) -> None:
+    loaded: set[int] = set()
+    playing: set[int] = set()
+    events = sorted(
+        (
+            event
+            for event in scene.timeline
+            if _event_name(event)
+            in {"load_audio", "unload_audio", "play_audio", "stop_audio"}
+        ),
+        key=lambda event: float(event.start),
+    )
+    for event in events:
+        target_id = _event_target_id(event)
+        if target_id is None:
+            continue
+        name = _event_name(event)
+        if name == "load_audio":
+            loaded.add(target_id)
+        elif name == "play_audio":
+            if strict and target_id not in loaded:
+                _issue(
+                    issues,
+                    "error",
+                    "play_audio.not_loaded",
+                    f"PLAY_AUDIO for object {target_id} occurs before LOAD_AUDIO",
+                    hint=(
+                        "Author a LOAD_AUDIO event unless playback intentionally relies "
+                        "on the external force-load runtime flag."
+                    ),
+                )
+            playing.add(target_id)
+        elif name == "stop_audio":
+            if target_id not in playing:
+                _issue(
+                    issues,
+                    "warning",
+                    "stop_audio.not_playing",
+                    f"STOP_AUDIO for object {target_id} has no preceding PLAY_AUDIO",
+                )
+            playing.discard(target_id)
+        else:
+            if target_id not in loaded:
+                _issue(
+                    issues,
+                    "warning",
+                    "unload_audio.not_loaded",
+                    f"UNLOAD_AUDIO for object {target_id} has no preceding LOAD_AUDIO",
+                )
+            loaded.discard(target_id)
+            playing.discard(target_id)
+
+
 def _validate_flags(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
     flags = _scene_flags(scene)
     if (
@@ -1059,6 +1117,7 @@ def validate_cut_scene(
     _validate_facial_animation(scene, issues)
     _validate_animations(scene, issues, strict=strict)
     _validate_assets(scene, issues)
+    _validate_audio_timeline(scene, issues, strict=strict)
     _validate_flags(scene, issues)
     for warning in scene.validate_animations():
         if not any(warning in issue.message for issue in issues):

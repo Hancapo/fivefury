@@ -35,6 +35,8 @@ def test_rel_sound_graph_resolves_nested_awc_endpoint() -> None:
         (endpoint.sound_hash, endpoint.container_hash, endpoint.stream_hash)
         for endpoint in graph.endpoints
     ] == [(leaf_hash, container_hash, stream_hash)]
+    assert graph.container_hashes == (container_hash,)
+    assert graph.stream_hashes == (stream_hash,)
 
 
 def test_rel_sound_graph_reports_missing_children() -> None:

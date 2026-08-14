@@ -32,6 +32,12 @@ from .structures import (
     AwcStreamFormat,
     AwcStreamFormatChunk,
 )
+from .validation import (
+    awc_playback_streams,
+    resolve_awc_playback_stream,
+    validate_awc,
+    validate_awc_stream,
+)
 
 __all__ = [
     "AWC_CHUNK_FIELD_MASK",
@@ -55,6 +61,7 @@ __all__ = [
     "AwcStreamFormatChunk",
     "DecodedAudio",
     "awc_chunk_name",
+    "awc_playback_streams",
     "build_awc_bytes",
     "build_pcm_wav",
     "convert_audio_to_awc",
@@ -66,6 +73,9 @@ __all__ = [
     "parse_pcm_wav",
     "read_awc",
     "require_valid_awc_lipsync",
+    "resolve_awc_playback_stream",
     "save_awc",
+    "validate_awc",
     "validate_awc_lipsync",
+    "validate_awc_stream",
 ]

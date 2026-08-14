@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ..authoring import ValidationReport
     from ..ycd import Ycd
 
 from ..hashing import jenk_hash
@@ -785,6 +786,11 @@ class Awc:
         from .io import build_awc_bytes
 
         return build_awc_bytes(self)
+
+    def validate(self) -> ValidationReport:
+        from .validation import validate_awc
+
+        return validate_awc(self)
 
     def save(self, path: str | Path) -> None:
         Path(path).write_bytes(self.to_bytes())
