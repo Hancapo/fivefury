@@ -4,7 +4,16 @@ import struct
 
 import pytest
 
-from fivefury import _native_abi3
+from fivefury import (
+    Awc,
+    AwcChunk,
+    AwcChunkType,
+    AwcStream,
+    AwcStreamFormat,
+    AwcStreamFormatChunk,
+    _native_abi3,
+    resolve_awc_playback_stream,
+)
 from fivefury.awc.audio import (
     _build_peak_values,
     _extract_multichannel_blocks,
@@ -15,6 +24,54 @@ from fivefury.awc.audio import (
     split_interleaved_pcm16,
 )
 from fivefury.awc.crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
+
+
+def test_multichannel_validation_rejects_missing_channel_stream() -> None:
+    source = AwcStream(
+        "dialogue",
+        [
+            AwcChunk(
+                AwcChunkType.STREAM_FORMAT,
+                stream_format=AwcStreamFormatChunk(
+                    block_count=1,
+                    block_size=2048,
+                    channels=[
+                        AwcStreamFormat(id=1, samples=16, sample_rate=48000),
+                        AwcStreamFormat(id=2, samples=16, sample_rate=48000),
+                    ],
+                ),
+            ),
+            AwcChunk(AwcChunkType.DATA, data=b"audio"),
+        ],
+    )
+    awc = Awc([source, AwcStream(1)], flags=4)
+
+    codes = {issue.code for issue in awc.validate()}
+
+    assert "awc.stream.channel.missing" in codes
+
+
+def test_multichannel_channel_hash_selects_owning_stream() -> None:
+    source = AwcStream(
+        "dialogue",
+        [
+            AwcChunk(
+                AwcChunkType.STREAM_FORMAT,
+                stream_format=AwcStreamFormatChunk(
+                    1,
+                    2048,
+                    [
+                        AwcStreamFormat(id=7, samples=16, sample_rate=48000),
+                        AwcStreamFormat(id=8, samples=16, sample_rate=48000),
+                    ],
+                ),
+            ),
+            AwcChunk(AwcChunkType.DATA, data=b"audio"),
+        ],
+    )
+    awc = Awc([source, AwcStream(7), AwcStream(8)], flags=4)
+
+    assert resolve_awc_playback_stream(awc, stream_hash=7) is source
 
 
 def test_native_pcm_channel_split_and_interleave_roundtrip() -> None:

@@ -24,6 +24,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Typed reading and writing for DAT4 audio configuration values, wave slots, variable lists, and early-reflection settings.
 - Typed DAT149, DAT150, and DAT151 world ambience, zone, and emitter metadata.
 - Typed DAT15 dynamic mixer patches, scenes, groups, modules, category maps, and tri-state metadata.
+- AWC stream and multichannel layout validation.
 
 ### Changed
 
@@ -34,13 +35,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Animated CUT instances can share one streamed model while resolving distinct sectioned YCD clips.
 - CUT templates can be used when writing attached YCD dictionaries.
-- CUT audio references resolve from audio objects through REL metadata to AWC streams.
+- CUT audio resolution handles metadata bank references and multichannel sound graphs.
 - Simultaneous CUT events preserve their authored order.
 - Multichannel REL sound graphs preserve container and stream pairing.
 - DAT54 layouts preserve runtime integer widths and compact count fields.
 
 ### Performance
 
+- Cached REL sound indexes avoid repeated metadata scans during CUT resolution.
 - Compact influence streams reduce static GPU upload storage by 75%.
 - Three-row affine palettes reduce per-frame bone uploads by 25%.
 - GPU-resident compute skinning is up to 164x faster than reusable CPU skinning for one million vertices on an RTX 4090.

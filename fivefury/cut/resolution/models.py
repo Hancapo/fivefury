@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from ...awc.constants import AWC_STREAM_ID_MASK
+from ...awc.validation import awc_playback_streams, resolve_awc_playback_stream
 from ...gamefile import GameFile, GameFileType
 from ...metahash import MetaHash
 from ..model import CutHashedString
@@ -138,6 +140,8 @@ class ResolvedCutAudio:
     asset: AssetRecord
     file: GameFile
     container_reference: str | None = None
+    sound_hashes: tuple[int, ...] = ()
+    stream_hashes: tuple[int, ...] = ()
 
     @property
     def awc(self) -> Any:
@@ -145,40 +149,39 @@ class ResolvedCutAudio:
 
     @property
     def stream_candidates(self) -> tuple[Any, ...]:
-        awc = self.awc
-        if getattr(awc, "multi_channel_flag", False):
-            return tuple(
-                stream
-                for stream in getattr(awc, "streams", ())
-                if getattr(stream, "stream_format_chunk", None) is not None
-                and getattr(stream, "data_chunk", None) is not None
-            )
-        return tuple(
-            stream
-            for stream in getattr(awc, "streams", ())
-            if getattr(stream, "data_chunk", None) is not None
-            and getattr(stream, "codec", None) is not None
-        )
+        return awc_playback_streams(self.awc)
 
     @property
     def stream(self) -> Any | None:
-        candidates = self.stream_candidates
-        if len(candidates) == 1:
-            return candidates[0]
-        reference_hash = self._reference_hash
-        matching = tuple(
-            stream
-            for stream in candidates
-            if int(getattr(stream, "hash", -1)) == reference_hash
+        owners = {
+            id(owner): owner
+            for stream_hash in self.stream_hashes
+            if (
+                owner := resolve_awc_playback_stream(
+                    self.awc,
+                    stream_hash=stream_hash,
+                )
+            )
+            is not None
+        }
+        if self.stream_hashes:
+            return next(iter(owners.values())) if len(owners) == 1 else None
+        return resolve_awc_playback_stream(self.awc, fallback_hash=self._reference_hash)
+
+    @property
+    def unresolved_stream_hashes(self) -> tuple[int, ...]:
+        return tuple(
+            stream_hash
+            for stream_hash in self.stream_hashes
+            if resolve_awc_playback_stream(self.awc, stream_hash=stream_hash) is None
         )
-        return matching[0] if len(matching) == 1 else None
 
     @property
     def stream_ambiguity(self) -> tuple[int, ...]:
         if self.stream is not None:
             return ()
         return tuple(
-            int(getattr(stream, "id", 0)) & 0x1FFFFFFF
+            int(getattr(stream, "id", 0)) & AWC_STREAM_ID_MASK
             for stream in self.stream_candidates
         )
 
@@ -186,7 +189,7 @@ class ResolvedCutAudio:
     def stream_id(self) -> int | None:
         stream = self.stream
         return (
-            int(getattr(stream, "id", 0)) & 0x1FFFFFFF
+            int(getattr(stream, "id", 0)) & AWC_STREAM_ID_MASK
             if stream is not None
             else None
         )
@@ -205,8 +208,30 @@ class ResolvedCutAudio:
     def _reference_hash(self) -> int:
         if isinstance(self.reference, str):
             stem = PurePosixPath(self.reference.replace("\\", "/")).stem.casefold()
-            return MetaHash(stem).uint & 0x1FFFFFFF
-        return int(self.reference) & 0x1FFFFFFF
+            return MetaHash(stem).uint & AWC_STREAM_ID_MASK
+        return int(self.reference) & AWC_STREAM_ID_MASK
+
+    @property
+    def channel_count(self) -> int:
+        stream = self.stream
+        layout = getattr(stream, "stream_format_chunk", None)
+        return len(layout.channels) if layout is not None else int(stream is not None)
+
+    @property
+    def sample_rate(self) -> int:
+        stream = self.stream
+        layout = getattr(stream, "stream_format_chunk", None)
+        if layout is not None and layout.channels:
+            return int(layout.channels[0].sample_rate)
+        return int(getattr(stream, "sample_rate", 0)) if stream is not None else 0
+
+    @property
+    def sample_count(self) -> int:
+        stream = self.stream
+        layout = getattr(stream, "stream_format_chunk", None)
+        if layout is not None and layout.channels:
+            return int(layout.channels[0].samples)
+        return int(getattr(stream, "sample_count", 0)) if stream is not None else 0
 
     def wav_bytes(self) -> bytes:
         stream = self.stream

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ..hashing import jenk_continue_hash, jenk_finalize_hash, jenk_partial_hash
 from ..metahash import MetaHash
 from .reference_values import field_reference
 from .scene.base import CutScene
+
+if TYPE_CHECKING:
+    from ..rel import RelSoundGraph, RelSoundIndex
 
 _AUDIO_CONTAINER_VARIANTS = (
     "_edited",
@@ -109,6 +112,17 @@ def cut_audio_sound_hashes(reference: str | int) -> tuple[int, ...]:
     return tuple(dict.fromkeys(candidates))
 
 
+def resolve_cut_audio_sound_graph(
+    sound_index: RelSoundIndex,
+    reference: str | int,
+) -> RelSoundGraph | None:
+    for sound_hash in cut_audio_sound_hashes(reference):
+        graph = sound_index.resolve(sound_hash)
+        if graph.sound_hashes:
+            return graph
+    return None
+
+
 def cut_audio_asset_reference_hashes(asset: _NamedAsset) -> tuple[int, ...]:
     stem = asset.stem.casefold()
     names = [stem]
@@ -172,12 +186,36 @@ def cut_audio_hint_rank(asset: _NamedAsset, hints: tuple[str, ...]) -> int | Non
     return None
 
 
+def cut_audio_asset_rank(
+    asset: _NamedAsset,
+    reference: str | int,
+    hints: tuple[str, ...] = (),
+) -> int | None:
+    if cut_audio_reference_hash(reference) in cut_audio_asset_reference_hashes(asset):
+        return 0
+    hint_rank = cut_audio_hint_rank(asset, hints)
+    return None if hint_rank is None else hint_rank + 1
+
+
+def cut_audio_hint_names(hints: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            name
+            for hint in hints
+            for name in (hint, *(f"{hint}{suffix}" for suffix in _AUDIO_CONTAINER_VARIANTS))
+        )
+    )
+
+
 __all__ = [
+    "cut_audio_asset_rank",
     "cut_audio_asset_reference_hashes",
     "cut_audio_container_hints",
+    "cut_audio_hint_names",
     "cut_audio_hint_rank",
     "cut_audio_reference_hash",
     "cut_audio_references",
     "cut_audio_sound_hashes",
     "cut_event_references",
+    "resolve_cut_audio_sound_graph",
 ]

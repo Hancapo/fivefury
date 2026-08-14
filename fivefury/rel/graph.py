@@ -24,6 +24,26 @@ class RelSoundGraph:
     def complete(self) -> bool:
         return not self.unresolved_hashes and bool(self.sound_hashes)
 
+    @property
+    def container_hashes(self) -> tuple[int, ...]:
+        return tuple(
+            dict.fromkeys(
+                endpoint.container_hash
+                for endpoint in self.endpoints
+                if endpoint.container_hash
+            )
+        )
+
+    @property
+    def stream_hashes(self) -> tuple[int, ...]:
+        return tuple(
+            dict.fromkeys(
+                endpoint.stream_hash
+                for endpoint in self.endpoints
+                if endpoint.stream_hash
+            )
+        )
+
 
 class RelSoundIndex:
     def __init__(self, rels: Iterable[RelFile]) -> None:

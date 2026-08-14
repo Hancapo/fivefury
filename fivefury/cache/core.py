@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         CutsceneResolutionTrace,
     )
     from ..cut.resolve import CutsceneAssetBundle
+    from ..rel import RelSoundIndex
     from .texture_resolution import TextureResolution
 
 from ..crypto import GameCrypto
@@ -117,6 +118,13 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         init=False,
         repr=False,
     )
+    _rel_sound_index: RelSoundIndex | None = field(default=None, init=False, repr=False)
+    _rel_sound_asset_count: int = field(default=-1, init=False, repr=False)
+    _rel_sound_index_errors: tuple[str, ...] = field(
+        default_factory=tuple,
+        init=False,
+        repr=False,
+    )
     _payload_cache: OrderedDict[tuple[int, bool], bytes] = field(
         default_factory=OrderedDict,
         init=False,
@@ -189,6 +197,39 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         if self._texture_graph is not None:
             self._texture_graph.clear()
         self._kind_counts_view = None
+        self._rel_sound_index = None
+        self._rel_sound_asset_count = -1
+        self._rel_sound_index_errors = ()
+
+    def ensure_rel_sound_index(self) -> RelSoundIndex:
+        from ..rel import RelFile, RelSoundIndex
+
+        assets = tuple(self.iter_assets(GameFileType.REL))
+        if (
+            self._rel_sound_index is not None
+            and self._rel_sound_asset_count == len(assets)
+        ):
+            return self._rel_sound_index
+        rels = []
+        errors: list[str] = []
+        for asset in assets:
+            try:
+                game_file = self.load_asset(asset)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{asset.path}: {type(exc).__name__}: {exc}")
+                continue
+            if game_file is None or not isinstance(game_file.parsed, RelFile):
+                errors.append(asset.path)
+                continue
+            rels.append(game_file.parsed)
+        self._rel_sound_index = RelSoundIndex(rels)
+        self._rel_sound_asset_count = len(assets)
+        self._rel_sound_index_errors = tuple(errors)
+        return self._rel_sound_index
+
+    @property
+    def rel_sound_index_errors(self) -> tuple[str, ...]:
+        return self._rel_sound_index_errors
 
     def _close_runtime_archives(self) -> None:
         seen: set[int] = set()

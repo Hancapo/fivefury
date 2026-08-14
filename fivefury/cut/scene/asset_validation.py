@@ -10,9 +10,11 @@ from ...authoring import (
     DiagnosticSeverity,
     ValidationReport,
 )
+from ...awc.structures import Awc, AwcStream
+from ...awc.validation import resolve_awc_playback_stream, validate_awc_stream
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
-from ...rel import RelFile, RelSoundIndex
+from ...rel import RelFile, RelSoundGraph, RelSoundIndex
 from ...ycd import Ycd, YcdAnimationTrack
 from ...yed import (
     PedExpressionSetMetadata,
@@ -22,13 +24,12 @@ from ...yed import (
 )
 from ..asset_kinds import CUT_DRAWABLE_KINDS_BY_ROLE
 from ..audio_references import (
-    cut_audio_asset_reference_hashes,
+    cut_audio_asset_rank,
     cut_audio_container_hints,
-    cut_audio_hint_rank,
     cut_audio_reference_hash,
     cut_audio_references,
-    cut_audio_sound_hashes,
     cut_event_references,
+    resolve_cut_audio_sound_graph,
 )
 from ..reference_values import field_reference
 from .asset_context import CutAssetContext, CutContextAsset, cut_asset_reference_hash
@@ -545,24 +546,65 @@ class _CutsceneContextValidator:
                     asset=asset.path,
                     path="timeline.audio",
                 )
-        if rels:
-            self._validate_rel_audio(references, RelSoundIndex(rels))
-            return
         hints = cut_audio_container_hints(self.scene, references)
         candidates = tuple(self.assets.iter_kind(GameFileType.AWC))
+        sound_index = RelSoundIndex(rels) if rels else None
         for reference in references:
-            reference_hash = cut_audio_reference_hash(reference)
+            graph = (
+                resolve_cut_audio_sound_graph(sound_index, reference)
+                if sound_index is not None
+                else None
+            )
+            if sound_index is not None and graph is None:
+                self.report.issue(
+                    "cut.audio.sound.unresolved",
+                    f"No REL sound matches CUT audio cue {reference!s}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path="timeline.audio",
+                )
+            if graph is not None:
+                self._validate_rel_graph(reference, graph)
+
+            ranked = [
+                (rank, asset)
+                for asset in candidates
+                if (
+                    rank := cut_audio_asset_rank(
+                        asset,
+                        reference,
+                        hints.get(reference, ()),
+                    )
+                )
+                is not None
+            ]
+            if not ranked and graph is not None:
+                endpoint_hashes = set(graph.container_hashes)
+                ranked = [
+                    (2, asset)
+                    for asset in candidates
+                    if asset.short_hash in endpoint_hashes
+                ]
             matches = [
                 asset
-                for asset in candidates
-                if reference_hash in cut_audio_asset_reference_hashes(asset)
-                or cut_audio_hint_rank(asset, hints.get(reference, ())) is not None
+                for _rank, asset in sorted(
+                    ranked,
+                    key=lambda item: (
+                        item[1].source_rank[0],
+                        item[0],
+                        item[1].source_rank[1],
+                    ),
+                )
             ]
             if not matches:
                 self.report.issue(
                     "cut.audio.container.unresolved",
                     f"No AWC container matches CUT audio cue {reference!s}",
-                    severity=DiagnosticSeverity.WARNING,
+                    severity=(
+                        _severity(self.context)
+                        if graph is not None
+                        else DiagnosticSeverity.WARNING
+                    ),
                     asset=self.scene.scene_name,
                     path="timeline.audio",
                 )
@@ -580,75 +622,80 @@ class _CutsceneContextValidator:
                     asset=matches[0].path,
                     path="timeline.audio",
                 )
+            elif isinstance(awc, Awc):
+                stream_hashes = graph.stream_hashes if graph is not None else ()
+                if stream_hashes:
+                    streams: list[AwcStream] = []
+                    for stream_hash in stream_hashes:
+                        stream = resolve_awc_playback_stream(
+                            awc,
+                            stream_hash=stream_hash,
+                        )
+                        if stream is None:
+                            self.report.issue(
+                                "cut.audio.stream.unresolved",
+                                f"AWC {matches[0].path} has no playable stream for 0x{stream_hash:08X}",
+                                severity=_severity(self.context),
+                                asset=matches[0].path,
+                                path="timeline.audio",
+                            )
+                        elif stream not in streams:
+                            streams.append(stream)
+                    for stream in streams:
+                        self._validate_awc_stream(matches[0], awc, stream)
+                else:
+                    stream = resolve_awc_playback_stream(
+                        awc,
+                        fallback_hash=cut_audio_reference_hash(reference),
+                    )
+                    if stream is None:
+                        self.report.issue(
+                            "cut.audio.stream.unresolved",
+                            f"AWC {matches[0].path} has no unambiguous stream for cue {reference!s}",
+                            severity=_severity(self.context),
+                            asset=matches[0].path,
+                            path="timeline.audio",
+                        )
+                    else:
+                        self._validate_awc_stream(matches[0], awc, stream)
 
-    def _validate_rel_audio(
+    def _validate_rel_graph(
         self,
-        references: tuple[str | int, ...],
-        sound_index: RelSoundIndex,
+        reference: str | int,
+        graph: RelSoundGraph,
     ) -> None:
-        for reference in references:
-            graph = next(
-                (
-                    candidate
-                    for sound_hash in cut_audio_sound_hashes(reference)
-                    if (candidate := sound_index.resolve(sound_hash)).sound_hashes
-                ),
-                None,
+        endpoints = graph.endpoints
+        if not endpoints:
+            self.report.issue(
+                "cut.audio.sound.no_stream",
+                f"REL sound for CUT audio cue {reference!s} resolves to no AWC stream",
+                severity=_severity(self.context),
+                asset=self.scene.scene_name,
+                path="timeline.audio",
             )
-            if graph is None:
-                self.report.issue(
-                    "cut.audio.sound.unresolved",
-                    f"No REL sound matches CUT audio cue {reference!s}",
-                    severity=_severity(self.context),
-                    asset=self.scene.scene_name,
-                    path="timeline.audio",
-                )
-                continue
-            for unresolved_hash in graph.unresolved_hashes:
-                self.report.issue(
-                    "cut.audio.sound.child_unresolved",
-                    f"REL sound graph references missing sound 0x{unresolved_hash:08X}",
-                    severity=_severity(self.context),
-                    asset=self.scene.scene_name,
-                    path="timeline.audio",
-                )
-            for endpoint in graph.endpoints:
-                awc_asset = self.assets.find(
-                    endpoint.container_hash,
-                    (GameFileType.AWC,),
-                )
-                if awc_asset is None:
-                    self.report.issue(
-                        "cut.audio.container.unresolved",
-                        f"REL sound references missing AWC container 0x{endpoint.container_hash:08X}",
-                        severity=_severity(self.context),
-                        asset=self.scene.scene_name,
-                        path="timeline.audio",
-                    )
-                    continue
-                awc = self._load(
-                    awc_asset,
-                    code="cut.audio.container.load_failed",
-                    path="timeline.audio",
-                )
-                if awc is None:
-                    continue
-                if not hasattr(awc, "stream"):
-                    self.report.issue(
-                        "cut.audio.container.invalid",
-                        f"Asset is not a decoded AWC: {awc_asset.path}",
-                        severity=_severity(self.context),
-                        asset=awc_asset.path,
-                        path="timeline.audio",
-                    )
-                elif endpoint.stream_hash and awc.stream(endpoint.stream_hash) is None:
-                    self.report.issue(
-                        "cut.audio.stream.unresolved",
-                        f"AWC {awc_asset.path} is missing stream 0x{endpoint.stream_hash:08X}",
-                        severity=_severity(self.context),
-                        asset=awc_asset.path,
-                        path="timeline.audio",
-                    )
+        for unresolved_hash in graph.unresolved_hashes:
+            self.report.issue(
+                "cut.audio.sound.child_unresolved",
+                f"REL sound graph references missing sound 0x{unresolved_hash:08X}",
+                severity=_severity(self.context),
+                asset=self.scene.scene_name,
+                path="timeline.audio",
+            )
+
+    def _validate_awc_stream(
+        self,
+        asset: CutContextAsset,
+        awc: Awc,
+        stream: AwcStream,
+    ) -> None:
+        for issue in validate_awc_stream(awc, stream):
+            self.report.issue(
+                f"cut.audio.{issue.code}",
+                issue.message,
+                severity=_severity(self.context),
+                asset=asset.path,
+                path=f"timeline.audio.{issue.path or 'stream'}",
+            )
 
 
 def validate_cutscene_assets(
