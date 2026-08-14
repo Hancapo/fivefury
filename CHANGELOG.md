@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Breaking Changes
 
 - `CutsceneAssets.validate()` now returns a non-mutating `ValidationReport`; mutable finalization belongs to `build()`.
+- DAT54 synth, transform, and sound-list fields now use their runtime names instead of guessed labels.
 
 ### Added
 
@@ -19,6 +20,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Context-aware CUT project validation for YCDs, streamed models, archetypes, skeletons, facial tracks, and audio containers.
 - Graphics-page YCD reading.
 - Public REL sound-graph traversal and audio endpoint resolution.
+- Typed reading and writing for every DAT54 sound variant.
+
+### Changed
+
+- DAT54 authoring validates runtime capacities for sounds, transforms, variables, ranges, and sets.
 
 ### Fixed
 
@@ -26,6 +32,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - CUT templates can be used when writing attached YCD dictionaries.
 - CUT audio references resolve from audio objects through REL metadata to AWC streams.
 - Simultaneous CUT events preserve their authored order.
+- Multichannel REL sound graphs preserve container and stream pairing.
+- DAT54 layouts preserve runtime integer widths and compact count fields.
 
 ### Performance
 

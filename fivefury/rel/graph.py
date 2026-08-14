@@ -49,11 +49,11 @@ class RelSoundIndex:
                 unresolved.append(sound_hash)
                 continue
             resolved.append(sound_hash)
-            containers = [
-                value for value in sound.audio_container_hashes() if value
-            ]
-            streams = [value for value in sound.audio_stream_hashes() if value]
+            containers = sound.audio_container_hashes()
+            streams = sound.audio_stream_hashes()
             for index, container_hash in enumerate(containers):
+                if not container_hash:
+                    continue
                 endpoints.append(
                     RelSoundEndpoint(
                         sound_hash=sound_hash,
