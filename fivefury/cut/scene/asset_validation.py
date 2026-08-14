@@ -11,13 +11,23 @@ from ...authoring import (
     ValidationReport,
 )
 from ...gamefile import GameFileType
-from ...ycd import YcdAnimationTrack
+from ...metahash import MetaHash
+from ...rel import RelFile, RelSoundIndex
+from ...ycd import Ycd, YcdAnimationTrack
+from ...yed import (
+    PedExpressionSetMetadata,
+    Yed,
+    is_null_expression_reference,
+    validate_yed,
+)
 from ..asset_kinds import CUT_DRAWABLE_KINDS_BY_ROLE
 from ..audio_references import (
     cut_audio_asset_reference_hashes,
     cut_audio_container_hints,
     cut_audio_hint_rank,
     cut_audio_reference_hash,
+    cut_audio_references,
+    cut_audio_sound_hashes,
     cut_event_references,
 )
 from ..reference_values import field_reference
@@ -56,10 +66,17 @@ def _field_hash(value: object) -> int:
         return cut_asset_reference_hash(str(value))
 
 
-def _scene_report(assets: CutsceneAssets) -> tuple[CutScene, ValidationReport]:
+def _scene_copy(assets: CutsceneAssets) -> CutScene:
     scene = deepcopy(assets.scene)
     scene.clip_dicts = list(assets.ycds)
-    report = ValidationReport()
+    return scene
+
+
+def _extend_scene_report(
+    assets: CutsceneAssets,
+    scene: CutScene,
+    report: ValidationReport,
+) -> None:
     for issue in scene.validation_report(strict=True):
         message = issue.message
         if issue.hint:
@@ -74,7 +91,6 @@ def _scene_report(assets: CutsceneAssets) -> tuple[CutScene, ValidationReport]:
             ),
             asset=assets.output_name,
         )
-    return scene, report
 
 
 def _validate_ycd_paths(assets: CutsceneAssets, report: ValidationReport) -> None:
@@ -115,7 +131,49 @@ class _CutsceneContextValidator:
     def validate(self) -> None:
         self._validate_models()
         self._validate_animation_skeletons()
+        self._validate_expressions()
         self._validate_audio()
+
+    def resolve_ycds(self) -> None:
+        known_hashes = {
+            cut_asset_reference_hash(ycd.stem)
+            for ycd in self.scene.clip_dicts
+            if ycd.stem
+        }
+        for reference in cut_event_references(
+            self.scene,
+            {"load_anim_dict"},
+        ):
+            reference_hash = cut_asset_reference_hash(reference)
+            if reference_hash in known_hashes:
+                continue
+            asset = self.assets.find(reference, (GameFileType.YCD,))
+            if asset is None:
+                self.report.issue(
+                    "cut.ycd.unresolved",
+                    f"No YCD matches animation dictionary {reference!s}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path="timeline.animation",
+                )
+                continue
+            ycd = self._load(
+                asset,
+                code="cut.ycd.load_failed",
+                path="timeline.animation",
+            )
+            if not isinstance(ycd, Ycd):
+                if ycd is not None:
+                    self.report.issue(
+                        "cut.ycd.invalid",
+                        f"Asset is not a decoded YCD: {asset.path}",
+                        severity=_severity(self.context),
+                        asset=asset.path,
+                        path="timeline.animation",
+                    )
+                continue
+            self.scene.clip_dicts.append(ycd)
+            known_hashes.add(reference_hash)
 
     def _load(
         self,
@@ -309,9 +367,186 @@ class _CutsceneContextValidator:
                         path=f"bindings[{object_id}].animation.bones[{bone_id}]",
                     )
 
+    def _validate_expressions(self) -> None:
+        peds = tuple(
+            binding
+            for binding in self.scene.peds
+            if isinstance(binding, CutPed) and binding.has_face_animation
+        )
+        if not peds:
+            return
+
+        init_data_by_model: dict[int, list[tuple[CutContextAsset, object]]] = {}
+        for asset in self.assets.iter_kind(GameFileType.YMT):
+            ymt = self._load(
+                asset,
+                code="cut.binding.ped_metadata.load_failed",
+                path="facial.ped_metadata",
+            )
+            metadata = getattr(ymt, "ped_metadata", None)
+            for item in getattr(metadata, "init_datas", ()):
+                init_data_by_model.setdefault(int(item.name.uint), []).append(
+                    (asset, item)
+                )
+
+        expression_sets: dict[int, tuple[CutContextAsset, object]] | None = None
+        for ped in peds:
+            reference = self._binding_reference(ped, "StreamingName")
+            if reference is None:
+                continue
+            path = f"bindings[{ped.object_id}].facial"
+            matches = init_data_by_model.get(cut_asset_reference_hash(reference), ())
+            if not matches:
+                self.report.issue(
+                    "cut.binding.ped_metadata.unresolved",
+                    f"No ped metadata matches {ped.display_name}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path=path,
+                )
+                continue
+
+            _metadata_asset, init_data = min(
+                matches,
+                key=lambda item: item[0].source_rank,
+            )
+            dictionary_reference = getattr(
+                init_data, "expression_dictionary_name", None
+            )
+            expression_names: tuple[object, ...] = ()
+            set_reference = getattr(init_data, "expression_set_name", None)
+            if not is_null_expression_reference(set_reference):
+                if expression_sets is None:
+                    expression_sets = self._expression_sets()
+                expression_set = expression_sets.get(MetaHash(set_reference).uint)
+                if expression_set is None:
+                    self.report.issue(
+                        "cut.binding.expression_set.unresolved",
+                        f"No expression set matches {ped.display_name}",
+                        severity=_severity(self.context),
+                        asset=self.scene.scene_name,
+                        path=path,
+                    )
+                    continue
+                _set_asset, resolved_set = expression_set
+                dictionary_reference = resolved_set.dictionary_name
+                expression_names = tuple(resolved_set.expression_names)
+            elif not is_null_expression_reference(
+                getattr(init_data, "expression_name", None)
+            ):
+                expression_names = (init_data.expression_name,)
+
+            if is_null_expression_reference(dictionary_reference):
+                self.report.issue(
+                    "cut.binding.yed.reference_missing",
+                    f"{ped.display_name} has facial animation without an expression dictionary",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path=path,
+                )
+                continue
+            yed_asset = self.assets.find(
+                MetaHash(dictionary_reference).uint,
+                (GameFileType.YED,),
+            )
+            if yed_asset is None:
+                self.report.issue(
+                    "cut.binding.yed.unresolved",
+                    f"No YED expression dictionary matches {ped.display_name}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path=path,
+                )
+                continue
+            yed = self._load(
+                yed_asset,
+                code="cut.binding.yed.load_failed",
+                path=path,
+            )
+            if not isinstance(yed, Yed):
+                if yed is not None:
+                    self.report.issue(
+                        "cut.binding.yed.invalid",
+                        f"Asset is not a decoded YED: {yed_asset.path}",
+                        severity=_severity(self.context),
+                        asset=yed_asset.path,
+                        path=path,
+                    )
+                continue
+            for name in expression_names:
+                if yed.get_expression(MetaHash(name)) is None:
+                    self.report.issue(
+                        "cut.binding.yed.expression_unresolved",
+                        f"YED {yed_asset.path} is missing an expression required by {ped.display_name}",
+                        severity=_severity(self.context),
+                        asset=yed_asset.path,
+                        path=path,
+                    )
+            model_entry = self.models.get(ped.object_id)
+            skeleton = None
+            if model_entry is not None:
+                model, model_reference = model_entry
+                skeleton = getattr(
+                    self._drawable(model, model_reference), "skeleton", None
+                )
+            for issue in validate_yed(yed, skeleton=skeleton):
+                self.report.issue(
+                    f"cut.binding.yed.{issue.code}",
+                    issue.message,
+                    severity=_severity(self.context),
+                    asset=yed_asset.path,
+                    path=path,
+                )
+
+    def _expression_sets(self) -> dict[int, tuple[CutContextAsset, object]]:
+        result: dict[int, tuple[CutContextAsset, object]] = {}
+        for asset in self.assets.iter_kind(GameFileType.EXPRESSION_SETS):
+            metadata = self._load(
+                asset,
+                code="cut.binding.expression_set.load_failed",
+                path="facial.expression_sets",
+            )
+            if not isinstance(metadata, PedExpressionSetMetadata):
+                if metadata is not None:
+                    self.report.issue(
+                        "cut.binding.expression_set.invalid",
+                        f"Asset is not decoded expression-set metadata: {asset.path}",
+                        severity=_severity(self.context),
+                        asset=asset.path,
+                        path="facial.expression_sets",
+                    )
+                continue
+            for expression_set in metadata.expression_sets:
+                result.setdefault(
+                    expression_set.name.uint,
+                    (asset, expression_set),
+                )
+        return result
+
     def _validate_audio(self) -> None:
-        references = cut_event_references(self.scene, {"load_audio", "play_audio"})
+        references = cut_audio_references(self.scene)
         if not references:
+            return
+        rels: list[RelFile] = []
+        rel_assets = tuple(self.assets.iter_kind(GameFileType.REL))
+        for asset in rel_assets:
+            rel = self._load(
+                asset,
+                code="cut.audio.rel.load_failed",
+                path="timeline.audio",
+            )
+            if isinstance(rel, RelFile):
+                rels.append(rel)
+            elif rel is not None:
+                self.report.issue(
+                    "cut.audio.rel.invalid",
+                    f"Asset is not decoded REL metadata: {asset.path}",
+                    severity=_severity(self.context),
+                    asset=asset.path,
+                    path="timeline.audio",
+                )
+        if rels:
+            self._validate_rel_audio(references, RelSoundIndex(rels))
             return
         hints = cut_audio_container_hints(self.scene, references)
         candidates = tuple(self.assets.iter_kind(GameFileType.AWC))
@@ -346,6 +581,75 @@ class _CutsceneContextValidator:
                     path="timeline.audio",
                 )
 
+    def _validate_rel_audio(
+        self,
+        references: tuple[str | int, ...],
+        sound_index: RelSoundIndex,
+    ) -> None:
+        for reference in references:
+            graph = next(
+                (
+                    candidate
+                    for sound_hash in cut_audio_sound_hashes(reference)
+                    if (candidate := sound_index.resolve(sound_hash)).sound_hashes
+                ),
+                None,
+            )
+            if graph is None:
+                self.report.issue(
+                    "cut.audio.sound.unresolved",
+                    f"No REL sound matches CUT audio cue {reference!s}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path="timeline.audio",
+                )
+                continue
+            for unresolved_hash in graph.unresolved_hashes:
+                self.report.issue(
+                    "cut.audio.sound.child_unresolved",
+                    f"REL sound graph references missing sound 0x{unresolved_hash:08X}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path="timeline.audio",
+                )
+            for endpoint in graph.endpoints:
+                awc_asset = self.assets.find(
+                    endpoint.container_hash,
+                    (GameFileType.AWC,),
+                )
+                if awc_asset is None:
+                    self.report.issue(
+                        "cut.audio.container.unresolved",
+                        f"REL sound references missing AWC container 0x{endpoint.container_hash:08X}",
+                        severity=_severity(self.context),
+                        asset=self.scene.scene_name,
+                        path="timeline.audio",
+                    )
+                    continue
+                awc = self._load(
+                    awc_asset,
+                    code="cut.audio.container.load_failed",
+                    path="timeline.audio",
+                )
+                if awc is None:
+                    continue
+                if not hasattr(awc, "stream"):
+                    self.report.issue(
+                        "cut.audio.container.invalid",
+                        f"Asset is not a decoded AWC: {awc_asset.path}",
+                        severity=_severity(self.context),
+                        asset=awc_asset.path,
+                        path="timeline.audio",
+                    )
+                elif endpoint.stream_hash and awc.stream(endpoint.stream_hash) is None:
+                    self.report.issue(
+                        "cut.audio.stream.unresolved",
+                        f"AWC {awc_asset.path} is missing stream 0x{endpoint.stream_hash:08X}",
+                        severity=_severity(self.context),
+                        asset=awc_asset.path,
+                        path="timeline.audio",
+                    )
+
 
 def validate_cutscene_assets(
     assets: CutsceneAssets,
@@ -353,10 +657,14 @@ def validate_cutscene_assets(
     context: BuildContext | None = None,
 ) -> ValidationReport:
     _validate_ycd_paths(assets, report := ValidationReport())
-    scene, scene_report = _scene_report(assets)
-    report.extend(scene_report)
+    scene = _scene_copy(assets)
+    validator = None
     if context is not None:
-        _CutsceneContextValidator(scene, context, report).validate()
+        validator = _CutsceneContextValidator(scene, context, report)
+        validator.resolve_ycds()
+    _extend_scene_report(assets, scene, report)
+    if validator is not None:
+        validator.validate()
     return report
 
 

@@ -18,11 +18,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Typed loose-file and loose-directory loading for cross-asset authoring contexts.
 - Context-aware CUT project validation for YCDs, streamed models, archetypes, skeletons, facial tracks, and audio containers.
 - Graphics-page YCD reading.
+- Public REL sound-graph traversal and audio endpoint resolution.
 
 ### Fixed
 
 - Animated CUT instances can share one streamed model while resolving distinct sectioned YCD clips.
 - CUT templates can be used when writing attached YCD dictionaries.
+- CUT audio references resolve from audio objects through REL metadata to AWC streams.
+- Simultaneous CUT events preserve their authored order.
 
 ### Performance
 

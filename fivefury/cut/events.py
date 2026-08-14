@@ -102,63 +102,6 @@ CUT_EVENT_ID_TO_NAME: dict[int, str] = {index: _normalize_event_name(enum_name) 
 CUT_EVENT_NAME_TO_ID: dict[str, int] = {name: index for index, name in CUT_EVENT_ID_TO_NAME.items()}
 CutEventType = IntEnum("CutEventType", {name.upper(): index for index, name in CUT_EVENT_ID_TO_NAME.items()})
 
-_LAST_UNLOAD_EVENT_RANK = 65535
-CUT_EVENT_SORT_RANKS: tuple[int, ...] = (
-    0,
-    _LAST_UNLOAD_EVENT_RANK,
-    9,
-    _LAST_UNLOAD_EVENT_RANK - 9,
-    1,
-    _LAST_UNLOAD_EVENT_RANK - 1,
-    2,
-    _LAST_UNLOAD_EVENT_RANK - 2,
-    3,
-    _LAST_UNLOAD_EVENT_RANK - 3,
-    4,
-    _LAST_UNLOAD_EVENT_RANK - 4,
-    5,
-    _LAST_UNLOAD_EVENT_RANK - 5,
-    6,
-    _LAST_UNLOAD_EVENT_RANK - 6,
-    7,
-    _LAST_UNLOAD_EVENT_RANK - 7,
-    8,
-    _LAST_UNLOAD_EVENT_RANK - 8,
-    20,
-    21,
-    23,
-    22,
-    25,
-    24,
-    27,
-    26,
-    29,
-    28,
-    31,
-    30,
-    32,
-    33,
-    34,
-    36,
-    35,
-    38,
-    37,
-    39,
-    38,
-    10,
-    _LAST_UNLOAD_EVENT_RANK - 10,
-    40,
-    42,
-    41,
-)
-
-
-def get_cut_event_sort_rank(event_id: int | None) -> int:
-    if event_id is None or event_id < 0 or event_id >= len(CUT_EVENT_SORT_RANKS):
-        return 128
-    return CUT_EVENT_SORT_RANKS[event_id]
-
-
 class CutEventBehavior(str, Enum):
     INSTANT = "instant"
     DURATION = "duration"

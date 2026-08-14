@@ -328,7 +328,7 @@ def test_cut_scene_builder_uses_external_concat_for_streamed_props() -> None:
     assert not flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
 
 
-def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
+def test_cut_scene_builder_preserves_authored_loader_order() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
     asset_manager = scene.asset_manager()
     animation_manager = scene.animation_manager()
@@ -341,13 +341,13 @@ def test_cut_scene_builder_writes_loader_order_like_game_cuts() -> None:
     cut = scene_to_cut(scene)
 
     assert [event.fields["iEventId"] for event in cut.load_events] == [
+        int(CutEventType.LOAD_ANIM_DICT),
         int(CutEventType.LOAD_SCENE),
         int(CutEventType.LOAD_MODELS),
-        int(CutEventType.LOAD_ANIM_DICT),
     ]
 
 
-def test_cut_scene_builder_writes_initial_anim_events_before_camera_cut() -> None:
+def test_cut_scene_builder_preserves_authored_simultaneous_event_order() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
     animation_manager = scene.animation_manager()
     camera = scene.camera("cam_main")
@@ -359,8 +359,8 @@ def test_cut_scene_builder_writes_initial_anim_events_before_camera_cut() -> Non
     cut = scene_to_cut(scene)
 
     assert [event.fields["iEventId"] for event in cut.events[:2]] == [
-        int(CutEventType.SET_ANIM),
         int(CutEventType.CAMERA_CUT),
+        int(CutEventType.SET_ANIM),
     ]
 
 

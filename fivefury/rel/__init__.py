@@ -5,6 +5,12 @@ from .enums import (
     Dat54SoundType,
     RelDatFileType,
 )
+from .graph import (
+    RelSoundEndpoint,
+    RelSoundGraph,
+    RelSoundIndex,
+    resolve_rel_sound_graph,
+)
 from .io import build_rel_bytes, read_rel, save_rel
 from .model import (
     Dat10RelItem,
@@ -115,9 +121,13 @@ __all__ = [
     "RelIndexString",
     "RelItem",
     "RelRawItem",
+    "RelSoundEndpoint",
+    "RelSoundGraph",
     "RelSoundHeader",
+    "RelSoundIndex",
     "build_rel_bytes",
     "read_rel",
     "rel_hash",
+    "resolve_rel_sound_graph",
     "save_rel",
 ]

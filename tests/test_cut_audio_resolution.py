@@ -4,8 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from fivefury import CutScene, CutTimelineEvent, MetaHash
-from fivefury.cut.audio_references import cut_audio_container_hints
+from fivefury import CutScene, MetaHash
+from fivefury.cut.audio_references import (
+    cut_audio_container_hints,
+    cut_audio_references,
+)
 from fivefury.cut.resolution.audio import _resolve_audio
 from fivefury.gamefile import GameFileType
 
@@ -22,28 +25,13 @@ def _asset(asset_id: int, path: str) -> SimpleNamespace:
 
 def test_audio_container_hint_comes_from_the_target_audio_object() -> None:
     scene = CutScene.create(duration=2.0)
-    scene.bindings.append(
-        SimpleNamespace(
-            object_id=3,
-            name="SUM23_CM1_INT.WA",
-            fields={"cName": "SUM23_CM1_INT.WA"},
-        )
-    )
+    audio = scene.audio("SUM23_CM1_INT.WA", object_id=3)
     reference = MetaHash("opaque_audio_event").uint
-    scene.timeline_event(
-        CutTimelineEvent(
-            start=0.0,
-            kind="audio_cue",
-            track="audio",
-            event_name="load_audio",
-            target_id=3,
-            target_name="SUM23_CM1_INT.WA",
-            payload={"cName": reference},
-        )
-    )
+    scene.load_audio(0.0, str(reference), target=audio)
 
-    assert cut_audio_container_hints(scene, (reference,)) == {
-        reference: ("sum23_cm1_int",)
+    assert cut_audio_references(scene) == ("SUM23_CM1_INT.WA",)
+    assert cut_audio_container_hints(scene, ("SUM23_CM1_INT.WA",)) == {
+        "SUM23_CM1_INT.WA": ("sum23_cm1_int",)
     }
 
 

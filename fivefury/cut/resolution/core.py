@@ -4,7 +4,11 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from ...gamefile import GameFileType
-from ..audio_references import cut_audio_container_hints, cut_event_references
+from ..audio_references import (
+    cut_audio_container_hints,
+    cut_audio_references,
+    cut_event_references,
+)
 from ..scene import read_cut_scene
 from .animations import _resolve_ycds
 from .audio import _resolve_audio
@@ -96,9 +100,7 @@ def resolve_cutscene_assets(
                 cancellation=cancellation,
             )
         with active_trace.span("audio"):
-            audio_references = cut_event_references(
-                scene, {"load_audio", "play_audio"}
-            )
+            audio_references = cut_audio_references(scene)
             audio = _resolve_audio(
                 cache,
                 audio_references,
