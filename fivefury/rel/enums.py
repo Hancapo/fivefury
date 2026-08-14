@@ -32,6 +32,62 @@ class Dat10RelType(FlexibleIntEnum):
     SYNTH = 3
 
 
+class Dat15RelType(FlexibleIntEnum):
+    MIXER_PATCH = 0
+    SCENE_STATE = 1
+    MIXER_SCENE = 2
+    MIX_GROUP = 3
+    MIX_GROUP_LIST = 4
+    DYNAMIC_MIX_MODULE_SETTINGS = 5
+    SCENE_VARIABLE_MODULE_SETTINGS = 6
+    SCENE_TRANSITION_MODULE_SETTINGS = 7
+    VEHICLE_COLLISION_MODULE_SETTINGS = 8
+    MIX_GROUP_CATEGORY_MAP = 9
+
+
+class Dat15MixModuleInput(FlexibleIntEnum):
+    NONE = 0
+    PLAYER_VEHICLE_VELOCITY = 1
+    PLAYER_VEHICLE_AIRTIME = 2
+    PLAYER_VEHICLE_ROLL = 3
+    PLAYER_WANTED_LEVEL = 4
+    VEHICLE_VEHICLE_SIDES = 5
+    VEHICLE_BUILDING_SIDES = 6
+    COUNT = 7
+
+
+class Dat15VolumeInvert(FlexibleIntEnum):
+    INVERT = 0
+    DO_NOTHING = 1
+    COUNT = 2
+
+
+class RelTriState(FlexibleIntEnum):
+    FALSE = 0
+    TRUE = 1
+    UNSPECIFIED = 2
+
+
+class Dat15PatchFlagId(FlexibleIntEnum):
+    DISABLED_IN_PAUSE_MENU = 0
+    DOES_PAUSED_TRANSITIONS = 1
+
+
+class Dat15SceneFlagId(FlexibleIntEnum):
+    PLAYER_CAR_DIALOGUE_FRONTEND = 0
+    STEALTH_SCENE = 1
+    MUTE_USER_MUSIC = 2
+    OVERRIDE_FRONTEND_SCENE = 3
+    CUTSCENE_AUDIO_OVERRUNS = 4
+    CUTSCENE_QUICK_RELEASE = 5
+    CUTSCENE_TRIMMED_ASSET = 6
+    KEEP_MOBILE_RADIO_ACTIVE = 7
+
+
+class Dat15GroupFlagId(FlexibleIntEnum):
+    OVERRIDE_PARENT = 0
+
+
 class Dat16RelType(FlexibleIntEnum):
     CONSTANT_CURVE = 1
     LINEAR_CURVE = 2

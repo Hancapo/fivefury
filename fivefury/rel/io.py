@@ -8,6 +8,7 @@ from .config_parsing import parse_dat4_config_item
 from .enums import (
     Dat4ConfigType,
     Dat10RelType,
+    Dat15RelType,
     Dat16RelType,
     Dat22RelType,
     Dat54SoundType,
@@ -15,6 +16,7 @@ from .enums import (
     RelDatFileType,
 )
 from .game_parsing import parse_game_rel_item
+from .mixer_parsing import parse_dat15_item
 from .model import (
     Dat10Synth,
     Dat10SynthPreset,
@@ -1334,6 +1336,10 @@ def _parse_item(
             return item
     if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
         return _parse_dat10_item(index, raw, name_by_offset)
+    if rel_type == int(RelDatFileType.DAT15_DYNAMIC_MIXER):
+        item = parse_dat15_item(index, raw, name_by_offset)
+        if item is not None:
+            return item
     if rel_type == int(RelDatFileType.DAT16_CURVES):
         return _parse_dat16_item(index, raw, name_by_offset)
     if rel_type == int(RelDatFileType.DAT22_CATEGORIES):
@@ -1500,6 +1506,15 @@ _GAME_REL_ALIGN_16 = frozenset(
         int(Dat151RelType.SCANNER_SPECIFIC_LOCATION),
     }
 )
+_DAT15_ALIGN_4 = frozenset(
+    {
+        int(Dat15RelType.MIXER_PATCH),
+        int(Dat15RelType.DYNAMIC_MIX_MODULE_SETTINGS),
+        int(Dat15RelType.SCENE_VARIABLE_MODULE_SETTINGS),
+        int(Dat15RelType.SCENE_TRANSITION_MODULE_SETTINGS),
+        int(Dat15RelType.VEHICLE_COLLISION_MODULE_SETTINGS),
+    }
+)
 _GAME_REL_ALIGN_4 = frozenset(
     {
         int(Dat151RelType.INTERACTIVE_MUSIC_MOOD),
@@ -1521,6 +1536,8 @@ def _rel_item_alignment(rel: RelFile, type_id: int) -> int:
     rel_type = int(rel.rel_type)
     if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
         return 4
+    if rel_type == int(RelDatFileType.DAT15_DYNAMIC_MIXER):
+        return 4 if type_id in _DAT15_ALIGN_4 else 1
     if rel.is_audio_config and rel_type == int(RelDatFileType.DAT4):
         return 16 if type_id == int(Dat4ConfigType.VECTOR3) else 1
     if rel_type in {

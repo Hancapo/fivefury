@@ -18,30 +18,7 @@ from .config_types import (
 )
 from .enums import Dat4ConfigType
 from .model import RelIndexHash
-
-
-def _header(
-    index: RelIndexHash, data: bytes, name_by_offset: dict[int, str]
-) -> tuple[int, dict[str, object]]:
-    if len(data) < 8:
-        raise ValueError("DAT4 config header is truncated")
-    packed, flags = struct.unpack_from("<II", data)
-    type_id = packed & 0xFF
-    name_table_offset = packed >> 8
-    return type_id, {
-        "name_hash": index.name_hash,
-        "name": name_by_offset.get(name_table_offset),
-        "data_offset": index.offset,
-        "data_length": index.length,
-        "raw_data": data,
-        "name_table_offset": name_table_offset,
-        "flags": flags,
-    }
-
-
-def _exact(data: bytes, size: int, label: str) -> None:
-    if len(data) != size:
-        raise ValueError(f"{label} length is invalid")
+from .named_parsing import named_item_header, require_exact_size
 
 
 def _counted_hashes(data: bytes) -> list[int]:
@@ -68,10 +45,14 @@ def _variable_list(data: bytes, kwargs: dict[str, object]) -> Dat4ConfigVariable
     )
 
 
-def _vec4_array(data: bytes, offset: int, count: int) -> tuple[list[tuple[float, ...]], int]:
+def _vec4_array(
+    data: bytes, offset: int, count: int
+) -> tuple[list[tuple[float, ...]], int]:
     if count < 0 or offset + count * 16 > len(data):
         raise ValueError("DAT4 ER vector array is invalid")
-    values = [struct.unpack_from("<4f", data, offset + index * 16) for index in range(count)]
+    values = [
+        struct.unpack_from("<4f", data, offset + index * 16) for index in range(count)
+    ]
     return values, offset + count * 16
 
 
@@ -127,20 +108,20 @@ def parse_dat4_config_item(
     name_by_offset: dict[int, str],
 ) -> Dat4ConfigItem | None:
     try:
-        type_id, kwargs = _header(index, data, name_by_offset)
+        type_id, kwargs = named_item_header(index, data, name_by_offset, "DAT4 config")
         if type_id == int(Dat4ConfigType.INT):
-            _exact(data, 12, "DAT4 int")
+            require_exact_size(data, 12, "DAT4 int")
             return Dat4ConfigInt(**kwargs, value=struct.unpack_from("<i", data, 8)[0])
         if type_id == int(Dat4ConfigType.UNSIGNED_INT):
-            _exact(data, 12, "DAT4 unsigned int")
+            require_exact_size(data, 12, "DAT4 unsigned int")
             return Dat4ConfigUnsignedInt(
                 **kwargs, value=struct.unpack_from("<I", data, 8)[0]
             )
         if type_id == int(Dat4ConfigType.FLOAT):
-            _exact(data, 12, "DAT4 float")
+            require_exact_size(data, 12, "DAT4 float")
             return Dat4ConfigFloat(**kwargs, value=struct.unpack_from("<f", data, 8)[0])
         if type_id == int(Dat4ConfigType.STRING):
-            _exact(data, 72, "DAT4 string")
+            require_exact_size(data, 72, "DAT4 string")
             raw_value = data[8:72]
             separator = raw_value.find(b"\x00")
             value_end = len(raw_value) if separator < 0 else separator
@@ -150,7 +131,7 @@ def parse_dat4_config_item(
                 string_padding=raw_value[value_end:],
             )
         if type_id == int(Dat4ConfigType.VECTOR3):
-            _exact(data, 32, "DAT4 vector3")
+            require_exact_size(data, 32, "DAT4 vector3")
             return Dat4ConfigVector3(
                 **kwargs,
                 prefix_padding=data[8:16],
@@ -160,7 +141,7 @@ def parse_dat4_config_item(
         if type_id == int(Dat4ConfigType.VARIABLE_LIST):
             return _variable_list(data, kwargs)
         if type_id == int(Dat4ConfigType.WAVE_SLOT):
-            _exact(data, 32, "DAT4 wave slot")
+            require_exact_size(data, 32, "DAT4 wave slot")
             values = struct.unpack_from("<iIIIII", data, 8)
             return Dat4ConfigWaveSlot(
                 **kwargs,

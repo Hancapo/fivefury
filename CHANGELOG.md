@@ -23,6 +23,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Typed reading and writing for every DAT54 sound variant.
 - Typed reading and writing for DAT4 audio configuration values, wave slots, variable lists, and early-reflection settings.
 - Typed DAT149, DAT150, and DAT151 world ambience, zone, and emitter metadata.
+- Typed DAT15 dynamic mixer patches, scenes, groups, modules, category maps, and tri-state metadata.
 
 ### Changed
 
