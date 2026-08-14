@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-14
+
 ### Breaking Changes
 
 - `CutsceneAssets.validate()` now returns a non-mutating `ValidationReport`; mutable finalization belongs to `build()`.
