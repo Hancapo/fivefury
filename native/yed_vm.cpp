@@ -93,6 +93,30 @@ public:
         return default_value(key);
     }
 
+    double get_component(
+        YedTrackKey key,
+        std::uint8_t component,
+        std::uint8_t format,
+        bool force_default = false
+    ) const {
+        component = std::min<std::uint8_t>(component, 3U);
+        if (!force_default) {
+            const auto found = data_.tracks.find(key);
+            if (found != data_.tracks.end()) {
+                const auto value = format == 1U ? quat_to_euler_xyz(found->second) : found->second;
+                return value[component];
+            }
+        }
+        const auto bone = static_cast<std::int64_t>(key >> 32U);
+        const auto track = static_cast<std::uint32_t>(key);
+        const auto found = program_.bones.find(bone);
+        if (found == program_.bones.end() || track > 2U) return 0.0;
+        const auto value = track == 1U
+            ? quat_to_euler_xyz(found->second.rotation)
+            : default_value(key);
+        return value[component];
+    }
+
     Vec4 relative(YedTrackKey key, bool force_default = false) const {
         const auto current = data_.tracks.find(key);
         if (force_default || current == data_.tracks.end()) return {0.0, 0.0, 0.0, 1.0};
@@ -283,9 +307,12 @@ void run_stream(
                 case OP_PUSH_VECTOR: stack.push_back(instruction.value); break;
                 case OP_TRACK_GET: stack.push_back(frame.get(instruction.track_key, instruction.use_defaults)); break;
                 case OP_TRACK_GET_COMP: {
-                    auto value = frame.get(instruction.track_key, instruction.use_defaults);
-                    if (instruction.format == 1U) value = quat_to_euler_xyz(value);
-                    const auto scalar = value[std::min<std::uint8_t>(instruction.component, 3U)];
+                    const auto scalar = frame.get_component(
+                        instruction.track_key,
+                        instruction.component,
+                        instruction.format,
+                        instruction.use_defaults
+                    );
                     stack.push_back({scalar, scalar, scalar, scalar});
                     break;
                 }

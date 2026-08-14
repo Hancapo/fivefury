@@ -48,6 +48,192 @@ def _instruction(kind: YedInstructionType, **operands: object) -> YedInstruction
     return YedInstruction(kind, operands=dict(operands))
 
 
+def _read_track_expression(
+    name: str,
+    *,
+    source_bone: int,
+    source_track: int,
+    target_bone: int,
+    component: int | None = None,
+    format: YedTrackFormat = YedTrackFormat.VECTOR3,
+    use_defaults: bool = False,
+) -> YedExpression:
+    expression = YedExpression.create(name)
+    read = (
+        _instruction(
+            YedInstructionType.TRACK_GET,
+            bone_id=source_bone,
+            track=source_track,
+            use_defaults=use_defaults,
+        )
+        if component is None
+        else _instruction(
+            YedInstructionType.TRACK_GET_COMP,
+            bone_id=source_bone,
+            track=source_track,
+            component_index=component,
+            format=int(format),
+            use_defaults=use_defaults,
+        )
+    )
+    expression.streams = [
+        _stream(
+            read,
+            _instruction(
+                YedInstructionType.TRACK_SET,
+                bone_id=target_bone,
+                track=int(YcdAnimationTrack.BONE_TRANSLATION),
+            ),
+            _instruction(YedInstructionType.END),
+        )
+    ]
+    return expression
+
+
+def test_missing_facial_scale_whole_vector_preserves_unit_default() -> None:
+    expression = _read_track_expression(
+        "facial_scale_vector_default",
+        source_bone=10866,
+        source_track=int(YcdAnimationTrack.FACIAL_SCALE),
+        target_bone=1,
+    )
+
+    result = evaluate_yed(create_yed(expression), (expression.short_name,), {})
+
+    assert result.output_tracks[(1, 0)] == (1.0, 1.0, 1.0, 0.0)
+
+
+@pytest.mark.parametrize("component", range(3), ids=("x", "y", "z"))
+def test_missing_facial_scale_component_defaults_to_zero(component: int) -> None:
+    expression = _read_track_expression(
+        f"facial_scale_component_{component}",
+        source_bone=10866,
+        source_track=int(YcdAnimationTrack.FACIAL_SCALE),
+        target_bone=component + 1,
+        component=component,
+    )
+
+    result = evaluate_yed(create_yed(expression), (expression.short_name,), {})
+
+    assert result.output_tracks[(component + 1, 0)] == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_missing_generic_scale_component_defaults_to_zero() -> None:
+    expression = _read_track_expression(
+        "generic_scale_component_default",
+        source_bone=10866,
+        source_track=int(YcdAnimationTrack.GENERIC_SCALE),
+        target_bone=1,
+        component=1,
+    )
+
+    result = evaluate_yed(create_yed(expression), (expression.short_name,), {})
+
+    assert result.output_tracks[(1, 0)] == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_present_facial_scale_component_returns_authored_value() -> None:
+    track = int(YcdAnimationTrack.FACIAL_SCALE)
+    expression = _read_track_expression(
+        "facial_scale_component_authored",
+        source_bone=10866,
+        source_track=track,
+        target_bone=1,
+        component=1,
+    )
+
+    result = evaluate_yed(
+        create_yed(expression),
+        (expression.short_name,),
+        {(10866, track): (1.25, 1.5, 1.75, 0.0)},
+    )
+
+    assert result.output_tracks[(1, 0)] == (1.5, 1.5, 1.5, 1.5)
+
+
+@pytest.mark.parametrize(
+    ("track", "component", "format", "expected"),
+    [
+        (YcdAnimationTrack.BONE_TRANSLATION, 1, YedTrackFormat.VECTOR3, 5.0),
+        (YcdAnimationTrack.BONE_ROTATION, 2, YedTrackFormat.QUATERNION, math.radians(30.0)),
+        (YcdAnimationTrack.BONE_SCALE, 0, YedTrackFormat.VECTOR3, 1.5),
+    ],
+    ids=("translation", "rotation", "scale"),
+)
+def test_missing_bone_component_uses_skeleton_default(
+    track: YcdAnimationTrack,
+    component: int,
+    format: YedTrackFormat,
+    expected: float,
+) -> None:
+    expression = _read_track_expression(
+        f"bone_component_default_{int(track)}",
+        source_bone=7,
+        source_track=int(track),
+        target_bone=1,
+        component=component,
+        format=format,
+    )
+    bone = SimpleNamespace(
+        tag=7,
+        translation=(4.0, 5.0, 6.0),
+        rotation=quat_from_euler_xyz((math.radians(10.0), math.radians(20.0), math.radians(30.0))),
+        scale=(1.5, 2.0, 2.5),
+    )
+
+    result = evaluate_yed(
+        create_yed(expression),
+        (expression.short_name,),
+        {},
+        skeleton=SimpleNamespace(bones=[bone]),
+    )
+
+    assert result.output_tracks[(1, 0)] == pytest.approx((expected,) * 4)
+
+
+def test_component_use_defaults_ignores_authored_values() -> None:
+    facial_track = int(YcdAnimationTrack.FACIAL_SCALE)
+    facial = _read_track_expression(
+        "forced_facial_component_default",
+        source_bone=10866,
+        source_track=facial_track,
+        target_bone=1,
+        component=0,
+        use_defaults=True,
+    )
+    translation = _read_track_expression(
+        "forced_bone_component_default",
+        source_bone=7,
+        source_track=int(YcdAnimationTrack.BONE_TRANSLATION),
+        target_bone=2,
+        component=1,
+        use_defaults=True,
+    )
+    skeleton = SimpleNamespace(
+        bones=[
+            SimpleNamespace(
+                tag=7,
+                translation=(4.0, 5.0, 6.0),
+                rotation=(0.0, 0.0, 0.0, 1.0),
+                scale=(1.0, 1.0, 1.0),
+            )
+        ]
+    )
+
+    result = evaluate_yed(
+        create_yed(facial, translation),
+        (facial.short_name, translation.short_name),
+        {
+            (10866, facial_track): (9.0, 9.0, 9.0, 0.0),
+            (7, int(YcdAnimationTrack.BONE_TRANSLATION)): (8.0, 8.0, 8.0, 0.0),
+        },
+        skeleton=skeleton,
+    )
+
+    assert result.output_tracks[(1, 0)] == (0.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(2, 0)] == (5.0, 5.0, 5.0, 5.0)
+
+
 def _assert_same_rotation(
     actual: tuple[float, float, float, float],
     expected: tuple[float, float, float, float],
