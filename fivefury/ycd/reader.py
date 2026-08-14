@@ -12,10 +12,12 @@ from ..common import clip_short_name
 from ..metahash import MetaHash
 from ..resolver import register_name
 from ..resource import (
+    RSC7_PHYSICAL_BASE,
+    RSC7_VIRTUAL_BASE,
     ResourceHeader,
-    checked_virtual_offset,
-    read_virtual_pointer_array,
+    physical_to_offset,
     split_rsc7_sections,
+    virtual_to_offset,
 )
 from .model import (
     Ycd,
@@ -35,12 +37,13 @@ from .model import (
 from .runtime_headers import infer_ycd_game
 from .sequences import parse_sequence_data
 
-DAT_VIRTUAL_BASE = 0x50000000
-
 
 class _YcdReader:
-    def __init__(self, data: bytes) -> None:
-        self.data = data
+    def __init__(self, system_data: bytes, graphics_data: bytes = b"") -> None:
+        self.system_data = system_data
+        self.graphics_data = graphics_data
+        self.data = system_data + graphics_data
+        self.graphics_offset = len(system_data)
         self.animation_cache: dict[int, YcdAnimation] = {}
         self.clip_cache: dict[int, YcdClip] = {}
         self.property_cache: dict[int, YcdClipProperty] = {}
@@ -48,16 +51,38 @@ class _YcdReader:
         self.sequence_cache: dict[int, YcdSequence] = {}
         self.active_tag_pointers: set[int] = set()
 
-    def virtual_offset(self, pointer: int) -> int:
-        return checked_virtual_offset(pointer, self.data, base=DAT_VIRTUAL_BASE)
+    def _pointer_location(self, pointer: int, size: int = 1) -> tuple[bytes, int, int]:
+        value = int(pointer)
+        if value >= RSC7_PHYSICAL_BASE:
+            source = self.graphics_data
+            offset = physical_to_offset(value)
+            combined_offset = self.graphics_offset + offset
+            space = "graphics"
+        elif value >= RSC7_VIRTUAL_BASE:
+            source = self.system_data
+            offset = virtual_to_offset(value)
+            combined_offset = offset
+            space = "system"
+        else:
+            raise ValueError("YCD pointer is neither virtual nor physical")
+        if offset < 0 or size < 0 or offset + size > len(source):
+            raise ValueError(f"YCD {space} pointer is out of range")
+        return source, offset, combined_offset
+
+    def pointer_offset(self, pointer: int, size: int = 1) -> int:
+        return self._pointer_location(pointer, size)[2]
 
     def read_c_string_at(self, pointer: int) -> str:
         if not pointer:
             return ""
-        return read_c_string(self.data, self.virtual_offset(pointer))
+        source, offset, _ = self._pointer_location(pointer)
+        return read_c_string(source, offset)
 
     def read_pointer_array(self, pointer: int, count: int) -> list[int]:
-        return read_virtual_pointer_array(self.data, pointer, count, base=DAT_VIRTUAL_BASE)
+        if not pointer or count <= 0:
+            return []
+        offset = self.pointer_offset(pointer, count * 8)
+        return list(struct.unpack_from(f"<{count}Q", self.data, offset))
 
     def read_inline_list_header(self, offset: int) -> tuple[int, int, int]:
         return _u64(self.data, offset), _u16(self.data, offset + 8), _u16(self.data, offset + 10)
@@ -80,8 +105,9 @@ class _YcdReader:
         if cached is not None:
             return cached
 
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x20)
         data_length = _u32(self.data, offset + 0x04)
+        self.pointer_offset(pointer, 0x20 + data_length)
         raw_data = self.data[offset + 0x20 : offset + 0x20 + data_length]
         sequence = YcdSequence(
             hash=MetaHash(_u32(self.data, offset + 0x00)),
@@ -119,7 +145,7 @@ class _YcdReader:
         if cached is not None:
             return cached
 
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x60)
         sequences_pointer, sequence_count, _ = self.read_inline_list_header(offset + 0x40)
         bone_ids_pointer, bone_id_count, _ = self.read_inline_list_header(offset + 0x50)
         sequence_pointers = self.read_pointer_array(sequences_pointer, sequence_count) if sequences_pointer and sequence_count else []
@@ -127,7 +153,7 @@ class _YcdReader:
 
         bone_ids: list[YcdAnimationBoneId] = []
         if bone_ids_pointer and bone_id_count:
-            base = self.virtual_offset(bone_ids_pointer)
+            base = self.pointer_offset(bone_ids_pointer, bone_id_count * 4)
             for index in range(bone_id_count):
                 entry_offset = base + (index * 4)
                 bone_ids.append(
@@ -161,7 +187,7 @@ class _YcdReader:
         return animation
 
     def parse_animation_map_entry(self, pointer: int) -> tuple[tuple[int, MetaHash, YcdAnimation], int]:
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x18)
         hash_value = MetaHash(_u32(self.data, offset + 0x00))
         animation_pointer = _u64(self.data, offset + 0x08)
         next_pointer = _u64(self.data, offset + 0x10)
@@ -180,7 +206,7 @@ class _YcdReader:
     def parse_animation_map(self, pointer: int) -> tuple[dict[int, YcdAnimation], dict[int, YcdAnimation]]:
         if not pointer:
             return {}, {}
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x24)
         buckets_pointer = _u64(self.data, offset + 0x18)
         bucket_capacity = _u16(self.data, offset + 0x20)
         animation_map: dict[int, YcdAnimation] = {}
@@ -192,7 +218,7 @@ class _YcdReader:
         return animation_map, animation_pointer_map
 
     def parse_clip_property_attribute(self, pointer: int) -> YcdClipPropertyAttribute:
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x30)
         attribute_type = YcdClipPropertyAttributeType(int(self.data[offset + 0x08]))
         value_offset = offset + 0x20
         value: object
@@ -244,7 +270,7 @@ class _YcdReader:
         if cached is not None:
             return cached
 
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x40)
         attributes_pointer = _u64(self.data, offset + 0x20)
         attribute_count = _u16(self.data, offset + 0x28)
         attribute_pointers = self.read_pointer_array(attributes_pointer, attribute_count) if attributes_pointer and attribute_count else []
@@ -269,7 +295,7 @@ class _YcdReader:
         return prop
 
     def parse_clip_property_map_entry(self, pointer: int) -> tuple[tuple[MetaHash, YcdClipProperty], int]:
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x18)
         prop_hash = MetaHash(_u32(self.data, offset + 0x00))
         data_pointer = _u64(self.data, offset + 0x08)
         next_pointer = _u64(self.data, offset + 0x10)
@@ -280,7 +306,7 @@ class _YcdReader:
     def parse_clip_property_map(self, pointer: int) -> tuple[list[YcdClipProperty], int]:
         if not pointer:
             return [], 0
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x10)
         bucket_pointer = _u64(self.data, offset + 0x00)
         bucket_capacity = _u16(self.data, offset + 0x08)
         reserved_0ch = _u32(self.data, offset + 0x0C)
@@ -303,7 +329,7 @@ class _YcdReader:
             return YcdClipTag(name_hash=MetaHash(0))
 
         self.active_tag_pointers.add(pointer)
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x50)
         attributes_pointer = _u64(self.data, offset + 0x20)
         attribute_count = _u16(self.data, offset + 0x28)
         attribute_pointers = self.read_pointer_array(attributes_pointer, attribute_count) if attributes_pointer and attribute_count else []
@@ -343,7 +369,7 @@ class _YcdReader:
                 "tag_list_reserved_18h": 0,
                 "tag_list_reserved_1ch": 0,
             }
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x20)
         tags_pointer = _u64(self.data, offset + 0x00)
         tag_count = _u16(self.data, offset + 0x08)
         has_block_tag = bool(_u32(self.data, offset + 0x10))
@@ -356,7 +382,7 @@ class _YcdReader:
         }
 
     def parse_clip_base(self, pointer: int) -> tuple[dict[str, object], int]:
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x70)
         name_pointer = _u64(self.data, offset + 0x18)
         tags_pointer = _u64(self.data, offset + 0x38)
         properties_pointer = _u64(self.data, offset + 0x40)
@@ -426,7 +452,9 @@ class _YcdReader:
             animation_count = _u16(self.data, offset + 0x58)
             entries: list[YcdClipAnimationEntry] = []
             if animations_pointer and animation_count:
-                base_pointer = self.virtual_offset(animations_pointer)
+                base_pointer = self.pointer_offset(
+                    animations_pointer, animation_count * 24
+                )
                 for index in range(animation_count):
                     entry_offset = base_pointer + (index * 24)
                     animation_pointer = _u64(self.data, entry_offset + 0x10)
@@ -463,7 +491,7 @@ class _YcdReader:
         return clip
 
     def parse_clip_map_entry(self, pointer: int, animation_map: dict[int, YcdAnimation], animation_pointer_map: dict[int, YcdAnimation]) -> tuple[tuple[MetaHash, YcdClip], int]:
-        offset = self.virtual_offset(pointer)
+        offset = self.pointer_offset(pointer, 0x18)
         hash_value = MetaHash(_u32(self.data, offset + 0x00))
         clip_pointer = _u64(self.data, offset + 0x08)
         next_pointer = _u64(self.data, offset + 0x10)
@@ -489,10 +517,9 @@ def _read_ycd_sections(
     *,
     path: str | Path | None = None,
 ) -> Ycd:
-    if graphics_data:
-        raise ValueError("graphics-backed YCD resources are not supported yet")
-
-    reader = _YcdReader(system_data)
+    if len(system_data) < 0x40:
+        raise ValueError("YCD system data is truncated")
+    reader = _YcdReader(system_data, graphics_data)
     file_vft = _u32(system_data, 0x00)
     root_offset = 0x10
     animations_pointer = _u64(system_data, root_offset + 0x08)
@@ -507,10 +534,10 @@ def _read_ycd_sections(
     animation_bucket_capacity = 0
     animation_entry_count = 0
     if animations_pointer:
-        animation_map_offset = reader.virtual_offset(animations_pointer)
-        animation_map_vft = _u32(system_data, animation_map_offset)
-        animation_bucket_capacity = _u16(system_data, animation_map_offset + 0x20)
-        animation_entry_count = _u16(system_data, animation_map_offset + 0x22)
+        animation_map_offset = reader.pointer_offset(animations_pointer, 0x24)
+        animation_map_vft = _u32(reader.data, animation_map_offset)
+        animation_bucket_capacity = _u16(reader.data, animation_map_offset + 0x20)
+        animation_entry_count = _u16(reader.data, animation_map_offset + 0x22)
     else:
         animation_map_vft = 0
 
@@ -556,14 +583,15 @@ def read_ycd_embedded_resource(
         "<IIII", data
     )
     header = ResourceHeader(version, system_flags, graphics_flags)
-    if header.graphics_size:
-        raise ValueError("graphics-backed embedded YCD resources are not supported")
-    system_data = data[16:]
-    if len(system_data) < 0x40:
-        raise ValueError("embedded YCD system data is truncated")
-    if len(system_data) > header.system_size:
-        system_data = system_data[: header.system_size]
-    return _read_ycd_sections(header, system_data, b"", path=path)
+    expected_size = 16 + header.system_size + header.graphics_size
+    if len(data) < expected_size:
+        raise ValueError("embedded YCD resource data is truncated")
+    payload = data[16:expected_size]
+    system_data = payload[: header.system_size]
+    graphics_data = payload[
+        header.system_size : header.system_size + header.graphics_size
+    ]
+    return _read_ycd_sections(header, system_data, graphics_data, path=path)
 
 
 __all__ = ["read_ycd", "read_ycd_embedded_resource"]

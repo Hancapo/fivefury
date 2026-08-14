@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ...authoring import BuildContext, ValidationReport
     from ...ycd.cutscene import YcdCutsceneBoneAnimation, YcdCutsceneBuilder
     from ...ycd.model import Ycd
+    from ..model import CutFile
 
 
 def _file_name(value: str, suffix: str) -> str:
@@ -46,7 +47,10 @@ class CutsceneAssets:
         return self
 
     def build_files(
-        self, *, context: BuildContext | None = None
+        self,
+        *,
+        context: BuildContext | None = None,
+        template: CutFile | bytes | str | Path | None = None,
     ) -> dict[str, bytes]:
         from ...ycd.reader import read_ycd
         from ...ycd.write import build_ycd_bytes
@@ -64,7 +68,7 @@ class CutsceneAssets:
             rebuilt_ycds.append(rebuilt)
             files[name] = data
 
-        cut_data = self.scene.to_bytes()
+        cut_data = self.scene.to_bytes(template=template)
         rebuilt_scene = read_cut_scene(cut_data)
         rebuilt_scene.clip_dicts = rebuilt_ycds
         CutsceneAssets(
@@ -80,8 +84,9 @@ class CutsceneAssets:
         directory: str | Path,
         *,
         context: BuildContext | None = None,
+        template: CutFile | bytes | str | Path | None = None,
     ) -> list[Path]:
-        files = self.build_files(context=context)
+        files = self.build_files(context=context, template=template)
         target = Path(directory)
         return [atomic_write_bytes(target / name, data) for name, data in files.items()]
 

@@ -270,11 +270,6 @@ class CutScene:
         from ...common import atomic_write_bytes
 
         if self.clip_dicts:
-            if template is not None:
-                raise ValueError(
-                    "Template-based CUT output with attached YCDs is not supported; "
-                    "build the low-level CutFile explicitly"
-                )
             from .authoring import CutsceneAssets
 
             target = Path(destination)
@@ -282,7 +277,7 @@ class CutScene:
                 scene=self,
                 ycds=tuple(self.clip_dicts),
                 cut_name=target.name,
-            ).save(target.parent)
+            ).save(target.parent, template=template)
             return
         atomic_write_bytes(destination, self.to_bytes(template=template))
 
