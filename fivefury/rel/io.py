@@ -9,8 +9,10 @@ from .enums import (
     Dat16RelType,
     Dat22RelType,
     Dat54SoundType,
+    Dat151RelType,
     RelDatFileType,
 )
+from .game_parsing import parse_game_rel_item
 from .model import (
     Dat10Synth,
     Dat10SynthPreset,
@@ -1330,6 +1332,14 @@ def _parse_item(
         return _parse_dat22_item(index, raw, name_by_offset)
     if rel_type == int(RelDatFileType.DAT54_DATA_ENTRIES):
         return _parse_dat54_item(index, raw)
+    if rel_type in {
+        int(RelDatFileType.DAT149),
+        int(RelDatFileType.DAT150),
+        int(RelDatFileType.DAT151),
+    }:
+        item = parse_game_rel_item(index, raw, name_by_offset)
+        if item is not None:
+            return item
     type_id = raw[0] if raw else 0
     return RelRawItem(
         index.name_hash,
@@ -1451,9 +1461,9 @@ def _data_order_items(rel: RelFile) -> list[RelItem]:
 def _build_data_block(rel: RelFile) -> bytes:
     data = bytearray(struct.pack("<I", rel.version & 0xFFFFFFFF))
     for item in _data_order_items(rel):
-        if int(rel.rel_type) == int(RelDatFileType.DAT10_MODULAR_SYNTH):
-            aligned = align(len(data), 4)
-            data += b"\x00" * (aligned - len(data))
+        alignment = _rel_item_alignment(int(rel.rel_type), item.type_id)
+        target_offset = max(item.data_offset, align(len(data), alignment))
+        data += b"\x00" * (target_offset - len(data))
         item_data = item.to_data()
         item.data_offset = len(data)
         item.data_length = len(item_data)
@@ -1461,6 +1471,46 @@ def _build_data_block(rel: RelFile) -> bytes:
             item.type_id = item_data[0]
         data += item_data
     return bytes(data)
+
+
+_GAME_REL_ALIGN_16 = frozenset(
+    {
+        int(Dat151RelType.AMBIENT_RULE),
+        int(Dat151RelType.AMBIENT_ZONE),
+        int(Dat151RelType.ALARM_SETTINGS),
+        int(Dat151RelType.SCANNER_SPECIFIC_LOCATION),
+    }
+)
+_GAME_REL_ALIGN_4 = frozenset(
+    {
+        int(Dat151RelType.INTERACTIVE_MUSIC_MOOD),
+        int(Dat151RelType.BAR_CONSTRAINT),
+        int(Dat151RelType.PED_RACE_TO_PED_VOICE_GROUP),
+        int(Dat151RelType.SPEECH_PARAMS),
+        int(Dat151RelType.TRIGGERED_SPEECH_CONTEXT),
+        int(Dat151RelType.AMBIENT_BANK_MAP),
+        int(Dat151RelType.TRAILER_AUDIO_SETTINGS),
+        int(Dat151RelType.STATIC_EMITTER_LIST),
+        int(Dat151RelType.WEAPON_SETTINGS),
+        int(Dat151RelType.CAR_AUDIO_SETTINGS),
+        int(Dat151RelType.STOP_TRACK_ACTION),
+    }
+)
+
+
+def _rel_item_alignment(rel_type: int, type_id: int) -> int:
+    if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
+        return 4
+    if rel_type in {
+        int(RelDatFileType.DAT149),
+        int(RelDatFileType.DAT150),
+        int(RelDatFileType.DAT151),
+    }:
+        if type_id in _GAME_REL_ALIGN_16:
+            return 16
+        if type_id in _GAME_REL_ALIGN_4:
+            return 4
+    return 1
 
 
 def _hash_offset_base(item: RelItem) -> int:

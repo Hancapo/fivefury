@@ -21,10 +21,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Graphics-page YCD reading.
 - Public REL sound-graph traversal and audio endpoint resolution.
 - Typed reading and writing for every DAT54 sound variant.
+- Typed DAT149, DAT150, and DAT151 world ambience, zone, and emitter metadata.
 
 ### Changed
 
 - DAT54 authoring validates runtime capacities for sounds, transforms, variables, ranges, and sets.
+- Game REL authoring preserves source item spacing and derives required item alignment.
 
 ### Fixed
 
