@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from fivefury import (
+    AssetSet,
+    BuildContext,
     CutAnimationManager,
     CutAssetManager,
     CutCamera,
@@ -25,7 +29,14 @@ from fivefury import (
     CutSubtitle,
     CutSubtitleCue,
     CutSubtitlePayload,
+    GameFileCache,
+    ValidationError,
+    Ydr,
+    YdrMeshInput,
+    YdrSkeleton,
+    Ytyp,
     build_cut_bytes,
+    create_ydr,
     read_cut,
     read_cut_scene,
     read_ycd,
@@ -522,10 +533,12 @@ def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
 def test_cutscene_assets_do_not_write_files_when_validation_fails(tmp_path) -> None:
     project = CutsceneProject.create("broken_scene", duration=1.0)
 
-    with pytest.raises(CutSceneValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         project.build().save(tmp_path)
 
-    assert any(issue.code == "camera_cut.missing" for issue in excinfo.value.issues)
+    assert any(
+        issue.code == "camera_cut.missing" for issue in excinfo.value.report.errors
+    )
     assert list(tmp_path.iterdir()) == []
 
 
@@ -581,11 +594,12 @@ def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None
     load_event.label = "wrong_dictionary"
     load_event.payload["cName"] = "wrong_dictionary"
 
-    with pytest.raises(CutSceneValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         project.build().build_files()
 
     assert any(
-        issue.code == "set_anim.dict.mismatch" for issue in excinfo.value.issues
+        issue.code == "set_anim.dict.mismatch"
+        for issue in excinfo.value.report.errors
     )
 
 
@@ -605,9 +619,118 @@ def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
         0.25, [prop.object_id], target=project.asset_manager
     )
 
-    with pytest.raises(CutSceneValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         project.build().build_files()
 
     assert any(
-        issue.code == "set_anim.model.not_loaded" for issue in excinfo.value.issues
+        issue.code == "set_anim.model.not_loaded"
+        for issue in excinfo.value.report.errors
     )
+
+
+def _cutscene_prop_project(*, bones: dict[int, object] | None = None):
+    project = CutsceneProject.create("context_scene", duration=1.0)
+    prop = project.scene.prop(
+        "box", model_name="prop_box", ytyp_name="demo_props"
+    )
+    project.animate(
+        prop,
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        bones=bones,
+    )
+    project.camera()
+    return project
+
+
+def _cutscene_prop_context(drawable: Ydr | None = None) -> BuildContext:
+    ytyp = Ytyp(name="demo_props")
+    ytyp.archetype("prop_box")
+    assets = AssetSet()
+    assets["stream/prop_box.ydr"] = drawable or Ydr(version=165)
+    assets["stream/demo_props.ytyp"] = ytyp
+    return BuildContext(assets=assets)
+
+
+def _write_cutscene_prop_assets(directory: Path) -> None:
+    mesh = YdrMeshInput(
+        positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        indices=[0, 1, 2],
+        material="default",
+        texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+    )
+    create_ydr(meshes=[mesh], name="prop_box").save(directory / "prop_box.ydr")
+    ytyp = Ytyp(name="demo_props")
+    ytyp.archetype("prop_box")
+    ytyp.save(directory / "demo_props.ytyp")
+
+
+def test_cutscene_asset_validation_is_non_mutating() -> None:
+    assets = _cutscene_prop_project().build()
+
+    report = assets.validate(context=_cutscene_prop_context())
+
+    assert report.valid
+    assert assets.scene.clip_dicts == []
+
+
+def test_cutscene_asset_validation_reports_missing_context_dependencies() -> None:
+    assets = _cutscene_prop_project().build()
+
+    report = assets.validate(context=BuildContext(assets=AssetSet()))
+
+    assert {issue.code for issue in report.errors} == {
+        "cut.binding.model.unresolved",
+        "cut.binding.ytyp.unresolved",
+    }
+
+
+def test_cutscene_asset_validation_rejects_invalid_decoded_model() -> None:
+    context = _cutscene_prop_context()
+    context.assets.replace("stream/prop_box.ydr", object())
+
+    report = _cutscene_prop_project().build().validate(context=context)
+
+    assert any(
+        issue.code == "cut.binding.model.invalid" for issue in report.errors
+    )
+
+
+def test_cutscene_asset_validation_checks_animation_bones() -> None:
+    skeleton = YdrSkeleton()
+    skeleton.bone("root", tag=0)
+    assets = _cutscene_prop_project(
+        bones={42: {"position": (0.0, 0.0, 0.0)}}
+    ).build()
+
+    report = assets.validate(
+        context=_cutscene_prop_context(Ydr(version=165, skeleton=skeleton))
+    )
+
+    issue = next(
+        issue
+        for issue in report.errors
+        if issue.code == "cut.binding.skeleton.bone_unresolved"
+    )
+    assert issue.path == "bindings[2].animation.bones[42]"
+
+
+def test_cutscene_asset_validation_resolves_serialized_loose_assets(tmp_path) -> None:
+    _write_cutscene_prop_assets(tmp_path)
+    context = BuildContext(assets=AssetSet.from_directory(tmp_path))
+
+    report = _cutscene_prop_project().build().validate(context=context)
+
+    assert report.valid
+
+
+def test_cutscene_asset_validation_resolves_game_file_cache(tmp_path) -> None:
+    _write_cutscene_prop_assets(tmp_path)
+
+    with GameFileCache(tmp_path, use_index_cache=False) as cache:
+        cache.scan(load_keys=False)
+        report = _cutscene_prop_project().build().validate(
+            context=BuildContext(cache=cache)
+        )
+
+    assert report.valid

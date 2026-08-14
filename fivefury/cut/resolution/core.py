@@ -4,9 +4,10 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from ...gamefile import GameFileType
+from ..audio_references import cut_audio_container_hints, cut_event_references
 from ..scene import read_cut_scene
 from .animations import _resolve_ycds
-from .audio import _audio_container_hints, _event_references, _resolve_audio
+from .audio import _resolve_audio
 from .bindings import (
     _normalize_initial_ped_variations,
     _resolve_binding_texture_chains,
@@ -95,14 +96,14 @@ def resolve_cutscene_assets(
                 cancellation=cancellation,
             )
         with active_trace.span("audio"):
-            audio_references = _event_references(
+            audio_references = cut_event_references(
                 scene, {"load_audio", "play_audio"}
             )
             audio = _resolve_audio(
                 cache,
                 audio_references,
                 issues,
-                container_hints=_audio_container_hints(scene, audio_references),
+                container_hints=cut_audio_container_hints(scene, audio_references),
                 cancellation=cancellation,
             )
         return CutsceneAssetBundle(
@@ -114,7 +115,7 @@ def resolve_cutscene_assets(
             bindings=bindings,
             audio_references=audio_references,
             audio=audio,
-            subtitle_references=_event_references(
+            subtitle_references=cut_event_references(
                 scene, {"load_subtitles", "show_subtitle"}
             ),
             subtitle_dictionaries=subtitle_dictionaries,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...metahash import MetaHash
-from ..model import CutHashedString
+from ..metahash import MetaHash
+from .model import CutHashedString
 
 
 def field_hash(value: Any) -> int | None:

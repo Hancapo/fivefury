@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 from ...gamefile import GameFile, GameFileType
 from ...metahash import MetaHash
 from ..model import CutHashedString
+from ..reference_values import subtitle_hash
 from ..scene import CutBinding, CutScene
-from .values import subtitle_hash
 
 if TYPE_CHECKING:
     from ...cache import AssetRecord

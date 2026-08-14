@@ -13,6 +13,7 @@ from .bindings import CutBinding
 from .io import read_cut_scene
 
 if TYPE_CHECKING:
+    from ...authoring import BuildContext, ValidationReport
     from ...ycd.cutscene import YcdCutsceneBoneAnimation, YcdCutsceneBuilder
     from ...ycd.model import Ycd
 
@@ -32,24 +33,26 @@ class CutsceneAssets:
     def output_name(self) -> str:
         return _file_name(self.cut_name or self.scene.scene_name or "cutscene", ".cut")
 
-    def validate(self) -> None:
-        names: set[str] = set()
-        for index, ycd in enumerate(self.ycds):
-            ycd.build()
-            if not ycd.path:
-                raise ValueError(f"Cutscene YCD section {index} has no output path")
-            name = Path(ycd.path).name.lower()
-            if name in names:
-                raise ValueError(f"Duplicate cutscene YCD output name: {name}")
-            names.add(name)
-        self.scene.clip_dicts = list(self.ycds)
-        self.scene.assert_valid(strict=True)
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        from .asset_validation import validate_cutscene_assets
 
-    def build_files(self) -> dict[str, bytes]:
+        return validate_cutscene_assets(self, context=context)
+
+    def build(self) -> CutsceneAssets:
+        for ycd in self.ycds:
+            ycd.build()
+        self.scene.clip_dicts = list(self.ycds)
+        self.scene.build()
+        return self
+
+    def build_files(
+        self, *, context: BuildContext | None = None
+    ) -> dict[str, bytes]:
         from ...ycd.reader import read_ycd
         from ...ycd.write import build_ycd_bytes
 
-        self.validate()
+        self.build()
+        self.validate(context=context).raise_for_errors()
         files: dict[str, bytes] = {}
         rebuilt_ycds: list[Ycd] = []
         for ycd in self.ycds:
@@ -64,12 +67,21 @@ class CutsceneAssets:
         cut_data = self.scene.to_bytes()
         rebuilt_scene = read_cut_scene(cut_data)
         rebuilt_scene.clip_dicts = rebuilt_ycds
-        rebuilt_scene.assert_valid(strict=True)
+        CutsceneAssets(
+            scene=rebuilt_scene,
+            ycds=tuple(rebuilt_ycds),
+            cut_name=self.output_name,
+        ).validate().raise_for_errors()
         files[self.output_name] = cut_data
         return files
 
-    def save(self, directory: str | Path) -> list[Path]:
-        files = self.build_files()
+    def save(
+        self,
+        directory: str | Path,
+        *,
+        context: BuildContext | None = None,
+    ) -> list[Path]:
+        files = self.build_files(context=context)
         target = Path(directory)
         return [atomic_write_bytes(target / name, data) for name, data in files.items()]
 

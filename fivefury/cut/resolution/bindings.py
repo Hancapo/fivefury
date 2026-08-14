@@ -8,6 +8,8 @@ from ...cache.ped_assets import first_matching_ped_asset, ped_assets_for_model
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
 from ...ymt import PedPropAnchor, iter_ped_drawables, ped_prop_file_stem
+from ..asset_kinds import CUT_MODEL_KINDS_BY_ROLE
+from ..reference_values import field_hash
 from ..scene import CutScene
 from .common import _load_file, _preferred_asset
 from .models import CutsceneResolveIssue, ResolvedCutBinding
@@ -16,24 +18,9 @@ from .runtime import (
     CutsceneResolutionCancelled,
     check_cutscene_resolution_cancelled,
 )
-from .values import field_hash
 
 if TYPE_CHECKING:
     from ...cache import AssetRecord, GameFileCache
-
-_MODEL_KINDS_BY_ROLE: dict[str, tuple[GameFileType, ...]] = {
-    "ped": (
-        GameFileType.YFT,
-        GameFileType.YDD,
-        GameFileType.YMT,
-        GameFileType.YTD,
-    ),
-    "prop": (GameFileType.YDR, GameFileType.YDD, GameFileType.YFT, GameFileType.YTD),
-    "vehicle": (GameFileType.YFT, GameFileType.YTD, GameFileType.YCD),
-    "weapon": (GameFileType.YDR, GameFileType.YDD, GameFileType.YFT, GameFileType.YTD),
-    "particle_fx": (GameFileType.YPT,),
-}
-
 
 def _resolve_bindings(
     cache: GameFileCache,
@@ -47,7 +34,7 @@ def _resolve_bindings(
         check_cutscene_resolution_cancelled(cancellation)
         resolved = ResolvedCutBinding(binding=binding)
         result[binding.object_id] = resolved
-        kinds = _MODEL_KINDS_BY_ROLE.get(binding.role)
+        kinds = CUT_MODEL_KINDS_BY_ROLE.get(binding.role)
         if kinds is None:
             continue
         reference_hash = field_hash(binding.fields.get("StreamingName"))
@@ -296,7 +283,7 @@ def _resolve_binding_texture_chains(
         model_root = next(
             (
                 resolved.assets[kind]
-                for kind in _MODEL_KINDS_BY_ROLE.get(resolved.binding.role, ())
+                for kind in CUT_MODEL_KINDS_BY_ROLE.get(resolved.binding.role, ())
                 if kind in {GameFileType.YDR, GameFileType.YDD, GameFileType.YFT}
                 and kind in resolved.assets
             ),
@@ -353,7 +340,7 @@ def _resolve_binding_texture_chains(
                     resolved.texture_files.append(game_file)
             except CutsceneResolutionCancelled:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 issues.append(
                     CutsceneResolveIssue(
                         severity="warning",

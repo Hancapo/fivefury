@@ -1,0 +1,363 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from copy import deepcopy
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ...authoring import (
+    BuildContext,
+    DiagnosticSeverity,
+    ValidationReport,
+)
+from ...gamefile import GameFileType
+from ...ycd import YcdAnimationTrack
+from ..asset_kinds import CUT_DRAWABLE_KINDS_BY_ROLE
+from ..audio_references import (
+    cut_audio_asset_reference_hashes,
+    cut_audio_container_hints,
+    cut_audio_hint_rank,
+    cut_audio_reference_hash,
+    cut_event_references,
+)
+from ..reference_values import field_reference
+from .asset_context import CutAssetContext, CutContextAsset, cut_asset_reference_hash
+from .bindings import CutBinding, CutPed
+from .shared import _technical_cut_index
+
+if TYPE_CHECKING:
+    from ...ycd.model import YcdAnimation, YcdClip
+    from .authoring import CutsceneAssets
+    from .base import CutScene
+
+
+_BONE_TRACKS = {
+    int(YcdAnimationTrack.BONE_TRANSLATION),
+    int(YcdAnimationTrack.BONE_ROTATION),
+    int(YcdAnimationTrack.BONE_SCALE),
+    int(YcdAnimationTrack.BONE_CONSTRAINT),
+}
+
+
+def _severity(context: BuildContext) -> DiagnosticSeverity:
+    return (
+        DiagnosticSeverity.ERROR
+        if context.strict
+        else DiagnosticSeverity.WARNING
+    )
+
+
+def _field_hash(value: object) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return int(value) & 0xFFFFFFFF
+    except (TypeError, ValueError):
+        return cut_asset_reference_hash(str(value))
+
+
+def _scene_report(assets: CutsceneAssets) -> tuple[CutScene, ValidationReport]:
+    scene = deepcopy(assets.scene)
+    scene.clip_dicts = list(assets.ycds)
+    report = ValidationReport()
+    for issue in scene.validation_report(strict=True):
+        message = issue.message
+        if issue.hint:
+            message = f"{message} {issue.hint}"
+        report.issue(
+            issue.code,
+            message,
+            severity=(
+                DiagnosticSeverity.ERROR
+                if issue.severity == "error"
+                else DiagnosticSeverity.WARNING
+            ),
+            asset=assets.output_name,
+        )
+    return scene, report
+
+
+def _validate_ycd_paths(assets: CutsceneAssets, report: ValidationReport) -> None:
+    names: set[str] = set()
+    for index, ycd in enumerate(assets.ycds):
+        if not ycd.path:
+            report.issue(
+                "cut.ycd.path.missing",
+                f"Cutscene YCD section {index} has no output path",
+                asset=assets.output_name,
+                path=f"ycds[{index}].path",
+            )
+            continue
+        name = Path(ycd.path).name.casefold()
+        if name in names:
+            report.issue(
+                "cut.ycd.path.duplicate",
+                f"Duplicate cutscene YCD output name: {name}",
+                asset=assets.output_name,
+                path=f"ycds[{index}].path",
+            )
+        names.add(name)
+
+
+class _CutsceneContextValidator:
+    def __init__(
+        self,
+        scene: CutScene,
+        context: BuildContext,
+        report: ValidationReport,
+    ) -> None:
+        self.scene = scene
+        self.context = context
+        self.report = report
+        self.assets = CutAssetContext(context)
+        self.models: dict[int, tuple[object, str | int]] = {}
+
+    def validate(self) -> None:
+        self._validate_models()
+        self._validate_animation_skeletons()
+        self._validate_audio()
+
+    def _load(
+        self,
+        asset: CutContextAsset,
+        *,
+        code: str,
+        path: str,
+    ) -> object | None:
+        try:
+            value = asset.load()
+        except Exception as exc:  # noqa: BLE001
+            self.report.issue(
+                code,
+                f"Could not load {asset.path}: {type(exc).__name__}: {exc}",
+                severity=_severity(self.context),
+                asset=asset.path,
+                path=path,
+            )
+            return None
+        if value is None:
+            self.report.issue(
+                code,
+                f"Could not load {asset.path}",
+                severity=_severity(self.context),
+                asset=asset.path,
+                path=path,
+            )
+        return value
+
+    def _binding_reference(self, binding: CutBinding, field: str) -> str | int | None:
+        return field_reference(binding.fields.get(field))
+
+    def _validate_models(self) -> None:
+        for binding in self.scene.bindings:
+            kinds = CUT_DRAWABLE_KINDS_BY_ROLE.get(binding.role)
+            if not kinds:
+                continue
+            field_path = f"bindings[{binding.object_id}].StreamingName"
+            reference = self._binding_reference(binding, "StreamingName")
+            if reference is None:
+                continue
+            self._validate_ytyp(binding, reference)
+            asset = self.assets.find(reference, kinds)
+            if asset is None:
+                self.report.issue(
+                    "cut.binding.model.unresolved",
+                    f"No drawable or fragment matches {binding.display_name}",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path=field_path,
+                )
+                continue
+            model = self._load(
+                asset,
+                code="cut.binding.model.load_failed",
+                path=field_path,
+            )
+            if model is None:
+                continue
+            if self._drawable(model, reference) is None:
+                self.report.issue(
+                    "cut.binding.model.invalid",
+                    f"Asset is not a decoded drawable or fragment: {asset.path}",
+                    severity=_severity(self.context),
+                    asset=asset.path,
+                    path=field_path,
+                )
+                continue
+            self.models[binding.object_id] = (model, reference)
+
+    def _validate_ytyp(self, binding: CutBinding, model_reference: str | int) -> None:
+        type_reference = self._binding_reference(binding, "typeFile")
+        if type_reference is None:
+            return
+        field_path = f"bindings[{binding.object_id}].typeFile"
+        asset = self.assets.find(type_reference, (GameFileType.YTYP,))
+        if asset is None:
+            self.report.issue(
+                "cut.binding.ytyp.unresolved",
+                f"No YTYP matches typeFile for {binding.display_name}",
+                severity=_severity(self.context),
+                asset=self.scene.scene_name,
+                path=field_path,
+            )
+            return
+        ytyp = self._load(
+            asset,
+            code="cut.binding.ytyp.load_failed",
+            path=field_path,
+        )
+        if ytyp is None:
+            return
+        model_hash = cut_asset_reference_hash(model_reference)
+        archetypes = getattr(ytyp, "archetypes", ())
+        if not any(
+            model_hash
+            in {
+                _field_hash(getattr(archetype, "name", 0)),
+                _field_hash(getattr(archetype, "asset_name", 0)),
+            }
+            for archetype in archetypes
+        ):
+            self.report.issue(
+                "cut.binding.archetype.unresolved",
+                f"YTYP {asset.path} has no archetype for {binding.display_name}",
+                severity=_severity(self.context),
+                asset=asset.path,
+                path="archetypes",
+            )
+
+    @staticmethod
+    def _drawable(model: object, reference: str | int) -> object | None:
+        if hasattr(model, "skeleton"):
+            return model
+        finder = getattr(model, "get", None)
+        if callable(finder):
+            entry = finder(reference)
+            if entry is not None:
+                return getattr(entry, "drawable", None)
+        return getattr(model, "main_drawable", None)
+
+    @staticmethod
+    def _clip_animations(clip: YcdClip) -> Iterator[YcdAnimation]:
+        animation = getattr(clip, "animation", None)
+        if animation is not None:
+            yield animation
+        for entry in getattr(clip, "animations", ()):
+            animation = getattr(entry, "animation", None)
+            if animation is not None:
+                yield animation
+
+    def _validate_animation_skeletons(self) -> None:
+        seen: set[tuple[int, int]] = set()
+        for event in self.scene.timeline:
+            if event.event_name != "set_anim":
+                continue
+            object_id = event.payload.get("iObjectId")
+            if not isinstance(object_id, int) or object_id not in self.models:
+                continue
+            binding = self.scene.get_binding(object_id)
+            if binding is None:
+                continue
+            cut_index = _technical_cut_index(
+                self.scene.camera_cut_list, float(event.start)
+            )
+            clip = self.scene.clip_for_binding(binding, cut_index=cut_index)
+            if clip is None:
+                continue
+            model, reference = self.models[object_id]
+            drawable = self._drawable(model, reference)
+            skeleton = getattr(drawable, "skeleton", None)
+            bone_ids = {
+                int(bone.bone_id)
+                for animation in self._clip_animations(clip)
+                for bone in animation.bone_ids
+                if int(bone.track) in _BONE_TRACKS
+            }
+            if (
+                isinstance(binding, CutPed)
+                and binding.has_face_animation
+                and not any(
+                    animation.has_facial_animation
+                    for animation in self._clip_animations(clip)
+                )
+            ):
+                self.report.issue(
+                    "cut.binding.facial_tracks.missing",
+                    f"{binding.display_name} enables facial animation but its clip has no facial tracks",
+                    severity=_severity(self.context),
+                    asset=self.scene.scene_name,
+                    path=f"bindings[{object_id}].bFoundFaceAnimation",
+                )
+            for bone_id in sorted(bone_ids):
+                key = (object_id, bone_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if skeleton is None:
+                    valid = bone_id == 0
+                else:
+                    valid = (
+                        skeleton.get_bone_by_tag(bone_id) is not None
+                        or skeleton.get_bone_by_index(bone_id) is not None
+                    )
+                if not valid:
+                    self.report.issue(
+                        "cut.binding.skeleton.bone_unresolved",
+                        f"{binding.display_name} animation references missing bone {bone_id}",
+                        severity=_severity(self.context),
+                        asset=self.scene.scene_name,
+                        path=f"bindings[{object_id}].animation.bones[{bone_id}]",
+                    )
+
+    def _validate_audio(self) -> None:
+        references = cut_event_references(self.scene, {"load_audio", "play_audio"})
+        if not references:
+            return
+        hints = cut_audio_container_hints(self.scene, references)
+        candidates = tuple(self.assets.iter_kind(GameFileType.AWC))
+        for reference in references:
+            reference_hash = cut_audio_reference_hash(reference)
+            matches = [
+                asset
+                for asset in candidates
+                if reference_hash in cut_audio_asset_reference_hashes(asset)
+                or cut_audio_hint_rank(asset, hints.get(reference, ())) is not None
+            ]
+            if not matches:
+                self.report.issue(
+                    "cut.audio.container.unresolved",
+                    f"No AWC container matches CUT audio cue {reference!s}",
+                    severity=DiagnosticSeverity.WARNING,
+                    asset=self.scene.scene_name,
+                    path="timeline.audio",
+                )
+                continue
+            awc = self._load(
+                matches[0],
+                code="cut.audio.container.load_failed",
+                path="timeline.audio",
+            )
+            if awc is not None and not hasattr(awc, "streams"):
+                self.report.issue(
+                    "cut.audio.container.invalid",
+                    f"Asset is not a decoded AWC: {matches[0].path}",
+                    severity=_severity(self.context),
+                    asset=matches[0].path,
+                    path="timeline.audio",
+                )
+
+
+def validate_cutscene_assets(
+    assets: CutsceneAssets,
+    *,
+    context: BuildContext | None = None,
+) -> ValidationReport:
+    _validate_ycd_paths(assets, report := ValidationReport())
+    scene, scene_report = _scene_report(assets)
+    report.extend(scene_report)
+    if context is not None:
+        _CutsceneContextValidator(scene, context, report).validate()
+    return report
+
+
+__all__ = ["validate_cutscene_assets"]

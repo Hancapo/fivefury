@@ -5,6 +5,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from ...gamefile import GameFile, GameFileType
+from ..reference_values import field_reference, subtitle_hash
 from ..scene import CutScene
 from .common import _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutSubtitleDictionary
@@ -12,7 +13,6 @@ from .runtime import (
     CutsceneResolutionCancellation,
     check_cutscene_resolution_cancelled,
 )
-from .values import field_reference, subtitle_hash
 
 if TYPE_CHECKING:
     from ...cache import AssetRecord, GameFileCache
@@ -117,7 +117,7 @@ def _resolve_subtitle_dictionaries(
             check_cutscene_resolution_cancelled(cancellation)
             try:
                 game_file = cache.load_asset(asset)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 game_file = None
                 _ = exc
             if game_file is None or game_file.parsed is None:

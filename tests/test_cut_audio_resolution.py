@@ -5,10 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from fivefury import CutScene, CutTimelineEvent, MetaHash
-from fivefury.cut.resolution.audio import (
-    _audio_container_hints,
-    _resolve_audio,
-)
+from fivefury.cut.audio_references import cut_audio_container_hints
+from fivefury.cut.resolution.audio import _resolve_audio
 from fivefury.gamefile import GameFileType
 
 
@@ -44,7 +42,7 @@ def test_audio_container_hint_comes_from_the_target_audio_object() -> None:
         )
     )
 
-    assert _audio_container_hints(scene, (reference,)) == {
+    assert cut_audio_container_hints(scene, (reference,)) == {
         reference: ("sum23_cm1_int",)
     }
 
