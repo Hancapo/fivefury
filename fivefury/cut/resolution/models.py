@@ -15,6 +15,7 @@ from ..scene import CutBinding, CutScene
 
 if TYPE_CHECKING:
     from ...cache import AssetRecord
+    from ...vehiclemeta import ResolvedVehicleAppearance
     from ...ycd import Ycd
     from ...yed import PedExpressionSet
     from .runtime import CutsceneResolutionTrace
@@ -95,6 +96,7 @@ class ResolvedCutBinding:
     ped_init_data_candidates: tuple[Any, ...] = ()
     ped_init_data: Any | None = None
     resolved_expression_set: ResolvedPedExpressionSet | None = None
+    vehicle_appearance: ResolvedVehicleAppearance | None = None
 
     @property
     def model_file(self) -> GameFile | None:

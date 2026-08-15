@@ -193,6 +193,23 @@ def parse_css_argb(value: CssColor) -> int:
     return (a << 24) | (r << 16) | (g << 8) | b
 
 
+def srgb_channel_to_linear(value: float) -> float:
+    channel = _clamp_unit(value)
+    if channel <= 0.04045:
+        return channel / 12.92
+    return ((channel + 0.055) / 1.055) ** 2.4
+
+
+def srgb_rgba_to_linear(value: RGBA8) -> RGBAUnit:
+    r, g, b, a = value
+    return (
+        srgb_channel_to_linear(r / 255.0),
+        srgb_channel_to_linear(g / 255.0),
+        srgb_channel_to_linear(b / 255.0),
+        a / 255.0,
+    )
+
+
 __all__ = [
     "CSS_NAMED_COLORS",
     "RGB8",
@@ -205,4 +222,6 @@ __all__ = [
     "parse_css_rgb_unit",
     "parse_css_rgba",
     "parse_css_rgba_unit",
+    "srgb_channel_to_linear",
+    "srgb_rgba_to_linear",
 ]

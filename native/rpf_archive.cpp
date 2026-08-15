@@ -179,8 +179,9 @@ std::int32_t guess_kind(std::string_view path) {
     }
     static const std::unordered_map<std::string_view, std::int32_t> kind_by_name = {
         {"gta5_cache_y.dat", 36}, {"gtxd.meta", 26}, {"vehicles.meta", 18},
-        {"handling.meta", 35},    {"carcols.meta", 19}, {"carmodcols.meta", 20},
-        {"carvariations.meta", 21}, {"vehiclelayouts.meta", 22},
+        {"handling.meta", 35},    {"carcols.meta", 19}, {"carcols.ymt", 19},
+        {"carmodcols.meta", 20}, {"carvariations.meta", 21},
+        {"carvariations.ymt", 21}, {"vehiclelayouts.meta", 22},
         {"peds.meta", 23}, {"water.xml", 29}, {"expression_sets.xml", 37},
     };
     const auto named_kind = kind_by_name.find(name);

@@ -13,6 +13,7 @@ from fivefury import (
     CutsceneResolutionCancelled,
     CutTimelineEvent,
     GameFileCache,
+    GameTarget,
     MetaHash,
     ResolvedCutBinding,
     YmtPedInitData,
@@ -45,8 +46,13 @@ def _configured_game_paths() -> list[tuple[str, Path]]:
     ids=lambda item: item[0],
 )
 def game_cache(request: pytest.FixtureRequest):
-    _edition, game_path = request.param
-    with GameFileCache(game_path, use_index_cache=True) as cache:
+    edition, game_path = request.param
+    enhanced = edition == "enhanced"
+    with GameFileCache(
+        game_path,
+        game=GameTarget.GTA5_ENHANCED if enhanced else GameTarget.GTA5,
+        use_index_cache=True,
+    ) as cache:
         cache.scan()
         yield cache
 
@@ -280,6 +286,12 @@ def test_resolve_cutscene_loads_only_direct_cut_dependencies(
     )
     vehicle = next(
         item for item in bundle.bindings.values() if item.binding.role == "vehicle"
+    )
+    assert vehicle.vehicle_appearance is not None
+    assert all(
+        item.vehicle_appearance is None
+        for item in bundle.bindings.values()
+        if item.binding.role != "vehicle"
     )
     assert vehicle.texture_files
     assert any(asset.stem.lower() == "vehshare" for asset in vehicle.texture_assets)

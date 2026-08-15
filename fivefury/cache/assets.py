@@ -19,6 +19,8 @@ from ..ytyp.archetypes import ArchetypeAssetType, coerce_archetype_asset_type
 from .precedence import preferred_asset
 
 if TYPE_CHECKING:  # pragma: no cover
+    from ..cut.payloads import CutVehicleVariationPayload
+    from ..vehiclemeta import ResolvedVehicleAppearance
     from .views import AssetRecord
 
 _EMBEDDED_TEXTURE_RESOURCE_TYPES = frozenset(RESOURCE_TEXTURE_ASSET_TYPES)
@@ -45,6 +47,16 @@ class TextureRef:
 
 
 class GameFileCacheAssetMixin:
+    def resolve_vehicle_appearance(
+        self,
+        binding_or_model: Any,
+        *,
+        variation: CutVehicleVariationPayload | None = None,
+    ) -> ResolvedVehicleAppearance:
+        from .vehicle_appearance import resolve_vehicle_appearance
+
+        return resolve_vehicle_appearance(self, binding_or_model, variation=variation)
+
     def iter_archetypes(self) -> Iterator[Any]:
         yield from self.archetype_dict.values()
 

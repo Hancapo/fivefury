@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .texture_resolution import TextureResolution
 
 from ..crypto import GameCrypto
+from ..game_target import GameTarget, coerce_game_target
 from ..gamefile import GameFile, GameFileType, guess_game_file_type
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
@@ -84,6 +85,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     max_loaded_files: int = 256
     max_cached_payload_bytes: int = 256 * 1024 * 1024
     register_resolver_names: bool = False
+    game: GameTarget | str = GameTarget.GTA5
     verbose: bool = False
     archives: list[RpfArchive] = field(default_factory=list)
     files: OrderedDict[str, GameFile] = field(default_factory=OrderedDict)
@@ -125,6 +127,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         init=False,
         repr=False,
     )
+    _vehicle_appearance_index: Any | None = field(default=None, init=False, repr=False)
     _payload_cache: OrderedDict[tuple[int, bool], bytes] = field(
         default_factory=OrderedDict,
         init=False,
@@ -133,6 +136,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     _payload_cache_bytes: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.game = coerce_game_target(self.game)
         if self.resolver is None:
             self.resolver = get_hash_resolver()
         self._exclude_prefixes = _coerce_folder_prefixes(self.exclude_folders)
@@ -200,6 +204,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._rel_sound_index = None
         self._rel_sound_asset_count = -1
         self._rel_sound_index_errors = ()
+        self._vehicle_appearance_index = None
 
     def ensure_rel_sound_index(self) -> RelSoundIndex:
         from ..rel import RelFile, RelSoundIndex

@@ -12,12 +12,13 @@ from typing import Any
 
 from .._native import CompactIndex, NativeCryptoContext, scan_rpf_batch_into_index
 from ..crypto import GameCrypto, load_game_keys
+from ..game_target import GameTarget
 from ..gamefile import GameFileType, guess_game_file_type
 from ..hashing import _get_lut
 from ..rpf import RpfArchive, RpfFileEntry
 from ..rpf.utils import _normalize_key
 
-_SCAN_INDEX_VERSION = 12
+_SCAN_INDEX_VERSION = 13
 _SCAN_GC_INTERVAL = 8
 
 _FLAG_LOOSE = 1
@@ -345,7 +346,7 @@ class GameFileCacheScanMixin:
         exe_path: str | Path | None = None,
         magic_path: str | Path | None = None,
         aes_key: bytes | str | None = None,
-        gen9: bool = False,
+        gen9: bool | None = None,
         cache_path: str | Path | None = None,
         use_cache: bool = True,
     ) -> GameCrypto:
@@ -389,6 +390,8 @@ class GameFileCacheScanMixin:
         started_at = time.perf_counter()
         if root is not None:
             self.root = root
+        if gen9 is None:
+            gen9 = self.game is GameTarget.GTA5_ENHANCED
         if self.root is None:
             raise ValueError("A root directory is required")
         if dlc_level is not None:

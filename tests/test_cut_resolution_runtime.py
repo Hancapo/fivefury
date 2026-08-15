@@ -39,6 +39,7 @@ def test_cutscene_resolution_trace_records_resolver_phases(tmp_path) -> None:
         "cut",
         "animations",
         "bindings",
+        "vehicle_appearances",
         "facial_resources",
         "ped_components",
         "textures",
