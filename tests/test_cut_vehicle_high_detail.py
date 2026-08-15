@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from fivefury import CutBinding, GameFileCache, ResolvedCutBinding
+from fivefury import CutBinding, GameFileCache, GameTarget, ResolvedCutBinding
+from fivefury.cut.resolution.bindings import _resolve_binding_texture_chains
 from fivefury.cut.resolution.vehicles import _resolve_vehicle_high_detail_models
 from fivefury.gamefile import GameFile, GameFileType
+from fivefury.metahash import MetaHash
 
 
 def _cache(tmp_path: Path, *paths: str) -> GameFileCache:
@@ -17,6 +21,21 @@ def _cache(tmp_path: Path, *paths: str) -> GameFileCache:
     cache = GameFileCache(tmp_path, use_index_cache=False)
     cache.scan(use_index_cache=False)
     return cache
+
+
+def _configured_retail_game_paths() -> list[tuple[str, Path, GameTarget]]:
+    result = []
+    for edition, variable, game in (
+        ("legacy", "FIVEFURY_GTA5_LEGACY_PATH", GameTarget.GTA5),
+        ("enhanced", "FIVEFURY_GTA5_ENHANCED_PATH", GameTarget.GTA5_ENHANCED),
+    ):
+        value = os.environ.get(variable)
+        if value and Path(value).is_dir():
+            result.append((edition, Path(value), game))
+    return result
+
+
+_RETAIL_GAME_PATHS = _configured_retail_game_paths()
 
 
 def _binding(
@@ -165,3 +184,88 @@ def test_vehicle_high_detail_invalid_companion_warns_and_keeps_base(
     assert issues[0].code == "binding.vehicle_high_detail_invalid"
     assert issues[0].object_id == 10
     assert issues[0].asset_path.endswith("rancherxl_hi.yft")
+
+
+def test_vehicle_high_detail_and_base_models_are_texture_resolution_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _cache(
+        tmp_path,
+        "rancherxl.yft",
+        "rancherxl_hi.yft",
+        "rancherxl_base.ytd",
+        "rancherxl_high.ytd",
+    )
+    resolved = _binding(cache, "rancherxl", object_id=10)
+    base_asset = resolved.assets[GameFileType.YFT]
+    high_asset = cache.get_asset("rancherxl_hi", kind=GameFileType.YFT)
+    assert high_asset is not None
+    cache._archetype_view = {
+        base_asset.short_hash: SimpleNamespace(
+            name=MetaHash("rancherxl"),
+            asset_name=MetaHash("rancherxl"),
+            texture_dictionary=MetaHash("rancherxl_base"),
+        ),
+        high_asset.short_hash: SimpleNamespace(
+            name=MetaHash("rancherxl_hi"),
+            asset_name=MetaHash("rancherxl_hi"),
+            texture_dictionary=MetaHash("rancherxl_high"),
+        ),
+    }
+
+    monkeypatch.setattr(
+        GameFileCache,
+        "load_asset",
+        lambda _cache, asset: GameFile(
+            path=asset.path,
+            kind=asset.kind,
+            parsed=asset.stem,
+            loaded=True,
+        ),
+    )
+    issues = []
+
+    _resolve_vehicle_high_detail_models(cache, {10: resolved}, issues)
+    _resolve_binding_texture_chains(cache, {10: resolved}, issues)
+
+    assert [asset.stem for asset in resolved.texture_assets] == [
+        "rancherxl_high",
+        "rancherxl_base",
+    ]
+    assert not issues
+
+
+@pytest.mark.parametrize(
+    ("_edition", "game_path", "game"),
+    _RETAIL_GAME_PATHS,
+    ids=[entry[0] for entry in _RETAIL_GAME_PATHS],
+)
+def test_retail_pro_mcs_5_resolves_vehicle_high_detail_models(
+    _edition: str,
+    game_path: Path,
+    game: GameTarget,
+) -> None:
+    with GameFileCache(
+        game_path,
+        game=game,
+        load_audio=False,
+        load_peds=False,
+        load_vehicles=True,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan()
+        bundle = cache.resolve_cutscene("pro_mcs_5.cut")
+
+    for object_id, base_stem in ((10, "rancherxl"), (27, "policeold2")):
+        resolved = bundle.bindings[object_id]
+        assert resolved.assets[GameFileType.YFT].stem.casefold() == base_stem
+        assert resolved.high_detail_model_asset is not None
+        assert resolved.high_detail_model_asset.stem.casefold() == f"{base_stem}_hi"
+        assert resolved.high_detail_model_file is not None
+        assert resolved.model_file is resolved.high_detail_model_file
+    assert not {
+        issue.object_id
+        for issue in bundle.issues
+        if issue.code == "binding.vehicle_high_detail_invalid"
+    } & {10, 27}
