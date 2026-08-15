@@ -783,6 +783,55 @@ def _validate_cameras(
                         ),
                     )
 
+            camera_cut_times = [
+                float(event.start)
+                for event in _events_by_name(scene, "camera_cut")
+                if _event_target_id(event) == camera.object_id
+            ]
+            active_from = min(camera_cut_times, default=0.0)
+            binding_times = [
+                float(event.start)
+                for event in _events_by_name(scene, "set_anim")
+                if _event_object_payload_id(event) == camera.object_id
+                and (
+                    (target_id := _event_target_id(event)) is not None
+                    and (target := scene.get_binding(target_id)) is not None
+                    and target.role == "animation_manager"
+                )
+            ]
+            concat_data = (
+                scene.raw.root.fields.get("concatDataList") or ()
+                if scene.raw is not None
+                else ()
+            )
+            section_starts = [
+                float(item.fields.get("fStartTime", 0.0))
+                for item in concat_data
+                if item.fields.get("bValidForPlayBack", True)
+            ] or [0.0, *(float(value) for value in scene.camera_cut_list or ())]
+            section_ends = [
+                *section_starts[1:],
+                float(scene.duration or 0.0),
+            ]
+            for section_index, (section_start, section_end) in enumerate(
+                zip(section_starts, section_ends, strict=True)
+            ):
+                binding_time = max(active_from, section_start)
+                if (
+                    clip_base in clip_bases_by_section.get(section_index, set())
+                    and active_from < section_end
+                    and not any(
+                        abs(event_time - binding_time) <= (1.0 / CUT_FPS)
+                        for event_time in binding_times
+                    )
+                ):
+                    _issue(
+                        issues,
+                        "error",
+                        "camera.animation_binding.missing",
+                        f"{_binding_name(camera)} has no SET_ANIM binding in technical YCD section {section_index}",
+                    )
+
     camera_events = _events_by_name(scene, "camera_cut")
     if strict and not camera_events:
         _issue(

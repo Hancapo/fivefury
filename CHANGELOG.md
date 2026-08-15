@@ -9,7 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
-- Animated CUT cameras now bind their technical YCD clips in every active section.
+- Animated CUT cameras now bind their technical YCD clips in every active section, with cross-asset validation for missing runtime bindings.
 
 ## [0.4.5] - 2026-08-15
 

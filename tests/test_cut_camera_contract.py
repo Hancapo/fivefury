@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,23 @@ def _animated_camera_project() -> tuple[CutsceneProject, CutCamera]:
         far_clip=2000.0,
     )
     return project, camera
+
+
+def _remove_camera_set_anim(
+    project: CutsceneProject,
+    camera: CutCamera,
+    *, start: float | None = None,
+) -> None:
+    for track in project.scene.tracks:
+        track.events[:] = [
+            event
+            for event in track.events
+            if not (
+                event.event_name == "set_anim"
+                and event.payload["iObjectId"] == camera.object_id
+                and (start is None or event.start == start)
+            )
+        ]
 
 
 def test_project_camera_authors_runtime_binding_and_sampled_cut_pose() -> None:
@@ -221,6 +239,62 @@ def test_camera_contract_reports_missing_section_clip() -> None:
     report = assets.validate()
 
     assert "camera.binding.clip.missing" in {
+        issue.code for issue in report.errors
+    }
+
+
+def test_camera_contract_reports_missing_runtime_animation_binding() -> None:
+    project, camera = _animated_camera_project()
+    _remove_camera_set_anim(project, camera, start=1.0)
+
+    report = project.build().validate()
+
+    assert "camera.animation_binding.missing" in {
+        issue.code for issue in report.errors
+    }
+
+
+def test_camera_binding_validation_is_inspection_only() -> None:
+    project, camera = _animated_camera_project()
+    _remove_camera_set_anim(project, camera)
+    timeline = list(project.scene.timeline)
+
+    report = project.build().validate()
+
+    assert "camera.animation_binding.missing" in {
+        issue.code for issue in report.errors
+    }
+    assert project.scene.timeline == timeline
+
+
+def test_camera_binding_validation_uses_external_concat_boundaries() -> None:
+    project = CutsceneProject.create(
+        "external_concat_camera",
+        duration=2.0,
+        camera_cuts=[1.0],
+    )
+    camera = project.camera(
+        position=(0.0, 0.0, 1.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    assets = project.build().build()
+    raw = project.scene.to_cut()
+    camera_events = [
+        event
+        for event in project.scene.timeline
+        if event.event_name == "set_anim"
+        and event.payload["iObjectId"] == camera.object_id
+    ]
+    camera_events[1].start = 0.5
+    first_section = raw.root.fields["concatDataList"][0]
+    second_section = deepcopy(first_section)
+    second_section.fields["fStartTime"] = 0.5
+    raw.root.fields["concatDataList"] = [first_section, second_section]
+    project.scene.raw = raw
+
+    report = assets.validate()
+
+    assert "camera.animation_binding.missing" not in {
         issue.code for issue in report.errors
     }
 
