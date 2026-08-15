@@ -12,7 +12,7 @@ from ..resource import (
     ResourceChunk,
     ResourceHeader,
     parse_rsc7,
-    validate_resource_pointer,
+    resolve_resource_pointer,
 )
 from ..ydr.fixups import audit_fragment_drawable_fixups
 from .bound_profiles import (
@@ -91,7 +91,7 @@ class _YftBinaryValidator:
                 )
             return None
         try:
-            chunk = validate_resource_pointer(
+            chunk = resolve_resource_pointer(
                 self.header,
                 pointer,
                 size=size,

@@ -792,7 +792,7 @@ def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
     scene.clip_dictionary(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)
 
-    assert scene.validate_animations() == []
+    assert not scene.validate_animations()
 
 
 def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None:
@@ -817,13 +817,15 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
     scene.clip_dictionary(second.build_ycds()[0])
     scene.set_anim(1.0, prop, target=manager)
 
-    assert scene.validate_animations() == []
+    assert not scene.validate_animations()
     assert not any(
         issue.code == "set_anim.clip.missing" for issue in scene.validate()
     )
 
     scene.timeline[-1].start = 0.0
-    assert any("target-0" in warning for warning in scene.validate_animations())
+    assert any(
+        "target-0" in issue.message for issue in scene.validate_animations().warnings
+    )
     assert any(issue.code == "set_anim.clip.missing" for issue in scene.validate())
 
 
@@ -846,7 +848,8 @@ def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
     scene.set_anim(0.0, prop, target=manager)
 
     assert any(
-        "miku_hatsune_metal-0" in warning for warning in scene.validate_animations()
+        "miku_hatsune_metal-0" in issue.message
+        for issue in scene.validate_animations().warnings
     )
 
 
