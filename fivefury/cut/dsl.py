@@ -552,6 +552,11 @@ class _CutScriptParser:
             self._register(name, scene.animation_manager(name), line_no)
         elif command == "CAMERA":
             _expect_count(tokens, line_no, 2, "CAMERA name")
+            if scene.cameras:
+                raise CutScriptError(
+                    line_no,
+                    "a CUTSCENE supports one runtime CAMERA; use multiple CUT events for shots",
+                )
             name = _block_name(tokens[1], line_no, "camera")
             self._register(name, scene.camera(name), line_no)
         elif command in _STREAMED_MODEL_COMMANDS:

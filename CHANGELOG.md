@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - CUT resolution for high-detail vehicle fragments and their texture dependencies.
+- Runtime camera authoring and cross-asset validation for CUT/YCD projects.
 
 ## [0.4.4] - 2026-08-15
 

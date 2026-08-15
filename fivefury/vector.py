@@ -35,6 +35,20 @@ def vec4(value: Iterable[float]) -> Vector4:
     return (float(x), float(y), float(z), float(w))
 
 
+def is_finite_vector(value: object, size: int) -> bool:
+    if not isinstance(value, Iterable) or isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return False
+    try:
+        components = tuple(value)
+        return len(components) == size and all(
+            math.isfinite(float(component)) for component in components
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def vec4_map(value: Vector4, operation: Callable[[float], float]) -> Vector4:
     return tuple(operation(component) for component in value)  # type: ignore[return-value]
 
