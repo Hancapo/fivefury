@@ -60,9 +60,7 @@ class Ymf(MetaResource):
             return self.raw_bytes
         manifest = self.manifest
         if manifest is not None:
-            issues = manifest.validate(permanent_ytyps=self.permanent_ytyps)
-            if issues:
-                raise ValueError("Invalid YMF manifest:\n- " + "\n- ".join(issues))
+            manifest.validate(permanent_ytyps=self.permanent_ytyps).raise_for_errors()
             self.meta = manifest.to_meta(name=self.name)
             return build_ymf_pso(manifest, self.pso_template)
         return self.meta.to_rsc7()

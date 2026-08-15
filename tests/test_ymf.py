@@ -236,7 +236,7 @@ def test_ymf_runtime_fixture_rebuilds_byte_identically() -> None:
     source = (YMF_FIXTURES / "burgershot_manifest.runtime.ymf").read_bytes()
     ymf = read_ymf(source)
 
-    assert validate_ymf_pso_layout(source) == []
+    assert validate_ymf_pso_layout(source).valid
     assert ymf.to_bytes() == source
 
 
@@ -247,7 +247,7 @@ def test_ymf_runtime_validation_rejects_out_of_range_block_pointer() -> None:
 
     issues = validate_ymf_pso_layout(bytes(source))
 
-    assert any("missing block 4095" in issue for issue in issues)
+    assert any(issue.code == "ymf.pso.array.block.missing" for issue in issues)
 
 
 def test_ymf_rewrite_preserves_unknown_pso_sections() -> None:
@@ -260,7 +260,7 @@ def test_ymf_rewrite_preserves_unknown_pso_sections() -> None:
     rebuilt_sections = parse_sections(ymf.to_bytes())
 
     assert rebuilt_sections[int.from_bytes(b"TEST", "big")] == extra_section
-    assert validate_ymf_pso_layout(ymf.to_bytes()) == []
+    assert validate_ymf_pso_layout(ymf.to_bytes()).valid
 
 
 def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
@@ -345,7 +345,7 @@ def test_build_ymf_manifest_marks_the_ytyp_holding_an_mlo_as_an_interior_type() 
     ]
     assert [str(entry.ityp_name) for entry in interior_types] == ["custom_ityp"]
     assert list(interior_types[0].ityp_dependencies) == []
-    assert manifest.validate() == []
+    assert manifest.validate().valid
 
 
 def test_build_ymf_manifest_leaves_plain_ytyps_unflagged() -> None:
@@ -387,7 +387,7 @@ def test_build_ymf_manifest_registers_mlo_static_bounds_when_ybn_is_packaged() -
     assert len(manifest.interiors) == 1
     assert int(manifest.interiors[0].name) == int(mlo.name)
     assert [int(bound) for bound in manifest.interiors[0].bounds] == [int(mlo.name)]
-    assert manifest.validate() == []
+    assert manifest.validate().valid
 
 
 def test_build_ymf_manifest_registers_standalone_mlo_rpf_without_ymap() -> None:
@@ -430,10 +430,7 @@ def test_ymf_validation_counts_unique_imap_dependencies_across_entries() -> None
 
     issues = manifest.validate()
 
-    assert any(
-        "7 dynamic YTYP dependencies" in issue and "at most 6" in issue
-        for issue in issues
-    )
+    assert any(issue.code == "ymf.imap_dependencies.capacity" for issue in issues)
 
 
 def test_ymf_validation_does_not_count_duplicate_or_permanent_imap_dependencies() -> (
@@ -446,7 +443,7 @@ def test_ymf_validation_does_not_count_duplicate_or_permanent_imap_dependencies(
         ],
     )
 
-    assert manifest.validate(permanent_ytyps=["parent_6"]) == []
+    assert manifest.validate(permanent_ytyps=["parent_6"]).valid
     assert build_ymf(manifest, permanent_ytyps=["parent_6"]).to_bytes()
 
 
@@ -462,9 +459,7 @@ def test_ymf_validation_counts_unique_ityp_parents_across_entries() -> None:
 
     issues = manifest.validate()
 
-    assert any(
-        "9 dynamic parent YTYPs" in issue and "at most 8" in issue for issue in issues
-    )
+    assert any(issue.code == "ymf.ityp_dependencies.capacity" for issue in issues)
 
 
 def test_ymf_writer_rejects_runtime_dependency_overflow() -> None:
@@ -486,8 +481,8 @@ def test_ymf_validation_rejects_non_hour_bits_and_oversized_arrays() -> None:
     invalid_hours = MapDataGroup("timed_group", hours_on_off=1 << 24)
     oversized = MapDataGroup("large_group", bounds=[0] * (YMF_MAX_ARRAY_ITEMS + 1))
 
-    assert any("hours 0 through 23" in issue for issue in invalid_hours.validate())
-    assert any("support at most 65534" in issue for issue in oversized.validate())
+    assert any(issue.code == "ymf.map_group.hours.range" for issue in invalid_hours.validate())
+    assert any(issue.code == "ymf.array.capacity" for issue in oversized.validate())
 
 
 def test_ymf_validation_rejects_duplicate_map_data_groups() -> None:
@@ -495,6 +490,4 @@ def test_ymf_validation_rejects_duplicate_map_data_groups() -> None:
         map_data_groups=[MapDataGroup("managed_group"), MapDataGroup("managed_group")],
     )
 
-    assert any(
-        "repeats map data group managed_group" in issue for issue in manifest.validate()
-    )
+    assert any(issue.code == "ymf.map_group.duplicate" for issue in manifest.validate())

@@ -5,6 +5,7 @@ import struct
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..meta.defs import META_NAME_REVERSE
 from ..metahash import HashLike, MetaHash
 from ..pso.codec import (
@@ -332,9 +333,7 @@ def build_ymf_pso(
     else:
         output = b"".join(sections)
 
-    issues = validate_ymf_pso_layout(output)
-    if issues:
-        raise ValueError("Invalid generated YMF PSO:\n- " + "\n- ".join(issues))
+    validate_ymf_pso_layout(output).raise_for_errors()
     return output
 
 
@@ -364,55 +363,64 @@ def _validate_array_pointer(
     expected_type: int,
     stride: int,
     label: str,
-) -> list[str]:
+) -> ValidationReport:
+    issues = ValidationReport()
     header = decode_array_header(psin, owner_offset + field_offset)
     if header.count == 0:
-        return [] if header.pointer.is_null else [f"{label} has a pointer with a zero count"]
+        if not header.pointer.is_null:
+            issues.issue("ymf.pso.array.zero_count_pointer", f"{label} has a pointer with a zero count", path=label)
+        return issues
     target = blocks.get(header.pointer.block_id)
     if target is None:
-        return [f"{label} references missing block {header.pointer.block_id}"]
-    issues: list[str] = []
+        issues.issue("ymf.pso.array.block.missing", f"{label} references missing block {header.pointer.block_id}", path=label)
+        return issues
     if target.name_hash != expected_type:
-        issues.append(
-            f"{label} references block type 0x{target.name_hash:08X}, expected 0x{expected_type:08X}"
+        issues.issue(
+            "ymf.pso.array.block_type",
+            f"{label} references block type 0x{target.name_hash:08X}, expected 0x{expected_type:08X}",
+            path=label,
         )
     end = header.pointer.offset + header.count * stride
     if header.pointer.offset < 0 or end > target.length:
-        issues.append(
-            f"{label} range {header.pointer.offset}:{end} exceeds block length {target.length}"
+        issues.issue(
+            "ymf.pso.array.range",
+            f"{label} range {header.pointer.offset}:{end} exceeds block length {target.length}",
+            path=label,
         )
     return issues
 
 
-def validate_ymf_pso_layout(data: bytes) -> list[str]:
+def validate_ymf_pso_layout(data: bytes) -> ValidationReport:
     try:
         sections = parse_sections(data)
         psin = sections[PSIN]
         blocks, root_block_id = parse_pmap(sections[PMAP])
         psch = sections[PSCH]
     except (KeyError, ValueError, IndexError, struct.error) as exc:
-        return [f"invalid PSO structure: {exc}"]
+        issues = ValidationReport()
+        issues.issue("ymf.pso.structure.invalid", f"invalid PSO structure: {exc}")
+        return issues
 
-    issues: list[str] = []
+    issues = ValidationReport()
     if psin[8:16] != b"\x00" * 8:
-        issues.append("PSIN must use the eight-byte zero prefix")
+        issues.issue("ymf.pso.psin.prefix", "PSIN must use the eight-byte zero prefix", path="PSIN")
     if PSIG in sections:
-        issues.append("PSIG is not valid for the runtime YMF profile")
+        issues.issue("ymf.pso.psig.unsupported", "PSIG is not valid for the runtime YMF profile", path="PSIG")
     root_block = blocks.get(root_block_id)
     if root_block is None:
-        issues.append(f"PMAP root block {root_block_id} does not exist")
+        issues.issue("ymf.pso.root.missing", f"PMAP root block {root_block_id} does not exist", path="PMAP.root")
         return issues
     if root_block.name_hash != YMF_PSO_ROOT:
-        issues.append(f"PMAP root type is 0x{root_block.name_hash:08X}, expected 0x{YMF_PSO_ROOT:08X}")
+        issues.issue("ymf.pso.root.type", f"PMAP root type is 0x{root_block.name_hash:08X}, expected 0x{YMF_PSO_ROOT:08X}", path="PMAP.root")
     if root_block_id != len(blocks):
-        issues.append("the YMF root must be the final PMAP block")
+        issues.issue("ymf.pso.root.order", "the YMF root must be the final PMAP block", path="PMAP.root")
     if root_block.length != YMF_PSO_STRUCTS[YMF_PSO_ROOT].length:
-        issues.append(f"YMF root length is {root_block.length}, expected 96")
+        issues.issue("ymf.pso.root.length", f"YMF root length is {root_block.length}, expected 96", path="PMAP.root")
     if any(block.name_hash == 1 for block in blocks.values()):
-        issues.append("anonymous PSO blocks are not valid for YMF hash arrays")
+        issues.issue("ymf.pso.block.anonymous", "anonymous PSO blocks are not valid for YMF hash arrays", path="PMAP.blocks")
     hash_blocks = [block for block in blocks.values() if block.name_hash == PsoDataTypeUInt]
     if len(hash_blocks) > 1:
-        issues.append("YMF hash arrays must share one UInt block")
+        issues.issue("ymf.pso.hash_blocks.multiple", "YMF hash arrays must share one UInt block", path="PMAP.blocks")
 
     for field_offset, expected_type in _ROOT_ARRAY_FIELDS:
         issues.extend(
@@ -434,8 +442,10 @@ def validate_ymf_pso_layout(data: bytes) -> list[str]:
             continue
         stride = YMF_PSO_STRUCTS[block.name_hash].length
         if block.length % stride:
-            issues.append(
-                f"block {block_id} length {block.length} is not aligned to structure size {stride}"
+            issues.issue(
+                "ymf.pso.block.alignment",
+                f"block {block_id} length {block.length} is not aligned to structure size {stride}",
+                path=f"PMAP.blocks[{block_id}]",
             )
             continue
         for item_offset in range(0, block.length, stride):
@@ -461,7 +471,7 @@ def validate_ymf_pso_layout(data: bytes) -> list[str]:
     }
     missing_enums = required_enums.difference(enums)
     for enum_hash in sorted(missing_enums):
-        issues.append(f"PSCH is missing enum 0x{enum_hash:08X}")
+        issues.issue("ymf.pso.enum.missing", f"PSCH is missing enum 0x{enum_hash:08X}", path="PSCH")
     return issues
 
 

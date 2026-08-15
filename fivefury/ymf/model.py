@@ -6,6 +6,8 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..meta import Meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
@@ -58,11 +60,14 @@ def _ymf_enum_infos():
     return YMF_ENUM_INFOS
 
 
-def _array_size_issue(name: str, values: Sequence[Any]) -> str | None:
+def _check_array_size(report: ValidationReport, path: str, values: Sequence[Any]) -> None:
     count = len(values)
-    if count <= YMF_MAX_ARRAY_ITEMS:
-        return None
-    return f"{name} has {count} entries; YMF arrays support at most {YMF_MAX_ARRAY_ITEMS}"
+    if count > YMF_MAX_ARRAY_ITEMS:
+        report.issue(
+            "ymf.array.capacity",
+            f"{path} has {count} entries; YMF arrays support at most {YMF_MAX_ARRAY_ITEMS}",
+            path=path,
+        )
 
 
 @dataclasses.dataclass(slots=True)
@@ -123,14 +128,13 @@ class MapDataGroup(MetaHashFieldsMixin):
     def __post_init__(self) -> None:
         self.flags = PackFileMetaDataImapGroupType(int(self.flags))
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        issues = ValidationReport()
         if int(self.hours_on_off) < 0 or int(self.hours_on_off) & ~YMF_HOURS_ON_OFF_MASK:
-            issues.append(f"map data group {self.name} hours_on_off may only use hours 0 through 23")
-        for name, values in (("bounds", self.bounds), ("weather types", self.weather_types)):
-            issue = _array_size_issue(f"map data group {self.name} {name}", values)
-            if issue is not None:
-                issues.append(issue)
+            issues.issue("ymf.map_group.hours.range", f"map data group {self.name} hours_on_off may only use hours 0 through 23", path="hours_on_off")
+        _check_array_size(issues, "bounds", self.bounds)
+        _check_array_size(issues, "weather_types", self.weather_types)
         return issues
 
     def to_meta(self) -> dict[str, Any]:
@@ -319,16 +323,17 @@ class InteriorBoundsFile(MetaHashFieldsMixin):
             "_meta_name_hash": meta_name("CInteriorBoundsFiles"),
         }
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        issues = ValidationReport()
         if int(self.name) == 0:
-            issues.append("interior bounds entry has no name")
+            issues.issue("ymf.interior.name.missing", "interior bounds entry has no name", path="name")
         if not YMF_MIN_INTERIOR_BOUNDS <= len(self.bounds) <= YMF_MAX_INTERIOR_BOUNDS:
-            issues.append(f"interior {self.name} must reference one or two YBN bounds")
+            issues.issue("ymf.interior.bounds.count", f"interior {self.name} must reference one or two YBN bounds", path="bounds")
         elif int(self.name) not in {int(bound) for bound in self.bounds}:
-            issues.append(f"interior {self.name} must include a YBN with the same name")
+            issues.issue("ymf.interior.bounds.identity", f"interior {self.name} must include a YBN with the same name", path="bounds")
         if len({int(bound) for bound in self.bounds}) != len(self.bounds):
-            issues.append(f"interior {self.name} repeats a YBN bound")
+            issues.issue("ymf.interior.bounds.duplicate", f"interior {self.name} repeats a YBN bound", path="bounds")
         return issues
 
     @classmethod
@@ -358,8 +363,14 @@ class PackFileMetaData:
     ityp_dependencies_2: list[ItypDependencies] = dataclasses.field(default_factory=list)
     interiors: list[InteriorBoundsFile] = dataclasses.field(default_factory=list)
 
-    def validate(self, *, permanent_ytyps: Iterable[HashLike] = ()) -> list[str]:
-        issues: list[str] = []
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+        permanent_ytyps: Iterable[HashLike] = (),
+    ) -> ValidationReport:
+        del context
+        issues = ValidationReport()
         permanent_hashes = {int(MetaHash.from_value(item)) for item in permanent_ytyps}
 
         arrays = (
@@ -371,17 +382,15 @@ class PackFileMetaData:
             ("interiors", self.interiors),
         )
         for name, values in arrays:
-            issue = _array_size_issue(f"manifest {name}", values)
-            if issue is not None:
-                issues.append(issue)
+            _check_array_size(issues, name, values)
 
         seen_groups: set[int] = set()
-        for group in self.map_data_groups:
+        for index, group in enumerate(self.map_data_groups):
             group_hash = int(group.name)
             if group_hash in seen_groups:
-                issues.append(f"manifest repeats map data group {group.name}")
+                issues.issue("ymf.map_group.duplicate", f"manifest repeats map data group {group.name}", path=f"map_data_groups[{index}].name")
             seen_groups.add(group_hash)
-            issues.extend(group.validate())
+            issues.extend(group.validate(), path=f"map_data_groups[{index}]")
 
         imap_dependencies: dict[int, set[int]] = {}
         for dependency in self.imap_dependencies:
@@ -397,9 +406,11 @@ class PackFileMetaData:
             )
         for imap_hash, targets in imap_dependencies.items():
             if len(targets) > YMF_MAX_IMAP_DEPENDENCIES:
-                issues.append(
+                issues.issue(
+                    "ymf.imap_dependencies.capacity",
                     f"IMAP {MetaHash(imap_hash)} has {len(targets)} dynamic YTYP dependencies; "
-                    f"the runtime supports at most {YMF_MAX_IMAP_DEPENDENCIES}"
+                    f"the runtime supports at most {YMF_MAX_IMAP_DEPENDENCIES}",
+                    path="imap_dependencies",
                 )
 
         ityp_dependencies: dict[int, set[int]] = {}
@@ -412,18 +423,20 @@ class PackFileMetaData:
             )
         for ityp_hash, targets in ityp_dependencies.items():
             if len(targets) > YMF_MAX_ITYP_DEPENDENCIES:
-                issues.append(
+                issues.issue(
+                    "ymf.ityp_dependencies.capacity",
                     f"YTYP {MetaHash(ityp_hash)} has {len(targets)} dynamic parent YTYPs; "
-                    f"the runtime supports at most {YMF_MAX_ITYP_DEPENDENCIES}"
+                    f"the runtime supports at most {YMF_MAX_ITYP_DEPENDENCIES}",
+                    path="ityp_dependencies_2",
                 )
 
         seen_interiors: set[int] = set()
-        for interior in self.interiors:
+        for index, interior in enumerate(self.interiors):
             interior_hash = int(interior.name)
             if interior_hash in seen_interiors:
-                issues.append(f"manifest repeats interior {interior.name}")
+                issues.issue("ymf.interior.duplicate", f"manifest repeats interior {interior.name}", path=f"interiors[{index}].name")
             seen_interiors.add(interior_hash)
-            issues.extend(interior.validate())
+            issues.extend(interior.validate(), path=f"interiors[{index}]")
         return issues
 
     def to_meta_root(self) -> dict[str, Any]:
