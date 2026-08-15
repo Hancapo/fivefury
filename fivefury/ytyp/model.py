@@ -4,6 +4,8 @@ import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..map_extensions import (
     ExtensionContainer,
     extensions_from_meta,
@@ -148,17 +150,18 @@ class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
         self.dependencies = deduped
         return self
 
-    def validate_mlos(self) -> list[str]:
-        issues: list[str] = []
-        for archetype in self.archetypes:
+    def validate_mlos(self) -> ValidationReport:
+        issues = ValidationReport()
+        for index, archetype in enumerate(self.archetypes):
             if isinstance(archetype, MloArchetypeDef):
-                issues.extend(archetype.validate())
+                issues.extend(archetype.validate(), path=f"archetypes[{index}]")
         return issues
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        issues = ValidationReport()
         if not self.archetypes:
-            issues.append("YTYP has no archetypes")
+            issues.issue("ytyp.archetypes.empty", "YTYP has no archetypes", path="archetypes")
         issues.extend(self.validate_mlos())
         return issues
 
@@ -177,9 +180,7 @@ class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
     def to_bytes(self, *, version: int = 2, validate: bool = True) -> bytes:
         self.build()
         if validate:
-            issues = self.validate_mlos()
-            if issues:
-                raise ValueError("Invalid YTYP MLO:\n- " + "\n- ".join(issues))
+            self.validate().raise_for_errors()
         builder = MetaBuilder(struct_infos=_ALL_STRUCT_INFOS, enum_infos=YTYP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapTypes"), root_value=self.to_meta_root())
         system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)

@@ -4,7 +4,8 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from ..binary import fits_unsigned
+from ..authoring.diagnostics import ValidationReport
+from ..authoring.invariants import check_unsigned
 from ..metahash import MetaHash
 from ..ybn import validate_mlo_collision
 from ..ytyp.mlo_validation import build_mlo_archetype, exit_portal_count
@@ -63,33 +64,33 @@ def build_mlo_instance(instance: MloInstanceDef, archetype: Any | None = None) -
     return instance
 
 
-def validate_mlo_instance(instance: MloInstanceDef, archetype: Any | None = None) -> list[str]:
+def validate_mlo_instance(instance: MloInstanceDef, archetype: Any | None = None) -> ValidationReport:
     label = f"MLO instance {instance.archetype_name}"
-    issues: list[str] = []
+    issues = ValidationReport()
     if not 0 <= int(instance.group_id) < 255:
-        issues.append(f"{label} group_id must be between 0 and 254")
-    if not fits_unsigned(instance.floor_id, 32):
-        issues.append(f"{label} floor_id is outside the uint32 range")
-    if not fits_unsigned(instance.num_exit_portals, 32):
-        issues.append(f"{label} num_exit_portals is outside the uint32 range")
+        issues.issue("ymap.mlo.group_id.range", f"{label} group_id must be between 0 and 254", path="group_id")
+    check_unsigned(issues, instance.floor_id, 32, code="ymap.mlo.floor_id.range", path="floor_id")
+    check_unsigned(issues, instance.num_exit_portals, 32, code="ymap.mlo.exit_portals.range", path="num_exit_portals")
 
     if archetype is None:
         return issues
 
     expected_exit_portals = exit_portal_count(archetype)
     if int(instance.num_exit_portals) != expected_exit_portals:
-        issues.append(
-            f"{label} num_exit_portals={instance.num_exit_portals}, expected {expected_exit_portals}"
+        issues.issue(
+            "ymap.mlo.exit_portals.mismatch",
+            f"{label} num_exit_portals={instance.num_exit_portals}, expected {expected_exit_portals}",
+            path="num_exit_portals",
         )
 
     available_sets = {int(entity_set.name) for entity_set in archetype.entity_sets}
     seen_sets: set[int] = set()
-    for entity_set in instance.default_entity_sets:
+    for index, entity_set in enumerate(instance.default_entity_sets):
         entity_set_hash = int(entity_set)
         if entity_set_hash in seen_sets:
-            issues.append(f"{label} repeats default entity set {entity_set}")
+            issues.issue("ymap.mlo.default_entity_set.duplicate", f"{label} repeats default entity set {entity_set}", path=f"default_entity_sets[{index}]")
         elif entity_set_hash not in available_sets:
-            issues.append(f"{label} references unknown default entity set {entity_set}")
+            issues.issue("ymap.mlo.default_entity_set.unknown", f"{label} references unknown default entity set {entity_set}", path=f"default_entity_sets[{index}]")
         seen_sets.add(entity_set_hash)
     return issues
 
@@ -113,8 +114,8 @@ def build_ymap_mlo_instances(ymap: Any, ytyps: Any = None) -> Any:
     return ymap
 
 
-def validate_ymap_mlo_instances(ymap: Any, ytyps: Any = None, ybns: Any = None) -> list[str]:
-    issues: list[str] = []
+def validate_ymap_mlo_instances(ymap: Any, ytyps: Any = None, ybns: Any = None) -> ValidationReport:
+    issues = ValidationReport()
     archetypes = mlo_archetypes_by_hash(ytyps)
     collisions = mlo_collisions_by_hash(ybns)
     physics_hashes = {int(item.name) for item in ymap.physics_dictionaries}
@@ -125,30 +126,33 @@ def validate_ymap_mlo_instances(ymap: Any, ytyps: Any = None, ybns: Any = None) 
             continue
         archetype = archetypes.get(int(entity.archetype_name))
         if require_archetype and archetype is None:
-            issues.append(
-                f"YMAP entities[{entity_index}] references MLO archetype {entity.archetype_name}, "
-                "which is absent from the supplied YTYPs"
+            issues.issue(
+                "ymap.mlo.archetype.missing",
+                f"references MLO archetype {entity.archetype_name}, which is absent from the supplied YTYPs",
+                path=f"entities[{entity_index}].archetype_name",
             )
             continue
-        issues.extend(validate_mlo_instance(entity, archetype))
+        issues.extend(validate_mlo_instance(entity, archetype), path=f"entities[{entity_index}]")
         if archetype is None:
             continue
 
         physics_dictionary = int(getattr(archetype, "physics_dictionary", 0))
         if physics_dictionary and physics_dictionary not in physics_hashes:
-            issues.append(
-                f"YMAP entities[{entity_index}] MLO physics dictionary "
-                f"{getattr(archetype, 'physics_dictionary', 0)} is absent from physics_dictionaries"
+            issues.issue(
+                "ymap.mlo.physics_dictionary.missing",
+                f"MLO physics dictionary {getattr(archetype, 'physics_dictionary', 0)} is absent from physics_dictionaries",
+                path=f"entities[{entity_index}].archetype_name",
             )
 
         collision = collisions.get(int(archetype.name))
         if require_collision and collision is None:
-            issues.append(
-                f"YMAP entities[{entity_index}] has no YBN static bound for MLO archetype "
-                f"{archetype.name}"
+            issues.issue(
+                "ymap.mlo.collision.missing",
+                f"has no YBN static bound for MLO archetype {archetype.name}",
+                path=f"entities[{entity_index}].archetype_name",
             )
         elif collision is not None:
-            issues.extend(validate_mlo_collision(collision, archetype))
+            issues.extend(validate_mlo_collision(collision, archetype), path=f"entities[{entity_index}].collision")
     return issues
 
 

@@ -4,6 +4,7 @@ import dataclasses
 import math
 import struct
 
+from ..authoring.diagnostics import ValidationReport
 from ..hashing import jenkins_hash_words
 from ..vector import (
     Aabb3,
@@ -102,23 +103,33 @@ def validate_lod_light_source_bounds(
     drawable_bounds: Aabb3,
     *,
     tolerance: float = 1e-6,
-) -> None:
-    archetype_min, archetype_max = _validate_aabb(
-        archetype_bounds, name="archetype_bounds"
-    )
-    drawable_min, drawable_max = _validate_aabb(
-        drawable_bounds, name="drawable_bounds"
-    )
+) -> ValidationReport:
+    issues = ValidationReport()
+    try:
+        archetype_min, archetype_max = _validate_aabb(archetype_bounds, name="archetype_bounds")
+    except ValueError as exc:
+        issues.issue("ymap.lod_source.archetype_bounds.invalid", str(exc), path="archetype_bounds")
+        return issues
+    try:
+        drawable_min, drawable_max = _validate_aabb(drawable_bounds, name="drawable_bounds")
+    except ValueError as exc:
+        issues.issue("ymap.lod_source.drawable_bounds.invalid", str(exc), path="drawable_bounds")
+        return issues
     axes = "XYZ"
     for axis in range(3):
         if drawable_min[axis] < archetype_min[axis] - tolerance:
-            raise ValueError(
-                f"archetype bbMin.{axes[axis]} does not contain the drawable bounds"
+            issues.issue(
+                "ymap.lod_source.bounds.minimum",
+                f"archetype bbMin.{axes[axis]} does not contain the drawable bounds",
+                path=f"archetype_bounds.minimum[{axis}]",
             )
         if drawable_max[axis] > archetype_max[axis] + tolerance:
-            raise ValueError(
-                f"archetype bbMax.{axes[axis]} does not contain the drawable bounds"
+            issues.issue(
+                "ymap.lod_source.bounds.maximum",
+                f"archetype bbMax.{axes[axis]} does not contain the drawable bounds",
+                path=f"archetype_bounds.maximum[{axis}]",
             )
+    return issues
 
 
 def calculate_light_physical_bounds(
@@ -265,7 +276,7 @@ def extract_lod_lights(
     validate_lod_light_source_bounds(
         archetype_bounds,
         (ydr.bounding_box_min, ydr.bounding_box_max),
-    )
+    ).raise_for_errors()
     entity_bounds = aabb_transform(
         archetype_bounds,
         translation=entity.position,

@@ -86,7 +86,7 @@ class Ybn:
         set_collision_room(self, room_id)
         return self
 
-    def validate_mlo(self, archetype: object) -> list[str]:
+    def validate_mlo(self, archetype: object) -> ValidationReport:
         return validate_mlo_collision(self, archetype)
 
     def save(self, destination: str | Path) -> Path:

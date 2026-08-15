@@ -14,6 +14,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - CUT and DLC validation now returns structured reports and uses the shared validation error contract.
 - Bounds and YBN validation now uses structured, path-aware diagnostics.
 - GTA5 cache, heightmap, and water validation now uses structured diagnostics and the shared validation error contract.
+- YMAP, YTYP, MLO, and LOD-light validation now uses structured cross-asset diagnostics.
 
 ### Added
 

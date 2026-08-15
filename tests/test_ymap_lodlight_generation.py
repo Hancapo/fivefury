@@ -131,8 +131,9 @@ def test_extract_lod_lights_skips_non_required_non_fixed_entities() -> None:
 
 
 def test_lod_light_source_bounds_reject_smaller_archetype() -> None:
-    with pytest.raises(ValueError, match="bbMax.X"):
-        validate_lod_light_source_bounds(
-            ((-1.0, -1.0, -1.0), (0.9, 1.0, 1.0)),
-            ((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)),
-        )
+    report = validate_lod_light_source_bounds(
+        ((-1.0, -1.0, -1.0), (0.9, 1.0, 1.0)),
+        ((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)),
+    )
+
+    assert report.errors[0].code == "ymap.lod_source.bounds.maximum"

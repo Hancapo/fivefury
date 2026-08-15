@@ -49,7 +49,7 @@ def test_build_lod_light_maps_creates_runtime_parent_child_pair() -> None:
 
     assert len(pairs) == 1
     pair = pairs[0]
-    assert pair.validate() == []
+    assert pair.validate().valid
     assert pair.distant.name.text == "custom_DistLODLights_small000"
     assert pair.lod.name.text == "custom_LODLights_small000"
     assert int(pair.lod.parent) == int(pair.distant.name)
