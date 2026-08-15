@@ -12,6 +12,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YDR, YCD, and YED validation now returns structured reports and no longer exposes format-specific validation issue types.
 - YFT semantic and binary validation now uses structured reports with stable diagnostic codes and no assertion-style public helpers.
 - CUT and DLC validation now returns structured reports and uses the shared validation error contract.
+- Bounds and YBN validation now uses structured, path-aware diagnostics.
 
 ### Added
 

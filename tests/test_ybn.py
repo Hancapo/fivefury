@@ -463,7 +463,7 @@ def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_
     assert roundtrip.bound.file_pages_info is not None
     assert roundtrip.bound.file_pages_info.system_pages_count == 16
     assert get_resource_total_page_count(header.system_flags) == 16
-    assert roundtrip.validate() == []
+    assert roundtrip.validate().valid
 
 
 def test_read_ybn_normalizes_real_bounds_from_codewalker_layout_if_available() -> None:
@@ -476,7 +476,7 @@ def test_read_ybn_normalizes_real_bounds_from_codewalker_layout_if_available() -
 
     ybn = read_ybn(source_path)
 
-    assert ybn.validate() == []
+    assert ybn.validate().valid
 
 
 def test_gamefilecache_parses_loose_ybn() -> None:
@@ -1069,7 +1069,7 @@ def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chun
         for child in bound.children
     ] == [[0, 1], [0]]
     assert all(child.bound.materials == materials for child in bound.children)
-    assert roundtrip.validate() == []
+    assert roundtrip.validate().valid
     assert {
         polygon.material_index
         for geometry in roundtrip.bound.geometries

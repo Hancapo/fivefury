@@ -271,9 +271,7 @@ def build_bound_from_triangles(
         materials=materials,
         composite_flags=composite_flags,
     )
-    validation_errors = bound.validate()
-    if validation_errors:
-        raise ValueError(f"Generated bound validation failed: {validation_errors}")
+    bound.validate().raise_for_errors()
     return bound
 
 

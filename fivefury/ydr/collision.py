@@ -78,9 +78,7 @@ def set_bound_from_render_geometry(
         max_triangles_per_child=max_triangles_per_child,
     )
     bound = build_composite_bound_from_chunks(chunks, material=material, composite_flags=composite_flags)
-    validation_errors = bound.validate()
-    if validation_errors:
-        raise ValueError(f"Generated bound validation failed: {validation_errors}")
+    bound.validate().raise_for_errors()
     ydr.bound = bound
     return YdrCollisionStats(
         meshes=len(meshes),

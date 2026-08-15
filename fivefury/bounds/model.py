@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Iterator
 
 from .. import _native as _native_backend
+from ..authoring.diagnostics import ValidationReport
 from ..resource import ResourcePagesInfo
 from ..vector import aabb_center, aabb_from_center_size, vec_add, vec_scale, vec_sub
 from .materials import (
@@ -312,15 +313,19 @@ class BoundGeometryOctants:
     def has_items(self) -> bool:
         return any(self.items)
 
-    def validate(self, vertex_count: int) -> list[str]:
-        issues: list[str] = []
+    def validate(self, vertex_count: int) -> ValidationReport:
+        issues = ValidationReport()
         if len(self.items) != 8:
-            issues.append("octants must contain exactly 8 item lists")
+            issues.issue("bounds.octants.count", "octants must contain exactly 8 item lists", path="items")
             return issues
         for octant_index, indices in enumerate(self.items):
-            for vertex_index in indices:
+            for item_index, vertex_index in enumerate(indices):
                 if vertex_index < 0 or vertex_index >= vertex_count:
-                    issues.append(f"octant {octant_index} references invalid vertex index {vertex_index}")
+                    issues.issue(
+                        "bounds.octants.vertex_index",
+                        f"octant {octant_index} references invalid vertex index {vertex_index}",
+                        path=f"items[{octant_index}][{item_index}]",
+                    )
         return issues
 
 
@@ -666,12 +671,13 @@ class Bound:
         self.angular_inertia = self.compute_volume_distribution()
         return self
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: object | None = None) -> ValidationReport:
+        del context
+        issues = ValidationReport()
         if self.sphere_radius < 0:
-            issues.append(f"{self.type_name} has negative sphere_radius")
+            issues.issue("bounds.sphere_radius.negative", f"{self.type_name} has negative sphere_radius", path="sphere_radius")
         if not _aabb_is_valid(self.bounds):
-            issues.append(f"{self.type_name} has inverted box bounds")
+            issues.issue("bounds.aabb.invalid", f"{self.type_name} has non-finite or inverted box bounds", path="bounds")
         return issues
 
 
@@ -1088,21 +1094,25 @@ class BoundGeometry(Bound):
             self.octants = None
         return self
 
-    def validate(self) -> list[str]:
-        issues = Bound.validate(self)
+    def validate(self, *, context: object | None = None) -> ValidationReport:
+        issues = Bound.validate(self, context=context)
         if len(self.polygon_material_indices) != len(self.polygons):
-            issues.append("polygon_material_indices length does not match polygon count")
+            issues.issue("bounds.geometry.material_index_count", "polygon_material_indices length does not match polygon count", path="polygon_material_indices")
         for polygon_index, polygon in enumerate(self.polygons):
-            for vertex_index in polygon.vertex_indices:
+            for vertex_slot, vertex_index in enumerate(polygon.vertex_indices):
                 if vertex_index < 0 or vertex_index >= self.vertex_count:
-                    issues.append(
-                        f"polygon {polygon_index} references invalid vertex index {vertex_index}"
+                    issues.issue(
+                        "bounds.geometry.vertex_index",
+                        f"polygon {polygon_index} references invalid vertex index {vertex_index}",
+                        path=f"polygons[{polygon_index}].vertex_indices[{vertex_slot}]",
                     )
             if isinstance(polygon, BoundPolygonTriangle):
                 for edge_slot, edge_polygon_index in enumerate(polygon.adjacent_polygon_indices, start=1):
                     if edge_polygon_index >= self.polygon_count:
-                        issues.append(
-                            f"polygon {polygon_index} edge {edge_slot} references invalid polygon index {edge_polygon_index}"
+                        issues.issue(
+                            "bounds.geometry.adjacent_polygon_index",
+                            f"polygon {polygon_index} edge {edge_slot} references invalid polygon index {edge_polygon_index}",
+                            path=f"polygons[{polygon_index}].edges[{edge_slot - 1}]",
                         )
             material_index = (
                 int(polygon.material_index)
@@ -1112,13 +1122,15 @@ class BoundGeometry(Bound):
                 else -1
             )
             if material_index < 0:
-                issues.append(f"polygon {polygon_index} has no valid material index")
+                issues.issue("bounds.geometry.material_index.missing", f"polygon {polygon_index} has no valid material index", path=f"polygons[{polygon_index}].material_index")
             elif self.materials and material_index >= len(self.materials):
-                issues.append(
-                    f"polygon {polygon_index} references invalid material index {material_index}"
+                issues.issue(
+                    "bounds.geometry.material_index.invalid",
+                    f"polygon {polygon_index} references invalid material index {material_index}",
+                    path=f"polygons[{polygon_index}].material_index",
                 )
         if self.octants is not None:
-            issues.extend(self.octants.validate(self.vertex_count))
+            issues.extend(self.octants.validate(self.vertex_count), path="octants")
         return issues
 
 
@@ -1287,17 +1299,19 @@ class BoundComposite(Bound):
             self.bvh = None
         return self
 
-    def validate(self) -> list[str]:
-        issues = Bound.validate(self)
+    def validate(self, *, context: object | None = None) -> ValidationReport:
+        issues = Bound.validate(self, context=context)
         if not self.children:
-            issues.append("Composite bound has no children")
+            issues.issue("bounds.composite.children.empty", "Composite bound has no children", path="children")
         if not 0 <= self.child_count <= self.child_capacity:
-            issues.append(
-                "Composite bound active child count exceeds its capacity"
+            issues.issue(
+                "bounds.composite.child_count.invalid",
+                "Composite bound active child count exceeds its capacity",
+                path="active_child_count",
             )
         for index, child in enumerate(self.children):
             if child.bounds is not None and not _aabb_is_valid(child.bounds):
-                issues.append(f"child {index} has non-finite or inverted local bounds")
+                issues.issue("bounds.composite.child_bounds.invalid", f"child {index} has non-finite or inverted local bounds", path=f"children[{index}].bounds")
             if child.bound is None:
                 flags = (child.flags1, child.flags2)
                 if any(
@@ -1305,9 +1319,9 @@ class BoundComposite(Bound):
                     and (int(value.flags1) != 0 or int(value.flags2) != 0)
                     for value in flags
                 ):
-                    issues.append(f"null child {index} has active composite flags")
+                    issues.issue("bounds.composite.null_child.active_flags", f"null child {index} has active composite flags", path=f"children[{index}]")
             if child.bound is not None:
-                issues.extend(child.bound.validate())
+                issues.extend(child.bound.validate(context=context), path=f"children[{index}].bound")
         return issues
 
 

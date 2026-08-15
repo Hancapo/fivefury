@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..bounds import (
     Bound,
     BoundResourcePagesInfo,
@@ -58,20 +60,22 @@ class Ybn:
         self.bound = self.bound.build()
         return self
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        issues = ValidationReport()
         if self.bound is None:
-            issues.append("YBN has no root bound")
+            issues.issue("ybn.bound.missing", "YBN has no root bound", path="bound")
         if self.bound is not None:
-            issues.extend(self.bound.validate())
+            issues.extend(self.bound.validate(context=context), path="bound")
         pages_info = self.bound.file_pages_info if self.bound is not None else None
         if pages_info is not None:
             system_count_present = self.system_pages_count or pages_info.system_pages_count
             graphics_count_present = self.graphics_pages_count or pages_info.graphics_pages_count
             if system_count_present and pages_info.system_pages_count != self.system_pages_count:
-                issues.append("YBN ResourcePagesInfo system page count does not match the RSC7 header")
+                issues.issue("ybn.pages.system_count_mismatch", "YBN ResourcePagesInfo system page count does not match the RSC7 header", path="bound.file_pages_info.system_pages_count")
             if graphics_count_present and pages_info.graphics_pages_count != self.graphics_pages_count:
-                issues.append("YBN ResourcePagesInfo graphics page count does not match the RSC7 header")
+                issues.issue("ybn.pages.graphics_count_mismatch", "YBN ResourcePagesInfo graphics page count does not match the RSC7 header", path="bound.file_pages_info.graphics_pages_count")
+        if self.path:
+            issues.issues = [issue.for_asset(self.path) for issue in issues]
         return issues
 
     @property
@@ -108,10 +112,7 @@ def build_ybn_bytes(
         game if game is not None else source.game if isinstance(source, Ybn) else GameTarget.GTA5
     )
     file_vft_resolver = get_bound_file_vft_resolver(target)
-    issues = bound.validate()
-    if issues:
-        issue_lines = "\n".join(f"- {issue}" for issue in issues)
-        raise ValueError(f"cannot build invalid YBN bound:\n{issue_lines}")
+    bound.validate().raise_for_errors()
     pages_info = bound.file_pages_info or BoundResourcePagesInfo()
     page_count = 1
     system_flags = None
