@@ -168,6 +168,16 @@ class CutsceneProject:
                 )
                 existing.add(key)
 
+    def _bind_animation_sections(
+        self, binding: CutBinding, *, start: float
+    ) -> None:
+        for section in self.animations.sections:
+            event_time = max(float(start), section.start_time)
+            if event_time <= section.end_time:
+                self.scene.set_anim(
+                    event_time, binding, target=self.animation_manager
+                )
+
     def animate(
         self,
         binding: CutBinding,
@@ -212,10 +222,7 @@ class CutsceneProject:
             bones=bones,
         )
         self._load_animation_sections()
-        for section in self.animations.sections:
-            event_time = max(float(start), section.start_time)
-            if event_time <= section.end_time:
-                self.scene.set_anim(event_time, binding, target=self.animation_manager)
+        self._bind_animation_sections(binding, start=start)
         return binding
 
     def camera(
@@ -259,6 +266,7 @@ class CutsceneProject:
                 **tracks,
             )
             self._load_animation_sections()
+            self._bind_animation_sections(camera, start=start)
         self.camera_cut(
             camera,
             start=start,
