@@ -7,6 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-15
+
+### Added
+
+- Typed vehicle appearance resolution from `carvariations` and `carcols` for standalone models and CUT vehicle bindings.
+
+### Changed
+
+- Vehicle metadata now shares one typed API across XML metadata and binary YMT resources in Legacy and Enhanced.
+
 ## [0.4.3] - 2026-08-14
 
 ### Breaking Changes

@@ -37,7 +37,10 @@ def read_xml_text(source: XmlSource) -> str:
 
 def looks_like_xml(value: bytes | bytearray | memoryview | str) -> bool:
     if not isinstance(value, str):
-        return bytes(value).lstrip()[:1] == b"<"
+        data = bytes(value).lstrip()
+        if data.startswith(b"\xef\xbb\xbf"):
+            data = data[3:].lstrip()
+        return data[:1] == b"<"
     return value.lstrip().startswith("<")
 
 
@@ -69,6 +72,56 @@ def element_text(element: ET.Element | None, default: str = "") -> str:
 
 def element_value(element: ET.Element | None, default: str = "") -> str:
     return default if element is None else element.attrib.get("value", default)
+
+
+def _xml_scalar(value: str) -> str | int | float | bool:
+    text = value.strip()
+    lowered = text.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    try:
+        return int(text, 0)
+    except ValueError:
+        try:
+            return float(text)
+        except ValueError:
+            return text
+
+
+def _is_empty_xml_data(value: object) -> bool:
+    return value == "" or value == [] or value == {}
+
+
+def element_data(element: ET.Element) -> object:
+    """Convert GTA metadata XML into mappings and typed scalar containers."""
+    if "value" in element.attrib:
+        return _xml_scalar(element.attrib["value"])
+    children = list(element)
+    if not children:
+        if element.attrib.get("content", "").casefold().endswith("_array"):
+            return [_xml_scalar(item) for item in (element.text or "").split()]
+        return _xml_scalar(element.text or "")
+    if all(child.tag.rsplit("}", 1)[-1].casefold() == "item" for child in children):
+        return [element_data(child) for child in children]
+    result: dict[str, object] = {}
+    repeated: set[str] = set()
+    for child in children:
+        name = child.tag.rsplit("}", 1)[-1]
+        value = element_data(child)
+        if name not in result:
+            result[name] = value
+        elif _is_empty_xml_data(value):
+            continue
+        elif _is_empty_xml_data(result[name]):
+            result[name] = value
+        elif name in repeated:
+            values = result[name]
+            assert isinstance(values, list)
+            values.append(value)
+        else:
+            result[name] = [result[name], value]
+            repeated.add(name)
+    return result
 
 
 def child_text(element: ET.Element, name: str, default: str = "") -> str:
@@ -222,6 +275,7 @@ __all__ = [
     "children_by_name",
     "coerce_enum_value",
     "descendant_by_name",
+    "element_data",
     "element_text",
     "element_value",
     "element_xml",

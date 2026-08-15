@@ -1,3 +1,9 @@
+from .appearance import (
+    ResolvedVehicleAppearance,
+    ResolvedVehicleColor,
+    VehicleAppearanceSource,
+    VehicleAppearanceSourceTier,
+)
 from .carcols import (
     VehicleCarCols,
     VehicleCorona,
@@ -83,10 +89,14 @@ __all__ = [
     "HandlingSubData",
     "HandlingType",
     "LicensePlateProbability",
+    "ResolvedVehicleAppearance",
+    "ResolvedVehicleColor",
     "SeaPlaneHandlingData",
     "SpecialFlightHandlingData",
     "SubmarineHandlingData",
     "TrailerHandlingData",
+    "VehicleAppearanceSource",
+    "VehicleAppearanceSourceTier",
     "VehicleCarCols",
     "VehicleClass",
     "VehicleColorIndices",

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
+import pytest
+
 from fivefury.cache import GameFileCache
+from fivefury.cut import CutVehicleVariationPayload
+from fivefury.game_target import GameTarget
 from fivefury.gamefile import GameFileType, guess_game_file_type
 from fivefury.hashing import jenk_hash
 from fivefury.pso import (
@@ -17,6 +24,7 @@ from fivefury.pso import (
 from fivefury.vehiclemeta import (
     CarHandlingData,
     HandlingDataManager,
+    VehicleAppearanceSourceTier,
     VehicleCarCols,
     VehicleClass,
     VehicleInitDataList,
@@ -26,10 +34,17 @@ from fivefury.vehiclemeta import (
     VehicleType,
     read_vehicle_meta,
 )
+from fivefury.vehiclemeta.resource import (
+    YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL,
+    YMT_C_VEHICLE_MODEL_INFO_VARIATION,
+)
 
 
 def _empty_vehicle_meta_pso(root_name: str) -> bytes:
-    root_hash = jenk_hash(root_name)
+    return _empty_vehicle_meta_pso_hash(jenk_hash(root_name))
+
+
+def _empty_vehicle_meta_pso_hash(root_hash: int) -> bytes:
     blocks = [PsoBlockBuilder(name_hash=root_hash)]
     return finalize_sections_with_checksum(
         [
@@ -54,6 +69,11 @@ def test_vehicle_meta_names_are_classified() -> None:
         guess_game_file_type("common/data/carvariations.meta")
         is GameFileType.CAR_VARIATIONS
     )
+    assert guess_game_file_type("common/data/carcols.ymt") is GameFileType.CAR_COLS
+    assert (
+        guess_game_file_type("common/data/carvariations.ymt")
+        is GameFileType.CAR_VARIATIONS
+    )
 
 
 def test_read_vehicle_meta_dispatches_pso_root() -> None:
@@ -64,6 +84,35 @@ def test_read_vehicle_meta_dispatches_pso_root() -> None:
     assert resource.content_type is VehicleMetaContentType.VEHICLES
     assert isinstance(resource.vehicles, VehicleInitDataList)
     assert resource.to_bytes() == sample
+
+
+@pytest.mark.parametrize(
+    ("root_hash", "source", "content_type"),
+    [
+        (
+            YMT_C_VEHICLE_MODEL_INFO_VARIATION,
+            "carvariations.ymt",
+            VehicleMetaContentType.CAR_VARIATIONS,
+        ),
+        (
+            YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL,
+            "carcols.ymt",
+            VehicleMetaContentType.CAR_COLS,
+        ),
+    ],
+)
+def test_read_vehicle_meta_dispatches_binary_ymt_roots(
+    root_hash: int,
+    source: str,
+    content_type: VehicleMetaContentType,
+) -> None:
+    resource = read_vehicle_meta(
+        _empty_vehicle_meta_pso_hash(root_hash),
+        source=source,
+    )
+
+    assert resource.format is VehicleMetaFormat.PSO
+    assert resource.content_type is content_type
 
 
 def test_game_file_cache_loads_vehicle_meta_model(tmp_path) -> None:
@@ -232,3 +281,148 @@ def test_carcols_maps_nested_lights_kits_and_sirens() -> None:
     assert carcols.sirens[0].sirens[0].cast_shadows is True
     assert carcols.kits[0].id == 17
     assert carcols.kits[0].visible_mods[0].camera_position.value == 1
+
+
+def test_vehicle_meta_reads_xml_char_arrays() -> None:
+    resource = read_vehicle_meta(
+        b"""<?xml version="1.0"?>
+<CVehicleModelInfoVariation>
+  <variationData><Item>
+    <modelName>testcar</modelName>
+    <colors><Item>
+      <indices content="char_array">0 41 3 156 8 9</indices>
+      <liveries><Item value="true"/><Item value="false"/></liveries>
+    </Item></colors>
+  </Item></variationData>
+</CVehicleModelInfoVariation>""",
+        source="vehicles.meta",
+    )
+
+    assert resource.format is VehicleMetaFormat.XML
+    assert resource.variations is not None
+    entry = resource.variations.get("TESTCAR")
+    assert entry is not None
+    assert entry.colors[0].indices == [0, 41, 3, 156, 8, 9]
+    assert entry.colors[0].liveries == [True, False]
+
+
+def _write_vehicle_appearance_metadata(root, variation_indices: list[int]) -> None:
+    data = root / "common" / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    colors = "".join(
+        f'<Item><color value="{0xFF000000 | (index << 16) | (index << 8) | index}"/>'
+        f'<metallicID value="{index}"/><colorName>COLOR_{index}</colorName></Item>'
+        for index in range(6)
+    )
+    data.joinpath("carcols.meta").write_text(
+        f"<CVehicleModelInfoVarGlobal><Colors>{colors}</Colors></CVehicleModelInfoVarGlobal>",
+        encoding="utf-8",
+    )
+    indices = " ".join(str(value) for value in variation_indices)
+    data.joinpath("carvariations.meta").write_text(
+        "<CVehicleModelInfoVariation><variationData><Item>"
+        "<modelName>testcar</modelName><colors><Item>"
+        f'<indices content="char_array">{indices}</indices><liveries/>'
+        "</Item></colors></Item></variationData></CVehicleModelInfoVariation>",
+        encoding="utf-8",
+    )
+
+
+def test_vehicle_appearance_merges_precedence_and_cut_override(tmp_path) -> None:
+    _write_vehicle_appearance_metadata(tmp_path, [0, 1, 2, 3, 4, 5])
+    _write_vehicle_appearance_metadata(tmp_path / "mods", [5, 4, 3, 2, 1, 0])
+    cache = GameFileCache(
+        tmp_path,
+        game=GameTarget.GTA5_ENHANCED,
+        use_index_cache=False,
+    )
+    cache.scan(use_index_cache=False)
+
+    default = cache.resolve_vehicle_appearance("testcar")
+    assert default.primary_index == 5
+    assert default.secondary_index == 4
+    assert default.body_6_index == 0
+    assert default.primary is not None
+    assert default.primary.srgb == (5, 5, 5, 255)
+    assert default.sources[0].tier is VehicleAppearanceSourceTier.MODS
+
+    explicit = cache.resolve_vehicle_appearance(
+        "testcar",
+        variation=CutVehicleVariationPayload(
+            object_id=7,
+            main_body_colour=1,
+            second_body_colour=2,
+            specular_colour=3,
+            wheel_trim_colour=4,
+            body_colour_5=5,
+            livery=6,
+            livery_2=7,
+            dirt_level=0.25,
+        ),
+    )
+    assert explicit.primary_index == 1
+    assert explicit.secondary_index == 2
+    assert explicit.specular_index == 3
+    assert explicit.wheel_trim_index == 4
+    assert explicit.body_5_index == 5
+    assert explicit.body_6_index == 0
+    assert explicit.livery_index == 6
+    assert explicit.secondary_livery_index == 7
+    assert explicit.dirt_level == 0.25
+
+
+def test_vehicle_appearance_dlc_overrides_base(tmp_path) -> None:
+    _write_vehicle_appearance_metadata(tmp_path, [0, 1, 2, 3, 4, 5])
+    _write_vehicle_appearance_metadata(
+        tmp_path / "update" / "x64" / "dlcpacks" / "testdlc",
+        [4, 3, 2, 1, 0, 5],
+    )
+    cache = GameFileCache(tmp_path, use_index_cache=False)
+    cache.scan(use_index_cache=False)
+
+    appearance = cache.resolve_vehicle_appearance("testcar")
+
+    assert appearance.primary_index == 4
+    assert appearance.sources[0].tier is VehicleAppearanceSourceTier.DLC
+
+
+def test_vehicle_appearance_reports_missing_and_invalid_references(tmp_path) -> None:
+    _write_vehicle_appearance_metadata(tmp_path, [99, 1, 2, 3, 4, 5])
+    cache = GameFileCache(tmp_path, game=GameTarget.GTA5, use_index_cache=False)
+    cache.scan(use_index_cache=False)
+
+    invalid = cache.resolve_vehicle_appearance("testcar")
+    missing = cache.resolve_vehicle_appearance("absentcar")
+
+    assert invalid.primary is None
+    assert any(
+        issue.code == "vehicle.appearance.color_index_invalid"
+        for issue in invalid.diagnostics
+    )
+    assert any(
+        issue.code == "vehicle.appearance.variation_missing"
+        for issue in missing.diagnostics
+    )
+
+
+@pytest.mark.skipif(
+    not os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH"),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail CUT regression",
+)
+def test_enhanced_pro_mcs_5_resolves_vehicle_appearances() -> None:
+    root = Path(os.environ["FIVEFURY_GTA5_ENHANCED_PATH"])
+    cache = GameFileCache(root, game=GameTarget.GTA5_ENHANCED, load_audio=False)
+    cache.scan_game()
+    source = cache.find_assets("pro_mcs_5", kind=GameFileType.CUT)[0]
+
+    bundle = cache.resolve_cutscene(source)
+    vehicles = {
+        binding.vehicle_appearance.model_name.casefold(): binding.vehicle_appearance
+        for binding in bundle.bindings.values()
+        if binding.binding.role == "vehicle" and binding.vehicle_appearance is not None
+    }
+
+    assert vehicles["rancherxl"].primary_index == 0
+    assert vehicles["policeold2"].primary_index == 132
+    assert not vehicles["rancherxl"].diagnostics
+    assert not vehicles["policeold2"].diagnostics

@@ -9,6 +9,7 @@ from ..hashing import jenk_hash
 from ..meta.resource import MetaResource
 from ..pso import PsoDocument, PsoReader, is_pso
 from ..pso_values import make_name_resolver
+from ..xml import element_data, looks_like_xml, parse_xml_root
 from .carcols import VehicleCarCols, VehicleModColors
 from .handling import HandlingDataManager
 from .variations import VehicleModelInfoVariation
@@ -19,6 +20,43 @@ C_HANDLING_DATA_MANAGER = jenk_hash("CHandlingDataMgr")
 C_VEHICLE_MODEL_INFO_VARIATION = jenk_hash("CVehicleModelInfoVariation")
 C_VEHICLE_MODEL_INFO_VAR_GLOBAL = jenk_hash("CVehicleModelInfoVarGlobal")
 C_VEHICLE_MOD_COLORS = jenk_hash("CVehicleModColors")
+
+YMT_C_VEHICLE_MODEL_INFO_VARIATION = 0x2C7C954B
+YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL = 0xBDD20BCF
+
+_YMT_NAMES = {
+    YMT_C_VEHICLE_MODEL_INFO_VARIATION: "CVehicleModelInfoVariation",
+    YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL: "CVehicleModelInfoVarGlobal",
+    0xCEAE9967: "m_variationData",
+    0x0B939623: "m_modelName",
+    0x08676A67: "m_colors",
+    0x6DDF749B: "m_kits",
+    0xAA0856BB: "m_windowsWithExposedEdges",
+    0x2D3FBA3F: "m_plateProbabilities",
+    0x8DB32D08: "m_lightSettings",
+    0x84EB9B0D: "m_sirenSettings",
+    0x99885DD2: "CVehicleModelColorIndices",
+    0xE9BF9F2D: "m_indices",
+    0xA6648434: "m_liveries",
+    0x235D1478: "m_VehiclePlates",
+    0x2B020DDD: "m_Colors",
+    0x54FB4B4E: "m_MetallicSettings",
+    0x370D5711: "m_WindowColors",
+    0xAA246E0E: "m_Lights",
+    0x9AF814F5: "m_Sirens",
+    0x593BC9C3: "m_Kits",
+    0xD244FA73: "m_Wheels",
+    0xF8A65F1A: "m_GlobalVariationData",
+    0x99D3B662: "m_XenonLightColors",
+    0xFB22670E: "CVehicleModelColor",
+    0xE953FD29: "m_color",
+    0x99B074F9: "m_metallicID",
+    0x69B6E89B: "m_audioColor",
+    0x8D37E9F7: "m_audioPrefix",
+    0x8A35AB87: "m_audioColorHash",
+    0x130D0072: "m_audioPrefixHash",
+    0xD8BC1C53: "m_colorName",
+}
 
 _TYPE_NAMES = (
     "CVehicleModelInfo::InitDataList",
@@ -75,7 +113,12 @@ _TYPE_NAMES = (
 _resolve_name = make_name_resolver(_TYPE_NAMES)
 
 
+def _resolve_vehicle_name(hash_value: int) -> str:
+    return _YMT_NAMES.get(hash_value, _resolve_name(hash_value))
+
+
 class VehicleMetaFormat(enum.Enum):
+    XML = "xml"
     PSO = "pso"
     RSC = "rsc"
 
@@ -95,16 +138,15 @@ _ROOT_CONTENT_TYPES = {
     C_VEHICLE_MODEL_INFO_VARIATION: VehicleMetaContentType.CAR_VARIATIONS,
     C_VEHICLE_MODEL_INFO_VAR_GLOBAL: VehicleMetaContentType.CAR_COLS,
     C_VEHICLE_MOD_COLORS: VehicleMetaContentType.CAR_MOD_COLS,
+    YMT_C_VEHICLE_MODEL_INFO_VARIATION: VehicleMetaContentType.CAR_VARIATIONS,
+    YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL: VehicleMetaContentType.CAR_COLS,
 }
 
-_FILE_CONTENT_TYPES = {
-    "vehicles.meta": VehicleMetaContentType.VEHICLES,
-    "handling.meta": VehicleMetaContentType.HANDLING,
-    "carvariations.meta": VehicleMetaContentType.CAR_VARIATIONS,
-    "carcols.meta": VehicleMetaContentType.CAR_COLS,
-    "carmodcols.meta": VehicleMetaContentType.CAR_MOD_COLS,
+_XML_ROOT_CONTENT_TYPES = {
+    "cvehiclemodelinfovariation": VehicleMetaContentType.CAR_VARIATIONS,
+    "cvehiclemodelinfovarglobal": VehicleMetaContentType.CAR_COLS,
+    "cvehiclemodcolors": VehicleMetaContentType.CAR_MOD_COLS,
 }
-
 
 def _map_content(root: Any, content_type: VehicleMetaContentType) -> Any:
     model_type = {
@@ -168,12 +210,25 @@ class VehicleMeta:
     @classmethod
     def from_bytes(cls, data: bytes, *, source: str = "") -> VehicleMeta:
         raw = bytes(data)
-        filename_type = _FILE_CONTENT_TYPES.get(Path(source).name.casefold())
+        if looks_like_xml(raw):
+            root = parse_xml_root(raw)
+            root_name = root.tag.rsplit("}", 1)[-1]
+            content_type = _XML_ROOT_CONTENT_TYPES.get(
+                root_name.casefold(),
+                VehicleMetaContentType.UNKNOWN,
+            )
+            return cls(
+                format=VehicleMetaFormat.XML,
+                content_type=content_type,
+                content=_map_content(element_data(root), content_type),
+                source=source,
+                raw_bytes=raw,
+            )
         if is_pso(raw):
-            pso = PsoReader(raw, name_resolver=_resolve_name).read()
+            pso = PsoReader(raw, name_resolver=_resolve_vehicle_name).read()
             content_type = _ROOT_CONTENT_TYPES.get(
                 int(pso.root.type_hash or 0),
-                filename_type or VehicleMetaContentType.UNKNOWN,
+                VehicleMetaContentType.UNKNOWN,
             )
             return cls(
                 format=VehicleMetaFormat.PSO,
@@ -186,7 +241,7 @@ class VehicleMeta:
         meta = MetaResource.from_bytes(raw, source=source)
         content_type = _ROOT_CONTENT_TYPES.get(
             int(meta.root_name_hash),
-            filename_type or VehicleMetaContentType.UNKNOWN,
+            VehicleMetaContentType.UNKNOWN,
         )
         return cls(
             format=VehicleMetaFormat.RSC,
@@ -215,6 +270,8 @@ __all__ = [
     "C_VEHICLE_MODEL_INFO_VARIATION",
     "C_VEHICLE_MODEL_INFO_VAR_GLOBAL",
     "C_VEHICLE_MOD_COLORS",
+    "YMT_C_VEHICLE_MODEL_INFO_VARIATION",
+    "YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL",
     "VehicleMeta",
     "VehicleMetaContentType",
     "VehicleMetaFormat",

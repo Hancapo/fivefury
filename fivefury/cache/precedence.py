@@ -12,7 +12,7 @@ def asset_source_rank(asset: AssetRecord) -> tuple[int, str]:
     path = asset.path.replace("\\", "/").lower()
     if path.startswith("mods/"):
         tier = 0
-    elif path.startswith("update/x64/dlcpacks/"):
+    elif "/dlcpacks/" in path:
         tier = 1
     elif path.startswith("update/"):
         tier = 2
