@@ -14,6 +14,8 @@ from fivefury import (
     GameTarget,
     MetaHash,
     YcdAnimationTrack,
+    YcdChannelEncoding,
+    YcdChannelEncodingPolicy,
     YcdChannelType,
     YcdClipAnimationEntry,
     YcdClipAnimationList,
@@ -36,18 +38,7 @@ from fivefury import (
     scene_to_cut,
 )
 from fivefury.resource import split_rsc7_sections, virtual_to_offset
-from fivefury.vector import quat_nlerp
-
-
-def _quaternion_angular_error_degrees(
-    expected: tuple[float, float, float, float],
-    actual: tuple[float, float, float, float],
-) -> float:
-    dot = abs(sum(left * right for left, right in zip(expected, actual, strict=True)))
-    expected_length = math.sqrt(sum(value * value for value in expected))
-    actual_length = math.sqrt(sum(value * value for value in actual))
-    cosine = min(max(dot / (expected_length * actual_length), -1.0), 1.0)
-    return math.degrees(2.0 * math.acos(cosine))
+from fivefury.vector import quat_angular_error_degrees, quat_nlerp
 
 
 def test_build_cutscene_sections_uses_camera_cuts() -> None:
@@ -497,6 +488,168 @@ def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequence
     )
 
 
+def test_cutscene_builder_channel_policy_can_be_overridden_per_track() -> None:
+    raw_policy = YcdChannelEncodingPolicy(YcdChannelEncoding.RAW_FLOAT)
+    builder = YcdCutsceneBuilder.create(
+        "track_precision",
+        duration=1.0,
+        channel_policy=raw_policy,
+    )
+    samples = {0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 2.0, -1.0)}
+    builder.track(
+        "actor",
+        track=YcdAnimationTrack.BONE_TRANSLATION,
+        samples=samples,
+        bone_id=1,
+    )
+    builder.track(
+        "actor",
+        track=YcdAnimationTrack.BONE_TRANSLATION,
+        samples=samples,
+        bone_id=2,
+        channel_policy=YcdChannelEncodingPolicy(),
+    )
+
+    animation = builder.build_ycds()[0].animations[0]
+    raw = animation.find_sequences(
+        bone_id=1, track=YcdAnimationTrack.BONE_TRANSLATION
+    )[0]
+    retail = animation.find_sequences(
+        bone_id=2, track=YcdAnimationTrack.BONE_TRANSLATION
+    )[0]
+
+    assert YcdChannelType.RAW_FLOAT in {
+        channel.channel_type for channel in raw.channels
+    }
+    assert YcdChannelType.QUANTIZE_FLOAT in {
+        channel.channel_type for channel in retail.channels
+    }
+
+
+def test_explicit_retail_channel_policy_preserves_default_binary_output() -> None:
+    def build(policy: YcdChannelEncodingPolicy | None = None) -> bytes:
+        kwargs = {} if policy is None else {"channel_policy": policy}
+        builder = YcdCutsceneBuilder.create(
+            "retail_default",
+            duration=1.0,
+            **kwargs,
+        )
+        builder.track(
+            "actor",
+            track=YcdAnimationTrack.MOVER_TRANSLATION,
+            samples={0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 2.0, -1.0)},
+        )
+        return build_ycd_bytes(builder.build_ycds()[0])
+
+    assert build() == build(YcdChannelEncodingPolicy())
+
+
+def test_cutscene_builder_reports_unreachable_retail_precision() -> None:
+    builder = YcdCutsceneBuilder.create(
+        "retail_precision",
+        duration=1.0,
+        channel_policy=YcdChannelEncodingPolicy(maximum_error=2e-5),
+    )
+    builder.track(
+        "actor",
+        track=YcdAnimationTrack.MOVER_TRANSLATION,
+        samples={0.0: (0.0, 0.0, 0.0), 1.0: (100.0, 0.0, 0.0)},
+    )
+
+    report = builder.validate()
+
+    assert "ycd.channel_precision.error_exceeded" in {
+        issue.code for issue in report.errors
+    }
+    with pytest.raises(ValueError, match="ycd.channel_precision.error_exceeded"):
+        builder.build_ycds()
+
+
+@pytest.mark.parametrize(
+    ("case_name", "frame_count", "translation_span"),
+    [
+        ("rp_14_section_0_RP_14_0_cs_roman_d_0", 31, 12.1),
+        ("intro_section_3_rom1_a_0_cs_roman_d_0", 1437, 93.3),
+    ],
+)
+def test_cutscene_builder_raw_float_meets_roman_roundtrip_precision(
+    case_name: str,
+    frame_count: int,
+    translation_span: float,
+) -> None:
+    duration = (frame_count - 1) / 30.0
+    translations = [
+        (
+            translation_span * frame / (frame_count - 1),
+            math.sin(frame * 0.13) * 0.75,
+            math.cos(frame * 0.07) * 0.25,
+        )
+        for frame in range(frame_count)
+    ]
+    rotations = [
+        (
+            math.sin(angle / 2.0) / math.sqrt(3.0),
+            math.sin(angle / 2.0) / math.sqrt(3.0),
+            math.sin(angle / 2.0) / math.sqrt(3.0),
+            math.cos(angle / 2.0),
+        )
+        for angle in (
+            math.radians(20.0 + 140.0 * frame / (frame_count - 1))
+            for frame in range(frame_count)
+        )
+    ]
+    builder = YcdCutsceneBuilder.create(
+        case_name,
+        duration=duration,
+        fps=30.0,
+        game=GameTarget.GTA5_ENHANCED,
+        channel_policy=YcdChannelEncodingPolicy(
+            encoding=YcdChannelEncoding.RAW_FLOAT,
+            maximum_error=2e-5,
+            maximum_angular_error_degrees=0.002,
+        ),
+    )
+    builder.track(
+        "cs_roman_d_0",
+        track=YcdAnimationTrack.MOVER_TRANSLATION,
+        samples=translations,
+    )
+    builder.track(
+        "cs_roman_d_0",
+        track=YcdAnimationTrack.MOVER_ROTATION,
+        samples=rotations,
+    )
+
+    report = builder.validate()
+    rebuilt = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
+    animation = rebuilt.animations[0]
+    translation_error = 0.0
+    angular_error = 0.0
+    for frame, (expected_position, expected_rotation) in enumerate(
+        zip(translations, rotations, strict=True)
+    ):
+        tracks = animation.evaluate_tracks(frame, interpolate=False)
+        actual_position = tracks[(0, int(YcdAnimationTrack.MOVER_TRANSLATION))]
+        actual_rotation = tracks[(0, int(YcdAnimationTrack.MOVER_ROTATION))]
+        translation_error = max(
+            translation_error,
+            max(
+                abs(left - right)
+                for left, right in zip(
+                    expected_position, actual_position[:3], strict=True
+                )
+            ),
+        )
+        angular_error = max(
+            angular_error,
+            quat_angular_error_degrees(expected_rotation, actual_rotation),
+        )
+
+    assert report.valid
+    assert translation_error < 2e-5
+    assert angular_error < 0.002
+
+
 def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> None:
     frame_count = 361
     rotations = [
@@ -677,14 +830,14 @@ def test_cached_quaternion_roundtrip_preserves_rotation_accuracy() -> None:
         actual = animation.evaluate_tracks(frame)[
             (0, int(YcdAnimationTrack.MOVER_ROTATION))
         ]
-        assert _quaternion_angular_error_degrees(expected, actual) < 0.01
+        assert quat_angular_error_degrees(expected, actual) < 0.01
     for frame in (0.25, 7.5, 15.75, 29.5):
         frame0 = math.floor(frame)
         expected = quat_nlerp(rotations[frame0], rotations[frame0 + 1], frame - frame0)
         actual = animation.evaluate_tracks(frame)[
             (0, int(YcdAnimationTrack.MOVER_ROTATION))
         ]
-        assert _quaternion_angular_error_degrees(expected, actual) < 0.01
+        assert quat_angular_error_degrees(expected, actual) < 0.01
 
 
 def test_cached_quaternion_orients_omitted_component_positive() -> None:

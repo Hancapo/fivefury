@@ -18,7 +18,7 @@ from ..vector import (
 from .glass import YftGlassPane, YftGlassPaneFlag
 
 if TYPE_CHECKING:
-    from ..ydr import YdrMesh
+    from ..ydr import YdrMesh, YdrMeshInput
 
 Vector2 = tuple[float, float]
 BlendIndices = tuple[int, int, int, int]
@@ -93,7 +93,7 @@ class YftGlassPaneMesh:
     blend_weights: Sequence[BlendWeights] = ()
 
     @classmethod
-    def from_ydr_mesh(cls, mesh: YdrMesh) -> YftGlassPaneMesh:
+    def from_ydr_mesh(cls, mesh: YdrMesh | YdrMeshInput) -> YftGlassPaneMesh:
         if not mesh.texcoords:
             raise ValueError("breakable glass geometry requires UV channel 0")
         if not mesh.tangents:
@@ -103,8 +103,8 @@ class YftGlassPaneMesh:
             mesh.indices,
             mesh.texcoords[0],
             mesh.tangents,
-            blend_indices=mesh.blend_indices,
-            blend_weights=mesh.blend_weights,
+            blend_indices=mesh.blend_indices or (),
+            blend_weights=mesh.blend_weights or (),
         )
 
     @classmethod
@@ -416,7 +416,7 @@ def build_yft_glass_pane(
 
 
 def build_yft_glass_pane_from_mesh(
-    mesh: YdrMesh,
+    mesh: YdrMesh | YdrMeshInput,
     *,
     bone_index: int | None = None,
     glass_type: int = 0,
@@ -426,7 +426,9 @@ def build_yft_glass_pane_from_mesh(
     bounds_transform: YftGlassOrthonormalTransform | None = None,
 ) -> YftGlassPane:
     resolved_shader_index = (
-        int(mesh.material_index) if shader_index is None else int(shader_index)
+        int(getattr(mesh, "material_index", -1))
+        if shader_index is None
+        else int(shader_index)
     )
     if not 0 <= resolved_shader_index <= 0xFF:
         raise ValueError("glass shader index must fit in an unsigned byte")

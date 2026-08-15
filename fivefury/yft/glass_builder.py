@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import dataclasses
 
-from ..ydr import YdrBone, YdrLod, YdrMesh
+from ..ydr import YdrBone, YdrLod
 from ..ydr.defs import coerce_lod
 from .glass import YftGlassPane
 from .glass_authoring import (
     YftGlassOrthonormalTransform,
     build_yft_glass_pane_from_mesh,
+)
+from .glass_selection import (
+    GlassMesh,
+    is_breakable_glass,
+    iter_bone_meshes,
+    mesh_material,
+    mesh_material_index,
 )
 from .physics import YftPhysicsChild, YftPhysicsGroup, YftPhysicsGroupFlag
 
@@ -42,59 +49,17 @@ def _resolve_bone(drawable, child: YftPhysicsChild) -> YdrBone:
     return bone
 
 
-def _skinned_binding(mesh: YdrMesh, bone: YdrBone) -> int | None:
-    first_bindings = {int(value[0]) for value in mesh.blend_indices}
-    if int(bone.index) in first_bindings:
-        return int(bone.index)
-    for palette_index, bone_id in enumerate(mesh.bone_ids):
-        if (
-            int(bone_id) in (int(bone.tag), int(bone.index))
-            and palette_index in first_bindings
-        ):
-            return palette_index
-    return None
-
-
-def _material(drawable, mesh: YdrMesh):
-    if mesh.material is not None:
-        return mesh.material
-    return next(
-        (
-            material
-            for material in drawable.materials
-            if int(material.index) == int(mesh.material_index)
-        ),
-        None,
-    )
-
-
-def _is_breakable_glass(drawable, mesh: YdrMesh) -> bool:
-    material = _material(drawable, mesh)
-    if material is None:
-        return False
-    shader = material.resolved_shader_file_name or material.shader_name or ""
-    return shader.lower().removesuffix(".sps") == "glass_breakable"
-
-
 def _resolve_mesh(
     drawable,
     bone: YdrBone,
     *,
     lod: YdrLod,
-) -> tuple[YdrMesh, int | None]:
-    candidates: list[tuple[YdrMesh, int | None]] = []
+) -> tuple[GlassMesh, int | None]:
+    candidates: list[tuple[GlassMesh, int | None]] = []
     for model in drawable.iter_models(lod):
-        binding = None
-        if model.has_skin:
-            for mesh in model.meshes:
-                binding = _skinned_binding(mesh, bone)
-                if binding is not None:
-                    candidates.append((mesh, binding))
-            continue
-        if int(model.bone_index) == int(bone.index):
-            candidates.extend((mesh, None) for mesh in model.meshes)
+        candidates.extend(iter_bone_meshes(model, bone))
 
-    breakable = [item for item in candidates if _is_breakable_glass(drawable, item[0])]
+    breakable = [item for item in candidates if is_breakable_glass(drawable, item[0])]
     selected = breakable or candidates
     if not selected:
         raise ValueError(
@@ -176,11 +141,20 @@ def build_yft_glass(
             bone,
             lod=render_lod,
         )
+        material = mesh_material(source.main_drawable, mesh)
+        if material is None:
+            raise ValueError(f"glass mesh material '{mesh.material}' does not resolve")
+        shader_index = mesh_material_index(source.main_drawable, mesh, material)
+        if shader_index is None:
+            raise ValueError(
+                f"glass mesh material '{material.name}' does not resolve in the drawable"
+            )
         child_drawable, bound = _child_bound(child)
         pane = build_yft_glass_pane_from_mesh(
             mesh,
             bone_index=mesh_bone_index,
             glass_type=_glass_type(source, group),
+            shader_index=shader_index,
             bounds_minimum=bound.box_min,
             bounds_maximum=bound.box_max,
             bounds_transform=_bound_transform(child_drawable),

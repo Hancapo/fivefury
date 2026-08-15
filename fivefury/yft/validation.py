@@ -14,6 +14,7 @@ from .geometry import (
     MAX_FRAGMENT_BOUND_POLYGONS,
     MAX_FRAGMENT_BOUND_VERTICES,
 )
+from .glass_selection import iter_bone_meshes, mesh_material, mesh_material_index
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
@@ -182,12 +183,10 @@ def _validate_glass_geometry_relationship(
         )
         return
 
-    models = tuple(iter_models())
     candidates = tuple(
-        model
-        for model in models
-        if bool(getattr(model, "has_skin", False))
-        or int(getattr(model, "bone_index", -1)) == int(bone.index)
+        item
+        for model in iter_models()
+        for item in iter_bone_meshes(model, bone)
     )
     if not candidates:
         _issue(
@@ -199,9 +198,10 @@ def _validate_glass_geometry_relationship(
         )
         return
     if not any(
-        int(getattr(mesh, "material_index", -1)) == shader_index
-        for model in candidates
-        for mesh in getattr(model, "meshes", ())
+        material is not None
+        and mesh_material_index(common_drawable, mesh, material) == shader_index
+        for mesh, _binding in candidates
+        for material in (mesh_material(common_drawable, mesh),)
     ):
         _issue(
             issues,

@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..authoring.diagnostics import ValidationReport
-from ..ydr import Ydr, YdrLight, YdrMesh, YdrModel
+from ..ydr import (
+    Ydr,
+    YdrBuild,
+    YdrLight,
+    YdrMesh,
+    YdrMeshInput,
+    YdrModel,
+    YdrModelInput,
+)
 from ..ydr.defs import YdrLod, coerce_lod
 from .bound_profiles import YftPhysicsBoundProfile
 from .cloth import YftEnvironmentCloth
@@ -47,9 +55,9 @@ class Yft:
     user_data: int = 0
     tune_name: str = ""
     raw_fields: list[YftRawField] = dataclasses.field(default_factory=list)
-    main_drawable: Ydr | None = None
+    main_drawable: Ydr | YdrBuild | None = None
     drawables: list[YftDrawable] = dataclasses.field(default_factory=list)
-    cloth_drawable: Ydr | None = None
+    cloth_drawable: Ydr | YdrBuild | None = None
     environment_cloths: list[YftEnvironmentCloth] = dataclasses.field(
         default_factory=list
     )
@@ -101,15 +109,19 @@ class Yft:
         return self.drawables[index] if 0 <= index < len(self.drawables) else None
 
     @property
-    def damaged_drawable(self) -> Ydr | None:
+    def damaged_drawable(self) -> Ydr | YdrBuild | None:
         entry = self.damaged_drawable_entry
         return entry.drawable if entry is not None else None
 
-    def iter_models(self, lod: YdrLod | str | None = None) -> Iterator[YdrModel]:
+    def iter_models(
+        self, lod: YdrLod | str | None = None
+    ) -> Iterator[YdrModel | YdrModelInput]:
         for entry in self.iter_drawables():
             yield from entry.drawable.iter_models(lod=lod)
 
-    def iter_meshes(self, lod: YdrLod | str | None = None) -> Iterator[YdrMesh]:
+    def iter_meshes(
+        self, lod: YdrLod | str | None = None
+    ) -> Iterator[YdrMesh | YdrMeshInput]:
         for model in self.iter_models(lod=lod):
             yield from model.meshes
 

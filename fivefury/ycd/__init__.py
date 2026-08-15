@@ -3,6 +3,7 @@ from .audit import (
     YcdQuaternionLayoutAudit,
     audit_ycd_quaternion_layout,
 )
+from .channel_policy import YcdChannelEncoding, YcdChannelEncodingPolicy
 from .cutscene import (
     YCD_CUTSCENE_DEFAULT_FPS,
     YCD_CUTSCENE_DEFAULT_VERSION,
@@ -74,6 +75,8 @@ __all__ = [
     "YcdAnimationBoneId",
     "YcdAnimationTrack",
     "YcdCameraAnimationSample",
+    "YcdChannelEncoding",
+    "YcdChannelEncodingPolicy",
     "YcdChannelType",
     "YcdClip",
     "YcdClipAnimation",

@@ -19,7 +19,7 @@ from .resource_headers import (
 
 if TYPE_CHECKING:
     from ..bounds import Bound
-    from ..ydr import Ydr
+    from ..ydr import Ydr, YdrBuild
     from .bound_profiles import YftPhysicsBoundProfile
 
 
@@ -310,7 +310,9 @@ class YftPhysicsGroup:
 class YftPhysicsEntity:
     pointer: int = 0
     label: str = ""
-    drawable: Ydr | None = dataclasses.field(default=None, repr=False, compare=False)
+    drawable: Ydr | YdrBuild | None = dataclasses.field(
+        default=None, repr=False, compare=False
+    )
 
     @property
     def has_drawable(self) -> bool:
@@ -318,7 +320,7 @@ class YftPhysicsEntity:
 
     @classmethod
     def declare(
-        cls, drawable: Ydr | None = None, *, label: str = ""
+        cls, drawable: Ydr | YdrBuild | None = None, *, label: str = ""
     ) -> YftPhysicsEntity:
         return cls(label=str(label), drawable=drawable)
 

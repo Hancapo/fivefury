@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from ..authoring import BuildContext, ValidationReport
 from ..cut.model import CutFile
 from ..cut.pso import read_cut
 from ..cut.scene.base import CutScene
@@ -21,6 +22,7 @@ from ..vector import (
     vec3,
     vec4,
 )
+from .channel_policy import YcdChannelEncoding, YcdChannelEncodingPolicy
 from .model import (
     Ycd,
     YcdAnimation,
@@ -50,6 +52,7 @@ from .sequence_tracks import (
 YCD_CUTSCENE_DEFAULT_FPS = 30.0
 YCD_CUTSCENE_DEFAULT_VERSION = 46
 YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT = 287
+_DEFAULT_CHANNEL_POLICY = YcdChannelEncodingPolicy()
 
 
 class YcdQuaternionEncoding(StrEnum):
@@ -200,7 +203,8 @@ def _make_quantize_channel(
 def _make_component_channels(
     samples: list[tuple[float, ...]],
     *,
-    use_quantized: bool,
+    encoding: YcdChannelEncoding,
+    retail_quantized: bool,
 ) -> list[YcdStaticFloatChannel | YcdQuantizeFloatChannel | YcdRawFloatChannel]:
     channels: list[
         YcdStaticFloatChannel | YcdQuantizeFloatChannel | YcdRawFloatChannel
@@ -215,7 +219,7 @@ def _make_component_channels(
                     value=float(values[0]),
                 )
             )
-        elif use_quantized:
+        elif encoding is YcdChannelEncoding.RETAIL and retail_quantized:
             channels.append(_make_quantize_channel(component_index, values))
         else:
             channels.append(
@@ -248,7 +252,8 @@ def _select_cached_quaternion_component(
 def _make_cached_quaternion_channels(
     samples: list[tuple[float, ...]],
     *,
-    use_quantized: bool,
+    encoding: YcdChannelEncoding,
+    retail_quantized: bool,
 ) -> list[
     YcdStaticFloatChannel
     | YcdQuantizeFloatChannel
@@ -271,7 +276,8 @@ def _make_cached_quaternion_channels(
     ]
     channels = _make_component_channels(
         explicit_samples,
-        use_quantized=use_quantized,
+        encoding=encoding,
+        retail_quantized=retail_quantized,
     )
     channels.append(
         YcdCachedQuaternionChannel(
@@ -288,6 +294,7 @@ def _make_channels(
     *,
     track: int | YcdAnimationTrack | None = None,
     quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
+    channel_encoding: YcdChannelEncoding = YcdChannelEncoding.RETAIL,
 ) -> list[
     YcdStaticFloatChannel
     | YcdStaticVector3Channel
@@ -300,7 +307,7 @@ def _make_channels(
         return []
     component_count = len(samples[0])
     track_value = None if track is None else int(track)
-    use_quantized = track_value in {
+    retail_quantized = track_value in {
         int(YcdAnimationTrack.BONE_TRANSLATION),
         int(YcdAnimationTrack.BONE_ROTATION),
         int(YcdAnimationTrack.MOVER_TRANSLATION),
@@ -346,9 +353,14 @@ def _make_channels(
     ):
         return _make_cached_quaternion_channels(
             samples,
-            use_quantized=use_quantized,
+            encoding=channel_encoding,
+            retail_quantized=retail_quantized,
         )
-    return _make_component_channels(samples, use_quantized=use_quantized)
+    return _make_component_channels(
+        samples,
+        encoding=channel_encoding,
+        retail_quantized=retail_quantized,
+    )
 
 
 def _cutscene_track_sort_key(track_spec: YcdCutsceneTrack) -> tuple[int, int, int]:
@@ -452,6 +464,7 @@ class YcdCutsceneTrack:
     bone_id: int
     format: YcdTrackFormat
     samples: list[tuple[float, ...]]
+    channel_policy: YcdChannelEncodingPolicy | None = None
 
 
 @dataclass(slots=True)
@@ -515,6 +528,7 @@ class YcdCutsceneBuilder:
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
         game: str | GameTarget = GameTarget.GTA5,
         quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
+        channel_policy: YcdChannelEncodingPolicy = _DEFAULT_CHANNEL_POLICY,
     ) -> None:
         self.name = str(name)
         self.duration = float(duration)
@@ -524,6 +538,9 @@ class YcdCutsceneBuilder:
         if not isinstance(quaternion_encoding, YcdQuaternionEncoding):
             raise TypeError("quaternion_encoding must be a YcdQuaternionEncoding")
         self.quaternion_encoding = quaternion_encoding
+        if not isinstance(channel_policy, YcdChannelEncodingPolicy):
+            raise TypeError("channel_policy must be a YcdChannelEncodingPolicy")
+        self.channel_policy = channel_policy
         self.section_index_start = int(section_index_start)
         if self.section_index_start < 0:
             raise ValueError("section_index_start cannot be negative")
@@ -542,6 +559,7 @@ class YcdCutsceneBuilder:
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
         game: str | GameTarget = GameTarget.GTA5,
         quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
+        channel_policy: YcdChannelEncodingPolicy = _DEFAULT_CHANNEL_POLICY,
     ) -> YcdCutsceneBuilder:
         return cls(
             name,
@@ -552,6 +570,7 @@ class YcdCutsceneBuilder:
             version=version,
             game=game,
             quaternion_encoding=quaternion_encoding,
+            channel_policy=channel_policy,
         )
 
     @classmethod
@@ -564,6 +583,7 @@ class YcdCutsceneBuilder:
         version: int = YCD_CUTSCENE_DEFAULT_VERSION,
         game: str | GameTarget = GameTarget.GTA5,
         quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
+        channel_policy: YcdChannelEncodingPolicy = _DEFAULT_CHANNEL_POLICY,
     ) -> YcdCutsceneBuilder:
         if isinstance(source, CutScene):
             resolved_name = name or "cutscene"
@@ -584,6 +604,7 @@ class YcdCutsceneBuilder:
                 version=version,
                 game=game,
                 quaternion_encoding=quaternion_encoding,
+                channel_policy=channel_policy,
             )
 
         if isinstance(source, CutFile):
@@ -611,6 +632,7 @@ class YcdCutsceneBuilder:
             version=version,
             game=game,
             quaternion_encoding=quaternion_encoding,
+            channel_policy=channel_policy,
         )
 
     def _normalize_camera_cuts(self, camera_cuts: Sequence[float]) -> list[float]:
@@ -727,7 +749,12 @@ class YcdCutsceneBuilder:
         samples: object,
         bone_id: int = 0,
         format: int | YcdTrackFormat | None = None,
+        channel_policy: YcdChannelEncodingPolicy | None = None,
     ) -> YcdCutsceneBuilder:
+        if channel_policy is not None and not isinstance(
+            channel_policy, YcdChannelEncodingPolicy
+        ):
+            raise TypeError("channel_policy must be a YcdChannelEncodingPolicy")
         track_value = int(track)
         track_format = (
             get_ycd_track_format(track_value)
@@ -755,6 +782,7 @@ class YcdCutsceneBuilder:
                     fps=self.fps,
                     is_quaternion=component_count == 4,
                 ),
+                channel_policy=channel_policy,
             )
         )
         return self
@@ -938,7 +966,7 @@ class YcdCutsceneBuilder:
             )
         return self
 
-    def build_section(self, index: int) -> Ycd:
+    def _build_section(self, index: int) -> Ycd:
         section = self.sections[int(index)]
         output_index = self.section_index_start + section.index
         clips: list[YcdClipAnimation] = []
@@ -1015,6 +1043,9 @@ class YcdCutsceneBuilder:
                                 frame_samples,
                                 track=_track_spec.track,
                                 quaternion_encoding=self.quaternion_encoding,
+                                channel_encoding=(
+                                    _track_spec.channel_policy or self.channel_policy
+                                ).encoding,
                             ),
                         )
                     )
@@ -1075,10 +1106,32 @@ class YcdCutsceneBuilder:
         )
         return ycd.build()
 
+    def _validate_section_precision(
+        self, section: YcdCutsceneSection, report: ValidationReport
+    ) -> None:
+        from .channel_validation import validate_cutscene_section_precision
+
+        validate_cutscene_section_precision(self, section, report)
+
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        report = ValidationReport()
+        for section in self.sections:
+            self._validate_section_precision(section, report)
+        return report
+
+    def build_section(self, index: int) -> Ycd:
+        section = self.sections[int(index)]
+        report = ValidationReport()
+        self._validate_section_precision(section, report)
+        report.raise_for_errors()
+        return self._build_section(section.index)
+
     def build_ycds(self) -> list[Ycd]:
         if not self._clips:
             return []
-        return [self.build_section(section.index) for section in self.sections]
+        self.validate().raise_for_errors()
+        return [self._build_section(section.index) for section in self.sections]
 
     def save(self, directory: str | Path) -> list[Path]:
         target_dir = Path(directory)
@@ -1111,6 +1164,7 @@ def build_cutscene_ycds(
     version: int = YCD_CUTSCENE_DEFAULT_VERSION,
     game: str | GameTarget = GameTarget.GTA5,
     quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
+    channel_policy: YcdChannelEncodingPolicy = _DEFAULT_CHANNEL_POLICY,
 ) -> YcdCutsceneBuilder:
     return YcdCutsceneBuilder(
         name,
@@ -1120,6 +1174,7 @@ def build_cutscene_ycds(
         version=version,
         game=game,
         quaternion_encoding=quaternion_encoding,
+        channel_policy=channel_policy,
     )
 
 
@@ -1127,6 +1182,8 @@ __all__ = [
     "YCD_CUTSCENE_DEFAULT_FPS",
     "YCD_CUTSCENE_DEFAULT_VERSION",
     "YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT",
+    "YcdChannelEncoding",
+    "YcdChannelEncodingPolicy",
     "YcdCutsceneBoneAnimation",
     "YcdCutsceneBuilder",
     "YcdCutsceneClip",

@@ -7,6 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-08-15
+
+### Added
+
+- Typed per-builder and per-track YCD channel encoding policies with binary read-back accuracy validation.
+
+### Fixed
+
+- Breakable-glass authoring now accepts declarative drawable models, meshes, materials, and optional skinning arrays.
+
 ## [0.4.7] - 2026-08-15
 
 ### Added

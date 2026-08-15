@@ -246,6 +246,16 @@ def quat_canonicalize(value: Quaternion) -> Quaternion:
     return normalized
 
 
+def quat_angular_error_degrees(left: Quaternion, right: Quaternion) -> float:
+    left_length = math.sqrt(sum(component * component for component in left))
+    right_length = math.sqrt(sum(component * component for component in right))
+    if left_length <= 1e-12 or right_length <= 1e-12:
+        return float("inf")
+    dot = abs(sum(a * b for a, b in zip(left, right, strict=True)))
+    cosine = min(max(dot / (left_length * right_length), -1.0), 1.0)
+    return math.degrees(2.0 * math.acos(cosine))
+
+
 def interpolate_vector4_many(
     starts: Iterable[Vector4],
     ends: Iterable[Vector4],
@@ -377,6 +387,7 @@ __all__ = [
     "interpolate_vector4_many",
     "lerp",
     "lerp_tuple",
+    "quat_angular_error_degrees",
     "quat_canonicalize",
     "quat_from_euler_xyz",
     "quat_from_euler_xyz_raw",
