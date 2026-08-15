@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import itertools
+from copy import deepcopy
 from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
 
 from ...hashing import jenk_hash, jenk_partial_hash
+from ...vector import is_finite_vector
+from ...ycd.sequence_tracks import is_ycd_camera_track
 from ..events import get_cut_event_name, get_cut_event_spec
 from ..flags import (
     DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
@@ -19,7 +22,7 @@ from ..limits import (
     CUT_MINIMUM_DURATION,
     CUT_MINIMUM_SECTION_DURATION,
 )
-from .bindings import CutBinding, CutPed
+from .bindings import CutBinding, CutCamera, CutPed
 from .shared import (
     _coerce_name,
     _is_scene_entity,
@@ -204,6 +207,28 @@ def _binding_int_field(binding: CutBinding, field_name: str) -> int:
 def _has_segmented_clip(scene: CutScene, clip_base: str, cut_index: int) -> bool:
     expected_name = f"{clip_base}-{cut_index}"
     return scene.get_clip(expected_name) is not None
+
+
+def _camera_clip_bases_by_section(scene: CutScene) -> dict[int, set[str]]:
+    result: dict[int, set[str]] = {}
+    for ycd in scene.clip_dicts:
+        for clip in ycd.clips:
+            animations = [getattr(clip, "animation", None)]
+            animations.extend(
+                getattr(entry, "animation", None)
+                for entry in getattr(clip, "animations", ())
+            )
+            if not any(
+                animation is not None
+                and any(is_ycd_camera_track(bone.track) for bone in animation.bone_ids)
+                for animation in animations
+            ):
+                continue
+            name = str(clip.short_name or clip.name or "")
+            base, separator, suffix = name.rpartition("-")
+            if separator and base and suffix.isdigit():
+                result.setdefault(int(suffix), set()).add(base)
+    return result
 
 
 def _scene_flags(scene: CutScene) -> CutSceneFlags:
@@ -700,6 +725,92 @@ def _validate_loading(scene: CutScene, issues: list[CutSceneValidationIssue]) ->
 def _validate_cameras(
     scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
 ) -> None:
+    cameras = [
+        binding for binding in scene.bindings if isinstance(binding, CutCamera)
+    ]
+    if len(cameras) > 1:
+        _issue(
+            issues,
+            "error",
+            "camera.binding.multiple",
+            f"CutScene has {len(cameras)} runtime camera bindings; exactly one is supported",
+        )
+    clip_bases_by_section = _camera_clip_bases_by_section(scene)
+    inferred_clip_bases = (
+        set().union(*clip_bases_by_section.values())
+        if clip_bases_by_section
+        else set()
+    )
+    for camera in cameras:
+        streaming_base = camera.animation_streaming_base
+        readable_name = (
+            camera.name
+            if camera.name and _parse_hex_hash(camera.name) is None
+            else None
+        )
+        clip_base = (
+            next(iter(inferred_clip_bases))
+            if len(inferred_clip_bases) == 1
+            else readable_name
+        )
+        animated = bool(inferred_clip_bases) or streaming_base not in (None, 0)
+        if animated and streaming_base in (None, 0):
+            _issue(
+                issues,
+                "error",
+                "camera.binding.streaming_base.missing",
+                f"{_binding_name(camera)} has camera animation but no AnimStreamingBase",
+            )
+        if animated and streaming_base not in (None, 0) and clip_base:
+            expected_base = jenk_partial_hash(clip_base)
+            if streaming_base != expected_base:
+                _issue(
+                    issues,
+                    "error",
+                    "camera.binding.streaming_base.mismatch",
+                    f"{_binding_name(camera)} AnimStreamingBase=0x{streaming_base:08X}, expected 0x{expected_base:08X} for '{clip_base}'",
+                )
+
+        near_clip = camera.near_draw_distance
+        far_clip = camera.far_draw_distance
+        if near_clip is None or near_clip <= 0.0:
+            _issue(
+                issues,
+                "error",
+                "camera.binding.near_draw_distance.invalid",
+                f"{_binding_name(camera)} requires a positive near draw distance",
+            )
+        if far_clip is None or far_clip <= 0.0:
+            _issue(
+                issues,
+                "error",
+                "camera.binding.far_draw_distance.invalid",
+                f"{_binding_name(camera)} requires a positive far draw distance",
+            )
+        elif near_clip is not None and near_clip > 0.0 and far_clip <= near_clip:
+            _issue(
+                issues,
+                "error",
+                "camera.binding.draw_distance.order",
+                f"{_binding_name(camera)} far draw distance must exceed its near draw distance",
+            )
+
+        if animated and scene.clip_dicts:
+            section_count = len(scene.camera_cut_list or ()) + 1
+            for section_index in range(section_count):
+                if clip_base not in clip_bases_by_section.get(section_index, set()):
+                    _issue(
+                        issues,
+                        "error",
+                        "camera.binding.clip.missing",
+                        f"{_binding_name(camera)} has no matching camera clip in technical YCD section {section_index}",
+                        hint=(
+                            f"Expected '{clip_base}-{section_index}'."
+                            if clip_base
+                            else None
+                        ),
+                    )
+
     camera_events = _events_by_name(scene, "camera_cut")
     if strict and not camera_events:
         _issue(
@@ -710,10 +821,45 @@ def _validate_cameras(
             hint="A playable cutscene needs at least one active camera.",
         )
     for event in camera_events:
+        target_id = _event_target_id(event)
+        target = scene.get_binding(target_id) if target_id is not None else None
+        if target is None:
+            _issue(
+                issues,
+                "error",
+                "camera_cut.target.missing",
+                f"CAMERA_CUT at {event.start:g} has no target camera",
+            )
+        elif target.role != "camera":
+            _issue(
+                issues,
+                "error",
+                "camera_cut.target.invalid",
+                f"CAMERA_CUT at {event.start:g} targets {_binding_name(target)} instead of a camera",
+            )
+
         name = _name(event.payload.get("cName")) or event.label
         if not name:
             _issue(
                 issues, "error", "camera_cut.name.missing", "CAMERA_CUT has no cName"
+            )
+        position = event.payload.get("vPosition")
+        rotation = event.payload.get("vRotationQuaternion")
+        position_missing = not isinstance(position, (list, tuple)) or len(position) != 3
+        rotation_missing = not isinstance(rotation, (list, tuple)) or len(rotation) != 4
+        if position_missing or rotation_missing:
+            _issue(
+                issues,
+                "error",
+                "camera_cut.pose.missing",
+                f"CAMERA_CUT '{name or event.start}' has no complete position and rotation pose",
+            )
+        elif not is_finite_vector(position, 3) or not is_finite_vector(rotation, 4):
+            _issue(
+                issues,
+                "error",
+                "camera_cut.pose.non_finite",
+                f"CAMERA_CUT '{name or event.start}' has a non-finite pose",
             )
         near_clip = float(event.payload.get("fNearDrawDistance") or 0.0)
         far_clip = float(event.payload.get("fFarDrawDistance") or 0.0)
@@ -1104,6 +1250,7 @@ def _validate_flags(scene: CutScene, issues: list[CutSceneValidationIssue]) -> N
 def validate_cut_scene(
     scene: CutScene, *, strict: bool = False
 ) -> list[CutSceneValidationIssue]:
+    scene = deepcopy(scene)
     scene.build()
     issues: list[CutSceneValidationIssue] = []
     _validate_root(scene, issues, strict=strict)

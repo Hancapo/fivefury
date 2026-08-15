@@ -41,8 +41,7 @@ ASSETS
   ASSET_MANAGER assets
   ANIM_MANAGER anims
 
-  CAMERA cam_wide
-  CAMERA cam_close
+  CAMERA exportcamera
 
   STATIC_PROP stage:
     MODEL "stage01"
@@ -75,20 +74,20 @@ TRACK LOAD
 END
 
 TRACK CAMERA
-  0.000 CUT cam_wide:
+  0.000 CUT exportcamera:
     NAME "cam_wide_intro"
     POS 0 -8 3
     ROT 0 0 0
     NEAR 0.05
     FAR 1000
-  2.000 DRAW_DISTANCE cam_wide 0.05 750
-  4.000 CUT cam_close:
+  2.000 DRAW_DISTANCE exportcamera 0.05 750
+  4.000 CUT exportcamera:
     NAME "cam_close_face"
     POS 0 -3 2
     ROT 10 0 0
     NEAR 0.05
     FAR 500
-  9.000 CUT cam_wide NAME "cam_wide_outro" POS 0 -9 3 ROT 0 20 0 NEAR 0.05 FAR 1000
+  9.000 CUT exportcamera NAME "cam_wide_outro" POS 0 -9 3 ROT 0 20 0 NEAR 0.05 FAR 1000
 END
 
 TRACK ANIMATION
@@ -162,7 +161,7 @@ def test_cutscript_parses_video_editor_style_script() -> None:
     assert scene.scene_name == "miku_test"
     assert scene.duration == pytest.approx(14.0)
     assert scene.offset == (0.0, 0.0, 100.0)
-    assert len(scene.cameras) == 2
+    assert len(scene.cameras) == 1
     assert len(scene.props) == 3
     assert len(scene.lights) == 1
     assert len(scene.overlays) == 1
@@ -258,6 +257,20 @@ END
     assert excinfo.value.line == 5
     assert excinfo.value.code == "asset.unknown"
     assert "missing_camera" in str(excinfo.value)
+
+
+def test_cutscript_rejects_multiple_runtime_cameras() -> None:
+    script = """
+CUTSCENE "two_cameras"
+DURATION 2.0
+ASSETS
+  CAMERA first
+  CAMERA second
+END
+"""
+
+    with pytest.raises(CutScriptError, match="one runtime CAMERA"):
+        parse_cutscript(script)
 
 
 def test_cutscript_accepts_all_cutscene_flags() -> None:
