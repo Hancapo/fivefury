@@ -4,7 +4,7 @@ import struct
 
 from ..common import ByteSource, read_source_bytes
 from ..resource import RSC7_VIRTUAL_BASE, build_rsc7, split_rsc7_sections
-from .binary_validation import assert_valid_yft_bytes
+from .binary_validation import validate_yft_bytes
 from .constants import TUNE_NAME_POINTER_OFFSET
 from .reader import read_yft
 
@@ -23,7 +23,7 @@ def rewrite_yft_tune_name(
     data, and every other byte remain in their original uncompressed positions.
     """
     raw = read_source_bytes(source)
-    assert_valid_yft_bytes(raw)
+    validate_yft_bytes(raw).raise_for_errors()
     parsed = read_yft(raw)
     current_tune = parsed.tune_name
     if not tune_name or "\0" in tune_name:
@@ -83,7 +83,7 @@ def rewrite_yft_tune_name(
         system_flags=header.system_flags,
         graphics_flags=header.graphics_flags,
     )
-    assert_valid_yft_bytes(rewritten)
+    validate_yft_bytes(rewritten).raise_for_errors()
     reparsed = read_yft(rewritten)
     if reparsed.tune_name != tune_name:
         raise ValueError(

@@ -59,7 +59,11 @@ def audit_fragment_drawable_fixups(
                 enhanced=enhanced,
             )
     if not shader_group and require_shader_group and has_models:
-        validator.error(f"{path}.shader_group", "required resource pointer is null")
+        validator.error(
+            f"{path}.shader_group",
+            "required resource pointer is null",
+            code="yft.binary.drawable.shader_group_required",
+        )
     joints = validator.u64(root + 0x90)
     if joints:
         audit_joints(
@@ -83,11 +87,13 @@ def audit_fragment_drawable_fixups(
         validator.error(
             f"{path}.extra_bounds",
             f"count {bounds_count} exceeds capacity {bounds_capacity}",
+            code="yft.binary.drawable.extra_bounds_capacity_invalid",
         )
     if active_bound_count > bounds_count:
         validator.error(
             f"{path}.extra_bounds",
             f"active count {active_bound_count} exceeds array count {bounds_count}",
+            code="yft.binary.drawable.extra_bounds_active_count_invalid",
         )
     bounds_array = validator.pointer(
         validator.u64(root + 0xF8),

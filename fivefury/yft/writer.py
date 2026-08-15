@@ -33,7 +33,7 @@ from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
 from ..ydr.write_lights import write_lights
 from ..ydr.write_materials import prepare_materials
-from .binary_validation import assert_valid_yft_bytes
+from .binary_validation import validate_yft_bytes
 from .bound_ownership import apply_physics_lod_bound_ref_counts
 from .bound_profiles import (
     YftPhysicsBoundProfile,
@@ -66,7 +66,7 @@ from .physics_authoring import (
 )
 from .physics_writer import write_physics_child_header, write_physics_lod_group
 from .resource_headers import YftRuntimeHeaders, yft_runtime_headers
-from .validation import assert_valid_yft
+from .validation import validate_yft
 
 _DAT_VIRTUAL_BASE = 0x50000000
 
@@ -288,9 +288,7 @@ def _write_fragment_drawable_tail(
         for extra_bound in extra_bounds
     ]
     bounds_array_offset = (
-        system.alloc(len(extra_bound_offsets) * 8, 8)
-        if extra_bound_offsets
-        else 0
+        system.alloc(len(extra_bound_offsets) * 8, 8) if extra_bound_offsets else 0
     )
     for index, extra_bound_offset in enumerate(extra_bound_offsets):
         system.pack_into(
@@ -433,16 +431,12 @@ def create_yft(
     ] = (),
     physics_lods: Sequence[YftPhysicsLod] = (),
     physics_bound: Bound | None = None,
-    physics_bound_profile: YftPhysicsBoundProfile | str = (
-        YftPhysicsBoundProfile.PROP
-    ),
+    physics_bound_profile: YftPhysicsBoundProfile | str = (YftPhysicsBoundProfile.PROP),
     physics_density: float | None = None,
     bounding_sphere: tuple[float, float, float, float] | None = None,
     user_data: int = 0,
 ) -> Yft:
-    bound_profile = coerce_yft_physics_bound_profile(
-        physics_bound_profile
-    )
+    bound_profile = coerce_yft_physics_bound_profile(physics_bound_profile)
     yft = Yft(
         version=int(version),
         path=name,
@@ -495,7 +489,7 @@ def create_yft(
 
 
 def _validate_authoring_yft(yft: Yft) -> None:
-    assert_valid_yft(yft)
+    validate_yft(yft).raise_for_errors()
 
 
 def _write_fragment_root(
@@ -550,10 +544,7 @@ def _write_fragment_root(
         )
     shared_matrix_off = write_shared_matrix_set(system, shared_matrix_set)
     lights_off = write_lights(system, yft.lights)
-    needs_root_child = (
-        yft.root_child is not None
-        or not yft.physics_lod_details
-    )
+    needs_root_child = yft.root_child is not None or not yft.physics_lod_details
     root_child_off = system.alloc(0x100, 16) if needs_root_child else 0
     root_child = yft.root_child
     if root_child_off and main is not None:
@@ -658,10 +649,7 @@ def _build_yft_payload(
     graphics = GraphicsWriter()
     main, extras, cloth, physics = prepared
     runtime_headers = yft_runtime_headers(yft.version)
-    shared_shader_group_ids = {
-        id(item)
-        for item in (*extras, *physics)
-    }
+    shared_shader_group_ids = {id(item) for item in (*extras, *physics)}
     for item in [main, *extras, cloth, *physics]:
         if item is None:
             continue
@@ -822,10 +810,10 @@ def build_yft_bytes(
         system_flags=system_flags,
         graphics_flags=graphics_flags,
     )
-    assert_valid_yft_bytes(
+    validate_yft_bytes(
         result,
         profile=source.physics_bound_profile,
-    )
+    ).raise_for_errors()
     return result
 
 
