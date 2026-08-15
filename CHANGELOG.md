@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- CUT resolution for high-detail vehicle fragments and their texture dependencies.
+
 ## [0.4.4] - 2026-08-15
 
 ### Added

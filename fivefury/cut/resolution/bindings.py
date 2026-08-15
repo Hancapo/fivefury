@@ -280,7 +280,7 @@ def _resolve_binding_texture_chains(
 ) -> None:
     for object_id, resolved in resolved_bindings.items():
         check_cutscene_resolution_cancelled(cancellation)
-        model_root = next(
+        base_model_root = next(
             (
                 resolved.assets[kind]
                 for kind in CUT_MODEL_KINDS_BY_ROLE.get(resolved.binding.role, ())
@@ -289,12 +289,20 @@ def _resolve_binding_texture_chains(
             ),
             None,
         )
+        model_roots = tuple(
+            root
+            for root in (
+                resolved.high_detail_model_asset,
+                base_model_root,
+            )
+            if root is not None
+        )
         direct_root = resolved.assets.get(GameFileType.YTD)
-        roots = tuple(root for root in (model_root, direct_root) if root is not None)
+        roots = model_roots + ((direct_root,) if direct_root is not None else ())
         if not roots:
             continue
 
-        if model_root is not None:
+        for model_root in model_roots:
             for declared in cache.texture_dictionary_hashes_for_asset(model_root):
                 check_cutscene_resolution_cancelled(cancellation)
                 if cache.get_asset(declared, kind=GameFileType.YTD) is None:
