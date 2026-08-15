@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from .defs import (
     TextureFormat,
     TextureUsage,
@@ -122,17 +124,26 @@ class Ytd:
         self.textures = deduped
         return self
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        report = ValidationReport()
         seen: set[str] = set()
-        for texture in self.textures:
+        for index, texture in enumerate(self.textures):
             lowered = texture.name.lower()
             if lowered in seen:
-                issues.append(f"Duplicate texture name '{texture.name}'")
+                report.issue(
+                    "ytd.texture.name.duplicate",
+                    f"Texture name '{texture.name}' is duplicated",
+                    path=f"textures[{index}].name",
+                )
             seen.add(lowered)
             if texture.width <= 0 or texture.height <= 0:
-                issues.append(f"Texture '{texture.name}' has invalid dimensions")
-        return issues
+                report.issue(
+                    "ytd.texture.dimensions.invalid",
+                    f"Texture dimensions must be positive, got {texture.width}x{texture.height}",
+                    path=f"textures[{index}]",
+                )
+        return report
 
     def names(self) -> list[str]:
         return [texture.name for texture in self.textures]
@@ -148,6 +159,7 @@ class Ytd:
     def to_bytes(self, *, game: str | None = None) -> bytes:
         from . import _build_gen9_ytd, _build_legacy_ytd
 
+        self.validate().raise_for_errors()
         target_game = (game or self.game or "gta5").lower()
         if target_game in {"gta5", "legacy"}:
             return _build_legacy_ytd(self.textures)

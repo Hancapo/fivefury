@@ -63,7 +63,7 @@ def test_cut_validation_rejects_non_runtime_facial_states() -> None:
     missing_override.override_face_animation = True
     missing_override.face_and_body_are_merged = True
 
-    codes = {issue.code for issue in scene.validation_report()}
+    codes = {issue.code for issue in scene.validate()}
 
     assert "ped.face.separate.unsupported" in codes
     assert "ped.face.clip_base.missing" in codes
@@ -76,7 +76,7 @@ def test_cut_validation_rejects_non_runtime_facial_states() -> None:
     )
     hashed_ped.configure_facial_animation(CutFacialAnimationMode.MERGED)
     assert "ped.face.clip_base.missing" not in {
-        issue.code for issue in hashed.validation_report()
+        issue.code for issue in hashed.validate()
     }
 
 

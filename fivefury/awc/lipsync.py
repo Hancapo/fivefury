@@ -1,30 +1,43 @@
 from __future__ import annotations
 
+from ..authoring.diagnostics import ValidationReport
 from ..ycd.model import Ycd, YcdClipAnimation
 
 
-def validate_awc_lipsync(ycd: Ycd) -> list[str]:
-    issues: list[str] = []
+def validate_awc_lipsync(ycd: Ycd) -> ValidationReport:
+    report = ValidationReport()
     if len(ycd.clips) != 1:
-        issues.append(
-            f"lip-sync dictionaries require exactly one clip, got {len(ycd.clips)}"
+        report.issue(
+            "awc.lipsync.clips.count",
+            f"Lip-sync dictionaries require exactly one clip, got {len(ycd.clips)}",
+            path="clips",
         )
-        return issues
+        return report
 
     clip = ycd.clips[0]
     if not isinstance(clip, YcdClipAnimation):
-        issues.append("the lip-sync clip must be an animation clip")
+        report.issue(
+            "awc.lipsync.clip.type",
+            "The lip-sync clip must be an animation clip",
+            path="clips[0]",
+        )
     elif clip.animation is None:
-        issues.append("the lip-sync clip has no animation payload")
+        report.issue(
+            "awc.lipsync.clip.animation.required",
+            "The lip-sync clip has no animation payload",
+            path="clips[0].animation",
+        )
     elif clip.animation not in ycd.animations:
-        issues.append("the lip-sync clip references an animation outside the dictionary")
-    return issues
+        report.issue(
+            "awc.lipsync.clip.animation.external",
+            "The lip-sync clip references an animation outside the dictionary",
+            path="clips[0].animation",
+        )
+    return report
 
 
 def require_valid_awc_lipsync(ycd: Ycd) -> Ycd:
-    issues = validate_awc_lipsync(ycd)
-    if issues:
-        raise ValueError("invalid AWC lip-sync dictionary: " + "; ".join(issues))
+    validate_awc_lipsync(ycd).raise_for_errors()
     return ycd
 
 
