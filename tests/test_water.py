@@ -7,12 +7,12 @@ import pytest
 from fivefury import (
     GameFileCache,
     GameFileType,
+    ValidationError,
     WaterCalmingQuad,
     WaterCornerAlphas,
     WaterData,
     WaterQuad,
     WaterQuadType,
-    WaterValidationError,
     WaterWaveQuad,
     create_water,
     read_water,
@@ -85,7 +85,7 @@ def test_read_water_maps_every_game_field() -> None:
 
     assert water.calming_quads[0].dampening == 0.25
     assert water.wave_quads[0].direction == (-0.8, 0.6)
-    assert water.validate() == []
+    assert water.validate().valid
 
 
 def test_water_xml_semantic_roundtrip() -> None:
@@ -271,15 +271,15 @@ def test_water_writer_reports_actionable_validation_errors() -> None:
         ],
     )
 
-    with pytest.raises(WaterValidationError) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         water.to_xml_bytes()
 
-    message = str(exc_info.value)
-    assert "water_quads[0].min_x must be lower than max_x" in message
-    assert "water_quads[0].z must fit a finite 32-bit float" in message
-    assert "water_quads[0].type must be between 0 and 4" in message
-    assert "water_quads[0].alpha_sw must be between 0 and 255" in message
-    assert "calming_quads[0].dampening" in message
+    codes = {issue.code for issue in exc_info.value.report.errors}
+    assert "water.quad.bounds.x.inverted" in codes
+    assert "water.quad.z.range" in codes
+    assert "water.quad.type.range" in codes
+    assert "water.quad.alpha.range" in codes
+    assert "water.calming_quad.dampening.range" in codes
 
 
 def test_water_requires_the_native_root_name() -> None:

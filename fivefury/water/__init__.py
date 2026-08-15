@@ -6,7 +6,6 @@ from .model import (
     WaterData,
     WaterQuad,
     WaterQuadType,
-    WaterValidationError,
     WaterWaveQuad,
     coerce_water_data,
 )
@@ -20,7 +19,6 @@ __all__ = [
     "WaterData",
     "WaterQuad",
     "WaterQuadType",
-    "WaterValidationError",
     "WaterWaveQuad",
     "build_water_xml",
     "coerce_water_data",

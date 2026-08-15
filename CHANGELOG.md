@@ -13,6 +13,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YFT semantic and binary validation now uses structured reports with stable diagnostic codes and no assertion-style public helpers.
 - CUT and DLC validation now returns structured reports and uses the shared validation error contract.
 - Bounds and YBN validation now uses structured, path-aware diagnostics.
+- GTA5 cache, heightmap, and water validation now uses structured diagnostics and the shared validation error contract.
 
 ### Added
 

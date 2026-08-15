@@ -160,12 +160,7 @@ def build_gta5_cache_y(
         interior_proxies=proxies,
         bounds=_bound_entries(ybns),
     )
-    issues = cache.validate()
-    if issues:
-        raise ValueError(
-            "cannot build invalid GTA5 cache:\n"
-            + "\n".join(f"- {issue}" for issue in issues)
-        )
+    cache.validate().raise_for_errors()
     return cache
 
 

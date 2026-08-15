@@ -12,7 +12,7 @@ from fivefury import (
     HeightMapByteOrder,
     HeightMapCellFormat,
     HeightMapFlags,
-    HeightMapValidationError,
+    ValidationError,
     create_heightmap,
     read_heightmap,
 )
@@ -96,7 +96,7 @@ def test_uint16_tool_heightmap_roundtrips_when_game_check_is_disabled() -> None:
     )
     heightmap.set_height(0, 0, minimum=12.25, maximum=15.75)
 
-    with pytest.raises(HeightMapValidationError, match="UINT8"):
+    with pytest.raises(ValidationError, match="UINT8"):
         heightmap.to_bytes()
 
     encoded = heightmap.to_bytes(game_compatible=False)

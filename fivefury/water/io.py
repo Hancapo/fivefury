@@ -142,7 +142,7 @@ def _append_section(
 def build_water_xml(source: WaterData, *, validate: bool = True) -> bytes:
     water = source.build()
     if validate:
-        water.ensure_valid()
+        water.validate().raise_for_errors()
     root = ET.Element("WaterData")
     _append_section(root, "WaterQuads", water.water_quads, _water_quad_element)
     _append_section(
