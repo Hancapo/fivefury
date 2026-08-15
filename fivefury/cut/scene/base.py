@@ -20,6 +20,7 @@ from .bindings import (
     _BINDING_CLASS_BY_TYPE,
     _ROLE_PROPERTY_NAMES,
     CutBinding,
+    CutCamera,
     CutFacialAnimationMode,
     CutPed,
     CutProp,
@@ -663,6 +664,32 @@ for _role, _property_name in _ROLE_PROPERTY_NAMES.items():
 
 for _role, _binding_cls in _BINDING_ADDERS.items():
     setattr(CutScene, _role, _make_binding_adder(_binding_cls))
+
+
+def camera(
+    self: CutScene,
+    name: str = "exportcamera",
+    *,
+    object_id: int | None = None,
+    animation_streaming_base: int | None = None,
+    near_draw_distance: float = 0.1,
+    far_draw_distance: float = 1000.0,
+    fields: dict[str, Any] | None = None,
+) -> CutCamera:
+    camera = self._typed_binding(
+        CutCamera,
+        name,
+        object_id=object_id,
+        fields=fields,
+    )
+    assert isinstance(camera, CutCamera)
+    camera.animation_streaming_base = animation_streaming_base
+    camera.near_draw_distance = near_draw_distance
+    camera.far_draw_distance = far_draw_distance
+    return camera
+
+
+CutScene.camera = camera
 
 
 def ped(
