@@ -11,11 +11,12 @@ from ..cut.scene.base import CutScene
 from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
-from ..vector import lerp_tuple, quat_canonicalize, quat_nlerp
+from ..vector import lerp_tuple, quat_canonicalize, quat_nlerp, vec3, vec4
 from .model import (
     Ycd,
     YcdAnimation,
     YcdAnimationBoneId,
+    YcdCameraAnimationSample,
     YcdClipAnimation,
     YcdClipType,
     YcdSequence,
@@ -534,6 +535,65 @@ class YcdCutsceneBuilder:
             clip = YcdCutsceneClip(name=key)
             self._clips[key] = clip
         return clip
+
+    def sample_camera(self, name: str, time: float) -> YcdCameraAnimationSample:
+        clip = self._clips.get(str(name))
+        if clip is None:
+            return YcdCameraAnimationSample()
+        frame = min(max(float(time) * self.fps, 0.0), self.total_frames - 1)
+        values: dict[int, tuple[float, ...]] = {}
+        for track in clip.tracks:
+            track_id = int(track.track)
+            if not _is_camera_track_id(track_id) or not track.samples:
+                continue
+            frame_start = int(frame)
+            frame_end = min(frame_start + 1, len(track.samples) - 1)
+            start_value = track.samples[frame_start]
+            end_value = track.samples[frame_end]
+            values[track_id] = _interpolate_values(
+                start_value,
+                end_value,
+                frame - frame_start,
+                is_quaternion=track.format is YcdTrackFormat.QUATERNION,
+            )
+
+        def scalar(track: YcdAnimationTrack) -> float | None:
+            value = values.get(int(track))
+            return float(value[0]) if value is not None else None
+
+        def vector3(
+            track: YcdAnimationTrack,
+        ) -> tuple[float, float, float] | None:
+            value = values.get(int(track))
+            return vec3(value) if value is not None else None
+
+        rotation = values.get(int(YcdAnimationTrack.CAMERA_ROTATION))
+
+        return YcdCameraAnimationSample(
+            position=vector3(YcdAnimationTrack.CAMERA_TRANSLATION),
+            rotation=vec4(rotation) if rotation is not None else None,
+            field_of_view=scalar(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW),
+            depth_of_field=vector3(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD),
+            depth_of_field_strength=scalar(
+                YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_STRENGTH
+            ),
+            motion_blur=scalar(YcdAnimationTrack.CAMERA_MOTION_BLUR),
+            coc=scalar(YcdAnimationTrack.CAMERA_COC),
+            focus=scalar(YcdAnimationTrack.CAMERA_FOCUS),
+            night_coc=scalar(YcdAnimationTrack.CAMERA_NIGHT_COC),
+            near_out_of_focus_plane=scalar(
+                YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_OUT_OF_FOCUS_PLANE
+            ),
+            near_in_focus_plane=scalar(
+                YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_NEAR_IN_FOCUS_PLANE
+            ),
+            far_out_of_focus_plane=scalar(
+                YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_OUT_OF_FOCUS_PLANE
+            ),
+            far_in_focus_plane=scalar(
+                YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD_FAR_IN_FOCUS_PLANE
+            ),
+        )
 
     def track(
         self,

@@ -273,6 +273,16 @@ class _TypedCutBinding(CutBinding):
         else:
             self.fields[field_name] = int(value)
 
+    def _get_float_field(self, field_name: str) -> float | None:
+        value = self.fields.get(field_name)
+        return None if value is None else float(value)
+
+    def _set_float_field(self, field_name: str, value: float | None) -> None:
+        if value is None:
+            self.fields.pop(field_name, None)
+        else:
+            self.fields[field_name] = float(value)
+
 
 class _CutNamedStreamedBinding(_TypedCutBinding):
     @property
@@ -534,6 +544,30 @@ class CutAnimationManager(_TypedCutBinding):
 class CutCamera(_TypedCutBinding):
     TYPE_NAME = "rage__cutfCameraObject"
     ROLE = "camera"
+
+    @property
+    def animation_streaming_base(self) -> int | None:
+        return self._get_int_field("AnimStreamingBase")
+
+    @animation_streaming_base.setter
+    def animation_streaming_base(self, value: int | None) -> None:
+        self._set_int_field("AnimStreamingBase", value)
+
+    @property
+    def near_draw_distance(self) -> float | None:
+        return self._get_float_field("fNearDrawDistance")
+
+    @near_draw_distance.setter
+    def near_draw_distance(self, value: float | None) -> None:
+        self._set_float_field("fNearDrawDistance", value)
+
+    @property
+    def far_draw_distance(self) -> float | None:
+        return self._get_float_field("fFarDrawDistance")
+
+    @far_draw_distance.setter
+    def far_draw_distance(self, value: float | None) -> None:
+        self._set_float_field("fFarDrawDistance", value)
 
 
 class CutPed(_CutStreamedModelBinding):
@@ -878,7 +912,6 @@ _ROLE_PROPERTY_NAMES = {
 _BINDING_ADDERS = {
     "asset_manager": CutAssetManager,
     "animation_manager": CutAnimationManager,
-    "camera": CutCamera,
     "ped": CutPed,
     "prop": CutProp,
     "vehicle": CutVehicle,

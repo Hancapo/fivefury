@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING
 
 from ...common import atomic_write_bytes
 from ...game_target import GameTarget
+from ...hashing import jenk_partial_hash
+from ...vector import vec3, vec4
 from ..payloads import CutCameraCutPayload, CutLoadScenePayload
 from .base import CutScene
-from .bindings import CutBinding
+from .bindings import CutBinding, CutCamera
 from .io import read_cut_scene
 
 if TYPE_CHECKING:
@@ -17,6 +19,7 @@ if TYPE_CHECKING:
     from ...ycd.cutscene import YcdCutsceneBoneAnimation, YcdCutsceneBuilder
     from ...ycd.model import Ycd
     from ..model import CutFile
+    from .timeline import CutTimelineEvent
 
 
 def _file_name(value: str, suffix: str) -> str:
@@ -225,12 +228,27 @@ class CutsceneProject:
         field_of_view: object | None = None,
         near_clip: float = 0.05,
         far_clip: float = 1000.0,
+        cut_name: str | None = None,
+        cut_position: object | None = None,
+        cut_rotation: object | None = None,
         **tracks: object,
-    ) -> CutBinding:
-        camera = self.scene.camera(name)
+    ) -> CutCamera:
+        if self.scene.cameras:
+            raise ValueError(
+                "A cutscene project has one runtime camera; use camera_cut() "
+                "to author additional shots"
+            )
         animated = any(
             value is not None
             for value in (position, rotation, field_of_view, *tracks.values())
+        )
+        camera = self.scene.camera(
+            name,
+            animation_streaming_base=(
+                jenk_partial_hash(name) if animated else None
+            ),
+            near_draw_distance=near_clip,
+            far_draw_distance=far_clip,
         )
         if animated:
             self.animations.camera(
@@ -241,16 +259,54 @@ class CutsceneProject:
                 **tracks,
             )
             self._load_animation_sections()
-        self.scene.camera_cut(
+        self.camera_cut(
+            camera,
+            start=start,
+            name=cut_name,
+            position=cut_position,
+            rotation=cut_rotation,
+        )
+        return camera
+
+    def camera_cut(
+        self,
+        camera: CutCamera,
+        *,
+        start: float,
+        name: str | None = None,
+        position: object | None = None,
+        rotation: object | None = None,
+    ) -> CutTimelineEvent:
+        self._require_binding(camera)
+        if camera.role != "camera":
+            raise ValueError("Camera cuts must target the project runtime camera")
+        sample = self.animations.sample_camera(camera.name or "", start)
+        cut_position = position if position is not None else sample.position
+        cut_rotation = rotation if rotation is not None else sample.rotation
+        if camera.animation_streaming_base is not None and (
+            cut_position is None or cut_rotation is None
+        ):
+            raise ValueError(
+                "Animated camera cuts require position and rotation tracks "
+                "or explicit cut pose values"
+            )
+        cut_position = (0.0, 0.0, 0.0) if cut_position is None else vec3(cut_position)
+        cut_rotation = (
+            (0.0, 0.0, 0.0, 1.0)
+            if cut_rotation is None
+            else vec4(cut_rotation)
+        )
+        return self.scene.camera_cut(
             start,
             camera,
             CutCameraCutPayload(
-                name,
-                near_draw_distance=float(near_clip),
-                far_draw_distance=float(far_clip),
+                name or camera.name or "exportcamera",
+                position=cut_position,
+                rotation_quaternion=cut_rotation,
+                near_draw_distance=float(camera.near_draw_distance or 0.0),
+                far_draw_distance=float(camera.far_draw_distance or 0.0),
             ),
         )
-        return camera
 
     def build(self, *, cut_name: str | None = None) -> CutsceneAssets:
         return CutsceneAssets(
