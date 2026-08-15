@@ -4,7 +4,7 @@ from typing import Protocol
 
 
 class DrawableFixupValidator(Protocol):
-    def error(self, path: str, message: str) -> None: ...
+    def error(self, path: str, message: str, *, code: str) -> None: ...
 
     def pointer(
         self,

@@ -66,9 +66,9 @@ def _source(group: YftPhysicsGroup, *, pane_count: int = 1) -> Yft:
 
 def _glass_errors(source: Yft) -> list[str]:
     return [
-        issue.format()
+        f"{issue.path or issue.code}: {issue.message}"
         for issue in validate_yft(source)
-        if "glass" in issue.path or "glass" in issue.message
+        if "glass" in (issue.path or "") or "glass" in issue.message
     ]
 
 

@@ -3,8 +3,9 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..ydr import Ydr, YdrLight, YdrMesh, YdrModel
 from ..ydr.defs import YdrLod, coerce_lod
 from .bound_profiles import YftPhysicsBoundProfile
@@ -23,6 +24,9 @@ from .physics import (
 from .pointers import YftFragmentPointers, YftFragmentState, YftRawField
 from .stats import YftGeometryStats
 
+if TYPE_CHECKING:
+    from ..authoring.context import BuildContext
+
 
 @dataclasses.dataclass(slots=True)
 class Yft:
@@ -36,9 +40,7 @@ class Yft:
     physics_lods: YftPhysicsLodPointers = dataclasses.field(
         default_factory=YftPhysicsLodPointers
     )
-    physics_bound_profile: YftPhysicsBoundProfile = (
-        YftPhysicsBoundProfile.PROP
-    )
+    physics_bound_profile: YftPhysicsBoundProfile = YftPhysicsBoundProfile.PROP
     physics_lod_details: list[YftPhysicsLod] = dataclasses.field(default_factory=list)
     root_child: YftPhysicsChild | None = None
     collision_event_set: YftEventSet | None = None
@@ -199,15 +201,15 @@ class Yft:
                 return lod
         return self.physics_lod_details[0] if self.physics_lod_details else None
 
-    def validate(self, *, raise_on_error: bool = False):
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+    ) -> ValidationReport:
         from .validation import validate_yft
 
-        issues = validate_yft(self)
-        if raise_on_error and any(issue.is_error for issue in issues):
-            from .validation import assert_valid_yft
-
-            assert_valid_yft(self)
-        return issues
+        del context
+        return validate_yft(self)
 
     def with_physics_lod(
         self,

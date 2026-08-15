@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .binary_validation import assert_valid_yft_bytes, validate_yft_bytes
+from .binary_validation import validate_yft_bytes
 from .cloth import (
     YftClothBridge,
     YftClothConstraint,
@@ -54,12 +54,7 @@ from .pointers import (
     YftRawField,
 )
 from .stats import YftGeometryStats
-from .validation import (
-    YftValidationIssue,
-    YftValidationSeverity,
-    assert_valid_yft,
-    validate_yft,
-)
+from .validation import validate_yft
 
 __all__ = [
     "Matrix43",
@@ -106,16 +101,12 @@ __all__ = [
     "YftPhysicsTransforms",
     "YftRawField",
     "YftSharedMatrixSet",
-    "YftValidationIssue",
-    "YftValidationSeverity",
     "YftVehicleGlassFlag",
     "YftVehicleGlassRow",
     "YftVehicleGlassSpan",
     "YftVehicleGlassWindow",
     "YftVehicleGlassWindows",
     "YftVerletCloth",
-    "assert_valid_yft",
-    "assert_valid_yft_bytes",
     "validate_yft",
     "validate_yft_bytes",
 ]

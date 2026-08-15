@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import math
 import struct
+from pathlib import Path
 
+from ..authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ..bounds import GEN9_BOUND_FILE_VFTS, BoundType
 from ..common import ByteSource, read_source_bytes
 from ..resource import (
@@ -28,10 +30,6 @@ from .geometry import (
     MAX_FRAGMENT_BOUND_VERTICES,
 )
 from .resource_headers import RESOURCE_STATE, yft_runtime_headers
-from .validation import (
-    YftValidationIssue,
-    YftValidationSeverity,
-)
 
 _PHYSICS_LOD_SIZE = 0x130
 _PHYSICS_GROUP_SIZE = 0xB0
@@ -60,13 +58,16 @@ class _YftBinaryValidator:
         self.graphics_data = graphics_data
         self.profile = profile
         self.runtime_headers = yft_runtime_headers(header.version)
-        self.issues: list[YftValidationIssue] = []
+        self.report = ValidationReport()
         self._validated_drawables: set[int] = set()
         self._common_drawable: int = 0
 
-    def error(self, path: str, message: str) -> None:
-        self.issues.append(
-            YftValidationIssue(YftValidationSeverity.ERROR, path, message)
+    def error(self, path: str, message: str, *, code: str) -> None:
+        self.report.issue(
+            code,
+            message,
+            severity=DiagnosticSeverity.ERROR,
+            path=path,
         )
 
     def _section_data(self, chunk: ResourceChunk) -> bytes:
@@ -83,7 +84,11 @@ class _YftBinaryValidator:
     ) -> int | None:
         if not pointer:
             if not nullable:
-                self.error(path, "required resource pointer is null")
+                self.error(
+                    path,
+                    "required resource pointer is null",
+                    code="yft.binary.pointer.required_resource_pointer_null",
+                )
             return None
         try:
             chunk = validate_resource_pointer(
@@ -94,13 +99,17 @@ class _YftBinaryValidator:
                 nullable=nullable,
             )
         except ValueError as exc:
-            self.error(path, str(exc))
+            self.error(path, str(exc), code="yft.binary.pointer.invalid")
             return None
         assert chunk is not None
         offset = chunk.section_offset + pointer - chunk.address
         data = self._section_data(chunk)
         if offset < 0 or offset + size > len(data):
-            self.error(path, f"requires 0x{size:X} bytes beyond the decoded resource data")
+            self.error(
+                path,
+                f"requires 0x{size:X} bytes beyond the decoded resource data",
+                code="yft.binary.pointer.requires_0x_x_bytes_beyond_decoded_resource_data",
+            )
             return None
         return offset
 
@@ -132,11 +141,16 @@ class _YftBinaryValidator:
         # Runtime class addresses vary between GTA V executable families.
         # Profile-specific bound VFTs are checked separately and exactly.
         if not vft:
-            self.error(f"{path}.vft", "runtime VFT is zero")
+            self.error(
+                f"{path}.vft",
+                "runtime VFT is zero",
+                code="yft.binary.class_header.runtime_vft_zero",
+            )
         if state != RESOURCE_STATE:
             self.error(
                 f"{path}.resource_state",
                 f"expected {RESOURCE_STATE}, found {state}",
+                code="yft.binary.class_header.expected_found",
             )
         return offset
 
@@ -165,7 +179,11 @@ class _YftBinaryValidator:
         if offset is None:
             return
         if self.system_data.find(b"\0", offset) < 0:
-            self.error(path, "string is not null terminated")
+            self.error(
+                path,
+                "string is not null terminated",
+                code="yft.binary.string.string_not_null_terminated",
+            )
 
     def validate_drawable(
         self,
@@ -175,10 +193,7 @@ class _YftBinaryValidator:
         require_shader_group: bool = True,
         inherited_shader_count: int | None = None,
     ) -> None:
-        if (
-            inherited_shader_count is not None
-            and pointer != self._common_drawable
-        ):
+        if inherited_shader_count is not None and pointer != self._common_drawable:
             root = self.pointer(pointer, path, size=0x150, nullable=False)
             if root is not None:
                 shader_group = self.u64(root + 0x10)
@@ -187,6 +202,7 @@ class _YftBinaryValidator:
                         f"{path}.shader_group",
                         "secondary fragment drawables must inherit the common "
                         "drawable shader group; the private pointer must be null",
+                        code="yft.binary.drawable.secondary_fragment_drawables_must_inherit_common_drawable_shader_group",
                     )
                 self.validate_inherited_shader_mappings(
                     root,
@@ -276,6 +292,7 @@ class _YftBinaryValidator:
                             f"{model_path}.shader_mapping[{geometry_index}]",
                             f"shader index {shader_index} is outside the common "
                             f"shader group with {shader_count} entries",
+                            code="yft.binary.inherited_shader_mappings.shader_index_outside_common_shader_group_entries",
                         )
 
     def validate_child(
@@ -338,6 +355,7 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.instances",
                 f"count {count} exceeds capacity {capacity}",
+                code="yft.binary.event_set.count_exceeds_capacity",
             )
         instances = self.pointer_array(
             self.u64(offset + 0x08),
@@ -374,6 +392,7 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.ref_count",
                 f"expected 1 owner, found {ref_count}",
+                code="yft.binary.damp.expected_1_owner_found",
             )
         return bound
 
@@ -386,12 +405,15 @@ class _YftBinaryValidator:
         with_bvh: bool,
     ) -> None:
         size = _BOUND_BVH_SIZE if with_bvh else _BOUND_GEOMETRY_SIZE
-        if self.pointer(
-            pointer,
-            path,
-            size=size,
-            nullable=False,
-        ) is None:
+        if (
+            self.pointer(
+                pointer,
+                path,
+                size=size,
+                nullable=False,
+            )
+            is None
+        ):
             return
         vertex_count = self.u32(offset + 0xD0)
         polygon_count = self.u32(offset + 0xD4)
@@ -401,18 +423,21 @@ class _YftBinaryValidator:
                 f"{path}.vertices",
                 f"{vertex_count} exceeds the fragment bound limit "
                 f"of {MAX_FRAGMENT_BOUND_VERTICES}",
+                code="yft.binary.validate_geometry_bound.exceeds_fragment_bound_limit",
             )
         if polygon_count > MAX_FRAGMENT_BOUND_POLYGONS:
             self.error(
                 f"{path}.polygons",
                 f"{polygon_count} exceeds the fragment bound limit "
                 f"of {MAX_FRAGMENT_BOUND_POLYGONS}",
+                code="yft.binary.validate_geometry_bound.exceeds_fragment_bound_limit",
             )
         if material_count > MAX_FRAGMENT_BOUND_MATERIALS:
             self.error(
                 f"{path}.materials",
                 f"{material_count} exceeds the fragment bound limit "
                 f"of {MAX_FRAGMENT_BOUND_MATERIALS}",
+                code="yft.binary.validate_geometry_bound.exceeds_fragment_bound_limit",
             )
         self.pointer(
             self.u64(offset + 0xB0),
@@ -455,6 +480,7 @@ class _YftBinaryValidator:
                         f"{path}.polygon_material_indices[{index}]",
                         f"material {material_index} is outside "
                         f"{material_count} entries",
+                        code="yft.binary.validate_geometry_bound.material_outside_entries",
                     )
         if polygons_offset is not None:
             for index in range(polygon_count):
@@ -489,14 +515,15 @@ class _YftBinaryValidator:
                     self.error(
                         f"{path}.polygons[{index}]",
                         f"unsupported polygon type {polygon_type}",
+                        code="yft.binary.validate_geometry_bound.unsupported_polygon_type",
                     )
                     continue
                 for vertex_index in vertex_indices:
                     if vertex_index >= vertex_count:
                         self.error(
                             f"{path}.polygons[{index}]",
-                            f"vertex {vertex_index} is outside "
-                            f"{vertex_count} entries",
+                            f"vertex {vertex_index} is outside {vertex_count} entries",
+                            code="yft.binary.validate_geometry_bound.vertex_outside_entries",
                         )
 
         octants = self.u64(offset + 0xC0)
@@ -532,6 +559,7 @@ class _YftBinaryValidator:
                                 f"{path}.octants[{index}][{item_index}]",
                                 f"vertex {vertex_index} is outside "
                                 f"{vertex_count} entries",
+                                code="yft.binary.validate_geometry_bound.vertex_outside_entries",
                             )
 
     def validate_profile_bound_tree(
@@ -555,6 +583,7 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.type",
                 f"unsupported bound type {self.u8(offset + 0x10)}",
+                code="yft.binary.profile_bound_tree.unsupported_bound_type",
             )
             return []
         vft = self.u32(offset)
@@ -567,24 +596,28 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.type",
                 f"{bound_type.name} is not defined for Enhanced resources",
+                code="yft.binary.profile_bound_tree.not_defined_enhanced_resources",
             )
         elif (
-            self.profile is not YftPhysicsBoundProfile.PRESERVE
-            and expected_vft is None
+            self.profile is not YftPhysicsBoundProfile.PRESERVE and expected_vft is None
         ):
             self.error(
                 f"{path}.type",
-                f"{bound_type.name} is not defined for "
-                f"{self.profile.value}",
+                f"{bound_type.name} is not defined for {self.profile.value}",
+                code="yft.binary.profile_bound_tree.not_defined",
             )
         elif expected_vft is not None and vft != expected_vft:
             self.error(
                 f"{path}.vft",
-                f"expected target runtime VFT 0x{expected_vft:08X}, "
-                f"found 0x{vft:08X}",
+                f"expected target runtime VFT 0x{expected_vft:08X}, found 0x{vft:08X}",
+                code="yft.binary.profile_bound_tree.expected_target_runtime_vft_0x_08x_found_0x_08x",
             )
         elif not vft:
-            self.error(f"{path}.vft", "bound VFT is zero")
+            self.error(
+                f"{path}.vft",
+                "bound VFT is zero",
+                code="yft.binary.profile_bound_tree.bound_vft_zero",
+            )
 
         finite_values = struct.unpack_from("<f", self.system_data, offset + 0x14)
         finite_values += struct.unpack_from("<4f", self.system_data, offset + 0x20)
@@ -593,11 +626,19 @@ class _YftBinaryValidator:
         finite_values += struct.unpack_from("<3f", self.system_data, offset + 0x50)
         finite_values += struct.unpack_from("<4f", self.system_data, offset + 0x60)
         if not all(math.isfinite(value) for value in finite_values):
-            self.error(path, "bound metrics contain NaN or infinity")
+            self.error(
+                path,
+                "bound metrics contain NaN or infinity",
+                code="yft.binary.profile_bound_tree.bound_metrics_contain_nan_infinity",
+            )
         minimum = struct.unpack_from("<3f", self.system_data, offset + 0x30)
         maximum = struct.unpack_from("<3f", self.system_data, offset + 0x20)
         if any(minimum[axis] > maximum[axis] for axis in range(3)):
-            self.error(path, "bound AABB is inverted")
+            self.error(
+                path,
+                "bound AABB is inverted",
+                code="yft.binary.profile_bound_tree.bound_aabb_inverted",
+            )
 
         if bound_type is BoundType.GEOMETRY:
             self._validate_geometry_bound(
@@ -615,6 +656,7 @@ class _YftBinaryValidator:
                 self.error(
                     path,
                     f"BoundBVH is not valid for {self.profile.value}",
+                    code="yft.binary.profile_bound_tree.boundbvh_not_valid",
                 )
             self._validate_geometry_bound(
                 pointer,
@@ -627,17 +669,20 @@ class _YftBinaryValidator:
             if expected_slots not in (None, 1):
                 self.error(
                     path,
-                    f"{bound_type.name} cannot provide "
-                    f"{expected_slots} physics slots",
+                    f"{bound_type.name} cannot provide {expected_slots} physics slots",
+                    code="yft.binary.profile_bound_tree.cannot_provide_physics_slots",
                 )
             return [pointer]
 
-        if self.pointer(
-            pointer,
-            path,
-            size=_BOUND_COMPOSITE_SIZE,
-            nullable=False,
-        ) is None:
+        if (
+            self.pointer(
+                pointer,
+                path,
+                size=_BOUND_COMPOSITE_SIZE,
+                nullable=False,
+            )
+            is None
+        ):
             return []
         capacity = self.u16(offset + 0xA0)
         count = self.u16(offset + 0xA2)
@@ -645,12 +690,13 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.children",
                 f"active count {count} exceeds capacity {capacity}",
+                code="yft.binary.profile_bound_tree.active_count_exceeds_capacity",
             )
         if expected_slots is not None and count != expected_slots:
             self.error(
                 f"{path}.children",
-                f"composite has {count} slots for "
-                f"{expected_slots} physics children",
+                f"composite has {count} slots for {expected_slots} physics children",
+                code="yft.binary.profile_bound_tree.composite_slots_physics_children",
             )
         children = list(
             self.pointer_array(
@@ -672,8 +718,7 @@ class _YftBinaryValidator:
                 f"{path}.{label}",
                 size=capacity * item_size,
                 nullable=(
-                    capacity == 0
-                    or label in ("transforms_copy", "flags1", "flags2")
+                    capacity == 0 or label in ("transforms_copy", "flags1", "flags2")
                 ),
             )
         for index, child in enumerate(children):
@@ -689,22 +734,20 @@ class _YftBinaryValidator:
                     self.error(
                         f"{child_path}.bounds",
                         "slot AABB contains NaN or infinity",
+                        code="yft.binary.profile_bound_tree.slot_aabb_contains_nan_infinity",
                     )
             if not child:
                 for label in ("flags1", "flags2"):
                     flags = array_offsets[label]
-                    if (
-                        flags is not None
-                        and struct.unpack_from(
-                            "<II",
-                            self.system_data,
-                            flags + index * 8,
-                        )
-                        != (0, 0)
-                    ):
+                    if flags is not None and struct.unpack_from(
+                        "<II",
+                        self.system_data,
+                        flags + index * 8,
+                    ) != (0, 0):
                         self.error(
                             f"{child_path}.{label}",
                             "null slot must have zero flags",
+                            code="yft.binary.profile_bound_tree.null_slot_must_zero_flags",
                         )
                 continue
             child_offset = self.pointer(
@@ -716,14 +759,15 @@ class _YftBinaryValidator:
             if child_offset is None:
                 continue
             child_type = self.u8(child_offset + 0x10)
-            if (
-                self.profile in (
-                    YftPhysicsBoundProfile.PROP,
-                    YftPhysicsBoundProfile.SET_PIECE,
+            if self.profile in (
+                YftPhysicsBoundProfile.PROP,
+                YftPhysicsBoundProfile.SET_PIECE,
+            ) and child_type == int(BoundType.COMPOSITE):
+                self.error(
+                    child_path,
+                    "nested composite is not valid",
+                    code="yft.binary.profile_bound_tree.nested_composite_not_valid",
                 )
-                and child_type == int(BoundType.COMPOSITE)
-            ):
-                self.error(child_path, "nested composite is not valid")
             self.validate_profile_bound_tree(child, child_path)
         return children[:count]
 
@@ -751,15 +795,18 @@ class _YftBinaryValidator:
         path: str,
     ) -> None:
         if len(primary) != len(other):
-            self.error(path, "bound owner slot counts do not match")
+            self.error(
+                path,
+                "bound owner slot counts do not match",
+                code="yft.binary.matching_bound_slots.bound_owner_slot_counts_do_not_match",
+            )
             return
-        for index, (expected, actual) in enumerate(
-            zip(primary, other, strict=True)
-        ):
+        for index, (expected, actual) in enumerate(zip(primary, other, strict=True)):
             if bool(expected) != bool(actual):
                 self.error(
                     f"{path}[{index}]",
                     "bound owner nullability does not match",
+                    code="yft.binary.matching_bound_slots.bound_owner_nullability_does_not_match",
                 )
                 continue
             if expected and (
@@ -769,6 +816,7 @@ class _YftBinaryValidator:
                 self.error(
                     f"{path}[{index}]",
                     "bound owner slot does not match the composite order",
+                    code="yft.binary.matching_bound_slots.bound_owner_slot_does_not_match_composite_order",
                 )
 
     def validate_bound_ref_count(
@@ -790,6 +838,7 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.ref_count",
                 f"expected {expected} owners, found {actual}",
+                code="yft.binary.bound_ref_count.expected_owners_found",
             )
 
     def validate_child_bound_link(
@@ -826,8 +875,8 @@ class _YftBinaryValidator:
             if actual_bound:
                 self.error(
                     f"{entity_path}.bound",
-                    "must be null because the matching archetype bound child "
-                    "is null",
+                    "must be null because the matching archetype bound child is null",
+                    code="yft.binary.child_bound_link.must_null_because_matching_archetype_bound_child_null",
                 )
         elif actual_bound != expected_bound:
             self.error(
@@ -835,6 +884,7 @@ class _YftBinaryValidator:
                 f"must reference the matching archetype bound child "
                 f"0x{expected_bound:08X}, got 0x{actual_bound:08X}; "
                 "standalone fragDrawable bounds are not resource-constructed",
+                code="yft.binary.child_bound_link.must_reference_matching_archetype_bound_child_0x_08x_got",
             )
 
     def validate_body(self, pointer: int, path: str, num_children: int) -> None:
@@ -849,16 +899,22 @@ class _YftBinaryValidator:
         num_links = self.u8(offset + 0x88)
         num_joints = self.u8(offset + 0x89)
         if num_links > 23:
-            self.error(f"{path}.num_links", f"{num_links} exceeds the native limit of 23")
+            self.error(
+                f"{path}.num_links",
+                f"{num_links} exceeds the native limit of 23",
+                code="yft.binary.body.exceeds_native_limit_23",
+            )
         if num_joints > 22:
             self.error(
                 f"{path}.num_joints",
                 f"{num_joints} exceeds the native limit of 22",
+                code="yft.binary.body.exceeds_native_limit_22",
             )
         if num_children and num_links not in (0, num_children):
             self.error(
                 f"{path}.num_links",
                 f"{num_links} links do not match {num_children} physics children",
+                code="yft.binary.body.links_do_not_match_physics_children",
             )
         joint_pointers = self.pointer_array(
             self.u64(offset + 0x78),
@@ -872,6 +928,7 @@ class _YftBinaryValidator:
                 self.error(
                     f"{path}.joints[{index}]",
                     f"unsupported joint type {joint_type}",
+                    code="yft.binary.body.unsupported_joint_type",
                 )
                 continue
             self.class_header(
@@ -907,6 +964,7 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.count",
                 f"{count} transforms do not match {num_children} physics children",
+                code="yft.binary.transforms.transforms_do_not_match_physics_children",
             )
 
     def validate_lod(
@@ -933,11 +991,13 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.root_group_count",
                 f"{root_group_count} exceeds {num_groups} groups",
+                code="yft.binary.lod.exceeds_groups",
             )
         if num_bony_children > num_children:
             self.error(
                 f"{path}.num_bony_children",
                 f"{num_bony_children} exceeds {num_children} children",
+                code="yft.binary.lod.exceeds_children",
             )
 
         body = self.u64(offset + 0x20)
@@ -1006,8 +1066,8 @@ class _YftBinaryValidator:
         if root_group_count != actual_root_groups:
             self.error(
                 f"{path}.root_group_count",
-                f"declares {root_group_count} root groups but has "
-                f"{actual_root_groups}",
+                f"declares {root_group_count} root groups but has {actual_root_groups}",
+                code="yft.binary.lod.declares_root_groups",
             )
         claimed_children: set[int] = set()
         for group_index, group in enumerate(group_offsets):
@@ -1032,12 +1092,14 @@ class _YftBinaryValidator:
                     self.error(
                         f"{path}.groups[{group_index}]",
                         "empty child slice has a non-zero count",
+                        code="yft.binary.lod.empty_child_slice_non_zero_count",
                     )
                 continue
             if child_index + group_child_count > num_children:
                 self.error(
                     f"{path}.groups[{group_index}]",
                     "child slice points outside the child array",
+                    code="yft.binary.lod.child_slice_points_outside_child_array",
                 )
                 continue
             for child_index_value in range(
@@ -1047,23 +1109,22 @@ class _YftBinaryValidator:
                 if child_index_value in claimed_children:
                     self.error(
                         f"{path}.groups[{group_index}]",
-                        f"physics child {child_index_value} belongs to "
-                        "multiple groups",
+                        f"physics child {child_index_value} belongs to multiple groups",
+                        code="yft.binary.lod.physics_child_belongs_multiple_groups",
                     )
                 claimed_children.add(child_index_value)
                 child = child_offsets[child_index_value]
-                if (
-                    child is not None
-                    and self.u8(child + 0x10) != group_index
-                ):
+                if child is not None and self.u8(child + 0x10) != group_index:
                     self.error(
                         f"{path}.children[{child_index_value}]",
                         "owner group does not match the ordered group slice",
+                        code="yft.binary.lod.owner_group_does_not_match_ordered_group_slice",
                     )
         if num_children and claimed_children != set(range(num_children)):
             self.error(
                 f"{path}.groups",
                 "group slices must cover every physics child exactly once",
+                code="yft.binary.lod.group_slices_must_cover_every_physics_child_exactly_once",
             )
 
         damp_bounds: dict[str, int] = {}
@@ -1084,6 +1145,7 @@ class _YftBinaryValidator:
             self.error(
                 f"{path}.undamaged_damp_archetype.bound",
                 "physics LOD requires a non-null undamaged bound",
+                code="yft.binary.lod.physics_lod_requires_non_null_undamaged_bound",
             )
         if undamaged_bound and damaged_bound == undamaged_bound:
             self.error(
@@ -1091,6 +1153,7 @@ class _YftBinaryValidator:
                 "damaged and undamaged archetypes must not share a bound "
                 "resource; the second construction would fix up the same "
                 "pointers twice",
+                code="yft.binary.lod.damaged_undamaged_archetypes_must_not_share_bound_resource_second",
             )
         if composite_bound:
             self.validate_bound_ref_count(
@@ -1133,11 +1196,7 @@ class _YftBinaryValidator:
             if damaged_bound
             else []
         )
-        if (
-            composite_bound
-            and undamaged_bound
-            and composite_bound != undamaged_bound
-        ):
+        if composite_bound and undamaged_bound and composite_bound != undamaged_bound:
             self.validate_matching_bound_slots(
                 composite_child_bounds,
                 undamaged_child_bounds,
@@ -1155,12 +1214,10 @@ class _YftBinaryValidator:
                 )
                 if not damaged_entity and damaged_child_bound:
                     self.error(
-                        (
-                            f"{path}.damaged_damp_archetype.bound"
-                            f".children[{index}]"
-                        ),
+                        (f"{path}.damaged_damp_archetype.bound.children[{index}]"),
                         "must be null when the matching physics child has "
                         "no damaged entity",
+                        code="yft.binary.lod.must_null_when_matching_physics_child_no_damaged_entity",
                     )
         if self.profile is YftPhysicsBoundProfile.PROP:
             for index in range(num_children):
@@ -1178,6 +1235,7 @@ class _YftBinaryValidator:
                     self.error(
                         f"{path}.children[{index}]",
                         "physical child has no collision in either state",
+                        code="yft.binary.lod.physical_child_no_collision_either_state",
                     )
         for index, child in enumerate(children):
             child_path = f"{path}.children[{index}]"
@@ -1211,13 +1269,11 @@ class _YftBinaryValidator:
                 f"{path}.link_attachments",
                 num_children,
             )
-        elif (
-            num_children
-            and self.profile is not YftPhysicsBoundProfile.PRESERVE
-        ):
+        elif num_children and self.profile is not YftPhysicsBoundProfile.PRESERVE:
             self.error(
                 f"{path}.link_attachments",
                 "authored physics LOD requires one attachment per child",
+                code="yft.binary.lod.authored_physics_lod_requires_one_attachment_per_child",
             )
         for field_offset, label in (
             (0x108, "self_collision_a"),
@@ -1230,7 +1286,7 @@ class _YftBinaryValidator:
                 nullable=num_self_collisions == 0,
             )
 
-    def validate(self) -> list[YftValidationIssue]:
+    def validate(self) -> ValidationReport:
         root = RSC7_VIRTUAL_BASE
         root_offset = self.class_header(
             root,
@@ -1239,7 +1295,7 @@ class _YftBinaryValidator:
             expected_vft=self.runtime_headers.fragment_type,
         )
         if root_offset is None:
-            return self.issues
+            return self.report
 
         pages_info = self.u64(root_offset + 0x08)
         pages_offset = self.pointer(
@@ -1266,6 +1322,7 @@ class _YftBinaryValidator:
                     "page counts do not match the RSC7 resource map "
                     f"({actual_system}, {actual_graphics}) != "
                     f"({expected_system}, {expected_graphics})",
+                    code="yft.binary.validate.page_counts_do_not_match_rsc7_resource_map",
                 )
 
         common_drawable = self.u64(root_offset + 0x30)
@@ -1339,64 +1396,50 @@ class _YftBinaryValidator:
         cloth_drawable = self.u64(root_offset + 0xF8)
         if cloth_drawable:
             self.validate_drawable(cloth_drawable, "root.cloth_drawable")
-        return self.issues
+        return self.report
 
 
 def validate_yft_bytes(
     source: ByteSource,
     *,
-    profile: YftPhysicsBoundProfile | str = (
-        YftPhysicsBoundProfile.PRESERVE
-    ),
-) -> list[YftValidationIssue]:
+    profile: YftPhysicsBoundProfile | str = (YftPhysicsBoundProfile.PRESERVE),
+) -> ValidationReport:
+    asset = str(source) if isinstance(source, (str, Path)) else None
     try:
         data = read_source_bytes(source)
         header, payload = parse_rsc7(data)
     except (OSError, ValueError, struct.error) as exc:
-        return [
-            YftValidationIssue(
-                YftValidationSeverity.ERROR,
-                "resource",
-                str(exc),
-            )
-        ]
+        report = ValidationReport()
+        report.issue(
+            "yft.binary.resource_invalid",
+            str(exc),
+            asset=asset,
+            path="resource",
+        )
+        return report
     if len(payload) != header.total_size:
-        return [
-            YftValidationIssue(
-                YftValidationSeverity.ERROR,
-                "resource.payload",
-                f"decoded size 0x{len(payload):X} does not match "
-                f"RSC7 size 0x{header.total_size:X}",
-            )
-        ]
+        report = ValidationReport()
+        report.issue(
+            "yft.binary.payload_size_mismatch",
+            f"decoded size 0x{len(payload):X} does not match "
+            f"RSC7 size 0x{header.total_size:X}",
+            asset=asset,
+            path="resource.payload",
+        )
+        return report
     system_data = payload[: header.system_size]
     graphics_data = payload[header.system_size :]
-    return _YftBinaryValidator(
+    report = _YftBinaryValidator(
         header,
         system_data,
         graphics_data,
         profile=coerce_yft_physics_bound_profile(profile),
     ).validate()
-
-
-def assert_valid_yft_bytes(
-    source: ByteSource,
-    *,
-    profile: YftPhysicsBoundProfile | str = (
-        YftPhysicsBoundProfile.PRESERVE
-    ),
-) -> None:
-    errors = [
-        issue
-        for issue in validate_yft_bytes(source, profile=profile)
-        if issue.is_error
-    ]
-    if errors:
-        details = "\n".join(issue.format() for issue in errors)
-        raise ValueError(f"Invalid binary YFT:\n{details}")
+    if asset is not None:
+        report.issues = [issue.for_asset(asset) for issue in report]
+    return report
 
 
 __all__ = [
-    "assert_valid_yft_bytes",
     "validate_yft_bytes",
 ]

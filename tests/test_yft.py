@@ -15,6 +15,7 @@ from fivefury import (
     BoundGeometry,
     BoundMaterial,
     BoundMaterialType,
+    DiagnosticSeverity,
     YdrMaterialInput,
     YdrMeshInput,
     build_bound_from_triangles,
@@ -162,7 +163,7 @@ def test_gen9_yft_rebuild_uses_enhanced_runtime_headers() -> None:
     assert struct.unpack_from("<I", system_data, drawable_offset)[0] == (
         GEN9_FRAGMENT_DRAWABLE_HEADERS.drawable
     )
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
     assert read_yft(raw).version == 171
 
 
@@ -233,7 +234,7 @@ def test_gen9_yft_physics_uses_enhanced_runtime_headers():
         GEN9_YFT_RUNTIME_HEADERS.physics_lod
     )
     assert struct.unpack_from("<I", system_data, bound_offset)[0] == 0x406B1940
-    assert validate_yft_bytes(raw, profile="prop") == []
+    assert validate_yft_bytes(raw, profile="prop").valid
 
 
 def test_yft_light_array_roundtrip():
@@ -280,7 +281,7 @@ def test_yft_light_array_roundtrip():
     assert parsed_light.intensity == 4.5
     assert parsed_light.bone_id == 7
     assert parsed_light.group_id == 2
-    assert parsed.validate() == []
+    assert parsed.validate().valid
 
 
 def test_yft_application_user_data_roundtrip():
@@ -301,7 +302,7 @@ def test_yft_application_user_data_roundtrip():
 
     assert struct.unpack_from("<Q", system_data, 0x80)[0] == 0x12345678
     assert parsed.user_data == 0x12345678
-    assert parsed.validate() == []
+    assert parsed.validate().valid
 
 
 def test_yft_shared_matrix_set_roundtrip():
@@ -372,7 +373,7 @@ def test_yft_shared_matrix_set_roundtrip():
         1.0,
         1.0,
     )
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
     explicit = create_yft(
         drawable,
@@ -478,7 +479,7 @@ def test_yft_glass_roundtrip(version):
     assert window.rows[1].second.values == bytes((3, 4))
     assert window.rows[2] == YftVehicleGlassRow.empty()
     assert window.flags & YftVehicleGlassFlag.HAS_EXPOSED_EDGES
-    assert parsed.validate() == []
+    assert parsed.validate().valid
 
 
 @pytest.mark.parametrize(
@@ -999,7 +1000,7 @@ def test_yft_binary_validation_rejects_pointer_outside_resource_chunks():
     issues = validate_yft_bytes(broken)
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path == "root.common_drawable"
         and "outside" in issue.message
         for issue in issues
@@ -1041,7 +1042,7 @@ def test_yft_binary_validation_rejects_pointer_outside_resource_chunks():
     issues = validate_yft_bytes(broken)
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path.endswith(".geometries[0].vertex_buffer")
         and "outside" in issue.message
         for issue in issues
@@ -1069,7 +1070,7 @@ def test_yft_without_physics_writes_runtime_root_child_header():
     assert struct.unpack_from(
         "<II", system_data, virtual_to_offset(child_pointer)
     ) == (FRAG_TYPE_CHILD_VFT, RESOURCE_STATE)
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
 
 def test_yft_declarative_physics_validation():
@@ -1092,7 +1093,7 @@ def test_yft_declarative_physics_validation():
         physics_bound=lod.composite_bound,
     )
 
-    assert yft.validate() == []
+    assert yft.validate().valid
     assert lod.num_children == 1
     assert lod.group("chassis") is not None
     assert lod.children_for_group("chassis")[0].min_breaking_impulse == 120.0
@@ -1105,7 +1106,7 @@ def test_yft_declarative_physics_validation():
     )
     issues = validate_yft(Yft(main_drawable=drawable, physics_lod_details=[broken_lod]))
 
-    assert any(issue.is_error and "child slice" in issue.message for issue in issues)
+    assert any(issue.severity >= DiagnosticSeverity.ERROR and "child slice" in issue.message for issue in issues)
 
     invalid_damage = Yft(
         main_drawable=drawable,
@@ -1114,7 +1115,7 @@ def test_yft_declarative_physics_validation():
     issues = validate_yft(invalid_damage)
 
     assert any(
-        issue.is_error and issue.path == "state.damaged_drawable_index"
+        issue.severity >= DiagnosticSeverity.ERROR and issue.path == "state.damaged_drawable_index"
         for issue in issues
     )
 
@@ -1148,7 +1149,7 @@ def test_yft_relocates_damp_archetype_filename():
 
     assert rebuilt.filename == "prop_brandy_glass"
     assert rebuilt.filename_pointer != 0x50008186
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
 
 def test_yft_preserves_composite_bound_capacity_above_active_count():
@@ -1182,7 +1183,7 @@ def test_yft_preserves_composite_bound_capacity_above_active_count():
     assert parsed_bound.child_capacity == 2
     assert parsed_bound.child_count == 1
     assert struct.unpack_from("<HH", system_data, bound_offset + 0xA0) == (2, 1)
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
 
 def test_yft_validation_accepts_native_unavailable_damage_properties():
@@ -1198,7 +1199,7 @@ def test_yft_validation_accepts_native_unavailable_damage_properties():
     issues = validate_yft(Yft(main_drawable=drawable, physics_lod_details=[lod]))
 
     assert not any(
-        issue.is_error and ".children[0]" in issue.path for issue in issues
+        issue.severity >= DiagnosticSeverity.ERROR and ".children[0]" in issue.path for issue in issues
     )
 
     invalid_inertia = dataclasses.replace(
@@ -1213,7 +1214,7 @@ def test_yft_validation_accepts_native_unavailable_damage_properties():
         Yft(main_drawable=drawable, physics_lod_details=[invalid_lod])
     )
     assert any(
-        issue.is_error and "angular inertia" in issue.message
+        issue.severity >= DiagnosticSeverity.ERROR and "angular inertia" in issue.message
         for issue in invalid_issues
     )
 
@@ -1484,7 +1485,7 @@ def test_physics_lod_without_damaged_entities_omits_damaged_archetype():
         ]
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == "physics_lod_details[0].damaged_damp_archetype"
         for issue in validate_yft(invalid)
@@ -1587,7 +1588,7 @@ def test_physics_lods_own_distinct_child_drawable_bound_links():
         system_data,
         medium.composite_bounds_pointer,
     )
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
 
 def test_composite_bound_may_preserve_only_null_native_slots():
@@ -1707,7 +1708,7 @@ def test_yft_validation_rejects_bound_ref_count_mismatch():
     issues = validate_yft(Yft(main_drawable=drawable, physics_lod_details=[lod]))
 
     assert any(
-        issue.is_error and issue.path.endswith("ref_count") for issue in issues
+        issue.severity >= DiagnosticSeverity.ERROR and issue.path.endswith("ref_count") for issue in issues
     )
 
 
@@ -1856,7 +1857,7 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         system_data,
         virtual_to_offset(damaged_bound) + 0x3C,
     )[0] == 2
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
     bad_ref_count_system = bytearray(system_data)
     struct.pack_into(
@@ -1873,7 +1874,7 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == "physics_lods.high.damaged_damp_archetype.bound.ref_count"
         for issue in validate_yft_bytes(bad_ref_count)
@@ -1894,7 +1895,7 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == "physics_lods.high.damaged_damp_archetype.ref_count"
         for issue in validate_yft_bytes(bad_archetype)
@@ -1916,7 +1917,7 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
     )
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == "physics_lods.high.damaged_damp_archetype.bound"
         and "must not share" in issue.message
@@ -2132,7 +2133,7 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
     assert damaged_flags1_pointer == 0
     assert damaged_flags2_pointer == 0
     assert lod.composite_bound.children[2].bound is None
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
     invalid_null_metadata_system = bytearray(system_data)
     struct.pack_into(
@@ -2149,7 +2150,7 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == (
             "physics_lods.high.damaged_damp_archetype.bound"
@@ -2190,7 +2191,7 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
     )
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == (
             "physics_lods.high.damaged_damp_archetype.bound"
@@ -2250,7 +2251,7 @@ def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
     assert validate_yft_bytes(
         raw,
         profile=YftPhysicsBoundProfile.PROP,
-    ) == []
+    ).valid
 
     intact_root_offset = virtual_to_offset(intact_root)
     # Prop fragments serialize no per-slot flag arrays, like vanilla.
@@ -2276,7 +2277,7 @@ def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
     )
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path.endswith(
             "undamaged_damp_archetype.bound.children[0].flags1"
         )
@@ -2304,7 +2305,7 @@ def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path == "physics_lods.high.children[0]"
         and "no collision in either state" in issue.message
         for issue in validate_yft_bytes(
@@ -2331,7 +2332,7 @@ def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == "physics_lods.high.undamaged_damp_archetype.bound"
         for issue in validate_yft_bytes(
@@ -2425,7 +2426,7 @@ def test_materialless_physics_drawable_uses_null_shader_group():
     assert parsed_drawable.shader_group_pointer == 0
     assert parsed_drawable.materials == []
     assert struct.unpack_from("<Q", system_data, drawable_offset + 0x10)[0] == 0
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
 
 def test_damaged_drawable_inherits_common_shader_group_and_remaps_materials():
@@ -2501,7 +2502,7 @@ def test_damaged_drawable_inherits_common_shader_group_and_remaps_materials():
     assert struct.unpack_from("<H", system_data, main_shader_group_offset + 0x18)[0] == 2
     assert struct.unpack_from("<Q", system_data, damaged_offset + 0x10)[0] == 0
     assert struct.unpack_from("<2H", system_data, damaged_mapping_offset) == (1, 0)
-    assert validate_yft_bytes(raw) == []
+    assert validate_yft_bytes(raw).valid
 
     parsed = read_yft(raw)
     parsed_damaged = parsed.damaged_drawable
@@ -2528,7 +2529,7 @@ def test_damaged_drawable_inherits_common_shader_group_and_remaps_materials():
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path == "root.extra_drawables[0].shader_group"
         and "must inherit" in issue.message
         for issue in validate_yft_bytes(broken)
@@ -2704,7 +2705,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         graphics_flags=header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path
         == "physics_lods.high.children[0].undamaged_entity.bound"
         and "matching archetype bound child" in issue.message
@@ -2734,7 +2735,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert struct.unpack_from(
         "<Q", system_data, group_names_offset + lod.num_groups * 8
     )[0] == 0
-    assert parsed.validate() == []
+    assert parsed.validate().valid
 
     physics_drawable = next(parsed_with_entities.iter_physics_drawables()).drawable
     physics_drawable.extra_bounds = (None,) * 65
@@ -2742,7 +2743,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         YftFragmentMatrix.identity(),
     ) * 65
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path.endswith(".extra_bounds")
         and "more than 64 bounds" in issue.message
         for issue in parsed_with_entities.validate()
@@ -2766,7 +2767,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     assert reparsed.main_drawable.extra_bound_matrices == (
         YftFragmentMatrix.identity(),
     )
-    assert validate_yft_bytes(rebuilt) == []
+    assert validate_yft_bytes(rebuilt).valid
 
     rebuilt_header, rebuilt_system, rebuilt_graphics = split_rsc7_sections(rebuilt)
     rebuilt_drawable = virtual_to_offset(
@@ -2785,7 +2786,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         graphics_flags=rebuilt_header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path == "root.common_drawable.extra_bounds[0]"
         and "outside the system and graphics virtual spaces" in issue.message
         for issue in validate_yft_bytes(broken_extra_bound)
@@ -2804,7 +2805,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     spare_capacity_parsed = read_yft(spare_capacity)
     assert len(spare_capacity_parsed.main_drawable.extra_bounds) == 1
     assert len(spare_capacity_parsed.main_drawable.extra_bound_matrices) == 1
-    assert validate_yft_bytes(spare_capacity) == []
+    assert validate_yft_bytes(spare_capacity).valid
 
     invalid_active_count_system = bytearray(spare_capacity_system)
     struct.pack_into("<H", invalid_active_count_system, rebuilt_drawable + 0x110, 3)
@@ -2816,7 +2817,7 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
         graphics_flags=rebuilt_header.graphics_flags,
     )
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path == "root.common_drawable.extra_bounds"
         and "active count 3 exceeds array count 2" in issue.message
         for issue in validate_yft_bytes(invalid_active_count)
@@ -2927,7 +2928,7 @@ def test_yft_validation_rejects_unwritable_resource_graphs():
     issues = validate_yft(yft)
 
     assert any(
-        issue.is_error and issue.path == "collision_event_set" for issue in issues
+        issue.severity >= DiagnosticSeverity.ERROR and issue.path == "collision_event_set" for issue in issues
     )
 
 
@@ -2973,7 +2974,7 @@ def test_yft_empty_event_sets_roundtrip(version, runtime_headers):
     assert parsed_event.vft == runtime_headers.event_set
     assert parsed_event.resource_state == 1
     assert parsed_event.is_empty is True
-    assert parsed.validate() == []
+    assert parsed.validate().valid
 
 
 def test_fragment_geometry_bound_builder_creates_direct_prop_leaf():
@@ -3061,7 +3062,7 @@ def test_prop_profile_writes_native_composite_and_geometry_vfts():
         0x4062D258
     )
     assert parsed.physics_bound_profile is YftPhysicsBoundProfile.PRESERVE
-    assert validate_yft_bytes(raw, profile=YftPhysicsBoundProfile.PROP) == []
+    assert validate_yft_bytes(raw, profile=YftPhysicsBoundProfile.PROP).valid
 
     rebuilt = build_yft_bytes(parsed)
     _, rebuilt_system, _ = split_rsc7_sections(rebuilt)
@@ -3077,7 +3078,7 @@ def test_prop_profile_writes_native_composite_and_geometry_vfts():
     assert validate_yft_bytes(
         rebuilt,
         profile=YftPhysicsBoundProfile.PROP,
-    ) == []
+    ).valid
 
 
 def test_prop_profile_rejects_ybn_style_bvh():
@@ -3142,7 +3143,7 @@ def test_vehicle_profile_accepts_bvh_and_writes_native_vfts():
     assert struct.unpack_from("<I", system_data, virtual_to_offset(leaf_pointer))[0] == (
         0x4062FAB8
     )
-    assert validate_yft_bytes(raw, profile=YftPhysicsBoundProfile.VEHICLE) == []
+    assert validate_yft_bytes(raw, profile=YftPhysicsBoundProfile.VEHICLE).valid
 
     rebuilt = build_yft_bytes(parsed)
     _, rebuilt_system, _ = split_rsc7_sections(rebuilt)
@@ -3158,7 +3159,7 @@ def test_vehicle_profile_accepts_bvh_and_writes_native_vfts():
     assert validate_yft_bytes(
         rebuilt,
         profile=YftPhysicsBoundProfile.VEHICLE,
-    ) == []
+    ).valid
 
 
 def test_set_piece_profile_roundtrip_preserves_native_vfts():
@@ -3200,7 +3201,7 @@ def test_set_piece_profile_roundtrip_preserves_native_vfts():
     assert validate_yft_bytes(
         rebuilt,
         profile=YftPhysicsBoundProfile.SET_PIECE,
-    ) == []
+    ).valid
 
 
 def test_binary_validation_rejects_swapped_prop_bound_slots():
@@ -3253,7 +3254,7 @@ def test_binary_validation_rejects_swapped_prop_bound_slots():
     )
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and "matching archetype bound child" in issue.message
         for issue in validate_yft_bytes(
             broken,
@@ -3308,7 +3309,7 @@ def test_binary_validation_rejects_fragment_geometry_vertex_overflow():
     )
 
     assert any(
-        issue.is_error
+        issue.severity >= DiagnosticSeverity.ERROR
         and issue.path.endswith(".vertices")
         and "32768 exceeds" in issue.message
         for issue in validate_yft_bytes(

@@ -95,6 +95,7 @@ def audit_shader_group(
             validator.error(
                 f"{path}.texture_dictionary.page_map",
                 "embedded texture dictionaries cannot own a resource page map",
+                code="yft.binary.shader_group.texture_page_map_invalid",
             )
     shader_count = validator.u16(offset + 0x18)
     shader_array = validator.u64(offset + 0x10)

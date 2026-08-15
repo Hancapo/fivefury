@@ -27,6 +27,7 @@ def _audit_bone_tag_table(
                 validator.error(
                     f"{path}[{bucket_index}]",
                     "bone-tag chain contains a cycle or shared node",
+                    code="yft.binary.skeleton.bone_tag_chain_invalid",
                 )
                 break
             visited.add(node)

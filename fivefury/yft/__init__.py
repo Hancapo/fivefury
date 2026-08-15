@@ -1,4 +1,4 @@
-from .binary_validation import assert_valid_yft_bytes, validate_yft_bytes
+from .binary_validation import validate_yft_bytes
 from .bound_profiles import (
     YftPhysicsBoundProfile,
     coerce_yft_physics_bound_profile,
@@ -68,14 +68,11 @@ from .model import (
     YftPhysicsTransforms,
     YftRawField,
     YftSharedMatrixSet,
-    YftValidationIssue,
-    YftValidationSeverity,
     YftVehicleGlassFlag,
     YftVehicleGlassRow,
     YftVehicleGlassSpan,
     YftVehicleGlassWindow,
     YftVehicleGlassWindows,
-    assert_valid_yft,
     validate_yft,
 )
 from .physics_authoring import (
@@ -155,16 +152,12 @@ __all__ = [
     "YftPhysicsTransforms",
     "YftRawField",
     "YftSharedMatrixSet",
-    "YftValidationIssue",
-    "YftValidationSeverity",
     "YftVehicleGlassFlag",
     "YftVehicleGlassRow",
     "YftVehicleGlassSpan",
     "YftVehicleGlassWindow",
     "YftVehicleGlassWindows",
     "YftVerletCloth",
-    "assert_valid_yft",
-    "assert_valid_yft_bytes",
     "bound_density",
     "bound_inertia",
     "bound_mass",

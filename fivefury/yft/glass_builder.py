@@ -216,11 +216,16 @@ def ensure_yft_glass(source) -> list[YftGlassPane]:
 
     errors = [
         issue
-        for issue in validate_yft(source)
-        if issue.is_error and ("glass" in issue.path or "glass" in issue.message)
+        for issue in validate_yft(source).errors
+        if "glass" in (issue.path or "") or "glass" in issue.message
     ]
     if errors:
-        raise ValueError("Invalid breakable glass: " + "; ".join(i.format() for i in errors))
+        raise ValueError(
+            "Invalid breakable glass: "
+            + "; ".join(
+                f"{issue.path or issue.code}: {issue.message}" for issue in errors
+            )
+        )
     return source.glass_panes
 
 
