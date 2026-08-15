@@ -432,7 +432,14 @@ _SUPPORTED_EVENT_SPECS = {
         name="stop_particle_effect",
         event_id=CUT_EVENT_NAME_TO_ID["stop_particle_effect"],
         enum_name=CUT_EVENT_ID_TO_ENUM_NAME[CUT_EVENT_NAME_TO_ID["stop_particle_effect"]],
+        args_type_name="rage__cutfPlayParticleEffectEventArgs",
         default_target_role="particle_fx",
+        default_args={
+            "vInitialBoneRotation": (0.0, 0.0, 0.0, 1.0),
+            "vInitialBoneOffset": (0.0, 0.0, 0.0),
+            "iAttachParentId": -1,
+            "iAttachBoneHash": 0,
+        },
         behavior=CutEventBehavior.STATE,
     ),
     "set_light": CutEventSpec(
@@ -495,7 +502,16 @@ _SUPPORTED_EVENT_SPECS = {
         name="remove_decal",
         event_id=CUT_EVENT_NAME_TO_ID["remove_decal"],
         enum_name=CUT_EVENT_ID_TO_ENUM_NAME[CUT_EVENT_NAME_TO_ID["remove_decal"]],
+        args_type_name="rage__cutfDecalEventArgs",
         default_target_role="decal",
+        default_args={
+            "vPosition": (0.0, 0.0, 0.0),
+            "vRotation": (0.0, 0.0, 0.0, 1.0),
+            "fWidth": 1.0,
+            "fHeight": 1.0,
+            "Colour": 0xFFFFFFFF,
+            "fLifeTime": 0.0,
+        },
         behavior=CutEventBehavior.STATE,
     ),
     "enable_cascade_shadow_bounds": CutEventSpec(

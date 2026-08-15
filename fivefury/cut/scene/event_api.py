@@ -14,6 +14,7 @@ from ..payloads import (
     CutDrawDistancePayload,
     CutFinalNamePayload,
     CutFloatValuePayload,
+    CutLightEffectPayload,
     CutLoadScenePayload,
     CutNamePayload,
     CutObjectIdListPayload,
@@ -446,20 +447,55 @@ def play_particle_effect(self: CutScene, start: float, particle_fx: CutBinding |
     return self.event(CutEventType.PLAY_PARTICLE_EFFECT, start=start, target=particle_fx, payload=payload or CutPlayParticleEffectPayload())
 
 
-def stop_particle_effect(self: CutScene, start: float, particle_fx: CutBinding | int | None) -> CutTimelineEvent:
-    return self.event(CutEventType.STOP_PARTICLE_EFFECT, start=start, target=particle_fx)
+def stop_particle_effect(
+    self: CutScene,
+    start: float,
+    particle_fx: CutBinding | int | None,
+    payload: CutPlayParticleEffectPayload | None = None,
+) -> CutTimelineEvent:
+    return self.event(
+        CutEventType.STOP_PARTICLE_EFFECT,
+        start=start,
+        target=particle_fx,
+        payload=payload or CutPlayParticleEffectPayload(),
+    )
 
 
 def trigger_decal(self: CutScene, start: float, decal: CutBinding | int | None, payload: CutDecalPayload) -> CutTimelineEvent:
     return self.event(CutEventType.TRIGGER_DECAL, start=start, target=decal, payload=payload)
 
 
-def remove_decal(self: CutScene, start: float, decal: CutBinding | int | None) -> CutTimelineEvent:
-    return self.event(CutEventType.REMOVE_DECAL, start=start, target=decal)
+def remove_decal(
+    self: CutScene,
+    start: float,
+    decal: CutBinding | int | None,
+    payload: CutDecalPayload,
+) -> CutTimelineEvent:
+    return self.event(
+        CutEventType.REMOVE_DECAL,
+        start=start,
+        target=decal,
+        payload=payload,
+    )
 
 
-def set_light(self: CutScene, start: float, light: CutBinding | int | None) -> CutTimelineEvent:
-    return self.event(CutEventType.SET_LIGHT, start=start, target=light)
+def set_light(
+    self: CutScene,
+    start: float,
+    light: CutBinding | int | None,
+    payload: CutLightEffectPayload | None = None,
+) -> CutTimelineEvent:
+    return self.event(
+        CutEventType.SET_LIGHT,
+        start=start,
+        target=light,
+        payload=payload,
+        args_type=(
+            "rage__cutfTriggerLightEffectEventArgs"
+            if payload is not None
+            else None
+        ),
+    )
 
 
 def clear_light(self: CutScene, start: float, light: CutBinding | int | None) -> CutTimelineEvent:

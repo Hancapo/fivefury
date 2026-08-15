@@ -22,12 +22,18 @@ from ..limits import (
     CUT_MINIMUM_DURATION,
     CUT_MINIMUM_SECTION_DURATION,
 )
-from .bindings import CutBinding, CutCamera, CutPed
+from .bindings import (
+    CutAnimatedLight,
+    CutAnimatedParticleEffect,
+    CutBinding,
+    CutCamera,
+    CutPed,
+)
 from .shared import (
     _coerce_name,
     _is_scene_entity,
     _parse_hex_hash,
-    _technical_cut_index,
+    _runtime_animation_section_index,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -68,11 +74,13 @@ def _binding_name(binding: CutBinding) -> str:
 
 
 def _is_streamed_model(binding: CutBinding) -> bool:
-    return binding.role in {"ped", "prop", "vehicle"}
+    return binding.role in {"ped", "prop", "vehicle", "weapon"}
 
 
 def _is_animation_capable(binding: CutBinding) -> bool:
-    return binding.role in {"ped", "prop", "vehicle", "camera"}
+    return binding.role in {"ped", "prop", "vehicle", "weapon", "camera"} or isinstance(
+        binding, (CutAnimatedLight, CutAnimatedParticleEffect)
+    )
 
 
 def _event_id(event: CutTimelineEvent) -> int | None:
@@ -510,7 +518,7 @@ def _validate_bindings(scene: CutScene, issues: ValidationReport) -> None:
             # Retail cutscene peds commonly leave typeFile at zero and resolve
             # their model through StreamingName plus the mounted PEDSTREAM_FILE.
             # Props and vehicles still require a YTYP/container reference.
-            if not type_file and binding.role != "ped":
+            if not type_file and binding.role in {"prop", "vehicle"}:
                 _issue(
                     issues,
                     "error",
@@ -669,7 +677,7 @@ def _validate_loading(scene: CutScene, issues: ValidationReport) -> None:
     for binding in scene.entities:
         if (
             _is_scene_entity(binding.role)
-            and binding.role in {"ped", "prop", "vehicle"}
+            and binding.role in {"ped", "prop", "vehicle", "weapon"}
             and binding.object_id not in loaded_ids
         ):
             _issue(
@@ -685,6 +693,7 @@ def _validate_loading(scene: CutScene, issues: ValidationReport) -> None:
             "ped",
             "prop",
             "vehicle",
+            "weapon",
             "hidden_object",
             "fixup_object",
             "overlay",
@@ -995,10 +1004,14 @@ def _validate_animations(
             )
         elif scene.clip_dicts:
             known_stems = {ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem}
-            if known_stems and not any(
-                _dictionary_matches_ycd(name, stem)
-                for name in active_dicts
-                for stem in known_stems
+            if (
+                known_stems
+                and all(_parse_hex_hash(name) is None for name in active_dicts)
+                and not any(
+                    _dictionary_matches_ycd(name, stem)
+                    for name in active_dicts
+                    for stem in known_stems
+                )
             ):
                 _issue(
                     issues,
@@ -1041,8 +1054,8 @@ def _validate_animations(
                     f"{_binding_name(binding)} AnimStreamingBase=0x{anim_streaming_base:08X}, expected 0x{expected_base:08X}",
                 )
             if scene.clip_dicts:
-                cut_index = _technical_cut_index(
-                    scene.camera_cut_list, float(event.start)
+                cut_index = _runtime_animation_section_index(
+                    scene, float(event.start)
                 )
                 expected_clip_name = f"{animation_clip_base}-{cut_index}"
                 if not _has_segmented_clip(scene, animation_clip_base, cut_index):
@@ -1054,8 +1067,8 @@ def _validate_animations(
                         hint=f"Expected the exact segmented clip '{expected_clip_name}'.",
                     )
         elif anim_streaming_base and scene.clip_dicts:
-            active_cut_index = _technical_cut_index(
-                scene.camera_cut_list, float(event.start)
+            active_cut_index = _runtime_animation_section_index(
+                scene, float(event.start)
             )
             if scene.clip_for_binding(binding, cut_index=active_cut_index) is None:
                 _issue(

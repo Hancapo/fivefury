@@ -35,7 +35,7 @@ from .shared import (
     _ROLE_DEFAULT_OBJECT_TYPE,
     _is_scene_entity,
     _object_role,
-    _technical_cut_index,
+    _runtime_animation_section_index,
 )
 from .timeline import CutTimelineEvent, CutTrack
 
@@ -566,8 +566,8 @@ class CutScene:
                         "runtime_animation_clip_base",
                         getattr(bound, "animation_clip_base", None),
                     )
-                    active_cut_index = _technical_cut_index(
-                        self.camera_cut_list,
+                    active_cut_index = _runtime_animation_section_index(
+                        self,
                         float(event.start),
                         default=cut_index,
                     )
