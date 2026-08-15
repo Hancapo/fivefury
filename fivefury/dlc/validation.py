@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import Diagnostic, DiagnosticSeverity, ValidationReport
 from ..game_target import GameTarget, coerce_game_target
 from ..resource import RSC7_MAGIC
 from ..rpf import RpfArchive, RpfFileEntry, RpfResourceFileEntry
@@ -32,22 +34,18 @@ _LEGACY_YTD_VERSIONS = frozenset({13, 68, 162, 165})
 _ENHANCED_YTD_VERSIONS = frozenset({5, 71, 154, 159, 171})
 
 
-@dataclass(slots=True)
-class DlcValidationIssue:
-    code: str
-    message: str
-    severity: str = "error"
-    path: str = ""
-
-
-class DlcValidationError(ValueError):
-    def __init__(self, issues: Iterable[DlcValidationIssue]) -> None:
-        self.issues = tuple(issues)
-        details = "; ".join(
-            f"{issue.path}: {issue.message}" if issue.path else issue.message
-            for issue in self.issues
-        )
-        super().__init__(details or "Invalid DLC pack")
+def _diagnostic(
+    code: str,
+    message: str,
+    severity: str = "error",
+    path: str = "",
+) -> Diagnostic:
+    return Diagnostic(
+        code,
+        message,
+        DiagnosticSeverity.ERROR if severity == "error" else DiagnosticSeverity.WARNING,
+        path=path or None,
+    )
 
 
 @dataclass(slots=True)
@@ -72,11 +70,11 @@ def _validate_resource_reference(
     reference: DlcResourceReference,
     *,
     path: str,
-) -> list[DlcValidationIssue]:
-    issues: list[DlcValidationIssue] = []
+) -> list[Diagnostic]:
+    issues: list[Diagnostic] = []
     if not reference.asset_name:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.resource.empty_asset",
                 "resource reference requires AssetName",
                 path=path,
@@ -84,7 +82,7 @@ def _validate_resource_reference(
         )
     if len(reference.extension.encode("ascii", errors="replace")) > 7:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.resource.extension_too_long",
                 "resource extension exceeds the 7-character runtime field",
                 path=path,
@@ -93,18 +91,18 @@ def _validate_resource_reference(
     return issues
 
 
-def _validate_content_file(data_file: DlcContentFile) -> list[DlcValidationIssue]:
-    issues: list[DlcValidationIssue] = []
+def _validate_content_file(data_file: DlcContentFile) -> list[Diagnostic]:
+    issues: list[Diagnostic] = []
     if not data_file.filename:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.file.empty_filename",
                 "dataFiles item requires filename",
             )
         )
     elif len(data_file.filename.encode("utf-8")) > 127:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.file.filename_too_long",
                 "dataFiles filename exceeds the 127-byte runtime field",
                 path=data_file.filename,
@@ -112,7 +110,7 @@ def _validate_content_file(data_file: DlcContentFile) -> list[DlcValidationIssue
         )
     if not data_file.file_type:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.file.empty_type",
                 "dataFiles item requires fileType",
                 path=data_file.filename,
@@ -120,7 +118,7 @@ def _validate_content_file(data_file: DlcContentFile) -> list[DlcValidationIssue
         )
     elif not _enum_value_is_valid(DlcDataFileType, data_file.file_type):
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.file.unknown_type",
                 f"unknown data file type {data_file.file_type!r}",
                 path=data_file.filename,
@@ -150,25 +148,25 @@ def validate_dlc_setup(
     *,
     external_change_sets: Iterable[str] = (),
     require_local_change_sets: bool = False,
-) -> list[DlcValidationIssue]:
-    issues: list[DlcValidationIssue] = []
+) -> ValidationReport:
+    issues: list[Diagnostic] = []
     if not setup.device_name:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "setup.device_name.empty",
                 "setup2.xml requires deviceName",
             )
         )
     if not setup.name_hash:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "setup.name_hash.empty",
                 "setup2.xml requires nameHash",
             )
         )
     if not setup.dat_file:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "setup.dat_file.empty",
                 "setup2.xml requires datFile",
             )
@@ -176,7 +174,7 @@ def validate_dlc_setup(
     for group in setup.content_change_set_groups:
         if not _enum_value_is_valid(DlcContentGroup, group.name):
             issues.append(
-                DlcValidationIssue(
+                _diagnostic(
                     "setup.group.unknown",
                     f"unknown content change-set group {group.name!r}",
                     path=str(group.name),
@@ -191,7 +189,7 @@ def validate_dlc_setup(
             for change_set in group.change_sets:
                 if change_set.lower() not in defined:
                     issues.append(
-                        DlcValidationIssue(
+                        _diagnostic(
                             "setup.group.missing_change_set",
                             (
                                 f"setup group {group.name!r} references undefined "
@@ -200,11 +198,11 @@ def validate_dlc_setup(
                             path=str(group.name),
                         )
                     )
-    return issues
+    return ValidationReport(issues)
 
 
-def validate_dlc_content(content: DlcContentXml) -> list[DlcValidationIssue]:
-    issues: list[DlcValidationIssue] = []
+def validate_dlc_content(content: DlcContentXml) -> ValidationReport:
+    issues: list[Diagnostic] = []
     all_files = [
         *content.data_files,
         *(
@@ -215,7 +213,7 @@ def validate_dlc_content(content: DlcContentXml) -> list[DlcValidationIssue]:
     ]
     if not all_files:
         issues.append(
-            DlcValidationIssue(
+            _diagnostic(
                 "content.files.empty",
                 "content.xml has no dataFiles",
                 severity="warning",
@@ -227,7 +225,7 @@ def validate_dlc_content(content: DlcContentXml) -> list[DlcValidationIssue]:
         key = data_file.filename.lower()
         if key in seen:
             issues.append(
-                DlcValidationIssue(
+                _diagnostic(
                     "content.file.duplicate",
                     f"duplicate data file {data_file.filename!r}",
                     path=data_file.filename,
@@ -243,7 +241,7 @@ def validate_dlc_content(content: DlcContentXml) -> list[DlcValidationIssue]:
             for filename in _change_set_references(scope):
                 if filename.lower() not in seen:
                     issues.append(
-                        DlcValidationIssue(
+                        _diagnostic(
                             "content.change_set.unknown_file",
                             (
                                 f"change set {change_set.name!r} references "
@@ -260,7 +258,7 @@ def validate_dlc_content(content: DlcContentXml) -> list[DlcValidationIssue]:
                         path=change_set.name,
                     )
                 )
-    return issues
+    return ValidationReport(issues)
 
 
 def _resource_version(data: bytes) -> int:
@@ -389,13 +387,13 @@ def _iter_pack_assets(pack: object) -> Iterator[tuple[str, object]]:
 def validate_dlc_asset_targets(
     pack: object,
     game: str | GameTarget,
-) -> list[DlcValidationIssue]:
+) -> ValidationReport:
     target = coerce_game_target(game)
-    issues: list[DlcValidationIssue] = []
+    issues: list[Diagnostic] = []
     for path, value in _iter_pack_assets(pack):
         if isinstance(value, _UnreadableAsset):
             issues.append(
-                DlcValidationIssue(
+                _diagnostic(
                     "pack.asset.invalid_resource",
                     str(value.error),
                     path=path,
@@ -412,7 +410,7 @@ def validate_dlc_asset_targets(
                 asset_target = _target_from_resource(path, _coerce_asset_bytes(value))
         except (OSError, TypeError, ValueError) as exc:
             issues.append(
-                DlcValidationIssue(
+                _diagnostic(
                     "pack.asset.invalid_resource",
                     str(exc),
                     path=path,
@@ -427,7 +425,7 @@ def validate_dlc_asset_targets(
         )
         if asset_target is not target and not legacy_is_compatible:
             issues.append(
-                DlcValidationIssue(
+                _diagnostic(
                     "pack.asset.target_mismatch",
                     (
                         f"asset targets {asset_target.value}, but the DLC targets "
@@ -436,7 +434,7 @@ def validate_dlc_asset_targets(
                     path=path,
                 )
             )
-    return issues
+    return ValidationReport(issues)
 
 
 def validate_dlc_folder_assets(
@@ -444,9 +442,9 @@ def validate_dlc_folder_assets(
     game: str | GameTarget,
     *,
     include_dot_dirs: bool = False,
-) -> list[DlcValidationIssue]:
+) -> ValidationReport:
     files: dict[str, bytes | RpfArchive] = {}
-    issues: list[DlcValidationIssue] = []
+    issues: list[Diagnostic] = []
     for relative, path in iter_dlc_folder_files(
         folder,
         include_dot_dirs=include_dot_dirs,
@@ -460,7 +458,7 @@ def validate_dlc_folder_assets(
             )
         except (OSError, TypeError, ValueError) as exc:
             issues.append(
-                DlcValidationIssue(
+                _diagnostic(
                     "folder.asset.unreadable",
                     str(exc),
                     path=relative,
@@ -468,7 +466,7 @@ def validate_dlc_folder_assets(
             )
     if files:
         issues.extend(validate_dlc_asset_targets(_DlcFolderAssets(files), game))
-    return issues
+    return ValidationReport(issues)
 
 
 def validate_dlc_folder(
@@ -478,48 +476,56 @@ def validate_dlc_folder(
     external_change_sets: Iterable[str] = (),
     require_local_change_sets: bool = False,
     include_dot_dirs: bool = False,
-) -> list[DlcValidationIssue]:
+) -> ValidationReport:
     root = Path(folder)
     setup_path = root / "setup2.xml"
     if not setup_path.is_file():
-        return [
-            DlcValidationIssue(
-                "folder.setup.missing",
-                "DLC folder does not contain setup2.xml",
-                path="setup2.xml",
-            )
-        ]
+        return ValidationReport(
+            [
+                _diagnostic(
+                    "folder.setup.missing",
+                    "DLC folder does not contain setup2.xml",
+                    path="setup2.xml",
+                )
+            ]
+        )
     try:
         setup = DlcSetupData.from_xml(setup_path.read_bytes())
     except (OSError, TypeError, ValueError) as exc:
-        return [
-            DlcValidationIssue(
-                "folder.setup.invalid",
-                str(exc),
-                path="setup2.xml",
-            )
-        ]
+        return ValidationReport(
+            [
+                _diagnostic(
+                    "folder.setup.invalid",
+                    str(exc),
+                    path="setup2.xml",
+                )
+            ]
+        )
 
     content_name = setup.dat_file or "content.xml"
     content_path = root / content_name
     if not content_path.is_file():
-        return [
-            DlcValidationIssue(
-                "folder.content.missing",
-                f"DLC folder does not contain {content_name}",
-                path=content_name,
-            )
-        ]
+        return ValidationReport(
+            [
+                _diagnostic(
+                    "folder.content.missing",
+                    f"DLC folder does not contain {content_name}",
+                    path=content_name,
+                )
+            ]
+        )
     try:
         content = DlcContentXml.from_xml(content_path.read_bytes())
     except (OSError, TypeError, ValueError) as exc:
-        return [
-            DlcValidationIssue(
-                "folder.content.invalid",
-                str(exc),
-                path=content_name,
-            )
-        ]
+        return ValidationReport(
+            [
+                _diagnostic(
+                    "folder.content.invalid",
+                    str(exc),
+                    path=content_name,
+                )
+            ]
+        )
 
     issues = validate_dlc_setup(
         setup,
@@ -542,26 +548,33 @@ def validate_dlc_folder(
 def validate_dlc_pack(
     pack: object,
     *,
+    context: BuildContext | None = None,
     game: str | GameTarget | None = None,
     external_change_sets: Iterable[str] = (),
     require_local_change_sets: bool = False,
-) -> list[DlcValidationIssue]:
+) -> ValidationReport:
+    if game is None and context is not None:
+        game = context.game
     setup = getattr(pack, "setup", None)
     content = getattr(pack, "content", None)
     if setup is None:
-        return [
-            DlcValidationIssue(
-                "pack.setup.missing",
-                "DLC pack has no setup metadata",
-            )
-        ]
+        return ValidationReport(
+            [
+                _diagnostic(
+                    "pack.setup.missing",
+                    "DLC pack has no setup metadata",
+                )
+            ]
+        )
     if not isinstance(content, DlcContentXml):
-        return [
-            DlcValidationIssue(
-                "pack.content.missing",
-                "DLC pack has no content metadata",
-            )
-        ]
+        return ValidationReport(
+            [
+                _diagnostic(
+                    "pack.content.missing",
+                    "DLC pack has no content metadata",
+                )
+            ]
+        )
     issues = validate_dlc_setup(
         setup,
         content,
@@ -575,28 +588,7 @@ def validate_dlc_pack(
     return issues
 
 
-def assert_valid_dlc_pack(
-    pack: object,
-    *,
-    game: str | GameTarget | None = None,
-    external_change_sets: Iterable[str] = (),
-    require_local_change_sets: bool = False,
-) -> None:
-    issues = validate_dlc_pack(
-        pack,
-        game=game,
-        external_change_sets=external_change_sets,
-        require_local_change_sets=require_local_change_sets,
-    )
-    errors = [issue for issue in issues if issue.severity == "error"]
-    if errors:
-        raise DlcValidationError(errors)
-
-
 __all__ = [
-    "DlcValidationError",
-    "DlcValidationIssue",
-    "assert_valid_dlc_pack",
     "validate_dlc_asset_targets",
     "validate_dlc_content",
     "validate_dlc_folder",

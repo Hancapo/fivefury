@@ -45,9 +45,6 @@ from .model import (
     read_dlc_setup,
 )
 from .validation import (
-    DlcValidationError,
-    DlcValidationIssue,
-    assert_valid_dlc_pack,
     validate_dlc_asset_targets,
     validate_dlc_content,
     validate_dlc_folder,
@@ -80,9 +77,6 @@ __all__ = [
     "DlcResourceReference",
     "DlcRpfEncryption",
     "DlcSetupData",
-    "DlcValidationError",
-    "DlcValidationIssue",
-    "assert_valid_dlc_pack",
     "build_dlc_content_xml",
     "build_dlc_extra_title_update_data_xml",
     "build_dlc_list_xml",

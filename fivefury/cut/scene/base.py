@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ...authoring.context import BuildContext
+from ...authoring.diagnostics import ValidationReport
+
 if TYPE_CHECKING:
     from ...ycd.cutscene import YcdCutsceneBuilder
     from ...ycd.model import Ycd, YcdAnimation, YcdClip
@@ -143,9 +146,7 @@ class CutScene:
                 clip = clips.get(MetaHash(animation_clip_base).uint)
             if clip is not None:
                 return clip
-        animation_streaming_base = getattr(
-            resolved, "animation_streaming_base", None
-        )
+        animation_streaming_base = getattr(resolved, "animation_streaming_base", None)
         if animation_streaming_base in (None, "", 0):
             animation_streaming_base = resolved.fields.get("AnimStreamingBase")
         if animation_streaming_base not in (None, "", 0):
@@ -232,21 +233,11 @@ class CutScene:
     def bindings_by_id(self) -> dict[int, CutBinding]:
         return {item.object_id: item for item in self.bindings}
 
-    def validation_report(self, *, strict: bool = False):
-        from .validation import validate_cut_scene
-
-        return validate_cut_scene(self, strict=strict)
-
-    def assert_valid(self, *, strict: bool = True) -> None:
-        from .validation import assert_cut_scene_valid
-
-        assert_cut_scene_valid(self, strict=strict)
-
     def to_cut(self) -> CutFile:
         from .io import scene_to_cut
 
         self.build()
-        self.assert_valid(strict=True)
+        self.validate(strict=True).raise_for_errors()
         return scene_to_cut(self)
 
     def to_bytes(
@@ -257,7 +248,7 @@ class CutScene:
         data = self.to_cut().to_bytes(template=template)
         rebuilt = read_cut_scene(data)
         rebuilt.clip_dicts = list(self.clip_dicts)
-        rebuilt.assert_valid(strict=True)
+        rebuilt.validate(strict=True).raise_for_errors()
         return data
 
     def save(
@@ -380,8 +371,15 @@ class CutScene:
             )
         return self
 
-    def validate(self, *, strict: bool = False) -> list[str]:
-        return [issue.format() for issue in self.validation_report(strict=strict)]
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+        strict: bool = False,
+    ) -> ValidationReport:
+        from .validation import validate_cut_scene
+
+        return validate_cut_scene(self, strict=strict, context=context)
 
     def binding(self, binding: CutBinding) -> CutBinding:
         if binding.object_id < 0:
@@ -459,15 +457,18 @@ class CutScene:
 
     def timeline_event(self, timeline_event: CutTimelineEvent) -> CutTimelineEvent:
         if timeline_event.order is None:
-            timeline_event.order = max(
-                (
-                    int(event.order)
-                    for track in self.tracks
-                    for event in track.events
-                    if event.order is not None
-                ),
-                default=-1,
-            ) + 1
+            timeline_event.order = (
+                max(
+                    (
+                        int(event.order)
+                        for track in self.tracks
+                        for event in track.events
+                        if event.order is not None
+                    ),
+                    default=-1,
+                )
+                + 1
+            )
         track = self.get_track(timeline_event.track)
         if track is None:
             track = self.track(timeline_event.track, kind=timeline_event.kind)

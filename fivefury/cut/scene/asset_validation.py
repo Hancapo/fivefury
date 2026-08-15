@@ -51,11 +51,7 @@ _BONE_TRACKS = {
 
 
 def _severity(context: BuildContext) -> DiagnosticSeverity:
-    return (
-        DiagnosticSeverity.ERROR
-        if context.strict
-        else DiagnosticSeverity.WARNING
-    )
+    return DiagnosticSeverity.ERROR if context.strict else DiagnosticSeverity.WARNING
 
 
 def _field_hash(value: object) -> int:
@@ -78,20 +74,9 @@ def _extend_scene_report(
     scene: CutScene,
     report: ValidationReport,
 ) -> None:
-    for issue in scene.validation_report(strict=True):
-        message = issue.message
-        if issue.hint:
-            message = f"{message} {issue.hint}"
-        report.issue(
-            issue.code,
-            message,
-            severity=(
-                DiagnosticSeverity.ERROR
-                if issue.severity == "error"
-                else DiagnosticSeverity.WARNING
-            ),
-            asset=assets.output_name,
-        )
+    report.extend(
+        [issue.for_asset(assets.output_name) for issue in scene.validate(strict=True)]
+    )
 
 
 def _validate_ycd_paths(assets: CutsceneAssets, report: ValidationReport) -> None:
