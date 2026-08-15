@@ -74,9 +74,8 @@ def test_read_lipsync_payload_is_preserved_until_replaced() -> None:
 def test_awc_lipsync_validation_rejects_non_runtime_dictionary() -> None:
     empty = Ycd(ResourceHeader(46, 0, 0), [], [])
 
-    assert validate_awc_lipsync(empty) == [
-        "lip-sync dictionaries require exactly one clip, got 0"
-    ]
+    report = validate_awc_lipsync(empty)
+    assert {issue.code for issue in report.errors} == {"awc.lipsync.clips.count"}
     with pytest.raises(ValueError, match="exactly one clip"):
         AwcStream("speech_line").set_lipsync(empty)
 

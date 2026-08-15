@@ -17,6 +17,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YMAP, YTYP, MLO, and LOD-light validation now uses structured cross-asset diagnostics.
 - YMF manifest and PSO layout validation now uses structured diagnostics with binary field paths.
 - YND and YNV validation now uses structured diagnostics for navigation limits, references, and topology.
+- YTD, ped expression binding, and AWC lip-sync validation now uses the shared structured-report contract.
 
 ### Added
 

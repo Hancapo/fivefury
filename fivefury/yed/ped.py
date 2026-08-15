@@ -4,6 +4,8 @@ import dataclasses
 from collections.abc import MutableMapping
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
+
 _EXPRESSION_SET_NAME = (
     "ExpressionSetName",
     "expressionSetName",
@@ -38,26 +40,25 @@ class YedPedExpressionBinding:
     def uses_expression_set(self) -> bool:
         return _is_present(self.expression_set_name)
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self) -> ValidationReport:
+        report = ValidationReport()
         has_set = _is_present(self.expression_set_name)
         has_dictionary = _is_present(self.expression_dictionary_name)
         has_expression = _is_present(self.expression_name)
         if has_set and (has_dictionary or has_expression):
-            issues.append(
-                "ExpressionSetName cannot be combined with "
-                "ExpressionDictionaryName or ExpressionName"
+            report.issue(
+                "yed.ped.expression_binding.mode.conflict",
+                "ExpressionSetName cannot be combined with ExpressionDictionaryName or ExpressionName",
             )
         if has_dictionary != has_expression:
-            issues.append(
-                "ExpressionDictionaryName and ExpressionName must be specified together"
+            report.issue(
+                "yed.ped.expression_binding.pair.incomplete",
+                "ExpressionDictionaryName and ExpressionName must be specified together",
             )
-        return issues
+        return report
 
     def require_valid(self) -> YedPedExpressionBinding:
-        issues = self.validate()
-        if issues:
-            raise ValueError("; ".join(issues))
+        self.validate().raise_for_errors()
         return self
 
 
@@ -133,7 +134,7 @@ def set_ped_expression_binding(
     return ymt
 
 
-def validate_ped_expression_binding(ymt: object) -> list[str]:
+def validate_ped_expression_binding(ymt: object) -> ValidationReport:
     return get_ped_expression_binding(ymt).validate()
 
 
