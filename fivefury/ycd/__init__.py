@@ -1,3 +1,8 @@
+from .audit import (
+    YcdQuaternionLayout,
+    YcdQuaternionLayoutAudit,
+    audit_ycd_quaternion_layout,
+)
 from .cutscene import (
     YCD_CUTSCENE_DEFAULT_FPS,
     YCD_CUTSCENE_DEFAULT_VERSION,
@@ -9,6 +14,7 @@ from .cutscene import (
     YcdCutsceneTrack,
     YcdFacialTrackSamples,
     YcdFacialTrackSet,
+    YcdQuaternionEncoding,
     build_cutscene_sections,
     build_cutscene_ycds,
 )
@@ -87,6 +93,9 @@ __all__ = [
     "YcdFacialTrackSamples",
     "YcdFacialTrackSet",
     "YcdFramePosition",
+    "YcdQuaternionEncoding",
+    "YcdQuaternionLayout",
+    "YcdQuaternionLayoutAudit",
     "YcdRuntimeProfile",
     "YcdSequence",
     "YcdSequenceRootChannelRef",
@@ -95,6 +104,7 @@ __all__ = [
     "YcdUvAnimationSample",
     "YcdUvClipBinding",
     "YcdUvTransformSample",
+    "audit_ycd_quaternion_layout",
     "build_cutscene_sections",
     "build_cutscene_ycds",
     "build_ycd_bytes",

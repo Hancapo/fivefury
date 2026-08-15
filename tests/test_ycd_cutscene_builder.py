@@ -26,13 +26,28 @@ from fivefury import (
     YcdCutsceneBuilder,
     YcdFacialTrackSamples,
     YcdFacialTrackSet,
+    YcdQuaternionEncoding,
+    YcdQuaternionLayout,
     YcdTrackFormat,
+    audit_ycd_quaternion_layout,
     build_cutscene_sections,
     build_ycd_bytes,
     read_ycd,
     scene_to_cut,
 )
 from fivefury.resource import split_rsc7_sections, virtual_to_offset
+from fivefury.vector import quat_nlerp
+
+
+def _quaternion_angular_error_degrees(
+    expected: tuple[float, float, float, float],
+    actual: tuple[float, float, float, float],
+) -> float:
+    dot = abs(sum(left * right for left, right in zip(expected, actual, strict=True)))
+    expected_length = math.sqrt(sum(value * value for value in expected))
+    actual_length = math.sqrt(sum(value * value for value in actual))
+    cosine = min(max(dot / (expected_length * actual_length), -1.0), 1.0)
+    return math.degrees(2.0 * math.acos(cosine))
 
 
 def test_build_cutscene_sections_uses_camera_cuts() -> None:
@@ -514,6 +529,256 @@ def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> 
         sum(left[index] * right[index] for index in range(4)) >= 0.0
         for left, right in itertools.pairwise(emitted)
     )
+
+
+@pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
+def test_cutscene_builder_uses_retail_cached_quaternions_for_dynamic_tracks(
+    game: GameTarget,
+) -> None:
+    rotations = {
+        0.0: (0.0, 0.0, 0.0, 1.0),
+        1.0: (0.5, 0.5, 0.5, 0.5),
+    }
+    builder = YcdCutsceneBuilder.create("cached_tracks", duration=1.0, game=game)
+    builder.camera(rotation=rotations)
+    builder.prop(
+        "actor",
+        mover_rotation=rotations,
+        bones={7: YcdCutsceneBoneAnimation(rotation=rotations)},
+    )
+
+    ycd = builder.build_ycds()[0]
+    tracks = {
+        int(YcdAnimationTrack.CAMERA_ROTATION),
+        int(YcdAnimationTrack.MOVER_ROTATION),
+        int(YcdAnimationTrack.BONE_ROTATION),
+    }
+    sequences = [
+        anim_sequence
+        for animation in ycd.animations
+        for sequence in animation.sequences
+        for anim_sequence in sequence.anim_sequences
+        if int(anim_sequence.bone_id.track) in tracks
+    ]
+
+    assert len(sequences) == 3
+    assert all(sequence.is_cached_quaternion for sequence in sequences)
+    assert all(len(sequence.channels) == 4 for sequence in sequences)
+    assert all(
+        [channel.channel_type for channel in sequence.channels].count(
+            YcdChannelType.CACHED_QUATERNION1
+        )
+        == 1
+        for sequence in sequences
+    )
+    assert all(
+        YcdChannelType.CACHED_QUATERNION2
+        not in {channel.channel_type for channel in sequence.channels}
+        for sequence in sequences
+    )
+
+
+def test_cutscene_builder_keeps_static_quaternions_static() -> None:
+    builder = YcdCutsceneBuilder.create("static_rotation", duration=1.0)
+    builder.prop("actor", rotation=(0.0, 0.0, 0.0, 1.0))
+
+    sequence = builder.build_ycds()[0].animations[0].sequences[0].anim_sequences[0]
+
+    assert [channel.channel_type for channel in sequence.channels] == [
+        YcdChannelType.STATIC_QUATERNION
+    ]
+    assert not sequence.is_cached_quaternion
+
+
+def test_cutscene_builder_can_emit_explicit_quaternion_components() -> None:
+    builder = YcdCutsceneBuilder.create(
+        "explicit_rotation",
+        duration=1.0,
+        quaternion_encoding=YcdQuaternionEncoding.EXPLICIT,
+    )
+    builder.prop(
+        "actor",
+        mover_rotation={
+            0.0: (0.0, 0.0, 0.0, 1.0),
+            1.0: (0.0, 0.0, 1.0, 0.0),
+        },
+    )
+
+    rotation = (
+        builder.build_ycds()[0]
+        .animations[0]
+        .find_sequences(track=YcdAnimationTrack.MOVER_ROTATION)[0]
+    )
+
+    assert len(rotation.channels) == 4
+    assert not rotation.is_cached_quaternion
+    assert YcdChannelType.CACHED_QUATERNION1 not in {
+        channel.channel_type for channel in rotation.channels
+    }
+
+
+def test_cached_quaternion_rejects_series_without_stable_omitted_component() -> None:
+    axis_length = math.sqrt(14.0)
+    rotations = [
+        (
+            math.sin(angle / 2.0) / axis_length,
+            2.0 * math.sin(angle / 2.0) / axis_length,
+            3.0 * math.sin(angle / 2.0) / axis_length,
+            math.cos(angle / 2.0),
+        )
+        for angle in (4.0 * math.pi * frame / 30.0 for frame in range(31))
+    ]
+    cached = YcdCutsceneBuilder.create("cached_unrepresentable", duration=1.0)
+    cached.prop("actor", mover_rotation=rotations)
+
+    with pytest.raises(ValueError, match="YcdQuaternionEncoding.EXPLICIT"):
+        cached.build_ycds()
+
+    explicit = YcdCutsceneBuilder.create(
+        "explicit_unrepresentable",
+        duration=1.0,
+        quaternion_encoding=YcdQuaternionEncoding.EXPLICIT,
+    )
+    explicit.prop("actor", mover_rotation=rotations)
+
+    assert explicit.build_ycds()[0].validate().valid
+
+
+def test_cached_quaternion_roundtrip_preserves_rotation_accuracy() -> None:
+    frame_count = 31
+    rotations = [
+        (
+            math.sin(angle / 2.0) / math.sqrt(3.0),
+            math.sin(angle / 2.0) / math.sqrt(3.0),
+            math.sin(angle / 2.0) / math.sqrt(3.0),
+            math.cos(angle / 2.0),
+        )
+        for angle in (
+            math.radians(20.0 + (140.0 * frame / (frame_count - 1)))
+            for frame in range(frame_count)
+        )
+    ]
+    builder = YcdCutsceneBuilder.create("cached_accuracy", duration=1.0, fps=30.0)
+    builder.prop("actor", mover_rotation=rotations)
+
+    first_bytes = build_ycd_bytes(builder.build_ycds()[0])
+    rebuilt = read_ycd(first_bytes)
+    second_bytes = build_ycd_bytes(rebuilt)
+    animation = rebuilt.animations[0]
+    sequence = animation.sequences[0]
+
+    assert first_bytes == second_bytes
+    assert sequence.root_rotation_ref_count == 4
+    assert any(
+        ref.channel_type == int(YcdChannelType.CACHED_QUATERNION1)
+        for ref in sequence.root_rotation_refs
+    )
+    for frame, expected in enumerate(rotations):
+        actual = animation.evaluate_tracks(frame)[
+            (0, int(YcdAnimationTrack.MOVER_ROTATION))
+        ]
+        assert _quaternion_angular_error_degrees(expected, actual) < 0.01
+    for frame in (0.25, 7.5, 15.75, 29.5):
+        frame0 = math.floor(frame)
+        expected = quat_nlerp(rotations[frame0], rotations[frame0 + 1], frame - frame0)
+        actual = animation.evaluate_tracks(frame)[
+            (0, int(YcdAnimationTrack.MOVER_ROTATION))
+        ]
+        assert _quaternion_angular_error_degrees(expected, actual) < 0.01
+
+
+def test_cached_quaternion_orients_omitted_component_positive() -> None:
+    axis_length = math.sqrt(14.0)
+    rotations = [
+        (
+            -math.sin(angle / 2.0) / axis_length,
+            -2.0 * math.sin(angle / 2.0) / axis_length,
+            -3.0 * math.sin(angle / 2.0) / axis_length,
+            math.cos(angle / 2.0),
+        )
+        for angle in (
+            math.radians(100.0 + (160.0 * frame / 30.0)) for frame in range(31)
+        )
+    ]
+    builder = YcdCutsceneBuilder.create("cached_sign", duration=1.0, fps=30.0)
+    builder.prop("actor", mover_rotation=rotations)
+
+    rotation = (
+        builder.build_ycds()[0]
+        .animations[0]
+        .find_sequences(track=YcdAnimationTrack.MOVER_ROTATION)[0]
+    )
+    cached = next(
+        channel
+        for channel in rotation.channels
+        if channel.channel_type is YcdChannelType.CACHED_QUATERNION1
+    )
+
+    assert cached.quat_index in {0, 1, 2}
+    assert all(
+        rotation.evaluate_quaternion(frame)[cached.quat_index] >= 0.0
+        for frame in range(31)
+    )
+
+
+def test_quaternion_layout_audit_reports_dynamic_encoding_by_track() -> None:
+    rotations = {
+        0.0: (0.0, 0.0, 0.0, 1.0),
+        1.0: (0.0, 0.0, 1.0, 0.0),
+    }
+    cached = YcdCutsceneBuilder.create("cached", duration=1.0)
+    cached.camera(rotation=rotations)
+    explicit = YcdCutsceneBuilder.create(
+        "explicit",
+        duration=1.0,
+        quaternion_encoding=YcdQuaternionEncoding.EXPLICIT,
+    )
+    explicit.prop("actor", mover_rotation=rotations)
+
+    report = audit_ycd_quaternion_layout([*cached.build_ycds(), *explicit.build_ycds()])
+
+    assert (
+        report.count(
+            YcdQuaternionLayout.CACHED_QUATERNION1,
+            track=YcdAnimationTrack.CAMERA_ROTATION,
+        )
+        == 1
+    )
+    assert (
+        report.count(
+            YcdQuaternionLayout.EXPLICIT,
+            track=YcdAnimationTrack.MOVER_ROTATION,
+        )
+        == 1
+    )
+    assert report.dominant_dynamic_layout is YcdQuaternionLayout.CACHED_QUATERNION1
+
+
+def test_ycd_validation_rejects_invalid_cached_quaternion_index() -> None:
+    builder = YcdCutsceneBuilder.create("invalid_cached_index", duration=1.0)
+    builder.prop(
+        "actor",
+        mover_rotation={
+            0.0: (0.0, 0.0, 0.0, 1.0),
+            1.0: (0.0, 0.0, 1.0, 0.0),
+        },
+    )
+    ycd = builder.build_ycds()[0]
+    rotation = ycd.animations[0].find_sequences(track=YcdAnimationTrack.MOVER_ROTATION)[
+        0
+    ]
+    cached = next(
+        channel
+        for channel in rotation.channels
+        if channel.channel_type is YcdChannelType.CACHED_QUATERNION1
+    )
+    cached.quat_index = 4
+
+    report = ycd.validate()
+
+    assert "ycd.quaternion_cache.index_invalid" in {
+        issue.code for issue in report.errors
+    }
 
 
 @pytest.mark.parametrize(
