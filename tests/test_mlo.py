@@ -88,7 +88,7 @@ def test_mlo_build_synchronizes_room_portal_counts() -> None:
     ytyp.build()
 
     assert [room.portal_count for room in mlo.rooms] == [1, 1]
-    assert ytyp.validate() == []
+    assert ytyp.validate().valid
 
 
 def test_mlo_link_portals_are_not_exit_portals() -> None:
@@ -109,7 +109,7 @@ def test_mlo_ytyp_binary_roundtrip_preserves_explicit_structures() -> None:
     assert parsed_mlo.rooms[0].flags is RoomFlags.NO_EXTERIOR_LIGHTS
     assert parsed_mlo.portals[0].flags is PortalFlags.ALLOW_CLOSING
     assert [room.portal_count for room in parsed_mlo.rooms] == [1, 1]
-    assert parsed.validate() == []
+    assert parsed.validate().valid
 
 
 def test_vector_arrays_are_written_as_pod_blocks_not_named_structs() -> None:
@@ -142,11 +142,12 @@ def test_mlo_validation_rejects_runtime_unsafe_graphs() -> None:
 
     issues = mlo.validate()
 
-    assert any("room_to=5 is outside the room array" in issue for issue in issues)
-    assert any("exactly four corners" in issue for issue in issues)
-    assert any("entities[1] is not attached" in issue for issue in issues)
-    assert any("has 1 locations for 2 entities" in issue for issue in issues)
-    assert any("references portal 5" in issue for issue in issues)
+    codes = {issue.code for issue in issues}
+    assert "ytyp.mlo.portal.room_index.invalid" in codes
+    assert "ytyp.mlo.portal.corners.count" in codes
+    assert "ytyp.mlo.entity.unattached" in codes
+    assert "ytyp.mlo.entity_set.location_count" in codes
+    assert "ytyp.mlo.entity_set.portal_index.invalid" in codes
 
 
 def test_mlo_writer_rejects_missing_room_zero() -> None:
@@ -180,7 +181,7 @@ def test_mlo_declarative_objects_resolve_rooms_portals_and_instances() -> None:
     assert int(instance.archetype_name) == int(mlo.name)
     context = _build_context(ytyp)
     ymap.build(context=context)
-    assert ymap.validate(context=context) == []
+    assert ymap.validate(context=context).valid
 
 
 def test_room_zero_accepts_more_attachments_than_the_vanilla_maximum() -> None:
@@ -197,7 +198,7 @@ def test_room_zero_accepts_more_attachments_than_the_vanilla_maximum() -> None:
 
     # to_bytes builds the archetype and then validates it.
     assert ytyp.to_bytes()
-    assert ytyp.validate_mlos() == []
+    assert ytyp.validate_mlos().valid
 
 
 def test_mlo_writer_still_rejects_the_structural_room_and_portal_limits() -> None:
@@ -230,7 +231,7 @@ def test_ymap_cross_validation_builds_exit_portals_and_checks_entity_sets() -> N
     assert [int(item.name) for item in ymap.physics_dictionaries] == [int(mlo.physics_dictionary)]
     assert isinstance(parsed.entities[0], MloInstanceDef)
     assert parsed.entities[0].num_exit_portals == 1
-    assert parsed.validate(context=context) == []
+    assert parsed.validate(context=context).valid
 
 
 def test_mlo_physics_dictionary_and_static_bound_keep_distinct_names() -> None:
@@ -247,7 +248,7 @@ def test_mlo_physics_dictionary_and_static_bound_keep_distinct_names() -> None:
         int(mlo.physics_dictionary)
     ]
     assert int(mlo.physics_dictionary) != int(mlo.name)
-    assert ymap.validate(context=context) == []
+    assert ymap.validate(context=context).valid
 
 
 def test_ymap_cross_validation_rejects_missing_archetypes_and_sets() -> None:
@@ -261,11 +262,12 @@ def test_ymap_cross_validation_rejects_missing_archetypes_and_sets() -> None:
 
     issues = ymap.validate(context=_build_context(ytyp))
 
-    assert any("group_id must be between 0 and 254" in issue for issue in issues)
-    assert any("unknown default entity set" in issue for issue in issues)
+    codes = {issue.code for issue in issues}
+    assert "ymap.mlo.group_id.range" in codes
+    assert "ymap.mlo.default_entity_set.unknown" in codes
 
     missing_issues = ymap.validate(context=_build_context(Ytyp(name="other_ityp")))
-    assert any("absent from the supplied YTYPs" in issue for issue in missing_issues)
+    assert any(issue.code == "ymap.mlo.archetype.missing" for issue in missing_issues)
 
 
 def test_mlo_collision_uses_material_room_ids_and_archetype_filename() -> None:
@@ -273,14 +275,16 @@ def test_mlo_collision_uses_material_room_ids_and_archetype_filename() -> None:
     ybn = _valid_mlo_ybn(mlo)
 
     assert ybn.room_ids == {1}
-    assert mlo.validate_collision(ybn) == []
+    assert mlo.validate_collision(ybn).valid
 
     ybn.bind_room(2)
     ybn.path = "wrong_name.ybn"
     issues = mlo.validate_collision(ybn)
 
-    assert any("uses room_id 2" in issue for issue in issues)
-    assert any("must match the archetype name" in issue for issue in issues)
+    assert {issue.code for issue in issues} == {
+        "ybn.mlo.name.mismatch",
+        "ybn.mlo.room_id.invalid",
+    }
 
 
 def test_ymap_mlo_validation_requires_supplied_static_bound() -> None:
@@ -292,7 +296,7 @@ def test_ymap_mlo_validation_requires_supplied_static_bound() -> None:
 
     issues = ymap.validate(context=context)
 
-    assert any("has no YBN static bound" in issue for issue in issues)
+    assert any(issue.code == "ymap.mlo.collision.missing" for issue in issues)
 
 
 def test_ymap_mlo_extents_use_transformed_archetype_bounds() -> None:

@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..bounds import Bound, BoundComposite, BoundGeometry
 from ..metahash import MetaHash
 
@@ -51,29 +52,34 @@ def set_collision_room(source: Any, room_id: int) -> Any:
     return source
 
 
-def validate_mlo_collision(source: Any, archetype: Any) -> list[str]:
+def validate_mlo_collision(source: Any, archetype: Any) -> ValidationReport:
     """Validate the room encoding and identity of an MLO static-bound YBN."""
-    issues: list[str] = []
+    issues = ValidationReport()
     room_count = len(getattr(archetype, "rooms", ()) or ())
     name = getattr(archetype, "name", 0)
     label = f"MLO collision {name}"
 
     if not 1 <= room_count <= 31:
-        issues.append(f"{label} requires between 1 and 31 archetype rooms")
+        issues.issue("ybn.mlo.room_count", f"{label} requires between 1 and 31 archetype rooms", path="rooms")
 
     room_ids = collision_room_ids(source)
     for room_id in sorted(room_ids):
         if not 0 <= room_id < room_count:
-            issues.append(
-                f"{label} uses room_id {room_id}, but the archetype only has {room_count} rooms"
+            issues.issue(
+                "ybn.mlo.room_id.invalid",
+                f"{label} uses room_id {room_id}, but the archetype only has {room_count} rooms",
+                path="bound",
             )
 
     path = str(getattr(source, "path", "") or "")
     if path:
         stem = Path(path.replace("\\", "/")).stem
         if stem and int(MetaHash.from_value(stem)) != int(name):
-            issues.append(
-                f"{label} is stored as {stem}.ybn; an MLO static-bound YBN must match the archetype name"
+            issues.issue(
+                "ybn.mlo.name.mismatch",
+                f"{label} is stored as {stem}.ybn; an MLO static-bound YBN must match the archetype name",
+                asset=path,
+                path="path",
             )
     return issues
 

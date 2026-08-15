@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..authoring import BuildContext, asset_name
+from ..authoring.diagnostics import ValidationReport
 from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
@@ -265,13 +266,12 @@ class Ymap(MetaHashFieldsMixin):
         lod_count = len(lod) if isinstance(lod, LodLightsSoa) else 0
         distant_count = len(distant) if isinstance(distant, DistantLodLightsSoa) else 0
 
-        issues: list[str] = []
+        issues = ValidationReport()
         if isinstance(lod, LodLightsSoa):
             issues.extend(lod.validate())
         if isinstance(distant, DistantLodLightsSoa):
             issues.extend(distant.validate())
-        if issues:
-            raise ValueError("Invalid YMAP light arrays:\n- " + "\n- ".join(issues))
+        issues.raise_for_errors()
 
         # The game stores distant parents and LOD children in separate YMAPs.
         # Reordering is only safe when both paired arrays are present together.
@@ -434,23 +434,23 @@ class Ymap(MetaHashFieldsMixin):
         self.name = _ensure_base_name(self.name, ".ymap")
         return self
 
-    def validate_mlos(self, *, context: BuildContext | None = None) -> list[str]:
+    def validate_mlos(self, *, context: BuildContext | None = None) -> ValidationReport:
         ytyps, ybns = _context_dependencies(context)
         return validate_ymap_mlo_instances(self, ytyps, ybns)
 
-    def validate(self, *, context: BuildContext | None = None) -> list[str]:
-        issues: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        issues = ValidationReport()
         lod_count = len(self.lod_lights) if isinstance(self.lod_lights, LodLightsSoa) else 0
         distant_count = len(self.distant_lod_lights) if isinstance(self.distant_lod_lights, DistantLodLightsSoa) else 0
         if isinstance(self.lod_lights, LodLightsSoa):
-            issues.extend(self.lod_lights.validate())
+            issues.extend(self.lod_lights.validate(), path="lod_lights")
         if isinstance(self.distant_lod_lights, DistantLodLightsSoa):
-            issues.extend(self.distant_lod_lights.validate())
+            issues.extend(self.distant_lod_lights.validate(), path="distant_lod_lights")
         if lod_count > 0 and distant_count == lod_count:
             seen_non_street = False
             for light in self.iter_lod_lights():
                 if light.is_street_light and seen_non_street:
-                    issues.append("YMAP street lights must occupy the leading prefix of the paired LOD light arrays")
+                    issues.issue("ymap.lod_lights.street_prefix", "YMAP street lights must occupy the leading prefix of the paired LOD light arrays", path="distant_lod_lights.num_street_lights")
                     break
                 if not light.is_street_light:
                     seen_non_street = True
@@ -493,9 +493,7 @@ class Ymap(MetaHashFieldsMixin):
     ) -> bytes:
         self.build(context=context)
         if validate:
-            issues = self.validate(context=context)
-            if issues:
-                raise ValueError("Invalid YMAP:\n- " + "\n- ".join(issues))
+            self.validate(context=context).raise_for_errors()
         builder = MetaBuilder(struct_infos=YMAP_STRUCT_INFOS, enum_infos=YMAP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapData"), root_value=self.to_meta_root())
         system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)

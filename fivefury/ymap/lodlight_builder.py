@@ -4,6 +4,7 @@ import dataclasses
 from collections.abc import Sequence
 from pathlib import Path
 
+from ..authoring.diagnostics import ValidationReport
 from ..common import atomic_write_bytes
 from ..vector import Aabb3, aabb_expand, aabb_merge
 from .enums import YmapContentFlags, YmapFlags, YmapLodLightCategory
@@ -29,28 +30,28 @@ class LodLightMapPair:
     category: YmapLodLightCategory
     index: int
 
-    def validate(self) -> list[str]:
-        issues = [*self.distant.validate(), *self.lod.validate()]
+    def validate(self) -> ValidationReport:
+        issues = ValidationReport()
+        issues.extend(self.distant.validate(), path="distant")
+        issues.extend(self.lod.validate(), path="lod")
         distant_lights = self.distant.distant_lod_lights
         lod_lights = self.lod.lod_lights
         if not isinstance(distant_lights, DistantLodLightsSoa):
-            issues.append("distant map has no DistantLODLightsSOA")
+            issues.issue("ymap.lod_pair.distant_lights.missing", "distant map has no DistantLODLightsSOA", path="distant.distant_lod_lights")
             return issues
         if not isinstance(lod_lights, LodLightsSoa):
-            issues.append("LOD map has no LODLightsSOA")
+            issues.issue("ymap.lod_pair.lod_lights.missing", "LOD map has no LODLightsSOA", path="lod.lod_lights")
             return issues
         if len(distant_lights) != len(lod_lights):
-            issues.append("paired distant and LOD maps have different light counts")
+            issues.issue("ymap.lod_pair.light_count.mismatch", "paired distant and LOD maps have different light counts", path="lod_lights")
         if distant_lights.category != self.category:
-            issues.append("distant map category does not match the pair category")
+            issues.issue("ymap.lod_pair.category.mismatch", "distant map category does not match the pair category", path="category")
         if int(self.lod.parent) != int(self.distant.name):
-            issues.append("LOD map does not reference its distant parent")
+            issues.issue("ymap.lod_pair.parent.mismatch", "LOD map does not reference its distant parent", path="lod.parent")
         return issues
 
     def require_valid(self) -> LodLightMapPair:
-        issues = self.validate()
-        if issues:
-            raise ValueError("Invalid LOD-light map pair:\n- " + "\n- ".join(issues))
+        self.validate().raise_for_errors()
         return self
 
 

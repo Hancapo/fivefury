@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..map_extensions import (
     ExtensionContainer,
     extensions_from_meta,
@@ -113,7 +114,7 @@ class MloInstanceDef(EntityDef):
 
         return build_mlo_instance(self, archetype)
 
-    def validate(self, archetype: Any | None = None) -> list[str]:
+    def validate(self, archetype: Any | None = None) -> ValidationReport:
         from .mlo_validation import validate_mlo_instance
 
         return validate_mlo_instance(self, archetype)

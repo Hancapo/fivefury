@@ -4,6 +4,7 @@ import dataclasses
 import math
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..colors import CssColor
 from ..meta.defs import meta_name
 from .enums import (
@@ -160,12 +161,14 @@ class LodLightsSoa:
     def __len__(self) -> int:
         return len(self.direction)
 
-    def validate(self) -> list[str]:
+    def validate(self) -> ValidationReport:
         expected = len(self.direction)
-        issues: list[str] = []
+        issues = ValidationReport()
         if expected > MAX_LOD_LIGHT_ARRAY_COUNT:
-            issues.append(
-                f"LODLightsSOA has {expected} entries; maximum is {MAX_LOD_LIGHT_ARRAY_COUNT}"
+            issues.issue(
+                "ymap.lod_lights.capacity",
+                f"LODLightsSOA has {expected} entries; maximum is {MAX_LOD_LIGHT_ARRAY_COUNT}",
+                path="direction",
             )
         for name in (
             "falloff",
@@ -178,18 +181,22 @@ class LodLightsSoa:
         ):
             actual = len(getattr(self, name))
             if actual != expected:
-                issues.append(f"LODLightsSOA.{name} has {actual} entries; expected {expected}")
-        if any(not all(math.isfinite(component) for component in value) for value in self.direction):
-            issues.append("LODLightsSOA.direction contains non-finite values")
-        if any(not math.isfinite(value) for value in (*self.falloff, *self.falloff_exponent)):
-            issues.append("LODLightsSOA falloff arrays contain non-finite values")
-        if any(not 0 <= int(value) <= 0xFFFFFFFF for value in self.time_and_state_flags):
-            issues.append("LODLightsSOA.timeAndStateFlags contains values outside uint32")
-        if any(not 0 <= int(value) <= 0xFFFFFFFF for value in self.hash):
-            issues.append("LODLightsSOA.hash contains values outside uint32")
+                issues.issue("ymap.lod_lights.array_count", f"LODLightsSOA.{name} has {actual} entries; expected {expected}", path=name)
+        for index, value in enumerate(self.direction):
+            if not all(math.isfinite(component) for component in value):
+                issues.issue("ymap.lod_lights.direction.non_finite", "direction contains non-finite values", path=f"direction[{index}]")
+        for name in ("falloff", "falloff_exponent"):
+            for index, value in enumerate(getattr(self, name)):
+                if not math.isfinite(value):
+                    issues.issue("ymap.lod_lights.falloff.non_finite", f"{name} contains a non-finite value", path=f"{name}[{index}]")
+        for name in ("time_and_state_flags", "hash"):
+            for index, value in enumerate(getattr(self, name)):
+                if not 0 <= int(value) <= 0xFFFFFFFF:
+                    issues.issue(f"ymap.lod_lights.{name}.range", f"{name} contains a value outside uint32", path=f"{name}[{index}]")
         for name in ("cone_inner_angle", "cone_outer_angle_or_cap_ext", "corona_intensity"):
-            if any(not 0 <= int(value) <= 0xFF for value in getattr(self, name)):
-                issues.append(f"LODLightsSOA.{name} contains values outside uint8")
+            for index, value in enumerate(getattr(self, name)):
+                if not 0 <= int(value) <= 0xFF:
+                    issues.issue(f"ymap.lod_lights.{name}.range", f"{name} contains a value outside uint8", path=f"{name}[{index}]")
         return issues
 
     def to_meta(self) -> dict[str, Any]:
@@ -245,22 +252,28 @@ class DistantLodLightsSoa:
     def __len__(self) -> int:
         return len(self.position)
 
-    def validate(self) -> list[str]:
-        issues: list[str] = []
+    def validate(self) -> ValidationReport:
+        issues = ValidationReport()
         if len(self.position) > MAX_LOD_LIGHT_ARRAY_COUNT:
-            issues.append(
-                f"DistantLODLightsSOA has {len(self.position)} entries; maximum is {MAX_LOD_LIGHT_ARRAY_COUNT}"
+            issues.issue(
+                "ymap.distant_lights.capacity",
+                f"DistantLODLightsSOA has {len(self.position)} entries; maximum is {MAX_LOD_LIGHT_ARRAY_COUNT}",
+                path="position",
             )
         if len(self.RGBI) != len(self.position):
-            issues.append(
-                f"DistantLODLightsSOA.RGBI has {len(self.RGBI)} entries; expected {len(self.position)}"
+            issues.issue(
+                "ymap.distant_lights.array_count",
+                f"DistantLODLightsSOA.RGBI has {len(self.RGBI)} entries; expected {len(self.position)}",
+                path="RGBI",
             )
         if not 0 <= int(self.num_street_lights) <= len(self.position):
-            issues.append("DistantLODLightsSOA.numStreetLights must fit the distant light count")
-        if any(not all(math.isfinite(component) for component in value) for value in self.position):
-            issues.append("DistantLODLightsSOA.position contains non-finite values")
-        if any(not 0 <= int(value) <= 0xFFFFFFFF for value in self.RGBI):
-            issues.append("DistantLODLightsSOA.RGBI contains values outside uint32")
+            issues.issue("ymap.distant_lights.street_count", "numStreetLights must fit the distant light count", path="num_street_lights")
+        for index, value in enumerate(self.position):
+            if not all(math.isfinite(component) for component in value):
+                issues.issue("ymap.distant_lights.position.non_finite", "position contains non-finite values", path=f"position[{index}]")
+        for index, value in enumerate(self.RGBI):
+            if not 0 <= int(value) <= 0xFFFFFFFF:
+                issues.issue("ymap.distant_lights.rgbi.range", "RGBI contains a value outside uint32", path=f"RGBI[{index}]")
         return issues
 
     def to_meta(self) -> dict[str, Any]:

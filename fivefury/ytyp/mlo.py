@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..meta import RawStruct
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
@@ -270,12 +271,13 @@ class MloArchetypeDef(BaseArchetypeDef):
         build_mlo_archetype(self)
         return self
 
-    def validate_collision(self, ybn: Any) -> list[str]:
+    def validate_collision(self, ybn: Any) -> ValidationReport:
         from ..ybn import validate_mlo_collision
 
         return validate_mlo_collision(ybn, self)
 
-    def validate(self) -> list[str]:
+    def validate(self, *, context: object | None = None) -> ValidationReport:
+        del context
         return validate_mlo_archetype(self)
 
     def to_meta(self) -> dict[str, Any]:

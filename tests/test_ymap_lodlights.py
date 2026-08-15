@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from fivefury import DistantLodLightsSoa, LodLight, LodLightsSoa, Ymap
+from fivefury import DistantLodLightsSoa, LodLight, LodLightsSoa, ValidationError, Ymap
 
 
 def _lod_light() -> LodLight:
@@ -71,5 +71,5 @@ def test_official_lod_child_and_distant_parent_shapes_roundtrip() -> None:
     ],
 )
 def test_light_soa_length_mismatches_are_rejected(ymap: Ymap) -> None:
-    with pytest.raises(ValueError, match="Invalid YMAP light arrays"):
+    with pytest.raises(ValidationError, match="ymap.*array_count"):
         ymap.to_bytes()
