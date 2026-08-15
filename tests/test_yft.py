@@ -1606,7 +1606,7 @@ def test_composite_bound_may_preserve_only_null_native_slots():
         ]
     )
 
-    assert "Composite bound has no non-null children" not in composite.validate()
+    assert composite.validate().valid
 
 
 def test_bound_ownership_counts_external_roots_and_composite_edges_once():

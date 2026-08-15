@@ -529,18 +529,14 @@ def _validate_lod(
             code="yft.lod.physics_lod_requires_bound",
         )
     else:
-        for message in validate_bound_profile(
-            lod.composite_bound,
-            bound_profile,
-            expected_slots=len(lod.children),
-        ):
-            _issue(
-                issues,
-                DiagnosticSeverity.ERROR,
-                f"{path}.composite_bound",
-                message,
-                code="yft.lod.invalid",
-            )
+        issues.extend(
+            validate_bound_profile(
+                lod.composite_bound,
+                bound_profile,
+                expected_slots=len(lod.children),
+            ),
+            path=f"{path}.composite_bound",
+        )
         _validate_fragment_geometry_limits(
             lod.composite_bound,
             f"{path}.composite_bound",
@@ -1239,14 +1235,10 @@ def validate_yft(
         for index, bound in enumerate(extra_bounds):
             if bound is None:
                 continue
-            for message in bound.validate():
-                _issue(
-                    issues,
-                    DiagnosticSeverity.ERROR,
-                    f"drawables.{entry.label}.extra_bounds[{index}]",
-                    message,
-                    code="yft.drawable.extra_bound_invalid",
-                )
+            issues.extend(
+                bound.validate(),
+                path=f"drawables.{entry.label}.extra_bounds[{index}]",
+            )
 
     if source.physics_lods.has_physics and not source.physics_lod_details:
         _issue(

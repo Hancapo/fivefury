@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 from collections.abc import Iterator, Mapping
 
+from ..authoring.diagnostics import ValidationReport
 from ..bounds import Bound, BoundBVH, BoundComposite, BoundType
 
 
@@ -78,8 +79,7 @@ def profile_file_vft(
     value = _PROFILE_VFTS[resolved].get(bound.bound_type)
     if value is None:
         raise ValueError(
-            f"{resolved.value} does not define a native VFT for "
-            f"{bound.bound_type.name}"
+            f"{resolved.value} does not define a native VFT for {bound.bound_type.name}"
         )
     return value
 
@@ -97,48 +97,54 @@ def validate_bound_profile(
     profile: YftPhysicsBoundProfile | str,
     *,
     expected_slots: int | None = None,
-) -> list[str]:
+) -> ValidationReport:
     resolved = coerce_yft_physics_bound_profile(profile)
-    issues: list[str] = []
+    issues = ValidationReport()
     if resolved is YftPhysicsBoundProfile.PRESERVE:
         for index, bound in enumerate(root.walk()):
             if not bound.file_vft:
-                issues.append(
-                    f"bound {index} has no explicit file_vft to preserve"
+                issues.issue(
+                    "yft.bound_profile.file_vft.missing",
+                    f"bound {index} has no explicit file_vft to preserve",
+                    path=f"bounds[{index}].file_vft",
                 )
         if expected_slots is not None:
-            actual_slots = (
-                root.child_count
-                if isinstance(root, BoundComposite)
-                else 1
-            )
+            actual_slots = root.child_count if isinstance(root, BoundComposite) else 1
             if actual_slots != expected_slots:
-                issues.append(
-                    f"bound tree has {actual_slots} slots for "
-                    f"{expected_slots} physics children"
+                issues.issue(
+                    "yft.bound_profile.slot_count",
+                    f"bound tree has {actual_slots} slots for {expected_slots} physics children",
+                    path="children",
                 )
         return issues
 
     if not isinstance(root, BoundComposite):
-        issues.append("physics LOD root must be a BoundComposite")
+        issues.issue(
+            "yft.bound_profile.root_type",
+            "physics LOD root must be a BoundComposite",
+            path="root",
+        )
         return issues
     if expected_slots is not None and root.child_count != expected_slots:
-        issues.append(
-            f"composite has {root.child_count} active slots for "
-            f"{expected_slots} physics children"
+        issues.issue(
+            "yft.bound_profile.slot_count",
+            f"composite has {root.child_count} active slots for {expected_slots} physics children",
+            path="children",
         )
 
     for index, bound in enumerate(root.walk()):
         expected_vft = expected_profile_vft(bound.bound_type, resolved)
         if expected_vft is None:
-            issues.append(
-                f"bound {index} type {bound.bound_type.name} is not defined "
-                f"for {resolved.value}"
+            issues.issue(
+                "yft.bound_profile.bound_type.unsupported",
+                f"bound {index} type {bound.bound_type.name} is not defined for {resolved.value}",
+                path=f"bounds[{index}].bound_type",
             )
         elif bound.file_vft and bound.file_vft != expected_vft:
-            issues.append(
-                f"bound {index} VFT 0x{bound.file_vft:08X} does not match "
-                f"{resolved.value} 0x{expected_vft:08X}"
+            issues.issue(
+                "yft.bound_profile.file_vft.mismatch",
+                f"bound {index} VFT 0x{bound.file_vft:08X} does not match {resolved.value} 0x{expected_vft:08X}",
+                path=f"bounds[{index}].file_vft",
             )
 
     for index, child in enumerate(root.active_children):
@@ -146,14 +152,18 @@ def validate_bound_profile(
         if bound is None:
             continue
         if isinstance(bound, BoundComposite):
-            issues.append(f"slot {index} contains a nested BoundComposite")
-        if (
-            resolved is not YftPhysicsBoundProfile.VEHICLE
-            and isinstance(bound, BoundBVH)
+            issues.issue(
+                "yft.bound_profile.nested_composite",
+                f"slot {index} contains a nested BoundComposite",
+                path=f"children[{index}].bound",
+            )
+        if resolved is not YftPhysicsBoundProfile.VEHICLE and isinstance(
+            bound, BoundBVH
         ):
-            issues.append(
-                f"slot {index} contains BoundBVH, which is not valid for "
-                f"{resolved.value}"
+            issues.issue(
+                "yft.bound_profile.bvh.unsupported",
+                f"slot {index} contains BoundBVH, which is not valid for {resolved.value}",
+                path=f"children[{index}].bound",
             )
     return issues
 

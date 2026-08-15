@@ -88,6 +88,20 @@ def test_validation_report_preserves_structured_diagnostics() -> None:
     assert raised.value.report is report
 
 
+def test_validation_report_composes_nested_paths_and_assets() -> None:
+    child = ValidationReport()
+    child.issue("bounds.vertex.invalid", "Invalid vertex", path="vertices[3]")
+
+    report = ValidationReport().extend(
+        child,
+        path="children[2].bound",
+        asset="collision.ybn",
+    )
+
+    assert report.errors[0].path == "children[2].bound.vertices[3]"
+    assert report.errors[0].asset == "collision.ybn"
+
+
 def test_build_context_adapts_string_validators_to_diagnostics() -> None:
     class InvalidAsset:
         def validate(self) -> list[str]:

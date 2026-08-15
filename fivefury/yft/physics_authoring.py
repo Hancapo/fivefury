@@ -595,11 +595,7 @@ def normalize_physics_lod(
         resolved_profile,
         expected_slots=len(normalized.children),
     )
-    if profile_issues:
-        raise ValueError(
-            f"physics LOD '{lod.label}' is invalid for "
-            f"{resolved_profile.value}: {profile_issues}"
-        )
+    profile_issues.raise_for_errors()
     apply_physics_lod_bound_ref_counts(normalized)
     return normalized
 

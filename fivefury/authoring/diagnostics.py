@@ -85,13 +85,25 @@ class ValidationReport:
         return diagnostic
 
     def extend(
-        self, diagnostics: ValidationReport | list[Diagnostic] | tuple[Diagnostic, ...]
+        self,
+        diagnostics: ValidationReport | list[Diagnostic] | tuple[Diagnostic, ...],
+        *,
+        path: str | None = None,
+        asset: str | Path | None = None,
     ) -> ValidationReport:
-        self.issues.extend(
+        source = (
             diagnostics.issues
             if isinstance(diagnostics, ValidationReport)
             else diagnostics
         )
+        for issue in source:
+            if path:
+                suffix = issue.path or ""
+                separator = "" if suffix.startswith("[") else "."
+                issue = issue.at(f"{path}{separator}{suffix}" if suffix else path)
+            if asset is not None:
+                issue = issue.for_asset(asset)
+            self.issues.append(issue)
         return self
 
     def raise_for_errors(self) -> None:
