@@ -70,6 +70,18 @@ def test_project_camera_authors_runtime_binding_and_sampled_cut_pose() -> None:
     assert event.payload["vRotationQuaternion"] == pytest.approx(
         (0.0, 0.0, 0.0, 1.0)
     )
+    set_anim_events = [
+        item for item in project.scene.timeline if item.event_name == "set_anim"
+    ]
+    assert [item.start for item in set_anim_events] == pytest.approx([0.25, 1.0])
+    assert [item.payload["iObjectId"] for item in set_anim_events] == [
+        camera.object_id,
+        camera.object_id,
+    ]
+    assert [item.target_id for item in set_anim_events] == [
+        project.animation_manager.object_id,
+        project.animation_manager.object_id,
+    ]
 
 
 def test_one_runtime_camera_drives_multiple_named_cuts() -> None:
@@ -95,9 +107,54 @@ def test_camera_contract_survives_cut_and_segmented_ycd_roundtrip() -> None:
     assert rebuilt_camera.animation_streaming_base == camera.animation_streaming_base
     assert rebuilt_camera.near_draw_distance == pytest.approx(0.1)
     assert rebuilt_camera.far_draw_distance == pytest.approx(2000.0)
+    set_anim_events = [
+        item for item in scene.timeline if item.event_name == "set_anim"
+    ]
+    assert [item.start for item in set_anim_events] == pytest.approx([0.25, 1.0])
+    assert [item.payload["iObjectId"] for item in set_anim_events] == [
+        rebuilt_camera.object_id,
+        rebuilt_camera.object_id,
+    ]
+    assert [item.target_id for item in set_anim_events] == [1, 1]
     for index in range(2):
         ycd = read_ycd(files[f"camera_contract-{index}.ycd"])
         assert ycd.get_clip(f"exportcamera-{index}") is not None
+
+
+def test_static_camera_has_no_runtime_animation_binding() -> None:
+    project = CutsceneProject.create("static_camera", duration=1.0)
+    project.camera(cut_position=(0.0, 0.0, 0.0), cut_rotation=(0.0, 0.0, 0.0, 1.0))
+
+    assert not [
+        item for item in project.scene.timeline if item.event_name == "set_anim"
+    ]
+
+
+def test_camera_and_prop_keep_independent_runtime_animation_bindings() -> None:
+    project = CutsceneProject.create("mixed_animation", duration=1.0)
+    prop = project.scene.prop(
+        "box", model_name="prop_box", ytyp_name="demo_props"
+    )
+    project.animate(
+        prop,
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    camera = project.camera(
+        position=(0.0, 0.0, 1.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+
+    events = [
+        item for item in project.scene.timeline if item.event_name == "set_anim"
+    ]
+    assert [item.payload["iObjectId"] for item in events] == [
+        prop.object_id,
+        camera.object_id,
+    ]
+    assert {item.target_id for item in events} == {
+        project.animation_manager.object_id
+    }
 
 
 def test_animated_camera_requires_a_complete_cut_pose() -> None:

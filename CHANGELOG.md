@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+
+- Animated CUT cameras now bind their technical YCD clips in every active section.
+
 ## [0.4.5] - 2026-08-15
 
 ### Breaking Changes
