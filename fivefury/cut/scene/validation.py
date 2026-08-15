@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import itertools
 from copy import deepcopy
-from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
 
+from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ...hashing import jenk_hash, jenk_partial_hash
 from ...vector import is_finite_vector
 from ...ycd.sequence_tracks import is_ycd_camera_track
@@ -31,6 +31,7 @@ from .shared import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
+    from ...authoring.context import BuildContext
     from .base import CutScene
     from .timeline import CutTimelineEvent
 
@@ -38,38 +39,23 @@ if TYPE_CHECKING:  # pragma: no cover
 CutSceneValidationSeverity = Literal["error", "warning"]
 
 
-@dataclass(frozen=True, slots=True)
-class CutSceneValidationIssue:
-    severity: CutSceneValidationSeverity
-    code: str
-    message: str
-    hint: str | None = None
-
-    def format(self) -> str:
-        text = f"[{self.severity.upper()}:{self.code}] {self.message}"
-        if self.hint:
-            text += f" Hint: {self.hint}"
-        return text
-
-
-class CutSceneValidationError(ValueError):
-    def __init__(self, issues: list[CutSceneValidationIssue]) -> None:
-        self.issues = [issue for issue in issues if issue.severity == "error"]
-        super().__init__("\n".join(issue.format() for issue in self.issues))
-
-
 def _issue(
-    issues: list[CutSceneValidationIssue],
+    issues: ValidationReport,
     severity: CutSceneValidationSeverity,
     code: str,
     message: str,
     *,
     hint: str | None = None,
 ) -> None:
-    issues.append(
-        CutSceneValidationIssue(
-            severity=severity, code=code, message=message, hint=hint
-        )
+    issues.issue(
+        code,
+        f"{message} {hint}" if hint else message,
+        severity=(
+            DiagnosticSeverity.ERROR
+            if severity == "error"
+            else DiagnosticSeverity.WARNING
+        ),
+        path=code,
     )
 
 
@@ -244,9 +230,7 @@ def _scene_flags(scene: CutScene) -> CutSceneFlags:
     return flags
 
 
-def _validate_root(
-    scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
-) -> None:
+def _validate_root(scene: CutScene, issues: ValidationReport, *, strict: bool) -> None:
     if scene.duration is None:
         _issue(issues, "error", "cut.duration.missing", "CutScene duration is missing")
     else:
@@ -336,9 +320,7 @@ def _validate_root(
         )
 
 
-def _validate_binary_capacities(
-    scene: CutScene, issues: list[CutSceneValidationIssue]
-) -> None:
+def _validate_binary_capacities(scene: CutScene, issues: ValidationReport) -> None:
     counts = {
         "objects": len(scene.bindings),
         "load events": sum(event.is_load_event for event in scene.timeline),
@@ -373,7 +355,7 @@ def _validate_section_list(
     label: str,
     range_start: float,
     range_end: float,
-    issues: list[CutSceneValidationIssue],
+    issues: ValidationReport,
 ) -> list[float]:
     result: list[float] = []
     previous: float | None = None
@@ -415,9 +397,7 @@ def _validate_section_list(
     return result
 
 
-def _validate_sections(
-    scene: CutScene, issues: list[CutSceneValidationIssue]
-) -> None:
+def _validate_sections(scene: CutScene, issues: ValidationReport) -> None:
     flags = _scene_flags(scene)
     modes = flags & (
         CutSceneFlags.SECTION_BY_CAMERA_CUTS
@@ -494,9 +474,7 @@ def _validate_sections(
             )
 
 
-def _validate_bindings(
-    scene: CutScene, issues: list[CutSceneValidationIssue]
-) -> None:
+def _validate_bindings(scene: CutScene, issues: ValidationReport) -> None:
     ids = [binding.object_id for binding in scene.bindings]
     if len(ids) != len(set(ids)):
         _issue(
@@ -542,7 +520,7 @@ def _validate_bindings(
                 )
 
 
-def _validate_events(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
+def _validate_events(scene: CutScene, issues: ValidationReport) -> None:
     duration = float(scene.duration or 0.0)
     bindings_by_id = scene.bindings_by_id
     for event in scene.timeline:
@@ -596,7 +574,7 @@ def _validate_events(scene: CutScene, issues: list[CutSceneValidationIssue]) -> 
                 "error",
                 "event.target.required",
                 f"{name} requires a target {spec.default_target_role} object",
-                            hint=f"Create scene.{spec.default_target_role}() or pass target=...",
+                hint=f"Create scene.{spec.default_target_role}() or pass target=...",
             )
         elif (
             spec is not None
@@ -638,9 +616,7 @@ def _validate_events(scene: CutScene, issues: list[CutSceneValidationIssue]) -> 
                 )
 
 
-def _validate_attachments(
-    scene: CutScene, issues: list[CutSceneValidationIssue]
-) -> None:
+def _validate_attachments(scene: CutScene, issues: ValidationReport) -> None:
     parents: dict[int, int] = {}
     events = sorted(
         _events_by_name(scene, "set_attachment"),
@@ -683,7 +659,7 @@ def _validate_attachments(
             current = parents[current]
 
 
-def _validate_loading(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
+def _validate_loading(scene: CutScene, issues: ValidationReport) -> None:
     load_model_events = _events_by_name(scene, "load_models")
     loaded_ids = {
         object_id
@@ -723,11 +699,9 @@ def _validate_loading(scene: CutScene, issues: list[CutSceneValidationIssue]) ->
 
 
 def _validate_cameras(
-    scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
+    scene: CutScene, issues: ValidationReport, *, strict: bool
 ) -> None:
-    cameras = [
-        binding for binding in scene.bindings if isinstance(binding, CutCamera)
-    ]
+    cameras = [binding for binding in scene.bindings if isinstance(binding, CutCamera)]
     if len(cameras) > 1:
         _issue(
             issues,
@@ -737,9 +711,7 @@ def _validate_cameras(
         )
     clip_bases_by_section = _camera_clip_bases_by_section(scene)
     inferred_clip_bases = (
-        set().union(*clip_bases_by_section.values())
-        if clip_bases_by_section
-        else set()
+        set().union(*clip_bases_by_section.values()) if clip_bases_by_section else set()
     )
     for camera in cameras:
         streaming_base = camera.animation_streaming_base
@@ -931,7 +903,7 @@ def _validate_cameras(
 
 
 def _validate_animations(
-    scene: CutScene, issues: list[CutSceneValidationIssue], *, strict: bool
+    scene: CutScene, issues: ValidationReport, *, strict: bool
 ) -> None:
     load_anim_events = _events_by_name(scene, "load_anim_dict")
     set_anim_events = _events_by_name(scene, "set_anim")
@@ -973,9 +945,7 @@ def _validate_animations(
                 f"SET_ANIM for {_binding_name(binding)} has no active LOAD_ANIM_DICT",
             )
         elif scene.clip_dicts:
-            known_stems = {
-                ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem
-            }
+            known_stems = {ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem}
             if known_stems and not any(
                 _dictionary_matches_ycd(name, stem)
                 for name in active_dicts
@@ -1038,10 +1008,7 @@ def _validate_animations(
             active_cut_index = _technical_cut_index(
                 scene.camera_cut_list, float(event.start)
             )
-            if (
-                scene.clip_for_binding(binding, cut_index=active_cut_index)
-                is None
-            ):
+            if scene.clip_for_binding(binding, cut_index=active_cut_index) is None:
                 _issue(
                     issues,
                     "error",
@@ -1071,9 +1038,7 @@ def _validate_animations(
                 "LOAD_ANIM_DICT has no dictionary name",
             )
         elif strict and scene.clip_dicts:
-            known_stems = {
-                ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem
-            }
+            known_stems = {ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem}
             if known_stems and not any(
                 _dictionary_matches_ycd(label.lower(), stem) for stem in known_stems
             ):
@@ -1085,14 +1050,15 @@ def _validate_animations(
                 )
 
 
-def _validate_facial_animation(
-    scene: CutScene, issues: list[CutSceneValidationIssue]
-) -> None:
+def _validate_facial_animation(scene: CutScene, issues: ValidationReport) -> None:
     for binding in scene.peds:
         if not isinstance(binding, CutPed):
             continue
         name = _binding_name(binding)
-        if binding.override_face_animation and not binding.override_face_animation_filename:
+        if (
+            binding.override_face_animation
+            and not binding.override_face_animation_filename
+        ):
             _issue(
                 issues,
                 "error",
@@ -1127,7 +1093,7 @@ def _validate_facial_animation(
             )
 
 
-def _validate_assets(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
+def _validate_assets(scene: CutScene, issues: ValidationReport) -> None:
     for event_name in (
         "load_scene",
         "unload_scene",
@@ -1169,7 +1135,7 @@ def _validate_assets(scene: CutScene, issues: list[CutSceneValidationIssue]) -> 
 
 def _validate_audio_timeline(
     scene: CutScene,
-    issues: list[CutSceneValidationIssue],
+    issues: ValidationReport,
     *,
     strict: bool,
 ) -> None:
@@ -1225,7 +1191,7 @@ def _validate_audio_timeline(
             playing.discard(target_id)
 
 
-def _validate_flags(scene: CutScene, issues: list[CutSceneValidationIssue]) -> None:
+def _validate_flags(scene: CutScene, issues: ValidationReport) -> None:
     flags = _scene_flags(scene)
     if (
         CutSceneFlags.IS_SECTIONED in flags
@@ -1248,11 +1214,17 @@ def _validate_flags(scene: CutScene, issues: list[CutSceneValidationIssue]) -> N
 
 
 def validate_cut_scene(
-    scene: CutScene, *, strict: bool = False
-) -> list[CutSceneValidationIssue]:
+    scene: CutScene,
+    *,
+    strict: bool = False,
+    context: BuildContext | None = None,
+) -> ValidationReport:
+    if context is not None:
+        strict = context.strict
+    source_asset = scene.scene_name or None
     scene = deepcopy(scene)
     scene.build()
-    issues: list[CutSceneValidationIssue] = []
+    issues = ValidationReport()
     _validate_root(scene, issues, strict=strict)
     _validate_binary_capacities(scene, issues)
     _validate_sections(scene, issues)
@@ -1269,11 +1241,6 @@ def validate_cut_scene(
     for warning in scene.validate_animations():
         if not any(warning in issue.message for issue in issues):
             _issue(issues, "warning", "animation.compat", warning)
+    if source_asset is not None:
+        issues.issues = [issue.for_asset(source_asset) for issue in issues]
     return issues
-
-
-def assert_cut_scene_valid(scene: CutScene, *, strict: bool = True) -> None:
-    issues = validate_cut_scene(scene, strict=strict)
-    errors = [issue for issue in issues if issue.severity == "error"]
-    if errors:
-        raise CutSceneValidationError(errors)

@@ -4,8 +4,10 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive
 from ..xml import (
@@ -30,9 +32,6 @@ from .content import (
 )
 from .enums import DlcContentGroup, DlcRpfEncryption
 from .setup import DlcContentChangeSetGroup, DlcSetupData
-
-if TYPE_CHECKING:
-    from .validation import DlcValidationIssue
 
 
 def _device_name(pack_name: str) -> str:
@@ -75,7 +74,9 @@ class DlcPatchMount:
     path: str
 
     @classmethod
-    def for_pack(cls, pack_name: str, *, device_name: str | None = None) -> DlcPatchMount:
+    def for_pack(
+        cls, pack_name: str, *, device_name: str | None = None
+    ) -> DlcPatchMount:
         return cls(
             device_name=_device_path(device_name or _device_name(pack_name)),
             path=f"update:/dlc_patch/{pack_name}/",
@@ -186,14 +187,16 @@ class DlcPack:
     def validate(
         self,
         *,
+        context: BuildContext | None = None,
         game: str | GameTarget | None = None,
         external_change_sets: Iterable[str] = (),
         require_local_change_sets: bool = False,
-    ) -> list[DlcValidationIssue]:
+    ) -> ValidationReport:
         from .validation import validate_dlc_pack
 
         return validate_dlc_pack(
             self,
+            context=context,
             game=game,
             external_change_sets=external_change_sets,
             require_local_change_sets=require_local_change_sets,
@@ -207,9 +210,7 @@ class DlcPack:
         validate: bool = True,
     ) -> RpfArchive:
         if validate:
-            from .validation import assert_valid_dlc_pack
-
-            assert_valid_dlc_pack(self, game=game)
+            self.validate(game=game).raise_for_errors()
         archive = RpfArchive.empty("dlc.rpf")
         archive.encryption = int(
             self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)
@@ -266,7 +267,9 @@ class DlcPatch:
 
     def __post_init__(self) -> None:
         if self.setup is None:
-            self.setup = DlcSetupData.compat_pack(self.name, device_name=self.device_name)
+            self.setup = DlcSetupData.compat_pack(
+                self.name, device_name=self.device_name
+            )
         if self.device_name is None and self.setup is not None:
             self.device_name = self.setup.device_name
         if self.game is not None:
@@ -323,14 +326,16 @@ class DlcPatch:
     def validate(
         self,
         *,
+        context: BuildContext | None = None,
         game: str | GameTarget | None = None,
         external_change_sets: Iterable[str] = (),
         require_local_change_sets: bool = False,
-    ) -> list[DlcValidationIssue]:
+    ) -> ValidationReport:
         from .validation import validate_dlc_pack
 
         return validate_dlc_pack(
             self,
+            context=context,
             game=game,
             external_change_sets=external_change_sets,
             require_local_change_sets=require_local_change_sets,
@@ -344,9 +349,7 @@ class DlcPatch:
         validate: bool = True,
     ) -> RpfArchive:
         if validate:
-            from .validation import assert_valid_dlc_pack
-
-            assert_valid_dlc_pack(self, game=game)
+            self.validate(game=game).raise_for_errors()
         archive = RpfArchive.empty("update.rpf")
         archive.encryption = int(
             self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)

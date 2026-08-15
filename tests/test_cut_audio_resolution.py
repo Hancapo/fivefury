@@ -259,6 +259,6 @@ def test_strict_cut_validation_rejects_play_before_load() -> None:
     audio = scene.audio("scene_track.wa")
     scene.play_audio(0.0, audio, "scene_track")
 
-    codes = {issue.code for issue in scene.validation_report(strict=True)}
+    codes = {issue.code for issue in scene.validate(strict=True)}
 
     assert "play_audio.not_loaded" in codes

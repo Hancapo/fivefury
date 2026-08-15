@@ -26,10 +26,10 @@ from fivefury import (
     CutsceneAssets,
     CutSceneFlags,
     CutsceneProject,
-    CutSceneValidationError,
     CutSubtitle,
     CutSubtitleCue,
     CutSubtitlePayload,
+    DiagnosticSeverity,
     GameFileCache,
     ValidationError,
     Ydr,
@@ -176,11 +176,12 @@ def test_cut_scene_save_validation_reports_missing_type_file() -> None:
         ),
     )
 
-    with pytest.raises(CutSceneValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         scene.to_bytes()
 
     assert any(
-        issue.code == "object.type_file.missing" for issue in excinfo.value.issues
+        issue.code == "object.type_file.missing"
+        for issue in excinfo.value.report.errors
     )
     assert "object.type_file.missing" in str(excinfo.value)
 
@@ -203,12 +204,12 @@ def test_cut_scene_save_validation_reports_bad_animation_binding() -> None:
         ),
     )
 
-    with pytest.raises(CutSceneValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         scene.to_bytes()
 
     assert any(
         issue.code == "set_anim.streaming_base.mismatch"
-        for issue in excinfo.value.issues
+        for issue in excinfo.value.report.errors
     )
 
 
@@ -434,7 +435,8 @@ def test_cut_camera_validation_accepts_minus_one_overrides() -> None:
     issues = validate_cut_scene(scene, strict=True)
 
     assert not any(
-        issue.code.startswith("camera_cut.clip") and issue.severity == "error"
+        issue.code.startswith("camera_cut.clip")
+        and issue.severity == DiagnosticSeverity.ERROR
         for issue in issues
     )
 
@@ -550,7 +552,7 @@ def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
         rebuilt_ycds.append(ycd)
     rebuilt = read_cut_scene(files["demo_scene.cut"])
     rebuilt.clip_dicts = rebuilt_ycds
-    rebuilt.assert_valid(strict=True)
+    rebuilt.validate(strict=True).raise_for_errors()
 
 
 def test_cutscene_assets_do_not_write_files_when_validation_fails(tmp_path) -> None:
@@ -580,10 +582,12 @@ def test_cutscene_rejects_wrong_event_target_role() -> None:
     scene.camera_cut(0.0, camera, CutCameraCutPayload("camera"))
     scene.load_models(0.0, [], target=camera)
 
-    with pytest.raises(CutSceneValidationError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         scene.to_bytes()
 
-    assert any(issue.code == "event.target.role" for issue in excinfo.value.issues)
+    assert any(
+        issue.code == "event.target.role" for issue in excinfo.value.report.errors
+    )
 
 
 def test_cutscene_rejects_attachment_cycles() -> None:
@@ -593,7 +597,7 @@ def test_cutscene_rejects_attachment_cycles() -> None:
     scene.set_attachment(0.0, first, second, "root")
     scene.set_attachment(0.0, second, first, "root")
 
-    issues = scene.validation_report(strict=True)
+    issues = scene.validate(strict=True)
 
     assert any(issue.code == "attachment.cycle" for issue in issues)
 

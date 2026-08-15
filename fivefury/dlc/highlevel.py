@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..common import atomic_write_bytes
 from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive, RpfFileEntry
@@ -19,12 +21,7 @@ from .model import (
     DlcSetupData,
 )
 from .paths import iter_dlc_folder_files
-from .validation import (
-    DlcValidationError,
-    DlcValidationIssue,
-    validate_dlc_folder_assets,
-    validate_dlc_pack,
-)
+from .validation import validate_dlc_folder_assets, validate_dlc_pack
 
 
 @dataclass(slots=True)
@@ -50,29 +47,31 @@ class DlcFolderMetadata:
         self,
         folder: str | Path | None = None,
         *,
+        context: BuildContext | None = None,
         validate_assets: bool | None = None,
-    ) -> list[DlcValidationIssue]:
-        issues = validate_dlc_pack(self.to_pack())
+    ) -> ValidationReport:
+        issues = validate_dlc_pack(self.to_pack(), context=context)
+        target_game = (
+            self.game
+            if self.game is not None
+            else (context.game if context is not None else None)
+        )
         check_assets = (
-            self.game is not None if validate_assets is None else validate_assets
+            target_game is not None if validate_assets is None else validate_assets
         )
         if check_assets:
-            if self.game is None:
-                issues.append(
-                    DlcValidationIssue(
-                        "folder.game.missing",
-                        "asset validation requires an explicit game target",
-                    )
+            if target_game is None:
+                issues.issue(
+                    "folder.game.missing",
+                    "asset validation requires an explicit game target",
                 )
             elif folder is None:
-                issues.append(
-                    DlcValidationIssue(
-                        "folder.path.missing",
-                        "asset validation requires the DLC folder path",
-                    )
+                issues.issue(
+                    "folder.path.missing",
+                    "asset validation requires the DLC folder path",
                 )
             else:
-                issues.extend(validate_dlc_folder_assets(folder, self.game))
+                issues.extend(validate_dlc_folder_assets(folder, target_game))
         return issues
 
     def write(
@@ -85,13 +84,7 @@ class DlcFolderMetadata:
     ) -> dict[str, Path]:
         root = Path(folder)
         if validate:
-            errors = [
-                issue
-                for issue in self.validate(root, validate_assets=validate_assets)
-                if issue.severity == "error"
-            ]
-            if errors:
-                raise DlcValidationError(errors)
+            self.validate(root, validate_assets=validate_assets).raise_for_errors()
 
         setup_data = self.setup.to_xml_bytes()
         content_data = self.content.to_xml_bytes()

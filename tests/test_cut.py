@@ -705,7 +705,7 @@ def test_cut_ped_does_not_require_type_file() -> None:
     scene = CutScene.create(duration=4.0)
     scene.ped("cs_test")
 
-    issues = scene.validation_report(strict=True)
+    issues = scene.validate(strict=True)
 
     assert not [issue for issue in issues if issue.code == "object.type_file.missing"]
     rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
@@ -818,11 +818,13 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
     scene.set_anim(1.0, prop, target=manager)
 
     assert scene.validate_animations() == []
-    assert not any("set_anim.clip.missing" in issue for issue in scene.validate())
+    assert not any(
+        issue.code == "set_anim.clip.missing" for issue in scene.validate()
+    )
 
     scene.timeline[-1].start = 0.0
     assert any("target-0" in warning for warning in scene.validate_animations())
-    assert any("set_anim.clip.missing" in issue for issue in scene.validate())
+    assert any(issue.code == "set_anim.clip.missing" for issue in scene.validate())
 
 
 def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:

@@ -52,11 +52,7 @@ from .subtitles import (
     subtitle_cues_from_text,
 )
 from .timeline import CutTimelineEvent, CutTrack
-from .validation import (
-    CutSceneValidationError,
-    CutSceneValidationIssue,
-    validate_cut_scene,
-)
+from .validation import validate_cut_scene
 
 __all__ = [
     "CutAnimatedLight",
@@ -85,8 +81,6 @@ __all__ = [
     "CutRayfire",
     "CutRemovalBounds",
     "CutScene",
-    "CutSceneValidationError",
-    "CutSceneValidationIssue",
     "CutSubtitle",
     "CutSubtitleCue",
     "CutSubtitleTrack",

@@ -275,6 +275,6 @@ def test_retail_prologue_cuts_follow_runtime_camera_contract(
         assert camera.far_draw_distance > camera.near_draw_distance
         assert not [
             issue
-            for issue in bundle.scene.validation_report(strict=True)
+            for issue in bundle.scene.validate(strict=True)
             if issue.severity == "error" and issue.code.startswith("camera")
         ]
