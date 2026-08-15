@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import math
 
 import pytest
@@ -9,7 +10,9 @@ from fivefury.vector import (
     interpolate_vector4_many,
     lerp_tuple,
     quat_canonicalize,
+    quat_make_continuous,
     quat_nlerp,
+    quat_normalize_strict,
     sphere_radius_from_points,
 )
 
@@ -85,6 +88,32 @@ def test_interpolate_vector4_many_handles_linear_and_shortest_quaternion_paths()
 def test_shared_linear_and_quaternion_helpers() -> None:
     assert lerp_tuple((0.0, 2.0, 4.0), (2.0, 4.0, 8.0), 0.5) == (1.0, 3.0, 6.0)
     assert quat_canonicalize((0.0, 0.0, 0.0, -2.0)) == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_quaternion_series_preserves_shortest_path_sign_continuity() -> None:
+    values = quat_make_continuous(
+        [
+            (0.0, 0.0, 0.999, 0.04),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, -0.999, 0.04),
+        ]
+    )
+
+    assert values[-1][3] < 0.0
+    assert all(_dot(left, right) >= 0.0 for left, right in itertools.pairwise(values))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        (0.0, 0.0, 0.0, 0.0),
+        (float("nan"), 0.0, 0.0, 1.0),
+        (float("inf"), 0.0, 0.0, 1.0),
+    ],
+)
+def test_strict_quaternion_normalization_rejects_invalid_values(value) -> None:
+    with pytest.raises(ValueError):
+        quat_normalize_strict(value)
 
 
 def test_shared_point_bounds_and_radius_use_consistent_geometry() -> None:

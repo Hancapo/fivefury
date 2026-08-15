@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+import math
 import struct
 
 import pytest
@@ -36,7 +38,9 @@ from fivefury.resource import split_rsc7_sections, virtual_to_offset
 def test_build_cutscene_sections_uses_camera_cuts() -> None:
     sections = build_cutscene_sections(10.0, [2.5, 7.0], fps=30.0)
 
-    assert [(section.index, section.start_time, section.end_time) for section in sections] == [
+    assert [
+        (section.index, section.start_time, section.end_time) for section in sections
+    ] == [
         (0, 0.0, 2.5),
         (1, 2.5, 7.0),
         (2, 7.0, 10.0),
@@ -47,7 +51,9 @@ def test_build_cutscene_sections_uses_camera_cuts() -> None:
 
 
 def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
-    builder = YcdCutsceneBuilder.create("demo_scene", duration=1.0, camera_cuts=[0.5], fps=30.0)
+    builder = YcdCutsceneBuilder.create(
+        "demo_scene", duration=1.0, camera_cuts=[0.5], fps=30.0
+    )
     builder.camera(
         position={0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 0.0, 0.0)},
         rotation=(0.0, 0.0, 0.0, 1.0),
@@ -64,8 +70,14 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     ycds = builder.build_ycds()
 
     assert [ycd.path for ycd in ycds] == ["demo_scene-0.ycd", "demo_scene-1.ycd"]
-    assert [clip.short_name for clip in ycds[0].clips] == ["exportcamera-0", "prop_box-0"]
-    assert [clip.short_name for clip in ycds[1].clips] == ["exportcamera-1", "prop_box-1"]
+    assert [clip.short_name for clip in ycds[0].clips] == [
+        "exportcamera-0",
+        "prop_box-0",
+    ]
+    assert [clip.short_name for clip in ycds[1].clips] == [
+        "exportcamera-1",
+        "prop_box-1",
+    ]
 
     section0_raw = build_ycd_bytes(ycds[0])
     section0 = read_ycd(section0_raw)
@@ -74,10 +86,7 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     assert all(clip.vft == 0x405A4088 for clip in section0.clips)
     assert all(clip.unknown_04h == 1 for clip in section0.clips)
     assert all(clip.unknown_48h == 1 for clip in section0.clips)
-    assert all(
-        clip.property_map_reserved_0ch == 0x01000000
-        for clip in section0.clips
-    )
+    assert all(clip.property_map_reserved_0ch == 0x01000000 for clip in section0.clips)
 
     _, system_data, _ = split_rsc7_sections(section0_raw)
     buckets_pointer = struct.unpack_from("<Q", system_data, 0x28)[0]
@@ -139,8 +148,14 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     assert prop1_end.position == pytest.approx((1.0, 10.0, 0.0), abs=0.2)
     assert prop1_root.position == pytest.approx((0.0, 1.0, 0.0), abs=0.2)
 
-    assert any(int(bone.track) == int(YcdAnimationTrack.MOVER_TRANSLATION) for bone in prop1.animation.bone_ids)
-    assert any(int(bone.track) == int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW) for bone in cam1.animation.bone_ids)
+    assert any(
+        int(bone.track) == int(YcdAnimationTrack.MOVER_TRANSLATION)
+        for bone in prop1.animation.bone_ids
+    )
+    assert any(
+        int(bone.track) == int(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW)
+        for bone in cam1.animation.bone_ids
+    )
 
 
 def test_cutscene_builder_can_emit_one_late_streaming_section() -> None:
@@ -200,7 +215,9 @@ def test_cutscene_builder_writes_enhanced_runtime_headers() -> None:
             ],
         )
     ]
-    clip.tags = [YcdClipTag(name_hash=MetaHash("block"), start_phase=0.0, end_phase=1.0)]
+    clip.tags = [
+        YcdClipTag(name_hash=MetaHash("block"), start_phase=0.0, end_phase=1.0)
+    ]
     ycd.clips.append(
         YcdClipAnimationList(
             hash=MetaHash("prop_box_list-0"),
@@ -230,7 +247,9 @@ def test_cutscene_builder_writes_enhanced_runtime_headers() -> None:
         profile.clip_animation_vft,
         profile.clip_animation_list_vft,
     }
-    rebuilt_clip = next(item for item in rebuilt.clips if item.clip_type is YcdClipType.ANIMATION)
+    rebuilt_clip = next(
+        item for item in rebuilt.clips if item.clip_type is YcdClipType.ANIMATION
+    )
     assert rebuilt_clip.properties[0].vft == profile.clip_property_vft
     assert rebuilt_clip.properties[0].attributes[0].vft == profile.attribute_vft(
         YcdClipPropertyAttributeType.INT
@@ -258,7 +277,9 @@ def test_cutscene_builder_authors_merged_facial_tracks() -> None:
             visemes={0x5678: 0.75},
             blend_shapes={0x6789: 0.5},
             animated_normal_maps={
-                0x789A: YcdFacialTrackSamples((0.1, 0.2, 0.3), format=YcdTrackFormat.VECTOR3)
+                0x789A: YcdFacialTrackSamples(
+                    (0.1, 0.2, 0.3), format=YcdTrackFormat.VECTOR3
+                )
             },
             tinting=0.25,
         ),
@@ -272,8 +293,14 @@ def test_cutscene_builder_authors_merged_facial_tracks() -> None:
         (int(binding.bone_id), int(binding.track)): YcdTrackFormat(int(binding.format))
         for binding in clip.animation.bone_ids
     }
-    assert bindings[(0x789A, int(YcdAnimationTrack.ANIMATED_NORMAL_MAPS))] is YcdTrackFormat.VECTOR3
-    assert bindings[(0x4567, int(YcdAnimationTrack.FACIAL_SCALE))] is YcdTrackFormat.VECTOR3
+    assert (
+        bindings[(0x789A, int(YcdAnimationTrack.ANIMATED_NORMAL_MAPS))]
+        is YcdTrackFormat.VECTOR3
+    )
+    assert (
+        bindings[(0x4567, int(YcdAnimationTrack.FACIAL_SCALE))]
+        is YcdTrackFormat.VECTOR3
+    )
     assert bindings[(0, int(YcdAnimationTrack.FACIAL_TINTING))] is YcdTrackFormat.FLOAT
 
     samples = clip.evaluate_facial_animation_at_time(0.5)
@@ -333,7 +360,9 @@ def test_cutscene_builder_preserves_hashes_that_look_like_pointers() -> None:
 
     rebuilt = read_ycd(build_ycd_bytes(source))
 
-    assert [animation.hash.uint for animation in rebuilt.animations] == expected_animation_hashes
+    assert [
+        animation.hash.uint for animation in rebuilt.animations
+    ] == expected_animation_hashes
     assert [clip.hash.uint for clip in rebuilt.clips] == expected_clip_hashes
 
 
@@ -350,7 +379,10 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
             ),
             10994: {
                 "position": {0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 1.0, 0.0)},
-                "rotation": {0.0: (0.0, 0.0, 0.0, 1.0), 1.0: (0.0, 0.0, 0.70710678, 0.70710678)},
+                "rotation": {
+                    0.0: (0.0, 0.0, 0.0, 1.0),
+                    1.0: (0.0, 0.0, 0.70710678, 0.70710678),
+                },
             },
         },
     )
@@ -359,7 +391,9 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
     clip = ycd.get_clip("p_lamarneck_01_s-0")
 
     assert clip is not None and clip.animation is not None
-    bone_pairs = {(int(bone.bone_id), int(bone.track)) for bone in clip.animation.bone_ids}
+    bone_pairs = {
+        (int(bone.bone_id), int(bone.track)) for bone in clip.animation.bone_ids
+    }
     assert (7869, int(YcdAnimationTrack.BONE_TRANSLATION)) in bone_pairs
     assert (7869, int(YcdAnimationTrack.BONE_ROTATION)) in bone_pairs
     assert (10994, int(YcdAnimationTrack.BONE_TRANSLATION)) in bone_pairs
@@ -370,8 +404,12 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
     evaluated_tracks = clip.animation.evaluate_object_animation(15.0)
     assert (7869, int(YcdAnimationTrack.BONE_TRANSLATION)) in evaluated_tracks
     assert (10994, int(YcdAnimationTrack.BONE_ROTATION)) in evaluated_tracks
-    assert evaluated_tracks[(7869, int(YcdAnimationTrack.BONE_TRANSLATION))][:3] == pytest.approx((0.5, 0.0, 0.0), abs=0.2)
-    assert evaluated_tracks[(10994, int(YcdAnimationTrack.BONE_TRANSLATION))][:3] == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
+    assert evaluated_tracks[(7869, int(YcdAnimationTrack.BONE_TRANSLATION))][
+        :3
+    ] == pytest.approx((0.5, 0.0, 0.0), abs=0.2)
+    assert evaluated_tracks[(10994, int(YcdAnimationTrack.BONE_TRANSLATION))][
+        :3
+    ] == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
 
     root_motion = clip.evaluate_root_motion_at_time(0.5)
     assert root_motion.position == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
@@ -393,13 +431,19 @@ def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None
     clip = ycd.get_clip("skinned_prop-0")
 
     assert clip is not None and clip.animation is not None
-    bone_pairs = {(int(bone.bone_id), int(bone.track)) for bone in clip.animation.bone_ids}
+    bone_pairs = {
+        (int(bone.bone_id), int(bone.track)) for bone in clip.animation.bone_ids
+    }
     assert (0, int(YcdAnimationTrack.MOVER_TRANSLATION)) in bone_pairs
     assert (0, int(YcdAnimationTrack.MOVER_ROTATION)) in bone_pairs
-    assert clip.evaluate_root_motion_at_time(0.5).position == pytest.approx((0.0, 0.0, 0.0), abs=0.01)
+    assert clip.evaluate_root_motion_at_time(0.5).position == pytest.approx(
+        (0.0, 0.0, 0.0), abs=0.01
+    )
 
 
-def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequences() -> None:
+def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequences() -> (
+    None
+):
     builder = YcdCutsceneBuilder.create("long_scene", duration=24.4, fps=30.0)
     builder.prop(
         "skinned_prop",
@@ -407,7 +451,10 @@ def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequence
         mover_rotation=(0.0, 0.0, 0.0, 1.0),
         bones={
             0xB692: YcdCutsceneBoneAnimation(
-                rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.70710678, 0.70710678)}
+                rotation={
+                    0.0: (0.0, 0.0, 0.0, 1.0),
+                    24.4: (0.0, 0.0, 0.70710678, 0.70710678),
+                }
             )
         },
     )
@@ -417,8 +464,15 @@ def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequence
 
     assert clip is not None and clip.animation is not None
     assert clip.animation.sequence_frame_limit == YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT
-    assert [sequence.num_frames for sequence in clip.animation.sequences] == [288, 288, 159]
-    assert all(len(sequence.anim_sequences) == len(clip.animation.bone_ids) for sequence in clip.animation.sequences)
+    assert [sequence.num_frames for sequence in clip.animation.sequences] == [
+        288,
+        288,
+        159,
+    ]
+    assert all(
+        len(sequence.anim_sequences) == len(clip.animation.bone_ids)
+        for sequence in clip.animation.sequences
+    )
     assert any(
         int(channel.channel_type) == int(YcdChannelType.QUANTIZE_FLOAT)
         for sequence in clip.animation.sequences
@@ -426,6 +480,55 @@ def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequence
         if int(anim_sequence.bone_id.track) == int(YcdAnimationTrack.BONE_ROTATION)
         for channel in anim_sequence.channels
     )
+
+
+def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> None:
+    frame_count = 361
+    rotations = [
+        (0.0, 0.0, math.sin(math.pi * frame / 360.0), math.cos(math.pi * frame / 360.0))
+        for frame in range(frame_count)
+    ]
+    builder = YcdCutsceneBuilder.create(
+        "continuous_rotation",
+        duration=12.0,
+        fps=30.0,
+    )
+    builder.prop("actor", mover_rotation=rotations)
+
+    animation = builder.build_ycds()[0].animations[0]
+    emitted: list[tuple[float, float, float, float]] = []
+    for sequence in animation.sequences:
+        rotation = next(
+            item
+            for item in sequence.anim_sequences
+            if int(item.bone_id.track) == int(YcdAnimationTrack.MOVER_ROTATION)
+        )
+        values = [
+            rotation.evaluate_quaternion(frame) for frame in range(sequence.num_frames)
+        ]
+        emitted.extend(values if not emitted else values[1:])
+
+    assert len(emitted) == frame_count
+    assert emitted[-1][3] < 0.0
+    assert all(
+        sum(left[index] * right[index] for index in range(4)) >= 0.0
+        for left, right in itertools.pairwise(emitted)
+    )
+
+
+@pytest.mark.parametrize(
+    "rotation",
+    [
+        (0.0, 0.0, 0.0, 0.0),
+        (float("nan"), 0.0, 0.0, 1.0),
+        (float("inf"), 0.0, 0.0, 1.0),
+    ],
+)
+def test_cutscene_builder_rejects_invalid_quaternions(rotation) -> None:
+    builder = YcdCutsceneBuilder.create("invalid_rotation", duration=1.0)
+
+    with pytest.raises(ValueError, match="Quaternion"):
+        builder.prop("actor", rotation=rotation)
 
 
 def test_cutscene_builder_from_cut_reads_camera_cuts() -> None:
