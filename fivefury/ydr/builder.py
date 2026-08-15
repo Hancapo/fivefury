@@ -376,7 +376,7 @@ def build_ydr_bytes(
         ]
         if invalid_shader_references:
             details = "\n".join(
-                f"- {issue.context}: {issue.message}"
+                f"- {issue.path or issue.code}: {issue.message}"
                 for issue in invalid_shader_references
             )
             raise ValueError(f"YDR contains invalid shader references:\n{details}")

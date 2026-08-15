@@ -12,6 +12,7 @@ from trimesh.visual.texture import TextureVisuals
 from fivefury import (
     BoundSphere,
     BoundType,
+    DiagnosticSeverity,
     GameTarget,
     Texture,
     TextureFormat,
@@ -1402,7 +1403,7 @@ def test_validate_ydr_gen9_treats_null_texture_resource_as_informational(tmp_pat
     ydr = read_ydr(ydr_path)
 
     issue = next(issue for issue in ydr.validate() if issue.code == "unbound_texture_slot")
-    assert issue.severity == "info"
+    assert issue.severity is DiagnosticSeverity.INFO
     assert "DiffuseSampler" in issue.message
 
 
@@ -2048,7 +2049,7 @@ def test_rigid_model_bone_binding_roundtrip(tmp_path: Path) -> None:
     assert ydr.models[1].has_skin is False
     assert ydr.models[1].bone_index == 1
     assert ydr.models[1].skeleton_binding == YdrSkeletonBinding.rigid(bone_index=1)
-    assert ydr.validate() == []
+    assert ydr.validate().valid
 
 
 def test_bind_model_to_bone_helper_roundtrip(tmp_path: Path) -> None:
@@ -2326,7 +2327,7 @@ def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
     )
     assert mesh.is_skinned is True
     assert mesh.bone_ids == [root.tag, child.tag]
-    assert ydr.validate() == []
+    assert ydr.validate().valid
 
     mesh.set_skin(indices=[(0, 0, 0, 0)])
     issues = ydr.validate()

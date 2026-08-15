@@ -496,7 +496,7 @@ class _CutsceneContextValidator:
                     issue.message,
                     severity=_severity(self.context),
                     asset=yed_asset.path,
-                    path=path,
+                    path=f"{path}.{issue.path}" if issue.path else path,
                 )
 
     def _expression_sets(self) -> dict[int, tuple[CutContextAsset, object]]:

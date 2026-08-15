@@ -5,8 +5,9 @@ from collections.abc import Iterable
 from itertools import islice
 from pathlib import Path
 
+from ..authoring.diagnostics import Diagnostic
 from ..gamefile import GameFileType
-from .model import Yed, YedValidationIssue, validate_yed
+from .model import Yed, validate_yed
 from .reader import read_yed
 
 
@@ -18,7 +19,7 @@ class YedAuditReport:
     instruction_count: int = 0
     unresolved_instruction_count: int = 0
     opcodes: dict[str, int] = dataclasses.field(default_factory=dict)
-    issues: list[YedValidationIssue] = dataclasses.field(default_factory=list)
+    issues: list[Diagnostic] = dataclasses.field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -29,7 +30,7 @@ def audit_yed(yed: Yed, *, skeleton: object | None = None) -> YedAuditReport:
     report = YedAuditReport(
         path=yed.path,
         expression_count=len(yed.expressions),
-        issues=validate_yed(yed, skeleton=skeleton),
+        issues=validate_yed(yed, skeleton=skeleton).issues,
     )
     for expression in yed.expressions:
         report.stream_count += len(expression.streams)
@@ -71,15 +72,12 @@ def audit_yed_paths(
     for path in iter_yed_files(paths):
         try:
             reports.append(audit_yed_file(path, skeleton=skeleton))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             reports.append(
                 YedAuditReport(
                     path=str(path),
                     issues=[
-                        YedValidationIssue(
-                            "read-error",
-                            f"could not read YED: {exc}",
-                        )
+                        Diagnostic("yed.read_error", f"could not read YED: {exc}")
                     ],
                 )
             )
@@ -107,13 +105,13 @@ def audit_yed_cache(
             if not isinstance(parsed, Yed):
                 raise TypeError("asset did not decode to Yed")
             reports.append(audit_yed(parsed, skeleton=skeleton))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             reports.append(
                 YedAuditReport(
                     path=str(getattr(asset, "path", "")),
                     issues=[
-                        YedValidationIssue(
-                            "read-error",
+                        Diagnostic(
+                            "yed.read_error",
                             f"could not read YED from cache: {exc}",
                         )
                     ],

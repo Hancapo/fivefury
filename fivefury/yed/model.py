@@ -4,8 +4,9 @@ import dataclasses
 import struct
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..binary import vec3
 from ..game_target import GameTarget, coerce_game_target
 from ..hashing import jenk_hash
@@ -17,6 +18,9 @@ from .constants import (
     YED_FACIAL_ROOT_BONE_ID,
 )
 from .enums import YedInstructionType, YedTrackFormat
+
+if TYPE_CHECKING:
+    from ..authoring.context import BuildContext
 
 
 def _coerce_track_format(value: YedTrackFormat | int) -> YedTrackFormat:
@@ -505,12 +509,13 @@ class Yed:
         self._standalone_data = None
         return self
 
-    def validate(self, *, skeleton: object | None = None, raise_on_error: bool = True) -> list[YedValidationIssue]:
-        issues = validate_yed(self, skeleton=skeleton)
-        if issues and raise_on_error:
-            details = "; ".join(issue.message for issue in issues[:4])
-            raise ValueError(f"invalid YED: {details}")
-        return issues
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+    ) -> ValidationReport:
+        del context
+        return validate_yed(self)
 
     def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
         from .writer import build_yed_bytes
@@ -523,13 +528,6 @@ class Yed:
         target = save_yed(self, destination, game=game)
         self.path = str(target)
         return target
-
-
-@dataclasses.dataclass(slots=True)
-class YedValidationIssue:
-    code: str
-    message: str
-    expression: str = ""
 
 
 def create_yed(
@@ -561,52 +559,79 @@ def _collect_skeleton_bone_tags(skeleton: object | None) -> set[int]:
     return {int(bone.tag) & 0xFFFF for bone in bones if hasattr(bone, "tag")}
 
 
-def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidationIssue]:
-    issues: list[YedValidationIssue] = []
+def validate_yed(
+    yed: Yed,
+    *,
+    skeleton: object | None = None,
+) -> ValidationReport:
+    report = ValidationReport()
+    asset = yed.path or None
+
+    def issue(
+        code: str,
+        message: str,
+        *,
+        path: str | None = None,
+    ) -> None:
+        report.issue(code, message, asset=asset, path=path)
+
     seen_hashes: set[int] = set()
     skeleton_tags = _collect_skeleton_bone_tags(skeleton)
     if skeleton is not None and yed.expressions and YED_FACIAL_ROOT_BONE_ID not in skeleton_tags:
-        issues.append(
-            YedValidationIssue(
-                "facial-root-bone-missing",
-                "the skeleton does not contain required bone "
-                f"FACIAL_facialRoot ({YED_FACIAL_ROOT_BONE_ID})",
-            )
+        issue(
+            "facial-root-bone-missing",
+            "the skeleton does not contain required bone "
+            f"FACIAL_facialRoot ({YED_FACIAL_ROOT_BONE_ID})",
+            path="skeleton.bones",
         )
     dictionary_lists = (
-        ("expression hashes", yed.dictionary.expression_name_hashes, len(yed.expressions)),
-        ("expression pointers", yed.dictionary.expressions_info, len(yed.expressions)),
+        (
+            "expression hashes",
+            "dictionary.expression_name_hashes",
+            yed.dictionary.expression_name_hashes,
+            len(yed.expressions),
+        ),
+        (
+            "expression pointers",
+            "dictionary.expressions_info",
+            yed.dictionary.expressions_info,
+            len(yed.expressions),
+        ),
     )
-    for label, info, actual_count in dictionary_lists:
+    for label, info_path, info, actual_count in dictionary_lists:
         if info.pointer and info.capacity < info.count:
-            issues.append(
-                YedValidationIssue(
-                    "list-capacity-invalid",
-                    f"YED {label} capacity is smaller than its count",
-                )
+            issue(
+                "list-capacity-invalid",
+                f"YED {label} capacity is smaller than its count",
+                path=f"{info_path}.capacity",
             )
         if info.pointer and info.count != actual_count:
-            issues.append(
-                YedValidationIssue(
-                    "list-count-mismatch",
-                    f"YED {label} declares {info.count} items but exposes {actual_count}",
-                )
+            issue(
+                "list-count-mismatch",
+                f"YED {label} declares {info.count} items but exposes {actual_count}",
+                path=f"{info_path}.count",
             )
-    for expression in yed.expressions:
+    for expression_index, expression in enumerate(yed.expressions):
+        expression_path = f"expressions[{expression_index}]"
         short = expression.short_name
-        expression_name = short or expression.name
         if not expression.name:
-            issues.append(YedValidationIssue("expression-name-empty", "YED expression names cannot be empty", expression_name))
+            issue(
+                "expression-name-empty",
+                "YED expression names cannot be empty",
+                path=f"{expression_path}.name",
+            )
         if int(expression.name_hash) in seen_hashes:
-            issues.append(YedValidationIssue("expression-hash-duplicate", f"duplicate YED expression hash {int(expression.name_hash):#010x}", expression_name))
+            issue(
+                "expression-hash-duplicate",
+                f"duplicate YED expression hash {int(expression.name_hash):#010x}",
+                path=f"{expression_path}.name_hash",
+            )
         seen_hashes.add(int(expression.name_hash))
         if short and int(expression.name_hash) != jenk_hash(short):
-            issues.append(
-                YedValidationIssue(
-                    "expression-hash-mismatch",
-                    f"expression {expression.name!r} hash does not match short name {short!r}",
-                    expression_name,
-                )
+            issue(
+                "expression-hash-mismatch",
+                f"expression {expression.name!r} hash does not match short name {short!r}",
+                path=f"{expression_path}.name_hash",
             )
         expression_lists = (
             ("streams", expression.streams_info, len(expression.streams)),
@@ -616,90 +641,103 @@ def validate_yed(yed: Yed, *, skeleton: object | None = None) -> list[YedValidat
         )
         for label, info, actual_count in expression_lists:
             if info.pointer and info.capacity < info.count:
-                issues.append(
-                    YedValidationIssue(
-                        "list-capacity-invalid",
-                        f"{label} capacity is smaller than its count",
-                        expression_name,
-                    )
+                issue(
+                    "list-capacity-invalid",
+                    f"{label} capacity is smaller than its count",
+                    path=f"{expression_path}.{label}_info.capacity",
                 )
             if info.pointer and info.count != actual_count:
-                issues.append(
-                    YedValidationIssue(
-                        "list-count-mismatch",
-                        f"{label} declares {info.count} items but exposes {actual_count}",
-                        expression_name,
-                    )
+                issue(
+                    "list-count-mismatch",
+                    f"{label} declares {info.count} items but exposes {actual_count}",
+                    path=f"{expression_path}.{label}_info.count",
                 )
-        for track in expression.tracks:
+        for track_index, track in enumerate(expression.tracks):
+            track_path = f"{expression_path}.tracks[{track_index}]"
             try:
                 _ = track.format
             except ValueError as exc:
-                issues.append(YedValidationIssue("track-format-invalid", str(exc), expression_name))
+                issue("track-format-invalid", str(exc), path=f"{track_path}.format")
             if skeleton_tags and (int(track.bone_id) & 0xFFFF) not in skeleton_tags:
-                issues.append(YedValidationIssue("track-bone-missing", f"track bone id {track.bone_id:#06x} is not present in the skeleton", expression_name))
-        for spring in expression.springs:
+                issue(
+                    "track-bone-missing",
+                    f"track bone id {track.bone_id:#06x} is not present in the skeleton",
+                    path=f"{track_path}.bone_id",
+                )
+        for spring_index, spring in enumerate(expression.springs):
+            spring_path = f"{expression_path}.springs[{spring_index}]"
             if len(spring.raw) != SPRING_BLOCK_SIZE:
-                issues.append(YedValidationIssue("spring-size-invalid", "YED spring raw block has invalid size", expression_name))
+                issue(
+                    "spring-size-invalid",
+                    "YED spring raw block has invalid size",
+                    path=f"{spring_path}.raw",
+                )
             if skeleton_tags and (int(spring.bone_id) & 0xFFFF) not in skeleton_tags:
-                issues.append(YedValidationIssue("spring-bone-missing", f"spring bone id {spring.bone_id:#06x} is not present in the skeleton", expression_name))
-        for stream in expression.streams:
+                issue(
+                    "spring-bone-missing",
+                    f"spring bone id {spring.bone_id:#06x} is not present in the skeleton",
+                    path=f"{spring_path}.bone_id",
+                )
+        for stream_index, stream in enumerate(expression.streams):
+            stream_path = f"{expression_path}.streams[{stream_index}]"
             if len(stream.data3) > 0xFFFF:
-                issues.append(YedValidationIssue("stream-opcode-list-too-large", "YED stream instruction list cannot exceed 65535 bytes", expression_name))
-            for instruction in stream.instructions:
+                issue(
+                    "stream-opcode-list-too-large",
+                    "YED stream instruction list cannot exceed 65535 bytes",
+                    path=f"{stream_path}.data3",
+                )
+            for instruction_index, instruction in enumerate(stream.instructions):
+                instruction_path = (
+                    f"{stream_path}.instructions[{instruction_index}]"
+                )
                 if not instruction.parsed:
-                    issues.append(
-                        YedValidationIssue(
-                            "stream-instruction-unresolved",
-                            f"stream {int(stream.name_hash):#010x} has unresolved instruction {instruction.name}: {instruction.parse_error}",
-                            expression_name,
-                        )
+                    issue(
+                        "stream-instruction-unresolved",
+                        f"stream {int(stream.name_hash):#010x} has unresolved instruction {instruction.name}: {instruction.parse_error}",
+                        path=instruction_path,
                     )
                     continue
                 track_index = instruction.operands.get("track_index")
                 if track_index is not None and not 0 <= int(track_index) < len(expression.tracks):
-                    issues.append(
-                        YedValidationIssue(
-                            "stream-track-index-invalid",
-                            f"stream {int(stream.name_hash):#010x} instruction "
-                            f"{instruction.index} references track {int(track_index)}",
-                            expression_name,
-                        )
+                    issue(
+                        "stream-track-index-invalid",
+                        f"stream {int(stream.name_hash):#010x} instruction "
+                        f"{instruction.index} references track {int(track_index)}",
+                        path=f"{instruction_path}.track_index",
                     )
                 variable_index = instruction.operands.get("variable_index")
                 if variable_index is not None and not 0 <= int(variable_index) < len(expression.variables):
-                    issues.append(
-                        YedValidationIssue(
-                            "stream-variable-index-invalid",
-                            f"stream {int(stream.name_hash):#010x} instruction "
-                            f"{instruction.index} references variable {int(variable_index)}",
-                            expression_name,
-                        )
+                    issue(
+                        "stream-variable-index-invalid",
+                        f"stream {int(stream.name_hash):#010x} instruction "
+                        f"{instruction.index} references variable {int(variable_index)}",
+                        path=f"{instruction_path}.variable_index",
                     )
                 instruction_offset = instruction.operands.get("instruction_offset")
                 if instruction_offset is not None:
                     target = instruction.index + 1 + int(instruction_offset)
                     if not 0 <= target < len(stream.instructions):
-                        issues.append(
-                            YedValidationIssue(
-                                "stream-jump-target-invalid",
-                                f"stream {int(stream.name_hash):#010x} instruction "
-                                f"{instruction.index} jumps to {target}",
-                                expression_name,
-                            )
+                        issue(
+                            "stream-jump-target-invalid",
+                            f"stream {int(stream.name_hash):#010x} instruction "
+                            f"{instruction.index} jumps to {target}",
+                            path=f"{instruction_path}.instruction_offset",
                         )
-                for source in instruction.operands.get("source_infos", ()):
+                for source_index, source in enumerate(
+                    instruction.operands.get("source_infos", ())
+                ):
                     source_track = int(source.get("track_index", -1))
                     if not 0 <= source_track < len(expression.tracks):
-                        issues.append(
-                            YedValidationIssue(
-                                "stream-blend-track-index-invalid",
-                                f"stream {int(stream.name_hash):#010x} instruction "
-                                f"{instruction.index} references blend track {source_track}",
-                                expression_name,
-                            )
+                        issue(
+                            "stream-blend-track-index-invalid",
+                            f"stream {int(stream.name_hash):#010x} instruction "
+                            f"{instruction.index} references blend track {source_track}",
+                            path=(
+                                f"{instruction_path}.source_infos[{source_index}]"
+                                ".track_index"
+                            ),
                         )
-    return issues
+    return report
 
 
 __all__ = [
@@ -713,7 +751,6 @@ __all__ = [
     "YedStream",
     "YedTrack",
     "YedTrackFormat",
-    "YedValidationIssue",
     "create_yed",
     "validate_yed",
 ]

@@ -17,7 +17,7 @@ def build_yed_bytes(source: Yed, *, game: str | GameTarget | None = None) -> byt
     target = coerce_game_target(source.game if game is None else game)
     if int(source.version) != YED_VERSION:
         raise ValueError(f"YED resources require version {YED_VERSION}, got {source.version}")
-    source.validate()
+    source.validate().raise_for_errors()
     if source._standalone_data is not None and not source.dirty and target is coerce_game_target(source.game):
         return source._standalone_data
     profile = get_yed_runtime_profile(target)

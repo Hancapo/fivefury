@@ -186,7 +186,7 @@ def test_ycd_writer_preserves_address_shaped_hash_map_keys(
     assert rebuilt.animations[0].hash.uint == hash_value
     assert rebuilt.clips[0].hash.uint == hash_value
     assert rebuilt.clips[0].animation_hash.uint == hash_value
-    assert rebuilt.validate() is rebuilt
+    assert rebuilt.validate().valid
 
 
 def test_ycd_reader_resolves_sequence_from_graphics_pages() -> None:
