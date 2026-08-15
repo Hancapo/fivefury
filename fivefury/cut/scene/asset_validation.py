@@ -34,7 +34,7 @@ from ..audio_references import (
 from ..reference_values import field_reference
 from .asset_context import CutAssetContext, CutContextAsset, cut_asset_reference_hash
 from .bindings import CutBinding, CutPed
-from .shared import _technical_cut_index
+from .shared import _runtime_animation_section_index
 
 if TYPE_CHECKING:
     from ...ycd.model import YcdAnimation, YcdClip
@@ -302,8 +302,8 @@ class _CutsceneContextValidator:
             binding = self.scene.get_binding(object_id)
             if binding is None:
                 continue
-            cut_index = _technical_cut_index(
-                self.scene.camera_cut_list, float(event.start)
+            cut_index = _runtime_animation_section_index(
+                self.scene, float(event.start)
             )
             clip = self.scene.clip_for_binding(binding, cut_index=cut_index)
             if clip is None:

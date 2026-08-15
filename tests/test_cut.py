@@ -553,19 +553,16 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
         fields={"vPosition": (0.0, 0.0, 0.0), "fRadius": 1.5},
     )
 
-    scene.trigger_decal(
-        0.0,
-        decal,
-        CutDecalPayload(
-            position=(1.0, 2.0, 3.0),
-            rotation=(0.0, 0.0, 0.0, 1.0),
-            width=0.75,
-            height=1.25,
-            colour=0xFFAA5500,
-            lifetime=10.0,
-        ),
+    decal_payload = CutDecalPayload(
+        position=(1.0, 2.0, 3.0),
+        rotation=(0.0, 0.0, 0.0, 1.0),
+        width=0.75,
+        height=1.25,
+        colour=0xFFAA5500,
+        lifetime=10.0,
     )
-    scene.remove_decal(1.0, decal)
+    scene.trigger_decal(0.0, decal, decal_payload)
+    scene.remove_decal(1.0, decal, decal_payload)
     scene.set_light(0.0, light)
     scene.clear_light(2.0, light)
     scene.hide_hidden_object(0.0, hidden)
@@ -593,6 +590,16 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     assert decal_args.type_name == "rage__cutfDecalEventArgs"
     assert decal_args.fields["vPosition"] == pytest.approx((1.0, 2.0, 3.0))
     assert decal_args.fields["fWidth"] == pytest.approx(0.75)
+    remove_decal_event = next(
+        event
+        for event in rebuilt.events
+        if get_cut_event_name(event.fields["iEventId"]) == "remove_decal"
+    )
+    remove_decal_args = rebuilt.get_event_args(
+        remove_decal_event.fields["iEventArgsIndex"]
+    )
+    assert remove_decal_args is not None
+    assert remove_decal_args.type_name == "rage__cutfDecalEventArgs"
     assert decal_args.fields["fHeight"] == pytest.approx(1.25)
     assert decal_args.fields["Colour"] == 0xFFAA5500
     assert decal_args.fields["fLifeTime"] == pytest.approx(10.0)
@@ -793,6 +800,29 @@ def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
     scene.set_anim(0.0, prop, target=manager)
 
     assert not scene.validate_animations()
+
+
+def test_cut_scene_does_not_reject_unresolved_dictionary_hash() -> None:
+    scene = CutScene.create(duration=1.0)
+    manager = scene.animation_manager()
+    prop = scene.prop(
+        name="target",
+        model="target.ydr",
+        animation_preset=CutPropAnimationPreset.COMMON_PROP,
+    )
+    builder = YcdCutsceneBuilder.create("sample", duration=1.0)
+    builder.prop(
+        "target",
+        mover_position=(0.0, 0.0, 0.0),
+        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+    )
+    scene.clip_dictionary(builder.build_ycds()[0])
+    scene.load_anim_dict(0.0, "0xDEADBEEF", target=manager)
+    scene.set_anim(0.0, prop, target=manager)
+
+    assert "set_anim.dict.mismatch" not in {
+        issue.code for issue in scene.validate(strict=False).errors
+    }
 
 
 def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None:

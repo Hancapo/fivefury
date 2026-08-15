@@ -10,6 +10,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - Animated CUT cameras now bind their technical YCD clips in every active section, with cross-asset validation for missing runtime bindings.
+- CUT animation validation now follows runtime concatenation sections and accepts animated weapons, lights, and particle effects.
+- CUT particle stop, decal removal, and attached-light events now preserve their runtime argument payloads.
 
 ## [0.4.5] - 2026-08-15
 

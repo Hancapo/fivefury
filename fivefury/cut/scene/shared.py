@@ -227,6 +227,31 @@ def _technical_cut_index(
     return bisect_right(camera_cut_list, float(time))
 
 
+def _runtime_animation_section_index(
+    scene: Any,
+    time: float,
+    *,
+    default: int = 0,
+) -> int:
+    concat_data = (
+        scene.raw.root.fields.get("concatDataList") or ()
+        if scene.raw is not None
+        else ()
+    )
+    starts = [
+        float(item.fields.get("fStartTime", 0.0))
+        for item in concat_data
+        if item.fields.get("bValidForPlayBack", True)
+    ]
+    if starts:
+        return max(bisect_right(starts, float(time)) - 1, 0)
+    return _technical_cut_index(
+        scene.camera_cut_list,
+        time,
+        default=default,
+    )
+
+
 def _event_category(resolved: CutResolvedEvent) -> str:
     object_role = _object_role(resolved.object.type_name) if resolved.object is not None else None
     if resolved.event_args is not None:

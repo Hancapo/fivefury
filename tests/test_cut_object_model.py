@@ -7,7 +7,9 @@ from fivefury import (
     CutAnimatedParticleEffect,
     CutBlockingBounds,
     CutEventObject,
+    CutLightEffectPayload,
     CutParticleEffect,
+    CutPlayParticleEffectPayload,
     CutRayfire,
     CutRemovalBounds,
     CutScene,
@@ -119,3 +121,74 @@ def test_cut_builtin_vehicle_variation_uses_current_runtime_layout() -> None:
     assert fields[CUT_NAME_VALUES["iBodyColour5"]] == 56
     assert fields[CUT_NAME_VALUES["iLivery2"]] == 64
     assert fields[CUT_NAME_VALUES["fDirtLevel"]] == 68
+
+
+def test_cut_animation_validation_accepts_runtime_animatable_objects() -> None:
+    scene = CutScene.create(duration=1.0)
+    manager = scene.animation_manager()
+    weapon = scene.binding(CutWeapon("weapon"))
+    weapon.anim_streaming_base = 1
+    light = scene.binding(CutAnimatedLight("light"))
+    light.anim_streaming_base = 2
+    particle = scene.binding(CutAnimatedParticleEffect("particle"))
+    particle.anim_streaming_base = 3
+    for binding in (weapon, light, particle):
+        scene.set_anim(0.0, binding, target=manager)
+
+    codes = {issue.code for issue in scene.validate(strict=False).errors}
+
+    assert "set_anim.object.invalid" not in codes
+
+
+def test_cut_animation_validation_rejects_static_particle_objects() -> None:
+    scene = CutScene.create(duration=1.0)
+    manager = scene.animation_manager()
+    particle = scene.binding(CutParticleEffect("particle"))
+    scene.set_anim(0.0, particle, target=manager)
+
+    codes = {issue.code for issue in scene.validate(strict=False).errors}
+
+    assert "set_anim.object.invalid" in codes
+
+
+def test_cut_particle_and_attached_light_payloads_roundtrip() -> None:
+    scene = CutScene.create(duration=2.0)
+    particle = scene.binding(CutParticleEffect("particle"))
+    light = scene.binding(CutAnimatedLight("light"))
+    play_payload = CutPlayParticleEffectPayload(
+        initial_bone_offset=(1.0, 2.0, 3.0),
+        attach_parent_id=4,
+        attach_bone_hash=5,
+    )
+    stop_payload = CutPlayParticleEffectPayload(
+        initial_bone_offset=(6.0, 7.0, 8.0),
+        attach_parent_id=9,
+        attach_bone_hash=10,
+    )
+    scene.play_particle_effect(0.0, particle, play_payload)
+    scene.stop_particle_effect(0.5, particle, stop_payload)
+    scene.set_light(
+        1.0,
+        light,
+        CutLightEffectPayload(
+            attach_parent_id=11,
+            attach_bone_hash=12,
+            attached_parent_name="parent",
+        ),
+    )
+    scene.set_light(1.5, light)
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+    events = list(rebuilt.iter_resolved_events())
+    by_time = {event.event.fields["fTime"]: event for event in events}
+
+    assert by_time[0.0].event_args is not None
+    assert by_time[0.0].event_args.type_name == "rage__cutfPlayParticleEffectEventArgs"
+    assert by_time[0.0].event_args.fields["iAttachParentId"] == 4
+    assert by_time[0.5].event_args is not None
+    assert by_time[0.5].event_args.type_name == "rage__cutfPlayParticleEffectEventArgs"
+    assert by_time[0.5].event_args.fields["iAttachParentId"] == 9
+    assert by_time[1.0].event_args is not None
+    assert by_time[1.0].event_args.type_name == "rage__cutfTriggerLightEffectEventArgs"
+    assert by_time[1.0].event_args.fields["iAttachParentId"] == 11
+    assert by_time[1.5].event_args is None
