@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+
+- CUT YCD quaternion sampling now preserves shortest-path continuity across keyframes and sequence boundaries and rejects invalid rotation samples.
+
 ## [0.4.6] - 2026-08-15
 
 ### Fixed

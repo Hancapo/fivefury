@@ -36,9 +36,7 @@ def vec4(value: Iterable[float]) -> Vector4:
 
 
 def is_finite_vector(value: object, size: int) -> bool:
-    if not isinstance(value, Iterable) or isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes, bytearray)):
         return False
     try:
         components = tuple(value)
@@ -130,6 +128,39 @@ def quat_normalize(
         return fallback
     inverse = 1.0 / length
     return (x * inverse, y * inverse, z * inverse, w * inverse)
+
+
+def quat_normalize_strict(
+    value: Quaternion,
+    *,
+    epsilon: float = 1e-12,
+) -> Quaternion:
+    components = tuple(float(component) for component in value)
+    if not all(math.isfinite(component) for component in components):
+        raise ValueError("Quaternion components must be finite")
+    length = math.sqrt(sum(component * component for component in components))
+    if length <= epsilon:
+        raise ValueError("Quaternion length must be greater than zero")
+    inverse = 1.0 / length
+    return tuple(component * inverse for component in components)  # type: ignore[return-value]
+
+
+def quat_make_continuous(values: Iterable[Quaternion]) -> list[Quaternion]:
+    result: list[Quaternion] = []
+    for index, value in enumerate(values):
+        try:
+            normalized = quat_normalize_strict(value)
+        except ValueError as error:
+            raise ValueError(
+                f"Invalid quaternion at sample {index}: {error}"
+            ) from error
+        if (
+            result
+            and sum(result[-1][axis] * normalized[axis] for axis in range(4)) < 0.0
+        ):
+            normalized = tuple(-component for component in normalized)  # type: ignore[assignment]
+        result.append(normalized)
+    return result
 
 
 def quat_inverse(value: Quaternion) -> Quaternion:

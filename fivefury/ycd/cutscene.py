@@ -11,7 +11,15 @@ from ..cut.scene.base import CutScene
 from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
-from ..vector import lerp_tuple, quat_canonicalize, quat_nlerp, vec3, vec4
+from ..vector import (
+    lerp_tuple,
+    quat_canonicalize,
+    quat_make_continuous,
+    quat_nlerp,
+    quat_normalize_strict,
+    vec3,
+    vec4,
+)
 from .model import (
     Ycd,
     YcdAnimation,
@@ -42,7 +50,7 @@ def _nlerp_quaternion(
     b: tuple[float, float, float, float],
     alpha: float,
 ) -> tuple[float, float, float, float]:
-    return quat_canonicalize(quat_nlerp(a, b, alpha))
+    return quat_nlerp(a, b, alpha)
 
 
 def _track_component_count(
@@ -75,7 +83,7 @@ def _coerce_tuple(value: object, component_count: int) -> tuple[float, ...]:
         raise ValueError(f"Expected {component_count} components, got {len(value)}")
     result = tuple(float(component) for component in value)
     if component_count == 4:
-        return quat_canonicalize(result)  # type: ignore[arg-type]
+        return quat_normalize_strict(result)  # type: ignore[arg-type]
     return result
 
 
@@ -145,17 +153,19 @@ def _sample_track_values(
         last_frame, last_value = deduped[-1]
         for frame in range(last_frame, frame_count):
             result[frame] = last_value
-        return result
+        return quat_make_continuous(result) if is_quaternion else result
 
     if _is_per_frame_sequence(source):
         if len(source) != frame_count:  # type: ignore[arg-type]
             raise ValueError(
                 f"Expected {frame_count} per-frame samples, got {len(source)}"
             )  # type: ignore[arg-type]
-        return [_coerce_tuple(item, component_count) for item in source]  # type: ignore[arg-type]
+        result = [_coerce_tuple(item, component_count) for item in source]  # type: ignore[arg-type]
+        return quat_make_continuous(result) if is_quaternion else result
 
     constant = _coerce_tuple(source, component_count)
-    return [constant for _ in range(frame_count)]
+    result = [constant for _ in range(frame_count)]
+    return quat_make_continuous(result) if is_quaternion else result
 
 
 def _make_quantize_channel(
@@ -207,6 +217,7 @@ def _make_channels(
                 )
             ]
         if component_count == 4:
+            value = quat_canonicalize(value)  # type: ignore[arg-type]
             return [
                 YcdStaticQuaternionChannel(
                     channel_type=YcdChannelType.STATIC_QUATERNION,
