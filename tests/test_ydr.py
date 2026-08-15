@@ -15,7 +15,6 @@ from fivefury import (
     YcdUvClipBinding,
     Ydr,
     YdrCollisionStats,
-    YdrValidationIssue,
     build_bound_from_render_geometry,
     create_ydr,
     jenk_hash,
@@ -404,11 +403,11 @@ def test_read_ydr_reads_embedded_bound() -> None:
     assert ydr.bound.sphere_radius == 0.75
 
 
-def test_ydr_validation_issue_exposes_severity_alias() -> None:
-    issue = YdrValidationIssue(level="warning", code="example", message="Example")
+def test_ydr_validation_returns_structured_diagnostics() -> None:
+    report = Ydr(version=165).validate()
 
-    assert issue.level == "warning"
-    assert issue.severity == "warning"
+    assert report.errors
+    assert {issue.code for issue in report} >= {"missing_models", "missing_materials"}
 
 
 def test_ydr_can_build_collision_bound_from_render_geometry() -> None:

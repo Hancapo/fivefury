@@ -1,3 +1,4 @@
+from ..skinning import SkinnedVertices, compose_skeleton_matrices, skin_vertices
 from .build_types import (
     YdrBuild,
     YdrMaterialInput,
@@ -56,7 +57,6 @@ from .model import (
     YdrModel,
     YdrSkeleton,
     YdrTextureRef,
-    YdrValidationIssue,
     calculate_bone_tag,
     calculate_skeleton_unknown_hashes,
     paint_mesh,
@@ -89,7 +89,6 @@ from .shaders import (
     read_shader_library,
     resolve_shader_reference,
 )
-from ..skinning import SkinnedVertices, compose_skeleton_matrices, skin_vertices
 from .transforms import (
     apply_ped_procedural_bone_fallbacks,
     compose_bone_local_transform,
@@ -155,7 +154,6 @@ __all__ = [
     "YdrSkeletonBinding",
     "YdrTextureInput",
     "YdrTextureRef",
-    "YdrValidationIssue",
     "adapt_shader_to_gen9",
     "apply_ped_procedural_bone_fallbacks",
     "build_bound_from_render_geometry",

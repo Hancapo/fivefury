@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- YDR, YCD, and YED validation now returns structured reports and no longer exposes format-specific validation issue types.
+
 ### Added
 
 - CUT resolution for high-detail vehicle fragments and their texture dependencies.

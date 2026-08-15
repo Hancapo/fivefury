@@ -1133,7 +1133,7 @@ def validate_yft(source: Yft) -> list[YftValidationIssue]:
             _issue(
                 issues,
                 YftValidationSeverity.ERROR,
-                f"drawables.{entry.label}.{drawable_issue.context or drawable_issue.code}",
+                f"drawables.{entry.label}.{drawable_issue.path or drawable_issue.code}",
                 drawable_issue.message,
             )
         extra_bounds = getattr(drawable, "extra_bounds", ())

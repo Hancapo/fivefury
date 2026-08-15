@@ -4,7 +4,9 @@ import math
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ..authoring.diagnostics import ValidationReport
 from ..buckets import at_hash_bucket_capacity
 from ..game_target import GameTarget
 from ..hashing import jenk_continue_hash, jenk_finalize_hash
@@ -28,6 +30,9 @@ from .sequences import (
     is_ycd_rotation_track,
     is_ycd_uv_track,
 )
+
+if TYPE_CHECKING:
+    from ..authoring.context import BuildContext
 
 YCD_UV_CLIP_MARKER = "_uv_"
 YCD_UV_UNKNOWN1C = 0x6B002400
@@ -959,46 +964,93 @@ class Ycd:
             result.setdefault(MetaHash(short_name).uint, clip)
         return result
 
-    def validate(self) -> Ycd:
-        for clip in self.clips:
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+    ) -> ValidationReport:
+        del context
+        report = ValidationReport()
+        asset = self.path or self.name
+        for clip_index, clip in enumerate(self.clips):
             if not isinstance(clip, YcdClipAnimation):
                 continue
+            clip_path = f"clips[{clip_index}]"
             binding = clip.uv_binding
             has_uv_animation = bool(clip.animation and clip.animation.has_uv_animation)
             if binding is None and not has_uv_animation:
                 continue
             if binding is None:
-                raise ValueError(f"YCD UV clip '{clip.short_name or clip.name}' is missing a '<object>_uv_<slot_index>' name")
+                report.issue(
+                    "ycd.uv_binding.missing",
+                    f"YCD UV clip '{clip.short_name or clip.name}' is missing a '<object>_uv_<slot_index>' name",
+                    asset=asset,
+                    path=f"{clip_path}.name",
+                )
+                continue
             expected_short_name = binding.clip_name
             if clip.short_name and clip.short_name != expected_short_name:
-                raise ValueError(
-                    f"YCD UV clip short_name '{clip.short_name}' does not match expected '{expected_short_name}' for slot_index={binding.slot_index}"
+                report.issue(
+                    "ycd.uv_binding.name_mismatch",
+                    f"YCD UV clip short_name '{clip.short_name}' does not match expected '{expected_short_name}' for slot_index={binding.slot_index}",
+                    asset=asset,
+                    path=f"{clip_path}.short_name",
                 )
             expected_hash = binding.clip_hash.uint
             if clip.hash.uint and clip.hash.uint != expected_hash:
-                raise ValueError(
-                    f"YCD UV clip '{expected_short_name}' has hash 0x{clip.hash.uint:08X}, expected 0x{expected_hash:08X}"
+                report.issue(
+                    "ycd.uv_binding.hash_mismatch",
+                    f"YCD UV clip '{expected_short_name}' has hash 0x{clip.hash.uint:08X}, expected 0x{expected_hash:08X}",
+                    asset=asset,
+                    path=f"{clip_path}.hash",
                 )
             if clip.animation is None:
-                raise ValueError(f"YCD UV clip '{expected_short_name}' is missing its animation payload")
-            if not clip.animation.uv_sequences:
-                raise ValueError(f"YCD UV clip '{expected_short_name}' does not contain shader UV tracks")
-            for sequence in clip.animation.uv_sequences:
+                report.issue(
+                    "ycd.uv_animation.missing",
+                    f"YCD UV clip '{expected_short_name}' is missing its animation payload",
+                    asset=asset,
+                    path=f"{clip_path}.animation",
+                )
+                continue
+            uv_sequences = clip.animation.uv_sequences
+            if not uv_sequences:
+                report.issue(
+                    "ycd.uv_animation.tracks_missing",
+                    f"YCD UV clip '{expected_short_name}' does not contain shader UV tracks",
+                    asset=asset,
+                    path=f"{clip_path}.animation.sequences",
+                )
+            for sequence_index, sequence in enumerate(uv_sequences):
+                sequence_path = (
+                    f"{clip_path}.animation.uv_sequences[{sequence_index}]"
+                )
                 bone = sequence.bone_id
                 if bone is None:
-                    raise ValueError(f"YCD UV clip '{expected_short_name}' contains a UV sequence without bone metadata")
+                    report.issue(
+                        "ycd.uv_animation.bone_metadata_missing",
+                        f"YCD UV clip '{expected_short_name}' contains a UV sequence without bone metadata",
+                        asset=asset,
+                        path=f"{sequence_path}.bone_id",
+                    )
+                    continue
                 if int(bone.bone_id) != 0:
-                    raise ValueError(
-                        f"YCD UV clip '{expected_short_name}' uses bone_id={bone.bone_id}, but the runtime expects UV tracks on bone_id 0"
+                    report.issue(
+                        "ycd.uv_animation.bone_id_invalid",
+                        f"YCD UV clip '{expected_short_name}' uses bone_id={bone.bone_id}, but the runtime expects UV tracks on bone_id 0",
+                        asset=asset,
+                        path=f"{sequence_path}.bone_id.bone_id",
                     )
                 if int(bone.track) not in (
                     int(YcdAnimationTrack.SHADER_SLIDE_U),
                     int(YcdAnimationTrack.SHADER_SLIDE_V),
                 ):
-                    raise ValueError(
-                        f"YCD UV clip '{expected_short_name}' contains unexpected UV track id {bone.track}"
+                    report.issue(
+                        "ycd.uv_animation.track_invalid",
+                        f"YCD UV clip '{expected_short_name}' contains unexpected UV track id {bone.track}",
+                        asset=asset,
+                        path=f"{sequence_path}.bone_id.track",
                     )
-        return self
+        return report
 
     def build(self) -> Ycd:
         self.animation_map = {}
@@ -1034,7 +1086,7 @@ class Ycd:
         self.animation_entry_count = len(self.animations)
         self.clip_bucket_capacity = max(int(self.clip_bucket_capacity), at_hash_bucket_capacity(self.clip_entry_count))
         self.animation_bucket_capacity = max(int(self.animation_bucket_capacity), at_hash_bucket_capacity(self.animation_entry_count))
-        self.validate()
+        self.validate().raise_for_errors()
         return self
 
     def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:

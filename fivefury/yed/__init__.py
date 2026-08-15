@@ -37,7 +37,6 @@ from .model import (
     YedSpring,
     YedStream,
     YedTrack,
-    YedValidationIssue,
     create_yed,
     validate_yed,
 )
@@ -88,7 +87,6 @@ __all__ = [
     "YedStream",
     "YedTrack",
     "YedTrackFormat",
-    "YedValidationIssue",
     "audit_yed",
     "audit_yed_cache",
     "audit_yed_file",
