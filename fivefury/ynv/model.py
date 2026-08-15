@@ -5,6 +5,8 @@ import math
 from enum import IntFlag
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..common import FlexibleIntEnum
 from ..game_target import GameTarget, coerce_game_target
 from ..resource import ResourcePagesInfo
@@ -718,7 +720,7 @@ class Ynv:
     def _validate_sector(
         self,
         sector: YnvSector | None,
-        errors: list[str],
+        report: ValidationReport,
         *,
         poly_count: int,
         points_cursor: int = 0,
@@ -729,110 +731,139 @@ class Ynv:
         if sector.data is not None:
             sector_data = sector.data
             if int(sector_data.points_start_id) != int(points_cursor):
-                errors.append(
-                    f"{label}.data.points_start_id={sector_data.points_start_id} does not match expected {points_cursor}"
+                report.issue(
+                    "ynv.sector.points_start_id.mismatch",
+                    f"Expected {points_cursor}, got {sector_data.points_start_id}",
+                    path=f"{label}.data.points_start_id",
                 )
-            for poly_id in sector_data.poly_ids:
+            for index, poly_id in enumerate(sector_data.poly_ids):
                 if int(poly_id) >= int(poly_count):
-                    errors.append(
-                        f"{label}.data.poly_ids contains out-of-range poly id {poly_id}"
+                    report.issue(
+                        "ynv.sector.poly_id.range",
+                        f"Polygon id {poly_id} is out of range for {poly_count} polygons",
+                        path=f"{label}.data.poly_ids[{index}]",
                     )
             points_cursor += len(sector_data.points)
         points_cursor = self._validate_sector(
             sector.subtree1,
-            errors,
+            report,
             poly_count=poly_count,
             points_cursor=points_cursor,
             label=f"{label}.subtree1",
         )
         points_cursor = self._validate_sector(
             sector.subtree2,
-            errors,
+            report,
             poly_count=poly_count,
             points_cursor=points_cursor,
             label=f"{label}.subtree2",
         )
         points_cursor = self._validate_sector(
             sector.subtree3,
-            errors,
+            report,
             poly_count=poly_count,
             points_cursor=points_cursor,
             label=f"{label}.subtree3",
         )
         points_cursor = self._validate_sector(
             sector.subtree4,
-            errors,
+            report,
             poly_count=poly_count,
             points_cursor=points_cursor,
             label=f"{label}.subtree4",
         )
         return points_cursor
 
-    def _validate_storage_limits(self) -> list[str]:
-        errors: list[str] = []
+    def _validate_storage_limits(self) -> ValidationReport:
+        report = ValidationReport()
         vertex_count = len(self.vertices)
         poly_count = len(self.polys)
         index_count = len(self.indices)
 
         if len(self.adjacent_area_ids) > 32:
-            errors.append("YNV supports at most 32 adjacent area ids")
+            report.issue(
+                "ynv.adjacent_area_ids.capacity",
+                f"At most 32 adjacent area ids are supported, got {len(self.adjacent_area_ids)}",
+                path="adjacent_area_ids",
+            )
         if vertex_count > 0xFFFF:
-            errors.append(f"YNV supports at most 65535 vertices, got {vertex_count}")
+            report.issue(
+                "ynv.vertices.capacity",
+                f"At most 65535 vertices are supported, got {vertex_count}",
+                path="vertices",
+            )
         if poly_count > 0x7FFF:
-            errors.append(
+            report.issue(
+                "ynv.polys.capacity",
                 "YNV supports at most 32767 polygons because edge polygon ids are "
-                f"15-bit and 0x7FFF is the null sentinel, got {poly_count}"
+                f"15-bit and 0x7FFF is the null sentinel, got {poly_count}",
+                path="polys",
             )
         if index_count > 0x10000:
-            errors.append(
+            report.issue(
+                "ynv.indices.capacity",
                 "YNV supports at most 65536 polygon indices because polygon index "
-                f"offsets are 16-bit, got {index_count}"
+                f"offsets are 16-bit, got {index_count}",
+                path="indices",
             )
 
         for index, vertex_id in enumerate(self.indices):
             if not 0 <= int(vertex_id) <= 0xFFFF:
-                errors.append(
-                    f"indices[{index}]={vertex_id} does not fit the 16-bit YNV field"
+                report.issue(
+                    "ynv.index.storage_range",
+                    f"Value {vertex_id} does not fit the 16-bit YNV field",
+                    path=f"indices[{index}]",
                 )
         for index, poly in enumerate(self.polys):
             if not 0 <= int(poly.index_id) <= 0xFFFF:
-                errors.append(
-                    f"polys[{index}].index_id={poly.index_id} does not fit the "
-                    "16-bit YNV field"
+                report.issue(
+                    "ynv.poly.index_id.storage_range",
+                    f"Value {poly.index_id} does not fit the 16-bit YNV field",
+                    path=f"polys[{index}].index_id",
                 )
         for index, edge in enumerate(self.edges):
             if not edge.references_match:
-                errors.append(
-                    f"edges[{index}] adjacent/original polygon references disagree: "
+                report.issue(
+                    "ynv.edge.references.mismatch",
+                    "Adjacent and original polygon references disagree: "
                     f"({edge.poly1.area_id}, {edge.poly1.poly_id}) != "
-                    f"({edge.poly2.area_id}, {edge.poly2.poly_id})"
+                    f"({edge.poly2.area_id}, {edge.poly2.poly_id})",
+                    path=f"edges[{index}]",
                 )
             for label, part in (("poly1", edge.poly1), ("poly2", edge.poly2)):
                 if not 0 <= int(part.poly_id) <= 0x7FFF:
-                    errors.append(
-                        f"edges[{index}].{label}.poly_id={part.poly_id} does not fit "
-                        "the 15-bit YNV field"
+                    report.issue(
+                        "ynv.edge.poly_id.storage_range",
+                        f"Value {part.poly_id} does not fit the 15-bit YNV field",
+                        path=f"edges[{index}].{label}.poly_id",
                     )
                 if not 0 <= int(part.area_id) <= 0x3FFF:
-                    errors.append(
-                        f"edges[{index}].{label}.area_id={part.area_id} does not fit "
-                        "the 14-bit YNV field"
+                    report.issue(
+                        "ynv.edge.area_id.storage_range",
+                        f"Value {part.area_id} does not fit the 14-bit YNV field",
+                        path=f"edges[{index}].{label}.area_id",
                     )
                 if not 0 <= int(part.detail_flags) <= 0x3FF:
-                    errors.append(
-                        f"edges[{index}].{label}.detail_flags={part.detail_flags} "
-                        "does not fit the 10-bit YNV field"
+                    report.issue(
+                        "ynv.edge.detail_flags.storage_range",
+                        f"Value {part.detail_flags} does not fit the 10-bit YNV field",
+                        path=f"edges[{index}].{label}.detail_flags",
                     )
-        return errors
+        return report
 
-    def validate(self) -> list[str]:
-        errors = self._validate_storage_limits()
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        report = self._validate_storage_limits()
         vertex_count = len(self.vertices)
         poly_count = len(self.polys)
         portal_link_count = len(self.portal_links)
 
         if self.sector_tree is None:
-            errors.append("YNV requires a sector_tree")
+            report.issue(
+                "ynv.sector_tree.required",
+                "YNV requires a sector tree",
+                path="sector_tree",
+            )
         system_count_present = (
             self.system_pages_count or self.pages_info.system_pages_count
         )
@@ -843,40 +874,55 @@ class Ynv:
             system_count_present
             and self.pages_info.system_pages_count != self.system_pages_count
         ):
-            errors.append(
-                "YNV ResourcePagesInfo system page count does not match the RSC7 header"
+            report.issue(
+                "ynv.pages.system_count.mismatch",
+                "ResourcePagesInfo system page count does not match the RSC7 header",
+                path="pages_info.system_pages_count",
             )
         if (
             graphics_count_present
             and self.pages_info.graphics_pages_count != self.graphics_pages_count
         ):
-            errors.append(
-                "YNV ResourcePagesInfo graphics page count does not match the RSC7 header"
+            report.issue(
+                "ynv.pages.graphics_count.mismatch",
+                "ResourcePagesInfo graphics page count does not match the RSC7 header",
+                path="pages_info.graphics_pages_count",
             )
         if len(self.transform) != 16:
-            errors.append("YNV transform must contain 16 floats")
+            report.issue(
+                "ynv.transform.length",
+                f"Transform must contain 16 floats, got {len(self.transform)}",
+                path="transform",
+            )
         if len(self.indices) != len(self.edges):
-            errors.append(
-                f"YNV requires len(indices) == len(edges), got {len(self.indices)} and {len(self.edges)}"
+            report.issue(
+                "ynv.indices_edges.count_mismatch",
+                f"Expected equal counts, got {len(self.indices)} indices and {len(self.edges)} edges",
             )
 
         for index, vertex in enumerate(self.vertices):
             if len(vertex) != 3:
-                errors.append(f"vertex {index} must contain exactly 3 components")
+                report.issue(
+                    "ynv.vertex.components",
+                    f"Vertex must contain exactly 3 components, got {len(vertex)}",
+                    path=f"vertices[{index}]",
+                )
 
         for index, vertex_id in enumerate(self.indices):
             if int(vertex_id) >= int(vertex_count):
-                errors.append(
-                    f"indices[{index}]={vertex_id} is out of range for {vertex_count} vertices"
+                report.issue(
+                    "ynv.index.vertex_range",
+                    f"Vertex id {vertex_id} is out of range for {vertex_count} vertices",
+                    path=f"indices[{index}]",
                 )
 
         for index, poly in enumerate(self.polys):
             expected_array_index = index // YNV_POLY_ARRAY_BLOCK_SIZE
             if int(poly.poly_array_index) != expected_array_index:
-                errors.append(
-                    f"polys[{index}].poly_array_index={poly.poly_array_index} "
-                    f"does not match native split-array block "
-                    f"{expected_array_index}"
+                report.issue(
+                    "ynv.poly.array_index.mismatch",
+                    f"Expected native split-array block {expected_array_index}, got {poly.poly_array_index}",
+                    path=f"polys[{index}].poly_array_index",
                 )
             is_zero_area_stitch = bool(
                 poly.poly_flags1 & YnvPolyFlags1.ZERO_AREA_STITCH_POLY_DLC
@@ -884,27 +930,36 @@ class Ynv:
             if not 3 <= int(poly.index_count) < 16 and not (
                 int(poly.index_count) == 2 and is_zero_area_stitch
             ):
-                errors.append(
-                    f"polys[{index}].index_count={poly.index_count} must be 3..15, "
-                    "or 2 for a zero-area DLC stitch polygon"
+                report.issue(
+                    "ynv.poly.index_count.range",
+                    f"Index count {poly.index_count} must be 3..15, or 2 for a zero-area DLC stitch polygon",
+                    path=f"polys[{index}].index_count",
                 )
             if int(poly.index_id) + int(poly.index_count) > len(self.indices):
-                errors.append(
-                    f"polys[{index}] index span [{poly.index_id}, {poly.index_id + poly.index_count}) exceeds indices length {len(self.indices)}"
+                report.issue(
+                    "ynv.poly.index_span.range",
+                    f"Span [{poly.index_id}, {poly.index_id + poly.index_count}) exceeds indices length {len(self.indices)}",
+                    path=f"polys[{index}]",
                 )
             if int(poly.index_id) + int(poly.index_count) > len(self.edges):
-                errors.append(
-                    f"polys[{index}] edge span [{poly.index_id}, {poly.index_id + poly.index_count}) exceeds edges length {len(self.edges)}"
+                report.issue(
+                    "ynv.poly.edge_span.range",
+                    f"Span [{poly.index_id}, {poly.index_id + poly.index_count}) exceeds edges length {len(self.edges)}",
+                    path=f"polys[{index}]",
                 )
             if int(poly.area_id) != int(self.area_id):
-                errors.append(
-                    f"polys[{index}].area_id={poly.area_id} does not match YNV area_id={self.area_id}"
+                report.issue(
+                    "ynv.poly.area_id.mismatch",
+                    f"Area id {poly.area_id} does not match YNV area id {self.area_id}",
+                    path=f"polys[{index}].area_id",
                 )
             if int(poly.portal_link_id) + int(poly.portal_link_count) > int(
                 portal_link_count
             ):
-                errors.append(
-                    f"polys[{index}] portal link span [{poly.portal_link_id}, {poly.portal_link_id + poly.portal_link_count}) exceeds portal_links length {portal_link_count}"
+                report.issue(
+                    "ynv.poly.portal_link_span.range",
+                    f"Span [{poly.portal_link_id}, {poly.portal_link_id + poly.portal_link_count}) exceeds portal links length {portal_link_count}",
+                    path=f"polys[{index}]",
                 )
 
         for index, edge in enumerate(self.edges):
@@ -914,8 +969,10 @@ class Ynv:
                 if area_id == 0x3FFF:
                     continue
                 if area_id == int(self.area_id) and poly_id >= poly_count:
-                    errors.append(
-                        f"edges[{index}].{label}.poly_id={poly_id} is out of range for {poly_count} local polys"
+                    report.issue(
+                        "ynv.edge.local_poly_id.range",
+                        f"Polygon id {poly_id} is out of range for {poly_count} local polygons",
+                        path=f"edges[{index}].{label}.poly_id",
                     )
 
         for index, portal in enumerate(self.portals):
@@ -931,24 +988,30 @@ class Ynv:
                 for attr in polygon_attrs:
                     value = int(getattr(portal, attr))
                     if value != 0xFFFF and value >= int(poly_count):
-                        errors.append(
-                            f"portals[{index}].{attr}={value} is out of range for {poly_count} local polys"
+                        report.issue(
+                            "ynv.portal.local_poly_id.range",
+                            f"Polygon id {value} is out of range for {poly_count} local polygons",
+                            path=f"portals[{index}].{attr}",
                         )
 
         if self.sector_tree is not None:
             collected_points = self._validate_sector(
-                self.sector_tree, errors, poly_count=poly_count
+                self.sector_tree, report, poly_count=poly_count
             )
             if collected_points != len(self.points):
-                errors.append(
-                    f"sector_tree point count {collected_points} does not match flattened points length {len(self.points)}"
+                report.issue(
+                    "ynv.sector.points_flattened_count.mismatch",
+                    f"Sector tree has {collected_points} points but flattened points has {len(self.points)}",
+                    path="points",
                 )
             if collected_points != int(self.points_count):
-                errors.append(
-                    f"sector_tree point count {collected_points} does not match points_count={self.points_count}"
+                report.issue(
+                    "ynv.sector.points_count.mismatch",
+                    f"Sector tree has {collected_points} points but points_count is {self.points_count}",
+                    path="points_count",
                 )
 
-        return errors
+        return report
 
     def build(self) -> Ynv:
         self.version = int(self.version)

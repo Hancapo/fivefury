@@ -477,9 +477,7 @@ def build_ynv_system_layout(
 
 
 def build_ynv_bytes(source: Ynv, *, game: str | GameTarget | None = None) -> bytes:
-    storage_errors = source._validate_storage_limits()
-    if storage_errors:
-        raise ValueError("Invalid YNV:\n- " + "\n- ".join(storage_errors))
+    source._validate_storage_limits().raise_for_errors()
     target = coerce_game_target(source.game if game is None else game)
     source.game = target
     ynv = source.build()
@@ -489,9 +487,7 @@ def build_ynv_bytes(source: Ynv, *, game: str | GameTarget | None = None) -> byt
         raise ValueError("YNV requires a sector tree")
     ynv.pages_info.system_pages_count = int(ynv.system_pages_count)
     ynv.pages_info.graphics_pages_count = int(ynv.graphics_pages_count)
-    validation_errors = ynv.validate()
-    if validation_errors:
-        raise ValueError("Invalid YNV:\n- " + "\n- ".join(validation_errors))
+    ynv.validate().raise_for_errors()
 
     page_count = 1
     system_data = b""

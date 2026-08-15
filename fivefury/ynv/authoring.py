@@ -444,9 +444,7 @@ def _build_cell(
         ),
         area_id=area_id,
     ).build()
-    issues = ynv.validate()
-    if issues:
-        raise ValueError("Invalid authored YNV:\n" + "\n".join(issues))
+    ynv.validate().raise_for_errors()
     return ynv, {key: tuple(value) for key, value in provenance.items()}
 
 

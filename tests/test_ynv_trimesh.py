@@ -54,7 +54,7 @@ def test_trimesh_to_ynvs_writes_single_valid_ynv(tmp_path: Path) -> None:
     ynv = read_ynv(outputs[0])
     assert ynv.area_id == 4040
     assert len(ynv.polys) == 1
-    assert ynv.validate() == []
+    assert ynv.validate().valid
 
 
 def test_trimesh_to_ynvs_splits_triangle_across_nav_cells(tmp_path: Path) -> None:
@@ -73,7 +73,7 @@ def test_trimesh_to_ynvs_splits_triangle_across_nav_cells(tmp_path: Path) -> Non
     for path in outputs:
         ynv = read_ynv(path)
         assert ynv.polys
-        assert ynv.validate() == []
+        assert ynv.validate().valid
 
 
 def test_public_grid_helpers_match_gta_nav_coordinates() -> None:
@@ -94,7 +94,7 @@ def test_build_cell_returns_source_polygon_provenance() -> None:
 
     assert ynv.area_id == 4040
     assert provenance == {"floor": (0,)}
-    assert ynv.validate() == []
+    assert ynv.validate().valid
 
 
 def test_build_cell_writes_enhanced_runtime_headers() -> None:
@@ -140,7 +140,7 @@ def test_provenance_can_bind_portals_to_authored_polygons() -> None:
         )
     )
 
-    assert ynv.validate() == []
+    assert ynv.validate().valid
 
 
 def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
@@ -159,7 +159,7 @@ def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
         any(edge.flags & YnvEdgeFlags.EXTERNAL_EDGE for edge in ynv.edges)
         for ynv, _ in cells
     )
-    assert all(ynv.validate() == [] for ynv, _ in cells)
+    assert all(ynv.validate().valid for ynv, _ in cells)
     rebuilt = [read_ynv(ynv.to_bytes()) for ynv, _ in cells]
     assert all(
         any(
@@ -193,7 +193,7 @@ def test_polygon_over_binary_vertex_limit_is_triangulated() -> None:
     assert len(ynv.polys) == 18
     assert len(provenance["large"]) == 18
     assert all(poly.index_count <= YNV_MAX_POLYGON_VERTICES for poly in ynv.polys)
-    assert ynv.validate() == []
+    assert ynv.validate().valid
 
 
 def test_authoring_rejects_nonfinite_vertices() -> None:
