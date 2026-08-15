@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-08-15
+
 ### Added
 
 - Typed CUT YCD quaternion encoding options and channel-layout auditing.
