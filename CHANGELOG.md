@@ -7,6 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Typed CUT YCD quaternion encoding options and channel-layout auditing.
+
+### Changed
+
+- CUT YCD dynamic rotations now use retail cached-quaternion channels by default.
+
 ### Fixed
 
 - CUT YCD quaternion sampling now preserves shortest-path continuity across keyframes and sequence boundaries and rejects invalid rotation samples.
