@@ -26,14 +26,15 @@ def _load_file(
     issues: list[CutsceneResolveIssue],
     *,
     object_id: int | None = None,
+    issue_code: str = "asset.load_failed",
 ) -> GameFile | None:
     try:
         result = cache.load_asset(asset)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         issues.append(
             CutsceneResolveIssue(
                 severity="warning",
-                code="asset.load_failed",
+                code=issue_code,
                 message=f"Unable to load {asset.path}: {type(exc).__name__}: {exc}",
                 asset_path=asset.path,
                 object_id=object_id,
@@ -44,7 +45,7 @@ def _load_file(
         issues.append(
             CutsceneResolveIssue(
                 severity="warning",
-                code="asset.load_failed",
+                code=issue_code,
                 message=f"Unable to load {asset.path}",
                 asset_path=asset.path,
                 object_id=object_id,

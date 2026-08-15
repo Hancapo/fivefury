@@ -97,9 +97,13 @@ class ResolvedCutBinding:
     ped_init_data: Any | None = None
     resolved_expression_set: ResolvedPedExpressionSet | None = None
     vehicle_appearance: ResolvedVehicleAppearance | None = None
+    high_detail_model_asset: AssetRecord | None = None
+    high_detail_model_file: GameFile | None = None
 
     @property
     def model_file(self) -> GameFile | None:
+        if self.high_detail_model_file is not None:
+            return self.high_detail_model_file
         for kind in (GameFileType.YDR, GameFileType.YDD, GameFileType.YFT):
             result = self.files.get(kind)
             if result is not None:
