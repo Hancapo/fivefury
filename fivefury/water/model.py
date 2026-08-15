@@ -6,6 +6,8 @@ from collections.abc import Iterable, Iterator
 from enum import IntEnum
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from .geometry import (
     WaterAlpha,
     WaterBounds,
@@ -33,12 +35,6 @@ class WaterQuadType(IntEnum):
     TRIANGLE_D = 4
 
 
-class WaterValidationError(ValueError):
-    def __init__(self, errors: list[str]):
-        self.errors = list(errors)
-        super().__init__("Invalid water data:\n- " + "\n- ".join(self.errors))
-
-
 def _coerce_quad_type(value: WaterQuadType | int) -> WaterQuadType | int:
     number = int(value)
     try:
@@ -48,14 +44,15 @@ def _coerce_quad_type(value: WaterQuadType | int) -> WaterQuadType | int:
 
 
 def _validate_bounds(
+    report: ValidationReport,
     min_x: int,
     min_y: int,
     max_x: int,
     max_y: int,
     *,
-    label: str,
-) -> list[str]:
-    errors: list[str] = []
+    path: str,
+    code: str,
+) -> None:
     for name, value in (
         ("min_x", min_x),
         ("min_y", min_y),
@@ -63,12 +60,11 @@ def _validate_bounds(
         ("max_y", max_y),
     ):
         if not _S16_MIN <= int(value) <= _S16_MAX:
-            errors.append(f"{label}.{name} must fit a signed 16-bit integer")
+            report.issue(f"{code}.{name}.range", f"{name} must fit a signed 16-bit integer", path=f"{path}.{name}")
     if int(min_x) >= int(max_x):
-        errors.append(f"{label}.min_x must be lower than max_x")
+        report.issue(f"{code}.x.inverted", "min_x must be lower than max_x", path=f"{path}.min_x")
     if int(min_y) >= int(max_y):
-        errors.append(f"{label}.min_y must be lower than max_y")
-    return errors
+        report.issue(f"{code}.y.inverted", "min_y must be lower than max_y", path=f"{path}.min_y")
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -236,28 +232,34 @@ class WaterQuad:
         self.no_stencil = bool(self.no_stencil)
         return self
 
-    def validate(self, *, label: str = "water_quad") -> list[str]:
-        errors = _validate_bounds(
+    def validate(self, *, label: str = "water_quad") -> ValidationReport:
+        errors = ValidationReport()
+        _validate_bounds(
+            errors,
             self.min_x,
             self.min_y,
             self.max_x,
             self.max_y,
-            label=label,
+            path=label,
+            code="water.quad.bounds",
         )
         if not math.isfinite(self.z) or abs(self.z) > _FLOAT32_MAX:
-            errors.append(f"{label}.z must fit a finite 32-bit float")
+            errors.issue("water.quad.z.range", "z must fit a finite 32-bit float", path=f"{label}.z")
         if int(self.type) not in WaterQuadType._value2member_map_:
-            errors.append(f"{label}.type must be between 0 and 4")
+            errors.issue("water.quad.type.range", "type must be between 0 and 4", path=f"{label}.type")
         for name, value in zip(
             ("alpha_sw", "alpha_se", "alpha_ne", "alpha_nw"),
             self.alphas,
             strict=True,
         ):
             if not 0 <= value <= _U8_MAX:
-                errors.append(f"{label}.{name} must be between 0 and 255")
+                errors.issue("water.quad.alpha.range", f"{name} must be between 0 and 255", path=f"{label}.{name}")
         if self.uses_default_alpha and any(self.alphas[1:]):
-            errors.append(
-                f"{label}.alpha_sw is zero, so the game ignores the other corner alphas"
+            errors.issue(
+                "water.quad.alpha.ignored",
+                "alpha_sw is zero, so the game ignores the other corner alphas",
+                severity=DiagnosticSeverity.WARNING,
+                path=f"{label}.alpha_sw",
             )
         return errors
 
@@ -298,16 +300,19 @@ class WaterCalmingQuad:
         self.dampening = float(self.dampening)
         return self
 
-    def validate(self, *, label: str = "calming_quad") -> list[str]:
-        errors = _validate_bounds(
+    def validate(self, *, label: str = "calming_quad") -> ValidationReport:
+        errors = ValidationReport()
+        _validate_bounds(
+            errors,
             self.min_x,
             self.min_y,
             self.max_x,
             self.max_y,
-            label=label,
+            path=label,
+            code="water.calming_quad.bounds",
         )
         if not math.isfinite(self.dampening) or not 0.0 <= self.dampening < 1.0:
-            errors.append(f"{label}.dampening must be finite and in the range [0, 1)")
+            errors.issue("water.calming_quad.dampening.range", "dampening must be finite and in the range [0, 1)", path=f"{label}.dampening")
         return errors
 
 
@@ -384,27 +389,32 @@ class WaterWaveQuad:
         self.direction_y = float(self.direction_y)
         return self
 
-    def validate(self, *, label: str = "wave_quad") -> list[str]:
-        errors = _validate_bounds(
+    def validate(self, *, label: str = "wave_quad") -> ValidationReport:
+        errors = ValidationReport()
+        _validate_bounds(
+            errors,
             self.min_x,
             self.min_y,
             self.max_x,
             self.max_y,
-            label=label,
+            path=label,
+            code="water.wave_quad.bounds",
         )
         if (
             not math.isfinite(self.amplitude)
             or not 0.0 <= self.amplitude <= _WAVE_AMPLITUDE_MAX
         ):
-            errors.append(
-                f"{label}.amplitude must be finite and fit the game's u16/255 storage"
+            errors.issue(
+                "water.wave_quad.amplitude.range",
+                "amplitude must be finite and fit the game's u16/255 storage",
+                path=f"{label}.amplitude",
             )
         for name, value in (
             ("direction_x", self.direction_x),
             ("direction_y", self.direction_y),
         ):
             if not math.isfinite(value) or not -1.0 <= value <= 1.0:
-                errors.append(f"{label}.{name} must be finite and in the range [-1, 1]")
+                errors.issue("water.wave_quad.direction.range", f"{name} must be finite and in the range [-1, 1]", path=f"{label}.{name}")
         return errors
 
 
@@ -492,15 +502,16 @@ class WaterData:
         yield from self.calming_quads
         yield from self.wave_quads
 
-    def validate(self) -> list[str]:
-        errors: list[str] = []
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        errors = ValidationReport()
         for name, items in (
             ("water_quads", self.water_quads),
             ("calming_quads", self.calming_quads),
             ("wave_quads", self.wave_quads),
         ):
             if len(items) > _U16_MAX:
-                errors.append(f"{name} cannot contain more than {_U16_MAX} items")
+                errors.issue("water.section.capacity", f"{name} cannot contain more than {_U16_MAX} items", path=name)
         for index, quad in enumerate(self.water_quads):
             errors.extend(quad.validate(label=f"water_quads[{index}]"))
         for index, quad in enumerate(self.calming_quads):
@@ -508,12 +519,6 @@ class WaterData:
         for index, quad in enumerate(self.wave_quads):
             errors.extend(quad.validate(label=f"wave_quads[{index}]"))
         return errors
-
-    def ensure_valid(self) -> WaterData:
-        errors = self.validate()
-        if errors:
-            raise WaterValidationError(errors)
-        return self
 
     def to_xml_bytes(self, *, validate: bool = True) -> bytes:
         from .io import build_water_xml
@@ -566,7 +571,6 @@ __all__ = [
     "WaterData",
     "WaterQuad",
     "WaterQuadType",
-    "WaterValidationError",
     "WaterWaveQuad",
     "coerce_water_data",
 ]

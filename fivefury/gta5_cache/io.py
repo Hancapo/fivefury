@@ -171,11 +171,7 @@ def read_gta5_cache_y(
         interior_proxies=interior_proxies,
         bounds=bounds,
     )
-    issues = cache.validate()
-    if issues:
-        raise ValueError(
-            "invalid GTA5 cache:\n" + "\n".join(f"- {issue}" for issue in issues)
-        )
+    cache.validate().raise_for_errors()
     return cache
 
 
@@ -191,12 +187,7 @@ def _module(name: str, payload: bytes) -> bytes:
 
 
 def build_gta5_cache_y_bytes(cache: Gta5CacheY) -> bytes:
-    issues = cache.validate()
-    if issues:
-        raise ValueError(
-            "cannot build invalid GTA5 cache:\n"
-            + "\n".join(f"- {issue}" for issue in issues)
-        )
+    cache.validate().raise_for_errors()
 
     file_dates = bytearray(_FILE_DATES_START)
     for item in cache.file_dates:

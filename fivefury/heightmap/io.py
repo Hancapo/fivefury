@@ -221,7 +221,7 @@ def read_heightmap(
         flags=flags,
         source_byte_order=order,
     )
-    result.ensure_valid(game_compatible=False)
+    result.validate(game_compatible=False).raise_for_errors()
     return result
 
 
@@ -275,7 +275,8 @@ def build_heightmap_bytes(
     byte_order: HeightMapByteOrder = HeightMapByteOrder.BIG,
     game_compatible: bool = True,
 ) -> bytes:
-    heightmap = source.build().ensure_valid(game_compatible=game_compatible)
+    heightmap = source.build()
+    heightmap.validate(game_compatible=game_compatible).raise_for_errors()
     order = HeightMapByteOrder(byte_order)
     endian = _endian_prefix(order)
     use_rle = heightmap.uses_rle if rle is None else bool(rle)

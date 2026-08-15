@@ -12,7 +12,6 @@ from .model import (
     HeightMapByteOrder,
     HeightMapCellFormat,
     HeightMapFlags,
-    HeightMapValidationError,
 )
 
 __all__ = [
@@ -23,7 +22,6 @@ __all__ = [
     "HeightMapByteOrder",
     "HeightMapCellFormat",
     "HeightMapFlags",
-    "HeightMapValidationError",
     "build_heightmap_bytes",
     "create_heightmap",
     "read_heightmap",

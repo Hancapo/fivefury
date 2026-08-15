@@ -6,6 +6,9 @@ from collections.abc import Iterable, Sequence
 from enum import IntEnum, IntFlag
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
+
 HeightCell = int | float
 HeightGrid = Sequence[Sequence[float | None]]
 _FLOAT32_MAX = 3.4028234663852886e38
@@ -26,12 +29,6 @@ class HeightMapFlags(IntFlag):
 class HeightMapByteOrder(IntEnum):
     BIG = 0
     LITTLE = 1
-
-
-class HeightMapValidationError(ValueError):
-    def __init__(self, errors: list[str]):
-        self.errors = list(errors)
-        super().__init__("Invalid height map:\n- " + "\n- ".join(self.errors))
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -64,24 +61,31 @@ class HeightMapBounds:
             self.max_z - self.min_z,
         )
 
-    def validate(self, *, game_compatible: bool = True) -> list[str]:
-        errors: list[str] = []
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+        game_compatible: bool = True,
+    ) -> ValidationReport:
+        del context
+        errors = ValidationReport()
         values = dataclasses.astuple(self)
         if not all(math.isfinite(value) for value in values):
-            errors.append("bounds must contain only finite values")
+            errors.issue("heightmap.bounds.non_finite", "bounds must contain only finite values")
         elif any(abs(value) > _FLOAT32_MAX for value in values):
-            errors.append("bounds must fit finite 32-bit floats")
+            errors.issue("heightmap.bounds.float32_range", "bounds must fit finite 32-bit floats")
         if self.min_x >= self.max_x:
-            errors.append("bounds.min_x must be lower than bounds.max_x")
+            errors.issue("heightmap.bounds.x.inverted", "bounds.min_x must be lower than bounds.max_x", path="min_x")
         if self.min_y >= self.max_y:
-            errors.append("bounds.min_y must be lower than bounds.max_y")
+            errors.issue("heightmap.bounds.y.inverted", "bounds.min_y must be lower than bounds.max_y", path="min_y")
         if self.min_z >= self.max_z:
-            errors.append("bounds.min_z must be lower than bounds.max_z")
+            errors.issue("heightmap.bounds.z.inverted", "bounds.min_z must be lower than bounds.max_z", path="min_z")
         if game_compatible and any(
             value < -16000.0 or value > 16000.0 for value in values
         ):
-            errors.append(
-                "game height-map bounds must stay within -16000.0 and 16000.0"
+            errors.issue(
+                "heightmap.bounds.runtime_range",
+                "game height-map bounds must stay within -16000.0 and 16000.0",
             )
         return errors
 
@@ -410,30 +414,38 @@ class HeightMap:
                 if heights is not None:
                     yield column, row, heights
 
-    def validate(self, *, game_compatible: bool = True) -> list[str]:
-        errors = self.bounds.validate(game_compatible=game_compatible)
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+        game_compatible: bool = True,
+    ) -> ValidationReport:
+        errors = ValidationReport().extend(
+            self.bounds.validate(context=context, game_compatible=game_compatible),
+            path="bounds",
+        )
         if not 1 <= self.columns <= 0xFFFF:
-            errors.append("columns must fit an unsigned 16-bit integer")
+            errors.issue("heightmap.columns.range", "columns must fit an unsigned 16-bit integer", path="columns")
         if not 1 <= self.rows <= 0xFFFF:
-            errors.append("rows must fit an unsigned 16-bit integer")
+            errors.issue("heightmap.rows.range", "rows must fit an unsigned 16-bit integer", path="rows")
         if game_compatible and not 10 <= self.columns <= 1000:
-            errors.append("game height maps require between 10 and 1000 columns")
+            errors.issue("heightmap.columns.runtime_range", "game height maps require between 10 and 1000 columns", path="columns")
         if game_compatible and not 10 <= self.rows <= 1000:
-            errors.append("game height maps require between 10 and 1000 rows")
+            errors.issue("heightmap.rows.runtime_range", "game height maps require between 10 and 1000 rows", path="rows")
         if not 0 <= self.version <= 0xFF:
-            errors.append("version must fit an unsigned byte")
+            errors.issue("heightmap.version.range", "version must fit an unsigned byte", path="version")
         if game_compatible and self.version != 1:
-            errors.append("game height maps use version 1")
+            errors.issue("heightmap.version.runtime", "game height maps use version 1", path="version")
         if game_compatible and self.cell_format is not HeightMapCellFormat.UINT8:
-            errors.append("WORLD_HEIGHTMAP_FILE requires UINT8 cells")
+            errors.issue("heightmap.cell_format.runtime", "WORLD_HEIGHTMAP_FILE requires UINT8 cells", path="cell_format")
 
         expected = self.cell_count
         if len(self.minimum_cells) != expected:
-            errors.append(f"minimum_cells must contain exactly {expected} values")
+            errors.issue("heightmap.minimum_cells.count", f"minimum_cells must contain exactly {expected} values", path="minimum_cells")
         if len(self.maximum_cells) != expected:
-            errors.append(f"maximum_cells must contain exactly {expected} values")
+            errors.issue("heightmap.maximum_cells.count", f"maximum_cells must contain exactly {expected} values", path="maximum_cells")
         if self.water_cells is not None and len(self.water_cells) != expected:
-            errors.append(f"water_cells must contain exactly {expected} values")
+            errors.issue("heightmap.water_cells.count", f"water_cells must contain exactly {expected} values", path="water_cells")
 
         if len(self.minimum_cells) == expected and len(self.maximum_cells) == expected:
             limit = {
@@ -444,12 +456,12 @@ class HeightMap:
                 zip(self.minimum_cells, self.maximum_cells, strict=True)
             ):
                 if not math.isfinite(float(lower)) or not math.isfinite(float(upper)):
-                    errors.append(f"cell {index} must contain finite values")
+                    errors.issue("heightmap.cell.non_finite", f"cell {index} must contain finite values", path=f"cells[{index}]")
                     continue
                 if limit is None and (
                     abs(float(lower)) > _FLOAT32_MAX or abs(float(upper)) > _FLOAT32_MAX
                 ):
-                    errors.append(f"cell {index} must fit finite 32-bit floats")
+                    errors.issue("heightmap.cell.float32_range", f"cell {index} must fit finite 32-bit floats", path=f"cells[{index}]")
                     continue
                 if limit is not None and (
                     not isinstance(lower, int)
@@ -459,25 +471,21 @@ class HeightMap:
                     or not 0 <= lower <= limit
                     or not 0 <= upper <= limit
                 ):
-                    errors.append(
-                        f"cell {index} must contain integers between 0 and {limit}"
+                    errors.issue(
+                        "heightmap.cell.integer_range",
+                        f"cell {index} must contain integers between 0 and {limit}",
+                        path=f"cells[{index}]",
                     )
                     continue
                 if lower > upper:
-                    errors.append(f"cell {index} minimum exceeds its maximum")
+                    errors.issue("heightmap.cell.inverted", f"cell {index} minimum exceeds its maximum", path=f"cells[{index}]")
         if game_compatible:
             unknown_flags = int(self.flags) & ~int(
                 HeightMapFlags.RLE_DATA | HeightMapFlags.WATER_MASK
             )
             if unknown_flags:
-                errors.append(f"unsupported height-map flags: 0x{unknown_flags:X}")
+                errors.issue("heightmap.flags.unsupported", f"unsupported height-map flags: 0x{unknown_flags:X}", path="flags")
         return errors
-
-    def ensure_valid(self, *, game_compatible: bool = True) -> HeightMap:
-        errors = self.validate(game_compatible=game_compatible)
-        if errors:
-            raise HeightMapValidationError(errors)
-        return self
 
     def to_bytes(
         self,
@@ -531,5 +539,4 @@ __all__ = [
     "HeightMapByteOrder",
     "HeightMapCellFormat",
     "HeightMapFlags",
-    "HeightMapValidationError",
 ]
