@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from inspect import signature
 from pathlib import Path
 from typing import Any
 
@@ -132,24 +131,13 @@ def validation_report(
     if validator is None:
         raise TypeError(f"{type(asset).__name__} does not expose validate()")
 
-    parameters = signature(validator).parameters
-    result = validator(context=context) if "context" in parameters else validator()
-    if isinstance(result, ValidationReport):
-        return result
-
-    report = ValidationReport()
-    code = f"{type(asset).__name__.lower()}.invalid"
-    for issue in result or ():
-        if isinstance(issue, Diagnostic):
-            report.issues.append(issue)
-        elif isinstance(issue, str):
-            report.issue(code, issue)
-        else:
-            raise TypeError(
-                f"{type(asset).__name__}.validate() returned unsupported "
-                f"diagnostic type {type(issue).__name__}"
-            )
-    return report
+    result = validator(context=context)
+    if not isinstance(result, ValidationReport):
+        raise TypeError(
+            f"{type(asset).__name__}.validate() must return ValidationReport, "
+            f"got {type(result).__name__}"
+        )
+    return result
 
 
 __all__ = [

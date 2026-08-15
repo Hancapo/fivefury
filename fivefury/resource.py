@@ -479,7 +479,7 @@ def find_resource_chunk(
     )
 
 
-def validate_resource_pointer(
+def resolve_resource_pointer(
     header: ResourceHeader,
     address: int,
     *,

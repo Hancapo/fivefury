@@ -35,8 +35,8 @@ from fivefury.resource import (
     get_resource_chunk_sizes,
     get_resource_flags_from_page_counts,
     get_resource_size_from_flags,
+    resolve_resource_pointer,
     split_rsc7_sections,
-    validate_resource_pointer,
     virtual_to_offset,
 )
 from fivefury.ydr import (
@@ -1741,12 +1741,12 @@ def test_resource_pointer_validation_checks_section_and_extent():
     )
     header = ResourceHeader(1, system_flags, graphics_flags)
 
-    assert validate_resource_pointer(header, 0x50000000, section="system") is not None
-    assert validate_resource_pointer(header, 0, nullable=True) is None
+    assert resolve_resource_pointer(header, 0x50000000, section="system") is not None
+    assert resolve_resource_pointer(header, 0, nullable=True) is None
     with pytest.raises(ValueError, match="outside"):
-        validate_resource_pointer(header, 0x4057C038)
+        resolve_resource_pointer(header, 0x4057C038)
     with pytest.raises(ValueError, match="instead of system"):
-        validate_resource_pointer(header, 0x60000000, section="system")
+        resolve_resource_pointer(header, 0x60000000, section="system")
 
 
 def test_physics_lod_with_damaged_entity_synthesizes_damaged_archetype():

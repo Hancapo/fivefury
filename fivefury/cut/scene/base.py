@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...authoring.context import BuildContext
-from ...authoring.diagnostics import ValidationReport
+from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
 
 if TYPE_CHECKING:
     from ...ycd.cutscene import YcdCutsceneBuilder
@@ -538,17 +538,20 @@ class CutScene:
         )
         return self.timeline_event(timeline_event)
 
-    def validate_animations(self, *, cut_index: int = 0) -> list[str]:
+    def validate_animations(self, *, cut_index: int = 0) -> ValidationReport:
+        report = ValidationReport()
         if not self.clip_dicts:
-            return []
-        warnings: list[str] = []
+            return report
         known_stems = {ycd.stem.lower() for ycd in self.clip_dicts if ycd.stem}
-        for event in self.timeline:
+        for event_index, event in enumerate(self.timeline):
             if event.event_name == "load_anim_dict" and event.label:
                 name = event.label.lower()
                 if not any(name in stem or stem in name for stem in known_stems):
-                    warnings.append(
-                        f"load_anim_dict references unknown dict '{event.label}'"
+                    report.issue(
+                        "cut.animation.dictionary.unknown",
+                        f"load_anim_dict references unknown dictionary '{event.label}'",
+                        severity=DiagnosticSeverity.WARNING,
+                        path=f"timeline[{event_index}]",
                     )
             if event.event_name == "set_anim" and event.payload:
                 oid = event.payload.get("iObjectId")
@@ -591,9 +594,11 @@ class CutScene:
                     if animation_clip_base and anim_streaming_base not in (None, "", 0):
                         expected_base = jenk_partial_hash(animation_clip_base)
                         if int(anim_streaming_base) != expected_base:
-                            warnings.append(
-                                f"set_anim target '{animation_clip_base}' (id={oid}) has AnimStreamingBase=0x{int(anim_streaming_base):08X}, "
-                                f"expected 0x{expected_base:08X}"
+                            report.issue(
+                                "cut.animation.streaming_base.mismatch",
+                                f"set_anim target '{animation_clip_base}' (id={oid}) has AnimStreamingBase=0x{int(anim_streaming_base):08X}, expected 0x{expected_base:08X}",
+                                severity=DiagnosticSeverity.WARNING,
+                                path=f"timeline[{event_index}]",
                             )
                     exact_clip_missing = animation_clip_base and not any(
                         ycd.get_clip(expected_clip_name) is not None
@@ -622,10 +627,13 @@ class CutScene:
                         label = (
                             " / ".join(dict.fromkeys(candidate_labels)) or f"id={oid}"
                         )
-                        warnings.append(
-                            f"set_anim target '{label}' (id={oid}) has no matching clip in attached YCDs"
+                        report.issue(
+                            "cut.animation.clip.missing",
+                            f"set_anim target '{label}' (id={oid}) has no matching clip in attached YCDs",
+                            severity=DiagnosticSeverity.WARNING,
+                            path=f"timeline[{event_index}]",
                         )
-        return warnings
+        return report
 
     def ensure_ydr_embedded_lights(
         self,

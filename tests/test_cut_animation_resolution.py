@@ -145,9 +145,9 @@ def test_duplicate_model_instances_survive_strict_cut_ycd_roundtrip() -> None:
 
     scene = _roundtrip_project(project)
     available = scene.available_clips(cut_index=0)
-    assert not any(
-        "no matching clip" in warning for warning in scene.validate_animations()
-    )
+    assert "cut.animation.clip.missing" not in {
+        issue.code for issue in scene.validate_animations()
+    }
 
     for clip_base, object_id in object_ids.items():
         binding = scene.get_binding(object_id)

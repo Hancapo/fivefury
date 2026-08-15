@@ -1238,9 +1238,6 @@ def validate_cut_scene(
     _validate_assets(scene, issues)
     _validate_audio_timeline(scene, issues, strict=strict)
     _validate_flags(scene, issues)
-    for warning in scene.validate_animations():
-        if not any(warning in issue.message for issue in issues):
-            _issue(issues, "warning", "animation.compat", warning)
     if source_asset is not None:
         issues.issues = [issue.for_asset(source_asset) for issue in issues]
     return issues

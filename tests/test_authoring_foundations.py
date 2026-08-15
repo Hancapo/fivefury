@@ -102,12 +102,26 @@ def test_validation_report_composes_nested_paths_and_assets() -> None:
     assert report.errors[0].asset == "collision.ybn"
 
 
-def test_build_context_adapts_string_validators_to_diagnostics() -> None:
+def test_build_context_rejects_noncanonical_validators() -> None:
     class InvalidAsset:
-        def validate(self) -> list[str]:
+        def validate(self, *, context: BuildContext | None = None) -> list[str]:
+            del context
             return ["Broken field"]
 
-    report = BuildContext().validate(InvalidAsset())
+    with pytest.raises(TypeError, match="must return ValidationReport"):
+        BuildContext().validate(InvalidAsset())
 
-    assert report.errors[0].code == "invalidasset.invalid"
-    assert report.errors[0].message == "Broken field"
+
+def test_build_context_forwards_context_without_signature_adaptation() -> None:
+    class ValidAsset:
+        received: BuildContext | None = None
+
+        def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+            self.received = context
+            return ValidationReport()
+
+    context = BuildContext()
+    asset = ValidAsset()
+
+    assert context.validate(asset).valid
+    assert asset.received is context

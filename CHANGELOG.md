@@ -18,6 +18,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - YMF manifest and PSO layout validation now uses structured diagnostics with binary field paths.
 - YND and YNV validation now uses structured diagnostics for navigation limits, references, and topology.
 - YTD, ped expression binding, and AWC lip-sync validation now uses the shared structured-report contract.
+- `BuildContext` validation now requires the canonical structured-report signature without reflection or string adaptation.
+- `validate_resource_pointer()` has been renamed to `resolve_resource_pointer()` to reflect its resolving behavior.
+- CUT animation checks now return structured warnings instead of compatibility text lists.
 
 ### Added
 

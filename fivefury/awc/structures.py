@@ -787,7 +787,8 @@ class Awc:
 
         return build_awc_bytes(self)
 
-    def validate(self) -> ValidationReport:
+    def validate(self, *, context: object | None = None) -> ValidationReport:
+        del context
         from .validation import validate_awc
 
         return validate_awc(self)
