@@ -232,7 +232,7 @@ def test_reference_ynv_samples_validate_cleanly() -> None:
         pytest.skip("real YNV reference directory not available")
     for path in paths:
         ynv = read_ynv(path)
-        assert ynv.validate() == []
+        assert ynv.validate().valid
 
 
 def test_roundtrip_reference_ynv_sample() -> None:
@@ -329,10 +329,9 @@ def test_validation_rejects_disagreeing_persistent_edge_references() -> None:
     ynv = _generated_ynv()
     ynv.edges[0].poly2.poly_id = 1
 
-    assert any(
-        "adjacent/original polygon references disagree" in issue
-        for issue in ynv.validate()
-    )
+    assert "ynv.edge.references.mismatch" in {
+        issue.code for issue in ynv.validate().errors
+    }
 
 
 def test_reference_point_and_portal_types_are_typed() -> None:
@@ -400,13 +399,13 @@ def test_build_reindexes_sector_points() -> None:
     assert ynv.sector_tree.subtree1.data is not None
     assert ynv.sector_tree.subtree1.data.points_start_id == 1
     assert len(ynv.points) == 2
-    assert ynv.validate() == []
+    assert ynv.validate().valid
 
 
 def test_writer_rejects_invalid_poly_index_span() -> None:
     sample = _generated_ynv()
     sample.polys[0].index_id = len(sample.indices)
-    with pytest.raises(ValueError, match="index span"):
+    with pytest.raises(ValueError, match="ynv.poly.index_span.range"):
         build_ynv_bytes(sample)
 
 
@@ -462,10 +461,9 @@ def test_writer_assigns_native_polygon_split_array_indices() -> None:
         sector_tree=_minimal_sector_tree(),
     )
 
-    assert any(
-        "poly_array_index" in issue
-        for issue in ynv.validate()
-    )
+    assert "ynv.poly.array_index.mismatch" in {
+        issue.code for issue in ynv.validate().errors
+    }
 
     rebuilt = read_ynv(build_ynv_bytes(ynv))
 
@@ -483,7 +481,7 @@ def test_writer_rejects_explicit_adjacent_area_overflow_before_build() -> None:
         sector_tree=_minimal_sector_tree(),
     )
 
-    with pytest.raises(ValueError, match="at most 32 adjacent area ids"):
+    with pytest.raises(ValueError, match="ynv.adjacent_area_ids.capacity"):
         build_ynv_bytes(ynv)
     assert len(ynv.adjacent_area_ids) == 33
 
@@ -494,7 +492,7 @@ def test_writer_rejects_unrepresentable_poly_index_before_build() -> None:
         sector_tree=_minimal_sector_tree(),
     )
 
-    with pytest.raises(ValueError, match=r"polys\[0\]\.index_id=65536"):
+    with pytest.raises(ValueError, match="ynv.poly.index_id.storage_range"):
         build_ynv_bytes(ynv)
     assert ynv.polys[0].index_id == 0x10000
 
@@ -511,7 +509,11 @@ def test_validation_rejects_out_of_range_local_edge_polygon() -> None:
         sector_tree=_minimal_sector_tree(),
     )
 
-    assert any("poly1.poly_id=7 is out of range" in issue for issue in ynv.validate())
+    assert any(
+        issue.code == "ynv.edge.local_poly_id.range"
+        and issue.path == "edges[0].poly1.poly_id"
+        for issue in ynv.validate().errors
+    )
 
 
 def test_validation_accepts_vanilla_area_ids_above_9999() -> None:
@@ -527,7 +529,9 @@ def test_validation_accepts_vanilla_area_ids_above_9999() -> None:
         sector_tree=_minimal_sector_tree(),
     )
 
-    assert not any("area_id=10000" in issue for issue in ynv.validate())
+    assert "ynv.edge.area_id.storage_range" not in {
+        issue.code for issue in ynv.validate().errors
+    }
 
 
 def test_validation_checks_only_local_special_link_polygon_ids() -> None:
@@ -547,11 +551,15 @@ def test_validation_checks_only_local_special_link_polygon_ids() -> None:
         sector_tree=_minimal_sector_tree(),
     ).build()
 
-    assert not any("poly_id_to" in issue for issue in ynv.validate())
+    assert not any(
+        issue.path and "poly_id_to" in issue.path for issue in ynv.validate().errors
+    )
 
     ynv.portals[0].poly_id_from1 = 500
     assert any(
-        "poly_id_from1=500 is out of range" in issue for issue in ynv.validate()
+        issue.code == "ynv.portal.local_poly_id.range"
+        and issue.path == "portals[0].poly_id_from1"
+        for issue in ynv.validate().errors
     )
 
 
@@ -559,7 +567,7 @@ def test_writer_rejects_invalid_portal_link_span() -> None:
     sample = _generated_ynv()
     sample.polys[0].portal_link_id = len(sample.portal_links)
     sample.polys[0].portal_link_count = 1
-    with pytest.raises(ValueError, match="portal link span"):
+    with pytest.raises(ValueError, match="ynv.poly.portal_link_span.range"):
         build_ynv_bytes(sample)
 
 
@@ -591,7 +599,7 @@ def test_writer_builds_multipage_split_arrays_with_resource_metadata() -> None:
     )
     for actual, expected in zip(rebuilt.vertices, vertices, strict=True):
         assert actual == pytest.approx(expected, abs=0.002)
-    assert rebuilt.validate() == []
+    assert rebuilt.validate().valid
 
 
 def test_resource_layout_relocates_four_byte_aligned_pointers() -> None:
@@ -626,7 +634,9 @@ def test_zero_area_dlc_stitch_poly_accepts_two_vertices() -> None:
         polys=[poly],
         sector_tree=_minimal_sector_tree(),
     ).build()
-    assert not any("index_count" in issue for issue in ynv.validate())
+    assert "ynv.poly.index_count.range" not in {
+        issue.code for issue in ynv.validate().errors
+    }
 
 
 def test_ped_density_packs_into_poly_flags1_bits_14_to_16() -> None:

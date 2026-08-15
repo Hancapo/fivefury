@@ -43,10 +43,7 @@ def build_ynd_system_layout(
         file_vft=profile.file_vft,
         nodes=[dataclasses.replace(node) for node in source.nodes],
     ).build()
-    issues = ynd.validate()
-    if issues:
-        issue_lines = "\n".join(f"- {issue}" for issue in issues)
-        raise ValueError(f"cannot build invalid YND:\n{issue_lines}")
+    ynd.validate().raise_for_errors()
 
     writer = ResourceWriter(initial_size=_ROOT_SIZE)
 
@@ -185,9 +182,7 @@ def build_ynd_system_layout(
 
 
 def build_ynd_bytes(source: Ynd, *, game: str | GameTarget | None = None) -> bytes:
-    storage_issues = source.validate_storage_limits()
-    if storage_issues:
-        raise ValueError("cannot build invalid YND:\n- " + "\n- ".join(storage_issues))
+    source.validate_storage_limits().raise_for_errors()
     target = coerce_game_target(source.game if game is None else game)
     source.game = target
     ynd = source.build()

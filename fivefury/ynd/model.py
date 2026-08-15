@@ -6,6 +6,8 @@ from collections.abc import Hashable, Iterable
 from enum import IntFlag
 from pathlib import Path
 
+from ..authoring.context import BuildContext
+from ..authoring.diagnostics import ValidationReport
 from ..common import FlexibleIntEnum
 from ..game_target import GameTarget, coerce_game_target
 from ..resource import ResourcePagesInfo
@@ -617,28 +619,28 @@ class Ynd:
         self.nodes = sorted_nodes
         return self
 
-    def validate_storage_limits(self) -> list[str]:
-        issues: list[str] = []
+    def validate_storage_limits(self) -> ValidationReport:
+        issues = ValidationReport()
         if len(self.nodes) > 0x10000:
-            issues.append("YND exceeds the 65536-node identifier range")
+            issues.issue("ynd.nodes.capacity", "YND exceeds the 65536-node identifier range", path="nodes")
         if self.link_count > 0xFFFF:
-            issues.append("YND exceeds the 65535-link offset range")
+            issues.issue("ynd.links.capacity", "YND exceeds the 65535-link offset range", path="nodes.links")
         if self.junction_count > 0xFFFF:
-            issues.append("YND exceeds the 65535-junction index range")
+            issues.issue("ynd.junctions.capacity", "YND exceeds the 65535-junction index range", path="nodes.junction")
 
         heightmap_cursor = 0
         for index, node in enumerate(self.nodes):
             path = f"nodes[{index}]"
             if node.area_id is not None and not 0 <= int(node.area_id) <= 0xFFFF:
-                issues.append(f"{path}.area_id does not fit the 16-bit field")
+                issues.issue("ynd.node.area_id.range", "area_id does not fit the 16-bit field", path=f"{path}.area_id")
             if not 0 <= int(node.node_id) <= 0xFFFF:
-                issues.append(f"{path}.node_id does not fit the 16-bit field")
+                issues.issue("ynd.node.node_id.range", "node_id does not fit the 16-bit field", path=f"{path}.node_id")
             if len(node.links) > 31:
-                issues.append(f"{path} exceeds the 31-link packed count")
+                issues.issue("ynd.node.links.capacity", "node exceeds the 31-link packed count", path=f"{path}.links")
             if len(node.position) != 3 or not all(
                 math.isfinite(float(value)) for value in node.position
             ):
-                issues.append(f"{path}.position must contain three finite values")
+                issues.issue("ynd.node.position.invalid", "position must contain three finite values", path=f"{path}.position")
             else:
                 quantized = (
                     round(node.position[0] * 4.0),
@@ -646,22 +648,22 @@ class Ynd:
                     round(node.position[2] * 32.0),
                 )
                 if any(not -0x8000 <= value <= 0x7FFF for value in quantized):
-                    issues.append(f"{path}.position exceeds the signed 16-bit storage range")
+                    issues.issue("ynd.node.position.range", "position exceeds the signed 16-bit storage range", path=f"{path}.position")
             for link_index, link in enumerate(node.links):
                 link_path = f"{path}.links[{link_index}]"
                 if link.area_id is not None and not 0 <= int(link.area_id) <= 0xFFFF:
-                    issues.append(f"{link_path}.area_id does not fit the 16-bit field")
+                    issues.issue("ynd.link.area_id.range", "area_id does not fit the 16-bit field", path=f"{link_path}.area_id")
                 if not 0 <= int(link.node_id) <= 0xFFFF:
-                    issues.append(f"{link_path}.node_id does not fit the 16-bit field")
+                    issues.issue("ynd.link.node_id.range", "node_id does not fit the 16-bit field", path=f"{link_path}.node_id")
             if node.junction is None:
                 continue
             junction = node.junction
             if heightmap_cursor > 0xFFFF:
-                issues.append(f"{path}.junction heightmap offset exceeds 16 bits")
+                issues.issue("ynd.junction.heightmap_offset.range", "junction heightmap offset exceeds 16 bits", path=f"{path}.junction.heightmap")
             if not 0 <= int(junction.heightmap_dim_x) <= 0xFF:
-                issues.append(f"{path}.junction.heightmap_dim_x exceeds 8 bits")
+                issues.issue("ynd.junction.heightmap_dim_x.range", "heightmap_dim_x exceeds 8 bits", path=f"{path}.junction.heightmap_dim_x")
             if not 0 <= int(junction.heightmap_dim_y) <= 0xFF:
-                issues.append(f"{path}.junction.heightmap_dim_y exceeds 8 bits")
+                issues.issue("ynd.junction.heightmap_dim_y.range", "heightmap_dim_y exceeds 8 bits", path=f"{path}.junction.heightmap_dim_y")
             junction_values = (
                 round(junction.max_z * 32.0),
                 round(junction.position[0] * 4.0),
@@ -669,21 +671,20 @@ class Ynd:
                 round(junction.min_z * 32.0),
             )
             if any(not -0x8000 <= value <= 0x7FFF for value in junction_values):
-                issues.append(f"{path}.junction coordinates exceed signed 16-bit storage")
+                issues.issue("ynd.junction.coordinates.range", "junction coordinates exceed signed 16-bit storage", path=f"{path}.junction")
             heightmap_cursor += len(junction.heightmap)
         return issues
 
-    def validate(self) -> list[str]:
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
         issues = self.validate_storage_limits()
         if self.version != 1:
-            issues.append("YND version must be 1")
-        for node in self.nodes:
-            if len(node.links) > 31:
-                issues.append(f"Node {node.node_id} exceeds the 31-link limit encoded by LinkCountFlags")
+            issues.issue("ynd.version.unsupported", "YND version must be 1", path="version")
+        for index, node in enumerate(self.nodes):
             if node.junction is not None:
                 expected = node.junction.heightmap_dim_x * node.junction.heightmap_dim_y
                 if expected != len(node.junction.heightmap):
-                    issues.append(f"Node {node.node_id} has a junction heightmap size mismatch")
+                    issues.issue("ynd.junction.heightmap.count", f"Node {node.node_id} has a junction heightmap size mismatch", path=f"nodes[{index}].junction.heightmap")
         return issues
 
     def to_bytes(self) -> bytes:
