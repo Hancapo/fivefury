@@ -27,7 +27,10 @@ from .runtime import (
     check_cutscene_resolution_cancelled,
 )
 from .subtitles import _resolve_subtitle_dictionaries
-from .vehicles import _resolve_vehicle_appearances
+from .vehicles import (
+    _resolve_vehicle_appearances,
+    _resolve_vehicle_high_detail_models,
+)
 
 if TYPE_CHECKING:
     from ...cache import GameFileCache
@@ -71,6 +74,13 @@ def resolve_cutscene_assets(
         with active_trace.span("bindings"):
             bindings = _resolve_bindings(
                 cache, scene, issues, cancellation=cancellation
+            )
+        with active_trace.span("vehicle_models"):
+            _resolve_vehicle_high_detail_models(
+                cache,
+                bindings,
+                issues,
+                cancellation=cancellation,
             )
         with active_trace.span("vehicle_appearances"):
             _resolve_vehicle_appearances(

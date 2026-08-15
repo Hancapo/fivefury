@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ...authoring import DiagnosticSeverity
+from ...gamefile import GameFileType
 from ..payloads import CutVehicleVariationPayload
+from .common import _load_file, _source_rank
 from .models import CutsceneResolveIssue, ResolvedCutBinding
 from .runtime import (
     CutsceneResolutionCancellation,
@@ -11,8 +13,58 @@ from .runtime import (
 )
 
 if TYPE_CHECKING:
-    from ...cache import GameFileCache
+    from ...cache import AssetRecord, GameFileCache
+    from ...gamefile import GameFile
     from ..scene import CutScene
+
+
+def _resolve_vehicle_high_detail_models(
+    cache: GameFileCache,
+    bindings: dict[int, ResolvedCutBinding],
+    issues: list[CutsceneResolveIssue],
+    *,
+    cancellation: CutsceneResolutionCancellation | None = None,
+) -> None:
+    assets_by_stem: dict[str, AssetRecord | None] = {}
+    files_by_asset: dict[int, GameFile | None] = {}
+    for object_id, resolved in bindings.items():
+        check_cutscene_resolution_cancelled(cancellation)
+        if resolved.binding.role != "vehicle":
+            continue
+        base_asset = resolved.assets.get(GameFileType.YFT)
+        if base_asset is None:
+            continue
+        companion_stem = f"{base_asset.stem.casefold()}_hi"
+        if companion_stem not in assets_by_stem:
+            candidates = (
+                asset
+                for asset in cache.find_assets(
+                    companion_stem,
+                    kind=GameFileType.YFT,
+                )
+                if asset.stem.casefold() == companion_stem
+            )
+            assets_by_stem[companion_stem] = min(
+                candidates,
+                key=_source_rank,
+                default=None,
+            )
+        asset = assets_by_stem[companion_stem]
+        if asset is None:
+            continue
+        if asset.id not in files_by_asset:
+            files_by_asset[asset.id] = _load_file(
+                cache,
+                asset,
+                issues,
+                object_id=object_id,
+                issue_code="binding.vehicle_high_detail_invalid",
+            )
+        game_file = files_by_asset[asset.id]
+        if game_file is None:
+            continue
+        resolved.high_detail_model_asset = asset
+        resolved.high_detail_model_file = game_file
 
 
 def _vehicle_variations(scene: CutScene) -> dict[int, CutVehicleVariationPayload]:
