@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Axis-aware collision discs and declarative vehicle-wheel bounds.
+
 ## [0.4.10] - 2026-08-16
 
 ### Added
