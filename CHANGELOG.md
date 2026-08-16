@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-08-16
+
 ### Breaking Changes
 
 - Vehicle metadata flags and repeated IK offsets now use lossless typed containers.
