@@ -7,6 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Strict YTD mip-chain, payload-size, descriptor-limit, and target-format validation.
+
+### Fixed
+
+- Enhanced YTD authoring now emits retail-compatible runtime texture descriptors for multi-level textures.
+
 ## [0.4.8] - 2026-08-15
 
 ### Added

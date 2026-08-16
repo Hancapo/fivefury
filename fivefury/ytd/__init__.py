@@ -37,6 +37,7 @@ from .defs import (
     TextureUsage,
     _is_block_compressed,
     _row_pitch,
+    _total_texture_block_count,
     coerce_texture_usage,
     pack_usage_data,
     unpack_usage_data,
@@ -280,15 +281,12 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
 
         off = textures_offset + (_ENHANCED_TEX_SIZE * index)
         block_stride = 4 if not _is_block_compressed(texture.format) else _BLOCK_BYTES[texture.format]
-        block_count = 0
-        width = texture.width
-        height = texture.height
-        for _ in range(texture.mip_count):
-            block_w = max(1, (width + (3 if _is_block_compressed(texture.format) else 0)) // (4 if _is_block_compressed(texture.format) else 1))
-            block_h = max(1, (height + (3 if _is_block_compressed(texture.format) else 0)) // (4 if _is_block_compressed(texture.format) else 1))
-            block_count += block_w * block_h
-            width = max(1, width // 2)
-            height = max(1, height // 2)
+        block_count = _total_texture_block_count(
+            texture.width,
+            texture.height,
+            texture.format,
+            texture.mip_count,
+        )
 
         struct.pack_into("<Q", vbuf, off + 0x00, profile.texture_vft)
         struct.pack_into("<II", vbuf, off + 0x08, block_count, block_stride)
