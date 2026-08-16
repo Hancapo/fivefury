@@ -4,6 +4,7 @@ import dataclasses
 import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from fivefury import GameTarget
@@ -55,6 +56,45 @@ _PANE_NAMES = (
 )
 _ENHANCED_ROOT_VALUE = os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH")
 _ENHANCED_ROOT = Path(_ENHANCED_ROOT_VALUE) if _ENHANCED_ROOT_VALUE else None
+
+
+def _window_projection(window) -> np.ndarray:
+    return np.asarray(window.basis, dtype=np.float64).reshape((4, 4)).T
+
+
+def _project_points(window, points) -> np.ndarray:
+    values = np.asarray(points, dtype=np.float64)
+    homogeneous = np.column_stack((values, np.ones(len(values), dtype=np.float64)))
+    projected = (_window_projection(window) @ homogeneous.T).T
+    return projected[:, :3] / projected[:, 3, None]
+
+
+def _outline_corners(window) -> np.ndarray:
+    raster = np.asarray(
+        (
+            (0.0, 0.0, 0.0, 1.0),
+            (float(window.column_count), 0.0, 0.0, 1.0),
+            (float(window.column_count), float(window.row_count), 0.0, 1.0),
+            (0.0, float(window.row_count), 0.0, 1.0),
+        ),
+        dtype=np.float64,
+    )
+    projected = (np.linalg.inv(_window_projection(window)) @ raster.T).T
+    return projected[:, :3] / projected[:, 3, None]
+
+
+def _assert_projection_contains_points(window, points) -> None:
+    values = np.asarray(points, dtype=np.float64)
+    projected = _project_points(window, values)
+    assert np.all(projected[:, 0] >= -1e-5)
+    assert np.all(projected[:, 0] <= window.column_count + 1e-5)
+    assert np.all(projected[:, 1] >= -1e-5)
+    assert np.all(projected[:, 1] <= window.row_count + 1e-5)
+    assert np.allclose(projected[:, 2], 0.0, atol=1e-5)
+
+    outline = _outline_corners(window)
+    assert np.all(values.min(axis=0) >= outline.min(axis=0) - 1e-5)
+    assert np.all(values.max(axis=0) <= outline.max(axis=0) + 1e-5)
 
 
 def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
@@ -175,6 +215,11 @@ def test_vehicle_glass_builder_derives_six_deterministic_windows() -> None:
     assert mesh.blend_indices == original_indices
     assert mesh.bone_ids == original_palette
     assert validate_yft_vehicle_glass(source).valid
+    for pane_index, window in enumerate(result.windows.windows):
+        _assert_projection_contains_points(
+            window,
+            mesh.positions[pane_index * 4 : pane_index * 4 + 4],
+        )
 
     previous = bytes(
         value
@@ -289,6 +334,16 @@ def test_retail_enhanced_jester_vehicle_glass_uses_polygon_materials() -> None:
     assert source.vehicle_glass_windows is not None
     assert len(source.vehicle_glass_windows.windows) == 6
     assert validate_yft_vehicle_glass(source).valid
+    for window in source.vehicle_glass_windows.windows:
+        expected = np.asarray(
+            (
+                (0.0, 0.0, 0.0),
+                (float(window.column_count), 0.0, 0.0),
+                (float(window.column_count), float(window.row_count), 0.0),
+                (0.0, float(window.row_count), 0.0),
+            )
+        )
+        assert np.allclose(_project_points(window, _outline_corners(window)), expected)
 
 
 def test_vehicle_glass_builder_rejects_overlap_without_mutation() -> None:
@@ -315,7 +370,7 @@ def test_vehicle_glass_builder_rejects_overlap_without_mutation() -> None:
 
 @pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
 def test_vehicle_glass_builder_round_trips_yft(game: GameTarget) -> None:
-    source, _mesh, assignments = _vehicle_fragment(game)
+    source, mesh, assignments = _vehicle_fragment(game)
     result = source.recalculate_vehicle_glass(
         assignments,
         game=game,
@@ -339,6 +394,11 @@ def test_vehicle_glass_builder_round_trips_yft(game: GameTarget) -> None:
     assert rebuilt.vehicle_glass_windows is not None
     assert len(rebuilt.vehicle_glass_windows.windows) == 6
     assert validate_yft_vehicle_glass(rebuilt).valid
+    for pane_index, window in enumerate(rebuilt.vehicle_glass_windows.windows):
+        _assert_projection_contains_points(
+            window,
+            mesh.positions[pane_index * 4 : pane_index * 4 + 4],
+        )
 
 
 def test_vehicle_glass_builder_rejects_target_version_mismatch() -> None:

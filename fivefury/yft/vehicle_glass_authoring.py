@@ -486,11 +486,13 @@ def _window_from_geometry(
     row_matrix[2, :3] = projection.axis_z
     row_matrix[0, 3] = (
         offset
+        + 0.5 * scale[0]
         - column_first
         - projection.centre[0] * scale[0] / (projection.extent[0] * 2.0)
     )
     row_matrix[1, 3] = (
         offset
+        + 0.5 * scale[1]
         - row_first
         - projection.centre[1] * scale[1] / (projection.extent[1] * 2.0)
     )
