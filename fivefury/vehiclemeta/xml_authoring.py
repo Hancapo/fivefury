@@ -8,7 +8,27 @@ from enum import IntEnum
 from typing import Any
 
 from ..metahash import MetaHash
-from .carcols import VehicleCarCols, VehicleModelColor, VehiclePlateTexture
+from .carcols import (
+    VehicleCarCols,
+    VehicleCorona,
+    VehicleLight,
+    VehicleMetallicSetting,
+    VehicleModelColor,
+    VehicleModKit,
+    VehiclePlates,
+    VehiclePlateTexture,
+    VehicleSirenLight,
+    VehicleVariationGlobalData,
+    VehicleWheel,
+    VehicleWindowColor,
+    VehicleXenonLightColor,
+)
+from .enums import (
+    VehicleExtraFlag,
+    VehicleMetaEnum,
+    vehicle_extra_flag_text,
+    vehicle_model_flag_text,
+)
 from .handling import HandlingData, HandlingDataManager, HandlingSubData
 from .variations import (
     LicensePlateProbability,
@@ -16,7 +36,14 @@ from .variations import (
     VehicleModelInfoVariation,
     VehicleVariation,
 )
-from .vehicles import VehicleInitData, VehicleInitDataList
+from .vehicles import (
+    VehicleDoorStiffness,
+    VehicleInitData,
+    VehicleInitDataList,
+    VehicleMobilePhoneSeatOffset,
+    VehicleRagdollThreshold,
+    VehicleVfxExtra,
+)
 
 _VEHICLE_TAGS = {
     "model_name": "modelName",
@@ -55,6 +82,8 @@ _VEHICLE_TAGS = {
     "hd_texture_distance": "HDTextureDist",
     "max_same_color": "maxNumOfSameColor",
     "max_number": "maxNum",
+    "visible_spawn_distance_scale": "visibleSpawnDistScale",
+    "weapon_force_multiplier": "weaponForceMult",
     "vehicle_type": "type",
     "additional_trailers": "additionalTrailers",
     "extra_includes": "extraIncludes",
@@ -189,6 +218,69 @@ _SPECIAL_TAGS = {
 }
 
 _VECTOR_NAMES = ("x", "y", "z", "w")
+_MODEL_TAGS = {
+    VehicleCorona: {
+        "far_size": "size_far",
+        "far_intensity": "intensity_far",
+        "count": "numCoronas",
+        "spacing": "distBetweenCoronas",
+        "far_spacing": "distBetweenCoronas_far",
+        "z_bias": "zBias",
+        "pull_in": "pullCoronaIn",
+    },
+    VehicleLight: {
+        "falloff_max": "falloffMax",
+        "falloff_exponent": "falloffExponent",
+        "inner_cone_angle": "innerConeAngle",
+        "outer_cone_angle": "outerConeAngle",
+        "emissive_boost": "emmissiveBoost",
+        "mirror_texture": "mirrorTexture",
+    },
+    VehicleMetallicSetting: {
+        "specular_intensity": "specInt",
+        "specular_falloff": "specFalloff",
+        "specular_fresnel": "specFresnel",
+    },
+    VehiclePlates: {"textures": "Textures"},
+    VehicleVariationGlobalData: {
+        "xenon_light_color": "xenonLightColor",
+        "xenon_corona_color": "xenonCoronaColor",
+        "light_intensity_multiplier": "xenonLightIntensityModifier",
+        "corona_intensity_multiplier": "xenonCoronaIntensityModifier",
+    },
+    VehicleDoorStiffness: {
+        "door": "doorId",
+        "multiplier": "stiffnessMult",
+    },
+    VehicleMobilePhoneSeatOffset: {
+        "offset": "Offset",
+        "seat_index": "SeatIndex",
+    },
+    VehicleRagdollThreshold: {
+        "min_component": "MinComponent",
+        "max_component": "MaxComponent",
+        "multiplier": "ThresholdMult",
+    },
+    VehicleVfxExtra: {
+        "extras": "ptFxExtras",
+        "name": "ptFxName",
+        "offset": "ptFxOffset",
+        "range": "ptFxRange",
+        "speed_evolution_min": "ptFxSpeedEvoMin",
+        "speed_evolution_max": "ptFxSpeedEvoMax",
+    },
+}
+_COLOR_FIELDS = {
+    VehicleCorona: {"color"},
+    VehicleInitData: {"diffuse_tint"},
+    VehicleLight: {"color"},
+    VehicleModelColor: {"color"},
+    VehiclePlateTexture: {"font_color", "outline_color"},
+    VehicleSirenLight: {"color"},
+    VehicleVariationGlobalData: {"xenon_light_color", "xenon_corona_color"},
+    VehicleWindowColor: {"color"},
+    VehicleXenonLightColor: {"light_color", "corona_color"},
+}
 
 
 def _camel(name: str) -> str:
@@ -197,6 +289,8 @@ def _camel(name: str) -> str:
 
 
 def _field_tag(model: Any, name: str) -> str:
+    if tag := _MODEL_TAGS.get(type(model), {}).get(name):
+        return tag
     if isinstance(model, VehicleInitData):
         return _VEHICLE_TAGS.get(name, _camel(name))
     if isinstance(model, HandlingData):
@@ -205,24 +299,33 @@ def _field_tag(model: Any, name: str) -> str:
         return "colorName"
     if isinstance(model, VehiclePlateTexture) and name == "name":
         return "TextureSetName"
+    if isinstance(model, VehicleModKit) and name == "name":
+        return "kitName"
+    if isinstance(model, VehicleWheel) and name == "name":
+        return "wheelName"
     return _SPECIAL_TAGS.get(name, _camel(name))
 
 
 def _scalar_text(value: Any) -> str:
     if isinstance(value, MetaHash):
         return str(value)
+    if isinstance(value, VehicleMetaEnum):
+        return value.token
     if isinstance(value, IntEnum):
         return str(int(value))
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
-        return format(value, ".9g")
+        retail = f"{value:.6f}"
+        return retail if float(retail) == value else format(value, ".9g")
     return str(value)
 
 
 def _append_scalar(parent: ET.Element, tag: str, value: Any) -> ET.Element:
     element = ET.SubElement(parent, tag)
-    if isinstance(value, (bool, int, float, IntEnum)):
+    if isinstance(value, VehicleMetaEnum):
+        element.text = value.token
+    elif isinstance(value, (bool, int, float, IntEnum)):
         element.set("value", _scalar_text(value))
     else:
         text = _scalar_text(value)
@@ -240,13 +343,23 @@ def _append_vector(parent: ET.Element, tag: str, value: Sequence[Any]) -> ET.Ele
 
 def _append_item(container: ET.Element, value: Any) -> None:
     item = ET.SubElement(container, "Item")
-    if dataclasses.is_dataclass(value):
-        if isinstance(value, HandlingSubData):
-            item.set("type", value.TYPE_NAME)
+    if value is None:
+        item.set("type", "NULL")
+    elif isinstance(value, Mapping):
+        if type_name := value.get("__type__", value.get("type", "")):
+            item.set("type", str(type_name))
+        _append_mapping(item, value)
+    elif dataclasses.is_dataclass(value):
+        if type_name := getattr(value, "TYPE_NAME", ""):
+            item.set("type", type_name)
         _append_model_fields(item, value)
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         for nested in value:
             _append_item(item, nested)
+    elif isinstance(value, VehicleMetaEnum):
+        item.text = value.token
+    elif isinstance(value, VehicleExtraFlag):
+        item.text = vehicle_extra_flag_text(value)
     elif isinstance(value, (bool, int, float, IntEnum)):
         item.set("value", _scalar_text(value))
     else:
@@ -260,6 +373,18 @@ def _append_sequence(parent: ET.Element, tag: str, values: Sequence[Any]) -> ET.
     for value in values:
         _append_item(container, value)
     return container
+
+
+def _append_array(
+    parent: ET.Element,
+    tag: str,
+    values: Sequence[Any],
+    *,
+    content: str,
+) -> ET.Element:
+    element = ET.SubElement(parent, tag, {"content": content})
+    element.text = " ".join(_scalar_text(value) for value in values) or None
+    return element
 
 
 def _append_mapping(parent: ET.Element, values: Mapping[str, Any]) -> None:
@@ -288,8 +413,7 @@ def _append_value(parent: ET.Element, tag: str, value: Any) -> None:
 
 
 def _append_color_indices(parent: ET.Element, value: VehicleColorIndices) -> None:
-    indices = ET.SubElement(parent, "indices", {"content": "char_array"})
-    indices.text = " ".join(str(index) for index in value.indices)
+    _append_array(parent, "indices", value.indices, content="char_array")
     _append_sequence(parent, "liveries", value.liveries)
 
 
@@ -315,12 +439,39 @@ def _append_model_fields(parent: ET.Element, model: Any) -> None:
         if name == "raw":
             continue
         value = getattr(model, name)
+        if isinstance(model, LicensePlateProbability):
+            _append_value(parent, "Name" if name == "name" else "Value", value)
+            continue
+        if isinstance(model, VehicleCorona) and name == "rotation":
+            for tag, component in zip(
+                ("xRotation", "yRotation", "zRotation"), value, strict=True
+            ):
+                _append_scalar(parent, tag, component)
+            continue
+        if name in _COLOR_FIELDS.get(type(model), ()):
+            element = ET.SubElement(parent, _field_tag(model, name))
+            element.set("value", f"0x{int(value) & 0xFFFFFFFF:08X}")
+            continue
         if isinstance(model, VehicleVariation) and name == "plate_probabilities":
             _append_plate_probabilities(parent, value)
             continue
         if isinstance(model, VehicleInitData) and name == "first_person_ik_offsets":
-            for semantic_name, offset in value.items():
-                _append_vector(parent, _IK_TAGS[semantic_name], offset)
+            for semantic_name, offsets in value.items():
+                for offset in offsets:
+                    _append_vector(parent, _IK_TAGS[semantic_name], offset)
+            continue
+        if isinstance(model, VehicleInitData) and name == "lod_distances":
+            _append_array(parent, "lodDistances", value, content="float_array")
+            continue
+        if isinstance(model, VehicleInitData) and name == "flags":
+            flags = ET.SubElement(parent, "flags")
+            flags.text = vehicle_model_flag_text(value) or None
+            continue
+        if (isinstance(model, VehicleInitData) and name == "required_extras") or (
+            isinstance(model, VehicleVfxExtra) and name == "extras"
+        ):
+            flags = ET.SubElement(parent, _field_tag(model, name))
+            flags.text = vehicle_extra_flag_text(value) or None
             continue
         _append_value(parent, _field_tag(model, name), value)
 

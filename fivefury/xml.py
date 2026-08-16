@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterable
 from copy import deepcopy
@@ -63,7 +64,9 @@ def children_by_name(element: ET.Element, name: str) -> list[ET.Element]:
 
 def descendant_by_name(element: ET.Element, name: str) -> ET.Element | None:
     target = name.lower()
-    return next((child for child in element.iter() if child.tag.lower() == target), None)
+    return next(
+        (child for child in element.iter() if child.tag.lower() == target), None
+    )
 
 
 def element_text(element: ET.Element | None, default: str = "") -> str:
@@ -72,6 +75,15 @@ def element_text(element: ET.Element | None, default: str = "") -> str:
 
 def element_value(element: ET.Element | None, default: str = "") -> str:
     return default if element is None else element.attrib.get("value", default)
+
+
+_MISPLACED_NEGATIVE_FRACTION = re.compile(r"0\.(-\d+)")
+
+
+def _xml_number_text(value: str) -> str:
+    value = value.removeprefix("=")
+    match = _MISPLACED_NEGATIVE_FRACTION.fullmatch(value)
+    return f"-0.{match.group(1)[1:]}" if match is not None else value
 
 
 def _xml_scalar(value: str) -> str | int | float | bool:
@@ -83,7 +95,7 @@ def _xml_scalar(value: str) -> str | int | float | bool:
         return int(text, 0)
     except ValueError:
         try:
-            return float(text)
+            return float(_xml_number_text(text))
         except ValueError:
             return text
 
@@ -98,11 +110,19 @@ def element_data(element: ET.Element) -> object:
         return _xml_scalar(element.attrib["value"])
     children = list(element)
     if not children:
-        vector_names = tuple(name for name in ("x", "y", "z", "w") if name in element.attrib)
+        if element.attrib.get("type", "").casefold() == "null":
+            return None
+        vector_names = tuple(
+            name for name in ("x", "y", "z", "w") if name in element.attrib
+        )
         if vector_names:
-            return tuple(float(element.attrib[name]) for name in vector_names)
+            return tuple(
+                float(_xml_number_text(element.attrib[name])) for name in vector_names
+            )
         if element.attrib.get("content", "").casefold().endswith("_array"):
             return [_xml_scalar(item) for item in (element.text or "").split()]
+        if type_name := element.attrib.get("type"):
+            return {"__type__": type_name}
         return _xml_scalar(element.text or "")
     if all(child.tag.rsplit("}", 1)[-1].casefold() == "item" for child in children):
         return [element_data(child) for child in children]
@@ -115,7 +135,7 @@ def element_data(element: ET.Element) -> object:
         value = element_data(child)
         if name not in result:
             result[name] = value
-        elif _is_empty_xml_data(value):
+        elif result[name] == value or _is_empty_xml_data(value):
             continue
         elif _is_empty_xml_data(result[name]):
             result[name] = value
@@ -181,7 +201,9 @@ def child_item_texts(element: ET.Element, name: str) -> list[str]:
     return item_texts(child_by_name(element, name))
 
 
-def child_item_values(element: ET.Element, name: str, factory: Callable[[str], T]) -> list[T]:
+def child_item_values(
+    element: ET.Element, name: str, factory: Callable[[str], T]
+) -> list[T]:
     return [factory(item) for item in child_item_texts(element, name)]
 
 
@@ -199,7 +221,9 @@ def append_value(parent: ET.Element, tag: str, value: object) -> ET.Element:
     return element
 
 
-def append_items(parent: ET.Element, tag: str, items: Iterable[object], *, omit_empty: bool = False) -> ET.Element | None:
+def append_items(
+    parent: ET.Element, tag: str, items: Iterable[object], *, omit_empty: bool = False
+) -> ET.Element | None:
     values = list(items)
     if omit_empty and not values:
         return None
@@ -209,7 +233,9 @@ def append_items(parent: ET.Element, tag: str, items: Iterable[object], *, omit_
     return element
 
 
-def append_element_items(parent: ET.Element, tag: str, items: Iterable[ET.Element]) -> ET.Element:
+def append_element_items(
+    parent: ET.Element, tag: str, items: Iterable[ET.Element]
+) -> ET.Element:
     element = ET.SubElement(parent, tag)
     for item in items:
         item.tag = "Item"
@@ -219,7 +245,9 @@ def append_element_items(parent: ET.Element, tag: str, items: Iterable[ET.Elemen
 
 def bool_text(value: object) -> str:
     if isinstance(value, str):
-        return "true" if value.strip().lower() in {"1", "true", "yes", "on"} else "false"
+        return (
+            "true" if value.strip().lower() in {"1", "true", "yes", "on"} else "false"
+        )
     return "true" if bool(value) else "false"
 
 
@@ -242,7 +270,9 @@ def parse_flag_names(enum_type: type[IntFlag], text: str) -> IntFlag:
 def flag_text(flags: IntFlag) -> str:
     if int(flags) == 0:
         return ""
-    return "|".join(flag.name for flag in type(flags) if flag in flags and int(flag) != 0)
+    return "|".join(
+        flag.name for flag in type(flags) if flag in flags and int(flag) != 0
+    )
 
 
 def element_xml(element: ET.Element) -> str:
