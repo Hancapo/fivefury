@@ -5,11 +5,16 @@ from pathlib import Path
 
 from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
+from ..common import atomic_write_bytes
+from ..game_target import GameTarget, coerce_game_target
 from .defs import (
+    _FORMAT_TO_DX9,
+    _FORMAT_TO_RSC8,
     TextureFormat,
     TextureUsage,
     _build_dds_bytes,
     _build_mip_info,
+    _total_texture_block_count,
     coerce_texture_usage,
 )
 
@@ -52,7 +57,7 @@ class Texture:
             width=int(width),
             height=int(height),
             format=TextureFormat(format),
-            mip_count=max(1, int(mip_count)),
+            mip_count=int(mip_count),
             data=bytes(data),
             mip_offsets=tuple(int(value) for value in offsets),
             mip_sizes=tuple(int(value) for value in sizes),
@@ -64,20 +69,79 @@ class Texture:
     def format_name(self) -> str:
         return self.format.name
 
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        del context
+        report = ValidationReport()
+        if not self.name:
+            report.issue("ytd.texture.name.empty", "Texture name cannot be empty", path="name")
+        if self.width <= 0 or self.height <= 0:
+            report.issue(
+                "ytd.texture.dimensions.invalid",
+                f"Texture dimensions must be positive, got {self.width}x{self.height}",
+                path="dimensions",
+            )
+        if self.mip_count <= 0 or self.mip_count > 0xFF:
+            report.issue(
+                "ytd.texture.mips.count.invalid",
+                f"Mip count must fit an unsigned byte, got {self.mip_count}",
+                path="mip_count",
+            )
+        if self.width > 0 and self.height > 0 and self.mip_count > max(self.width, self.height).bit_length():
+            report.issue(
+                "ytd.texture.mips.count.exceeds_dimensions",
+                f"Mip count {self.mip_count} exceeds the chain for {self.width}x{self.height}",
+                path="mip_count",
+            )
+        try:
+            texture_format = TextureFormat(self.format)
+        except ValueError:
+            report.issue(
+                "ytd.texture.format.unsupported",
+                f"Unsupported texture format: {self.format}",
+                path="format",
+            )
+            return report
+        if self.width <= 0 or self.height <= 0 or self.mip_count <= 0:
+            return report
+
+        expected_offsets, expected_sizes = _build_mip_info(
+            self.width,
+            self.height,
+            texture_format,
+            self.mip_count,
+        )
+        if self.mip_offsets != tuple(expected_offsets):
+            report.issue(
+                "ytd.texture.mips.offsets.invalid",
+                "Mip offsets must describe one contiguous largest-to-smallest chain",
+                path="mip_offsets",
+            )
+        if self.mip_sizes != tuple(expected_sizes):
+            report.issue(
+                "ytd.texture.mips.sizes.invalid",
+                "Mip sizes do not match the texture dimensions and format",
+                path="mip_sizes",
+            )
+        expected_size = sum(expected_sizes)
+        if len(self.data) != expected_size:
+            report.issue(
+                "ytd.texture.data.size.invalid",
+                f"Texture data has {len(self.data)} bytes; expected {expected_size}",
+                path="data",
+            )
+        return report
+
     def to_dds_bytes(self) -> bytes:
         return _build_dds_bytes(self)
 
     def save_dds(self, path: str | Path) -> Path:
-        target = Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(self.to_dds_bytes())
-        return target
+        return atomic_write_bytes(path, self.to_dds_bytes())
 
 
 @dataclasses.dataclass(slots=True)
 class Ytd:
     textures: list[Texture] = dataclasses.field(default_factory=list)
-    game: str = "gta5"
+    game: str | GameTarget = GameTarget.GTA5
 
     def __len__(self) -> int:
         return len(self.textures)
@@ -124,9 +188,10 @@ class Ytd:
         self.textures = deduped
         return self
 
-    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
-        del context
+    def _validate_for_target(self, target: GameTarget) -> ValidationReport:
         report = ValidationReport()
+        if not self.textures:
+            report.issue("ytd.textures.empty", "YTD must contain at least one texture", path="textures")
         seen: set[str] = set()
         for index, texture in enumerate(self.textures):
             lowered = texture.name.lower()
@@ -137,13 +202,44 @@ class Ytd:
                     path=f"textures[{index}].name",
                 )
             seen.add(lowered)
-            if texture.width <= 0 or texture.height <= 0:
+            report.extend(texture.validate(), path=f"textures[{index}]")
+            maximum_dimension = 0xFFFF if target is GameTarget.GTA5_ENHANCED else 0x7FFF
+            if texture.width > maximum_dimension or texture.height > maximum_dimension:
                 report.issue(
-                    "ytd.texture.dimensions.invalid",
-                    f"Texture dimensions must be positive, got {texture.width}x{texture.height}",
-                    path=f"textures[{index}]",
+                    "ytd.texture.dimensions.out_of_range",
+                    f"Texture dimensions exceed the {target.value} descriptor limit of {maximum_dimension}",
+                    path=f"textures[{index}].dimensions",
+                )
+            supported_formats = _FORMAT_TO_RSC8 if target is GameTarget.GTA5_ENHANCED else _FORMAT_TO_DX9
+            if texture.format not in supported_formats:
+                report.issue(
+                    "ytd.texture.format.target_unsupported",
+                    f"Texture format {texture.format!r} is not supported by {target.value}",
+                    path=f"textures[{index}].format",
+                )
+            if (
+                target is GameTarget.GTA5_ENHANCED
+                and texture.width > 0
+                and texture.height > 0
+                and texture.mip_count > 0
+                and _total_texture_block_count(
+                    texture.width,
+                    texture.height,
+                    texture.format,
+                    texture.mip_count,
+                )
+                > 0xFFFFFFFF
+            ):
+                report.issue(
+                    "ytd.texture.blocks.out_of_range",
+                    "Texture block count exceeds the Enhanced descriptor field",
+                    path=f"textures[{index}].data",
                 )
         return report
+
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        target = context.game if context is not None else coerce_game_target(self.game)
+        return self._validate_for_target(target)
 
     def names(self) -> list[str]:
         return [texture.name for texture in self.textures]
@@ -156,22 +252,19 @@ class Ytd:
             extracted.append(texture.save_dds(output_dir / f"{texture.name}.dds"))
         return extracted
 
-    def to_bytes(self, *, game: str | None = None) -> bytes:
+    def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
         from . import _build_gen9_ytd, _build_legacy_ytd
 
-        self.validate().raise_for_errors()
-        target_game = (game or self.game or "gta5").lower()
-        if target_game in {"gta5", "legacy"}:
+        target_game = coerce_game_target(game or self.game)
+        self._validate_for_target(target_game).raise_for_errors()
+        if target_game is GameTarget.GTA5:
             return _build_legacy_ytd(self.textures)
-        if target_game in {"gta5_enhanced", "gen9", "enhanced"}:
+        if target_game is GameTarget.GTA5_ENHANCED:
             return _build_gen9_ytd(self.textures)
-        raise ValueError(f"Unsupported YTD target game: {target_game}")
+        raise ValueError(f"Unsupported YTD target game: {target_game.value}")
 
-    def save(self, path: str | Path, *, game: str | None = None) -> Path:
-        target = Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(self.to_bytes(game=game))
-        return target
+    def save(self, path: str | Path, *, game: str | GameTarget | None = None) -> Path:
+        return atomic_write_bytes(path, self.to_bytes(game=game))
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview) -> Ytd:

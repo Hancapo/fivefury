@@ -335,6 +335,25 @@ def _total_mip_data_size(width: int, height: int, fmt: TextureFormat, mip_count:
     return total
 
 
+def _total_texture_block_count(
+    width: int,
+    height: int,
+    fmt: TextureFormat,
+    mip_count: int,
+) -> int:
+    total = 0
+    w = max(1, int(width))
+    h = max(1, int(height))
+    compressed = _is_block_compressed(fmt)
+    divisor = 4 if compressed else 1
+    rounding = 3 if compressed else 0
+    for _ in range(max(1, int(mip_count))):
+        total += ((w + rounding) // divisor) * ((h + rounding) // divisor)
+        w = max(1, w // 2)
+        h = max(1, h // 2)
+    return total
+
+
 def _build_mip_info(width: int, height: int, fmt: TextureFormat, mip_count: int) -> tuple[list[int], list[int]]:
     offsets: list[int] = []
     sizes: list[int] = []
@@ -441,6 +460,7 @@ __all__ = [
     "_resolve_legacy_format",
     "_row_pitch",
     "_total_mip_data_size",
+    "_total_texture_block_count",
     "coerce_texture_usage",
     "pack_usage_data",
     "unpack_usage_data",

@@ -20,7 +20,11 @@ from fivefury import (
     DlcSetupData,
     GameTarget,
     RpfArchive,
+    Texture,
+    TextureFormat,
+    TextureUsage,
     ValidationError,
+    Ytd,
     build_rsc7,
     create_dlc_folder_metadata,
     read_dlc_content,
@@ -33,6 +37,7 @@ from fivefury import (
     validate_dlc_pack,
     write_dlc_folder_metadata,
 )
+from fivefury.texture import total_mip_data_size
 
 SETUP_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <SSetupData>
@@ -501,3 +506,57 @@ def test_read_dlc_pack_closes_path_source(tmp_path) -> None:
 
     assert parsed.name == "my_pack"
     assert destination.is_file()
+
+
+def _enhanced_multimip_ytd() -> Ytd:
+    size = total_mip_data_size(512, 512, TextureFormat.BC1, 8)
+    texture = Texture.from_raw(
+        bytes((index * 29) & 0xFF for index in range(size)),
+        512,
+        512,
+        TextureFormat.BC1,
+        8,
+        name="head_diff_000_a_whi",
+        usage=TextureUsage.DIFFUSE,
+    )
+    return Ytd([texture], game=GameTarget.GTA5_ENHANCED)
+
+
+def test_ytd_rejects_invalid_mip_payload_before_replacing_destination(tmp_path) -> None:
+    ytd = _enhanced_multimip_ytd()
+    ytd.textures[0].data = ytd.textures[0].data[:-8]
+    destination = tmp_path / "head.ytd"
+    destination.write_bytes(b"existing")
+
+    with pytest.raises(ValidationError, match="ytd.texture.data.size.invalid"):
+        ytd.save(destination)
+
+    assert destination.read_bytes() == b"existing"
+
+
+def test_ytd_rejects_noncanonical_mip_offsets() -> None:
+    ytd = _enhanced_multimip_ytd()
+    ytd.textures[0].mip_offsets = (0,) * 8
+
+    with pytest.raises(ValidationError, match="ytd.texture.mips.offsets.invalid"):
+        ytd.to_bytes()
+
+
+def test_enhanced_multimip_ytd_packages_in_streamed_and_dlc_rpfs() -> None:
+    ytd_payload = _enhanced_multimip_ytd().to_bytes()
+    streamed = RpfArchive.empty("streamedpeds.rpf")
+    streamed.file("head_diff_000_a_whi.ytd", ytd_payload)
+
+    streamed_copy = RpfArchive.from_bytes(streamed.to_bytes(), name="streamedpeds.rpf")
+    streamed_entry = streamed_copy.find_entry("head_diff_000_a_whi.ytd")
+    assert streamed_entry is not None
+    assert streamed_copy.read_entry_standalone(streamed_entry) == ytd_payload
+
+    dlc = DlcPack("ped_textures", game=GameTarget.GTA5_ENHANCED)
+    dlc.file("x64/models/cdimages/streamedpeds.rpf", streamed.to_bytes())
+    dlc_copy = RpfArchive.from_bytes(dlc.to_rpf().to_bytes(), name="dlc.rpf", load_nested=True)
+    nested_entry = dlc_copy.find_entry(
+        "x64/models/cdimages/streamedpeds.rpf/head_diff_000_a_whi.ytd"
+    )
+    assert nested_entry is not None
+    assert dlc_copy.children[0].read_entry_standalone(nested_entry) == ytd_payload
