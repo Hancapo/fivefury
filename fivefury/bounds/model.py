@@ -1098,9 +1098,28 @@ class BoundGeometry(Bound):
             return self.materials[index]
         return None
 
+    def polygon_material_index(self, polygon: BoundPolygon | int) -> int | None:
+        if not isinstance(polygon, int) and polygon.material_index >= 0:
+            return int(polygon.material_index)
+        polygon_index = int(polygon) if isinstance(polygon, int) else polygon.index
+        if not 0 <= polygon_index < len(self.polygons):
+            return None
+        value = self.polygons[polygon_index]
+        if value.material_index >= 0:
+            return int(value.material_index)
+        if polygon_index < len(self.polygon_material_indices):
+            return int(self.polygon_material_indices[polygon_index])
+        return None
+
     def get_polygon_material(self, polygon: BoundPolygon | int) -> BoundMaterial | None:
-        poly = self.polygons[int(polygon)] if isinstance(polygon, int) else polygon
-        return self.get_material(poly.material_index)
+        material_index = self.polygon_material_index(polygon)
+        return self.get_material(material_index) if material_index is not None else None
+
+    def iter_polygon_materials(self) -> Iterator[BoundMaterial]:
+        for polygon_index in range(len(self.polygons)):
+            material = self.get_polygon_material(polygon_index)
+            if material is not None:
+                yield material
 
     @property
     def polygon_type_counts(self) -> dict[BoundPolygonType, int]:

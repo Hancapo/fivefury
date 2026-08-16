@@ -7,6 +7,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-08-16
+
+### Fixed
+
+- Vehicle-glass validation now resolves polygon materials in direct collision geometry.
+- Sparse skinning palettes now resolve local blend indices before skeleton indices.
+
 ## [0.4.14] - 2026-08-16
 
 ### Breaking Changes

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
+import os
+from pathlib import Path
+
 import pytest
 
 from fivefury import GameTarget
@@ -7,9 +11,15 @@ from fivefury.bounds import (
     BoundBox,
     BoundChild,
     BoundComposite,
+    BoundGeometry,
+    BoundMaterial,
     BoundMaterialType,
+    BoundTriangleChunk,
     BoundType,
+    build_geometry_bvh_from_chunk,
 )
+from fivefury.cache import GameFileCache
+from fivefury.gamefile import GameFileType
 from fivefury.rpf import RpfArchive
 from fivefury.ydr import (
     Ydr,
@@ -43,6 +53,8 @@ _PANE_NAMES = (
     "window_lr",
     "window_rr",
 )
+_ENHANCED_ROOT_VALUE = os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH")
+_ENHANCED_ROOT = Path(_ENHANCED_ROOT_VALUE) if _ENHANCED_ROOT_VALUE else None
 
 
 def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
@@ -187,6 +199,96 @@ def test_vehicle_glass_builder_derives_six_deterministic_windows() -> None:
     )
     assert changed.report.valid
     assert current != previous
+
+
+def test_vehicle_glass_validation_uses_direct_geometry_polygon_materials() -> None:
+    source, _mesh, assignments = _vehicle_fragment()
+    source.recalculate_vehicle_glass(
+        assignments,
+        game=GameTarget.GTA5_ENHANCED,
+    ).report.raise_for_errors()
+    geometry_bvh = build_geometry_bvh_from_chunk(
+        BoundTriangleChunk(
+            vertices=[
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0),
+                (0.0, 0.0, 1.0),
+            ],
+            triangles=[(0, 1, 2)],
+            material_indices=[1],
+        ),
+        materials=[
+            BoundMaterial(type=BoundMaterialType.DEFAULT),
+            BoundMaterial(type=BoundMaterialType.CAR_GLASS_WEAK),
+        ],
+    )
+    direct_glass = BoundGeometry(
+        **{
+            field.name: getattr(geometry_bvh, field.name)
+            for field in dataclasses.fields(BoundGeometry)
+        }
+    )
+    direct_glass.bound_type = BoundType.GEOMETRY
+    direct_glass.build()
+    composite = source.best_physics_lod.composite_bound
+    assert composite is not None
+    composite.children[0].bound = direct_glass
+
+    report = validate_yft_vehicle_glass(source)
+    rebuilt = read_yft(build_yft_bytes(source))
+
+    assert direct_glass.material_type is BoundMaterialType.DEFAULT
+    assert report.valid
+    assert validate_yft_vehicle_glass(rebuilt).valid
+
+
+def test_vehicle_glass_builder_resolves_sparse_palette_before_skeleton_index() -> None:
+    source, mesh, assignments = _vehicle_fragment()
+    original_palette = list(mesh.bone_ids)
+    mesh.bone_ids = [
+        original_palette[0],
+        original_palette[2],
+        original_palette[1],
+        *original_palette[3:],
+    ]
+    slot_by_bone = {bone_id: index for index, bone_id in enumerate(mesh.bone_ids)}
+    mesh.blend_indices = [
+        (slot_by_bone[original_palette[indices[0]]], 0, 0, 0)
+        for indices in mesh.blend_indices
+    ]
+
+    result = source.recalculate_vehicle_glass(
+        assignments,
+        game=GameTarget.GTA5_ENHANCED,
+    )
+
+    assert result.report.valid
+    assert len(result.windows.windows) == 6
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail vehicle-glass regression",
+)
+def test_retail_enhanced_jester_vehicle_glass_uses_polygon_materials() -> None:
+    assert _ENHANCED_ROOT is not None
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        game=GameTarget.GTA5_ENHANCED,
+        load_audio=False,
+        load_peds=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        asset = cache.get_asset("jester", kind=GameFileType.YFT)
+        assert asset is not None
+        game_file = cache.load_asset(asset)
+        assert game_file is not None
+        source = game_file.parsed
+
+    assert source.vehicle_glass_windows is not None
+    assert len(source.vehicle_glass_windows.windows) == 6
+    assert validate_yft_vehicle_glass(source).valid
 
 
 def test_vehicle_glass_builder_rejects_overlap_without_mutation() -> None:

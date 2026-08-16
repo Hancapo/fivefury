@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from ..authoring import ValidationReport
+from ..bounds import BoundGeometry
 from ..game_target import GameTarget, coerce_game_target
 from ..mesh_math import triangle_array
 from ..numeric import float64_rows
@@ -170,13 +171,28 @@ def _mesh_bone_index(mesh, bone: YdrBone, vertex_index: int) -> int | None:
     if len(active) != 1 or not math.isclose(active[0][1], 1.0, abs_tol=1e-5):
         return None
     binding = active[0][0]
-    if binding == int(bone.index):
-        return binding
-    if 0 <= binding < len(mesh.bone_ids):
+    if mesh.bone_ids:
+        if not 0 <= binding < len(mesh.bone_ids):
+            return None
         bone_id = int(mesh.bone_ids[binding])
         if bone_id in (int(bone.index), int(bone.tag)):
             return binding
-    return None
+        return None
+    return binding if binding in (int(bone.index), int(bone.tag)) else None
+
+
+def _bound_uses_car_glass_material(bound) -> bool:
+    if bound is None:
+        return False
+    if isinstance(bound, BoundGeometry):
+        polygon_materials = list(bound.iter_polygon_materials())
+        if polygon_materials:
+            return any(
+                material.name in _CAR_GLASS_MATERIAL_NAMES
+                for material in polygon_materials
+            )
+    material_type = getattr(bound, "material_type", None)
+    return getattr(material_type, "name", "") in _CAR_GLASS_MATERIAL_NAMES
 
 
 def _assigned_triangles(
@@ -753,9 +769,7 @@ def validate_yft_vehicle_glass(source) -> ValidationReport:
             and window.component_id < len(composite.active_children)
         ):
             bound = composite.active_children[window.component_id].bound
-        material_type = getattr(bound, "material_type", None)
-        material_name = getattr(material_type, "name", "")
-        if bound is None or material_name not in _CAR_GLASS_MATERIAL_NAMES:
+        if not _bound_uses_car_glass_material(bound):
             _issue(
                 report,
                 "yft.vehicle_glass.physics_material",
