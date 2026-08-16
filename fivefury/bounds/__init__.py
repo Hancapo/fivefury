@@ -31,6 +31,7 @@ from .materials import (
 from .model import (
     Bound,
     BoundAabb,
+    BoundAxis,
     BoundBox,
     BoundBVH,
     BoundBvh,
@@ -87,6 +88,7 @@ __all__ = [
     "MAX_BOUND_VERTICES_PER_CHILD",
     "Bound",
     "BoundAabb",
+    "BoundAxis",
     "BoundBVH",
     "BoundBox",
     "BoundBvh",

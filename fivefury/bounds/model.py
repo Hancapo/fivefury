@@ -29,6 +29,12 @@ class BoundType(enum.IntEnum):
     CLOTH = 15
 
 
+class BoundAxis(enum.IntEnum):
+    X = 0
+    Y = 1
+    Z = 2
+
+
 class BoundPolygonType(enum.IntEnum):
     TRIANGLE = 0
     SPHERE = 1
@@ -870,13 +876,70 @@ class BoundDisc(Bound):
         radius: float,
         *,
         thickness: float = 0.0,
-        **kwargs: float | tuple[float, float, float],
+        thickness_axis: BoundAxis = BoundAxis.Y,
+        material_index: int | BoundMaterialType = 0,
+        margin: float = 0.0,
+        ref_count: int = 1,
+        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        volume: float | None = None,
     ) -> BoundDisc:
-        return cls.from_center_size(center, (radius * 2.0, thickness, radius * 2.0), **kwargs)
+        resolved_axis = BoundAxis(thickness_axis)
+        size = [radius * 2.0] * 3
+        size[resolved_axis] = thickness
+        disc = cls.from_center_size(
+            center,
+            tuple(size),
+            material_index=material_index,
+            margin=margin,
+            ref_count=ref_count,
+            angular_inertia=angular_inertia,
+            volume=volume,
+        )
+        disc.sphere_radius = max(0.0, float(radius))
+        return disc
+
+    @classmethod
+    def vehicle_wheel(
+        cls,
+        center: tuple[float, float, float],
+        radius: float,
+        thickness: float,
+        *,
+        material_index: int | BoundMaterialType = 0,
+        ref_count: int = 1,
+    ) -> BoundDisc:
+        radius = float(radius)
+        thickness = float(thickness)
+        if not math.isfinite(radius) or radius <= 0.0:
+            raise ValueError("wheel radius must be a finite positive value")
+        if not math.isfinite(thickness) or thickness <= 0.0:
+            raise ValueError("wheel thickness must be a finite positive value")
+        return cls.from_center_radius(
+            center,
+            radius,
+            thickness=thickness,
+            thickness_axis=BoundAxis.X,
+            material_index=material_index,
+            margin=thickness * 0.5,
+            ref_count=ref_count,
+        ).build()
+
+    @property
+    def thickness_axis(self) -> BoundAxis:
+        extents = self.half_extents
+        return min(
+            (BoundAxis.Y, BoundAxis.X, BoundAxis.Z),
+            key=lambda axis: extents[axis],
+        )
+
+    @property
+    def radial_axes(self) -> tuple[BoundAxis, BoundAxis]:
+        return tuple(axis for axis in BoundAxis if axis is not self.thickness_axis)
 
     @property
     def radius(self) -> float:
-        return max(0.0, min(self.half_extents[0], self.half_extents[2]))
+        extents = self.half_extents
+        return max(0.0, min(extents[axis] for axis in self.radial_axes))
 
     @property
     def diameter(self) -> float:
@@ -884,7 +947,7 @@ class BoundDisc(Bound):
 
     @property
     def half_thickness(self) -> float:
-        return max(0.0, self.half_extents[1])
+        return max(0.0, self.half_extents[self.thickness_axis])
 
     @property
     def thickness(self) -> float:
@@ -1328,6 +1391,7 @@ class BoundComposite(Bound):
 __all__ = [
     'Bound',
     'BoundAabb',
+    'BoundAxis',
     'BoundBVH',
     'BoundBox',
     'BoundBvh',

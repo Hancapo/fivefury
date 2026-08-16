@@ -11,6 +11,7 @@ from fivefury import (
     DEFAULT_BOUND_MATERIAL_LIBRARY,
     YBN_VERSION,
     BoundAabb,
+    BoundAxis,
     BoundBox,
     BoundBVH,
     BoundBvh,
@@ -926,6 +927,36 @@ def test_bound_disc_from_center_radius_exposes_clear_shape_metrics() -> None:
     assert disc.half_thickness == 1.0
     assert disc.thickness == 2.0
     assert disc.material_index == 8
+
+
+def test_bound_disc_vehicle_wheel_matches_retail_comet5_metrics() -> None:
+    wheel = BoundDisc.vehicle_wheel(
+        (0.0, 0.0, 0.0),
+        0.3405,
+        0.267,
+    )
+
+    assert wheel.minimum == pytest.approx((-0.1335, -0.3405, -0.3405))
+    assert wheel.maximum == pytest.approx((0.1335, 0.3405, 0.3405))
+    assert wheel.thickness_axis is BoundAxis.X
+    assert wheel.radial_axes == (BoundAxis.Y, BoundAxis.Z)
+    assert wheel.radius == pytest.approx(0.3405)
+    assert wheel.half_thickness == pytest.approx(0.1335)
+    assert wheel.sphere_radius == pytest.approx(0.3405)
+    assert wheel.margin == pytest.approx(0.1335)
+    assert wheel.volume == pytest.approx(0.0972512886)
+    assert wheel.angular_inertia == pytest.approx(
+        (0.03492581, 0.057970125, 0.03492581)
+    )
+
+
+@pytest.mark.parametrize("radius, thickness", [(0.0, 0.2), (0.3, 0.0)])
+def test_bound_disc_vehicle_wheel_rejects_degenerate_dimensions(
+    radius: float,
+    thickness: float,
+) -> None:
+    with pytest.raises(ValueError, match="finite positive"):
+        BoundDisc.vehicle_wheel((0.0, 0.0, 0.0), radius, thickness)
 
 
 def test_bound_cylinder_from_center_radius_height_exposes_clear_shape_metrics() -> None:
