@@ -7,6 +7,20 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-08-16
+
+### Breaking Changes
+
+- `VehiclePackBuilder` now requires explicit setup metadata with a timestamp and load order.
+
+### Added
+
+- Platform-relative DLC archive authoring and mounted-registration resolution.
+
+### Fixed
+
+- Enhanced vehicle packs now use platform-relative streaming archives and explicit startup activation.
+
 ## [0.4.11] - 2026-08-16
 
 ### Added

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from fivefury import (
+    DlcDataFileContents,
     DlcDataFileType,
+    DlcSetupData,
     GameTarget,
     HandlingData,
     HandlingDataManager,
@@ -29,6 +32,7 @@ from fivefury import (
     read_vehicle_meta,
     read_yft,
     read_ytd,
+    validate_enhanced_vehicle_pack_layout,
 )
 from fivefury.authoring import ValidationError
 from fivefury.vehiclemeta import VehicleColorIndices
@@ -92,6 +96,11 @@ def _builder(*, game: GameTarget = GameTarget.GTA5_ENHANCED) -> VehiclePackBuild
         handling,
         variations,
         carcols,
+        DlcSetupData.compat_pack(
+            "testpack",
+            order=60,
+            time_stamp=datetime(2026, 8, 16, 12, 0, 0, tzinfo=UTC),
+        ),
         game=game,
     )
     builder.vehicle("testcar", _fragment("testcar"), textures=_textures("testcar"))
@@ -124,6 +133,26 @@ def test_vehicle_pack_roundtrips_enhanced_metadata_and_streamed_assets(
         "carcols.meta": DlcDataFileType.CARCOLS,
         "vehicles.rpf": DlcDataFileType.RPF,
     }
+    assert pack.setup is not None
+    assert pack.setup.order == 60
+    assert pack.setup.time_stamp == "16/08/2026 12:00:00"
+    stream_registration = next(
+        item
+        for item in pack.content.data_files
+        if item.file_type == DlcDataFileType.RPF
+    )
+    assert stream_registration.filename == (
+        "dlc_testpack:/%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
+    )
+    assert stream_registration.disabled is True
+    assert stream_registration.persistent is True
+    assert stream_registration.contents is None
+    startup = pack.content.content_change_sets[0]
+    assert startup.requires_loading_screen is False
+    assert {path.casefold() for path in startup.files_to_enable} == {
+        item.filename.casefold() for item in pack.content.data_files
+    }
+    assert pack.setup.content_change_set_groups[0].name == "GROUP_STARTUP"
     assert not any("_manifest.ymf" in item.filename for item in pack.content.data_files)
 
     archive = RpfArchive.from_path(output.paths.dlc_rpf, load_nested=True)
@@ -151,6 +180,43 @@ def test_vehicle_pack_roundtrips_enhanced_metadata_and_streamed_assets(
         )
     finally:
         archive.close()
+
+
+def test_vehicle_pack_rejects_legacy_literal_platform_layout() -> None:
+    builder = _builder()
+    pack = builder.build()
+    stream = next(
+        item
+        for item in pack.content.data_files
+        if item.file_type == DlcDataFileType.RPF
+    )
+    old_path = "x64/levels/gta5/vehicles/vehicles.rpf"
+    payload = pack.files.pop(str(builder.STREAMED_RPF))
+    pack.files[old_path] = payload
+    stream.filename = pack.path(old_path)
+    stream.contents = DlcDataFileContents.VEHICLES
+
+    report = validate_enhanced_vehicle_pack_layout(pack)
+
+    assert not report.valid
+    assert {
+        "vehicle.pack.layout.registrations.invalid",
+        "vehicle.pack.layout.stream.contents.invalid",
+        "vehicle.pack.layout.stream.file_missing",
+        "vehicle.pack.layout.stream.mount.invalid",
+    }.issubset({issue.code for issue in report})
+
+
+def test_vehicle_pack_requires_explicit_timestamp_and_load_order() -> None:
+    builder = _builder()
+    builder.setup = DlcSetupData.compat_pack("testpack")
+
+    report = builder.validate()
+
+    assert {
+        "vehicle.pack.layout.timestamp.required",
+        "vehicle.pack.layout.order.invalid",
+    }.issubset({issue.code for issue in report})
 
 
 def test_vehicle_pack_rejects_wrong_target_without_replacing_destination(
