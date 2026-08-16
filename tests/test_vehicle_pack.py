@@ -33,6 +33,7 @@ from fivefury import (
     read_yft,
     read_ytd,
     validate_enhanced_vehicle_pack_layout,
+    validate_vehicle_meta_xml,
 )
 from fivefury.authoring import ValidationError
 from fivefury.vehiclemeta import VehicleColorIndices
@@ -170,6 +171,7 @@ def test_vehicle_pack_roundtrips_enhanced_metadata_and_streamed_assets(
         ):
             entry = archive.find_entry(path)
             assert entry is not None
+            assert validate_vehicle_meta_xml(entry.read()).valid
             assert read_vehicle_meta(entry.read()).validate().valid
 
         yft_entry = archive.find_entry(output.paths.streamed_rpf / "testcar.yft")

@@ -5,6 +5,7 @@ from enum import IntEnum
 from typing import Any
 
 from ..authoring import BuildContext, DiagnosticSeverity, ValidationReport
+from ..game_target import GameTarget
 from ..metahash import MetaHash
 from .carcols import (
     VehicleCarCols,
@@ -18,6 +19,7 @@ from .enums import (
     VehicleDashboardType,
     VehicleDoor,
     VehicleModCameraPosition,
+    VehicleModelFlags,
     VehicleModKitType,
     VehicleModType,
     VehiclePlateType,
@@ -25,6 +27,8 @@ from .enums import (
     VehicleType,
     VehicleWheelType,
     VehicleWindow,
+    vehicle_extra_flag_text,
+    vehicle_model_flag_text,
 )
 from .handling import HandlingData, HandlingDataManager
 from .variations import (
@@ -33,7 +37,7 @@ from .variations import (
     VehicleModelInfoVariation,
     VehicleVariation,
 )
-from .vehicles import VehicleInitData, VehicleInitDataList
+from .vehicles import VehicleInitData, VehicleInitDataList, VehicleVfxExtra
 
 _ENUM_FIELDS = {
     "vehicle_type": VehicleType,
@@ -120,6 +124,7 @@ def _duplicate_identifiers(
     *,
     code: str,
     path: str,
+    severity: DiagnosticSeverity = DiagnosticSeverity.ERROR,
 ) -> None:
     seen: dict[str, int] = {}
     for index, value in enumerate(values):
@@ -131,12 +136,15 @@ def _duplicate_identifiers(
                 code,
                 f"Duplicate vehicle identifier: {value}",
                 path=f"{path}[{index}]",
+                severity=severity,
             )
         else:
             seen[key] = index
 
 
-def _asset_documents(context: BuildContext | None, document_type: type[Any]) -> tuple[Any, ...]:
+def _asset_documents(
+    context: BuildContext | None, document_type: type[Any]
+) -> tuple[Any, ...]:
     if context is None:
         return ()
     documents: list[Any] = []
@@ -211,17 +219,62 @@ def validate_vehicle_meta_model(
 ) -> ValidationReport:
     report = ValidationReport()
     if isinstance(model, VehicleInitData):
-        _identifier(report, model.model_name, code="vehicle.model_name.required", path="model_name")
-        _identifier(report, model.txd_name, code="vehicle.txd_name.required", path="txd_name")
-        _identifier(report, model.handling_id, code="vehicle.handling_id.required", path="handling_id")
+        _identifier(
+            report,
+            model.model_name,
+            code="vehicle.model_name.required",
+            path="model_name",
+        )
+        _identifier(
+            report, model.txd_name, code="vehicle.txd_name.required", path="txd_name"
+        )
+        _identifier(
+            report,
+            model.handling_id,
+            code="vehicle.handling_id.required",
+            path="handling_id",
+        )
         if len(model.lod_distances) > 8:
             report.issue(
                 "vehicle.lod_distances.limit",
                 "Vehicle LOD distance arrays cannot contain more than 8 entries",
                 path="lod_distances",
             )
+        try:
+            vehicle_model_flag_text(model.flags)
+        except (TypeError, ValueError) as exc:
+            report.issue(
+                "vehicle.flags.invalid",
+                str(exc),
+                path="flags",
+            )
+        if isinstance(model.flags, VehicleModelFlags):
+            for index, token in enumerate(model.flags.unknown_tokens):
+                report.issue(
+                    "vehicle.flags.token.unknown",
+                    f"Preserving unknown vehicle flag token {token!r}",
+                    path=f"flags[{index}]",
+                    severity=DiagnosticSeverity.WARNING,
+                )
+        extras = [("required_extras", model.required_extras)]
+        extras.extend(
+            (f"extra_includes[{index}]", value)
+            for index, value in enumerate(model.extra_includes)
+        )
+        for path, value in extras:
+            try:
+                vehicle_extra_flag_text(value)
+            except (TypeError, ValueError) as exc:
+                report.issue("vehicle.extras.invalid", str(exc), path=path)
+    elif isinstance(model, VehicleVfxExtra):
+        try:
+            vehicle_extra_flag_text(model.extras)
+        except (TypeError, ValueError) as exc:
+            report.issue("vehicle.extras.invalid", str(exc), path="extras")
     elif isinstance(model, HandlingData):
-        _identifier(report, model.name, code="vehicle.handling_name.required", path="name")
+        _identifier(
+            report, model.name, code="vehicle.handling_name.required", path="name"
+        )
         if model.mass <= 0.0:
             report.issue(
                 "vehicle.handling.mass.invalid",
@@ -229,12 +282,18 @@ def validate_vehicle_meta_model(
                 path="mass",
             )
     elif isinstance(model, VehicleVariation):
-        _identifier(report, model.model_name, code="vehicle.variation.model_name.required", path="model_name")
+        _identifier(
+            report,
+            model.model_name,
+            code="vehicle.variation.model_name.required",
+            path="model_name",
+        )
     elif isinstance(model, VehicleColorIndices):
-        if not 1 <= len(model.indices) <= 6:
+        maximum = 6 if context is not None and context.game is GameTarget.GTA5 else 7
+        if len(model.indices) > maximum:
             report.issue(
                 "vehicle.color.indices.limit",
-                "A vehicle color set must contain between 1 and 6 indices",
+                f"A vehicle color set cannot contain more than {maximum} indices",
                 path="indices",
             )
         for index, color_index in enumerate(model.indices):
@@ -264,11 +323,23 @@ def validate_vehicle_meta_model(
                 path="metallic_id",
             )
     elif isinstance(model, VehicleLightSettings) and not 0 <= model.id <= 0xFF:
-        report.issue("vehicle.light.id.out_of_range", "Light setting IDs must fit an unsigned byte", path="id")
+        report.issue(
+            "vehicle.light.id.out_of_range",
+            "Light setting IDs must fit an unsigned byte",
+            path="id",
+        )
     elif isinstance(model, VehicleSirenSettings) and not 0 <= model.id <= 0xFF:
-        report.issue("vehicle.siren.id.out_of_range", "Siren setting IDs must fit an unsigned byte", path="id")
+        report.issue(
+            "vehicle.siren.id.out_of_range",
+            "Siren setting IDs must fit an unsigned byte",
+            path="id",
+        )
     elif isinstance(model, VehicleModKit) and not 0 <= model.id <= 0xFFFF:
-        report.issue("vehicle.mod_kit.id.out_of_range", "Mod kit IDs must fit an unsigned short", path="id")
+        report.issue(
+            "vehicle.mod_kit.id.out_of_range",
+            "Mod kit IDs must fit an unsigned short",
+            path="id",
+        )
 
     if isinstance(model, VehicleInitDataList):
         _duplicate_identifiers(
@@ -291,6 +362,7 @@ def validate_vehicle_meta_model(
             [vehicle.model_name for vehicle in model.vehicles],
             code="vehicle.variation.model_name.duplicate",
             path="vehicles",
+            severity=DiagnosticSeverity.WARNING,
         )
         _validate_variation_references(report, model, context)
     elif isinstance(model, VehicleCarCols):

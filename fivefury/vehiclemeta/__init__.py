@@ -33,7 +33,10 @@ from .enums import (
     VehicleClass,
     VehicleDashboardType,
     VehicleDoor,
+    VehicleExtraFlag,
     VehicleModCameraPosition,
+    VehicleModelFlag,
+    VehicleModelFlags,
     VehicleModKitType,
     VehicleModType,
     VehiclePlateType,
@@ -85,6 +88,7 @@ from .vehicles import (
     VehicleVfxExtra,
     VehicleWaterSample,
 )
+from .xml_validation import validate_vehicle_meta_xml
 
 __all__ = [
     "BikeHandlingData",
@@ -112,6 +116,7 @@ __all__ = [
     "VehicleDoor",
     "VehicleDoorStiffness",
     "VehicleDriver",
+    "VehicleExtraFlag",
     "VehicleInitData",
     "VehicleInitDataList",
     "VehicleLight",
@@ -131,6 +136,8 @@ __all__ = [
     "VehicleModSlotName",
     "VehicleModType",
     "VehicleModelColor",
+    "VehicleModelFlag",
+    "VehicleModelFlags",
     "VehicleModelInfoVariation",
     "VehiclePackBuilder",
     "VehiclePackOutput",
@@ -158,4 +165,5 @@ __all__ = [
     "VehicleXenonLightColor",
     "read_vehicle_meta",
     "validate_enhanced_vehicle_pack_layout",
+    "validate_vehicle_meta_xml",
 ]

@@ -7,9 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Vehicle metadata flags and repeated IK offsets now use lossless typed containers.
+
 ### Added
 
 - Typed vehicle-glass shatter-map authoring and cross-asset validation.
+- Retail vehicle metadata XML authoring and dialect validation.
 
 ## [0.4.13] - 2026-08-16
 

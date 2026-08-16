@@ -96,13 +96,16 @@ _SUB_HANDLING_TYPES: dict[str, type[HandlingSubData]] = {
 }
 
 
-def map_sub_handling(value: Any) -> HandlingSubData:
+def map_sub_handling(value: Any) -> HandlingSubData | None:
+    if value is None or node_type_name(value).casefold() == "null":
+        return None
     model_type = _SUB_HANDLING_TYPES.get(node_type_name(value), HandlingSubData)
     return model_type.from_value(value)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class HandlingData(VehicleMetaModel):
+    TYPE_NAME: ClassVar[str] = "CHandlingData"
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     mass: float = 0.0
     initial_drag_coefficient: float = 0.0
@@ -154,7 +157,7 @@ class HandlingData(VehicleMetaModel):
     handling_flags: MetaHash = dataclasses.field(default_factory=MetaHash)
     damage_flags: MetaHash = dataclasses.field(default_factory=MetaHash)
     ai_handling: MetaHash = dataclasses.field(default_factory=MetaHash)
-    sub_handling: list[HandlingSubData] = dataclasses.field(default_factory=list)
+    sub_handling: list[HandlingSubData | None] = dataclasses.field(default_factory=list)
     weapon_damage_to_health_multiplier: float = 0.5
     downforce_modifier: float = 0.0
     popup_light_rotation: float = 0.0

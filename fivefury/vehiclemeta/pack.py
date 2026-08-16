@@ -33,6 +33,7 @@ from .pack_layout import (
 from .resource import read_vehicle_meta
 from .variations import VehicleModelInfoVariation
 from .vehicles import VehicleInitDataList
+from .xml_validation import validate_vehicle_meta_xml
 
 
 @dataclass(slots=True)
@@ -176,6 +177,13 @@ class VehiclePackBuilder:
         )
         for path, document in documents:
             report.extend(document.validate(context=build_context), path=path)
+            report.extend(
+                validate_vehicle_meta_xml(
+                    document.to_xml_element(),
+                    expected_root=document.ROOT_TAG,
+                ),
+                path=path,
+            )
 
         metadata_names = {
             vehicle.model_name.casefold()
@@ -361,7 +369,14 @@ class VehiclePackBuilder:
                 entry = archive.find_entry(path)
                 if not isinstance(entry, RpfFileEntry):
                     raise FileNotFoundError(f"Built DLC is missing {path}")
-                if read_vehicle_meta(entry.read()).content != document:
+                payload = entry.read()
+                validate_vehicle_meta_xml(
+                    payload,
+                    expected_root=document.ROOT_TAG,
+                ).raise_for_errors()
+                reread_document = read_vehicle_meta(payload).content
+                reread_document.validate().raise_for_errors()
+                if reread_document != document:
                     raise ValueError(
                         f"Built DLC changed vehicle metadata semantics in {path}"
                     )

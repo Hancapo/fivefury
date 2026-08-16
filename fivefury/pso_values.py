@@ -94,10 +94,17 @@ def enum_value(enum_type: type[T], value: Any, default: T) -> T | int:
     if isinstance(value, str):
         name = value.strip()
         if name:
+            token_parser = getattr(enum_type, "from_token", None)
+            if token_parser is not None:
+                parsed = token_parser(name)
+                if parsed is not None:
+                    return parsed
             try:
                 return enum_type[name]
             except KeyError:
-                for member in sorted(enum_type, key=lambda item: len(item.name), reverse=True):
+                for member in sorted(
+                    enum_type, key=lambda item: len(item.name), reverse=True
+                ):
                     if name.endswith(f"_{member.name}"):
                         return member
     try:

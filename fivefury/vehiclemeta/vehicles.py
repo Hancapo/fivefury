@@ -20,11 +20,16 @@ from .enums import (
     VehicleClass,
     VehicleDashboardType,
     VehicleDoor,
+    VehicleExtraFlag,
+    VehicleModelFlag,
+    VehicleModelFlags,
     VehiclePlateType,
     VehicleSwankness,
     VehicleType,
     VehicleWheelType,
     VehicleWindow,
+    parse_vehicle_extra_flags,
+    parse_vehicle_model_flags,
 )
 
 
@@ -62,7 +67,7 @@ class VehicleDoorStiffness(VehicleMetaModel):
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class VehicleVfxExtra(VehicleMetaModel):
-    extras: int = 0
+    extras: VehicleExtraFlag | int = 0
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     offset: tuple[float, ...] = (0.0, 0.0, 0.0)
     range: float = 40.0
@@ -70,10 +75,15 @@ class VehicleVfxExtra(VehicleMetaModel):
     speed_evolution_max: float = 20.0
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "extras", parse_vehicle_extra_flags(self.extras))
+
     @classmethod
     def from_value(cls, value: Any) -> VehicleVfxExtra:
         return cls(
-            extras=number(field(value, "m_ptFxExtras", "ptFxExtras"), 0),
+            extras=parse_vehicle_extra_flags(
+                field(value, "m_ptFxExtras", "ptFxExtras")
+            ),
             name=meta_hash(field(value, "m_ptFxName", "ptFxName")),
             offset=vector(field(value, "m_ptFxOffset", "ptFxOffset")),
             range=number(field(value, "m_ptFxRange", "ptFxRange"), 40.0),
@@ -163,7 +173,7 @@ class VehicleInitData(VehicleMetaModel):
     pov_camera_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     pov_turret_camera_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     first_person_driveby_data: list[MetaHash] = dataclasses.field(default_factory=list)
-    first_person_ik_offsets: dict[str, tuple[float, ...]] = dataclasses.field(
+    first_person_ik_offsets: dict[str, list[tuple[float, ...]]] = dataclasses.field(
         default_factory=dict
     )
     mobile_phone_seat_offsets: list[VehicleMobilePhoneSeatOffset] = dataclasses.field(
@@ -205,7 +215,9 @@ class VehicleInitData(VehicleMetaModel):
     weapon_force_multiplier: float = 1.0
     frequency: int = 0
     max_number: int = 0
-    flags: int = 0
+    flags: VehicleModelFlags | VehicleModelFlag | int = dataclasses.field(
+        default_factory=VehicleModelFlags
+    )
     vehicle_type: VehicleType | int = VehicleType.CAR
     plate_type: VehiclePlateType | int = VehiclePlateType.FRONT_AND_BACK
     vehicle_class: VehicleClass | int = VehicleClass.COMPACT
@@ -215,7 +227,9 @@ class VehicleInitData(VehicleMetaModel):
     trailers: list[MetaHash] = dataclasses.field(default_factory=list)
     additional_trailers: list[MetaHash] = dataclasses.field(default_factory=list)
     drivers: list[VehicleDriver] = dataclasses.field(default_factory=list)
-    extra_includes: list[int] = dataclasses.field(default_factory=list)
+    extra_includes: list[VehicleExtraFlag | int] = dataclasses.field(
+        default_factory=list
+    )
     vfx_extras: list[VehicleVfxExtra] = dataclasses.field(default_factory=list)
     closed_collision_doors: list[VehicleDoor | int] = dataclasses.field(
         default_factory=list
@@ -224,7 +238,7 @@ class VehicleInitData(VehicleMetaModel):
     door_stiffness: list[VehicleDoorStiffness] = dataclasses.field(default_factory=list)
     bumpers_collide_with_map: bool = False
     needs_rope_texture: bool = False
-    required_extras: int = 0
+    required_extras: VehicleExtraFlag | int = 0
     rewards: list[MetaHash] = dataclasses.field(default_factory=list)
     cinematic_part_cameras: list[MetaHash] = dataclasses.field(default_factory=list)
     brace_override_set: MetaHash = dataclasses.field(default_factory=MetaHash)
@@ -241,31 +255,57 @@ class VehicleInitData(VehicleMetaModel):
     seat_count_override: int = -1
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "flags", parse_vehicle_model_flags(self.flags))
+        object.__setattr__(
+            self,
+            "extra_includes",
+            [parse_vehicle_extra_flags(value) for value in self.extra_includes],
+        )
+        object.__setattr__(
+            self,
+            "required_extras",
+            parse_vehicle_extra_flags(self.required_extras),
+        )
+
     @classmethod
     def from_value(cls, value: Any) -> VehicleInitData:
         ragdoll = field(
             value, "m_pOverrideRagdollThreshold", "pOverrideRagdollThreshold"
         )
-        ik_offsets: dict[str, tuple[float, ...]] = {}
+        ik_offsets: dict[str, list[tuple[float, ...]]] = {}
         for semantic_name, source_name in (
             ("driver_armed", "m_FirstPersonDriveByIKOffset"),
             ("driver_unarmed", "m_FirstPersonDriveByUnarmedIKOffset"),
             ("left_passenger_armed", "m_FirstPersonDriveByLeftPassengerIKOffset"),
             ("right_passenger_armed", "m_FirstPersonDriveByRightPassengerIKOffset"),
-            ("right_rear_passenger_armed", "m_FirstPersonDriveByRightRearPassengerIKOffset"),
-            ("left_passenger_unarmed", "m_FirstPersonDriveByLeftPassengerUnarmedIKOffset"),
-            ("right_passenger_unarmed", "m_FirstPersonDriveByRightPassengerUnarmedIKOffset"),
+            (
+                "right_rear_passenger_armed",
+                "m_FirstPersonDriveByRightRearPassengerIKOffset",
+            ),
+            (
+                "left_passenger_unarmed",
+                "m_FirstPersonDriveByLeftPassengerUnarmedIKOffset",
+            ),
+            (
+                "right_passenger_unarmed",
+                "m_FirstPersonDriveByRightPassengerUnarmedIKOffset",
+            ),
             ("driver_projectile", "m_FirstPersonProjectileDriveByIKOffset"),
             ("passenger_projectile", "m_FirstPersonProjectileDriveByPassengerIKOffset"),
             ("rear_left_projectile", "m_FirstPersonProjectileDriveByRearLeftIKOffset"),
-            ("rear_right_projectile", "m_FirstPersonProjectileDriveByRearRightIKOffset"),
+            (
+                "rear_right_projectile",
+                "m_FirstPersonProjectileDriveByRearRightIKOffset",
+            ),
             ("visor_switch", "m_FirstPersonVisorSwitchIKOffset"),
             ("driver_mobile_phone", "m_FirstPersonMobilePhoneOffset"),
             ("passenger_mobile_phone", "m_FirstPersonPassengerMobilePhoneOffset"),
         ):
             raw_offset = field(value, source_name, source_name.removeprefix("m_"))
             if raw_offset is not None:
-                ik_offsets[semantic_name] = vector(raw_offset)
+                offsets = raw_offset if isinstance(raw_offset, list) else [raw_offset]
+                ik_offsets[semantic_name] = [vector(offset) for offset in offsets]
         return cls(
             model_name=text(field(value, "m_modelName", "modelName")),
             txd_name=text(field(value, "m_txdName", "txdName")),
@@ -445,7 +485,7 @@ class VehicleInitData(VehicleMetaModel):
             ),
             frequency=number(field(value, "m_frequency", "frequency"), 0),
             max_number=number(field(value, "m_maxNum", "maxNum"), 0),
-            flags=number(field(value, "m_flags", "flags"), 0),
+            flags=parse_vehicle_model_flags(field(value, "m_flags", "flags")),
             vehicle_type=enum_value(
                 VehicleType, field(value, "m_type", "type"), VehicleType.CAR
             ),
@@ -486,7 +526,8 @@ class VehicleInitData(VehicleMetaModel):
                 for item in items(value, "m_drivers", "drivers")
             ],
             extra_includes=[
-                int(item) for item in items(value, "m_extraIncludes", "extraIncludes")
+                parse_vehicle_extra_flags(item)
+                for item in items(value, "m_extraIncludes", "extraIncludes")
             ],
             vfx_extras=[
                 VehicleVfxExtra.from_value(item)
@@ -520,8 +561,8 @@ class VehicleInitData(VehicleMetaModel):
             needs_rope_texture=boolean(
                 field(value, "m_needsRopeTexture", "needsRopeTexture")
             ),
-            required_extras=number(
-                field(value, "m_requiredExtras", "requiredExtras"), 0
+            required_extras=parse_vehicle_extra_flags(
+                field(value, "m_requiredExtras", "requiredExtras")
             ),
             rewards=[meta_hash(item) for item in items(value, "m_rewards", "rewards")],
             cinematic_part_cameras=[
