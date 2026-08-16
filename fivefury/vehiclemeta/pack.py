@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import struct
 import zlib
 from dataclasses import dataclass, field
@@ -8,9 +9,9 @@ from pathlib import Path, PurePosixPath
 from ..authoring import AssetSet, BuildContext, ValidationReport
 from ..common import atomic_write_bytes
 from ..dlc import (
-    DlcDataFileContents,
     DlcDataFileType,
     DlcPack,
+    DlcSetupData,
     read_dlc_pack,
 )
 from ..game_target import GameTarget, coerce_game_target
@@ -19,6 +20,16 @@ from ..yft import Yft, build_yft_bytes, read_yft
 from ..ytd import Ytd, read_ytd
 from .carcols import VehicleCarCols
 from .handling import HandlingDataManager
+from .pack_layout import (
+    CARCOLS_META_PATH,
+    HANDLING_META_PATH,
+    VARIATIONS_META_PATH,
+    VEHICLE_STREAM_PATH,
+    VEHICLE_STREAM_RELATIVE_PATH,
+    VEHICLES_META_PATH,
+    validate_enhanced_vehicle_pack_layout,
+    validate_enhanced_vehicle_setup,
+)
 from .resource import read_vehicle_meta
 from .variations import VehicleModelInfoVariation
 from .vehicles import VehicleInitDataList
@@ -64,15 +75,16 @@ class VehiclePackBuilder:
     handling_meta: HandlingDataManager
     variations_meta: VehicleModelInfoVariation
     carcols_meta: VehicleCarCols
+    setup: DlcSetupData
     vehicles: list[VehicleStreamAsset] = field(default_factory=list)
     unregistered_files: dict[str, bytes] = field(default_factory=dict)
     game: GameTarget | str = GameTarget.GTA5_ENHANCED
 
-    VEHICLES_META = PurePosixPath("common/data/levels/gta5/vehicles.meta")
-    HANDLING_META = PurePosixPath("common/data/handling.meta")
-    VARIATIONS_META = PurePosixPath("common/data/carvariations.meta")
-    CARCOLS_META = PurePosixPath("common/data/carcols.meta")
-    STREAMED_RPF = PurePosixPath("x64/levels/gta5/vehicles/vehicles.rpf")
+    VEHICLES_META = VEHICLES_META_PATH
+    HANDLING_META = HANDLING_META_PATH
+    VARIATIONS_META = VARIATIONS_META_PATH
+    CARCOLS_META = CARCOLS_META_PATH
+    STREAMED_RPF = VEHICLE_STREAM_PATH
 
     def __post_init__(self) -> None:
         self.name = self.name.strip()
@@ -144,6 +156,16 @@ class VehiclePackBuilder:
                 "Build context and vehicle pack targets must match",
                 path="game",
             )
+        if self.setup.name_hash.casefold() != self.name.casefold():
+            report.issue(
+                "vehicle.pack.setup.name_mismatch",
+                "Vehicle pack setup name must match the builder name",
+                path="setup.name_hash",
+            )
+        report.extend(
+            validate_enhanced_vehicle_setup(self.setup, self.name),
+            path="setup",
+        )
 
         build_context = self._context(context)
         documents = (
@@ -269,7 +291,9 @@ class VehiclePackBuilder:
 
     def build(self, *, context: BuildContext | None = None) -> DlcPack:
         self.validate(context=context).raise_for_errors()
-        return self._build(context)
+        pack = self._build(context)
+        validate_enhanced_vehicle_pack_layout(pack).raise_for_errors()
+        return pack
 
     def _build(self, context: BuildContext | None) -> DlcPack:
         build_context = self._context(context)
@@ -289,7 +313,11 @@ class VehiclePackBuilder:
                 )
                 streamed.file(f"{asset.txd_name}.ytd", textures)
 
-        pack = DlcPack(self.name, game=self.game)
+        pack = DlcPack(
+            self.name,
+            setup=copy.deepcopy(self.setup),
+            game=self.game,
+        )
         metadata = (
             (self.VEHICLES_META, self.vehicles_meta, DlcDataFileType.VEHICLE_METADATA),
             (self.HANDLING_META, self.handling_meta, DlcDataFileType.HANDLING),
@@ -303,16 +331,14 @@ class VehiclePackBuilder:
         for path, document, file_type in metadata:
             pack.file(str(path), document.to_bytes(context=build_context))
             pack.content.file(pack.path(str(path)), file_type)
-        pack.files[str(self.STREAMED_RPF)] = streamed
-        pack.content.file(
-            pack.path(str(self.STREAMED_RPF)),
-            DlcDataFileType.RPF,
-            persistent=True,
-            contents=DlcDataFileContents.VEHICLES,
-        )
+        pack.platform_rpf(str(VEHICLE_STREAM_RELATIVE_PATH), streamed)
         for path, payload in self.unregistered_files.items():
             pack.file(path, payload)
-        pack.change_set(f"{self.name.upper()}_VEHICLES", enable_all=True)
+        change_set = pack.change_set(
+            f"{self.name.upper()}_VEHICLES",
+            enable_all=True,
+        )
+        change_set.requires_loading_screen = False
         return pack
 
     def _validate_pack_bytes(self, data: bytes) -> ValidationReport:
@@ -320,27 +346,11 @@ class VehiclePackBuilder:
         try:
             reread = read_dlc_pack(data, game=self.game, load_files=True)
             report.extend(reread.validate(game=self.game), path="dlc")
-            expected_registrations = {
-                reread.path(
-                    str(self.VEHICLES_META)
-                ).casefold(): DlcDataFileType.VEHICLE_METADATA,
-                reread.path(
-                    str(self.HANDLING_META)
-                ).casefold(): DlcDataFileType.HANDLING,
-                reread.path(
-                    str(self.VARIATIONS_META)
-                ).casefold(): DlcDataFileType.VEHICLE_VARIATION,
-                reread.path(str(self.CARCOLS_META)).casefold(): DlcDataFileType.CARCOLS,
-                reread.path(str(self.STREAMED_RPF)).casefold(): DlcDataFileType.RPF,
-            }
-            registrations = {
-                item.filename.casefold(): DlcDataFileType(item.file_type)
-                for item in reread.content.data_files
-            }
-            if registrations != expected_registrations:
-                raise ValueError(
-                    "Built DLC content registrations do not match the vehicle pack layout"
-                )
+            report.extend(
+                validate_enhanced_vehicle_pack_layout(reread),
+                path="dlc",
+            )
+            report.raise_for_errors()
             archive = RpfArchive.from_bytes(data, name="dlc.rpf", load_nested=True)
             for path, document in (
                 (self.VEHICLES_META, self.vehicles_meta),
@@ -415,7 +425,10 @@ class VehiclePackBuilder:
             target = target / self.name / "dlc.rpf"
         report = self.validate(context=context)
         report.raise_for_errors()
-        data = self._build(context).to_bytes(game=self.game)
+        pack = self._build(context)
+        report.extend(validate_enhanced_vehicle_pack_layout(pack))
+        report.raise_for_errors()
+        data = pack.to_bytes(game=self.game)
         report.extend(self._validate_pack_bytes(data))
         report.raise_for_errors()
         atomic_write_bytes(target, data)

@@ -324,6 +324,7 @@ from .cut import (
     validate_cut_scene,
 )
 from .dlc import (
+    DLC_PLATFORM_ROOT,
     DlcChangeSetData,
     DlcContentChangeSet,
     DlcContentChangeSetGroup,
@@ -354,6 +355,7 @@ from .dlc import (
     create_dlc_folder_metadata,
     create_dlc_list_for_packs,
     create_dlc_patch_manifest,
+    dlc_platform_path,
     infer_dlc_content_from_folder,
     iter_dlc_content_candidates,
     read_dlc_content,
@@ -686,6 +688,7 @@ from .vehiclemeta import (
     VehicleWheelType,
     VehicleWindow,
     read_vehicle_meta,
+    validate_enhanced_vehicle_pack_layout,
 )
 from .water import (
     WaterAlpha,
@@ -1299,6 +1302,7 @@ __all__ = [
     "DEFAULT_DAMPING_CONSTANTS",
     "DEFAULT_PHYSICS_DENSITY",
     "DEFAULT_PLAYABLE_CUTSCENE_FLAGS",
+    "DLC_PLATFORM_ROOT",
     "DRAWABLE_LOD_ORDER",
     "GEN9_YCD_RUNTIME_PROFILE",
     "GEN9_YED_DICTIONARY_VFTS",
@@ -2241,6 +2245,7 @@ __all__ = [
     "decrypt_awc_rsxxtea",
     "default_articulated_body_type",
     "default_damp_archetype",
+    "dlc_platform_path",
     "encode_junction_heightmap",
     "encrypt_awc_rsxxtea",
     "ensure_game_crypto",
@@ -2456,6 +2461,7 @@ __all__ = [
     "validate_dlc_folder_assets",
     "validate_dlc_pack",
     "validate_dlc_setup",
+    "validate_enhanced_vehicle_pack_layout",
     "validate_lod_light_source_bounds",
     "validate_mlo_collision",
     "validate_ped_expression_binding",

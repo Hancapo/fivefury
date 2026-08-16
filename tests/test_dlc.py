@@ -27,6 +27,7 @@ from fivefury import (
     Ytd,
     build_rsc7,
     create_dlc_folder_metadata,
+    dlc_platform_path,
     read_dlc_content,
     read_dlc_extra_title_update_data,
     read_dlc_list,
@@ -291,6 +292,25 @@ def test_declarative_dlc_pack_builds_dlc_rpf() -> None:
     assert content.data_files[0].file_type == DlcDataFileType.RPF.value
     assert content.data_files[0].contents == DlcDataFileContents.DLC_MAP_DATA.value
     assert len(content.content_change_sets[0].files_to_enable) == 2
+
+
+def test_dlc_pack_registers_and_resolves_platform_archives() -> None:
+    pack = DlcPack("my_pack")
+    registration = pack.platform_rpf(
+        "levels/gta5/vehicles/vehicles.rpf",
+        RpfArchive.empty("vehicles.rpf"),
+    )
+
+    assert dlc_platform_path("levels/gta5/vehicles/vehicles.rpf").as_posix() == (
+        "%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
+    )
+    assert registration.filename == (
+        "dlc_my_pack:/%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
+    )
+    assert pack.resolve_content_path(registration) == (
+        "%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
+    )
+    assert pack.resolve_content_path("platform:/common.rpf") is None
 
 
 def test_dlc_patch_builds_update_overlay_with_mount_manifest() -> None:

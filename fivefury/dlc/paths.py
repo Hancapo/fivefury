@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+DLC_PLATFORM_ROOT = PurePosixPath("%PLATFORM%")
+
+
+def dlc_platform_path(path: str | PurePosixPath) -> PurePosixPath:
+    relative = PurePosixPath(path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"DLC platform path must be relative: {path!r}")
+    if relative.parts[:1] == DLC_PLATFORM_ROOT.parts:
+        return relative
+    return DLC_PLATFORM_ROOT / relative
 
 
 def iter_dlc_folder_files(
@@ -23,4 +34,4 @@ def iter_dlc_folder_files(
         yield relative.as_posix(), path
 
 
-__all__ = ["iter_dlc_folder_files"]
+__all__ = ["DLC_PLATFORM_ROOT", "dlc_platform_path", "iter_dlc_folder_files"]

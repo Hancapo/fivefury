@@ -31,6 +31,7 @@ from .content import (
     DlcResourceReference,
 )
 from .enums import DlcContentGroup, DlcRpfEncryption
+from .paths import dlc_platform_path
 from .setup import DlcContentChangeSetGroup, DlcSetupData
 
 
@@ -153,6 +154,16 @@ class DlcPack:
     def path(self, relative_path: str) -> str:
         return f"{self.device_path}{relative_path.lstrip('/')}"
 
+    def resolve_content_path(self, registration: DlcContentFile | str) -> str | None:
+        filename = (
+            registration.filename
+            if isinstance(registration, DlcContentFile)
+            else str(registration)
+        )
+        if not filename.casefold().startswith(self.device_path.casefold()):
+            return None
+        return filename[len(self.device_path) :].lstrip("/")
+
     def file(self, path: str, value: bytes | bytearray | memoryview | Any) -> DlcPack:
         self.files[path.replace("\\", "/").lstrip("/")] = value
         return self
@@ -168,6 +179,21 @@ class DlcPack:
         path = self.path(relative_path)
         self.files[relative_path.replace("\\", "/").lstrip("/")] = archive
         return self.content.rpf(path, map_data=map_data, overlay=overlay)
+
+    def platform_rpf(
+        self,
+        relative_path: str,
+        archive: RpfArchive,
+        *,
+        map_data: bool = False,
+        overlay: bool = False,
+    ) -> DlcContentFile:
+        return self.rpf(
+            str(dlc_platform_path(relative_path)),
+            archive,
+            map_data=map_data,
+            overlay=overlay,
+        )
 
     def ityp(self, relative_path: str) -> DlcContentFile:
         return self.content.ityp(self.path(relative_path))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from ..xml import (
@@ -34,6 +35,12 @@ def _int_text(value: str, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _time_stamp_text(value: datetime | str) -> str:
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y %H:%M:%S")
+    return str(value)
 
 
 @dataclass(slots=True)
@@ -83,12 +90,14 @@ class DlcSetupData:
         name: str,
         *,
         order: int = 0,
+        time_stamp: datetime | str = "",
         device_name: str | None = None,
     ) -> DlcSetupData:
         return cls(
             device_name=device_name or _device_name(name),
             name_hash=name,
             order=order,
+            time_stamp=_time_stamp_text(time_stamp),
         )
 
     @classmethod

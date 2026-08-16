@@ -62,6 +62,7 @@ from .pack import (
     VehiclePackPaths,
     VehicleStreamAsset,
 )
+from .pack_layout import validate_enhanced_vehicle_pack_layout
 from .resource import (
     VehicleMeta,
     VehicleMetaContentType,
@@ -156,4 +157,5 @@ __all__ = [
     "VehicleWindowColor",
     "VehicleXenonLightColor",
     "read_vehicle_meta",
+    "validate_enhanced_vehicle_pack_layout",
 ]
