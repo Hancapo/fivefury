@@ -40,13 +40,7 @@ _YTD_RSC7_VERSION_LEGACY = 13
 _YTD_RSC7_VERSION_GEN9 = 5
 _GTAV_TEX_SIZE = 0x90
 _ENHANCED_TEX_SIZE = 0x80
-_ENHANCED_FLAGS = 0x00260208
-_ENHANCED_TILE_AUTO = 255
-_ENHANCED_UNK_23H = 0x28
-_ENHANCED_UNK_44H = 2
 _ENHANCED_DIM_2D = 1
-_ENHANCED_SRV_VFT = 0x00000001406B77D8
-_ENHANCED_SRV_DIM_2D = 0x41
 
 
 class TextureFormat(IntEnum):
@@ -341,6 +335,25 @@ def _total_mip_data_size(width: int, height: int, fmt: TextureFormat, mip_count:
     return total
 
 
+def _total_texture_block_count(
+    width: int,
+    height: int,
+    fmt: TextureFormat,
+    mip_count: int,
+) -> int:
+    total = 0
+    w = max(1, int(width))
+    h = max(1, int(height))
+    compressed = _is_block_compressed(fmt)
+    divisor = 4 if compressed else 1
+    rounding = 3 if compressed else 0
+    for _ in range(max(1, int(mip_count))):
+        total += ((w + rounding) // divisor) * ((h + rounding) // divisor)
+        w = max(1, w // 2)
+        h = max(1, h // 2)
+    return total
+
+
 def _build_mip_info(width: int, height: int, fmt: TextureFormat, mip_count: int) -> tuple[list[int], list[int]]:
     offsets: list[int] = []
     sizes: list[int] = []
@@ -427,13 +440,7 @@ __all__ = [
     "DAT_VIRTUAL_BASE",
     "_BLOCK_BYTES",
     "_ENHANCED_DIM_2D",
-    "_ENHANCED_FLAGS",
-    "_ENHANCED_SRV_DIM_2D",
-    "_ENHANCED_SRV_VFT",
     "_ENHANCED_TEX_SIZE",
-    "_ENHANCED_TILE_AUTO",
-    "_ENHANCED_UNK_23H",
-    "_ENHANCED_UNK_44H",
     "_FORMAT_TO_DX9",
     "_FORMAT_TO_RSC8",
     "_GEN9_TEXTURE_DICTIONARY_VERSIONS",
@@ -453,6 +460,7 @@ __all__ = [
     "_resolve_legacy_format",
     "_row_pitch",
     "_total_mip_data_size",
+    "_total_texture_block_count",
     "coerce_texture_usage",
     "pack_usage_data",
     "unpack_usage_data",

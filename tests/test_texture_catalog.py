@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import struct
+
 from fivefury import (
     Archetype,
     GameFileCache,
@@ -12,6 +14,9 @@ from fivefury import (
     read_ytd_catalog,
 )
 from fivefury._native import NativeTextureIndex
+from fivefury.resource import split_rsc7_sections
+from fivefury.texture import total_mip_data_size
+from fivefury.ytd.defs import DAT_VIRTUAL_BASE
 
 
 def _texture(name: str, *, usage: TextureUsage = TextureUsage.DEFAULT) -> Texture:
@@ -25,6 +30,63 @@ def _texture(name: str, *, usage: TextureUsage = TextureUsage.DEFAULT) -> Textur
         usage=usage,
         usage_flags=3,
     )
+
+
+def _bc1_texture(width: int, height: int, mip_count: int) -> Texture:
+    size = total_mip_data_size(width, height, TextureFormat.BC1, mip_count)
+    return Texture.from_raw(
+        bytes((index * 37) & 0xFF for index in range(size)),
+        width,
+        height,
+        TextureFormat.BC1,
+        mip_count,
+        name="head_diff_000_a_whi",
+        usage=TextureUsage.DIFFUSE,
+    )
+
+
+def _enhanced_texture_descriptor(payload: bytes) -> tuple[bytes, int]:
+    _, system_data, _ = split_rsc7_sections(payload)
+    items_pointer = struct.unpack_from("<Q", system_data, 0x30)[0]
+    texture_pointer = struct.unpack_from(
+        "<Q",
+        system_data,
+        items_pointer - DAT_VIRTUAL_BASE,
+    )[0]
+    return system_data, texture_pointer - DAT_VIRTUAL_BASE
+
+
+def test_enhanced_multimip_descriptor_matches_retail_runtime_fields() -> None:
+    payload = Ytd([_bc1_texture(512, 512, 8)], game="gta5_enhanced").to_bytes()
+    system_data, offset = _enhanced_texture_descriptor(payload)
+
+    assert struct.unpack_from("<Q", system_data, offset)[0] == 0x00000001406B7940
+    assert struct.unpack_from("<I", system_data, offset + 0x10)[0] == 0x00260208
+    assert system_data[offset + 0x1F] == 0x47
+    assert system_data[offset + 0x20] == 0xFF
+    assert system_data[offset + 0x22] == 8
+    assert system_data[offset + 0x23] == 0
+    assert struct.unpack_from("<Q", system_data, offset + 0x58)[0] == 0x00000001406B77D8
+
+
+def test_enhanced_multimip_payload_round_trips_without_reordering() -> None:
+    texture = _bc1_texture(512, 512, 8)
+
+    rebuilt = Ytd.from_bytes(Ytd([texture], game="gta5_enhanced").to_bytes()).textures[0]
+
+    assert (rebuilt.width, rebuilt.height, rebuilt.mip_count) == (512, 512, 8)
+    assert rebuilt.mip_offsets == texture.mip_offsets
+    assert rebuilt.mip_sizes == texture.mip_sizes
+    assert rebuilt.data == texture.data
+
+
+def test_enhanced_single_level_authoring_still_round_trips() -> None:
+    texture = _bc1_texture(4, 4, 1)
+
+    rebuilt = Ytd.from_bytes(Ytd([texture], game="gta5_enhanced").to_bytes()).textures[0]
+
+    assert rebuilt.data == texture.data
+    assert rebuilt.mip_count == 1
 
 
 def test_ytd_catalog_reads_legacy_and_enhanced_metadata_without_pixel_payloads() -> None:

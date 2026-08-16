@@ -23,13 +23,7 @@ from .catalog import (
 from .defs import (
     _BLOCK_BYTES,
     _ENHANCED_DIM_2D,
-    _ENHANCED_FLAGS,
-    _ENHANCED_SRV_DIM_2D,
-    _ENHANCED_SRV_VFT,
     _ENHANCED_TEX_SIZE,
-    _ENHANCED_TILE_AUTO,
-    _ENHANCED_UNK_23H,
-    _ENHANCED_UNK_44H,
     _FORMAT_TO_DX9,
     _FORMAT_TO_RSC8,
     _GEN9_TEXTURE_DICTIONARY_VERSIONS,
@@ -43,11 +37,13 @@ from .defs import (
     TextureUsage,
     _is_block_compressed,
     _row_pitch,
+    _total_texture_block_count,
     coerce_texture_usage,
     pack_usage_data,
     unpack_usage_data,
 )
 from .model import Texture, Ytd
+from .runtime_headers import GEN9_TEXTURE_RUNTIME_PROFILE
 
 
 def _v2o(address: int) -> int:
@@ -238,6 +234,7 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
         raise ValueError("Cannot build a YTD with zero textures")
     entries = sorted(textures, key=lambda item: jenk_hash(item.name))
     count = len(entries)
+    profile = GEN9_TEXTURE_RUNTIME_PROFILE
 
     dict_size = 0x40
     keys_offset = dict_size
@@ -284,25 +281,22 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
 
         off = textures_offset + (_ENHANCED_TEX_SIZE * index)
         block_stride = 4 if not _is_block_compressed(texture.format) else _BLOCK_BYTES[texture.format]
-        block_count = 0
-        width = texture.width
-        height = texture.height
-        for _ in range(texture.mip_count):
-            block_w = max(1, (width + (3 if _is_block_compressed(texture.format) else 0)) // (4 if _is_block_compressed(texture.format) else 1))
-            block_h = max(1, (height + (3 if _is_block_compressed(texture.format) else 0)) // (4 if _is_block_compressed(texture.format) else 1))
-            block_count += block_w * block_h
-            width = max(1, width // 2)
-            height = max(1, height // 2)
+        block_count = _total_texture_block_count(
+            texture.width,
+            texture.height,
+            texture.format,
+            texture.mip_count,
+        )
 
-        struct.pack_into("<II", vbuf, off + 0x00, 0, 1)
+        struct.pack_into("<Q", vbuf, off + 0x00, profile.texture_vft)
         struct.pack_into("<II", vbuf, off + 0x08, block_count, block_stride)
-        struct.pack_into("<II", vbuf, off + 0x10, _ENHANCED_FLAGS, 0)
+        struct.pack_into("<II", vbuf, off + 0x10, profile.descriptor_flags, 0)
         struct.pack_into("<HHH", vbuf, off + 0x18, texture.width, texture.height, 1)
         vbuf[off + 0x1E] = _ENHANCED_DIM_2D
         vbuf[off + 0x1F] = _FORMAT_TO_RSC8[texture.format]
-        vbuf[off + 0x20] = _ENHANCED_TILE_AUTO
+        vbuf[off + 0x20] = profile.tile_mode
         vbuf[off + 0x22] = texture.mip_count
-        vbuf[off + 0x23] = _ENHANCED_UNK_23H
+        vbuf[off + 0x23] = profile.image_flags
         struct.pack_into("<H", vbuf, off + 0x26, 1)
         struct.pack_into("<Q", vbuf, off + 0x28, DAT_VIRTUAL_BASE + name_offsets[index])
         struct.pack_into("<Q", vbuf, off + 0x30, DAT_VIRTUAL_BASE + off + 0x58)
@@ -312,10 +306,10 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
             vbuf,
             off + 0x40,
             pack_usage_data(texture.usage, texture.usage_flags),
-            _ENHANCED_UNK_44H,
+            profile.usage_class,
         )
-        struct.pack_into("<Q", vbuf, off + 0x58, _ENHANCED_SRV_VFT)
-        struct.pack_into("<HHI", vbuf, off + 0x68, _ENHANCED_SRV_DIM_2D, 0xFFFF, 0xFFFFFFFF)
+        struct.pack_into("<Q", vbuf, off + 0x58, profile.srv_vft)
+        struct.pack_into("<HHI", vbuf, off + 0x68, profile.srv_dimension, 0xFFFF, 0xFFFFFFFF)
 
         encoded_name = name_bytes[index]
         start = name_offsets[index]
