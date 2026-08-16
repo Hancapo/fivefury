@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from fivefury import (
+    BoundBox,
+    BoundChild,
+    BoundComposite,
     DlcDataFileContents,
     DlcDataFileType,
     DlcSetupData,
+    GameFileCache,
+    GameFileType,
     GameTarget,
     HandlingData,
     HandlingDataManager,
@@ -22,9 +28,16 @@ from fivefury import (
     VehicleModelInfoVariation,
     VehiclePackBuilder,
     VehicleVariation,
+    YdrBone,
+    YdrLod,
     YdrMaterialInput,
     YdrMeshInput,
+    YdrSkeleton,
+    YftPhysicsChild,
+    YftPhysicsLod,
+    YftVehicleGlassWindows,
     Ytd,
+    build_yft_bytes,
     create_ydr,
     create_yft,
     infer_dlc_content_from_folder,
@@ -34,25 +47,36 @@ from fivefury import (
     read_ytd,
     validate_enhanced_vehicle_pack_layout,
     validate_vehicle_meta_xml,
+    validate_vehicle_yft_pair,
 )
 from fivefury.authoring import ValidationError
 from fivefury.vehiclemeta import VehicleColorIndices
 
+_ENHANCED_ROOT_VALUE = os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH")
+_ENHANCED_ROOT = Path(_ENHANCED_ROOT_VALUE) if _ENHANCED_ROOT_VALUE else None
 
-def _fragment(name: str):
+
+def _mesh() -> YdrMeshInput:
+    return YdrMeshInput(
+        positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        indices=[0, 1, 2],
+        material="body",
+        texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+    )
+
+
+def _fragment(name: str, *, high_detail: bool = False):
     drawable = create_ydr(
-        meshes=[
-            YdrMeshInput(
-                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
-                indices=[0, 1, 2],
-                material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
-            )
-        ],
+        meshes=[_mesh()],
         materials=[YdrMaterialInput(name="body")],
         name=name,
     )
-    return create_yft(drawable, name=name, version=171)
+    if not high_detail:
+        for lod in ("medium", "low", "very_low"):
+            drawable.model([_mesh()], lod=lod)
+    fragment = create_yft(drawable, name=name, version=171)
+    fragment.tune_name = f"pack:/{name}"
+    return fragment
 
 
 def _textures(name: str) -> Ytd:
@@ -104,7 +128,12 @@ def _builder(*, game: GameTarget = GameTarget.GTA5_ENHANCED) -> VehiclePackBuild
         ),
         game=game,
     )
-    builder.vehicle("testcar", _fragment("testcar"), textures=_textures("testcar"))
+    builder.vehicle(
+        "testcar",
+        _fragment("testcar"),
+        high_fragment=_fragment("testcar_hi", high_detail=True),
+        textures=_textures("testcar"),
+    )
     return builder
 
 
@@ -160,8 +189,7 @@ def test_vehicle_pack_roundtrips_enhanced_metadata_and_streamed_assets(
     try:
         assert archive.find_entry("x64/levels/gta5/vehicles/vehicles.rpf") is not None
         assert (
-            archive.find_entry("%PLATFORM%/levels/gta5/vehicles/vehicles.rpf")
-            is None
+            archive.find_entry("%PLATFORM%/levels/gta5/vehicles/vehicles.rpf") is None
         )
         for path in (
             output.paths.vehicles_meta,
@@ -173,13 +201,29 @@ def test_vehicle_pack_roundtrips_enhanced_metadata_and_streamed_assets(
             assert entry is not None
             assert validate_vehicle_meta_xml(entry.read()).valid
             assert read_vehicle_meta(entry.read()).validate().valid
+        vehicles_entry = archive.find_entry(output.paths.vehicles_meta)
+        assert vehicles_entry is not None
+        vehicle_document = read_vehicle_meta(vehicles_entry.read()).content
+        assert [vehicle.model_name for vehicle in vehicle_document.vehicles] == [
+            "testcar"
+        ]
 
         yft_entry = archive.find_entry(output.paths.streamed_rpf / "testcar.yft")
+        high_yft_entry = archive.find_entry(
+            output.paths.streamed_rpf / "testcar_hi.yft"
+        )
         ytd_entry = archive.find_entry(output.paths.streamed_rpf / "testcar.ytd")
         assert yft_entry is not None and yft_entry._archive is not None
+        assert high_yft_entry is not None and high_yft_entry._archive is not None
         assert ytd_entry is not None and ytd_entry._archive is not None
         assert (
             read_yft(yft_entry._archive.read_entry_standalone(yft_entry)).version == 171
+        )
+        assert (
+            read_yft(
+                high_yft_entry._archive.read_entry_standalone(high_yft_entry)
+            ).version
+            == 171
         )
         assert (
             read_ytd(ytd_entry._archive.read_entry_standalone(ytd_entry)).game
@@ -261,6 +305,227 @@ def test_vehicle_pack_reports_cross_file_and_stream_mismatches() -> None:
 
     assert "vehicle.handling.unresolved" in codes
     assert "vehicle.pack.metadata.txd_mismatch" in codes
+
+
+def test_vehicle_pack_rejects_missing_high_detail_companion() -> None:
+    builder = _builder()
+    builder.vehicles[0].high_fragment = None
+
+    codes = {issue.code for issue in builder.validate()}
+
+    assert "vehicle.yft_pair.high_fragment.required" in codes
+
+
+def test_vehicle_pair_accepts_typed_and_binary_inputs() -> None:
+    fragment = _fragment("testcar")
+    high_fragment = _fragment("testcar_hi", high_detail=True)
+
+    assert validate_vehicle_yft_pair("testcar", fragment, high_fragment).valid
+    assert validate_vehicle_yft_pair(
+        "testcar",
+        build_yft_bytes(fragment),
+        build_yft_bytes(high_fragment),
+    ).valid
+
+
+def test_vehicle_pack_roundtrips_binary_fragment_inputs(tmp_path) -> None:
+    builder = _builder()
+    asset = builder.vehicles[0]
+    asset.fragment = build_yft_bytes(asset.fragment)
+    asset.high_fragment = build_yft_bytes(asset.high_fragment)
+
+    output = builder.save(tmp_path / "binary_inputs")
+
+    assert output.report.valid
+
+
+def test_vehicle_pair_rejects_invalid_high_detail_binary() -> None:
+    builder = _builder()
+    builder.vehicles[0].high_fragment = b"not a YFT"
+
+    codes = {issue.code for issue in builder.validate()}
+
+    assert "vehicle.yft_pair.high_fragment.invalid" in codes
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected"),
+    [
+        (
+            lambda _base, high: setattr(high, "version", 162),
+            "vehicle.yft_pair.high_fragment.target_invalid",
+        ),
+        (
+            lambda base, _high: setattr(
+                base,
+                "main_drawable",
+                _fragment("replacement", high_detail=True).main_drawable,
+            ),
+            "vehicle.yft_pair.fragment.lod_chain_invalid",
+        ),
+        (
+            lambda _base, high: high.main_drawable.model([_mesh()], lod="medium"),
+            "vehicle.yft_pair.high_fragment.lod_chain_invalid",
+        ),
+        (
+            lambda _base, high: setattr(high, "tune_name", "pack:/wrong"),
+            "vehicle.yft_pair.high_fragment.tune_name_invalid",
+        ),
+    ],
+)
+def test_vehicle_pair_rejects_target_lod_and_tune_mismatches(
+    mutate,
+    expected: str,
+) -> None:
+    fragment = _fragment("testcar")
+    high_fragment = _fragment("testcar_hi", high_detail=True)
+    mutate(fragment, high_fragment)
+
+    codes = {
+        issue.code
+        for issue in validate_vehicle_yft_pair("testcar", fragment, high_fragment)
+    }
+
+    assert expected in codes
+
+
+def test_vehicle_pair_rejects_skeleton_and_physics_mismatches() -> None:
+    fragment = _fragment("testcar")
+    high_fragment = _fragment("testcar_hi", high_detail=True)
+    fragment.main_drawable.skeleton = YdrSkeleton(bones=[YdrBone(name="root", tag=0)])
+    high_fragment.main_drawable.skeleton = YdrSkeleton(
+        bones=[YdrBone(name="root", tag=1)]
+    )
+    fragment.physics_lod_details = [
+        YftPhysicsLod(
+            "high",
+            num_children=1,
+            children=(YftPhysicsChild(owner_group_name="chassis"),),
+        )
+    ]
+    high_fragment.physics_lod_details = [
+        YftPhysicsLod(
+            "high",
+            num_children=2,
+            children=(
+                YftPhysicsChild(owner_group_name="chassis"),
+                YftPhysicsChild(owner_group_name="door", bone_id=1),
+            ),
+        )
+    ]
+
+    codes = {
+        issue.code
+        for issue in validate_vehicle_yft_pair("testcar", fragment, high_fragment)
+    }
+
+    assert "vehicle.yft_pair.skeleton.tag_mismatch" in codes
+    assert "vehicle.yft_pair.physics.child_count_mismatch" in codes
+
+
+def test_vehicle_pair_rejects_composite_bound_slot_mismatch() -> None:
+    fragment = _fragment("testcar")
+    high_fragment = _fragment("testcar_hi", high_detail=True)
+    box = BoundBox.from_bounds((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0))
+
+    def composite(child: BoundChild) -> BoundComposite:
+        return BoundComposite(
+            bound_type=10,
+            sphere_radius=0.0,
+            box_max=(0.0, 0.0, 0.0),
+            margin=0.0,
+            box_min=(0.0, 0.0, 0.0),
+            box_center=(0.0, 0.0, 0.0),
+            sphere_center=(0.0, 0.0, 0.0),
+            children=[child],
+        )
+
+    fragment.physics_lod_details = [
+        YftPhysicsLod("high", composite_bound=composite(BoundChild(box)))
+    ]
+    high_fragment.physics_lod_details = [
+        YftPhysicsLod("high", composite_bound=composite(BoundChild(None)))
+    ]
+
+    codes = {
+        issue.code
+        for issue in validate_vehicle_yft_pair("testcar", fragment, high_fragment)
+    }
+
+    assert "vehicle.yft_pair.physics.bound_topology_mismatch" in codes
+
+
+def test_vehicle_pack_rejects_orphan_high_detail_name() -> None:
+    builder = _builder()
+    builder.vehicles[0].name = "testcar_hi"
+
+    codes = {issue.code for issue in builder.validate()}
+
+    assert "vehicle.yft_pair.name.high_detail" in codes
+
+
+def test_vehicle_pair_rejects_glass_window_ownership_in_high_detail() -> None:
+    fragment = _fragment("testcar")
+    high_fragment = _fragment("testcar_hi", high_detail=True)
+    high_fragment.vehicle_glass_windows = YftVehicleGlassWindows()
+
+    codes = {
+        issue.code
+        for issue in validate_vehicle_yft_pair("testcar", fragment, high_fragment)
+    }
+
+    assert "vehicle.yft_pair.high_fragment.vehicle_glass_invalid" in codes
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail vehicle-pair regression",
+)
+def test_retail_enhanced_jester_uses_paired_vehicle_fragments() -> None:
+    assert _ENHANCED_ROOT is not None
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        game=GameTarget.GTA5_ENHANCED,
+        load_audio=False,
+        load_peds=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        fragments = []
+        sizes = []
+        for name in ("jester", "jester_hi"):
+            asset = cache.get_asset(name, kind=GameFileType.YFT)
+            assert asset is not None
+            payload = cache.read_bytes(asset)
+            game_file = cache.load_asset(asset)
+            assert payload is not None and game_file is not None
+            sizes.append(asset.size)
+            fragments.append(game_file.parsed)
+
+    fragment, high_fragment = fragments
+    assert sizes == [739_991, 1_079_294]
+    assert fragment.version == high_fragment.version == 171
+    assert fragment.tune_name == "pack:/jester"
+    assert high_fragment.tune_name == "pack:/jester_hi"
+    assert fragment.main_drawable.skeleton.bone_count == 66
+    assert high_fragment.main_drawable.skeleton.bone_count == 66
+    assert {lod: len(list(fragment.iter_meshes(lod))) for lod in YdrLod} == {
+        YdrLod.HIGH: 15,
+        YdrLod.MEDIUM: 13,
+        YdrLod.LOW: 11,
+        YdrLod.VERY_LOW: 6,
+    }
+    assert len(list(high_fragment.iter_meshes(YdrLod.HIGH))) == 23
+    assert not any(
+        high_fragment.main_drawable.lods.get(lod)
+        for lod in (YdrLod.MEDIUM, YdrLod.LOW, YdrLod.VERY_LOW)
+    )
+    assert len(fragment.best_physics_lod.groups) == 20
+    assert len(fragment.best_physics_lod.children) == 20
+    assert len(fragment.best_physics_lod.link_attachments.matrices) == 20
+    assert len(fragment.vehicle_glass_windows.windows) == 6
+    assert high_fragment.vehicle_glass_windows is None
+    assert validate_vehicle_yft_pair("jester", fragment, high_fragment).valid
 
 
 def test_dlc_folder_inference_registers_vehicle_metadata(tmp_path) -> None:

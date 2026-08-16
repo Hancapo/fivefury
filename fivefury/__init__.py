@@ -695,6 +695,7 @@ from .vehiclemeta import (
     read_vehicle_meta,
     validate_enhanced_vehicle_pack_layout,
     validate_vehicle_meta_xml,
+    validate_vehicle_yft_pair,
 )
 from .water import (
     WaterAlpha,
@@ -2488,6 +2489,7 @@ __all__ = [
     "validate_mlo_collision",
     "validate_ped_expression_binding",
     "validate_vehicle_meta_xml",
+    "validate_vehicle_yft_pair",
     "validate_yed",
     "validate_yft",
     "validate_yft_vehicle_glass",

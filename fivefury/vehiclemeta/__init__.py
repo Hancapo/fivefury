@@ -45,6 +45,7 @@ from .enums import (
     VehicleWheelType,
     VehicleWindow,
 )
+from .fragment_pair import validate_vehicle_yft_pair
 from .handling import (
     BikeHandlingData,
     BoatHandlingData,
@@ -166,4 +167,5 @@ __all__ = [
     "read_vehicle_meta",
     "validate_enhanced_vehicle_pack_layout",
     "validate_vehicle_meta_xml",
+    "validate_vehicle_yft_pair",
 ]

@@ -7,6 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-08-16
+
+### Breaking Changes
+
+- Enhanced car, bike, boat, helicopter, and train stream assets now require paired base and high-detail YFTs.
+
+### Added
+
+- Paired vehicle YFT authoring and cross-fragment validation.
+
 ## [0.4.15] - 2026-08-16
 
 ### Fixed

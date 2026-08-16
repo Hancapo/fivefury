@@ -16,9 +16,11 @@ from ..dlc import (
 )
 from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive, RpfFileEntry
-from ..yft import Yft, build_yft_bytes, read_yft
+from ..yft import Yft, build_yft_bytes
 from ..ytd import Ytd, read_ytd
 from .carcols import VehicleCarCols
+from .enums import VehicleType
+from .fragment_pair import validate_vehicle_yft_pair
 from .handling import HandlingDataManager
 from .pack_layout import (
     CARCOLS_META_PATH,
@@ -40,6 +42,7 @@ from .xml_validation import validate_vehicle_meta_xml
 class VehicleStreamAsset:
     name: str
     fragment: Yft | bytes
+    high_fragment: Yft | bytes | None = None
     textures: Ytd | bytes | None = None
     texture_name: str | None = None
 
@@ -96,10 +99,17 @@ class VehiclePackBuilder:
         name: str,
         fragment: Yft | bytes,
         *,
+        high_fragment: Yft | bytes | None = None,
         textures: Ytd | bytes | None = None,
         texture_name: str | None = None,
     ) -> VehicleStreamAsset:
-        asset = VehicleStreamAsset(name, fragment, textures, texture_name)
+        asset = VehicleStreamAsset(
+            name=name,
+            fragment=fragment,
+            high_fragment=high_fragment,
+            textures=textures,
+            texture_name=texture_name,
+        )
         self.vehicles.append(asset)
         return asset
 
@@ -117,14 +127,6 @@ class VehiclePackBuilder:
             assets=assets,
             cache=context.cache if context is not None else None,
             strict=context.strict if context is not None else True,
-        )
-
-    @staticmethod
-    def _fragment(asset: VehicleStreamAsset) -> Yft:
-        return (
-            asset.fragment
-            if isinstance(asset.fragment, Yft)
-            else read_yft(asset.fragment, path=f"{asset.name}.yft")
         )
 
     @staticmethod
@@ -192,6 +194,11 @@ class VehiclePackBuilder:
         }
         stream_names: dict[str, int] = {}
         texture_names: dict[str, int] = {}
+        metadata_by_name = {
+            vehicle.model_name.casefold(): vehicle
+            for vehicle in self.vehicles_meta.vehicles
+            if vehicle.model_name
+        }
         for index, asset in enumerate(self.vehicles):
             path = f"vehicles[{index}]"
             key = asset.name.casefold()
@@ -215,27 +222,20 @@ class VehiclePackBuilder:
                     f"Streamed vehicle {asset.name!r} has no vehicles.meta entry",
                     path=f"{path}.name",
                 )
-            try:
-                fragment = self._fragment(asset)
-            except (
-                IndexError,
-                KeyError,
-                TypeError,
-                ValueError,
-                struct.error,
-                zlib.error,
-            ) as exc:
-                report.issue(
-                    "vehicle.pack.yft.invalid", str(exc), path=f"{path}.fragment"
-                )
-            else:
-                if fragment.version != 171:
-                    report.issue(
-                        "vehicle.pack.yft.target.invalid",
-                        f"Enhanced vehicle YFT version must be 171, got {fragment.version}",
-                        path=f"{path}.fragment",
-                    )
-                report.extend(fragment.validate(), path=f"{path}.fragment")
+            metadata = metadata_by_name.get(key)
+            report.extend(
+                validate_vehicle_yft_pair(
+                    asset.name,
+                    asset.fragment,
+                    asset.high_fragment,
+                    vehicle_type=(
+                        metadata.vehicle_type
+                        if metadata is not None
+                        else VehicleType.CAR
+                    ),
+                ),
+                path=path,
+            )
 
             try:
                 textures = self._textures(asset)
@@ -313,6 +313,13 @@ class VehiclePackBuilder:
                 else bytes(asset.fragment)
             )
             streamed.file(f"{asset.name}.yft", fragment)
+            if asset.high_fragment is not None:
+                high_fragment = (
+                    build_yft_bytes(asset.high_fragment)
+                    if isinstance(asset.high_fragment, Yft)
+                    else bytes(asset.high_fragment)
+                )
+                streamed.file(f"{asset.name}_hi.yft", high_fragment)
             if asset.textures is not None:
                 textures = (
                     asset.textures.to_bytes(game=self.game)
@@ -381,21 +388,37 @@ class VehiclePackBuilder:
                         f"Built DLC changed vehicle metadata semantics in {path}"
                     )
             for asset in self.vehicles:
-                yft_entry = archive.find_entry(self.STREAMED_RPF / f"{asset.name}.yft")
-                if (
-                    not isinstance(yft_entry, RpfFileEntry)
-                    or yft_entry._archive is None
+                fragment_payloads: dict[str, bytes] = {}
+                for role, filename in (
+                    ("fragment", f"{asset.name}.yft"),
+                    ("high_fragment", f"{asset.name}_hi.yft"),
                 ):
-                    raise FileNotFoundError(f"Built DLC is missing {asset.name}.yft")
-                if (
-                    read_yft(
-                        yft_entry._archive.read_entry_standalone(yft_entry)
-                    ).version
-                    != 171
-                ):
-                    raise ValueError(
-                        f"Built DLC changed the target of {asset.name}.yft"
+                    if role == "high_fragment" and asset.high_fragment is None:
+                        continue
+                    yft_entry = archive.find_entry(self.STREAMED_RPF / filename)
+                    if (
+                        not isinstance(yft_entry, RpfFileEntry)
+                        or yft_entry._archive is None
+                    ):
+                        raise FileNotFoundError(f"Built DLC is missing {filename}")
+                    fragment_payloads[role] = yft_entry._archive.read_entry_standalone(
+                        yft_entry
                     )
+                metadata = self.vehicles_meta.get(asset.name)
+                report.extend(
+                    validate_vehicle_yft_pair(
+                        asset.name,
+                        fragment_payloads["fragment"],
+                        fragment_payloads.get("high_fragment"),
+                        vehicle_type=(
+                            metadata.vehicle_type
+                            if metadata is not None
+                            else VehicleType.CAR
+                        ),
+                    ),
+                    path=f"dlc.{asset.name}",
+                )
+                report.raise_for_errors()
                 if asset.textures is not None:
                     ytd_entry = archive.find_entry(
                         self.STREAMED_RPF / f"{asset.txd_name}.ytd"
