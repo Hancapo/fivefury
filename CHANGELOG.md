@@ -7,6 +7,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Typed authoring, validation, cloning, and XML writing for vehicle metadata.
+- GTA V Enhanced vehicle DLC assembly with streamed YFT/YTD assets and complete pack validation.
+
 ## [0.4.9] - 2026-08-15
 
 ### Added

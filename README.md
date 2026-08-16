@@ -84,6 +84,24 @@ archive.save("example_pack.rpf")
 
 Factories such as `entity(...)` and `car_gen(...)` append the new object to the owning `Ymap`. Prebuilt objects are inserted directly through the corresponding typed collection, for example `ymap.entities.append(entity)`.
 
+### Assemble an Enhanced vehicle DLC
+
+```python
+from fivefury import VehiclePackBuilder
+
+pack = VehiclePackBuilder(
+    "example_cars",
+    vehicles_meta,
+    handling_meta,
+    variations_meta,
+    carcols_meta,
+)
+pack.vehicle("example_car", vehicle_yft, textures=vehicle_ytd)
+result = pack.save("build")
+```
+
+The builder cross-validates the four metadata documents, registers their runtime file types, packages streamed YFT/YTD assets in a nested RPF, rereads the complete DLC, and only then atomically writes `build/example_cars/dlc.rpf`.
+
 ### Build a drawable from memory
 
 ```python
