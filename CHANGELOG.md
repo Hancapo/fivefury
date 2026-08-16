@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-08-16
+
 ### Fixed
 
 - Vehicle-glass projection bases now preserve raster-centred pane placement.
