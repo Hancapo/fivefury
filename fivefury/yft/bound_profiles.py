@@ -40,6 +40,7 @@ _PROFILE_VFTS: Mapping[
     YftPhysicsBoundProfile.VEHICLE: {
         BoundType.CAPSULE: 0x4062DE78,
         BoundType.BOX: 0x4062DD48,
+        BoundType.DISC: 0x40630408,
         BoundType.GEOMETRY: 0x4062F258,
         BoundType.GEOMETRY_BVH: 0x4062FAB8,
         BoundType.COMPOSITE: 0x4062B5D8,
