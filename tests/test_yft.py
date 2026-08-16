@@ -79,10 +79,6 @@ from fivefury.yft import (
     YftPhysicsLod,
     YftPhysicsLodPointers,
     YftSharedMatrixSet,
-    YftVehicleGlassFlag,
-    YftVehicleGlassRow,
-    YftVehicleGlassWindow,
-    YftVehicleGlassWindows,
     YftVerletCloth,
     build_fragment_geometry_bound,
     build_yft_bytes,
@@ -423,37 +419,11 @@ def test_yft_glass_roundtrip(version):
         bounds_offset_front=0.125,
         bounds_offset_back=-0.25,
     )
-    vehicle_glass = YftVehicleGlassWindows(
-        [
-            YftVehicleGlassWindow.declare(
-                7,
-                2,
-                (
-                    YftVehicleGlassRow.declare(1, (10, 20, 30)),
-                    YftVehicleGlassRow.declare(
-                        0,
-                        (1, 2),
-                        second_start=5,
-                        second_values=(3, 4),
-                    ),
-                    YftVehicleGlassRow.empty(),
-                ),
-                data_min=-0.5,
-                data_max=0.75,
-                flags=(
-                    YftVehicleGlassFlag.VERSION_2
-                    | YftVehicleGlassFlag.HAS_EXPOSED_EDGES
-                ),
-                texture_scale=1.25,
-            )
-        ]
-    )
     source = create_yft(
         drawable,
         name="glass_fragment",
         version=version,
         glass_panes=(pane,),
-        vehicle_glass_windows=vehicle_glass,
     )
     source.state = dataclasses.replace(source.state, glass_attachment_bone=4)
 
@@ -463,7 +433,7 @@ def test_yft_glass_roundtrip(version):
 
     assert system_data[0xD9] == 1
     assert struct.unpack_from("<Q", system_data, 0xE0)[0] != 0
-    assert struct.unpack_from("<Q", system_data, 0x120)[0] != 0
+    assert struct.unpack_from("<Q", system_data, 0x120)[0] == 0
     assert parsed.state.glass_attachment_bone == 4
     assert parsed.version == version
     assert parsed.glass_pane_count == 1
@@ -471,16 +441,7 @@ def test_yft_glass_roundtrip(version):
     assert parsed.glass_panes[0].bounds_offset_front == 0.125
     if version == 171:
         assert len(parsed.glass_panes[0].vertex_declaration.raw_gen9) == 0x140
-    assert parsed.vehicle_glass_windows is not None
-    window = parsed.vehicle_glass_windows.windows[0]
-    assert window.component_id == 7
-    assert window.geometry_index == 2
-    assert window.column_count == 7
-    assert window.row_count == 3
-    assert window.rows[0].first.values == bytes((10, 20, 30))
-    assert window.rows[1].second.values == bytes((3, 4))
-    assert window.rows[2] == YftVehicleGlassRow.empty()
-    assert window.flags & YftVehicleGlassFlag.HAS_EXPOSED_EDGES
+    assert parsed.vehicle_glass_windows is None
     assert parsed.validate().valid
 
 

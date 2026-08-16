@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..authoring.diagnostics import ValidationReport
+from ..game_target import GameTarget
 from ..ydr import (
     Ydr,
     YdrBuild,
@@ -34,6 +35,10 @@ from .stats import YftGeometryStats
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
+    from .vehicle_glass_authoring import (
+        YftVehicleGlassAssignment,
+        YftVehicleGlassBuild,
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -312,6 +317,26 @@ class Yft:
         from .glass_builder import ensure_yft_glass
 
         return ensure_yft_glass(self)
+
+    def derive_vehicle_glass(
+        self,
+        assignments: Sequence[YftVehicleGlassAssignment],
+        *,
+        game: GameTarget | str,
+    ) -> YftVehicleGlassBuild:
+        from .vehicle_glass_authoring import derive_yft_vehicle_glass
+
+        return derive_yft_vehicle_glass(self, assignments, game=game)
+
+    def recalculate_vehicle_glass(
+        self,
+        assignments: Sequence[YftVehicleGlassAssignment],
+        *,
+        game: GameTarget | str,
+    ) -> YftVehicleGlassBuild:
+        from .vehicle_glass_authoring import recalculate_yft_vehicle_glass
+
+        return recalculate_yft_vehicle_glass(self, assignments, game=game)
 
     def geometry_stats(self, lod: YdrLod | str | None = None) -> YftGeometryStats:
         drawables = list(self.iter_drawables())
