@@ -44,7 +44,12 @@ from .model import (
     read_dlc_list,
     read_dlc_setup,
 )
-from .paths import DLC_PLATFORM_ROOT, dlc_platform_path
+from .paths import (
+    DLC_PLATFORM_PAYLOAD_ROOT,
+    DLC_PLATFORM_REGISTRATION_ROOT,
+    dlc_platform_payload_path,
+    dlc_platform_registration_path,
+)
 from .validation import (
     validate_dlc_asset_targets,
     validate_dlc_content,
@@ -55,7 +60,8 @@ from .validation import (
 )
 
 __all__ = [
-    "DLC_PLATFORM_ROOT",
+    "DLC_PLATFORM_PAYLOAD_ROOT",
+    "DLC_PLATFORM_REGISTRATION_ROOT",
     "DlcChangeSetData",
     "DlcContentChangeSet",
     "DlcContentChangeSetGroup",
@@ -86,7 +92,8 @@ __all__ = [
     "create_dlc_folder_metadata",
     "create_dlc_list_for_packs",
     "create_dlc_patch_manifest",
-    "dlc_platform_path",
+    "dlc_platform_payload_path",
+    "dlc_platform_registration_path",
     "infer_dlc_content_from_folder",
     "iter_dlc_content_candidates",
     "read_dlc_content",

@@ -31,7 +31,7 @@ from .content import (
     DlcResourceReference,
 )
 from .enums import DlcContentGroup, DlcRpfEncryption
-from .paths import dlc_platform_path
+from .paths import dlc_platform_payload_path, dlc_platform_registration_path
 from .setup import DlcContentChangeSetGroup, DlcSetupData
 
 
@@ -188,9 +188,11 @@ class DlcPack:
         map_data: bool = False,
         overlay: bool = False,
     ) -> DlcContentFile:
-        return self.rpf(
-            str(dlc_platform_path(relative_path)),
-            archive,
+        registration_path = dlc_platform_registration_path(relative_path)
+        payload_path = dlc_platform_payload_path(relative_path)
+        self.files[payload_path.as_posix()] = archive
+        return self.content.rpf(
+            self.path(registration_path.as_posix()),
             map_data=map_data,
             overlay=overlay,
         )
