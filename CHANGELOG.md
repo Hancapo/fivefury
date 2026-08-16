@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-08-16
+
 ### Added
 
 - Typed authoring, validation, cloning, and XML writing for vehicle metadata.
