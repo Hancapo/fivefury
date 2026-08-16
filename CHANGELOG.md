@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-08-15
+
 ### Added
 
 - Strict YTD mip-chain, payload-size, descriptor-limit, and target-format validation.
