@@ -37,10 +37,14 @@ class VehicleMetaDocument(VehicleMetaModel):
         validate: bool = True,
     ) -> bytes:
         from ..xml import xml_bytes
+        from .resource import read_vehicle_meta
 
         if validate:
             self.validate(context=context).raise_for_errors()
-        return xml_bytes(self.to_xml_element())
+        data = xml_bytes(self.to_xml_element())
+        if read_vehicle_meta(data).content != self:
+            raise ValueError("Vehicle metadata changed during XML serialization")
+        return data
 
     def save(
         self,

@@ -56,6 +56,12 @@ from .handling import (
     TrailerHandlingData,
     VehicleWeaponHandlingData,
 )
+from .pack import (
+    VehiclePackBuilder,
+    VehiclePackOutput,
+    VehiclePackPaths,
+    VehicleStreamAsset,
+)
 from .resource import (
     VehicleMeta,
     VehicleMetaContentType,
@@ -125,6 +131,9 @@ __all__ = [
     "VehicleModType",
     "VehicleModelColor",
     "VehicleModelInfoVariation",
+    "VehiclePackBuilder",
+    "VehiclePackOutput",
+    "VehiclePackPaths",
     "VehiclePlateTexture",
     "VehiclePlateType",
     "VehiclePlates",
@@ -133,6 +142,7 @@ __all__ = [
     "VehicleSirenRotation",
     "VehicleSirenSettings",
     "VehicleStatMod",
+    "VehicleStreamAsset",
     "VehicleSwankness",
     "VehicleType",
     "VehicleVariation",
