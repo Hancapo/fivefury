@@ -14,17 +14,25 @@ from ..pso_values import (
     number,
     vector,
 )
+from .base import VehicleMetaDocument, VehicleMetaModel, without_raw
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class HandlingSubData:
+class HandlingSubData(VehicleMetaModel):
     TYPE_NAME: ClassVar[str] = "CBaseSubHandlingData"
     values: Mapping[str, Any] = dataclasses.field(default_factory=dict)
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
 
     @classmethod
     def from_value(cls, value: Any) -> HandlingSubData:
-        return cls(values=dict(fields(value)), raw=value)
+        return cls(
+            values={
+                name.removeprefix("m_"): item
+                for name, item in fields(value).items()
+                if name not in {"type", "__type__"}
+            },
+            raw=value,
+        )
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -94,7 +102,7 @@ def map_sub_handling(value: Any) -> HandlingSubData:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class HandlingData:
+class HandlingData(VehicleMetaModel):
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     mass: float = 0.0
     initial_drag_coefficient: float = 0.0
@@ -334,9 +342,13 @@ class HandlingData:
             raw=value,
         )
 
+    def clone_as(self, name: str | int | MetaHash) -> HandlingData:
+        return without_raw(self, name=MetaHash(name))
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class HandlingDataManager:
+class HandlingDataManager(VehicleMetaDocument):
+    ROOT_TAG = "CHandlingDataMgr"
     entries: list[HandlingData] = dataclasses.field(default_factory=list)
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
 

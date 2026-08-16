@@ -98,12 +98,17 @@ def element_data(element: ET.Element) -> object:
         return _xml_scalar(element.attrib["value"])
     children = list(element)
     if not children:
+        vector_names = tuple(name for name in ("x", "y", "z", "w") if name in element.attrib)
+        if vector_names:
+            return tuple(float(element.attrib[name]) for name in vector_names)
         if element.attrib.get("content", "").casefold().endswith("_array"):
             return [_xml_scalar(item) for item in (element.text or "").split()]
         return _xml_scalar(element.text or "")
     if all(child.tag.rsplit("}", 1)[-1].casefold() == "item" for child in children):
         return [element_data(child) for child in children]
     result: dict[str, object] = {}
+    if type_name := element.attrib.get("type"):
+        result["__type__"] = type_name
     repeated: set[str] = set()
     for child in children:
         name = child.tag.rsplit("}", 1)[-1]

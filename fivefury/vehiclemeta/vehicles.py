@@ -15,6 +15,7 @@ from ..pso_values import (
     text,
     vector,
 )
+from .base import VehicleMetaDocument, VehicleMetaModel, without_raw
 from .enums import (
     VehicleClass,
     VehicleDashboardType,
@@ -28,7 +29,7 @@ from .enums import (
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleDriver:
+class VehicleDriver(VehicleMetaModel):
     driver_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     npc_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -43,7 +44,7 @@ class VehicleDriver:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleDoorStiffness:
+class VehicleDoorStiffness(VehicleMetaModel):
     door: VehicleDoor | int = VehicleDoor.INVALID
     multiplier: float = 1.0
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -60,7 +61,7 @@ class VehicleDoorStiffness:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleVfxExtra:
+class VehicleVfxExtra(VehicleMetaModel):
     extras: int = 0
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     offset: tuple[float, ...] = (0.0, 0.0, 0.0)
@@ -87,7 +88,7 @@ class VehicleVfxExtra:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleMobilePhoneSeatOffset:
+class VehicleMobilePhoneSeatOffset(VehicleMetaModel):
     offset: tuple[float, ...] = (0.0, 0.0, 0.0)
     seat_index: int = 0
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -102,7 +103,7 @@ class VehicleMobilePhoneSeatOffset:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleRagdollThreshold:
+class VehicleRagdollThreshold(VehicleMetaModel):
     min_component: int = -1
     max_component: int = -1
     multiplier: float = 1.0
@@ -119,7 +120,7 @@ class VehicleRagdollThreshold:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleWaterSample:
+class VehicleWaterSample(VehicleMetaModel):
     position: tuple[float, ...] = (0.0, 0.0, 0.0)
     size: float = 0.0
     component: int = 0
@@ -136,7 +137,7 @@ class VehicleWaterSample:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleInitData:
+class VehicleInitData(VehicleMetaModel):
     model_name: str = ""
     txd_name: str = ""
     handling_id: str = ""
@@ -245,6 +246,26 @@ class VehicleInitData:
         ragdoll = field(
             value, "m_pOverrideRagdollThreshold", "pOverrideRagdollThreshold"
         )
+        ik_offsets: dict[str, tuple[float, ...]] = {}
+        for semantic_name, source_name in (
+            ("driver_armed", "m_FirstPersonDriveByIKOffset"),
+            ("driver_unarmed", "m_FirstPersonDriveByUnarmedIKOffset"),
+            ("left_passenger_armed", "m_FirstPersonDriveByLeftPassengerIKOffset"),
+            ("right_passenger_armed", "m_FirstPersonDriveByRightPassengerIKOffset"),
+            ("right_rear_passenger_armed", "m_FirstPersonDriveByRightRearPassengerIKOffset"),
+            ("left_passenger_unarmed", "m_FirstPersonDriveByLeftPassengerUnarmedIKOffset"),
+            ("right_passenger_unarmed", "m_FirstPersonDriveByRightPassengerUnarmedIKOffset"),
+            ("driver_projectile", "m_FirstPersonProjectileDriveByIKOffset"),
+            ("passenger_projectile", "m_FirstPersonProjectileDriveByPassengerIKOffset"),
+            ("rear_left_projectile", "m_FirstPersonProjectileDriveByRearLeftIKOffset"),
+            ("rear_right_projectile", "m_FirstPersonProjectileDriveByRearRightIKOffset"),
+            ("visor_switch", "m_FirstPersonVisorSwitchIKOffset"),
+            ("driver_mobile_phone", "m_FirstPersonMobilePhoneOffset"),
+            ("passenger_mobile_phone", "m_FirstPersonPassengerMobilePhoneOffset"),
+        ):
+            raw_offset = field(value, source_name, source_name.removeprefix("m_"))
+            if raw_offset is not None:
+                ik_offsets[semantic_name] = vector(raw_offset)
         return cls(
             model_name=text(field(value, "m_modelName", "modelName")),
             txd_name=text(field(value, "m_txdName", "txdName")),
@@ -295,54 +316,7 @@ class VehicleInitData:
                     value, "m_firstPersonDrivebyData", "firstPersonDrivebyData"
                 )
             ],
-            first_person_ik_offsets={
-                semantic_name: vector(
-                    field(value, source_name, source_name.removeprefix("m_"))
-                )
-                for semantic_name, source_name in (
-                    ("driver_armed", "m_FirstPersonDriveByIKOffset"),
-                    ("driver_unarmed", "m_FirstPersonDriveByUnarmedIKOffset"),
-                    (
-                        "left_passenger_armed",
-                        "m_FirstPersonDriveByLeftPassengerIKOffset",
-                    ),
-                    (
-                        "right_passenger_armed",
-                        "m_FirstPersonDriveByRightPassengerIKOffset",
-                    ),
-                    (
-                        "right_rear_passenger_armed",
-                        "m_FirstPersonDriveByRightRearPassengerIKOffset",
-                    ),
-                    (
-                        "left_passenger_unarmed",
-                        "m_FirstPersonDriveByLeftPassengerUnarmedIKOffset",
-                    ),
-                    (
-                        "right_passenger_unarmed",
-                        "m_FirstPersonDriveByRightPassengerUnarmedIKOffset",
-                    ),
-                    ("driver_projectile", "m_FirstPersonProjectileDriveByIKOffset"),
-                    (
-                        "passenger_projectile",
-                        "m_FirstPersonProjectileDriveByPassengerIKOffset",
-                    ),
-                    (
-                        "rear_left_projectile",
-                        "m_FirstPersonProjectileDriveByRearLeftIKOffset",
-                    ),
-                    (
-                        "rear_right_projectile",
-                        "m_FirstPersonProjectileDriveByRearRightIKOffset",
-                    ),
-                    ("visor_switch", "m_FirstPersonVisorSwitchIKOffset"),
-                    ("driver_mobile_phone", "m_FirstPersonMobilePhoneOffset"),
-                    (
-                        "passenger_mobile_phone",
-                        "m_FirstPersonPassengerMobilePhoneOffset",
-                    ),
-                )
-            },
+            first_person_ik_offsets=ik_offsets,
             mobile_phone_seat_offsets=[
                 VehicleMobilePhoneSeatOffset.from_value(item)
                 for item in items(
@@ -606,9 +580,28 @@ class VehicleInitData:
             raw=value,
         )
 
+    def clone_as(
+        self,
+        model_name: str,
+        *,
+        txd_name: str | None = None,
+        handling_id: str | None = None,
+        game_name: str | None = None,
+        make_name: str | None = None,
+    ) -> VehicleInitData:
+        return without_raw(
+            self,
+            model_name=model_name,
+            txd_name=txd_name if txd_name is not None else model_name,
+            handling_id=handling_id if handling_id is not None else self.handling_id,
+            game_name=game_name if game_name is not None else self.game_name,
+            make_name=make_name if make_name is not None else self.make_name,
+        )
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleInitDataList:
+class VehicleInitDataList(VehicleMetaDocument):
+    ROOT_TAG = "CVehicleModelInfo__InitDataList"
     resident_txd: str = ""
     resident_animations: list[str] = dataclasses.field(default_factory=list)
     vehicles: list[VehicleInitData] = dataclasses.field(default_factory=list)

@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from fivefury.authoring import AssetSet, BuildContext
 from fivefury.cache import GameFileCache
 from fivefury.cut import CutVehicleVariationPayload
 from fivefury.game_target import GameTarget
 from fivefury.gamefile import GameFileType, guess_game_file_type
 from fivefury.hashing import jenk_hash
+from fivefury.metahash import MetaHash
 from fivefury.pso import (
     PsoBlockBuilder,
     PsoHashedString,
@@ -23,15 +25,20 @@ from fivefury.pso import (
 )
 from fivefury.vehiclemeta import (
     CarHandlingData,
+    HandlingData,
     HandlingDataManager,
     VehicleAppearanceSourceTier,
     VehicleCarCols,
     VehicleClass,
+    VehicleColorIndices,
+    VehicleInitData,
     VehicleInitDataList,
     VehicleMetaContentType,
     VehicleMetaFormat,
+    VehicleModelColor,
     VehicleModelInfoVariation,
     VehicleType,
+    VehicleVariation,
     read_vehicle_meta,
 )
 from fivefury.vehiclemeta.resource import (
@@ -208,7 +215,7 @@ def test_handling_maps_sub_handling_types() -> None:
     assert handling.entries[0].mass == 1800.0
     assert handling.entries[0].center_of_mass_offset == (0.0, 0.0, -0.1)
     assert isinstance(handling.entries[0].sub_handling[0], CarHandlingData)
-    assert handling.entries[0].sub_handling[0].values["m_fCamberFront"] == -0.02
+    assert handling.entries[0].sub_handling[0].values["fCamberFront"] == -0.02
 
 
 def test_car_variations_map_by_model_name() -> None:
@@ -426,3 +433,143 @@ def test_enhanced_pro_mcs_5_resolves_vehicle_appearances() -> None:
     assert vehicles["policeold2"].primary_index == 132
     assert not vehicles["rancherxl"].diagnostics
     assert not vehicles["policeold2"].diagnostics
+
+
+def _authored_vehicle_documents():
+    vehicle = VehicleInitData(
+        model_name="testcar",
+        txd_name="testcar",
+        handling_id="TESTCAR",
+        game_name="TESTCAR",
+        audio_name=MetaHash("ADDER_AUDIO"),
+        layout=MetaHash("LAYOUT_STANDARD"),
+        camera_name=MetaHash("DEFAULT_FOLLOW_VEHICLE_CAMERA"),
+        vfx_info_name=MetaHash("VFXVEHICLEINFO_CAR_GENERIC"),
+        lod_distances=[15.0, 30.0, 60.0, 120.0, 250.0, 500.0],
+    )
+    vehicles = VehicleInitDataList(resident_txd="vehshare", vehicles=[vehicle])
+    handling = HandlingDataManager(
+        entries=[
+            HandlingData(
+                name=MetaHash("TESTCAR"),
+                mass=1600.0,
+                center_of_mass_offset=(0.0, 0.0, -0.1),
+                sub_handling=[
+                    CarHandlingData(values={"fCamberFront": -0.02})
+                ],
+            )
+        ]
+    )
+    variations = VehicleModelInfoVariation(
+        vehicles=[
+            VehicleVariation(
+                model_name="testcar",
+                colors=[VehicleColorIndices(indices=[0, 0, 0, 0, 0, 0])],
+                kits=[MetaHash("0_default_modkit")],
+            )
+        ]
+    )
+    carcols = VehicleCarCols()
+    assert carcols.ensure_color(12, 34, 56, name="TEST_BLUE") == 0
+    return vehicles, handling, variations, carcols
+
+
+def test_all_vehicle_metadata_roots_author_roundtrip_semantically() -> None:
+    for document in _authored_vehicle_documents():
+        encoded = document.to_bytes()
+        reread = read_vehicle_meta(encoded)
+
+        assert reread.content == document
+        assert reread.to_bytes() == encoded
+
+
+def test_vehicle_metadata_save_is_atomic_on_validation_error(tmp_path) -> None:
+    duplicate = VehicleInitData(
+        model_name="testcar",
+        txd_name="testcar",
+        handling_id="TESTCAR",
+    )
+    document = VehicleInitDataList(vehicles=[duplicate, duplicate])
+    destination = tmp_path / "vehicles.meta"
+    destination.write_bytes(b"existing")
+
+    with pytest.raises(ValueError, match="vehicle.model_name.duplicate"):
+        document.save(destination)
+
+    assert destination.read_bytes() == b"existing"
+
+
+def test_binary_vehicle_metadata_projection_is_explicitly_read_only(tmp_path) -> None:
+    resource = read_vehicle_meta(
+        _empty_vehicle_meta_pso("CVehicleModelInfo::InitDataList")
+    )
+
+    with pytest.raises(ValueError, match="read-only"):
+        resource.save(tmp_path / "vehicles.meta")
+
+
+def test_vehicle_cloning_replaces_identity_without_retaining_raw_source() -> None:
+    donor = VehicleInitData(
+        model_name="adder",
+        txd_name="adder",
+        handling_id="ADDER",
+        audio_name=MetaHash("ADDER_AUDIO"),
+        layout=MetaHash("LAYOUT_STANDARD"),
+        camera_name=MetaHash("DEFAULT_FOLLOW_VEHICLE_CAMERA"),
+        raw={"source": "donor"},
+    )
+    clone = donor.clone_as("testcar", handling_id="TESTCAR")
+    handling = HandlingData(
+        name=MetaHash("ADDER"), mass=1800.0, raw={"source": "donor"}
+    ).clone_as("TESTCAR")
+    variation = VehicleVariation(
+        model_name="adder",
+        colors=[VehicleColorIndices(indices=[0, 1, 2, 3, 4, 5])],
+        raw={"source": "donor"},
+    ).clone_as("testcar")
+
+    assert clone.model_name == clone.txd_name == "testcar"
+    assert clone.handling_id == "TESTCAR"
+    assert clone.audio_name == donor.audio_name
+    assert clone.layout == donor.layout
+    assert clone.camera_name == donor.camera_name
+    assert clone.raw is None
+    assert handling.name == "TESTCAR" and handling.raw is None
+    assert variation.model_name == "testcar" and variation.raw is None
+
+
+def test_exact_vehicle_colors_allocate_deterministically() -> None:
+    carcols = VehicleCarCols()
+
+    first = carcols.ensure_color(1, 2, 3)
+    repeated = carcols.ensure_color(1, 2, 3, name="IGNORED_DUPLICATE")
+    second = carcols.ensure_color(4, 5, 6)
+
+    assert (first, repeated, second) == (0, 0, 1)
+    assert carcols.colors[0].rgb8 == (1, 2, 3)
+    assert VehicleModelColor.from_rgb8(255, 128, 0).color == 0xFFFF8000
+
+
+def test_vehicle_cross_file_validation_uses_build_context() -> None:
+    vehicles, handling, variations, carcols = _authored_vehicle_documents()
+    assets = AssetSet()
+    assets["common/data/handling.meta"] = handling
+    assets["common/data/carvariations.meta"] = variations
+    assets["common/data/carcols.meta"] = carcols
+    context = BuildContext(game=GameTarget.GTA5_ENHANCED, assets=assets)
+
+    assert vehicles.validate(context=context).valid
+    assert variations.validate(context=context).valid
+
+    broken = VehicleInitDataList(
+        vehicles=[
+            VehicleInitData(
+                model_name="missing",
+                txd_name="missing",
+                handling_id="MISSING",
+            )
+        ]
+    )
+    codes = {issue.code for issue in broken.validate(context=context)}
+    assert "vehicle.handling.unresolved" in codes
+    assert "vehicle.variation.unresolved" in codes

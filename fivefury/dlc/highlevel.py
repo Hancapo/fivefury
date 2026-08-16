@@ -23,6 +23,13 @@ from .model import (
 from .paths import iter_dlc_folder_files
 from .validation import validate_dlc_folder_assets, validate_dlc_pack
 
+_VEHICLE_METADATA_TYPES = {
+    "vehicles.meta": DlcDataFileType.VEHICLE_METADATA,
+    "handling.meta": DlcDataFileType.HANDLING,
+    "carvariations.meta": DlcDataFileType.VEHICLE_VARIATION,
+    "carcols.meta": DlcDataFileType.CARCOLS,
+}
+
 
 @dataclass(slots=True)
 class DlcFolderMetadata:
@@ -158,6 +165,8 @@ def _infer_content_file(
 ) -> DlcContentFile | None:
     lowered = rel_path.lower()
     filename = _virtual_path(pack_name, rel_path, device_name=device_name)
+    if file_type := _VEHICLE_METADATA_TYPES.get(Path(lowered).name):
+        return DlcContentFile(filename=filename, file_type=file_type)
     if lowered.endswith(".rpf"):
         return DlcContentFile(
             filename=filename,

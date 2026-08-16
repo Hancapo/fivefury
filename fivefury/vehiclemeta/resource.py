@@ -5,6 +5,8 @@ import enum
 from pathlib import Path
 from typing import Any
 
+from ..authoring import BuildContext, ValidationReport
+from ..common import atomic_write_bytes
 from ..hashing import jenk_hash
 from ..meta.resource import MetaResource
 from ..pso import PsoDocument, PsoReader, is_pso
@@ -143,6 +145,8 @@ _ROOT_CONTENT_TYPES = {
 }
 
 _XML_ROOT_CONTENT_TYPES = {
+    "cvehiclemodelinfo__initdatalist": VehicleMetaContentType.VEHICLES,
+    "chandlingdatamgr": VehicleMetaContentType.HANDLING,
     "cvehiclemodelinfovariation": VehicleMetaContentType.CAR_VARIATIONS,
     "cvehiclemodelinfovarglobal": VehicleMetaContentType.CAR_COLS,
     "cvehiclemodcolors": VehicleMetaContentType.CAR_MOD_COLS,
@@ -199,13 +203,44 @@ class VehicleMeta:
     def mod_colors(self) -> VehicleModColors | None:
         return self.content if isinstance(self.content, VehicleModColors) else None
 
-    def to_bytes(self) -> bytes:
+    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+        validator = getattr(self.content, "validate", None)
+        if validator is None:
+            report = ValidationReport()
+            report.issue(
+                "vehicle.meta.content.unsupported",
+                "The vehicle metadata root is not available as a typed authoring model",
+                asset=self.source or None,
+            )
+            return report
+        return validator(context=context)
+
+    def to_bytes(
+        self,
+        *,
+        context: BuildContext | None = None,
+        validate: bool = True,
+    ) -> bytes:
+        if self.format is VehicleMetaFormat.XML:
+            serializer = getattr(self.content, "to_bytes", None)
+            if serializer is None:
+                raise TypeError("Unknown vehicle metadata XML roots are not writable")
+            return serializer(context=context, validate=validate)
         return bytes(self.raw_bytes)
 
-    def save(self, path: str | Path) -> Path:
-        target = Path(path)
-        target.write_bytes(self.to_bytes())
-        return target
+    def save(
+        self,
+        path: str | Path,
+        *,
+        context: BuildContext | None = None,
+        validate: bool = True,
+    ) -> Path:
+        if self.format is not VehicleMetaFormat.XML:
+            raise ValueError("PSO and RSC vehicle metadata projections are read-only")
+        return atomic_write_bytes(
+            path,
+            self.to_bytes(context=context, validate=validate),
+        )
 
     @classmethod
     def from_bytes(cls, data: bytes, *, source: str = "") -> VehicleMeta:
