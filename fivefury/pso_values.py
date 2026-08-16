@@ -91,6 +91,15 @@ def vector(
 
 
 def enum_value(enum_type: type[T], value: Any, default: T) -> T | int:
+    if isinstance(value, str):
+        name = value.strip()
+        if name:
+            try:
+                return enum_type[name]
+            except KeyError:
+                for member in sorted(enum_type, key=lambda item: len(item.name), reverse=True):
+                    if name.endswith(f"_{member.name}"):
+                        return member
     try:
         return enum_type(int(value))
     except (TypeError, ValueError):
@@ -100,6 +109,8 @@ def enum_value(enum_type: type[T], value: Any, default: T) -> T | int:
 def node_type_name(value: Any) -> str:
     if isinstance(value, PsoNode):
         return value.type_name
+    if isinstance(value, Mapping):
+        return str(value.get("__type__", value.get("type", "")))
     return ""
 
 

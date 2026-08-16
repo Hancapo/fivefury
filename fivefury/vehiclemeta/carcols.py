@@ -14,12 +14,13 @@ from ..pso_values import (
     text,
     vector,
 )
+from .base import VehicleMetaDocument, VehicleMetaModel
 from .enums import VehicleModCameraPosition, VehicleModKitType, VehicleModType
 from .variations import LicensePlateProbability, plate_probabilities
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehiclePlateTexture:
+class VehiclePlateTexture(VehicleMetaModel):
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     diffuse_map: MetaHash = dataclasses.field(default_factory=MetaHash)
     normal_map: MetaHash = dataclasses.field(default_factory=MetaHash)
@@ -56,7 +57,7 @@ class VehiclePlateTexture:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehiclePlates:
+class VehiclePlates(VehicleMetaModel):
     textures: list[VehiclePlateTexture] = dataclasses.field(default_factory=list)
     default_texture_index: int = -1
     numeric_offset: int = 0
@@ -92,7 +93,7 @@ class VehiclePlates:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleLight:
+class VehicleLight(VehicleMetaModel):
     intensity: float = 0.0
     falloff_max: float = 0.0
     falloff_exponent: float = 8.0
@@ -121,7 +122,7 @@ class VehicleLight:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleCorona:
+class VehicleCorona(VehicleMetaModel):
     size: float = 0.0
     far_size: float = 0.0
     intensity: float = 0.0
@@ -158,7 +159,7 @@ class VehicleCorona:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleLightSettings:
+class VehicleLightSettings(VehicleMetaModel):
     id: int = 0xFF
     indicator: VehicleLight | None = None
     rear_indicator_corona: VehicleCorona | None = None
@@ -201,7 +202,7 @@ class VehicleLightSettings:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleMod:
+class VehicleMod(VehicleMetaModel):
     model_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     label: str = ""
     linked_models: list[MetaHash] = dataclasses.field(default_factory=list)
@@ -274,7 +275,7 @@ class VehicleMod:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleLinkedMod:
+class VehicleLinkedMod(VehicleMetaModel):
     model_name: MetaHash = dataclasses.field(default_factory=MetaHash)
     bone: int = -1
     turn_off_extra: bool = False
@@ -291,7 +292,7 @@ class VehicleLinkedMod:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleStatMod:
+class VehicleStatMod(VehicleMetaModel):
     identifier: MetaHash = dataclasses.field(default_factory=MetaHash)
     modifier: int = 0
     audio_apply: float = 1.0
@@ -314,7 +315,7 @@ class VehicleStatMod:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleModSlotName:
+class VehicleModSlotName(VehicleMetaModel):
     slot: VehicleModType | int = VehicleModType.CHASSIS
     name: str = ""
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -331,7 +332,7 @@ class VehicleModSlotName:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleWheel:
+class VehicleWheel(VehicleMetaModel):
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     variation: MetaHash = dataclasses.field(default_factory=MetaHash)
     label: str = ""
@@ -352,7 +353,7 @@ class VehicleWheel:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleModKit:
+class VehicleModKit(VehicleMetaModel):
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     id: int = 0xFFFF
     kit_type: VehicleModKitType | int = VehicleModKitType.STANDARD
@@ -401,7 +402,7 @@ class VehicleModKit:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleModelColor:
+class VehicleModelColor(VehicleMetaModel):
     color: int = 0
     metallic_id: int = -1
     audio_color: int = 0
@@ -428,9 +429,33 @@ class VehicleModelColor:
             raw=value,
         )
 
+    @classmethod
+    def from_rgb8(
+        cls,
+        red: int,
+        green: int,
+        blue: int,
+        *,
+        name: str = "",
+        metallic_id: int = -1,
+    ) -> VehicleModelColor:
+        channels = (int(red), int(green), int(blue))
+        if any(channel < 0 or channel > 0xFF for channel in channels):
+            raise ValueError("RGB8 channels must be between 0 and 255")
+        packed = 0xFF000000 | (channels[0] << 16) | (channels[1] << 8) | channels[2]
+        return cls(color=packed, metallic_id=metallic_id, name=name)
+
+    @property
+    def rgb8(self) -> tuple[int, int, int]:
+        return (
+            (self.color >> 16) & 0xFF,
+            (self.color >> 8) & 0xFF,
+            self.color & 0xFF,
+        )
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleMetallicSetting:
+class VehicleMetallicSetting(VehicleMetaModel):
     specular_intensity: float = 0.0
     specular_falloff: float = 0.0
     specular_fresnel: float = 0.0
@@ -447,7 +472,7 @@ class VehicleMetallicSetting:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleWindowColor:
+class VehicleWindowColor(VehicleMetaModel):
     color: int = 0
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -462,7 +487,7 @@ class VehicleWindowColor:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleVariationGlobalData:
+class VehicleVariationGlobalData(VehicleMetaModel):
     xenon_light_color: int = 0
     xenon_corona_color: int = 0
     light_intensity_multiplier: float = 0.0
@@ -499,7 +524,7 @@ class VehicleVariationGlobalData:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleXenonLightColor:
+class VehicleXenonLightColor(VehicleMetaModel):
     light_color: int = 0
     corona_color: int = 0
     light_intensity_multiplier: float = 0.0
@@ -523,7 +548,7 @@ class VehicleXenonLightColor:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleSirenRotation:
+class VehicleSirenRotation(VehicleMetaModel):
     delta: float = 0.0
     start: float = 0.0
     speed: float = 0.0
@@ -548,7 +573,7 @@ class VehicleSirenRotation:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleSirenLight:
+class VehicleSirenLight(VehicleMetaModel):
     rotation: VehicleSirenRotation | None = None
     flashiness: VehicleSirenRotation | None = None
     corona: Any = None
@@ -591,7 +616,7 @@ class VehicleSirenLight:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleSirenSettings:
+class VehicleSirenSettings(VehicleMetaModel):
     id: int = 0xFF
     name: str = ""
     time_multiplier: float = 0.0
@@ -628,7 +653,8 @@ class VehicleSirenSettings:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleCarCols:
+class VehicleCarCols(VehicleMetaDocument):
+    ROOT_TAG = "CVehicleModelInfoVarGlobal"
     plates: VehiclePlates | None = None
     colors: list[VehicleModelColor] = dataclasses.field(default_factory=list)
     metallic_settings: list[VehicleMetallicSetting] = dataclasses.field(
@@ -692,9 +718,35 @@ class VehicleCarCols:
             raw=value,
         )
 
+    def ensure_color(
+        self,
+        red: int,
+        green: int,
+        blue: int,
+        *,
+        name: str = "",
+        metallic_id: int = -1,
+    ) -> int:
+        candidate = VehicleModelColor.from_rgb8(
+            red,
+            green,
+            blue,
+            name=name,
+            metallic_id=metallic_id,
+        )
+        for index, existing in enumerate(self.colors):
+            if existing.color == candidate.color:
+                return index
+        if len(self.colors) >= 0x100:
+            raise OverflowError("Vehicle color tables are limited to 256 entries")
+        if not candidate.name:
+            candidate = dataclasses.replace(candidate, name=f"CUSTOM_COLOR_{len(self.colors):03d}")
+        self.colors.append(candidate)
+        return len(self.colors) - 1
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleModColor:
+class VehicleModColor(VehicleMetaModel):
     name: str = ""
     color: int = 0
     specular: int = 0
@@ -711,7 +763,7 @@ class VehicleModColor:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleModColors:
+class VehicleModColors(VehicleMetaModel):
     metallic: list[VehicleModColor] = dataclasses.field(default_factory=list)
     classic: list[VehicleModColor] = dataclasses.field(default_factory=list)
     matte: list[VehicleModColor] = dataclasses.field(default_factory=list)

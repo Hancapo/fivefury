@@ -5,10 +5,11 @@ from typing import Any
 
 from ..metahash import MetaHash
 from ..pso_values import field, items, meta_hash, number, text
+from .base import VehicleMetaDocument, VehicleMetaModel, without_raw
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleColorIndices:
+class VehicleColorIndices(VehicleMetaModel):
     indices: list[int] = dataclasses.field(default_factory=list)
     liveries: list[bool] = dataclasses.field(default_factory=list)
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -23,7 +24,7 @@ class VehicleColorIndices:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class LicensePlateProbability:
+class LicensePlateProbability(VehicleMetaModel):
     name: MetaHash = dataclasses.field(default_factory=MetaHash)
     weight: int = 1
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
@@ -45,7 +46,7 @@ def plate_probabilities(value: Any) -> list[LicensePlateProbability]:
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleVariation:
+class VehicleVariation(VehicleMetaModel):
     model_name: str = ""
     colors: list[VehicleColorIndices] = dataclasses.field(default_factory=list)
     kits: list[MetaHash] = dataclasses.field(default_factory=list)
@@ -84,9 +85,13 @@ class VehicleVariation:
             raw=value,
         )
 
+    def clone_as(self, model_name: str) -> VehicleVariation:
+        return without_raw(self, model_name=model_name)
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class VehicleModelInfoVariation:
+class VehicleModelInfoVariation(VehicleMetaDocument):
+    ROOT_TAG = "CVehicleModelInfoVariation"
     vehicles: list[VehicleVariation] = dataclasses.field(default_factory=list)
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
 
