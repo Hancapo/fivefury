@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Typed vehicle-glass shatter-map authoring and cross-asset validation.
+
 ## [0.4.13] - 2026-08-16
 
 ### Breaking Changes

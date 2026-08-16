@@ -1366,6 +1366,9 @@ def validate_yft(
                     "event players or populated event sets cannot yet be rebuilt safely",
                     code="yft.event_players_populated_event_sets_cannot_yet_rebuilt_safely",
                 )
+    from .vehicle_glass_authoring import validate_yft_vehicle_glass
+
+    issues.extend(validate_yft_vehicle_glass(source))
     if source.path:
         issues.issues = [issue.for_asset(source.path) for issue in issues]
     return issues

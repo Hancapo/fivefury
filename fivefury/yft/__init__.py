@@ -93,6 +93,14 @@ from .physics_authoring import (
 )
 from .reader import read_yft
 from .tune_name import rewrite_yft_tune_name
+from .vehicle_glass_authoring import (
+    YftVehicleGlassAssignment,
+    YftVehicleGlassBuild,
+    YftVehicleGlassMeshChannel,
+    derive_yft_vehicle_glass,
+    recalculate_yft_vehicle_glass,
+    validate_yft_vehicle_glass,
+)
 from .writer import build_yft_bytes, create_yft, save_yft
 
 __all__ = [
@@ -157,6 +165,9 @@ __all__ = [
     "YftVehicleGlassSpan",
     "YftVehicleGlassWindow",
     "YftVehicleGlassWindows",
+    "YftVehicleGlassAssignment",
+    "YftVehicleGlassBuild",
+    "YftVehicleGlassMeshChannel",
     "YftVerletCloth",
     "bound_density",
     "bound_inertia",
@@ -174,15 +185,18 @@ __all__ = [
     "create_yft",
     "default_articulated_body_type",
     "default_damp_archetype",
+    "derive_yft_vehicle_glass",
     "ensure_yft_glass",
     "iter_yft_paths",
     "normalize_physics_lod",
     "prepare_physics_bound",
     "read_yft",
+    "recalculate_yft_vehicle_glass",
     "rewrite_yft_tune_name",
     "save_yft",
     "scan_yft_corpus",
     "simple_physics_bound",
     "validate_yft",
     "validate_yft_bytes",
+    "validate_yft_vehicle_glass",
 ]
