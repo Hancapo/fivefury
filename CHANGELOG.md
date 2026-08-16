@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Axis-aware collision discs and declarative vehicle-wheel bounds.
+- Vehicle YFT physics profiles now support direct wheel discs and rider capsules.
 
 ## [0.4.10] - 2026-08-16
 

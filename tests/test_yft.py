@@ -10,8 +10,10 @@ import pytest
 from fivefury import (
     BoundAabb,
     BoundBox,
+    BoundCapsule,
     BoundChild,
     BoundComposite,
+    BoundDisc,
     BoundGeometry,
     BoundMaterial,
     BoundMaterialType,
@@ -3156,6 +3158,165 @@ def test_vehicle_profile_accepts_bvh_and_writes_native_vfts():
     assert struct.unpack_from(
         "<I", rebuilt_system, virtual_to_offset(rebuilt_leaf)
     )[0] == 0x4062FAB8
+    assert validate_yft_bytes(
+        rebuilt,
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    ).valid
+
+
+def _vehicle_geometry_bound() -> BoundGeometry:
+    return build_fragment_geometry_bound(
+        (
+            (-1.0, -1.0, -1.0),
+            (1.0, -1.0, -1.0),
+            (0.0, 1.0, -1.0),
+            (0.0, 0.0, 1.0),
+        ),
+        ((0, 2, 1), (0, 1, 3), (1, 2, 3), (2, 0, 3)),
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    )
+
+
+def _vehicle_physics_lod(child_count: int) -> YftPhysicsLod:
+    return YftPhysicsLod.declare(
+        "high",
+        groups=(
+            YftPhysicsGroup.declare(
+                "vehicle",
+                children=tuple(YftPhysicsChild.declare() for _ in range(child_count)),
+            ),
+        ),
+    )
+
+
+def test_vehicle_profile_roundtrips_direct_geometry_and_wheels_in_enhanced_yft():
+    wheels = (
+        BoundDisc.vehicle_wheel((-0.8, 1.2, -0.3), 0.3405, 0.267),
+        BoundDisc.vehicle_wheel((0.8, 1.2, -0.3), 0.3405, 0.267),
+        BoundDisc.vehicle_wheel((-0.8, -1.2, -0.3), 0.3405, 0.376),
+        BoundDisc.vehicle_wheel((0.8, -1.2, -0.3), 0.3405, 0.376),
+    )
+    composite = _composite(_vehicle_geometry_bound(), *wheels)
+    source = create_yft(
+        _simple_fragment_drawable("enhanced_vehicle"),
+        name="enhanced_vehicle",
+        version=171,
+        physics_lods=(_vehicle_physics_lod(5),),
+        physics_bound=composite,
+        physics_bound_profile=YftPhysicsBoundProfile.VEHICLE,
+        physics_density=1000.0,
+    )
+
+    raw = build_yft_bytes(source)
+    parsed = read_yft(raw)
+    parsed_lod = parsed.physics_lod("high")
+    parsed_bounds = [
+        child.bound for child in parsed_lod.composite_bound.active_children
+    ]
+
+    assert [bound.bound_type for bound in parsed_bounds] == [
+        BoundType.GEOMETRY,
+        BoundType.DISC,
+        BoundType.DISC,
+        BoundType.DISC,
+        BoundType.DISC,
+    ]
+    assert all(bound.bound_type is not BoundType.GEOMETRY_BVH for bound in parsed_bounds)
+    assert parsed_lod.composite_bound.file_vft == GEN9_BOUND_FILE_VFTS[BoundType.COMPOSITE]
+    assert parsed_bounds[0].file_vft == GEN9_BOUND_FILE_VFTS[BoundType.GEOMETRY]
+    assert all(
+        bound.file_vft == GEN9_BOUND_FILE_VFTS[BoundType.DISC]
+        for bound in parsed_bounds[1:]
+    )
+    assert parsed_lod.children[1].undamaged_mass == pytest.approx(
+        wheels[0].compute_volume() * 1000.0
+    )
+    assert validate_yft(source).valid
+    assert validate_yft(parsed).valid
+    assert validate_yft_bytes(
+        raw,
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    ).valid
+
+    rebuilt = build_yft_bytes(parsed)
+    reparsed = read_yft(rebuilt)
+    reparsed_bounds = [
+        child.bound
+        for child in reparsed.physics_lod("high").composite_bound.active_children
+    ]
+    assert [bound.bound_type for bound in reparsed_bounds] == [
+        BoundType.GEOMETRY,
+        BoundType.DISC,
+        BoundType.DISC,
+        BoundType.DISC,
+        BoundType.DISC,
+    ]
+    assert validate_yft_bytes(
+        rebuilt,
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    ).valid
+
+
+def test_vehicle_profile_uses_retail_legacy_disc_vft():
+    source = create_yft(
+        _simple_fragment_drawable("legacy_vehicle_wheel"),
+        name="legacy_vehicle_wheel",
+        physics_lods=(_vehicle_physics_lod(1),),
+        physics_bound=BoundDisc.vehicle_wheel((0.0, 0.0, 0.0), 0.3405, 0.267),
+        physics_bound_profile=YftPhysicsBoundProfile.VEHICLE,
+    )
+
+    raw = build_yft_bytes(source)
+    parsed = read_yft(raw)
+    wheel = parsed.physics_lod("high").composite_bound.active_children[0].bound
+
+    assert wheel.bound_type is BoundType.DISC
+    assert wheel.file_vft == 0x40630408
+    assert validate_yft_bytes(
+        raw,
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    ).valid
+
+
+def test_vehicle_profile_roundtrips_motorcycle_rider_capsule():
+    rider = BoundCapsule(
+        bound_type=BoundType.CAPSULE,
+        sphere_radius=0.5,
+        box_max=(0.25, 0.5, 0.25),
+        margin=0.25,
+        box_min=(-0.25, -0.5, -0.25),
+        box_center=(0.0, 0.0, 0.0),
+        sphere_center=(0.0, 0.0, 0.0),
+        capsule_half_height=0.25,
+    ).build()
+    source = create_yft(
+        _simple_fragment_drawable("enhanced_motorcycle"),
+        name="enhanced_motorcycle",
+        version=171,
+        physics_lods=(_vehicle_physics_lod(1),),
+        physics_bound=rider,
+        physics_bound_profile=YftPhysicsBoundProfile.VEHICLE,
+    )
+
+    raw = build_yft_bytes(source)
+    parsed = read_yft(raw)
+    parsed_rider = parsed.physics_lod("high").composite_bound.active_children[0].bound
+
+    assert parsed_rider.bound_type is BoundType.CAPSULE
+    assert parsed_rider.file_vft == GEN9_BOUND_FILE_VFTS[BoundType.CAPSULE]
+    assert validate_yft_bytes(
+        raw,
+        profile=YftPhysicsBoundProfile.VEHICLE,
+    ).valid
+
+    rebuilt = build_yft_bytes(parsed)
+    reparsed_rider = (
+        read_yft(rebuilt)
+        .physics_lod("high")
+        .composite_bound.active_children[0]
+        .bound
+    )
+    assert reparsed_rider.bound_type is BoundType.CAPSULE
     assert validate_yft_bytes(
         rebuilt,
         profile=YftPhysicsBoundProfile.VEHICLE,
