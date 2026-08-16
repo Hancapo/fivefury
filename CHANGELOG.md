@@ -7,6 +7,16 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-08-16
+
+### Breaking Changes
+
+- Platform DLC paths now distinguish virtual registrations from physical payload entries.
+
+### Fixed
+
+- Enhanced vehicle DLCs now store platform archives under `x64` while registering them through `%PLATFORM%`.
+
 ## [0.4.12] - 2026-08-16
 
 ### Breaking Changes

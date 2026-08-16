@@ -3,16 +3,44 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
-DLC_PLATFORM_ROOT = PurePosixPath("%PLATFORM%")
+DLC_PLATFORM_REGISTRATION_ROOT = PurePosixPath("%PLATFORM%")
+DLC_PLATFORM_PAYLOAD_ROOT = PurePosixPath("x64")
 
 
-def dlc_platform_path(path: str | PurePosixPath) -> PurePosixPath:
+def _platform_path(
+    path: str | PurePosixPath,
+    *,
+    root: PurePosixPath,
+    other_root: PurePosixPath,
+) -> PurePosixPath:
     relative = PurePosixPath(path)
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError(f"DLC platform path must be relative: {path!r}")
-    if relative.parts[:1] == DLC_PLATFORM_ROOT.parts:
+    first_part = relative.parts[0].casefold() if relative.parts else ""
+    if first_part == other_root.parts[0].casefold():
+        raise ValueError(
+            f"DLC platform path uses {other_root.as_posix()!r} where "
+            f"{root.as_posix()!r} is required: {path!r}"
+        )
+    if first_part == root.parts[0].casefold():
         return relative
-    return DLC_PLATFORM_ROOT / relative
+    return root / relative
+
+
+def dlc_platform_registration_path(path: str | PurePosixPath) -> PurePosixPath:
+    return _platform_path(
+        path,
+        root=DLC_PLATFORM_REGISTRATION_ROOT,
+        other_root=DLC_PLATFORM_PAYLOAD_ROOT,
+    )
+
+
+def dlc_platform_payload_path(path: str | PurePosixPath) -> PurePosixPath:
+    return _platform_path(
+        path,
+        root=DLC_PLATFORM_PAYLOAD_ROOT,
+        other_root=DLC_PLATFORM_REGISTRATION_ROOT,
+    )
 
 
 def iter_dlc_folder_files(
@@ -34,4 +62,10 @@ def iter_dlc_folder_files(
         yield relative.as_posix(), path
 
 
-__all__ = ["DLC_PLATFORM_ROOT", "dlc_platform_path", "iter_dlc_folder_files"]
+__all__ = [
+    "DLC_PLATFORM_PAYLOAD_ROOT",
+    "DLC_PLATFORM_REGISTRATION_ROOT",
+    "dlc_platform_payload_path",
+    "dlc_platform_registration_path",
+    "iter_dlc_folder_files",
+]

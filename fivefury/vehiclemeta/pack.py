@@ -24,7 +24,7 @@ from .pack_layout import (
     CARCOLS_META_PATH,
     HANDLING_META_PATH,
     VARIATIONS_META_PATH,
-    VEHICLE_STREAM_PATH,
+    VEHICLE_STREAM_PAYLOAD_PATH,
     VEHICLE_STREAM_RELATIVE_PATH,
     VEHICLES_META_PATH,
     validate_enhanced_vehicle_pack_layout,
@@ -84,7 +84,7 @@ class VehiclePackBuilder:
     HANDLING_META = HANDLING_META_PATH
     VARIATIONS_META = VARIATIONS_META_PATH
     CARCOLS_META = CARCOLS_META_PATH
-    STREAMED_RPF = VEHICLE_STREAM_PATH
+    STREAMED_RPF = VEHICLE_STREAM_PAYLOAD_PATH
 
     def __post_init__(self) -> None:
         self.name = self.name.strip()

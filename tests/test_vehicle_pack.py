@@ -157,6 +157,11 @@ def test_vehicle_pack_roundtrips_enhanced_metadata_and_streamed_assets(
 
     archive = RpfArchive.from_path(output.paths.dlc_rpf, load_nested=True)
     try:
+        assert archive.find_entry("x64/levels/gta5/vehicles/vehicles.rpf") is not None
+        assert (
+            archive.find_entry("%PLATFORM%/levels/gta5/vehicles/vehicles.rpf")
+            is None
+        )
         for path in (
             output.paths.vehicles_meta,
             output.paths.handling_meta,
@@ -202,8 +207,21 @@ def test_vehicle_pack_rejects_legacy_literal_platform_layout() -> None:
     assert {
         "vehicle.pack.layout.registrations.invalid",
         "vehicle.pack.layout.stream.contents.invalid",
-        "vehicle.pack.layout.stream.file_missing",
         "vehicle.pack.layout.stream.mount.invalid",
+    }.issubset({issue.code for issue in report})
+
+
+def test_vehicle_pack_rejects_virtual_macro_as_physical_payload_path() -> None:
+    builder = _builder()
+    pack = builder.build()
+    payload = pack.files.pop(str(builder.STREAMED_RPF))
+    pack.files["%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"] = payload
+
+    report = validate_enhanced_vehicle_pack_layout(pack)
+
+    assert {
+        "vehicle.pack.layout.stream.file_macro.invalid",
+        "vehicle.pack.layout.stream.file_missing",
     }.issubset({issue.code for issue in report})
 
 

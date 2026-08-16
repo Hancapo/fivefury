@@ -27,7 +27,8 @@ from fivefury import (
     Ytd,
     build_rsc7,
     create_dlc_folder_metadata,
-    dlc_platform_path,
+    dlc_platform_payload_path,
+    dlc_platform_registration_path,
     read_dlc_content,
     read_dlc_extra_title_update_data,
     read_dlc_list,
@@ -301,16 +302,30 @@ def test_dlc_pack_registers_and_resolves_platform_archives() -> None:
         RpfArchive.empty("vehicles.rpf"),
     )
 
-    assert dlc_platform_path("levels/gta5/vehicles/vehicles.rpf").as_posix() == (
+    assert dlc_platform_registration_path(
+        "levels/gta5/vehicles/vehicles.rpf"
+    ).as_posix() == (
         "%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
     )
+    assert dlc_platform_payload_path(
+        "levels/gta5/vehicles/vehicles.rpf"
+    ).as_posix() == "x64/levels/gta5/vehicles/vehicles.rpf"
     assert registration.filename == (
         "dlc_my_pack:/%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
     )
     assert pack.resolve_content_path(registration) == (
         "%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
     )
+    assert "x64/levels/gta5/vehicles/vehicles.rpf" in pack.files
+    assert "%PLATFORM%/levels/gta5/vehicles/vehicles.rpf" not in pack.files
     assert pack.resolve_content_path("platform:/common.rpf") is None
+
+    with pytest.raises(ValueError, match="'x64' where '%PLATFORM%' is required"):
+        dlc_platform_registration_path("x64/levels/gta5/vehicles/vehicles.rpf")
+    with pytest.raises(ValueError, match="'%PLATFORM%' where 'x64' is required"):
+        dlc_platform_payload_path(
+            "%PLATFORM%/levels/gta5/vehicles/vehicles.rpf"
+        )
 
 
 def test_dlc_patch_builds_update_overlay_with_mount_manifest() -> None:

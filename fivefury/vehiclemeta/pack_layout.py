@@ -7,7 +7,7 @@ from ..authoring import ValidationReport
 from ..dlc.content import DlcContentFile
 from ..dlc.enums import DlcContentGroup, DlcDataFileType
 from ..dlc.model import DlcPack
-from ..dlc.paths import dlc_platform_path
+from ..dlc.paths import dlc_platform_payload_path, dlc_platform_registration_path
 from ..dlc.setup import DlcSetupData
 
 VEHICLES_META_PATH = PurePosixPath("common/data/levels/gta5/vehicles.meta")
@@ -15,7 +15,10 @@ HANDLING_META_PATH = PurePosixPath("common/data/handling.meta")
 VARIATIONS_META_PATH = PurePosixPath("common/data/carvariations.meta")
 CARCOLS_META_PATH = PurePosixPath("common/data/carcols.meta")
 VEHICLE_STREAM_RELATIVE_PATH = PurePosixPath("levels/gta5/vehicles/vehicles.rpf")
-VEHICLE_STREAM_PATH = dlc_platform_path(VEHICLE_STREAM_RELATIVE_PATH)
+VEHICLE_STREAM_REGISTRATION_PATH = dlc_platform_registration_path(
+    VEHICLE_STREAM_RELATIVE_PATH
+)
+VEHICLE_STREAM_PAYLOAD_PATH = dlc_platform_payload_path(VEHICLE_STREAM_RELATIVE_PATH)
 
 _METADATA_TYPES = {
     VEHICLES_META_PATH: DlcDataFileType.VEHICLE_METADATA,
@@ -89,7 +92,7 @@ def validate_enhanced_vehicle_pack_layout(pack: DlcPack) -> ValidationReport:
         pack.path(str(path)).casefold(): file_type
         for path, file_type in _METADATA_TYPES.items()
     }
-    stream_filename = pack.path(str(VEHICLE_STREAM_PATH))
+    stream_filename = pack.path(str(VEHICLE_STREAM_REGISTRATION_PATH))
     expected[stream_filename.casefold()] = DlcDataFileType.RPF
     if set(registrations) != set(expected):
         report.issue(
@@ -141,7 +144,7 @@ def validate_enhanced_vehicle_pack_layout(pack: DlcPack) -> ValidationReport:
             )
         if (
             stream.filename.casefold() != stream_filename.casefold()
-            or pack.resolve_content_path(stream) != str(VEHICLE_STREAM_PATH)
+            or pack.resolve_content_path(stream) != str(VEHICLE_STREAM_REGISTRATION_PATH)
         ):
             report.issue(
                 "vehicle.pack.layout.stream.mount.invalid",
@@ -181,12 +184,19 @@ def validate_enhanced_vehicle_pack_layout(pack: DlcPack) -> ValidationReport:
             )
 
     files = {str(path).casefold() for path in pack.files}
-    if files and str(VEHICLE_STREAM_PATH).casefold() not in files:
-        report.issue(
-            "vehicle.pack.layout.stream.file_missing",
-            "The platform vehicle archive is not present in the DLC payload",
-            path=str(VEHICLE_STREAM_PATH),
-        )
+    if files:
+        if str(VEHICLE_STREAM_PAYLOAD_PATH).casefold() not in files:
+            report.issue(
+                "vehicle.pack.layout.stream.file_missing",
+                "The physical platform vehicle archive is not present in the DLC payload",
+                path=str(VEHICLE_STREAM_PAYLOAD_PATH),
+            )
+        if str(VEHICLE_STREAM_REGISTRATION_PATH).casefold() in files:
+            report.issue(
+                "vehicle.pack.layout.stream.file_macro.invalid",
+                "A virtual platform macro cannot be used as a physical DLC payload path",
+                path=str(VEHICLE_STREAM_REGISTRATION_PATH),
+            )
     return report
 
 
@@ -195,7 +205,8 @@ __all__ = [
     "HANDLING_META_PATH",
     "VARIATIONS_META_PATH",
     "VEHICLES_META_PATH",
-    "VEHICLE_STREAM_PATH",
+    "VEHICLE_STREAM_PAYLOAD_PATH",
+    "VEHICLE_STREAM_REGISTRATION_PATH",
     "VEHICLE_STREAM_RELATIVE_PATH",
     "validate_enhanced_vehicle_pack_layout",
     "validate_enhanced_vehicle_setup",
