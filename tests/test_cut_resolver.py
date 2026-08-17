@@ -573,14 +573,83 @@ def test_ped_expression_resolution_uses_highest_source_precedence(
     assert not issues
 
 
-def test_ped_expression_resolution_rejects_same_tier_ambiguity(
+def test_ped_expression_resolution_keeps_identical_same_tier_duplicates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    resolved = _resolved_ped("test_ped")
-    first_asset = SimpleNamespace(path="mods/a/peds.ymt")
-    second_asset = SimpleNamespace(path="mods/b/peds.ymt")
-    first_init = YmtPedInitData(name=MetaHash(resolved.reference_hash))
-    second_init = YmtPedInitData(name=MetaHash(resolved.reference_hash))
+    # Retail carries whole copies of peds.ymt inside several DLC packs, so the
+    # same model shows up as identical init records at the same source tier.
+    resolved = _resolved_ped("csb_abigail")
+    first_asset = SimpleNamespace(
+        path="x64w.rpf/dlcpacks/mpbeach/dlc.rpf/x64/data/peds.ymt"
+    )
+    second_asset = SimpleNamespace(
+        path="x64w.rpf/dlcpacks/mpbusiness2/dlc.rpf/x64/data/peds.ymt"
+    )
+    expression_hash = MetaHash("csb_abigail").uint
+    first_init = YmtPedInitData(
+        name=MetaHash(resolved.reference_hash),
+        expression_dictionary_name=MetaHash(expression_hash),
+    )
+    second_init = YmtPedInitData(
+        name=MetaHash(resolved.reference_hash),
+        expression_dictionary_name=MetaHash(expression_hash),
+    )
+    yed_asset = SimpleNamespace(path="x64c.rpf/anim/expressions/csb_abigail.yed")
+    yed_file = SimpleNamespace(parsed=object())
+
+    class Cache:
+        @staticmethod
+        def find_assets(_query, *, kind):
+            assert kind is GameFileType.YMT
+            return [first_asset, second_asset]
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.expressions._load_file",
+        lambda _cache, asset, _issues, **_kwargs: (
+            yed_file
+            if asset is yed_asset
+            else _ped_metadata_file(
+                first_init if asset is first_asset else second_init
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.expressions._preferred_asset",
+        lambda _cache, value, kind: (
+            yed_asset
+            if value == expression_hash and kind is GameFileType.YED
+            else pytest.fail("unexpected dependency lookup")
+        ),
+    )
+
+    issues = []
+    _resolve_ped_expression_resources(Cache(), {4: resolved}, issues)
+
+    assert resolved.ped_init_data_candidates == (first_init, second_init)
+    assert resolved.ped_init_data is first_init
+    assert resolved.ped_metadata_asset is first_asset
+    assert resolved.files[GameFileType.YED] is yed_file
+    assert not issues
+
+
+def test_ped_expression_resolution_rejects_conflicting_same_tier_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved = _resolved_ped("csb_abigail")
+    first_asset = SimpleNamespace(
+        path="x64w.rpf/dlcpacks/mpbeach/dlc.rpf/x64/data/peds.ymt"
+    )
+    second_asset = SimpleNamespace(
+        path="x64w.rpf/dlcpacks/mpbusiness2/dlc.rpf/x64/data/peds.ymt"
+    )
+    first_init = YmtPedInitData(
+        name=MetaHash(resolved.reference_hash),
+        expression_dictionary_name=MetaHash("first_expression"),
+    )
+    second_init = YmtPedInitData(
+        name=MetaHash(resolved.reference_hash),
+        expression_dictionary_name=MetaHash("second_expression"),
+    )
 
     class Cache:
         @staticmethod

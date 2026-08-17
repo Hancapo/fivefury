@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
@@ -133,6 +134,22 @@ def _ped_init_data_by_model(
     return matches
 
 
+def _init_record_identity(item: Any) -> tuple[Any, ...]:
+    """Identify an init record by its metadata, ignoring the parsed source node."""
+    if not dataclasses.is_dataclass(item):
+        return (item,)
+    return tuple(
+        getattr(item, field.name)
+        for field in dataclasses.fields(item)
+        if field.name != "raw"
+    )
+
+
+def _init_records_agree(matches: tuple[Any, ...]) -> bool:
+    identity = _init_record_identity(matches[0])
+    return all(_init_record_identity(item) == identity for item in matches[1:])
+
+
 def _select_ped_init_data(
     resolved: ResolvedCutBinding,
     candidates: tuple[int, list[PedInitMatch]] | None,
@@ -141,7 +158,11 @@ def _select_ped_init_data(
 ) -> bool:
     matches = tuple(item for _, _, item in candidates[1]) if candidates else ()
     resolved.ped_init_data_candidates = matches
-    if candidates and len(candidates[1]) == 1:
+    # Retail ships whole copies of peds.ymt inside several DLC packs, so a
+    # single model routinely matches identical init records at the same source
+    # tier.  Records that agree carry no ambiguity to resolve: keep the first
+    # by source rank.  Only genuinely conflicting records stay unresolved.
+    if matches and _init_records_agree(matches):
         asset, game_file, item = candidates[1][0]
         resolved.ped_metadata_asset = asset
         resolved.ped_metadata_file = game_file
@@ -156,8 +177,9 @@ def _select_ped_init_data(
             severity="info" if not matches else "warning",
             code="binding.ymt_init_unresolved",
             message=(
-                f"{resolved.binding.display_name} matched {len(matches)} ped init "
-                "records; an exact unique YMT init record is required"
+                f"{resolved.binding.display_name} matched {len(matches)} "
+                "conflicting ped init records; a single consistent YMT init "
+                "record is required"
             ),
             object_id=object_id,
         )
