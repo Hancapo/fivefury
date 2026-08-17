@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-08-17
+
 ### Fixed
 
 - Ped init records duplicated across same-tier DLC copies of `peds.ymt` now resolve instead of blocking expression-set and YED resolution.
