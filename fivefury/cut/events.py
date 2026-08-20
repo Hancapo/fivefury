@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import Any
 
+from ..vector import Quaternion, Vector3
+
 _CUT_EVENT_ENUMS = [
     "CUTSCENE_LOAD_SCENE_EVENT",
     "CUTSCENE_UNLOAD_SCENE_EVENT",
@@ -421,8 +423,8 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfPlayParticleEffectEventArgs",
         default_target_role="particle_fx",
         default_args={
-            "vInitialBoneRotation": (0.0, 0.0, 0.0, 1.0),
-            "vInitialBoneOffset": (0.0, 0.0, 0.0),
+            "vInitialBoneRotation": Quaternion(),
+            "vInitialBoneOffset": Vector3(),
             "iAttachParentId": -1,
             "iAttachBoneHash": 0,
         },
@@ -435,8 +437,8 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfPlayParticleEffectEventArgs",
         default_target_role="particle_fx",
         default_args={
-            "vInitialBoneRotation": (0.0, 0.0, 0.0, 1.0),
-            "vInitialBoneOffset": (0.0, 0.0, 0.0),
+            "vInitialBoneRotation": Quaternion(),
+            "vInitialBoneOffset": Vector3(),
             "iAttachParentId": -1,
             "iAttachBoneHash": 0,
         },
@@ -489,8 +491,8 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfDecalEventArgs",
         default_target_role="decal",
         default_args={
-            "vPosition": (0.0, 0.0, 0.0),
-            "vRotation": (0.0, 0.0, 0.0, 1.0),
+            "vPosition": Vector3(),
+            "vRotation": Quaternion(),
             "fWidth": 1.0,
             "fHeight": 1.0,
             "Colour": 0xFFFFFFFF,
@@ -505,8 +507,8 @@ _SUPPORTED_EVENT_SPECS = {
         args_type_name="rage__cutfDecalEventArgs",
         default_target_role="decal",
         default_args={
-            "vPosition": (0.0, 0.0, 0.0),
-            "vRotation": (0.0, 0.0, 0.0, 1.0),
+            "vPosition": Vector3(),
+            "vRotation": Quaternion(),
             "fWidth": 1.0,
             "fHeight": 1.0,
             "Colour": 0xFFFFFFFF,
@@ -522,7 +524,7 @@ _SUPPORTED_EVENT_SPECS = {
         default_target_role="camera",
         default_args={
             "cameraCutHashName": 0,
-            "position": (0.0, 0.0, 0.0),
+            "position": Vector3(),
             "radius": 0.0,
             "interpTime": 0.0,
             "cascadeIndex": 0,

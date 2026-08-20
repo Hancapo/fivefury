@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ..vector import Vector3
 from .model import (
     YdrJointRotationLimit,
     YdrJoints,
@@ -19,7 +20,7 @@ def _read_rotation_limit(
     u16: Callable[[bytes, int], int],
     u32: Callable[[bytes, int], int],
     f32: Callable[[bytes, int], float],
-    vec3: Callable[[bytes, int], tuple[float, float, float]],
+    vec3: Callable[[bytes, int], Vector3],
 ) -> YdrJointRotationLimit:
     return YdrJointRotationLimit(
         bone_id=u16(system_data, offset + 0x08),
@@ -75,7 +76,7 @@ def _read_translation_limit(
     offset: int,
     *,
     u32: Callable[[bytes, int], int],
-    vec3: Callable[[bytes, int], tuple[float, float, float]],
+    vec3: Callable[[bytes, int], Vector3],
 ) -> YdrJointTranslationLimit:
     return YdrJointTranslationLimit(
         bone_id=u32(system_data, offset + 0x08),
@@ -102,7 +103,7 @@ def parse_joints(
     u32: Callable[[bytes, int], int],
     u64: Callable[[bytes, int], int],
     f32: Callable[[bytes, int], float],
-    vec3: Callable[[bytes, int], tuple[float, float, float]],
+    vec3: Callable[[bytes, int], Vector3],
 ) -> YdrJoints | None:
     if not pointer:
         return None

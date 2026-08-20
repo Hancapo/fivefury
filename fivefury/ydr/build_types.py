@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..bounds import Bound
+from ..vector import Vector2, Vector3, Vector4
 from ..ytd import Ytd
 from .defs import (
     YdrLod,
@@ -49,12 +50,12 @@ class YdrMaterialInput:
 
 @dataclasses.dataclass(slots=True)
 class YdrMeshInput:
-    positions: Sequence[tuple[float, float, float]]
+    positions: Sequence[Vector3]
     indices: Sequence[int]
     material: str = "default"
-    normals: Sequence[tuple[float, float, float]] | None = None
-    texcoords: Sequence[Sequence[tuple[float, float]]] | None = None
-    tangents: Sequence[tuple[float, float, float, float]] | None = None
+    normals: Sequence[Vector3] | None = None
+    texcoords: Sequence[Sequence[Vector2]] | None = None
+    tangents: Sequence[Vector4] | None = None
     colours0: Sequence[tuple[float, float, float, float]] | None = None
     colours1: Sequence[tuple[float, float, float, float]] | None = None
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None
@@ -63,6 +64,26 @@ class YdrMeshInput:
     vertex_buffer_flags: int = 0
     declaration_flags: int | None = None
     declaration_types: int | None = None
+
+    def __post_init__(self) -> None:
+        self._require_channel("positions", self.positions, Vector3)
+        if self.normals is not None:
+            self._require_channel("normals", self.normals, Vector3)
+        if self.tangents is not None:
+            self._require_channel("tangents", self.tangents, Vector4)
+        for index, channel in enumerate(self.texcoords or ()):
+            self._require_channel(f"texcoords[{index}]", channel, Vector2)
+
+    @staticmethod
+    def _require_channel(name: str, values: Sequence[object], value_type: type) -> None:
+        invalid = next(
+            (index for index, value in enumerate(values) if not isinstance(value, value_type)),
+            None,
+        )
+        if invalid is not None:
+            raise TypeError(
+                f"YdrMeshInput.{name}[{invalid}] must be {value_type.__name__}"
+            )
 
 
 @dataclasses.dataclass(slots=True)

@@ -24,6 +24,7 @@ from ..binary import (
 from ..binary import (
     u32_be as _u32,
 )
+from ..vector import Vector2, Vector3, Vector4
 from .codec import (
     decode_array_header,
     decode_pointer,
@@ -167,16 +168,23 @@ class PsoReader:
         if type_id == PsoDataTypeFloat:
             return _f32(self.psin, absolute_offset)
         if type_id in {PsoDataTypeFloat3, PsoDataTypeFloat3a}:
-            return (_f32(self.psin, absolute_offset), _f32(self.psin, absolute_offset + 4), _f32(self.psin, absolute_offset + 8))
+            return Vector3(
+                _f32(self.psin, absolute_offset),
+                _f32(self.psin, absolute_offset + 4),
+                _f32(self.psin, absolute_offset + 8),
+            )
         if type_id in {PsoDataTypeFloat4, PsoDataTypeFloat4a}:
-            return (
+            return Vector4(
                 _f32(self.psin, absolute_offset),
                 _f32(self.psin, absolute_offset + 4),
                 _f32(self.psin, absolute_offset + 8),
                 _f32(self.psin, absolute_offset + 12),
             )
         if type_id == PsoDataTypeFloat2:
-            return (_f32(self.psin, absolute_offset), _f32(self.psin, absolute_offset + 4))
+            return Vector2(
+                _f32(self.psin, absolute_offset),
+                _f32(self.psin, absolute_offset + 4),
+            )
         if type_id == PsoDataTypeHFloat:
             return _u16(self.psin, absolute_offset)
         if type_id == PsoDataTypeLong:
@@ -209,7 +217,7 @@ class PsoReader:
         empty_hashed_string = self._empty_hashed_string(value)
         if empty_hashed_string is not None:
             return empty_hashed_string
-        if isinstance(value, tuple):
+        if isinstance(value, (Vector2, Vector3, Vector4)):
             return all(self._is_empty_value(item) for item in value)
         if isinstance(value, list):
             return all(self._is_empty_value(item) for item in value)
@@ -294,15 +302,12 @@ class PsoReader:
                 base, count, BinaryScalarType.FLOAT, endian=BinaryEndian.BIG
             )
         if array_info.type_id == PsoDataTypeFloat2:
-            return self.psin_document.read_array(
-                base,
-                count,
-                BinaryScalarType.FLOAT,
-                endian=BinaryEndian.BIG,
-                components=2,
+            values = self.psin_document.read_array(
+                base, count, BinaryScalarType.FLOAT, endian=BinaryEndian.BIG, components=2
             )
+            return [Vector2.from_iterable(value) for value in values]
         if array_info.type_id == PsoDataTypeFloat3:
-            return self.psin_document.read_array(
+            values = self.psin_document.read_array(
                 base,
                 count,
                 BinaryScalarType.FLOAT,
@@ -310,6 +315,7 @@ class PsoReader:
                 stride=16,
                 components=3,
             )
+            return [Vector3.from_iterable(value) for value in values]
         if array_info.type_id == PsoDataTypeString:
             if array_info.subtype in {7, 8}:
                 return [

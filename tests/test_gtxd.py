@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+from fivefury import Aabb3, Vector3
 from fivefury.cache import GameFileCache
 from fivefury.common import hash_value
 from fivefury.gamefile import GameFileType, guess_game_file_type
@@ -179,7 +180,10 @@ def test_ymt_scenario_manifest_exposes_semantic_lists() -> None:
 
     assert manifest.version_number == 3
     assert int(manifest.region_defs[0].name) == 0x11111111
-    assert manifest.region_defs[0].aabb.bounds == ((1.0, 2.0, 3.0), (4.0, 5.0, 6.0))
+    assert manifest.region_defs[0].aabb.bounds == Aabb3(
+        Vector3(1.0, 2.0, 3.0),
+        Vector3(4.0, 5.0, 6.0),
+    )
     assert int(manifest.groups[0].name) == 0x22222222
     assert manifest.groups[0].enabled_by_default is True
     assert int(manifest.interior_names[0]) == 0x33333333
@@ -266,7 +270,11 @@ def test_ymt_from_meta_exposes_streaming_request_record() -> None:
     assert ymt.streaming_request_record is not None
     assert ymt.streaming_request_record.frame_count == 1
     assert ymt.streaming_request_record.new_style is True
-    assert ymt.streaming_request_record.frames[0].camera_position == (1.0, 2.0, 3.0)
+    assert ymt.streaming_request_record.frames[0].camera_position == Vector3(
+        1.0,
+        2.0,
+        3.0,
+    )
     assert ymt.streaming_request_record.frames[0].common_add_sets == [0, 2]
     assert [
         int(item) for item in ymt.streaming_request_record.iter_requested_hashes()

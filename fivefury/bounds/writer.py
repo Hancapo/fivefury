@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 
 from .. import _native as _native_backend
 from ..resource import ResourceBlockSpan, ResourceWriter, write_resource_pages_info
+from ..vector import Vector3
 from .model import (
     Bound,
     BoundAabb,
@@ -70,7 +71,7 @@ def _bound_size(bound: Bound) -> int:
     raise NotImplementedError(f"bound writer does not support {bound.__class__.__name__} yet")
 
 
-def _write_vec3(writer: ResourceWriter, offset: int, value: tuple[float, float, float]) -> None:
+def _write_vec3(writer: ResourceWriter, offset: int, value: Vector3) -> None:
     writer.pack_into("3f", offset, *value)
 
 
@@ -81,10 +82,10 @@ def _write_aabb(writer: ResourceWriter, offset: int, bounds: BoundAabb, *, minim
 
 def _write_transform(writer: ResourceWriter, offset: int, transform: BoundTransform | None) -> None:
     value = transform or BoundTransform(
-        column1=(1.0, 0.0, 0.0),
-        column2=(0.0, 1.0, 0.0),
-        column3=(0.0, 0.0, 1.0),
-        column4=(0.0, 0.0, 0.0),
+        column1=Vector3(1.0, 0.0, 0.0),
+        column2=Vector3(0.0, 1.0, 0.0),
+        column3=Vector3(0.0, 0.0, 1.0),
+        column4=Vector3(),
         flags2=1,
         flags3=1,
     )
@@ -233,7 +234,7 @@ def _child_bounds(child: BoundChild) -> BoundAabb:
         return child.bounds
     if child.bound is not None:
         return child.bound.bounds
-    return BoundAabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    return BoundAabb(Vector3(), Vector3())
 
 
 def _write_composite(
@@ -350,28 +351,36 @@ def _material_data(material: BoundMaterial) -> tuple[int, int]:
     return (data1, data2)
 
 
-def _choose_center_geom(bound: BoundGeometry) -> tuple[float, float, float]:
-    if bound.center_geom != (0.0, 0.0, 0.0):
+def _choose_center_geom(bound: BoundGeometry) -> Vector3:
+    if bound.center_geom != Vector3():
         return bound.center_geom
-    return tuple((bound.box_min[axis] + bound.box_max[axis]) * 0.5 for axis in range(3))
+    return (bound.box_min + bound.box_max) * 0.5
 
 
-def _choose_quantum(vertices: list[tuple[float, float, float]], center_geom: tuple[float, float, float]) -> tuple[float, float, float]:
+def _choose_quantum(vertices: list[Vector3], center_geom: Vector3) -> Vector3:
     if not vertices:
-        return (1.0, 1.0, 1.0)
-    components: list[float] = []
-    for axis in range(3):
-        max_delta = max(abs(vertex[axis] - center_geom[axis]) for vertex in vertices)
-        quantum = max_delta / 32767.0 if max_delta > 0 else (1.0 / 32767.0)
-        components.append(quantum)
-    return (components[0], components[1], components[2])
+        return Vector3(1.0, 1.0, 1.0)
+    delta = Vector3.maximum(
+        Vector3(abs(vertex.x - center_geom.x), abs(vertex.y - center_geom.y), abs(vertex.z - center_geom.z))
+        for vertex in vertices
+    )
+    minimum_quantum = 1.0 / 32767.0
+    return Vector3(
+        delta.x / 32767.0 if delta.x > 0.0 else minimum_quantum,
+        delta.y / 32767.0 if delta.y > 0.0 else minimum_quantum,
+        delta.z / 32767.0 if delta.z > 0.0 else minimum_quantum,
+    )
 
 
-def _quantize_vertices(vertices: list[tuple[float, float, float]], center_geom: tuple[float, float, float], quantum: tuple[float, float, float]) -> bytes:
-    return _native_backend._bounds_quantize_vertices(vertices, center_geom, quantum)
+def _quantize_vertices(vertices: list[Vector3], center_geom: Vector3, quantum: Vector3) -> bytes:
+    return _native_backend._bounds_quantize_vertices(
+        [vertex.as_tuple() for vertex in vertices],
+        center_geom.as_tuple(),
+        quantum.as_tuple(),
+    )
 
 
-def _choose_vertices_shrunk(bound: BoundGeometry, *, with_bvh: bool) -> list[tuple[float, float, float]]:
+def _choose_vertices_shrunk(bound: BoundGeometry, *, with_bvh: bool) -> list[Vector3]:
     if with_bvh:
         return []
     if len(bound.vertices_shrunk) == len(bound.vertices):
@@ -381,7 +390,7 @@ def _choose_vertices_shrunk(bound: BoundGeometry, *, with_bvh: bool) -> list[tup
 
 def _choose_octants(
     bound: BoundGeometry,
-    vertices_shrunk: list[tuple[float, float, float]],
+    vertices_shrunk: list[Vector3],
     *,
     with_bvh: bool,
 ) -> BoundGeometryOctants | None:
@@ -485,51 +494,51 @@ def _primitive_bounds(bound: BoundGeometry, polygon: BoundPolygon) -> BoundAabb:
         return BoundAabb(bound.box_min, bound.box_max)
     if isinstance(polygon, BoundPolygonTriangle):
         index0, index1, index2 = polygon.vertex_indices
-        x0, y0, z0 = vertices[index0]
-        x1, y1, z1 = vertices[index1]
-        x2, y2, z2 = vertices[index2]
+        points = (vertices[index0], vertices[index1], vertices[index2])
         return BoundAabb(
-            (min(x0, x1, x2), min(y0, y1, y2), min(z0, z1, z2)),
-            (max(x0, x1, x2), max(y0, y1, y2), max(z0, z1, z2)),
+            Vector3.minimum(points),
+            Vector3.maximum(points),
         )
     if isinstance(polygon, BoundPolygonSphere):
         center = vertices[polygon.sphere_index]
         radius = polygon.sphere_radius
-        minimum = (center[0] - radius, center[1] - radius, center[2] - radius)
-        maximum = (center[0] + radius, center[1] + radius, center[2] + radius)
+        extent = Vector3(radius, radius, radius)
+        minimum = center - extent
+        maximum = center + extent
         return BoundAabb(minimum, maximum)
     if isinstance(polygon, (BoundPolygonCapsule, BoundPolygonCylinder)):
         index1, index2 = polygon.vertex_indices
         point1 = vertices[index1]
         point2 = vertices[index2]
         radius = polygon.capsule_radius if isinstance(polygon, BoundPolygonCapsule) else polygon.cylinder_radius
-        minimum = tuple(min(point1[axis], point2[axis]) - radius for axis in range(3))
-        maximum = tuple(max(point1[axis], point2[axis]) + radius for axis in range(3))
+        extent = Vector3(radius, radius, radius)
+        minimum = Vector3.minimum((point1, point2)) - extent
+        maximum = Vector3.maximum((point1, point2)) + extent
         return BoundAabb(minimum, maximum)
     if isinstance(polygon, BoundPolygonBox):
         points = [vertices[index] for index in polygon.vertex_indices]
-        minimum = tuple(min(point[axis] for point in points) for axis in range(3))
-        maximum = tuple(max(point[axis] for point in points) for axis in range(3))
+        minimum = Vector3.minimum(points)
+        maximum = Vector3.maximum(points)
         return BoundAabb(minimum, maximum)
     return BoundAabb(bound.box_min, bound.box_max)
 
 
 def _quantize_bvh_point(
-    point: tuple[float, float, float],
-    center: tuple[float, float, float],
-    inverse: tuple[float, float, float],
+    point: Vector3,
+    center: Vector3,
+    inverse: Vector3,
 ) -> tuple[int, int, int]:
     return (
-        max(-32767, min(32767, int((point[0] - center[0]) * inverse[0]))),
-        max(-32767, min(32767, int((point[1] - center[1]) * inverse[1]))),
-        max(-32767, min(32767, int((point[2] - center[2]) * inverse[2]))),
+        max(-32767, min(32767, int((point.x - center.x) * inverse.x))),
+        max(-32767, min(32767, int((point.y - center.y) * inverse.y))),
+        max(-32767, min(32767, int((point.z - center.z) * inverse.z))),
     )
 
 
 @dataclasses.dataclass(slots=True)
 class _BvhBuildItem:
-    minimum: tuple[float, float, float]
-    maximum: tuple[float, float, float]
+    minimum: Vector3
+    maximum: Vector3
     index: int
     polygon: BoundPolygon | None = None
 
@@ -596,7 +605,10 @@ def _build_bvh_native(
     fallback: BoundAabb,
     item_threshold: int,
 ) -> tuple[BoundBvh, list[_BvhBuildItem]]:
-    raw_items = [(item.minimum, item.maximum, int(item.index)) for item in items]
+    raw_items = [
+        (item.minimum.as_tuple(), item.maximum.as_tuple(), int(item.index))
+        for item in items
+    ]
     (
         order,
         overall_minimum,
@@ -608,8 +620,8 @@ def _build_bvh_native(
         raw_trees,
     ) = _native_backend._bounds_build_bvh(
         raw_items,
-        fallback.minimum,
-        fallback.maximum,
+        fallback.minimum.as_tuple(),
+        fallback.maximum.as_tuple(),
         item_threshold=item_threshold,
         max_tree_node_count=_MAX_BVH_TREE_NODE_COUNT,
     )
@@ -617,15 +629,15 @@ def _build_bvh_native(
     ordered_items = [item_lookup[int(index)] for index in order if int(index) in item_lookup]
     return (
         BoundBvh(
-            minimum=overall_minimum,
-            maximum=overall_maximum,
-            center=center,
-            quantum_inverse=quantum_inverse,
-            quantum=quantum,
+            minimum=Vector3.from_iterable(overall_minimum),
+            maximum=Vector3.from_iterable(overall_maximum),
+            center=Vector3.from_iterable(center),
+            quantum_inverse=Vector3.from_iterable(quantum_inverse),
+            quantum=Vector3.from_iterable(quantum),
             nodes=[
                 BoundBvhNode(
-                    minimum=minimum,
-                    maximum=maximum,
+                    minimum=Vector3.from_iterable(minimum),
+                    maximum=Vector3.from_iterable(maximum),
                     item_id=item_id,
                     item_count=item_count,
                 )
@@ -633,8 +645,8 @@ def _build_bvh_native(
             ],
             trees=[
                 BoundBvhTree(
-                    minimum=minimum,
-                    maximum=maximum,
+                    minimum=Vector3.from_iterable(minimum),
+                    maximum=Vector3.from_iterable(maximum),
                     node_index=node_index,
                     node_index2=node_index2,
                 )
@@ -683,14 +695,14 @@ def _transform_aabb(bounds: BoundAabb, transform: BoundTransform | None) -> Boun
     minimum = bounds.minimum
     maximum = bounds.maximum
     corners = [
-        _transform_point((x, y, z), transform)
-        for x in (minimum[0], maximum[0])
-        for y in (minimum[1], maximum[1])
-        for z in (minimum[2], maximum[2])
+        _transform_point(Vector3(x, y, z), transform)
+        for x in (minimum.x, maximum.x)
+        for y in (minimum.y, maximum.y)
+        for z in (minimum.z, maximum.z)
     ]
     return BoundAabb(
-        minimum=tuple(min(point[axis] for point in corners) for axis in range(3)),
-        maximum=tuple(max(point[axis] for point in corners) for axis in range(3)),
+        minimum=Vector3.minimum(corners),
+        maximum=Vector3.maximum(corners),
     )
 
 
@@ -724,7 +736,7 @@ def _refresh_composite_metrics(bound: BoundComposite) -> None:
         for child in active_children
     ]
     overall = _merge_bounds(transformed_bounds, BoundAabb(bound.box_min, bound.box_max))
-    center = tuple((overall.minimum[axis] + overall.maximum[axis]) * 0.5 for axis in range(3))
+    center = (overall.minimum + overall.maximum) * 0.5
     bound.box_min = overall.minimum
     bound.box_max = overall.maximum
     bound.box_center = center
@@ -800,7 +812,11 @@ def _write_geometry(
         prepared_bvh, polygons, polygon_material_indices = prepared
 
     center_geom = _choose_center_geom(bound)
-    quantum = bound.quantum if bound.quantum != (1.0, 1.0, 1.0) or not bound.vertices else _choose_quantum(bound.vertices, center_geom)
+    quantum = (
+        bound.quantum
+        if bound.quantum != Vector3(1.0, 1.0, 1.0) or not bound.vertices
+        else _choose_quantum(bound.vertices, center_geom)
+    )
     vertices_shrunk = _choose_vertices_shrunk(bound, with_bvh=with_bvh)
     octants = _choose_octants(bound, vertices_shrunk, with_bvh=with_bvh)
 

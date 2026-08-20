@@ -14,6 +14,7 @@ from ..bounds import (
     write_bound_resource,
 )
 from ..resource import ResourceWriter
+from ..vector import Vector3
 from .bound_ownership import physics_bound_owner_roots
 from .bound_profiles import (
     YftPhysicsBoundProfile,
@@ -101,9 +102,9 @@ def _virtual(offset: int) -> int:
 def _write_vec3_padded(
     writer: ResourceWriter,
     offset: int,
-    value: tuple[float, float, float],
+    value: Vector3,
 ) -> None:
-    writer.pack_into("4f", offset, float(value[0]), float(value[1]), float(value[2]), 0.0)
+    writer.pack_into("4f", offset, value.x, value.y, value.z, 0.0)
 
 
 def _write_damping(

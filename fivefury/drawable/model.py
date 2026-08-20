@@ -4,6 +4,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from ..vector import Vector3
 from .lod import DRAWABLE_LOD_ORDER, DrawableLod, coerce_drawable_lod
 
 NumericParameterValue = float | tuple[float, ...] | tuple[tuple[float, ...], ...]
@@ -101,7 +102,7 @@ class DrawableMesh(Generic[MaterialT]):
     material_index: int
     material: MaterialT | None
     indices: list[int]
-    positions: list[tuple[float, float, float]]
+    positions: list[Vector3]
     blend_weights: list[tuple[float, float, float, float]]
     blend_indices: list[tuple[int, int, int, int]]
     bone_ids: list[int]

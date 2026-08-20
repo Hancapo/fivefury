@@ -1,8 +1,6 @@
 from .heightmaps import (
     Bounds2D,
     Triangle,
-    Vec2,
-    Vec3,
     YndJunctionHeightmap,
     build_junction_heightmap,
     decode_junction_heightmap,
@@ -50,8 +48,6 @@ __all__ = [
     "YND_VERSION",
     "Bounds2D",
     "Triangle",
-    "Vec2",
-    "Vec3",
     "Ynd",
     "YndAreaBounds",
     "YndJunction",

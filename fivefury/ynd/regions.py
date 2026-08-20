@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses
 import math
 
+from ..vector import Vector2, Vector3
+
 YND_REGION_SPLIT = 32
 # YND/pathfind regions use the replicated world limits, not the global world extents.
 YND_REP_MIN_X = -8192.0
@@ -33,9 +35,9 @@ def _clamp_region_index(value: float, minimum: float, size: float) -> int:
     return max(0, min(YND_REGION_SPLIT - 1, int(normalized)))
 
 
-def get_ynd_area_id(position: tuple[float, float, float] | tuple[float, float]) -> int:
-    x_index = _clamp_region_index(position[0], YND_REP_MIN_X, YND_REGION_SIZE_X)
-    y_index = _clamp_region_index(position[1], YND_REP_MIN_Y, YND_REGION_SIZE_Y)
+def get_ynd_area_id(position: Vector2 | Vector3) -> int:
+    x_index = _clamp_region_index(position.x, YND_REP_MIN_X, YND_REGION_SIZE_X)
+    y_index = _clamp_region_index(position.y, YND_REP_MIN_Y, YND_REGION_SIZE_Y)
     return x_index + (y_index * YND_REGION_SPLIT)
 
 
@@ -61,5 +63,5 @@ def get_ynd_area_bounds(area_id: int) -> YndAreaBounds:
     )
 
 
-def position_matches_ynd_area(area_id: int, position: tuple[float, float, float] | tuple[float, float]) -> bool:
+def position_matches_ynd_area(area_id: int, position: Vector2 | Vector3) -> bool:
     return get_ynd_area_id(position) == int(area_id)

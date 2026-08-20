@@ -4,9 +4,7 @@ import dataclasses
 import enum
 
 from ..bounds import Bound
-
-Vector3 = tuple[float, float, float]
-Vector4 = tuple[float, float, float, float]
+from ..vector import Vector3, Vector4
 
 
 class YftClothTuningFlag(enum.IntFlag):
@@ -44,7 +42,7 @@ class YftEnvironmentClothFlag(enum.IntFlag):
 class YftClothTuning:
     rotation_rate: float = 3.14159274
     angle_threshold: float = 0.5235988
-    extra_force: Vector3 = (0.0, 0.0, 0.0)
+    extra_force: Vector3 = dataclasses.field(default_factory=Vector3)
     flags: YftClothTuningFlag = YftClothTuningFlag.NONE
     weight: float = -1.0
     distance_threshold: float = 0.0
@@ -111,8 +109,8 @@ class YftClothConstraint:
 
 @dataclasses.dataclass(slots=True)
 class YftVerletCloth:
-    bounds_min: Vector3 = (0.0, 0.0, 0.0)
-    bounds_max: Vector3 = (0.0, 0.0, 0.0)
+    bounds_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    bounds_max: Vector3 = dataclasses.field(default_factory=Vector3)
     vertices: list[Vector4] = dataclasses.field(default_factory=list)
     previous_vertices: list[Vector4] = dataclasses.field(default_factory=list)
     constraints: list[YftClothConstraint] = dataclasses.field(default_factory=list)
@@ -154,8 +152,8 @@ class YftEnvironmentCloth:
     tuning: YftClothTuning | None = None
     drawable_label: str = "drawable"
     behavior_data: bytes = b""
-    initial_position: Vector3 = (0.0, 0.0, 0.0)
-    force: Vector3 = (0.0, 0.0, 0.0)
+    initial_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    force: Vector3 = dataclasses.field(default_factory=Vector3)
     user_data: list[int] = dataclasses.field(default_factory=list)
     flags: YftEnvironmentClothFlag = YftEnvironmentClothFlag.NONE
     raw_header: bytes = dataclasses.field(default=b"", repr=False)

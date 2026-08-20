@@ -33,3 +33,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["*Tests"]
 python_functions = ["test_*"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+  "fivefury.vector.Quaternion",
+  "fivefury.vector.Vector2",
+  "fivefury.vector.Vector3",
+  "fivefury.vector.Vector4",
+]

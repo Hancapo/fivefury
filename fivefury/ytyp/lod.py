@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..vector import aabb_radius
+from ..vector import Aabb3, Vector3
 
 DEFAULT_ARCHETYPE_LOD_DIST = 100.0
 DEFAULT_ARCHETYPE_HD_TEXTURE_DIST = 50.0
@@ -9,19 +9,19 @@ ARCHETYPE_HD_TEXTURE_RADIUS_SCALE = 1.5
 
 
 def _radius_from_bounds(
-    bb_min: tuple[float, float, float] | None,
-    bb_max: tuple[float, float, float] | None,
+    bb_min: Vector3 | None,
+    bb_max: Vector3 | None,
 ) -> float:
     if bb_min is None or bb_max is None:
         return 0.0
-    return aabb_radius(bb_min, bb_max)
+    return Aabb3(bb_min, bb_max).radius
 
 
 def infer_archetype_radius(
     *,
     bs_radius: float = 0.0,
-    bb_min: tuple[float, float, float] | None = None,
-    bb_max: tuple[float, float, float] | None = None,
+    bb_min: Vector3 | None = None,
+    bb_max: Vector3 | None = None,
 ) -> float:
     radius = float(bs_radius or 0.0)
     if radius > 0.0:
@@ -32,8 +32,8 @@ def infer_archetype_radius(
 def infer_archetype_lod_dist(
     *,
     bs_radius: float = 0.0,
-    bb_min: tuple[float, float, float] | None = None,
-    bb_max: tuple[float, float, float] | None = None,
+    bb_min: Vector3 | None = None,
+    bb_max: Vector3 | None = None,
     minimum: float = DEFAULT_ARCHETYPE_LOD_DIST,
 ) -> float:
     radius = infer_archetype_radius(bs_radius=bs_radius, bb_min=bb_min, bb_max=bb_max)
@@ -44,8 +44,8 @@ def infer_archetype_hd_texture_dist(
     *,
     bs_radius: float = 0.0,
     lod_dist: float = 0.0,
-    bb_min: tuple[float, float, float] | None = None,
-    bb_max: tuple[float, float, float] | None = None,
+    bb_min: Vector3 | None = None,
+    bb_max: Vector3 | None = None,
     minimum: float = DEFAULT_ARCHETYPE_HD_TEXTURE_DIST,
 ) -> float:
     radius = infer_archetype_radius(bs_radius=bs_radius, bb_min=bb_min, bb_max=bb_max)

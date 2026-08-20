@@ -13,6 +13,8 @@ from fivefury import (
     CutScene,
     GameTarget,
     MetaHash,
+    Quaternion,
+    Vector3,
     YcdAnimationTrack,
     YcdChannelEncoding,
     YcdChannelEncodingPolicy,
@@ -38,7 +40,6 @@ from fivefury import (
     scene_to_cut,
 )
 from fivefury.resource import split_rsc7_sections, virtual_to_offset
-from fivefury.vector import quat_angular_error_degrees, quat_nlerp
 
 
 def test_build_cutscene_sections_uses_camera_cuts() -> None:
@@ -61,16 +62,16 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
         "demo_scene", duration=1.0, camera_cuts=[0.5], fps=30.0
     )
     builder.camera(
-        position={0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 0.0, 0.0)},
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position={0.0: Vector3(), 1.0: Vector3(10.0, 0.0, 0.0)},
+        rotation=Quaternion(),
         field_of_view={0.0: 40.0, 1.0: 60.0},
     )
     builder.prop(
         "prop_box",
-        position={0.0: (1.0, 0.0, 0.0), 1.0: (1.0, 10.0, 0.0)},
-        rotation=(0.0, 0.0, 0.0, 1.0),
-        mover_position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 2.0, 0.0)},
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        position={0.0: Vector3(1.0, 0.0, 0.0), 1.0: Vector3(1.0, 10.0, 0.0)},
+        rotation=Quaternion(),
+        mover_position={0.0: Vector3(), 1.0: Vector3(0.0, 2.0, 0.0)},
+        mover_rotation=Quaternion(),
     )
 
     ycds = builder.build_ycds()
@@ -143,16 +144,16 @@ def test_cutscene_builder_builds_sectioned_ycds_roundtrip() -> None:
     prop1_end = prop1.evaluate_object_animation_at_time(0.5)
     prop1_root = prop1.evaluate_root_motion_at_time(0.0)
 
-    assert cam0_start.position == pytest.approx((0.0, 0.0, 0.0))
+    assert cam0_start.position.components == pytest.approx((0.0, 0.0, 0.0))
     assert cam0_start.field_of_view == pytest.approx(40.0)
-    assert cam1_start.position == pytest.approx((5.0, 0.0, 0.0), abs=0.2)
+    assert cam1_start.position.components == pytest.approx((5.0, 0.0, 0.0), abs=0.2)
     assert cam1_start.field_of_view == pytest.approx(50.0, abs=0.5)
 
-    assert prop0_start.position == pytest.approx((1.0, 0.0, 0.0))
-    assert prop1_start.position == pytest.approx((1.0, 5.0, 0.0), abs=0.2)
-    assert prop0_end.position == pytest.approx((1.0, 5.0, 0.0), abs=0.2)
-    assert prop1_end.position == pytest.approx((1.0, 10.0, 0.0), abs=0.2)
-    assert prop1_root.position == pytest.approx((0.0, 1.0, 0.0), abs=0.2)
+    assert prop0_start.position.components == pytest.approx((1.0, 0.0, 0.0))
+    assert prop1_start.position.components == pytest.approx((1.0, 5.0, 0.0), abs=0.2)
+    assert prop0_end.position.components == pytest.approx((1.0, 5.0, 0.0), abs=0.2)
+    assert prop1_end.position.components == pytest.approx((1.0, 10.0, 0.0), abs=0.2)
+    assert prop1_root.position.components == pytest.approx((0.0, 1.0, 0.0), abs=0.2)
 
     assert any(
         int(bone.track) == int(YcdAnimationTrack.MOVER_TRANSLATION)
@@ -172,8 +173,8 @@ def test_cutscene_builder_can_emit_one_late_streaming_section() -> None:
         fps=30.0,
     )
     builder.camera(
-        position=(0.0, 0.0, 0.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(),
+        rotation=Quaternion(),
         field_of_view=45.0,
     )
 
@@ -203,8 +204,8 @@ def test_cutscene_builder_writes_enhanced_runtime_headers() -> None:
     )
     builder.prop(
         "prop_box",
-        position=(0.0, 0.0, 0.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(),
+        rotation=Quaternion(),
     )
     ycd = builder.build_ycds()[0]
     animation = ycd.animations[0]
@@ -273,18 +274,18 @@ def test_cutscene_builder_authors_merged_facial_tracks() -> None:
     builder = YcdCutsceneBuilder.create("facial_scene", duration=1.0, fps=30.0)
     builder.ped(
         "cs_actor",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
         facial=YcdFacialTrackSet(
             controls={0x1234: {0.0: 0.0, 1.0: 1.0}},
-            translations={0x2345: (1.0, 2.0, 3.0)},
-            rotations={0x3456: (0.0, 0.0, 0.0, 1.0)},
-            scales={0x4567: (1.0, 1.1, 1.2)},
+            translations={0x2345: Vector3(1.0, 2.0, 3.0)},
+            rotations={0x3456: Quaternion()},
+            scales={0x4567: Vector3(1.0, 1.1, 1.2)},
             visemes={0x5678: 0.75},
             blend_shapes={0x6789: 0.5},
             animated_normal_maps={
                 0x789A: YcdFacialTrackSamples(
-                    (0.1, 0.2, 0.3), format=YcdTrackFormat.VECTOR3
+                    Vector3(0.1, 0.2, 0.3), format=YcdTrackFormat.VECTOR3
                 )
             },
             tinting=0.25,
@@ -311,12 +312,14 @@ def test_cutscene_builder_authors_merged_facial_tracks() -> None:
 
     samples = clip.evaluate_facial_animation_at_time(0.5)
     assert samples[0x1234].control == pytest.approx(0.5, abs=0.02)
-    assert samples[0x2345].translation == pytest.approx((1.0, 2.0, 3.0))
-    assert samples[0x3456].rotation == pytest.approx((0.0, 0.0, 0.0, 1.0))
-    assert samples[0x4567].scale == pytest.approx((1.0, 1.1, 1.2))
+    assert samples[0x2345].translation.components == pytest.approx((1.0, 2.0, 3.0))
+    assert samples[0x3456].rotation.components == pytest.approx((0.0, 0.0, 0.0, 1.0))
+    assert samples[0x4567].scale.components == pytest.approx((1.0, 1.1, 1.2))
     assert samples[0x5678].viseme == pytest.approx(0.75)
     assert samples[0x6789].blend_shape == pytest.approx(0.5)
-    assert samples[0x789A].animated_normal_maps == pytest.approx((0.1, 0.2, 0.3))
+    assert samples[0x789A].animated_normal_maps.components == pytest.approx(
+        (0.1, 0.2, 0.3)
+    )
     assert samples[0].tinting == pytest.approx(0.25)
 
 
@@ -324,8 +327,8 @@ def test_add_facial_animation_promotes_existing_body_clip_to_dual() -> None:
     builder = YcdCutsceneBuilder.create("facial_scene", duration=0.1, fps=30.0)
     builder.ped(
         "cs_actor",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     builder.facial_animation("cs_actor", YcdFacialTrackSet(controls={1: 1.0}))
 
@@ -335,7 +338,7 @@ def test_add_facial_animation_promotes_existing_body_clip_to_dual() -> None:
 
 
 def test_cutscene_builder_preserves_static_negative_w_quaternion() -> None:
-    authored = (0.752974, 0.058145, -0.440166, -0.485699)
+    authored = Quaternion(0.752974, 0.058145, -0.440166, -0.485699)
     builder = YcdCutsceneBuilder.create("negative_w", duration=0.1, fps=30.0)
     builder.prop("actor_q", rotation=authored)
 
@@ -356,8 +359,8 @@ def test_cutscene_builder_preserves_hashes_that_look_like_pointers() -> None:
     builder = YcdCutsceneBuilder.create("pointer_hash", duration=0.1, fps=30.0)
     builder.prop(
         "cc_cscakebox_i14__q012",
-        position=(0.0, 0.0, 0.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(),
+        rotation=Quaternion(),
     )
 
     source = builder.build_ycds()[0]
@@ -376,18 +379,18 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
     builder = YcdCutsceneBuilder.create("multi_bone_scene", duration=1.0, fps=30.0)
     builder.prop(
         "p_lamarneck_01_s",
-        mover_position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 1.0, 0.0)},
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position={0.0: Vector3(), 1.0: Vector3(0.0, 1.0, 0.0)},
+        mover_rotation=Quaternion(),
         bones={
             7869: YcdCutsceneBoneAnimation(
-                position={0.0: (0.0, 0.0, 0.0), 1.0: (1.0, 0.0, 0.0)},
-                rotation=(0.0, 0.0, 0.0, 1.0),
+                position={0.0: Vector3(), 1.0: Vector3(1.0, 0.0, 0.0)},
+                rotation=Quaternion(),
             ),
             10994: {
-                "position": {0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 1.0, 0.0)},
+                "position": {0.0: Vector3(), 1.0: Vector3(0.0, 1.0, 0.0)},
                 "rotation": {
-                    0.0: (0.0, 0.0, 0.0, 1.0),
-                    1.0: (0.0, 0.0, 0.70710678, 0.70710678),
+                    0.0: Quaternion(),
+                    1.0: Quaternion(0.0, 0.0, 0.70710678, 0.70710678),
                 },
             },
         },
@@ -410,15 +413,17 @@ def test_cutscene_builder_supports_multi_bone_object_animation() -> None:
     evaluated_tracks = clip.animation.evaluate_object_animation(15.0)
     assert (7869, int(YcdAnimationTrack.BONE_TRANSLATION)) in evaluated_tracks
     assert (10994, int(YcdAnimationTrack.BONE_ROTATION)) in evaluated_tracks
-    assert evaluated_tracks[(7869, int(YcdAnimationTrack.BONE_TRANSLATION))][
-        :3
-    ] == pytest.approx((0.5, 0.0, 0.0), abs=0.2)
-    assert evaluated_tracks[(10994, int(YcdAnimationTrack.BONE_TRANSLATION))][
-        :3
-    ] == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
+    assert evaluated_tracks[
+        (7869, int(YcdAnimationTrack.BONE_TRANSLATION))
+    ].xyz.components == pytest.approx((0.5, 0.0, 0.0), abs=0.2)
+    assert evaluated_tracks[
+        (10994, int(YcdAnimationTrack.BONE_TRANSLATION))
+    ].xyz.components == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
 
     root_motion = clip.evaluate_root_motion_at_time(0.5)
-    assert root_motion.position == pytest.approx((0.0, 0.5, 0.0), abs=0.2)
+    assert root_motion.position.components == pytest.approx(
+        (0.0, 0.5, 0.0), abs=0.2
+    )
 
 
 def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None:
@@ -427,8 +432,8 @@ def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None
         "skinned_prop",
         bones={
             1: YcdCutsceneBoneAnimation(
-                position={0.0: (0.0, 0.0, 0.0), 1.0: (1.0, 0.0, 0.0)},
-                rotation=(0.0, 0.0, 0.0, 1.0),
+                position={0.0: Vector3(), 1.0: Vector3(1.0, 0.0, 0.0)},
+                rotation=Quaternion(),
             )
         },
     )
@@ -442,7 +447,7 @@ def test_cutscene_builder_adds_static_mover_tracks_for_bone_only_props() -> None
     }
     assert (0, int(YcdAnimationTrack.MOVER_TRANSLATION)) in bone_pairs
     assert (0, int(YcdAnimationTrack.MOVER_ROTATION)) in bone_pairs
-    assert clip.evaluate_root_motion_at_time(0.5).position == pytest.approx(
+    assert clip.evaluate_root_motion_at_time(0.5).position.components == pytest.approx(
         (0.0, 0.0, 0.0), abs=0.01
     )
 
@@ -453,13 +458,13 @@ def test_cutscene_builder_splits_long_skeletal_clips_into_vanilla_sized_sequence
     builder = YcdCutsceneBuilder.create("long_scene", duration=24.4, fps=30.0)
     builder.prop(
         "skinned_prop",
-        mover_position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position={0.0: Vector3(), 24.4: Vector3(1.0, 0.0, 0.0)},
+        mover_rotation=Quaternion(),
         bones={
             0xB692: YcdCutsceneBoneAnimation(
                 rotation={
-                    0.0: (0.0, 0.0, 0.0, 1.0),
-                    24.4: (0.0, 0.0, 0.70710678, 0.70710678),
+                    0.0: Quaternion(),
+                    24.4: Quaternion(0.0, 0.0, 0.70710678, 0.70710678),
                 }
             )
         },
@@ -495,7 +500,7 @@ def test_cutscene_builder_channel_policy_can_be_overridden_per_track() -> None:
         duration=1.0,
         channel_policy=raw_policy,
     )
-    samples = {0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 2.0, -1.0)}
+    samples = {0.0: Vector3(), 1.0: Vector3(10.0, 2.0, -1.0)}
     builder.track(
         "actor",
         track=YcdAnimationTrack.BONE_TRANSLATION,
@@ -537,7 +542,7 @@ def test_explicit_retail_channel_policy_preserves_default_binary_output() -> Non
         builder.track(
             "actor",
             track=YcdAnimationTrack.MOVER_TRANSLATION,
-            samples={0.0: (0.0, 0.0, 0.0), 1.0: (10.0, 2.0, -1.0)},
+            samples={0.0: Vector3(), 1.0: Vector3(10.0, 2.0, -1.0)},
         )
         return build_ycd_bytes(builder.build_ycds()[0])
 
@@ -553,7 +558,7 @@ def test_cutscene_builder_reports_unreachable_retail_precision() -> None:
     builder.track(
         "actor",
         track=YcdAnimationTrack.MOVER_TRANSLATION,
-        samples={0.0: (0.0, 0.0, 0.0), 1.0: (100.0, 0.0, 0.0)},
+        samples={0.0: Vector3(), 1.0: Vector3(100.0, 0.0, 0.0)},
     )
 
     report = builder.validate()
@@ -579,7 +584,7 @@ def test_cutscene_builder_raw_float_meets_roman_roundtrip_precision(
 ) -> None:
     duration = (frame_count - 1) / 30.0
     translations = [
-        (
+        Vector3(
             translation_span * frame / (frame_count - 1),
             math.sin(frame * 0.13) * 0.75,
             math.cos(frame * 0.07) * 0.25,
@@ -587,7 +592,7 @@ def test_cutscene_builder_raw_float_meets_roman_roundtrip_precision(
         for frame in range(frame_count)
     ]
     rotations = [
-        (
+        Quaternion(
             math.sin(angle / 2.0) / math.sqrt(3.0),
             math.sin(angle / 2.0) / math.sqrt(3.0),
             math.sin(angle / 2.0) / math.sqrt(3.0),
@@ -636,13 +641,13 @@ def test_cutscene_builder_raw_float_meets_roman_roundtrip_precision(
             max(
                 abs(left - right)
                 for left, right in zip(
-                    expected_position, actual_position[:3], strict=True
+                    expected_position, actual_position.xyz, strict=True
                 )
             ),
         )
         angular_error = max(
             angular_error,
-            quat_angular_error_degrees(expected_rotation, actual_rotation),
+            expected_rotation.angular_error_degrees(actual_rotation),
         )
 
     assert report.valid
@@ -653,7 +658,12 @@ def test_cutscene_builder_raw_float_meets_roman_roundtrip_precision(
 def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> None:
     frame_count = 361
     rotations = [
-        (0.0, 0.0, math.sin(math.pi * frame / 360.0), math.cos(math.pi * frame / 360.0))
+        Quaternion(
+            0.0,
+            0.0,
+            math.sin(math.pi * frame / 360.0),
+            math.cos(math.pi * frame / 360.0),
+        )
         for frame in range(frame_count)
     ]
     builder = YcdCutsceneBuilder.create(
@@ -664,7 +674,7 @@ def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> 
     builder.prop("actor", mover_rotation=rotations)
 
     animation = builder.build_ycds()[0].animations[0]
-    emitted: list[tuple[float, float, float, float]] = []
+    emitted: list[Quaternion] = []
     for sequence in animation.sequences:
         rotation = next(
             item
@@ -677,9 +687,9 @@ def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> 
         emitted.extend(values if not emitted else values[1:])
 
     assert len(emitted) == frame_count
-    assert emitted[-1][3] < 0.0
+    assert emitted[-1].w < 0.0
     assert all(
-        sum(left[index] * right[index] for index in range(4)) >= 0.0
+        left.dot(right) >= 0.0
         for left, right in itertools.pairwise(emitted)
     )
 
@@ -689,8 +699,8 @@ def test_cutscene_builder_uses_retail_cached_quaternions_for_dynamic_tracks(
     game: GameTarget,
 ) -> None:
     rotations = {
-        0.0: (0.0, 0.0, 0.0, 1.0),
-        1.0: (0.5, 0.5, 0.5, 0.5),
+        0.0: Quaternion(),
+        1.0: Quaternion(0.5, 0.5, 0.5, 0.5),
     }
     builder = YcdCutsceneBuilder.create("cached_tracks", duration=1.0, game=game)
     builder.camera(rotation=rotations)
@@ -733,7 +743,7 @@ def test_cutscene_builder_uses_retail_cached_quaternions_for_dynamic_tracks(
 
 def test_cutscene_builder_keeps_static_quaternions_static() -> None:
     builder = YcdCutsceneBuilder.create("static_rotation", duration=1.0)
-    builder.prop("actor", rotation=(0.0, 0.0, 0.0, 1.0))
+    builder.prop("actor", rotation=Quaternion())
 
     sequence = builder.build_ycds()[0].animations[0].sequences[0].anim_sequences[0]
 
@@ -752,8 +762,8 @@ def test_cutscene_builder_can_emit_explicit_quaternion_components() -> None:
     builder.prop(
         "actor",
         mover_rotation={
-            0.0: (0.0, 0.0, 0.0, 1.0),
-            1.0: (0.0, 0.0, 1.0, 0.0),
+            0.0: Quaternion(),
+            1.0: Quaternion(0.0, 0.0, 1.0, 0.0),
         },
     )
 
@@ -773,7 +783,7 @@ def test_cutscene_builder_can_emit_explicit_quaternion_components() -> None:
 def test_cached_quaternion_rejects_series_without_stable_omitted_component() -> None:
     axis_length = math.sqrt(14.0)
     rotations = [
-        (
+        Quaternion(
             math.sin(angle / 2.0) / axis_length,
             2.0 * math.sin(angle / 2.0) / axis_length,
             3.0 * math.sin(angle / 2.0) / axis_length,
@@ -800,7 +810,7 @@ def test_cached_quaternion_rejects_series_without_stable_omitted_component() -> 
 def test_cached_quaternion_roundtrip_preserves_rotation_accuracy() -> None:
     frame_count = 31
     rotations = [
-        (
+        Quaternion(
             math.sin(angle / 2.0) / math.sqrt(3.0),
             math.sin(angle / 2.0) / math.sqrt(3.0),
             math.sin(angle / 2.0) / math.sqrt(3.0),
@@ -830,20 +840,20 @@ def test_cached_quaternion_roundtrip_preserves_rotation_accuracy() -> None:
         actual = animation.evaluate_tracks(frame)[
             (0, int(YcdAnimationTrack.MOVER_ROTATION))
         ]
-        assert quat_angular_error_degrees(expected, actual) < 0.01
+        assert expected.angular_error_degrees(actual) < 0.01
     for frame in (0.25, 7.5, 15.75, 29.5):
         frame0 = math.floor(frame)
-        expected = quat_nlerp(rotations[frame0], rotations[frame0 + 1], frame - frame0)
+        expected = rotations[frame0].nlerp(rotations[frame0 + 1], frame - frame0)
         actual = animation.evaluate_tracks(frame)[
             (0, int(YcdAnimationTrack.MOVER_ROTATION))
         ]
-        assert quat_angular_error_degrees(expected, actual) < 0.01
+        assert expected.angular_error_degrees(actual) < 0.01
 
 
 def test_cached_quaternion_orients_omitted_component_positive() -> None:
     axis_length = math.sqrt(14.0)
     rotations = [
-        (
+        Quaternion(
             -math.sin(angle / 2.0) / axis_length,
             -2.0 * math.sin(angle / 2.0) / axis_length,
             -3.0 * math.sin(angle / 2.0) / axis_length,
@@ -869,15 +879,15 @@ def test_cached_quaternion_orients_omitted_component_positive() -> None:
 
     assert cached.quat_index in {0, 1, 2}
     assert all(
-        rotation.evaluate_quaternion(frame)[cached.quat_index] >= 0.0
+        rotation.evaluate_quaternion(frame).components[cached.quat_index] >= 0.0
         for frame in range(31)
     )
 
 
 def test_quaternion_layout_audit_reports_dynamic_encoding_by_track() -> None:
     rotations = {
-        0.0: (0.0, 0.0, 0.0, 1.0),
-        1.0: (0.0, 0.0, 1.0, 0.0),
+        0.0: Quaternion(),
+        1.0: Quaternion(0.0, 0.0, 1.0, 0.0),
     }
     cached = YcdCutsceneBuilder.create("cached", duration=1.0)
     cached.camera(rotation=rotations)
@@ -912,8 +922,8 @@ def test_ycd_validation_rejects_invalid_cached_quaternion_index() -> None:
     builder.prop(
         "actor",
         mover_rotation={
-            0.0: (0.0, 0.0, 0.0, 1.0),
-            1.0: (0.0, 0.0, 1.0, 0.0),
+            0.0: Quaternion(),
+            1.0: Quaternion(0.0, 0.0, 1.0, 0.0),
         },
     )
     ycd = builder.build_ycds()[0]
@@ -937,9 +947,9 @@ def test_ycd_validation_rejects_invalid_cached_quaternion_index() -> None:
 @pytest.mark.parametrize(
     "rotation",
     [
-        (0.0, 0.0, 0.0, 0.0),
-        (float("nan"), 0.0, 0.0, 1.0),
-        (float("inf"), 0.0, 0.0, 1.0),
+        Quaternion(0.0, 0.0, 0.0, 0.0),
+        Quaternion(float("nan"), 0.0, 0.0, 1.0),
+        Quaternion(float("inf"), 0.0, 0.0, 1.0),
     ],
 )
 def test_cutscene_builder_rejects_invalid_quaternions(rotation) -> None:

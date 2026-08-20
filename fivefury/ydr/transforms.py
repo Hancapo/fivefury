@@ -7,6 +7,7 @@ import numpy as np
 
 from ..numeric import Float32Array
 from ..skinning import compose_skeleton_matrices
+from ..vector import Quaternion, Vector3, Vector4
 from .model import Matrix4, YdrBone, YdrSkeleton
 
 _PED_PROCEDURAL_SIBLING_COPIES = (
@@ -25,13 +26,16 @@ def _affine_matrix4(matrix: Matrix4) -> Matrix4:
 
 
 def _quaternion_matrix3(
-    rotation: tuple[float, float, float, float],
+    rotation: Quaternion,
 ) -> tuple[
     tuple[float, float, float],
     tuple[float, float, float],
     tuple[float, float, float],
 ]:
-    x, y, z, w = (float(component) for component in rotation)
+    x = rotation.x
+    y = rotation.y
+    z = rotation.z
+    w = rotation.w
     length = math.sqrt((x * x) + (y * y) + (z * z) + (w * w))
     if length > 1e-8:
         x /= length
@@ -55,39 +59,40 @@ def _quaternion_matrix3(
 
 
 def compose_local_transform(
-    translation: tuple[float, float, float],
-    rotation: tuple[float, float, float, float],
-    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    transform_unk: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
+    translation: Vector3,
+    rotation: Quaternion,
+    scale: Vector3 = Vector3(1.0, 1.0, 1.0),
+    transform_unk: Vector4 = Vector4(0.0, 0.0, 0.0, 1.0),
 ) -> Matrix4:
     """Compose a skeleton-local matrix in the serialized RAGE convention."""
     rotation_matrix = _quaternion_matrix3(rotation)
-    sx, sy, sz = (float(component) for component in scale)
-    unknown = tuple(float(component) for component in transform_unk)
+    sx = scale.x
+    sy = scale.y
+    sz = scale.z
     return (
         (
             rotation_matrix[0][0] * sx,
             rotation_matrix[1][0] * sx,
             rotation_matrix[2][0] * sx,
-            unknown[0],
+            transform_unk.x,
         ),
         (
             rotation_matrix[0][1] * sy,
             rotation_matrix[1][1] * sy,
             rotation_matrix[2][1] * sy,
-            unknown[1],
+            transform_unk.y,
         ),
         (
             rotation_matrix[0][2] * sz,
             rotation_matrix[1][2] * sz,
             rotation_matrix[2][2] * sz,
-            unknown[2],
+            transform_unk.z,
         ),
         (
-            float(translation[0]),
-            float(translation[1]),
-            float(translation[2]),
-            unknown[3],
+            translation.x,
+            translation.y,
+            translation.z,
+            transform_unk.w,
         ),
     )
 

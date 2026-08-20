@@ -15,14 +15,17 @@ This document is normative. New code and refactors must follow these rules even 
 FiveFury models are ordinary typed Python objects. Their public collections are ordinary typed collections.
 
 ```python
-entity = EntityDef(archetype_name="harbor_lamp", position=(10.0, 20.0, 5.0))
+entity = EntityDef(
+    archetype_name="harbor_lamp",
+    position=Vector3(10.0, 20.0, 5.0),
+)
 ymap.entities.append(entity)
 ```
 
 An aggregate may expose a singular noun as a convenience factory. The factory constructs, registers, and returns the object.
 
 ```python
-entity = ymap.entity("harbor_lamp", position=(10.0, 20.0, 5.0))
+entity = ymap.entity("harbor_lamp", position=Vector3(10.0, 20.0, 5.0))
 bone = skeleton.bone("root")
 physics = ymap.physics_dictionary("harbor_collision")
 ```
@@ -93,6 +96,16 @@ Never expose raw dictionaries when a stable structure is known. Never guess an u
 Before adding code, search the full source tree for the operation and its underlying math, hashing, XML, resource, texture, or graph logic.
 
 - Math belongs in the shared math/vector module.
+- Values with named mathematical components use the shared nominal types
+  (`Vector2`, `Vector3`, `Vector4`, `Quaternion`, `Aabb2`, and `Aabb3`), never
+  anonymous float tuples or local aliases. Public models, readers, builders,
+  and writers must preserve those types end to end.
+- Mathematical code uses named fields and domain operations such as `value.x`,
+  `value.normalized()`, `left.cross(right)`, and `rotation.rotate(position)`.
+  Positional component access is reserved for binary, NumPy, and foreign-function
+  boundaries where the external representation is inherently indexed. The nominal
+  value objects themselves are iterable for those boundaries but are not indexable
+  sequences.
 - Hashing belongs in the hashing module and uses the native implementation where available.
 - XML primitives belong in the shared XML module.
 - Resource layout, pointer, page, and fixup logic belongs in the resource layer.
@@ -153,7 +166,10 @@ Now existing values use the collection and convenience construction uses one sin
 
 ```python
 ymap.entities.append(entity)
-created = ymap.entity("harbor_lamp", position=(10.0, 20.0, 5.0))
+created = ymap.entity(
+    "harbor_lamp",
+    position=Vector3(10.0, 20.0, 5.0),
+)
 ```
 
 ### Relationships and ordinary assignment

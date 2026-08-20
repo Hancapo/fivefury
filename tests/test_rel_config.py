@@ -19,6 +19,7 @@ from fivefury import (
     RelDatFileType,
     RelFile,
     RelRawItem,
+    Vector3,
     build_rel_bytes,
     read_rel,
     rel_hash,
@@ -31,7 +32,7 @@ def _config_items():
         Dat4ConfigUnsignedInt(name="unsigned_value", value=0xF0000000),
         Dat4ConfigFloat(name="float_value", value=0.75),
         Dat4ConfigString(name="string_value", value="audio/config"),
-        Dat4ConfigVector3(name="listener_offset", value=(1.0, 2.0, 3.0)),
+        Dat4ConfigVector3(name="listener_offset", value=Vector3(1.0, 2.0, 3.0)),
         Dat4ConfigVariableList(
             name="variables",
             variables=[Dat4ConfigVariable("volume", 0.5)],
@@ -52,8 +53,8 @@ def _config_items():
         Dat4ConfigErSettings(
             name="early_reflections",
             room_size=12.0,
-            room_dimensions=(8.0, 6.0, 3.0),
-            listener_position=(1.0, 1.5, 1.8),
+            room_dimensions=Vector3(8.0, 6.0, 3.0),
+            listener_position=Vector3(1.0, 1.5, 1.8),
             all_passes=[Dat4ConfigErPass(0.25, 2)],
             node_gain_matrix=[(float(index), 0.0, 0.0, 1.0) for index in range(6)],
             gain_first_order=(1.0, 2.0, 3.0, 4.0),
@@ -91,7 +92,7 @@ def test_dat4_audio_config_aligns_vector_values_and_indexes_hashes() -> None:
     source = RelFile(
         rel_type=RelDatFileType.DAT4,
         items=[
-            Dat4ConfigVector3(name="position", value=(1.0, 2.0, 3.0)),
+            Dat4ConfigVector3(name="position", value=Vector3(1.0, 2.0, 3.0)),
             Dat4ConfigWaveSlotsList(
                 name="wave_slots",
                 wave_slots=["first_slot", "second_slot"],

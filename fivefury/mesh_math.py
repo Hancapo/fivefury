@@ -4,7 +4,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from .numeric import Int64Array, float64_rows, int64_array, normalized_rows, tuple_rows
+from .numeric import Int64Array, float64_rows, int64_array, normalized_rows
+from .vector import Vector2, Vector3, Vector4
 
 
 def triangle_array(
@@ -28,11 +29,11 @@ def triangle_array(
 
 
 def generate_vertex_normals(
-    positions: Sequence[tuple[float, float, float]] | np.ndarray,
+    positions: Sequence[Vector3] | np.ndarray,
     indices: Sequence[int] | np.ndarray,
     *,
     epsilon: float = 1e-8,
-) -> list[tuple[float, float, float]]:
+) -> list[Vector3]:
     points = float64_rows(positions, 3, name="positions")
     triangles = triangle_array(indices, len(points))
     accumulated = np.zeros_like(points)
@@ -43,24 +44,22 @@ def generate_vertex_normals(
         )
         for corner in range(3):
             np.add.at(accumulated, triangles[:, corner], face_normals)
-    return tuple_rows(
-        normalized_rows(
-            accumulated,
-            fallback=(0.0, 0.0, 1.0),
-            epsilon=epsilon,
-        ),
-        columns=3,
+    rows = normalized_rows(
+        accumulated,
+        fallback=(0.0, 0.0, 1.0),
+        epsilon=epsilon,
     )
+    return [Vector3.from_iterable(row) for row in rows]
 
 
 def generate_vertex_tangents(
-    positions: Sequence[tuple[float, float, float]] | np.ndarray,
-    normals: Sequence[tuple[float, float, float]] | np.ndarray,
-    texcoords: Sequence[tuple[float, float]] | np.ndarray,
+    positions: Sequence[Vector3] | np.ndarray,
+    normals: Sequence[Vector3] | np.ndarray,
+    texcoords: Sequence[Vector2] | np.ndarray,
     indices: Sequence[int] | np.ndarray,
     *,
     epsilon: float = 1e-8,
-) -> list[tuple[float, float, float, float]]:
+) -> list[Vector4]:
     points = float64_rows(positions, 3, name="positions")
     normal_rows = float64_rows(normals, 3, name="normals")
     uv = float64_rows(texcoords, 2, name="texture coordinates")
@@ -109,10 +108,8 @@ def generate_vertex_tangents(
         1.0,
         -1.0,
     )
-    return tuple_rows(
-        np.concat((tangent_rows, handedness[:, None]), axis=1),
-        columns=4,
-    )
+    rows = np.concat((tangent_rows, handedness[:, None]), axis=1)
+    return [Vector4.from_iterable(row) for row in rows]
 
 
 __all__ = [

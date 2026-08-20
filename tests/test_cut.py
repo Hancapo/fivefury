@@ -23,6 +23,8 @@ from fivefury import (
     CutSceneFlags,
     CutTypeFileStrategy,
     GameFileType,
+    Quaternion,
+    Vector3,
     YcdCutsceneBuilder,
     YdrLight,
     analyze_cut,
@@ -261,7 +263,7 @@ def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
 
 def test_cut_scene_builder_propagates_relocation_offset() -> None:
     scene = CutScene.create(
-        scene_name="offset_scene", duration=2.5, offset=(10.0, 20.0, 100.0)
+        scene_name="offset_scene", duration=2.5, offset=Vector3(10.0, 20.0, 100.0)
     )
     asset_manager = scene.asset_manager()
 
@@ -276,10 +278,10 @@ def test_cut_scene_builder_propagates_relocation_offset() -> None:
     )
     load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
 
-    assert root["vOffset"] == (10.0, 20.0, 100.0)
-    assert root["vTriggerOffset"] == (0.0, 0.0, 0.0)
-    assert root["concatDataList"][0].fields["vOffset"] == (10.0, 20.0, 100.0)
-    assert load_scene_args.fields["vOffset"] == (10.0, 20.0, 100.0)
+    assert root["vOffset"] == Vector3(10.0, 20.0, 100.0)
+    assert root["vTriggerOffset"] == Vector3()
+    assert root["concatDataList"][0].fields["vOffset"] == Vector3(10.0, 20.0, 100.0)
+    assert load_scene_args.fields["vOffset"] == Vector3(10.0, 20.0, 100.0)
 
 
 def test_cut_scene_builder_only_sections_by_camera_cuts_when_explicit() -> None:
@@ -493,7 +495,7 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
         camera,
         CutCascadeShadowPayload(
             camera_cut_hash="cam_fx",
-            position=(1.0, 2.0, 3.0),
+            position=Vector3(1.0, 2.0, 3.0),
             radius=5.0,
             interp_time=0.25,
             cascade_index=2,
@@ -525,7 +527,7 @@ def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templat
     assert cascade_args is not None
     assert cascade_args.type_name == "rage__cutfCascadeShadowEventArgs"
     assert cascade_args.fields["cameraCutHashName"].hash == jenk_hash("cam_fx")
-    assert cascade_args.fields["position"] == pytest.approx((1.0, 2.0, 3.0))
+    assert cascade_args.fields["position"] == Vector3(1.0, 2.0, 3.0)
     assert cascade_args.fields["radius"] == pytest.approx(5.0)
     assert cascade_args.fields["interpTime"] == pytest.approx(0.25)
     assert cascade_args.fields["cascadeIndex"] == 2
@@ -550,12 +552,12 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     hidden = scene.object(
         "hidden_object",
         name="hidden_target",
-        fields={"vPosition": (0.0, 0.0, 0.0), "fRadius": 1.5},
+        fields={"vPosition": Vector3(), "fRadius": 1.5},
     )
 
     decal_payload = CutDecalPayload(
-        position=(1.0, 2.0, 3.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(1.0, 2.0, 3.0),
+        rotation=Quaternion(),
         width=0.75,
         height=1.25,
         colour=0xFFAA5500,
@@ -588,7 +590,7 @@ def test_cut_scene_builder_supports_decal_light_and_hidden_object_events() -> No
     decal_args = rebuilt.get_event_args(trigger_decal_event.fields["iEventArgsIndex"])
     assert decal_args is not None
     assert decal_args.type_name == "rage__cutfDecalEventArgs"
-    assert decal_args.fields["vPosition"] == pytest.approx((1.0, 2.0, 3.0))
+    assert decal_args.fields["vPosition"] == Vector3(1.0, 2.0, 3.0)
     assert decal_args.fields["fWidth"] == pytest.approx(0.75)
     remove_decal_event = next(
         event
@@ -615,8 +617,8 @@ def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
         {
             "lights": [
                 YdrLight.spot(
-                    position=(1.0, 2.0, 3.0),
-                    direction=(0.0, 0.0, -1.0),
+                    position=Vector3(1.0, 2.0, 3.0),
+                    direction=Vector3(0.0, 0.0, -1.0),
                     color=(255, 128, 0),
                     intensity=5.0,
                     falloff=40.0,
@@ -649,8 +651,12 @@ def test_cut_scene_can_materialize_ydr_embedded_lights() -> None:
         | CutLightFlag.DRAW_VOLUME
         | CutLightFlag.DONT_LIGHT_ALPHA
     )
-    assert cut_light.fields["vColour"] == pytest.approx((1.0, 128.0 / 255.0, 0.0))
-    assert cut_light.fields["vPosition"] == pytest.approx((1.0, 2.0, 3.0))
+    colour = cut_light.fields["vColour"]
+    assert isinstance(colour, Vector3)
+    assert colour.x == pytest.approx(1.0)
+    assert colour.y == pytest.approx(128.0 / 255.0)
+    assert colour.z == pytest.approx(0.0)
+    assert cut_light.fields["vPosition"] == Vector3(1.0, 2.0, 3.0)
     assert cut_light.fields["fFallOff"] == pytest.approx(40.0)
     assert any(
         event.fields["iEventId"] == 74
@@ -793,8 +799,8 @@ def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
     builder.prop(
         "miku_hatsune_metal",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     scene.clip_dictionary(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)
@@ -813,8 +819,8 @@ def test_cut_scene_does_not_reject_unresolved_dictionary_hash() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=1.0)
     builder.prop(
         "target",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     scene.clip_dictionary(builder.build_ycds()[0])
     scene.load_anim_dict(0.0, "0xDEADBEEF", target=manager)
@@ -837,11 +843,11 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
 
     first = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=0)
     first.prop(
-        "decoy", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0)
+        "decoy", mover_position=Vector3(), mover_rotation=Quaternion()
     )
     second = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=1)
     second.prop(
-        "target", mover_position=(0.0, 0.0, 0.0), mover_rotation=(0.0, 0.0, 0.0, 1.0)
+        "target", mover_position=Vector3(), mover_rotation=Quaternion()
     )
     scene.clip_dictionary(first.build_ycds()[0])
     scene.clip_dictionary(second.build_ycds()[0])
@@ -871,8 +877,8 @@ def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
     builder.prop(
         "mmd_model_001",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     scene.clip_dictionary(builder.build_ycds()[0])
     scene.set_anim(0.0, prop, target=manager)

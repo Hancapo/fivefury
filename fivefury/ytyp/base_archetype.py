@@ -10,6 +10,7 @@ from ..map_extensions import (
 )
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
+from ..vector import Vector3
 from .asset_types import ArchetypeAssetType, coerce_archetype_asset_type
 from .lod import infer_archetype_hd_texture_dist, infer_archetype_lod_dist
 
@@ -21,9 +22,9 @@ class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
     lod_dist: float = 0.0
     flags: int = 0
     special_attribute: int = 0
-    bb_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bb_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bs_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bb_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    bb_max: Vector3 = dataclasses.field(default_factory=Vector3)
+    bs_centre: Vector3 = dataclasses.field(default_factory=Vector3)
     bs_radius: float = 0.0
     hd_texture_dist: float = 0.0
     name: MetaHash | HashLike = 0
@@ -36,6 +37,9 @@ class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
     extensions: list[Any] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
+        for name in ("bb_min", "bb_max", "bs_centre"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"BaseArchetypeDef.{name} must be a Vector3")
         self.asset_type = coerce_archetype_asset_type(self.asset_type)
         if self.asset_name in (0, "") and self.name not in (0, ""):
             self.asset_name = self.name
@@ -80,9 +84,9 @@ class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
             lod_dist=float(value.get("lodDist", 0.0)),
             flags=int(value.get("flags", 0)),
             special_attribute=int(value.get("specialAttribute", 0)),
-            bb_min=tuple(value.get("bbMin", (0.0, 0.0, 0.0))),
-            bb_max=tuple(value.get("bbMax", (0.0, 0.0, 0.0))),
-            bs_centre=tuple(value.get("bsCentre", (0.0, 0.0, 0.0))),
+            bb_min=Vector3.from_iterable(value.get("bbMin", (0.0, 0.0, 0.0))),
+            bb_max=Vector3.from_iterable(value.get("bbMax", (0.0, 0.0, 0.0))),
+            bs_centre=Vector3.from_iterable(value.get("bsCentre", (0.0, 0.0, 0.0))),
             bs_radius=float(value.get("bsRadius", 0.0)),
             hd_texture_dist=float(value.get("hdTextureDist", 0.0)),
             name=value.get("name", 0),

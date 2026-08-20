@@ -6,7 +6,7 @@ import itertools
 import math
 import struct
 import zlib
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Union
 
@@ -22,6 +22,7 @@ from ..drawable import (
     DrawableParameter,
 )
 from ..hashing import jenk_hash
+from ..vector import Quaternion, Vector2, Vector3, Vector4
 from ..ytd import Texture, TextureFormat, Ytd
 from .defs import (
     LOD_ORDER,
@@ -190,10 +191,10 @@ class YdrBone:
     parent_index: int = -1
     next_sibling_index: int = -1
     flags: YdrBoneFlags = YDR_BONE_ANIMATABLE_FLAGS
-    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
-    translation: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
-    transform_unk: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
+    translation: Vector3 = dataclasses.field(default_factory=Vector3)
+    scale: Vector3 = dataclasses.field(default_factory=lambda: Vector3(1.0, 1.0, 1.0))
+    transform_unk: Vector4 = dataclasses.field(default_factory=Vector4)
     inverse_bind_transform: Matrix4 | None = None
     unknown_1ch: int = 0
     unknown_2ch: float = 1.0
@@ -288,10 +289,16 @@ class YdrSkeleton:
         parent: YdrBone | str | int | None = None,
         tag: int | None = None,
         flags: YdrBoneFlags = YDR_BONE_ANIMATABLE_FLAGS,
-        rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
-        translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+        rotation: Quaternion = Quaternion(),
+        translation: Vector3 = Vector3(),
+        scale: Vector3 = Vector3(1.0, 1.0, 1.0),
     ) -> YdrBone:
+        if not isinstance(rotation, Quaternion):
+            raise TypeError("rotation must be a Quaternion")
+        if not isinstance(translation, Vector3):
+            raise TypeError("translation must be a Vector3")
+        if not isinstance(scale, Vector3):
+            raise TypeError("scale must be a Vector3")
         self._ensure_bone_lookups()
         index = len(self.bones)
         parent_index = -1
@@ -314,9 +321,9 @@ class YdrSkeleton:
             parent_index=parent_index,
             next_sibling_index=-1,
             flags=flags,
-            rotation=tuple(float(v) for v in rotation),
-            translation=tuple(float(v) for v in translation),
-            scale=tuple(float(v) for v in scale),
+            rotation=rotation,
+            translation=translation,
+            scale=scale,
         )
         self.bones.append(bone)
         self.parent_indices.append(parent_index)
@@ -364,8 +371,12 @@ def _crc32_u64(seed: int, value: int) -> int:
     return zlib.crc32(struct.pack("<Q", int(value) & 0xFFFFFFFFFFFFFFFF), int(seed)) & 0xFFFFFFFF
 
 
-def _crc32_floats(seed: int, values: Sequence[float]) -> int:
-    return zlib.crc32(struct.pack(f"<{len(values)}f", *(float(value) for value in values)), int(seed)) & 0xFFFFFFFF
+def _crc32_floats(seed: int, values: Iterable[float]) -> int:
+    components = tuple(float(value) for value in values)
+    return zlib.crc32(
+        struct.pack(f"<{len(components)}f", *components),
+        int(seed),
+    ) & 0xFFFFFFFF
 
 
 def _skeleton_id_and_dofs(bone: YdrBone) -> int:
@@ -434,8 +445,8 @@ class YdrJointRotationLimit:
     unknown_2ch: float = 1.0
     unknown_40h: float = 1.0
     soft_limit_scale: float = 1.0
-    min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    min: Vector3 = dataclasses.field(default_factory=Vector3)
+    max: Vector3 = dataclasses.field(default_factory=Vector3)
     twist_limit_min: float = -math.pi
     twist_limit_max: float = math.pi
     unknown_74h: float = math.pi
@@ -458,8 +469,8 @@ class YdrJointRotationLimit:
     unknown_b8h: float = math.pi
 
     def build(self) -> YdrJointRotationLimit:
-        self.min = tuple(float(v) for v in self.min)
-        self.max = tuple(float(v) for v in self.max)
+        if not isinstance(self.min, Vector3) or not isinstance(self.max, Vector3):
+            raise TypeError("joint limit bounds must be Vector3 values")
         self.num_control_points = int(self.num_control_points)
         self.joint_dofs = int(self.joint_dofs)
         return self
@@ -468,8 +479,8 @@ class YdrJointRotationLimit:
 @dataclasses.dataclass(slots=True)
 class YdrJointTranslationLimit:
     bone_id: int = 0
-    min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    min: Vector3 = dataclasses.field(default_factory=Vector3)
+    max: Vector3 = dataclasses.field(default_factory=Vector3)
     unknown_0h: int = 0
     unknown_4h: int = 0
     unknown_ch: int = 0
@@ -481,8 +492,8 @@ class YdrJointTranslationLimit:
     unknown_3ch: int = 0
 
     def build(self) -> YdrJointTranslationLimit:
-        self.min = tuple(float(v) for v in self.min)
-        self.max = tuple(float(v) for v in self.max)
+        if not isinstance(self.min, Vector3) or not isinstance(self.max, Vector3):
+            raise TypeError("joint limit bounds must be Vector3 values")
         return self
 
 
@@ -522,16 +533,16 @@ class YdrJoints:
         self,
         *,
         bone_id: int,
-        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        min: Vector3 = Vector3(),
+        max: Vector3 = Vector3(),
         unknown_ah: int = 0,
         num_control_points: int = 1,
         joint_dofs: int = 3,
     ) -> YdrJointRotationLimit:
         limit = YdrJointRotationLimit(
             bone_id=int(bone_id),
-            min=tuple(float(v) for v in min),
-            max=tuple(float(v) for v in max),
+            min=min,
+            max=max,
             unknown_ah=int(unknown_ah) & 0xFFFF,
             num_control_points=int(num_control_points),
             joint_dofs=int(joint_dofs),
@@ -543,13 +554,13 @@ class YdrJoints:
         self,
         *,
         bone_id: int,
-        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        min: Vector3 = Vector3(),
+        max: Vector3 = Vector3(),
     ) -> YdrJointTranslationLimit:
         limit = YdrJointTranslationLimit(
             bone_id=int(bone_id),
-            min=tuple(float(v) for v in min),
-            max=tuple(float(v) for v in max),
+            min=min,
+            max=max,
         )
         self.translation_limits.append(limit)
         return limit
@@ -623,7 +634,7 @@ class YdrMaterialParameterRef(DrawableParameter):
 
 @dataclasses.dataclass(slots=True)
 class YdrLight:
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
     color: tuple[int, int, int] | CssColor = (255, 255, 255)
     flashiness: int = 0
     intensity: float = 1.0
@@ -634,7 +645,7 @@ class YdrLight:
     time_flags: int = 0
     falloff: float = 0.0
     falloff_exponent: float = 0.0
-    culling_plane_normal: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    culling_plane_normal: Vector3 = dataclasses.field(default_factory=Vector3)
     culling_plane_offset: float = 0.0
     shadow_blur: int = 0
     volume_intensity: float = 0.0
@@ -651,11 +662,11 @@ class YdrLight:
     shadow_near_clip: float = 0.0
     corona_intensity: float = 0.0
     corona_z_bias: float = 0.0
-    direction: tuple[float, float, float] = (0.0, 0.0, 1.0)
-    tangent: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    direction: Vector3 = dataclasses.field(default_factory=lambda: Vector3(0.0, 0.0, 1.0))
+    tangent: Vector3 = dataclasses.field(default_factory=lambda: Vector3(1.0, 0.0, 0.0))
     cone_inner_angle: float = 0.0
     cone_outer_angle: float = 0.0
-    extent: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    extent: Vector3 = dataclasses.field(default_factory=Vector3)
     projected_texture_hash: int = 0
     unknown_0h: int = 0
     unknown_4h: int = 0
@@ -666,6 +677,9 @@ class YdrLight:
     unknown_a4h: int = 0
 
     def __post_init__(self) -> None:
+        for name in ("position", "culling_plane_normal", "direction", "tangent", "extent"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"YdrLight.{name} must be a Vector3")
         self.color = parse_css_rgb(self.color)
         self.volume_outer_color = parse_css_rgb(self.volume_outer_color)
         self.flags = YdrLightFlags(int(self.flags))
@@ -674,7 +688,7 @@ class YdrLight:
     def point(
         cls,
         *,
-        position: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        position: Vector3 = Vector3(),
         color: tuple[int, int, int] | CssColor = (255, 255, 255),
         intensity: float = 1.0,
         falloff: float = 0.0,
@@ -685,7 +699,7 @@ class YdrLight:
         **overrides: object,
     ) -> YdrLight:
         return cls(
-            position=tuple(float(v) for v in position),
+            position=position,
             color=parse_css_rgb(color),
             intensity=float(intensity),
             falloff=float(falloff),
@@ -701,8 +715,8 @@ class YdrLight:
     def spot(
         cls,
         *,
-        position: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        direction: tuple[float, float, float] = (0.0, 0.0, -1.0),
+        position: Vector3 = Vector3(),
+        direction: Vector3 = Vector3(0.0, 0.0, -1.0),
         color: tuple[int, int, int] | CssColor = (255, 255, 255),
         intensity: float = 1.0,
         falloff: float = 0.0,
@@ -715,8 +729,8 @@ class YdrLight:
         **overrides: object,
     ) -> YdrLight:
         return cls(
-            position=tuple(float(v) for v in position),
-            direction=tuple(float(v) for v in direction),
+            position=position,
+            direction=direction,
             color=parse_css_rgb(color),
             intensity=float(intensity),
             falloff=float(falloff),
@@ -734,8 +748,8 @@ class YdrLight:
     def capsule(
         cls,
         *,
-        position: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        extent: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        position: Vector3 = Vector3(),
+        extent: Vector3 = Vector3(),
         color: tuple[int, int, int] | CssColor = (255, 255, 255),
         intensity: float = 1.0,
         falloff: float = 0.0,
@@ -746,8 +760,8 @@ class YdrLight:
         **overrides: object,
     ) -> YdrLight:
         return cls(
-            position=tuple(float(v) for v in position),
-            extent=tuple(float(v) for v in extent),
+            position=position,
+            extent=extent,
             color=parse_css_rgb(color),
             intensity=float(intensity),
             falloff=float(falloff),
@@ -977,10 +991,10 @@ class YdrMesh(DrawableMesh[YdrMaterial]):
     material_index: int = -1
     material: YdrMaterial | None = None
     indices: list[int] = dataclasses.field(default_factory=list)
-    positions: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
-    normals: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
-    tangents: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
-    texcoords: list[list[tuple[float, float]]] = dataclasses.field(default_factory=list)
+    positions: list[Vector3] = dataclasses.field(default_factory=list)
+    normals: list[Vector3] = dataclasses.field(default_factory=list)
+    tangents: list[Vector4] = dataclasses.field(default_factory=list)
+    texcoords: list[list[Vector2]] = dataclasses.field(default_factory=list)
     colours0: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
     colours1: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
     blend_weights: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
@@ -1152,10 +1166,10 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
     path: str = ""
     materials: list[YdrMaterial] = dataclasses.field(default_factory=list)
     lods: dict[YdrLod, list[YdrModel]] = dataclasses.field(default_factory=dict)
-    bounding_center: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bounding_center: Vector3 = dataclasses.field(default_factory=Vector3)
     bounding_sphere_radius: float = 0.0
-    bounding_box_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bounding_box_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bounding_box_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    bounding_box_max: Vector3 = dataclasses.field(default_factory=Vector3)
     skeleton: YdrSkeleton | None = None
     joints: YdrJoints | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
@@ -1169,6 +1183,9 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
 
     def __post_init__(self) -> None:
         DrawableAsset.__post_init__(self)
+        for name in ("bounding_center", "bounding_box_min", "bounding_box_max"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"Ydr.{name} must be a Vector3")
         self.render_mask_flags = {coerce_lod(lod): int(flags) for lod, flags in self.render_mask_flags.items()}
 
     def build(self) -> Ydr:
@@ -1262,9 +1279,9 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         parent: YdrBone | str | int | None = None,
         tag: int | None = None,
         flags: YdrBoneFlags = YDR_BONE_ANIMATABLE_FLAGS,
-        rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
-        translation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+        rotation: Quaternion = Quaternion(),
+        translation: Vector3 = Vector3(),
+        scale: Vector3 = Vector3(1.0, 1.0, 1.0),
     ) -> YdrBone:
         return self.ensure_skeleton().bone(
             name,
@@ -1295,8 +1312,8 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self,
         *,
         bone_id: int,
-        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        min: Vector3 = Vector3(),
+        max: Vector3 = Vector3(),
         unknown_ah: int = 0,
         num_control_points: int = 1,
         joint_dofs: int = 3,
@@ -1314,8 +1331,8 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         self,
         *,
         bone_id: int,
-        min: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        max: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        min: Vector3 = Vector3(),
+        max: Vector3 = Vector3(),
     ) -> YdrJointTranslationLimit:
         return self.ensure_joints().translation_limit(
             bone_id=bone_id,

@@ -5,7 +5,7 @@ import math
 from collections.abc import Hashable, Mapping, Sequence
 
 from ..game_target import GameTarget, coerce_game_target
-from ..vector import Vector3, vec3
+from ..vector import Vector3
 from .model import (
     Ynv,
     YnvAabb,
@@ -40,7 +40,9 @@ class YnvSourcePolygon:
     source_key: Hashable | None = None
 
     def build(self) -> YnvSourcePolygon:
-        vertices = tuple(vec3(vertex) for vertex in self.vertices)
+        vertices = tuple(self.vertices)
+        if any(not isinstance(vertex, Vector3) for vertex in vertices):
+            raise TypeError("YNV source polygon vertices must be Vector3 instances")
         if len(vertices) < 3:
             raise ValueError("A YNV source polygon requires at least three vertices")
         if any(not all(math.isfinite(value) for value in vertex) for vertex in vertices):
@@ -107,7 +109,7 @@ def _cell_bounds(cell_x: int, cell_y: int) -> tuple[float, float, float, float]:
 
 def _polygon_area_xy(vertices: Sequence[Vector3]) -> float:
     return 0.5 * sum(
-        (current[0] * nxt[1]) - (nxt[0] * current[1])
+        (current.x * nxt.y) - (nxt.x * current.y)
         for current, nxt in zip(vertices, (*vertices[1:], vertices[0]), strict=True)
     )
 
@@ -118,16 +120,13 @@ def _intersect_axis(
     boundary: float,
     axis: int,
 ) -> Vector3:
-    delta = end[axis] - start[axis]
+    start_component = start.x if axis == 0 else start.y
+    end_component = end.x if axis == 0 else end.y
+    delta = end_component - start_component
     if abs(delta) <= _AREA_EPSILON:
-        result = list(start)
-        result[axis] = boundary
-        return (result[0], result[1], result[2])
-    t = (boundary - start[axis]) / delta
-    result = tuple(
-        start[index] + ((end[index] - start[index]) * t) for index in range(3)
-    )
-    return (result[0], result[1], result[2])
+        return Vector3(boundary, start.y, start.z) if axis == 0 else Vector3(start.x, boundary, start.z)
+    t = (boundary - start_component) / delta
+    return start.lerp(end, t)
 
 
 def _clip_half_plane(
@@ -142,8 +141,8 @@ def _clip_half_plane(
 
     def inside(vertex: Vector3) -> bool:
         if keep_greater:
-            return vertex[axis] >= boundary - _AREA_EPSILON
-        return vertex[axis] <= boundary + _AREA_EPSILON
+            return (vertex.x if axis == 0 else vertex.y) >= boundary - _AREA_EPSILON
+        return (vertex.x if axis == 0 else vertex.y) <= boundary + _AREA_EPSILON
 
     clipped: list[Vector3] = []
     previous = vertices[-1]
@@ -164,15 +163,9 @@ def _clip_half_plane(
 def _remove_duplicate_vertices(vertices: Sequence[Vector3]) -> list[Vector3]:
     result: list[Vector3] = []
     for vertex in vertices:
-        if not result or any(
-            abs(vertex[index] - result[-1][index]) > _AREA_EPSILON
-            for index in range(3)
-        ):
+        if not result or vertex.distance_to(result[-1]) > _AREA_EPSILON:
             result.append(vertex)
-    if len(result) > 1 and all(
-        abs(result[0][index] - result[-1][index]) <= _AREA_EPSILON
-        for index in range(3)
-    ):
+    if len(result) > 1 and result[0].distance_to(result[-1]) <= _AREA_EPSILON:
         result.pop()
     return result
 
@@ -182,7 +175,9 @@ def clip_ynv_polygon_to_cell(
     cell_x: int,
     cell_y: int,
 ) -> list[Vector3]:
-    polygon = [vec3(vertex) for vertex in vertices]
+    polygon = list(vertices)
+    if any(not isinstance(vertex, Vector3) for vertex in polygon):
+        raise TypeError("YNV polygon vertices must be Vector3 instances")
     if any(not all(math.isfinite(value) for value in vertex) for vertex in polygon):
         raise ValueError("YNV polygon vertices must be finite")
     min_x, max_x, min_y, max_y = _cell_bounds(cell_x, cell_y)
@@ -212,8 +207,8 @@ def _point_in_triangle_xy(
 ) -> bool:
     def cross(first: Vector3, second: Vector3, third: Vector3) -> float:
         return (
-            (second[0] - first[0]) * (third[1] - first[1])
-            - (second[1] - first[1]) * (third[0] - first[0])
+            (second.x - first.x) * (third.y - first.y)
+            - (second.y - first.y) * (third.x - first.x)
         )
 
     d1 = cross(point, a, b)
@@ -236,8 +231,8 @@ def _split_polygon_for_binary_limit(vertices: list[Vector3]) -> list[list[Vector
             following = remaining[(cursor + 1) % len(remaining)]
             a, b, c = vertices[previous], vertices[current], vertices[following]
             cross = (
-                (b[0] - a[0]) * (c[1] - b[1])
-                - (b[1] - a[1]) * (c[0] - b[0])
+                (b.x - a.x) * (c.y - b.y)
+                - (b.y - a.y) * (c.x - b.x)
             )
             if cross * orientation <= _AREA_EPSILON:
                 continue
@@ -287,31 +282,31 @@ def _build_sector(
             poly_ids=[
                 index
                 for index, poly in enumerate(polys)
-                if poly.cell_aabb.max[0] >= box.min[0]
-                and poly.cell_aabb.min[0] <= box.max[0]
-                and poly.cell_aabb.max[1] >= box.min[1]
-                and poly.cell_aabb.min[1] <= box.max[1]
+                if poly.cell_aabb.max.x >= box.min.x
+                and poly.cell_aabb.min.x <= box.max.x
+                and poly.cell_aabb.max.y >= box.min.y
+                and poly.cell_aabb.min.y <= box.max.y
             ]
         )
         return sector
-    center_x = (minimum[0] + maximum[0]) * 0.5
-    center_y = (minimum[1] + maximum[1]) * 0.5
-    center_z = (minimum[2] + maximum[2]) * 0.5
+    center_x = (minimum.x + maximum.x) * 0.5
+    center_y = (minimum.y + maximum.y) * 0.5
+    center_z = (minimum.z + maximum.z) * 0.5
     sector.subtree1 = _build_sector(
-        (center_x, center_y, center_z), maximum, polys, depth - 1
+        Vector3(center_x, center_y, center_z), maximum, polys, depth - 1
     )
     sector.subtree2 = _build_sector(
-        (center_x, minimum[1], 0.0),
-        (maximum[0], center_y, 0.0),
+        Vector3(center_x, minimum.y, 0.0),
+        Vector3(maximum.x, center_y, 0.0),
         polys,
         depth - 1,
     )
     sector.subtree3 = _build_sector(
-        minimum, (center_x, center_y, center_z), polys, depth - 1
+        minimum, Vector3(center_x, center_y, center_z), polys, depth - 1
     )
     sector.subtree4 = _build_sector(
-        (minimum[0], center_y, 0.0),
-        (center_x, maximum[1], 0.0),
+        Vector3(minimum.x, center_y, 0.0),
+        Vector3(center_x, maximum.y, 0.0),
         polys,
         depth - 1,
     )
@@ -353,7 +348,7 @@ def _build_cell(
     cell_x, cell_y = polygons[0].cell_x, polygons[0].cell_y
     area_id = get_ynv_area_id(cell_x, cell_y)
     min_x, max_x, min_y, max_y = _cell_bounds(cell_x, cell_y)
-    z_values = [vertex[2] for polygon in polygons for vertex in polygon.vertices]
+    z_values = [vertex.z for polygon in polygons for vertex in polygon.vertices]
     z_min, z_max = min(z_values), max(z_values)
     vertices: list[Vector3] = []
     indices: list[int] = []
@@ -397,8 +392,8 @@ def _build_cell(
                 edge.flags |= YnvEdgeFlags.EXTERNAL_EDGE
             edges.append(edge)
 
-        poly_min = tuple(min(vertex[axis] for vertex in polygon.vertices) for axis in range(3))
-        poly_max = tuple(max(vertex[axis] for vertex in polygon.vertices) for axis in range(3))
+        poly_min = Vector3.minimum(polygon.vertices)
+        poly_max = Vector3.maximum(polygon.vertices)
         polys.append(
             YnvPoly(
                 poly_flags0=(
@@ -431,14 +426,14 @@ def _build_cell(
         path=source_path,
         game=coerce_game_target(game),
         content_flags=YnvContentFlags.POLYGONS,
-        aabb_size=(max_x - min_x, max_y - min_y, z_max - z_min),
+        aabb_size=Vector3(max_x - min_x, max_y - min_y, z_max - z_min),
         vertices=vertices,
         indices=indices,
         edges=edges,
         polys=polys,
         sector_tree=_build_sector(
-            (min_x, min_y, z_min),
-            (max_x, max_y, z_max),
+            Vector3(min_x, min_y, z_min),
+            Vector3(max_x, max_y, z_max),
             polys,
             _SECTOR_DEPTH,
         ),
@@ -456,8 +451,8 @@ def _prepare_groups(
     groups: dict[tuple[int, int], list[_CellPolygon]] = {}
     for source in polygons:
         source.build()
-        xs = [vertex[0] for vertex in source.vertices]
-        ys = [vertex[1] for vertex in source.vertices]
+        xs = [vertex.x for vertex in source.vertices]
+        ys = [vertex.y for vertex in source.vertices]
         cell_pairs = (
             (
                 (cell_x, cell_y)
@@ -482,8 +477,8 @@ def _prepare_groups(
                 continue
             min_x, max_x, min_y, max_y = _cell_bounds(cell_x, cell_y)
             if not all(
-                min_x - _AREA_EPSILON <= vertex[0] <= max_x + _AREA_EPSILON
-                and min_y - _AREA_EPSILON <= vertex[1] <= max_y + _AREA_EPSILON
+                min_x - _AREA_EPSILON <= vertex.x <= max_x + _AREA_EPSILON
+                and min_y - _AREA_EPSILON <= vertex.y <= max_y + _AREA_EPSILON
                 for vertex in vertices
             ):
                 raise ValueError("build_ynv_cell received a polygon outside its inferred cell")

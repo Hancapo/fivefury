@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from collections.abc import Callable
 
+from ..vector import Vector3
 from .model import YdrLight, YdrLightType
 
 
@@ -28,7 +29,7 @@ def parse_light(
     u16: Callable[[bytes, int], int],
     u32: Callable[[bytes, int], int],
     f32: Callable[[bytes, int], float],
-    vec3: Callable[[bytes, int], tuple[float, float, float]],
+    vec3: Callable[[bytes, int], Vector3],
 ) -> YdrLight:
     raw_light_type = system_data[light_off + 0x26]
     return YdrLight(
@@ -87,7 +88,7 @@ def parse_lights(
     u32: Callable[[bytes, int], int],
     u64: Callable[[bytes, int], int],
     f32: Callable[[bytes, int], float],
-    vec3: Callable[[bytes, int], tuple[float, float, float]],
+    vec3: Callable[[bytes, int], Vector3],
 ) -> list[YdrLight]:
     return parse_light_array(
         system_data,
@@ -110,7 +111,7 @@ def parse_light_array(
     u32: Callable[[bytes, int], int],
     u64: Callable[[bytes, int], int],
     f32: Callable[[bytes, int], float],
-    vec3: Callable[[bytes, int], tuple[float, float, float]],
+    vec3: Callable[[bytes, int], Vector3],
 ) -> list[YdrLight]:
     lights_off, light_count = parse_inline_simple_list(
         header_offset,

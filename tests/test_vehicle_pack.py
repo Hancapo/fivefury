@@ -22,6 +22,8 @@ from fivefury import (
     RpfArchive,
     Texture,
     TextureFormat,
+    Vector2,
+    Vector3,
     VehicleCarCols,
     VehicleInitData,
     VehicleInitDataList,
@@ -58,10 +60,10 @@ _ENHANCED_ROOT = Path(_ENHANCED_ROOT_VALUE) if _ENHANCED_ROOT_VALUE else None
 
 def _mesh() -> YdrMeshInput:
     return YdrMeshInput(
-        positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        positions=[Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)],
         indices=[0, 1, 2],
         material="body",
-        texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+        texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]],
     )
 
 
@@ -426,17 +428,19 @@ def test_vehicle_pair_rejects_skeleton_and_physics_mismatches() -> None:
 def test_vehicle_pair_rejects_composite_bound_slot_mismatch() -> None:
     fragment = _fragment("testcar")
     high_fragment = _fragment("testcar_hi", high_detail=True)
-    box = BoundBox.from_bounds((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0))
+    box = BoundBox.from_bounds(
+        Vector3(-1.0, -1.0, -1.0), Vector3(1.0, 1.0, 1.0)
+    )
 
     def composite(child: BoundChild) -> BoundComposite:
         return BoundComposite(
             bound_type=10,
             sphere_radius=0.0,
-            box_max=(0.0, 0.0, 0.0),
+            box_max=Vector3(),
             margin=0.0,
-            box_min=(0.0, 0.0, 0.0),
-            box_center=(0.0, 0.0, 0.0),
-            sphere_center=(0.0, 0.0, 0.0),
+            box_min=Vector3(),
+            box_center=Vector3(),
+            sphere_center=Vector3(),
             children=[child],
         )
 

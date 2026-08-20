@@ -10,6 +10,7 @@ import trimesh
 from fivefury import (
     YNV_MAX_POLYGON_VERTICES,
     GameTarget,
+    Vector3,
     YnvEdgeFlags,
     YnvPortal,
     YnvSourcePolygon,
@@ -86,7 +87,7 @@ def test_build_cell_returns_source_polygon_provenance() -> None:
     ynv, provenance = build_ynv_cell(
         [
             YnvSourcePolygon(
-                [(10.0, 10.0, 0.0), (20.0, 10.0, 0.0), (10.0, 20.0, 0.0)],
+                [Vector3(10.0, 10.0, 0.0), Vector3(20.0, 10.0, 0.0), Vector3(10.0, 20.0, 0.0)],
                 source_key="floor",
             )
         ]
@@ -101,7 +102,7 @@ def test_build_cell_writes_enhanced_runtime_headers() -> None:
     ynv, _ = build_ynv_cell(
         [
             YnvSourcePolygon(
-                [(10.0, 10.0, 0.0), (20.0, 10.0, 0.0), (10.0, 20.0, 0.0)]
+                [Vector3(10.0, 10.0, 0.0), Vector3(20.0, 10.0, 0.0), Vector3(10.0, 20.0, 0.0)]
             )
         ],
         game=GameTarget.GTA5_ENHANCED,
@@ -121,7 +122,7 @@ def test_provenance_can_bind_portals_to_authored_polygons() -> None:
     ynv, provenance = build_ynv_cell(
         [
             YnvSourcePolygon(
-                [(10.0, 10.0, 0.0), (20.0, 10.0, 0.0), (10.0, 20.0, 0.0)],
+                [Vector3(10.0, 10.0, 0.0), Vector3(20.0, 10.0, 0.0), Vector3(10.0, 20.0, 0.0)],
                 source_key="portal-floor",
             )
         ]
@@ -129,8 +130,8 @@ def test_provenance_can_bind_portals_to_authored_polygons() -> None:
     polygon_id = provenance["portal-floor"][0]
     ynv.portals.append(
         YnvPortal(
-            position_from=(12.0, 12.0, 0.0),
-            position_to=(14.0, 14.0, 0.0),
+            position_from=Vector3(12.0, 12.0, 0.0),
+            position_to=Vector3(14.0, 14.0, 0.0),
             poly_id_from1=polygon_id,
             poly_id_from2=polygon_id,
             poly_id_to1=polygon_id,
@@ -147,7 +148,7 @@ def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
     cells = build_ynv_cells(
         [
             YnvSourcePolygon(
-                [(-10.0, 10.0, 0.0), (10.0, 10.0, 0.0), (10.0, 40.0, 0.0)],
+                [Vector3(-10.0, 10.0, 0.0), Vector3(10.0, 10.0, 0.0), Vector3(10.0, 40.0, 0.0)],
                 source_key=77,
             )
         ]
@@ -178,7 +179,7 @@ def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
 
 def test_polygon_over_binary_vertex_limit_is_triangulated() -> None:
     vertices = [
-        (
+        Vector3(
             40.0 + math.cos(index * math.tau / 20.0) * 10.0,
             40.0 + math.sin(index * math.tau / 20.0) * 10.0,
             0.0,
@@ -199,7 +200,7 @@ def test_polygon_over_binary_vertex_limit_is_triangulated() -> None:
 def test_authoring_rejects_nonfinite_vertices() -> None:
     with pytest.raises(ValueError, match="finite"):
         clip_ynv_polygon_to_cell(
-            [(0.0, 0.0, 0.0), (1.0, float("nan"), 0.0), (1.0, 1.0, 0.0)],
+            [Vector3(), Vector3(1.0, float("nan"), 0.0), Vector3(1.0, 1.0, 0.0)],
             40,
             40,
         )

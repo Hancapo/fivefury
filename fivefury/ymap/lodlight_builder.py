@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..authoring.diagnostics import ValidationReport
 from ..common import atomic_write_bytes
-from ..vector import Aabb3, aabb_expand, aabb_merge
+from ..vector import Aabb3
 from .enums import YmapContentFlags, YmapFlags, YmapLodLightCategory
 from .lights import DistantLodLightsSoa, LodLightsSoa
 from .lodlight_generation import GeneratedLodLight, LodLightSourceInstance
@@ -176,10 +176,10 @@ def _build_pair(
         name=distant_name,
         flags=YmapFlags.IS_PARENT | manual_flag,
         content_flags=YmapContentFlags.DISTANT_LOD_LIGHTS,
-        streaming_extents_min=distant_streaming_extents[0],
-        streaming_extents_max=distant_streaming_extents[1],
-        entities_extents_min=physical_extents[0],
-        entities_extents_max=physical_extents[1],
+        streaming_extents_min=distant_streaming_extents.minimum,
+        streaming_extents_max=distant_streaming_extents.maximum,
+        entities_extents_min=physical_extents.minimum,
+        entities_extents_max=physical_extents.maximum,
         distant_lod_lights=distant_soa,
     )
     lod = Ymap(
@@ -187,10 +187,10 @@ def _build_pair(
         parent=distant_name,
         flags=manual_flag,
         content_flags=YmapContentFlags.LOD_LIGHTS,
-        streaming_extents_min=lod_streaming_extents[0],
-        streaming_extents_max=lod_streaming_extents[1],
-        entities_extents_min=physical_extents[0],
-        entities_extents_max=physical_extents[1],
+        streaming_extents_min=lod_streaming_extents.minimum,
+        streaming_extents_max=lod_streaming_extents.maximum,
+        entities_extents_min=physical_extents.minimum,
+        entities_extents_max=physical_extents.maximum,
         lod_lights=lod_soa,
     )
     return LodLightMapPair(
@@ -204,7 +204,7 @@ def _build_pair(
 def _physical_extents(lights: Sequence[GeneratedLodLight]) -> Aabb3:
     bounds: Aabb3 | None = None
     for item in lights:
-        bounds = aabb_merge(bounds, item.physical_bounds)
+        bounds = item.physical_bounds if bounds is None else bounds.merged(item.physical_bounds)
     if bounds is None:
         raise ValueError("at least one LOD light is required")
     return bounds
@@ -216,7 +216,8 @@ def _streaming_extents(
     bounds: Aabb3 | None = None
     for item in lights:
         position = item.light.position
-        bounds = aabb_merge(bounds, aabb_expand((position, position), radius))
+        light_bounds = Aabb3(position, position).expanded(radius)
+        bounds = light_bounds if bounds is None else bounds.merged(light_bounds)
     if bounds is None:
         raise ValueError("at least one LOD light is required")
     return bounds

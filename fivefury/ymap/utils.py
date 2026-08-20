@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..metahash import HashLike, MetaHash
-from ..vector import aabb_expand, aabb_from_points, aabb_merge
+from ..vector import Aabb3, Vector3
 from .base import ContainerLodDef, PhysicsDictionary
 from .defs import _resource_text
 
@@ -18,34 +18,35 @@ def suggest_resource_path(value: HashLike, meta_name_value: str, extension: str,
     return fallback
 
 
-def entity_positions(entities: list[Any]) -> list[tuple[float, float, float]]:
-    positions: list[tuple[float, float, float]] = []
+def entity_positions(entities: list[Any]) -> list[Vector3]:
+    positions: list[Vector3] = []
     for entity in entities:
         position = getattr(entity, "position", None)
-        if isinstance(position, tuple) and len(position) == 3:
-            positions.append((float(position[0]), float(position[1]), float(position[2])))
+        if isinstance(position, Vector3):
+            positions.append(position)
     return positions
 
 
-def positions_bounds(positions: list[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    return aabb_from_points(positions)
+def positions_bounds(positions: list[Vector3]) -> Aabb3:
+    return Aabb3.from_points(positions)
 
 
 def expand_bounds(
-    min_value: tuple[float, float, float],
-    max_value: tuple[float, float, float],
+    bounds: Aabb3,
     padding: float,
-) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+) -> Aabb3:
     if padding <= 0:
-        return min_value, max_value
-    return aabb_expand((min_value, max_value), padding)
+        return bounds
+    return bounds.expanded(padding)
 
 
 def merge_bounds(
-    current: tuple[tuple[float, float, float], tuple[float, float, float]] | None,
-    new_bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None,
-) -> tuple[tuple[float, float, float], tuple[float, float, float]] | None:
-    return aabb_merge(current, new_bounds)
+    current: Aabb3 | None,
+    new_bounds: Aabb3 | None,
+) -> Aabb3 | None:
+    if current is None:
+        return new_bounds
+    return current if new_bounds is None else current.merged(new_bounds)
 
 
 def coerce_container_lod(item: Any) -> ContainerLodDef | Any:

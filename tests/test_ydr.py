@@ -12,6 +12,8 @@ from fivefury import (
     BoundSphere,
     GameFileCache,
     GameFileType,
+    Vector2,
+    Vector3,
     YcdUvClipBinding,
     Ydr,
     YdrCollisionStats,
@@ -281,8 +283,8 @@ def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
 
     assert isinstance(ydr, Ydr)
     assert ydr.version == 165
-    assert ydr.bounding_box_min == (0.0, 0.0, 0.0)
-    assert ydr.bounding_box_max == (1.0, 1.0, 0.0)
+    assert ydr.bounding_box_min == Vector3()
+    assert ydr.bounding_box_max == Vector3(1.0, 1.0, 0.0)
     assert len(ydr.materials) == 1
 
     material = ydr.materials[0]
@@ -324,10 +326,10 @@ def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
     assert ydr.slot_indices == [0]
     assert ydr.ycd_uv_binding(0) == YcdUvClipBinding(object_name="triangle", slot_index=0)
     assert ydr.ycd_uv_bindings() == [YcdUvClipBinding(object_name="triangle", slot_index=0)]
-    assert mesh.positions == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
-    assert mesh.normals == [(0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)]
+    assert mesh.positions == [Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)]
+    assert mesh.normals == [Vector3(0.0, 0.0, 1.0)] * 3
     assert len(mesh.texcoords) == 1
-    assert mesh.texcoords[0] == [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+    assert mesh.texcoords[0] == [Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]
     assert mesh.material is material
     assert mesh.material.primary_texture_name == "test_diffuse"
 
@@ -399,7 +401,7 @@ def test_read_ydr_reads_embedded_bound() -> None:
     ydr = read_ydr(_build_test_ydr_with_bound_bytes(), path="triangle_bound.ydr")
 
     assert isinstance(ydr.bound, BoundSphere)
-    assert ydr.bound.sphere_center == (0.5, 0.5, 0.0)
+    assert ydr.bound.sphere_center == Vector3(0.5, 0.5, 0.0)
     assert ydr.bound.sphere_radius == 0.75
 
 

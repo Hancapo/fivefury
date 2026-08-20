@@ -4,6 +4,7 @@ import struct
 from pathlib import Path
 
 from ..common import ByteSource, atomic_write_bytes, read_source_bytes
+from ..vector import Quaternion, Vector3
 from .model import (
     GTA5_CACHE_BOUND_ENTRY_SIZE,
     GTA5_CACHE_HEADER_SIZE,
@@ -119,10 +120,10 @@ def read_gta5_cache_y(
                 name_hash=values[0],
                 parent_name_hash=values[1],
                 content_flags=values[2],
-                streaming_min=values[3:6],
-                streaming_max=values[6:9],
-                physics_min=values[9:12],
-                physics_max=values[12:15],
+                streaming_min=Vector3.from_iterable(values[3:6]),
+                streaming_max=Vector3.from_iterable(values[6:9]),
+                physics_min=Vector3.from_iterable(values[9:12]),
+                physics_max=Vector3.from_iterable(values[12:15]),
                 dynamic_streaming=bool(values[15]),
                 contains_block_info=bool(values[16]),
                 is_parent=bool(values[17]),
@@ -144,10 +145,10 @@ def read_gta5_cache_y(
                 exit_portal_count=values[2],
                 archetype_hash=values[3],
                 ymap_hash=values[4],
-                position=values[5:8],
-                rotation=values[8:12],
-                bounds_min=values[12:15],
-                bounds_max=values[15:18],
+                position=Vector3.from_iterable(values[5:8]),
+                rotation=Quaternion.from_iterable(values[8:12]),
+                bounds_min=Vector3.from_iterable(values[12:15]),
+                bounds_max=Vector3.from_iterable(values[15:18]),
                 proxy_name=proxy_name,
                 reserved_name_data=raw_name,
             )
@@ -156,8 +157,8 @@ def read_gta5_cache_y(
     bounds = [
         Gta5CacheBound(
             name_hash=values[0],
-            minimum=values[1:4],
-            maximum=values[4:7],
+            minimum=Vector3.from_iterable(values[1:4]),
+            maximum=Vector3.from_iterable(values[4:7]),
             asset_type=values[7],
             reserved=values[8],
         )

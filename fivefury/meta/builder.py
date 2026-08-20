@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import struct
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from functools import cache
 from typing import Any
 
@@ -10,6 +10,7 @@ from ..binary import align, pad_bytes
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
 from ..resource import get_resource_flags_from_blocks, get_resource_total_page_count
+from ..vector import Quaternion, Vector2, Vector3, Vector4
 from . import (
     FLOAT_XYZ_NAME_HASH,
     META_FILE_VFT,
@@ -532,9 +533,15 @@ def _coerce_hash(value: Any) -> int:
 def _coerce_vector(value: Any, size: int) -> tuple[float, ...]:
     if value is None:
         return tuple(0.0 for _ in range(size))
-    if len(value) != size:
+    if isinstance(value, (Vector2, Vector3, Vector4, Quaternion)):
+        components = value.components
+    elif isinstance(value, (str, bytes, bytearray)):
+        raise TypeError("Vector values must be numeric iterables")
+    else:
+        components = tuple(value)
+    if len(components) != size:
         raise ValueError(f"Expected vector of length {size}")
-    return tuple(float(component) for component in value)
+    return tuple(float(component) for component in components)
 
 
 def _value_struct_hash(value: Any, *, fallback: int) -> int:
@@ -566,13 +573,14 @@ def _coerce_float_xyz(value: Any) -> tuple[float, float, float]:
             float(value.get("y", 0.0)),
             float(value.get("z", 0.0)),
         )
-    if isinstance(value, (list, tuple)):
-        return (
-            float(value[0]) if len(value) > 0 else 0.0,
-            float(value[1]) if len(value) > 1 else 0.0,
-            float(value[2]) if len(value) > 2 else 0.0,
-        )
-    return (0.0, 0.0, 0.0)
+    if isinstance(value, (Vector2, Vector3, Vector4, Quaternion)):
+        components = value.components
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        components = tuple(value)
+    else:
+        return (0.0, 0.0, 0.0)
+    padded = components[:3] + (0.0,) * max(0, 3 - len(components))
+    return tuple(float(component) for component in padded[:3])
 
 
 def _pack_inline_array(data_type: MetaDataType, value: Any, count: int) -> bytes:

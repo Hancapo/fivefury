@@ -14,6 +14,7 @@ from ..mesh_source import (
     mesh_triangles,
     mesh_vertices,
 )
+from ..vector import Vector3
 from .authoring import YnvSourcePolygon, build_ynv_cells, get_ynv_file_coords
 from .model import Ynv
 
@@ -37,7 +38,7 @@ def _scene_polygons(
         for face_index, face_positions in enumerate(positions[faces].tolist()):
             polygons.append(
                 YnvSourcePolygon(
-                    vertices=face_positions,
+                    vertices=tuple(Vector3.from_iterable(position) for position in face_positions),
                     source_key=(instance.node_name, instance.geometry_name, face_index),
                 )
             )

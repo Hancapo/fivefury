@@ -9,6 +9,7 @@ from ..resource import (
     read_resource_pages_info,
     read_virtual_pointer_array,
 )
+from ..vector import Vector3
 from .model import (
     Bound,
     BoundAabb,
@@ -68,23 +69,21 @@ def _read_pointer_array(pointer: int, count: int, system_data: bytes) -> list[in
 def _read_vertices(
     pointer: int,
     count: int,
-    quantum: tuple[float, float, float],
-    center_geom: tuple[float, float, float],
+    quantum: Vector3,
+    center_geom: Vector3,
     system_data: bytes,
-) -> list[tuple[float, float, float]]:
+) -> list[Vector3]:
     if not pointer or count <= 0:
         return []
     start = _virtual_offset(pointer, system_data)
     end = start + (count * 6)
     if end > len(system_data):
         raise ValueError("vertex array is truncated")
-    center_x, center_y, center_z = center_geom
-    quantum_x, quantum_y, quantum_z = quantum
     return [
-        (
-            center_x + (x * quantum_x),
-            center_y + (y * quantum_y),
-            center_z + (z * quantum_z),
+        Vector3(
+            center_geom.x + (x * quantum.x),
+            center_geom.y + (y * quantum.y),
+            center_geom.z + (z * quantum.z),
         )
         for x, y, z in struct.iter_unpack("<3h", system_data[start:end])
     ]
@@ -195,7 +194,12 @@ def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
         if end > len(system_data):
             raise ValueError("BVH node array is truncated")
         nodes = [
-            BoundBvhNode(minimum=record_minimum, maximum=record_maximum, item_id=item_id, item_count=item_count)
+            BoundBvhNode(
+                minimum=Vector3.from_iterable(record_minimum),
+                maximum=Vector3.from_iterable(record_maximum),
+                item_id=item_id,
+                item_count=item_count,
+            )
             for record_minimum, record_maximum, item_id, item_count in _native_backend._bounds_decode_bvh_records(
                 system_data, start, nodes_count, center, quantum
             )
@@ -208,7 +212,12 @@ def _read_bvh(pointer: int, system_data: bytes) -> BoundBvh | None:
         if end > len(system_data):
             raise ValueError("BVH tree array is truncated")
         trees = [
-            BoundBvhTree(minimum=record_minimum, maximum=record_maximum, node_index=node_index, node_index2=node_index2)
+            BoundBvhTree(
+                minimum=Vector3.from_iterable(record_minimum),
+                maximum=Vector3.from_iterable(record_maximum),
+                node_index=node_index,
+                node_index2=node_index2,
+            )
             for record_minimum, record_maximum, node_index, node_index2 in _native_backend._bounds_decode_bvh_records(
                 system_data, start, trees_count, center, quantum
             )
@@ -307,8 +316,8 @@ def _read_matrix4f(offset: int, system_data: bytes) -> BoundTransform:
 
 
 def _read_aabb(offset: int, system_data: bytes) -> BoundAabb:
-    minimum = vec4(system_data, offset + 0x00)[:3]
-    maximum = vec4(system_data, offset + 0x10)[:3]
+    minimum = vec4(system_data, offset + 0x00).xyz
+    maximum = vec4(system_data, offset + 0x10).xyz
     return BoundAabb(minimum=minimum, maximum=maximum)
 
 

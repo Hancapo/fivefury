@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..authoring.diagnostics import ValidationReport
 from ..game_target import GameTarget
+from ..vector import Vector4
 from ..ydr import (
     Ydr,
     YdrBuild,
@@ -45,7 +46,7 @@ if TYPE_CHECKING:
 class Yft:
     version: int = 0
     path: str = ""
-    bounding_sphere: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    bounding_sphere: Vector4 = dataclasses.field(default_factory=Vector4)
     pointers: YftFragmentPointers = dataclasses.field(
         default_factory=YftFragmentPointers
     )
@@ -72,6 +73,10 @@ class Yft:
     shared_matrix_set: YftSharedMatrixSet | None = None
     lights: list[YdrLight] = dataclasses.field(default_factory=list)
     raw_bytes: bytes = dataclasses.field(default=b"", repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.bounding_sphere, Vector4):
+            raise TypeError("Yft.bounding_sphere must be a Vector4")
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview, *, path: str = "") -> Yft:

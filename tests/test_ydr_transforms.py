@@ -1,5 +1,6 @@
 import numpy as np
 
+from fivefury import Quaternion, Vector3
 from fivefury.ydr import (
     YdrSkeleton,
     apply_ped_procedural_bone_fallbacks,
@@ -19,17 +20,17 @@ def test_ped_thigh_roll_fallback_copies_untracked_sibling_pose() -> None:
     thigh = skeleton.bone(
         "SKEL_L_Thigh",
         parent=pelvis,
-        translation=(0.1, 0.0, -0.1),
+        translation=Vector3(0.1, 0.0, -0.1),
     )
     thigh_roll = skeleton.bone(
         "RB_L_ThighRoll",
         parent=pelvis,
-        translation=(0.1, 0.0, -0.1),
+        translation=Vector3(0.1, 0.0, -0.1),
     )
     local = [compose_bone_local_transform(bone) for bone in skeleton.bones]
     local[thigh.index] = compose_local_transform(
         thigh.translation,
-        (0.0, 0.0, 0.7071067812, 0.7071067812),
+        Quaternion(0.0, 0.0, 0.7071067812, 0.7071067812),
     )
 
     resolved = apply_ped_procedural_bone_fallbacks(skeleton, local)
@@ -45,11 +46,11 @@ def test_explicit_ped_thigh_roll_track_wins_over_procedural_fallback() -> None:
     local = [compose_bone_local_transform(bone) for bone in skeleton.bones]
     explicit_roll = compose_local_transform(
         thigh_roll.translation,
-        (0.0, 0.7071067812, 0.0, 0.7071067812),
+        Quaternion(0.0, 0.7071067812, 0.0, 0.7071067812),
     )
     local[thigh.index] = compose_local_transform(
         thigh.translation,
-        (0.0, 0.0, 0.7071067812, 0.7071067812),
+        Quaternion(0.0, 0.0, 0.7071067812, 0.7071067812),
     )
     local[thigh_roll.index] = explicit_roll
 
@@ -64,11 +65,11 @@ def test_explicit_ped_thigh_roll_track_wins_over_procedural_fallback() -> None:
 
 def test_skeleton_absolute_transforms_compose_parent_translation() -> None:
     skeleton = YdrSkeleton()
-    root = skeleton.bone("root", translation=(2.0, 0.0, 0.0))
+    root = skeleton.bone("root", translation=Vector3(2.0, 0.0, 0.0))
     child = skeleton.bone(
         "child",
         parent=root,
-        translation=(0.0, 0.0, 1.0),
+        translation=Vector3(0.0, 0.0, 1.0),
     )
 
     local_child = compose_bone_local_transform(child)
@@ -97,8 +98,8 @@ def test_skeleton_absolute_transforms_reject_cycles() -> None:
 
 def test_skeleton_skinning_transforms_use_cumulative_inverse_bind_pose() -> None:
     skeleton = YdrSkeleton()
-    root = skeleton.bone("root", translation=(2.0, 0.0, 0.0))
-    child = skeleton.bone("child", parent=root, translation=(0.0, 0.0, 1.0))
+    root = skeleton.bone("root", translation=Vector3(2.0, 0.0, 0.0))
+    child = skeleton.bone("child", parent=root, translation=Vector3(0.0, 0.0, 1.0))
 
     rest_skin = skeleton_skinning_transforms(skeleton)
     for matrix in rest_skin:
@@ -126,14 +127,14 @@ def test_composed_rotated_locals_preserve_the_serialized_rest_pose() -> None:
     skeleton = YdrSkeleton()
     root = skeleton.bone(
         "root",
-        rotation=(0.0, 0.0, 0.3826834324, 0.9238795325),
-        translation=(1.0, 2.0, 3.0),
+        rotation=Quaternion(0.0, 0.0, 0.3826834324, 0.9238795325),
+        translation=Vector3(1.0, 2.0, 3.0),
     )
     child = skeleton.bone(
         "child",
         parent=root,
-        rotation=(0.2588190451, 0.0, 0.0, 0.9659258263),
-        translation=(0.0, 0.0, 1.0),
+        rotation=Quaternion(0.2588190451, 0.0, 0.0, 0.9659258263),
+        translation=Vector3(0.0, 0.0, 1.0),
     )
     local = [
         compose_local_transform(bone.translation, bone.rotation, bone.scale)
@@ -157,8 +158,8 @@ def test_composed_rotated_locals_preserve_the_serialized_rest_pose() -> None:
 
 def test_compose_local_transform_matches_rage_row_rotation_convention() -> None:
     matrix = compose_local_transform(
-        (1.0, 2.0, 3.0),
-        (0.0, 0.0, 0.7071067812, 0.7071067812),
+        Vector3(1.0, 2.0, 3.0),
+        Quaternion(0.0, 0.0, 0.7071067812, 0.7071067812),
     )
 
     expected = (
@@ -176,17 +177,20 @@ def test_numpy_skeleton_matrices_match_scalar_transform_contract() -> None:
     skeleton = YdrSkeleton()
     root = skeleton.bone(
         "root",
-        rotation=(0.0, 0.0, 0.3826834324, 0.9238795325),
-        translation=(1.0, 2.0, 3.0),
+        rotation=Quaternion(0.0, 0.0, 0.3826834324, 0.9238795325),
+        translation=Vector3(1.0, 2.0, 3.0),
     )
     skeleton.bone(
         "child",
         parent=root,
-        rotation=(0.2588190451, 0.0, 0.0, 0.9659258263),
-        translation=(0.0, 0.0, 1.0),
+        rotation=Quaternion(0.2588190451, 0.0, 0.0, 0.9659258263),
+        translation=Vector3(0.0, 0.0, 1.0),
     )
     animated = [compose_bone_local_transform(bone) for bone in skeleton.bones]
-    animated[1] = compose_local_transform((0.0, 0.0, 2.0), skeleton.bones[1].rotation)
+    animated[1] = compose_local_transform(
+        Vector3(0.0, 0.0, 2.0),
+        skeleton.bones[1].rotation,
+    )
 
     scalar_absolute = skeleton_absolute_transforms(skeleton, local_transforms=animated)
     scalar_skinning = skeleton_skinning_transforms(skeleton, local_transforms=animated)
@@ -205,7 +209,7 @@ def test_numpy_skeleton_matrices_match_scalar_transform_contract() -> None:
 
 def test_numpy_skinning_matrices_preserve_custom_inverse_bind() -> None:
     skeleton = YdrSkeleton()
-    root = skeleton.bone("root", translation=(1.0, 2.0, 3.0))
+    root = skeleton.bone("root", translation=Vector3(1.0, 2.0, 3.0))
     root.inverse_bind_transform = (
         (1.0, 0.0, 0.0, 0.0),
         (0.0, 1.0, 0.0, 0.0),

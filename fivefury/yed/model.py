@@ -11,6 +11,7 @@ from ..binary import vec3
 from ..game_target import GameTarget, coerce_game_target
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
+from ..vector import Vector3
 from .constants import (
     DEFAULT_YED_EXPRESSION_VFT,
     DEFAULT_YED_VERSION,
@@ -181,11 +182,13 @@ class YedSpring:
         self.raw = bytes(data)
 
     @property
-    def gravity(self) -> tuple[float, float, float]:
+    def gravity(self) -> Vector3:
         return vec3(self.raw, 0x90)
 
     @gravity.setter
-    def gravity(self, value: tuple[float, float, float]) -> None:
+    def gravity(self, value: Vector3) -> None:
+        if not isinstance(value, Vector3):
+            raise TypeError("YedSpring.gravity must be a Vector3")
         data = bytearray(self.raw)
         struct.pack_into("<3f", data, 0x90, *value)
         self.raw = bytes(data)
@@ -201,7 +204,14 @@ class YedSpring:
         self.raw = bytes(data)
 
     @classmethod
-    def default(cls, bone_id: int, *, gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)) -> YedSpring:
+    def default(
+        cls,
+        bone_id: int,
+        *,
+        gravity: Vector3 = Vector3(0.0, 0.0, -9.81),
+    ) -> YedSpring:
+        if not isinstance(gravity, Vector3):
+            raise TypeError("gravity must be a Vector3")
         data = bytearray(SPRING_BLOCK_SIZE)
         struct.pack_into("<3f", data, 0x90, *gravity)
         struct.pack_into("<H", data, 0x9C, int(bone_id) & 0xFFFF)

@@ -16,6 +16,7 @@ from fivefury import (
     CutVehicleExtraPayload,
     CutVehicleVariationPayload,
     CutWeapon,
+    Vector3,
     build_cut_bytes,
     read_cut,
     scene_to_cut,
@@ -48,18 +49,28 @@ def test_cut_scene_writes_complete_object_model_without_template() -> None:
     scene.binding(animated_particle)
 
     blocking = CutBlockingBounds("blocking")
-    blocking.corners = ((-1.0, -2.0, 0.0), (1.0, -2.0, 0.0), (1.0, 2.0, 0.0), (-1.0, 2.0, 0.0))
+    blocking.corners = (
+        Vector3(-1.0, -2.0, 0.0),
+        Vector3(1.0, -2.0, 0.0),
+        Vector3(1.0, 2.0, 0.0),
+        Vector3(-1.0, 2.0, 0.0),
+    )
     blocking.height = 4.5
     scene.binding(blocking)
 
     removal = CutRemovalBounds("removal")
-    removal.corners = ((-3.0, -4.0, 1.0), (3.0, -4.0, 1.0), (3.0, 4.0, 1.0), (-3.0, 4.0, 1.0))
+    removal.corners = (
+        Vector3(-3.0, -4.0, 1.0),
+        Vector3(3.0, -4.0, 1.0),
+        Vector3(3.0, 4.0, 1.0),
+        Vector3(-3.0, 4.0, 1.0),
+    )
     removal.height = 8.0
     scene.binding(removal)
 
     rayfire = CutRayfire("rayfire_stream")
     rayfire.cutscene_name = "rayfire_actor"
-    rayfire.start_position = (10.0, 20.0, 30.0)
+    rayfire.start_position = Vector3(10.0, 20.0, 30.0)
     scene.binding(rayfire)
     scene.binding(CutEventObject())
 
@@ -77,7 +88,9 @@ def test_cut_scene_writes_complete_object_model_without_template() -> None:
     assert objects["rage__cutfRemovalBoundsObject"].fields["vCorners"] == [
         pytest.approx(corner) for corner in removal.corners
     ]
-    assert objects["rage__cutfRayfireObject"].fields["vStartPosition"] == pytest.approx((10.0, 20.0, 30.0))
+    assert objects["rage__cutfRayfireObject"].fields[
+        "vStartPosition"
+    ].components == pytest.approx((10.0, 20.0, 30.0))
     assert objects["rage__cutfEventObject"].fields["iObjectId"] >= 0
 
 
@@ -156,12 +169,12 @@ def test_cut_particle_and_attached_light_payloads_roundtrip() -> None:
     particle = scene.binding(CutParticleEffect("particle"))
     light = scene.binding(CutAnimatedLight("light"))
     play_payload = CutPlayParticleEffectPayload(
-        initial_bone_offset=(1.0, 2.0, 3.0),
+        initial_bone_offset=Vector3(1.0, 2.0, 3.0),
         attach_parent_id=4,
         attach_bone_hash=5,
     )
     stop_payload = CutPlayParticleEffectPayload(
-        initial_bone_offset=(6.0, 7.0, 8.0),
+        initial_bone_offset=Vector3(6.0, 7.0, 8.0),
         attach_parent_id=9,
         attach_bone_hash=10,
     )

@@ -14,6 +14,8 @@ from fivefury import (
     CutsceneProject,
     GameFileCache,
     GameTarget,
+    Quaternion,
+    Vector3,
     read_ycd,
     validate_cut_scene,
 )
@@ -47,8 +49,8 @@ def _animated_camera_project() -> tuple[CutsceneProject, CutCamera]:
         "exportcamera",
         start=0.25,
         cut_name="opening_shot",
-        position={0.0: (0.0, 0.0, 1.0), 2.0: (20.0, 0.0, 1.0)},
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position={0.0: Vector3(0.0, 0.0, 1.0), 2.0: Vector3(20.0, 0.0, 1.0)},
+        rotation=Quaternion(),
         field_of_view=45.0,
         near_clip=0.1,
         far_clip=2000.0,
@@ -84,10 +86,8 @@ def test_project_camera_authors_runtime_binding_and_sampled_cut_pose() -> None:
     assert camera.far_draw_distance == pytest.approx(2000.0)
     assert event.target_id == camera.object_id
     assert event.label == "opening_shot"
-    assert event.payload["vPosition"] == pytest.approx((2.5, 0.0, 1.0))
-    assert event.payload["vRotationQuaternion"] == pytest.approx(
-        (0.0, 0.0, 0.0, 1.0)
-    )
+    assert event.payload["vPosition"] == Vector3(2.5, 0.0, 1.0)
+    assert event.payload["vRotationQuaternion"] == Quaternion()
     set_anim_events = [
         item for item in project.scene.timeline if item.event_name == "set_anim"
     ]
@@ -112,7 +112,7 @@ def test_one_runtime_camera_drives_multiple_named_cuts() -> None:
     assert project.scene.cameras == [camera]
     assert [event.target_id for event in events] == [camera.object_id, camera.object_id]
     assert [event.label for event in events] == ["opening_shot", "closing_shot"]
-    assert events[1].payload["vPosition"] == pytest.approx((15.0, 0.0, 1.0))
+    assert events[1].payload["vPosition"] == Vector3(15.0, 0.0, 1.0)
 
 
 def test_camera_contract_survives_cut_and_segmented_ycd_roundtrip() -> None:
@@ -141,7 +141,7 @@ def test_camera_contract_survives_cut_and_segmented_ycd_roundtrip() -> None:
 
 def test_static_camera_has_no_runtime_animation_binding() -> None:
     project = CutsceneProject.create("static_camera", duration=1.0)
-    project.camera(cut_position=(0.0, 0.0, 0.0), cut_rotation=(0.0, 0.0, 0.0, 1.0))
+    project.camera(cut_position=Vector3(), cut_rotation=Quaternion())
 
     assert not [
         item for item in project.scene.timeline if item.event_name == "set_anim"
@@ -155,12 +155,12 @@ def test_camera_and_prop_keep_independent_runtime_animation_bindings() -> None:
     )
     project.animate(
         prop,
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     camera = project.camera(
-        position=(0.0, 0.0, 1.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(0.0, 0.0, 1.0),
+        rotation=Quaternion(),
     )
 
     events = [
@@ -180,7 +180,7 @@ def test_animated_camera_requires_a_complete_cut_pose() -> None:
 
     with pytest.raises(ValueError, match="position and rotation"):
         project.camera(
-            position=(0.0, 0.0, 0.0),
+            position=Vector3(),
             field_of_view=45.0,
         )
 
@@ -274,8 +274,8 @@ def test_camera_binding_validation_uses_external_concat_boundaries() -> None:
         camera_cuts=[1.0],
     )
     camera = project.camera(
-        position=(0.0, 0.0, 1.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(0.0, 0.0, 1.0),
+        rotation=Quaternion(),
     )
     assets = project.build().build()
     raw = project.scene.to_cut()
@@ -305,7 +305,7 @@ def test_camera_cut_contract_reports_target_and_pose_failures() -> None:
         item for item in project.scene.timeline if item.event_name == "camera_cut"
     )
     event.target_id = None
-    event.payload["vPosition"] = (float("nan"), 0.0, 0.0)
+    event.payload["vPosition"] = Vector3(float("nan"), 0.0, 0.0)
 
     report = project.build().validate()
     codes = {issue.code for issue in report.errors}
@@ -361,8 +361,8 @@ def test_project_camera_preserves_explicit_ycd_runtime_profile(
 ) -> None:
     project = CutsceneProject.create("camera_target", duration=1.0, game=game)
     project.camera(
-        position=(0.0, 0.0, 0.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(),
+        rotation=Quaternion(),
     )
 
     files = project.build().build_files()

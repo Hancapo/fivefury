@@ -10,12 +10,13 @@ from ..pso_values import fields as _fields
 from ..pso_values import hash_value as _hash_value
 from ..pso_values import list_value as _list
 from ..pso_values import vector
+from ..vector import Aabb3, Vector3
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class YmtAabb:
-    minimum: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    maximum: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    minimum: Vector3 = dataclasses.field(default_factory=Vector3)
+    maximum: Vector3 = dataclasses.field(default_factory=Vector3)
     minimum_w: float = 0.0
     maximum_w: float = 0.0
 
@@ -29,18 +30,22 @@ class YmtAabb:
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> YmtAabb:
-        minimum = vector(_field(value, "min", "hash_FE2F0903"), 4)
-        maximum = vector(_field(value, "max", "hash_606EDCC4"), 4)
+        minimum_x, minimum_y, minimum_z, minimum_w = vector(
+            _field(value, "min", "hash_FE2F0903"), 4
+        )
+        maximum_x, maximum_y, maximum_z, maximum_w = vector(
+            _field(value, "max", "hash_606EDCC4"), 4
+        )
         return cls(
-            minimum=minimum[:3],
-            maximum=maximum[:3],
-            minimum_w=minimum[3],
-            maximum_w=maximum[3],
+            minimum=Vector3(minimum_x, minimum_y, minimum_z),
+            maximum=Vector3(maximum_x, maximum_y, maximum_z),
+            minimum_w=minimum_w,
+            maximum_w=maximum_w,
         )
 
     @property
-    def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-        return self.minimum, self.maximum
+    def bounds(self) -> Aabb3:
+        return Aabb3(self.minimum, self.maximum)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

@@ -19,6 +19,7 @@ from ..resource import (
     get_resource_total_page_count,
     layout_resource_sections,
 )
+from ..vector import Vector4
 from ..ydr import Ydr, YdrBuild, YdrLight
 from ..ydr.builder import _write_drawable_payload
 from ..ydr.gen9 import load_gen9_shader_library
@@ -433,7 +434,7 @@ def create_yft(
     physics_bound: Bound | None = None,
     physics_bound_profile: YftPhysicsBoundProfile | str = (YftPhysicsBoundProfile.PROP),
     physics_density: float | None = None,
-    bounding_sphere: tuple[float, float, float, float] | None = None,
+    bounding_sphere: Vector4 | None = None,
     user_data: int = 0,
 ) -> Yft:
     bound_profile = coerce_yft_physics_bound_profile(physics_bound_profile)
@@ -451,7 +452,9 @@ def create_yft(
     yft.lights = list(lights)
     yft.user_data = int(user_data)
     if bounding_sphere is not None:
-        yft.bounding_sphere = tuple(float(value) for value in bounding_sphere)
+        if not isinstance(bounding_sphere, Vector4):
+            raise TypeError("bounding_sphere must be a Vector4")
+        yft.bounding_sphere = bounding_sphere
     for index, entry in enumerate(extra_drawables):
         if isinstance(entry, YftDrawable):
             yft.drawables.append(entry)
@@ -764,12 +767,15 @@ def build_yft_bytes(
     )
     if prepared[0] is None:
         raise ValueError("YFT writer requires a common drawable")
-    if source.bounding_sphere == (0.0, 0.0, 0.0, 0.0):
+    if source.bounding_sphere == Vector4():
         _center, _bounds_min, _bounds_max, radius = compute_model_collection_bounds(
             [model for lods in prepared[0].lods.values() for model in lods],
             skeleton=prepared[0].build.skeleton,
         )
-        source = dataclasses.replace(source, bounding_sphere=(*_center, float(radius)))
+        source = dataclasses.replace(
+            source,
+            bounding_sphere=Vector4(_center.x, _center.y, _center.z, radius),
+        )
 
     page_counts = (0, 0)
     system_flags = None

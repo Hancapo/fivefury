@@ -5,6 +5,7 @@ import struct
 
 from ..binary import align
 from ..resource import ResourceWriter
+from ..vector import Vector3
 from .defs import YdrSkeletonBinding, coerce_skeleton_binding
 from .prepare import PreparedModel
 from .write_buffers import GraphicsWriter, build_mesh_buffer_packs
@@ -20,17 +21,17 @@ class PreparedModelBlock:
     skeleton_binding: YdrSkeletonBinding
 
 
-def _pack_aabb(bounds_min: tuple[float, float, float], bounds_max: tuple[float, float, float]) -> bytes:
+def _pack_aabb(bounds_min: Vector3, bounds_max: Vector3) -> bytes:
     return struct.pack(
         '<8f',
-        bounds_min[0],
-        bounds_min[1],
-        bounds_min[2],
-        bounds_min[0],
-        bounds_max[0],
-        bounds_max[1],
-        bounds_max[2],
-        bounds_max[0],
+        bounds_min.x,
+        bounds_min.y,
+        bounds_min.z,
+        bounds_min.x,
+        bounds_max.x,
+        bounds_max.y,
+        bounds_max.z,
+        bounds_max.x,
     )
 
 
@@ -139,15 +140,15 @@ def build_model_block(
 
     bounds_chunks: list[bytes] = []
     if geometry_count > 1:
-        all_positions_min = (
-            min(block.bounds_min[0] for block in geometry_blocks),
-            min(block.bounds_min[1] for block in geometry_blocks),
-            min(block.bounds_min[2] for block in geometry_blocks),
+        all_positions_min = Vector3(
+            min(block.bounds_min.x for block in geometry_blocks),
+            min(block.bounds_min.y for block in geometry_blocks),
+            min(block.bounds_min.z for block in geometry_blocks),
         )
-        all_positions_max = (
-            max(block.bounds_max[0] for block in geometry_blocks),
-            max(block.bounds_max[1] for block in geometry_blocks),
-            max(block.bounds_max[2] for block in geometry_blocks),
+        all_positions_max = Vector3(
+            max(block.bounds_max.x for block in geometry_blocks),
+            max(block.bounds_max.y for block in geometry_blocks),
+            max(block.bounds_max.z for block in geometry_blocks),
         )
         bounds_chunks.append(_pack_aabb(all_positions_min, all_positions_max))
     for block in geometry_blocks:

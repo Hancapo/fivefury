@@ -10,7 +10,7 @@ from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..resource import build_rsc7
-from ..vector import aabb_transform
+from ..vector import Aabb3, Quaternion, Vector3
 from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
 from .cargens import CarGen
 from .defs import (
@@ -89,10 +89,10 @@ class Ymap(MetaHashFieldsMixin):
     parent: MetaHash | HashLike = 0
     flags: YmapFlags | int = YmapFlags.NONE
     content_flags: YmapContentFlags | int = YmapContentFlags.NONE
-    streaming_extents_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    streaming_extents_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    entities_extents_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    entities_extents_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    streaming_extents_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    streaming_extents_max: Vector3 = dataclasses.field(default_factory=Vector3)
+    entities_extents_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    entities_extents_max: Vector3 = dataclasses.field(default_factory=Vector3)
     entities: list[EntityDef | MloInstanceDef | RawStruct | dict[str, Any]] = dataclasses.field(default_factory=list)
     container_lods: list[ContainerLodDef | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
     box_occluders: list[BoxOccluder | dict[str, Any] | RawStruct] = dataclasses.field(default_factory=list)
@@ -107,6 +107,9 @@ class Ymap(MetaHashFieldsMixin):
     meta_name: str = ""
 
     def __post_init__(self) -> None:
+        for name in ("streaming_extents_min", "streaming_extents_max", "entities_extents_min", "entities_extents_max"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"Ymap.{name} must be a Vector3")
         self.name = _ensure_base_name(self.name, ".ymap")
         self.flags = coerce_ymap_flags(self.flags)
         self.content_flags = coerce_ymap_content_flags(self.content_flags)
@@ -159,8 +162,8 @@ class Ymap(MetaHashFieldsMixin):
 
     def occlude_box(
         self,
-        min_pos: tuple[float, float, float],
-        max_pos: tuple[float, float, float],
+        min_pos: Vector3,
+        max_pos: Vector3,
         *,
         flags: int = 0,
     ) -> list[OccludeModel]:
@@ -170,7 +173,7 @@ class Ymap(MetaHashFieldsMixin):
 
     def occlude_quad(
         self,
-        corners: list[tuple[float, float, float]],
+        corners: list[Vector3],
         *,
         flags: int = 0,
     ) -> list[OccludeModel]:
@@ -180,7 +183,7 @@ class Ymap(MetaHashFieldsMixin):
 
     def occlude_faces(
         self,
-        vertices: list[tuple[float, float, float]],
+        vertices: list[Vector3],
         faces: list[tuple[int, ...]],
         *,
         flags: int = 0,
@@ -242,8 +245,8 @@ class Ymap(MetaHashFieldsMixin):
         count = max(len(lod), len(distant))
         lights: list[LodLight] = []
         for index in range(count):
-            position = distant.position[index] if index < len(distant.position) else (0.0, 0.0, 0.0)
-            direction = lod.direction[index] if index < len(lod.direction) else (0.0, 0.0, -1.0)
+            position = distant.position[index] if index < len(distant.position) else Vector3()
+            direction = lod.direction[index] if index < len(lod.direction) else Vector3(0.0, 0.0, -1.0)
             lights.append(
                 LodLight(
                     position=position,
@@ -296,7 +299,7 @@ class Ymap(MetaHashFieldsMixin):
         self.distant_lod_lights = normalized_distant
         return self
 
-    def car_gen(self, car_model: HashLike, position: tuple[float, float, float], heading: float = 0.0, **kwargs: Any) -> CarGen:
+    def car_gen(self, car_model: HashLike, position: Vector3, heading: float = 0.0, **kwargs: Any) -> CarGen:
         cg = CarGen.create(car_model, position, heading, **kwargs)
         self.car_generators.append(cg)
         return cg
@@ -304,8 +307,8 @@ class Ymap(MetaHashFieldsMixin):
     def time_cycle_modifier(
         self,
         name: HashLike,
-        position: tuple[float, float, float],
-        size: tuple[float, float, float],
+        position: Vector3,
+        size: Vector3,
         **kwargs: Any,
     ) -> TimeCycleModifier:
         modifier = TimeCycleModifier.create(name, position, size, **kwargs)
@@ -322,48 +325,48 @@ class Ymap(MetaHashFieldsMixin):
         include_lod_distance: bool = True,
         context: BuildContext | None = None,
     ) -> Ymap:
-        bounds: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
+        bounds: Aabb3 | None = None
         ytyps, _ = _context_dependencies(context)
         archetypes = archetypes_by_hash(ytyps)
         for entity in self.entities:
-            position = tuple(getattr(entity, "position", (0.0, 0.0, 0.0)))
+            position = getattr(entity, "position", Vector3())
             archetype = archetypes.get(int(getattr(entity, "archetype_name", 0)))
             minimum = getattr(archetype, "bb_min", None)
             maximum = getattr(archetype, "bb_max", None)
             if (
                 archetype is not None
-                and isinstance(minimum, tuple)
-                and len(minimum) == 3
-                and isinstance(maximum, tuple)
-                and len(maximum) == 3
+                and isinstance(minimum, Vector3)
+                and isinstance(maximum, Vector3)
             ):
                 scale_xy = float(getattr(entity, "scale_xy", 1.0))
                 scale_z = float(getattr(entity, "scale_z", 1.0))
-                entity_bounds = aabb_transform(
-                    (minimum, maximum),
+                rotation = getattr(entity, "rotation", Quaternion())
+                if not isinstance(position, Vector3) or not isinstance(rotation, Quaternion):
+                    raise TypeError("YMAP entity transforms must use Vector3 and Quaternion")
+                entity_bounds = Aabb3(minimum, maximum).transformed(
                     translation=position,
-                    rotation=tuple(getattr(entity, "rotation", (0.0, 0.0, 0.0, 1.0))),
-                    scale=(scale_xy, scale_xy, scale_z),
+                    rotation=rotation,
+                    scale=Vector3(scale_xy, scale_xy, scale_z),
                 )
             else:
                 entity_bounds = positions_bounds([position])
             bounds = merge_bounds(bounds, entity_bounds)
         for car_gen in self.car_generators:
             position = getattr(car_gen, "position", None)
-            if isinstance(position, tuple) and len(position) == 3:
-                bounds = merge_bounds(bounds, ((position[0], position[1], position[2]), (position[0], position[1], position[2])))
+            if isinstance(position, Vector3):
+                bounds = merge_bounds(bounds, Aabb3(position, position))
         for modifier in self.time_cycle_modifiers:
             min_extents = getattr(modifier, "min_extents", None)
             max_extents = getattr(modifier, "max_extents", None)
-            if isinstance(min_extents, tuple) and isinstance(max_extents, tuple):
-                bounds = merge_bounds(bounds, (tuple(min_extents), tuple(max_extents)))
+            if isinstance(min_extents, Vector3) and isinstance(max_extents, Vector3):
+                bounds = merge_bounds(bounds, Aabb3(min_extents, max_extents))
         for occluder in self.box_occluders:
             occluder_bounds = getattr(occluder, "bounds", None)
-            if isinstance(occluder_bounds, tuple):
+            if isinstance(occluder_bounds, Aabb3):
                 bounds = merge_bounds(bounds, occluder_bounds)
         for model in self.occlude_models:
             model_bounds = getattr(model, "bounds", None)
-            if isinstance(model_bounds, tuple):
+            if isinstance(model_bounds, Aabb3):
                 bounds = merge_bounds(bounds, model_bounds)
         if isinstance(self.instanced_data, InstancedMapData):
             for batch in self.instanced_data.grass_instance_list:
@@ -372,13 +375,14 @@ class Ymap(MetaHashFieldsMixin):
             bounds = merge_bounds(bounds, positions_bounds(list(self.distant_lod_lights.position)))
         if bounds is None:
             return self
-        entities_min, entities_max = bounds
-        self.entities_extents_min = tuple(float(value) for value in entities_min)
-        self.entities_extents_max = tuple(float(value) for value in entities_max)
+        self.entities_extents_min = bounds.minimum
+        self.entities_extents_max = bounds.maximum
         padding = max(float(streaming_margin), 0.0)
         if include_lod_distance:
             padding += max((max(float(getattr(entity, "lod_dist", 0.0)), 0.0) for entity in self.entities), default=0.0)
-        self.streaming_extents_min, self.streaming_extents_max = expand_bounds(entities_min, entities_max, padding)
+        streaming_bounds = expand_bounds(bounds, padding)
+        self.streaming_extents_min = streaming_bounds.minimum
+        self.streaming_extents_max = streaming_bounds.maximum
         return self
 
     def recalculate_flags(self) -> Ymap:
@@ -569,10 +573,10 @@ class Ymap(MetaHashFieldsMixin):
             parent=root.get("parent", 0),
             flags=coerce_ymap_flags(int(root.get("flags", 0))),
             content_flags=coerce_ymap_content_flags(int(root.get("contentFlags", 0))),
-            streaming_extents_min=tuple(root.get("streamingExtentsMin", (0.0, 0.0, 0.0))),
-            streaming_extents_max=tuple(root.get("streamingExtentsMax", (0.0, 0.0, 0.0))),
-            entities_extents_min=tuple(root.get("entitiesExtentsMin", (0.0, 0.0, 0.0))),
-            entities_extents_max=tuple(root.get("entitiesExtentsMax", (0.0, 0.0, 0.0))),
+            streaming_extents_min=Vector3.from_iterable(root.get("streamingExtentsMin", (0.0, 0.0, 0.0))),
+            streaming_extents_max=Vector3.from_iterable(root.get("streamingExtentsMax", (0.0, 0.0, 0.0))),
+            entities_extents_min=Vector3.from_iterable(root.get("entitiesExtentsMin", (0.0, 0.0, 0.0))),
+            entities_extents_max=Vector3.from_iterable(root.get("entitiesExtentsMax", (0.0, 0.0, 0.0))),
             entities=entities,
             container_lods=container_lods,
             box_occluders=[BoxOccluder.from_meta(item) if isinstance(item, dict) else item for item in root.get("boxOccluders", []) or []],

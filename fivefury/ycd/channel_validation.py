@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..authoring import ValidationReport
-from ..vector import quat_angular_error_degrees
+from ..vector import Quaternion, Vector3
 from .reader import read_ycd
 from .sequence_tracks import YcdTrackFormat
 from .write import build_ycd_bytes
@@ -53,29 +53,44 @@ def validate_cutscene_section_precision(
                 actual = values.get(key)
                 if actual is None:
                     continue
-                components = tuple(float(value) for value in actual[: len(expected)])
+                expected_components = (
+                    expected.components
+                    if isinstance(expected, (Vector3, Quaternion))
+                    else (float(expected),)
+                )
+                components = actual.components[: len(expected_components)]
                 if track_spec.format is YcdTrackFormat.QUATERNION:
+                    if not isinstance(expected, Quaternion) or not isinstance(
+                        actual, Quaternion
+                    ):
+                        raise TypeError("Quaternion precision validation requires Quaternion samples")
                     direct = max(
                         abs(left - right)
-                        for left, right in zip(expected, components, strict=True)
+                        for left, right in zip(
+                            expected_components, components, strict=True
+                        )
                     )
                     negated = max(
                         abs(left + right)
-                        for left, right in zip(expected, components, strict=True)
+                        for left, right in zip(
+                            expected_components, components, strict=True
+                        )
                     )
                     maximum_errors[track_index] = max(
                         maximum_errors[track_index], min(direct, negated)
                     )
                     maximum_angular_errors[track_index] = max(
                         maximum_angular_errors[track_index],
-                        quat_angular_error_degrees(expected, components),
+                        expected.angular_error_degrees(actual),
                     )
                 else:
                     maximum_errors[track_index] = max(
                         maximum_errors[track_index],
                         max(
                             abs(left - right)
-                            for left, right in zip(expected, components, strict=True)
+                            for left, right in zip(
+                                expected_components, components, strict=True
+                            )
                         ),
                     )
 

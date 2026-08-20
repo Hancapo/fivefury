@@ -6,6 +6,8 @@ import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from ..matrix import Matrix4
+from ..vector import Vector3
 from .events import YftPhysicsChildEvents, YftPhysicsGroupEvents
 from .resource_headers import (
     FRAG_PHYS_ARCHETYPE_DAMP_VFT,
@@ -75,8 +77,8 @@ class YftPhysicsJoint:
     joint_type: YftPhysicsJointType
     parent_link_index: int
     child_link_index: int
-    orientation_parent: YftMatrix44
-    orientation_child: YftMatrix44
+    orientation_parent: Matrix4
+    orientation_child: Matrix4
     default_stiffness: float = 0.825
     enforce_exceeded_limits: bool = False
     vft: int = 0
@@ -106,19 +108,17 @@ class YftPhysicsJoint3Dof(YftPhysicsJoint):
     soft_limit_ratio: float = 1.0
     twist_offset: float = 0.0
     use_child_for_twist_axis: bool = False
-    max_muscle_torque: tuple[float, float, float] = (
-        100_000_000.0,
-        100_000_000.0,
-        100_000_000.0,
-    )
-    min_muscle_torque: tuple[float, float, float] = (
-        -100_000_000.0,
-        -100_000_000.0,
-        -100_000_000.0,
-    )
+    max_muscle_torque: Vector3 = Vector3(*(100_000_000.0,) * 3)
+    min_muscle_torque: Vector3 = Vector3(*(-100_000_000.0,) * 3)
     soft_limit_lean_strength: float = 1.0
     soft_limit_twist_strength: float = 1.0
     vft: int = PH_JOINT_3DOF_TYPE_VFT
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.max_muscle_torque, Vector3):
+            raise TypeError("max_muscle_torque must be a Vector3")
+        if not isinstance(self.min_muscle_torque, Vector3):
+            raise TypeError("min_muscle_torque must be a Vector3")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -362,11 +362,11 @@ class YftPhysicsDamping:
     def declare(
         cls,
         kind: YftPhysicsDampingKind | int,
-        value: tuple[float, float, float],
+        value: Vector3,
     ) -> YftPhysicsDamping:
-        return cls(
-            index=int(kind), x=float(value[0]), y=float(value[1]), z=float(value[2])
-        )
+        if not isinstance(value, Vector3):
+            raise TypeError("YftPhysicsDamping value must be a Vector3")
+        return cls(index=int(kind), x=value.x, y=value.y, z=value.z)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -388,10 +388,16 @@ class YftPhysicsDampArchetype:
     max_speed: float = 0.0
     max_ang_speed: float = 0.0
     buoyancy_factor: float = 0.0
-    angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    inv_angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    angular_inertia: Vector3 = Vector3()
+    inv_angular_inertia: Vector3 = Vector3()
     damping_constants: tuple[YftPhysicsDamping, ...] = ()
     damping_offset: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.angular_inertia, Vector3):
+            raise TypeError("angular_inertia must be a Vector3")
+        if not isinstance(self.inv_angular_inertia, Vector3):
+            raise TypeError("inv_angular_inertia must be a Vector3")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -421,17 +427,9 @@ class YftPhysicsReference:
         return self.pointer != 0
 
 
-YftMatrix44 = tuple[
-    tuple[float, float, float, float],
-    tuple[float, float, float, float],
-    tuple[float, float, float, float],
-    tuple[float, float, float, float],
-]
-
-
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftPhysicsTransforms:
-    matrices: tuple[YftMatrix44, ...] = ()
+    matrices: tuple[Matrix4, ...] = ()
     vft: int = FRAG_PHYS_TRANSFORMS_VFT
     resource_state: int = RESOURCE_STATE
     reserved_08: int = 0
@@ -444,7 +442,7 @@ class YftPhysicsTransforms:
 
     @classmethod
     def declare(
-        cls, matrices: Sequence[YftMatrix44] = ()
+        cls, matrices: Sequence[Matrix4] = ()
     ) -> YftPhysicsTransforms:
         return cls(matrices=tuple(matrices))
 
@@ -571,9 +569,9 @@ class YftPhysicsLod:
     min_move_force: float = 0.0
     body_type_pointer: int = 0
     min_breaking_impulses_pointer: int = 0
-    root_cg_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    original_root_cg_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    unbroken_cg_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    root_cg_offset: Vector3 = Vector3()
+    original_root_cg_offset: Vector3 = Vector3()
+    unbroken_cg_offset: Vector3 = Vector3()
     group_names_pointer: int = 0
     groups_pointer: int = 0
     children_pointer: int = 0
@@ -626,6 +624,15 @@ class YftPhysicsLod:
     composite_bound: Bound | None = dataclasses.field(
         default=None, repr=False, compare=False
     )
+
+    def __post_init__(self) -> None:
+        for name in (
+            "root_cg_offset",
+            "original_root_cg_offset",
+            "unbroken_cg_offset",
+        ):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"YftPhysicsLod.{name} must be a Vector3")
 
     @property
     def has_children(self) -> bool:
@@ -749,9 +756,11 @@ class YftPhysicsLod:
         groups: Sequence[YftPhysicsGroup] = (),
         children: Sequence[YftPhysicsChild] = (),
         damping_constants: Sequence[YftPhysicsDamping] = (),
-        root_cg_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        root_cg_offset: Vector3 = Vector3(),
         num_bony_children: int | None = None,
     ) -> YftPhysicsLod:
+        if not isinstance(root_cg_offset, Vector3):
+            raise TypeError("root_cg_offset must be a Vector3")
         declared_groups = tuple(groups)
         group_names = tuple(group.name or group.debug_name for group in declared_groups)
         resolved_groups: list[YftPhysicsGroup] = []
@@ -806,9 +815,9 @@ class YftPhysicsLod:
             )
         return cls(
             label=str(label),
-            root_cg_offset=tuple(float(value) for value in root_cg_offset),
-            original_root_cg_offset=tuple(float(value) for value in root_cg_offset),
-            unbroken_cg_offset=tuple(float(value) for value in root_cg_offset),
+            root_cg_offset=root_cg_offset,
+            original_root_cg_offset=root_cg_offset,
+            unbroken_cg_offset=root_cg_offset,
             num_groups=len(resolved_groups),
             root_group_count=sum(1 for group in resolved_groups if group.is_root_group),
             num_bony_children=bony_children,
@@ -889,7 +898,6 @@ class YftPhysicsLod:
 
 __all__ = [
     "YftArticulatedBodyType",
-    "YftMatrix44",
     "YftPhysicsChild",
     "YftPhysicsDampArchetype",
     "YftPhysicsDamping",

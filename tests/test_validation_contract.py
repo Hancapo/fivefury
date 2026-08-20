@@ -25,6 +25,7 @@ from fivefury import (
     PackFileMetaData,
     ValidationError,
     ValidationReport,
+    Vector3,
     WaterData,
     Ybn,
     Ycd,
@@ -44,7 +45,7 @@ AssetFactory = Callable[[], object]
 
 
 def _bound() -> BoundBox:
-    return BoundBox.from_bounds((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    return BoundBox.from_bounds(Vector3(), Vector3(1.0, 1.0, 1.0))
 
 
 def _heightmap() -> HeightMap:

@@ -6,7 +6,15 @@ import unittest
 import zlib
 from pathlib import Path
 
-from fivefury import Cdr, CdrGeometryType, CdrLod, GameFileCache, GameFileType, read_cdr
+from fivefury import (
+    Cdr,
+    CdrGeometryType,
+    CdrLod,
+    GameFileCache,
+    GameFileType,
+    Vector3,
+    read_cdr,
+)
 from fivefury.cdr.resource import (
     get_ps3_resource_size_from_flags,
     split_ps3_rsc7_sections,
@@ -95,7 +103,10 @@ class CdrTests(unittest.TestCase):
 
         self.assertEqual(drawable.platform, "ps3")
         self.assertEqual(mesh.geometry_type, CdrGeometryType.QUICK_BUFFER)
-        self.assertEqual(mesh.positions, [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)])
+        self.assertEqual(
+            mesh.positions,
+            [Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)],
+        )
         self.assertEqual(mesh.indices, [0, 1, 2])
 
     def test_decompress_edge_triangle_reuse_stream(self) -> None:

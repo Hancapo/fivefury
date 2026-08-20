@@ -31,7 +31,10 @@ from fivefury import (
     CutSubtitlePayload,
     DiagnosticSeverity,
     GameFileCache,
+    Quaternion,
     ValidationError,
+    Vector2,
+    Vector3,
     Ydr,
     YdrMeshInput,
     YdrSkeleton,
@@ -529,12 +532,12 @@ def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
     )
     project.animate(
         prop,
-        mover_position={0.0: (0.0, 0.0, 0.0), 2.0: (1.0, 0.0, 0.0)},
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position={0.0: Vector3(), 2.0: Vector3(1.0, 0.0, 0.0)},
+        mover_rotation=Quaternion(),
     )
     project.camera(
-        position={0.0: (0.0, -4.0, 1.0), 2.0: (0.0, -3.0, 1.0)},
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position={0.0: Vector3(0.0, -4.0, 1.0), 2.0: Vector3(0.0, -3.0, 1.0)},
+        rotation=Quaternion(),
         field_of_view=45.0,
     )
 
@@ -609,8 +612,8 @@ def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None
     )
     project.animate(
         prop,
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     project.camera()
     load_event = next(
@@ -638,8 +641,8 @@ def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
     project.animate(
         prop,
         start=0.5,
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     project.camera()
     project.scene.unload_models(
@@ -662,8 +665,8 @@ def _cutscene_prop_project(*, bones: dict[int, object] | None = None):
     )
     project.animate(
         prop,
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
         bones=bones,
     )
     project.camera()
@@ -681,10 +684,10 @@ def _cutscene_prop_context(drawable: Ydr | None = None) -> BuildContext:
 
 def _write_cutscene_prop_assets(directory: Path) -> None:
     mesh = YdrMeshInput(
-        positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        positions=[Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)],
         indices=[0, 1, 2],
         material="default",
-        texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+        texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]],
     )
     create_ydr(meshes=[mesh], name="prop_box").save(directory / "prop_box.ydr")
     ytyp = Ytyp(name="demo_props")
@@ -727,7 +730,7 @@ def test_cutscene_asset_validation_checks_animation_bones() -> None:
     skeleton = YdrSkeleton()
     skeleton.bone("root", tag=0)
     assets = _cutscene_prop_project(
-        bones={42: {"position": (0.0, 0.0, 0.0)}}
+        bones={42: {"position": Vector3()}}
     ).build()
 
     report = assets.validate(

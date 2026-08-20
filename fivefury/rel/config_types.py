@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
+from ..vector import Vector3
 from .enums import Dat4ConfigType
 from .limits import checked_count
 from .model import NamedRelItem, RelHashLike, rel_hash
@@ -70,11 +71,13 @@ class Dat4ConfigString(Dat4ConfigItem):
 @dataclass(slots=True)
 class Dat4ConfigVector3(Dat4ConfigItem):
     prefix_padding: bytes = b"\x00" * 8
-    value: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    value: Vector3 = field(default_factory=Vector3)
     suffix_padding: bytes = b"\x00" * 4
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat4ConfigType.VECTOR3)
+        if not isinstance(self.value, Vector3):
+            raise TypeError("Dat4ConfigVector3.value must be a Vector3")
 
     def to_data(self) -> bytes:
         return (
@@ -165,8 +168,8 @@ class Dat4ConfigErPass:
 @dataclass(slots=True)
 class Dat4ConfigErSettings(Dat4ConfigItem):
     room_size: float = 0.0
-    room_dimensions: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    listener_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    room_dimensions: Vector3 = field(default_factory=Vector3)
+    listener_position: Vector3 = field(default_factory=Vector3)
     all_passes: list[Dat4ConfigErPass] = field(default_factory=list)
     node_gain_matrix: list[tuple[float, float, float, float]] = field(
         default_factory=lambda: [(0.0, 0.0, 0.0, 0.0)] * 6
@@ -186,6 +189,10 @@ class Dat4ConfigErSettings(Dat4ConfigItem):
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat4ConfigType.ER_SETTINGS)
+        if not isinstance(self.room_dimensions, Vector3):
+            raise TypeError("Dat4ConfigErSettings.room_dimensions must be a Vector3")
+        if not isinstance(self.listener_position, Vector3):
+            raise TypeError("Dat4ConfigErSettings.listener_position must be a Vector3")
 
     def to_data(self) -> bytes:
         if len(self.node_gain_matrix) != 6:

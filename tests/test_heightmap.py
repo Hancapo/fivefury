@@ -5,6 +5,7 @@ import struct
 import pytest
 
 from fivefury import (
+    Aabb2,
     GameFileCache,
     GameFileType,
     HeightMap,
@@ -13,6 +14,7 @@ from fivefury import (
     HeightMapCellFormat,
     HeightMapFlags,
     ValidationError,
+    Vector2,
     create_heightmap,
     read_heightmap,
 )
@@ -122,8 +124,11 @@ def test_declarative_grid_creation_and_spatial_queries() -> None:
     )
 
     assert heightmap.world_to_cell(425.0, 425.0) == (6, 4)
-    assert heightmap.cell_center(6, 4) == (425.0, 425.0)
-    assert heightmap.cell_bounds(6, 4) == (400.0, 400.0, 450.0, 450.0)
+    assert heightmap.cell_center(6, 4) == Vector2(425.0, 425.0)
+    assert heightmap.cell_bounds(6, 4) == Aabb2(
+        Vector2(400.0, 400.0),
+        Vector2(450.0, 450.0),
+    )
     assert heightmap.height_range_at(425.0, 425.0) == pytest.approx(
         heightmap.height_range(6, 4)
     )

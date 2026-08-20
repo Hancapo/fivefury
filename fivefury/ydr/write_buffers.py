@@ -4,6 +4,7 @@ import dataclasses
 
 from ..binary import align
 from ..resource import ResourceWriter
+from ..vector import Vector3
 from .gen9 import (
     _G9_INDEX_BUFFER_BIND_FLAGS,
     _G9_VERTEX_BUFFER_BIND_FLAGS,
@@ -48,8 +49,8 @@ class GraphicsWriter:
 @dataclasses.dataclass(slots=True)
 class MeshBufferPack:
     mesh: PreparedMesh
-    bounds_min: tuple[float, float, float]
-    bounds_max: tuple[float, float, float]
+    bounds_min: Vector3
+    bounds_max: Vector3
     declaration_off: int
     vertex_data_off: int
     index_data_off: int

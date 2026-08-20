@@ -4,6 +4,7 @@ import struct
 from collections.abc import Callable
 
 from ..binary import read_c_string
+from ..vector import Quaternion, Vector3, Vector4
 from .model import Matrix4, YdrBone, YdrBoneFlags, YdrSkeleton
 
 
@@ -95,28 +96,28 @@ def parse_skeleton(
                     parent_index=struct.unpack_from("<h", system_data, bone_off + 0x32)[0],
                     next_sibling_index=struct.unpack_from("<h", system_data, bone_off + 0x30)[0],
                     flags=YdrBoneFlags(u16(system_data, bone_off + 0x40)),
-                    rotation=(
+                    rotation=Quaternion(
                         f32(system_data, bone_off + 0x00),
                         f32(system_data, bone_off + 0x04),
                         f32(system_data, bone_off + 0x08),
                         f32(system_data, bone_off + 0x0C),
                     ),
-                    translation=(
+                    translation=Vector3(
                         f32(system_data, bone_off + 0x10),
                         f32(system_data, bone_off + 0x14),
                         f32(system_data, bone_off + 0x18),
                     ),
-                    scale=(
+                    scale=Vector3(
                         f32(system_data, bone_off + 0x20),
                         f32(system_data, bone_off + 0x24),
                         f32(system_data, bone_off + 0x28),
                     ),
-                    transform_unk=(
+                    transform_unk=Vector4(
                         transform[0][3],
                         transform[1][3],
                         transform[2][3],
                         transform[3][3],
-                    ) if transform is not None else (0.0, 0.0, 0.0, 0.0),
+                    ) if transform is not None else Vector4(),
                     inverse_bind_transform=inverse_bind,
                     unknown_1ch=u32(system_data, bone_off + 0x1C),
                     unknown_2ch=f32(system_data, bone_off + 0x2C),

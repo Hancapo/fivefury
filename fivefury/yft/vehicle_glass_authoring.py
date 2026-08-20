@@ -11,6 +11,7 @@ from ..bounds import BoundGeometry
 from ..game_target import GameTarget, coerce_game_target
 from ..mesh_math import triangle_array
 from ..numeric import float64_rows
+from ..vector import Vector2
 from ..ydr import YdrBone, YdrLod
 from .glass import (
     YftVehicleGlassFlag,
@@ -69,7 +70,7 @@ class YftVehicleGlassAssignment:
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftVehicleGlassMeshChannel:
     geometry_index: int
-    texcoord2: tuple[tuple[float, float], ...]
+    texcoord2: tuple[Vector2, ...]
 
 
 @dataclasses.dataclass(slots=True)
@@ -512,7 +513,7 @@ def _window_from_geometry(
         data_rows=row_last - row_first + 1,
     )
     texcoord2 = {
-        int(vertex): (float(grid_points[index, 0]), float(grid_points[index, 1]))
+        int(vertex): Vector2(float(grid_points[index, 0]), float(grid_points[index, 1]))
         for index, vertex in enumerate(used_vertices)
     }
     return window, texcoord2

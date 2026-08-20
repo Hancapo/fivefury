@@ -7,6 +7,7 @@ from ..authoring.diagnostics import ValidationReport
 from ..meta import RawStruct
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
+from ..vector import Vector3, Vector4
 from ..ymap import EntityDef, MloInstanceDef
 from .base_archetype import BaseArchetypeDef
 from .flags import MloInteriorFlags, PortalFlags, RoomFlags
@@ -26,8 +27,8 @@ class MloRoomDef(MetaHashFieldsMixin):
     _hash_fields = ("timecycle_name", "secondary_timecycle_name")
 
     name: str = ""
-    bb_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bb_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bb_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    bb_max: Vector3 = dataclasses.field(default_factory=Vector3)
     blend: float = 0.0
     timecycle_name: MetaHash | HashLike = 0
     secondary_timecycle_name: MetaHash | HashLike = 0
@@ -38,6 +39,8 @@ class MloRoomDef(MetaHashFieldsMixin):
     attached_objects: list[int] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.bb_min, Vector3) or not isinstance(self.bb_max, Vector3):
+            raise TypeError("MLO room bounds must be Vector3 instances")
         self.flags = RoomFlags(int(self.flags))
 
     def to_meta(self) -> dict[str, Any]:
@@ -60,8 +63,8 @@ class MloRoomDef(MetaHashFieldsMixin):
     def from_meta(cls, value: Any) -> MloRoomDef:
         return cls(
             name=str(value.get("name", "")),
-            bb_min=tuple(value.get("bbMin", (0.0, 0.0, 0.0))),
-            bb_max=tuple(value.get("bbMax", (0.0, 0.0, 0.0))),
+            bb_min=Vector3.from_iterable(value.get("bbMin", (0.0, 0.0, 0.0))),
+            bb_max=Vector3.from_iterable(value.get("bbMax", (0.0, 0.0, 0.0))),
             blend=float(value.get("blend", 0.0)),
             timecycle_name=value.get("timecycleName", 0),
             secondary_timecycle_name=value.get("secondaryTimecycleName", 0),
@@ -81,10 +84,12 @@ class MloPortalDef:
     mirror_priority: int = 0
     opacity: int = 0
     audio_occlusion: int = 0
-    corners: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+    corners: list[Vector3] = dataclasses.field(default_factory=list)
     attached_objects: list[int] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
+        if any(not isinstance(corner, Vector3) for corner in self.corners):
+            raise TypeError("MLO portal corners must be Vector3 instances")
         self.flags = PortalFlags(int(self.flags))
 
     def to_meta(self) -> dict[str, Any]:
@@ -109,7 +114,7 @@ class MloPortalDef:
             mirror_priority=int(value.get("mirrorPriority", 0)),
             opacity=int(value.get("opacity", 0)),
             audio_occlusion=int(value.get("audioOcclusion", 0)),
-            corners=list(value.get("corners", []) or []),
+            corners=[Vector3.from_iterable(corner) for corner in value.get("corners", []) or []],
             attached_objects=list(value.get("attachedObjects", []) or []),
         )
 
@@ -144,7 +149,7 @@ class MloTimeCycleModifier(MetaHashFieldsMixin):
     _hash_fields = ("name",)
 
     name: MetaHash | HashLike = 0
-    sphere: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    sphere: Vector4 = dataclasses.field(default_factory=Vector4)
     percentage: float = 0.0
     range: float = 0.0
     start_hour: int = 0
@@ -165,7 +170,7 @@ class MloTimeCycleModifier(MetaHashFieldsMixin):
     def from_meta(cls, value: Any) -> MloTimeCycleModifier:
         return cls(
             name=value.get("name", 0),
-            sphere=tuple(value.get("sphere", (0.0, 0.0, 0.0, 0.0))),
+            sphere=Vector4.from_iterable(value.get("sphere", (0.0, 0.0, 0.0, 0.0))),
             percentage=float(value.get("percentage", 0.0)),
             range=float(value.get("range", 0.0)),
             start_hour=int(value.get("startHour", 0)),
@@ -229,7 +234,7 @@ class MloArchetypeDef(BaseArchetypeDef):
         self,
         room_from: int,
         room_to: int,
-        corners: list[tuple[float, float, float]],
+        corners: list[Vector3],
         **kwargs: Any,
     ) -> MloPortalDef:
         portal = MloPortalDef(room_from=room_from, room_to=room_to, corners=corners, **kwargs)
@@ -299,7 +304,7 @@ class MloArchetypeDef(BaseArchetypeDef):
     def from_meta(cls, value: Any) -> MloArchetypeDef:
         base = BaseArchetypeDef.from_meta(value)
         return cls(
-            **dataclasses.asdict(base),
+            **{field.name: getattr(base, field.name) for field in dataclasses.fields(base)},
             mlo_flags=int(value.get("mloFlags", 0)),
             entities=[_entity_from_meta(item) for item in value.get("entities", []) or []],
             rooms=[MloRoomDef.from_meta(item) if isinstance(item, dict) else item for item in value.get("rooms", []) or []],

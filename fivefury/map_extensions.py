@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 from .colors import CssColor, parse_css_argb, parse_css_rgb
 from .meta import RawStruct
 from .meta.backed import MetaBackedStruct
+from .vector import Quaternion, Vector3, Vector4
 
 
 class ExtensionContainer:
@@ -18,7 +19,7 @@ class ExtensionContainer:
 class LightAttrDef(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CLightAttrDef"
 
-    posn: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    posn: Vector3 = dataclasses.field(default_factory=Vector3)
     colour: tuple[int, int, int] | CssColor = (255, 255, 255)
     flashiness: int = 0
     intensity: float = 1.0
@@ -29,7 +30,7 @@ class LightAttrDef(MetaBackedStruct):
     time_flags: int = 0
     falloff: float = 0.0
     falloff_exponent: float = 0.0
-    culling_plane: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    culling_plane: Vector4 = dataclasses.field(default_factory=Vector4)
     shadow_blur: int = 0
     padding1: int = 0
     padding2: int = 0
@@ -48,14 +49,15 @@ class LightAttrDef(MetaBackedStruct):
     shadow_near_clip: float = 0.0
     corona_intensity: float = 0.0
     corona_z_bias: float = 0.0
-    direction: tuple[float, float, float] = (0.0, 0.0, -1.0)
-    tangent: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    direction: Vector3 = Vector3(0.0, 0.0, -1.0)
+    tangent: Vector3 = Vector3(1.0, 0.0, 0.0)
     cone_inner_angle: float = 0.0
     cone_outer_angle: float = 0.0
-    extents: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    extents: Vector3 = dataclasses.field(default_factory=Vector3)
     projected_texture_key: int = 0
 
     def __post_init__(self) -> None:
+        MetaBackedStruct.__post_init__(self)
         self.colour = parse_css_rgb(self.colour)
         self.vol_outer_colour = parse_css_rgb(self.vol_outer_colour)
 
@@ -76,9 +78,9 @@ class CapsuleBoundDef(MetaBackedStruct):
     }
 
     owner_name: str = ""
-    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
+    normal: Vector3 = Vector3(0.0, 0.0, 1.0)
     capsule_radius: float = 0.0
     capsule_len: float = 0.0
     capsule_half_height: float = 0.0
@@ -92,7 +94,7 @@ class LightEffectExtension(MetaBackedStruct):
     META_LIST_TYPES: ClassVar[dict[str, type[MetaBackedStruct]]] = {"instances": LightAttrDef}
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     instances: list[LightAttrDef] = dataclasses.field(default_factory=list)
 
 
@@ -101,8 +103,8 @@ class ParticleEffectExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefParticleEffect"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    offset_rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     fx_name: str = ""
     fx_type: int = 0
     bone_tag: int = 0
@@ -112,6 +114,7 @@ class ParticleEffectExtension(MetaBackedStruct):
     color: int | CssColor = 0
 
     def __post_init__(self) -> None:
+        MetaBackedStruct.__post_init__(self)
         self.color = parse_css_argb(self.color)
 
 
@@ -120,7 +123,7 @@ class AudioCollisionSettingsExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefAudioCollisionSettings"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     settings: int | str = 0
 
 
@@ -129,8 +132,8 @@ class AudioEmitterExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefAudioEmitter"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    offset_rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     effect_hash: int | str = 0
 
 
@@ -139,8 +142,8 @@ class ExplosionEffectExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefExplosionEffect"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    offset_rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     explosion_name: str = ""
     bone_tag: int = 0
     explosion_tag: int = 0
@@ -153,8 +156,8 @@ class DecalExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefDecal"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    offset_rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     decal_name: str = ""
     decal_type: int = 0
     bone_tag: int = 0
@@ -168,8 +171,8 @@ class SpawnPointExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefSpawnPoint"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    offset_rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     spawn_type: int | str = 0
     ped_type: int | str = 0
     group: int | str = 0
@@ -192,7 +195,7 @@ class DoorExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefDoor"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     enable_limit_angle: bool = False
     starts_locked: bool = False
     can_break: bool = False
@@ -217,7 +220,7 @@ class SpawnPointOverrideExtension(MetaBackedStruct):
     }
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     scenario_type: int | str = 0
     time_start_override: int = 0
     time_end_override: int = 0
@@ -234,10 +237,10 @@ class LadderExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefLadder"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bottom: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    top: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    bottom: Vector3 = dataclasses.field(default_factory=Vector3)
+    top: Vector3 = dataclasses.field(default_factory=Vector3)
+    normal: Vector3 = Vector3(0.0, 0.0, 1.0)
     material_type: int = 0
     template: int | str = 0
     can_get_off_at_top: bool = True
@@ -249,7 +252,7 @@ class BuoyancyExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefBuoyancy"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
 
 
 @dataclasses.dataclass(slots=True)
@@ -257,7 +260,7 @@ class LightExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefLight"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
 
 
 @dataclasses.dataclass(slots=True)
@@ -265,7 +268,7 @@ class WalkDontWalkExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefWalkDontWalk"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
 
 
 @dataclasses.dataclass(slots=True)
@@ -273,10 +276,10 @@ class ClimbHandHoldExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefClimbHandHold"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    left: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    right: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    left: Vector3 = dataclasses.field(default_factory=Vector3)
+    right: Vector3 = dataclasses.field(default_factory=Vector3)
+    normal: Vector3 = Vector3(0.0, 0.0, 1.0)
 
 
 @dataclasses.dataclass(slots=True)
@@ -284,7 +287,7 @@ class ExpressionExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefExpression"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     expression_dictionary_name: int | str = 0
     expression_name: int | str = 0
     creature_metadata_name: int | str = 0
@@ -296,12 +299,12 @@ class LightShaftExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefLightShaft"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    corner_a: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    corner_b: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    corner_c: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    corner_d: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    direction: tuple[float, float, float] = (0.0, 0.0, -1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    corner_a: Vector3 = dataclasses.field(default_factory=Vector3)
+    corner_b: Vector3 = dataclasses.field(default_factory=Vector3)
+    corner_c: Vector3 = dataclasses.field(default_factory=Vector3)
+    corner_d: Vector3 = dataclasses.field(default_factory=Vector3)
+    direction: Vector3 = Vector3(0.0, 0.0, -1.0)
     direction_amount: float = 0.0
     length: float = 0.0
     fade_in_time_start: float = 0.0
@@ -320,6 +323,7 @@ class LightShaftExtension(MetaBackedStruct):
     scale_by_sun_intensity: bool = False
 
     def __post_init__(self) -> None:
+        MetaBackedStruct.__post_init__(self)
         self.color = parse_css_argb(self.color)
 
 
@@ -328,11 +332,11 @@ class WindDisturbanceExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefWindDisturbance"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    offset_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    offset_rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     disturbance_type: int = 0
     bone_tag: int = 0
-    size: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    size: Vector4 = dataclasses.field(default_factory=Vector4)
     strength: float = 0.0
     flags: int = 0
 
@@ -342,10 +346,10 @@ class ScrollbarsExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefScrollbars"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     height: float = 0.0
     scrollbars_type: int = 0
-    points: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+    points: list[Vector3] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass(slots=True)
@@ -353,7 +357,7 @@ class SwayableEffectExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefSwayableEffect"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     bone_tag: int = 0
     low_wind_speed: float = 0.0
     low_wind_amplitude: float = 0.0
@@ -366,7 +370,7 @@ class ProcObjectExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefProcObject"
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     radius_inner: float = 0.0
     radius_outer: float = 0.0
     spacing: float = 0.0
@@ -384,7 +388,7 @@ class ProcObjectExtension(MetaBackedStruct):
 class ScriptChildExtension(MetaBackedStruct):
     META_NAME: ClassVar[str] = "CExtensionDefScriptChild"
 
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
     rotation_z: float = 0.0
 
 
@@ -394,7 +398,7 @@ class ScriptExtension(MetaBackedStruct):
     META_LIST_TYPES: ClassVar[dict[str, type[MetaBackedStruct]]] = {"children": ScriptChildExtension}
 
     name: int | str = 0
-    offset_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset_position: Vector3 = dataclasses.field(default_factory=Vector3)
     script_name: str = ""
     children: list[ScriptChildExtension] = dataclasses.field(default_factory=list)
 

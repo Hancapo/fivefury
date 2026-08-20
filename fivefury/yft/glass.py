@@ -5,11 +5,12 @@ import enum
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
+from ..vector import Vector2, Vector3
+
 if TYPE_CHECKING:
     from ..ydr import YdrMesh
     from .glass_authoring import YftGlassOrthonormalTransform
 
-Vec3 = tuple[float, float, float]
 Matrix44 = tuple[
     float,
     float,
@@ -52,11 +53,11 @@ class YftGlassVertexDeclaration:
 
 @dataclasses.dataclass(slots=True)
 class YftGlassPane:
-    position_base: Vec3 = (0.0, 0.0, 0.0)
-    position_width: Vec3 = (1.0, 0.0, 0.0)
-    position_height: Vec3 = (0.0, 1.0, 0.0)
-    uv_min: tuple[float, float] = (0.0, 0.0)
-    uv_max: tuple[float, float] = (1.0, 1.0)
+    position_base: Vector3 = dataclasses.field(default_factory=Vector3)
+    position_width: Vector3 = Vector3(1.0, 0.0, 0.0)
+    position_height: Vector3 = Vector3(0.0, 1.0, 0.0)
+    uv_min: Vector2 = dataclasses.field(default_factory=Vector2)
+    uv_max: Vector2 = Vector2(1.0, 1.0)
     vertex_declaration: YftGlassVertexDeclaration = dataclasses.field(
         default_factory=lambda: YftGlassVertexDeclaration(
             flags=217,
@@ -70,7 +71,20 @@ class YftGlassPane:
     shader_index: int = 0
     bounds_offset_front: float = 0.0
     bounds_offset_back: float = 0.0
-    tangent: Vec3 = (1.0, 0.0, 0.0)
+    tangent: Vector3 = Vector3(1.0, 0.0, 0.0)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "position_base",
+            "position_width",
+            "position_height",
+            "tangent",
+        ):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"YftGlassPane.{name} must be a Vector3")
+        for name in ("uv_min", "uv_max"):
+            if not isinstance(getattr(self, name), Vector2):
+                raise TypeError(f"YftGlassPane.{name} must be a Vector2")
 
     @classmethod
     def from_mesh(
@@ -80,8 +94,8 @@ class YftGlassPane:
         bone_index: int | None = None,
         glass_type: int = 0,
         shader_index: int | None = None,
-        bounds_minimum: Vec3 | None = None,
-        bounds_maximum: Vec3 | None = None,
+        bounds_minimum: Vector3 | None = None,
+        bounds_maximum: Vector3 | None = None,
         bounds_transform: YftGlassOrthonormalTransform | None = None,
     ) -> YftGlassPane:
         from .glass_authoring import build_yft_glass_pane_from_mesh

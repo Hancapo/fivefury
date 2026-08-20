@@ -15,6 +15,8 @@ from ..bounds import (
     get_bound_material_density,
 )
 from ..bounds.geometry import identity_bound_transform
+from ..matrix import Matrix4
+from ..vector import Vector3
 from .bound_ownership import apply_physics_lod_bound_ref_counts
 from .bound_profiles import (
     YftPhysicsBoundProfile,
@@ -24,7 +26,6 @@ from .bound_profiles import (
 )
 from .physics import (
     YftArticulatedBodyType,
-    YftMatrix44,
     YftPhysicsChild,
     YftPhysicsDampArchetype,
     YftPhysicsDamping,
@@ -41,15 +42,15 @@ from .physics import (
 from .resource_headers import PH_ARTICULATED_BODY_TYPE_EUPHORIA_VFT
 
 DEFAULT_DAMPING_CONSTANTS: tuple[YftPhysicsDamping, ...] = (
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_CONSTANT, (0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_VELOCITY, (0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_VELOCITY_SQUARED, (0.01, 0.01, 0.01)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_CONSTANT, (0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY, (0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY_SQUARED, (0.01, 0.01, 0.01)),
+    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_CONSTANT, Vector3(0.02, 0.02, 0.02)),
+    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_VELOCITY, Vector3(0.02, 0.02, 0.02)),
+    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_VELOCITY_SQUARED, Vector3(0.01, 0.01, 0.01)),
+    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_CONSTANT, Vector3(0.02, 0.02, 0.02)),
+    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY, Vector3(0.02, 0.02, 0.02)),
+    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY_SQUARED, Vector3(0.01, 0.01, 0.01)),
 )
 
-IDENTITY_MATRIX44: YftMatrix44 = (
+IDENTITY_MATRIX44: Matrix4 = (
     (1.0, 0.0, 0.0, 0.0),
     (0.0, 1.0, 0.0, 0.0),
     (0.0, 0.0, 1.0, 0.0),
@@ -65,10 +66,10 @@ class YftMassProperties:
     volume: float
     density: float
     mass: float
-    center_of_gravity: tuple[float, float, float]
-    angular_inertia: tuple[float, float, float]
+    center_of_gravity: Vector3
+    angular_inertia: Vector3
     inverse_mass: float
-    inverse_angular_inertia: tuple[float, float, float]
+    inverse_angular_inertia: Vector3
 
     def as_inertia(self) -> YftPhysicsInertia:
         return YftPhysicsInertia(*self.angular_inertia, mass=self.mass)
@@ -99,8 +100,8 @@ def calculate_bound_mass_properties(
         else (volume * resolved_density if volume > 0.0 else fallback)
     )
     if bound is None:
-        inertia = box_inertia((1.0, 1.0, 1.0), resolved_mass)
-        center = (0.0, 0.0, 0.0)
+        inertia = box_inertia(Vector3(1.0, 1.0, 1.0), resolved_mass)
+        center = Vector3()
     else:
         values = bound.compute_angular_inertia(resolved_mass)
         if not all(math.isfinite(value) and value >= 0.0 for value in values):
@@ -109,28 +110,27 @@ def calculate_bound_mass_properties(
         center = (
             bound.compute_center_of_gravity()
             if isinstance(bound, BoundComposite)
-            else tuple(float(value) for value in bound.sphere_center)
+            else bound.sphere_center
         )
     if not all(math.isfinite(value) for value in center):
         raise ValueError("bound center of gravity must contain finite values")
     inverse_mass = 1.0 / resolved_mass if resolved_mass > 0.0 else 0.0
-    inverse_inertia = tuple(
-        1.0 / value if value > 0.0 else 0.0
-        for value in (inertia.x, inertia.y, inertia.z)
+    inverse_inertia = Vector3(
+        *(1.0 / value if value > 0.0 else 0.0 for value in (inertia.x, inertia.y, inertia.z))
     )
     return YftMassProperties(
         volume=volume,
         density=resolved_density,
         mass=resolved_mass,
         center_of_gravity=center,
-        angular_inertia=(inertia.x, inertia.y, inertia.z),
+        angular_inertia=Vector3(inertia.x, inertia.y, inertia.z),
         inverse_mass=inverse_mass,
         inverse_angular_inertia=inverse_inertia,
     )
 
 
 def box_inertia(
-    size: tuple[float, float, float],
+    size: Vector3,
     mass: float,
 ) -> YftPhysicsInertia:
     x, y, z = (abs(float(value)) for value in size)
@@ -195,8 +195,8 @@ def bound_density(
 
 def simple_physics_bound(
     *,
-    center: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    size: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    center: Vector3 = Vector3(),
+    size: Vector3 = Vector3(1.0, 1.0, 1.0),
 ) -> BoundBox:
     return BoundBox.from_center_size(center, size).build()
 
@@ -211,7 +211,7 @@ def default_damp_archetype(
 ) -> YftPhysicsDampArchetype:
     if isinstance(bound, BoundComposite) and child_inertias:
         mass_values = tuple(item.mass for item in child_inertias)
-        inertia_values = tuple((item.x, item.y, item.z) for item in child_inertias)
+        inertia_values = tuple(Vector3(item.x, item.y, item.z) for item in child_inertias)
         composite = dataclasses.replace(
             bound,
             children=[
@@ -235,7 +235,11 @@ def default_damp_archetype(
     else:
         inertia = bound_inertia(bound, mass)
     inv_mass = 1.0 / mass if mass > 0.0 else 0.0
-    inv_inertia = tuple(1.0 / value if value > 0.0 else 0.0 for value in (inertia.x, inertia.y, inertia.z))
+    inv_inertia = Vector3(
+        1.0 / inertia.x if inertia.x > 0.0 else 0.0,
+        1.0 / inertia.y if inertia.y > 0.0 else 0.0,
+        1.0 / inertia.z if inertia.z > 0.0 else 0.0,
+    )
     return YftPhysicsDampArchetype(
         resource_type=2,
         # RAGE's phArchetype defaults are DEFAULT_TYPE (bit 0) and
@@ -250,7 +254,7 @@ def default_damp_archetype(
         max_speed=500.0,
         max_ang_speed=6.2831854820251465,
         buoyancy_factor=0.0,
-        angular_inertia=(inertia.x, inertia.y, inertia.z),
+        angular_inertia=Vector3(inertia.x, inertia.y, inertia.z),
         inv_angular_inertia=inv_inertia,
         damping_constants=tuple(damping_constants),
         damping_offset=0x80,
@@ -300,22 +304,22 @@ def _composite_for_leaf(
     composite = BoundComposite(
         bound_type=BoundType.COMPOSITE,
         sphere_radius=float(bound.sphere_radius),
-        box_max=tuple(bound.box_max),
+        box_max=bound.box_max,
         margin=float(bound.margin),
-        box_min=tuple(bound.box_min),
-        box_center=tuple(bound.box_center),
-        sphere_center=tuple(bound.sphere_center),
+        box_min=bound.box_min,
+        box_center=bound.box_center,
+        sphere_center=bound.sphere_center,
         file_vft=0,
         ref_count=1,
-        angular_inertia=tuple(bound.angular_inertia),
+        angular_inertia=bound.angular_inertia,
         volume=float(bound.compute_volume()),
         children=[
             BoundChild(
                 bound=bound,
                 transform=identity_bound_transform(),
                 bounds=BoundAabb(
-                    minimum=tuple(bound.box_min),
-                    maximum=tuple(bound.box_max),
+                    minimum=bound.box_min,
+                    maximum=bound.box_max,
                 ),
             )
         ],

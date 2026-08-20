@@ -14,6 +14,7 @@ from ..resource import (
     layout_resource_sections,
     write_resource_pages_info,
 )
+from ..vector import Vector3
 from .model import (
     YNV_POLY_ARRAY_BLOCK_SIZE,
     Ynv,
@@ -43,9 +44,9 @@ def _virtual(offset: int) -> int:
 
 
 def _pack_vertex(
-    position: tuple[float, float, float],
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    position: Vector3,
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> bytes:
     values: list[int] = []
     for component, base, size in zip(position, posoffset, aabb_size, strict=True):
@@ -60,8 +61,8 @@ def _pack_vertex(
 
 def _pack_point(
     point: YnvPoint,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> bytes:
     return _pack_vertex(point.position, posoffset, aabb_size) + bytes(
         (int(point.angle) & 0xFF, int(point.type) & 0xFF)
@@ -70,8 +71,8 @@ def _pack_point(
 
 def _pack_portal(
     portal: YnvPortal,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> bytes:
     return (
         struct.pack(
@@ -206,8 +207,8 @@ def _write_list(
 def _write_sector_data(
     writer: ResourceWriter,
     sector_data: YnvSectorData,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> int:
     sector_data = sector_data.build()
     poly_ids_offset = 0
@@ -245,8 +246,8 @@ def _write_sector_data(
 def _write_sector(
     writer: ResourceWriter,
     sector: YnvSector,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> int:
     sector = sector.build()
     data_offset = (
@@ -279,13 +280,13 @@ def _write_sector(
     writer.pack_into(
         "4f4fhhhhhhQQQQQIII",
         sector_offset,
-        float(sector.aabb_min[0]),
-        float(sector.aabb_min[1]),
-        float(sector.aabb_min[2]),
+        sector.aabb_min.x,
+        sector.aabb_min.y,
+        sector.aabb_min.z,
         float(sector.aabb_min_w),
-        float(sector.aabb_max[0]),
-        float(sector.aabb_max[1]),
-        float(sector.aabb_max[2]),
+        sector.aabb_max.x,
+        sector.aabb_max.y,
+        sector.aabb_max.z,
         float(sector.aabb_max_w),
         packed_cell_aabb[0],
         packed_cell_aabb[1],
@@ -323,8 +324,8 @@ def build_ynv_system_layout(
         polys_info=dataclasses.replace(source.polys_info, vft=profile.polys_vft),
     ).build()
     assert ynv.sector_tree is not None
-    posoffset = tuple(float(component) for component in ynv.sector_tree.aabb_min)
-    aabb_size = tuple(float(component) for component in ynv.aabb_size)
+    posoffset = ynv.sector_tree.aabb_min
+    aabb_size = ynv.aabb_size
     adjacent_area_ids = _ensure_adjacent_area_ids(ynv)
     area_lookup = {
         int(area_id): index for index, area_id in enumerate(adjacent_area_ids)
@@ -438,7 +439,7 @@ def build_ynv_system_layout(
     writer.pack_into("I", 0x1C, int(ynv.unused_01ch) & 0xFFFFFFFF)
     writer.pack_into("16f", 0x20, *[float(value) for value in ynv.transform])
     writer.pack_into(
-        "3f", 0x60, float(aabb_size[0]), float(aabb_size[1]), float(aabb_size[2])
+        "3f", 0x60, aabb_size.x, aabb_size.y, aabb_size.z
     )
     writer.pack_into("I", 0x6C, int(ynv.aabb_unk) & 0xFFFFFFFF)
     writer.pack_into("Q", 0x70, _virtual(vertices_offset))

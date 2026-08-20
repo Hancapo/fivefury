@@ -6,6 +6,7 @@ from typing import Any
 
 from ..bounds import Bound
 from ..metahash import HashLike
+from ..vector import Vector3
 from ..ybn import Ybn, read_ybn
 from ..ymap import MloInstanceDef, Ymap, YmapContentFlags, YmapFlags, read_ymap
 from ..ymap.mlo_validation import mlo_archetypes_by_hash
@@ -84,29 +85,23 @@ def build_gta5_cache_y(
 
     parent_hashes = {int(ymap.parent) for ymap in map_sources if int(ymap.parent)}
     if map_sources:
-        world_physics_min = tuple(
-            min(ymap.entities_extents_min[axis] for ymap in map_sources)
-            for axis in range(3)
+        world_physics_min = Vector3.minimum(
+            ymap.entities_extents_min for ymap in map_sources
         )
-        world_physics_max = tuple(
-            max(ymap.entities_extents_max[axis] for ymap in map_sources)
-            for axis in range(3)
+        world_physics_max = Vector3.maximum(
+            ymap.entities_extents_max for ymap in map_sources
         )
     else:
-        world_physics_min = world_physics_max = (0.0, 0.0, 0.0)
+        world_physics_min = world_physics_max = Vector3()
 
     def streaming_bounds(
         ymap: Ymap,
-    ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    ) -> tuple[Vector3, Vector3]:
         minimum = ymap.streaming_extents_min
         maximum = ymap.streaming_extents_max
         if ymap.content_flags & YmapContentFlags.DISTANT_LOD_LIGHTS:
-            minimum = tuple(
-                min(minimum[axis], world_physics_min[axis]) for axis in range(3)
-            )
-            maximum = tuple(
-                max(maximum[axis], world_physics_max[axis]) for axis in range(3)
-            )
+            minimum = Vector3.minimum((minimum, world_physics_min))
+            maximum = Vector3.maximum((maximum, world_physics_max))
         return minimum, maximum
 
     map_entries: list[Gta5CacheMapData] = []

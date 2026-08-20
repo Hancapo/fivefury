@@ -10,6 +10,7 @@ from typing import Any
 from ..colors import parse_css_argb, parse_css_rgb_unit
 from ..hashing import jenk_partial_hash
 from ..resolver import HashResolver, get_hash_resolver
+from ..vector import Quaternion, Vector3
 from .flags import DEFAULT_PLAYABLE_CUTSCENE_FLAGS, CutSceneFlags
 from .lights import CutLightFlag, CutLightProperty, CutLightType
 from .model import CutFile, CutHashedString, CutNode
@@ -53,8 +54,8 @@ class _PendingCameraCut:
     time: float
     camera: CutBinding
     name: str
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    rotation_quaternion: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    position: Vector3 = Vector3()
+    rotation_quaternion: Quaternion = Quaternion()
     near_draw_distance: float = 0.05
     far_draw_distance: float = 1000.0
     map_lod_scale: float = 0.0
@@ -206,15 +207,28 @@ def _int(value: str, line_no: int, name: str) -> int:
         ) from exc
 
 
-def _vec(tokens: list[str], line_no: int, name: str, size: int) -> tuple[float, ...]:
-    if len(tokens) < size:
-        raise CutScriptError(line_no, f"{name} expects {size} numeric values")
-    return tuple(
-        _float(tokens[index], line_no, f"{name}[{index}]") for index in range(size)
+def _parse_vector3(tokens: list[str], line_no: int, name: str) -> Vector3:
+    if len(tokens) < 3:
+        raise CutScriptError(line_no, f"{name} expects 3 numeric values")
+    return Vector3(
+        _float(tokens[0], line_no, f"{name}.x"),
+        _float(tokens[1], line_no, f"{name}.y"),
+        _float(tokens[2], line_no, f"{name}.z"),
     )
 
 
-def _css_rgb(tokens: list[str], line_no: int, name: str) -> tuple[float, float, float]:
+def _parse_quaternion(tokens: list[str], line_no: int, name: str) -> Quaternion:
+    if len(tokens) < 4:
+        raise CutScriptError(line_no, f"{name} expects 4 numeric values")
+    return Quaternion(
+        _float(tokens[0], line_no, f"{name}.x"),
+        _float(tokens[1], line_no, f"{name}.y"),
+        _float(tokens[2], line_no, f"{name}.z"),
+        _float(tokens[3], line_no, f"{name}.w"),
+    ).normalized_strict()
+
+
+def _css_rgb(tokens: list[str], line_no: int, name: str) -> Vector3:
     if len(tokens) == 1 or (
         tokens
         and (
@@ -222,12 +236,12 @@ def _css_rgb(tokens: list[str], line_no: int, name: str) -> tuple[float, float, 
         )
     ):
         try:
-            return parse_css_rgb_unit(" ".join(tokens))
+            return Vector3.from_iterable(parse_css_rgb_unit(" ".join(tokens)))
         except ValueError as exc:
             raise CutScriptError(
                 line_no, f"{name} must be a CSS color, got {' '.join(tokens)!r}"
             ) from exc
-    return _vec(tokens, line_no, name, 3)  # type: ignore[return-value]
+    return _parse_vector3(tokens, line_no, name)
 
 
 def _css_argb(tokens: list[str], line_no: int, name: str) -> int:
@@ -241,19 +255,19 @@ def _css_argb(tokens: list[str], line_no: int, name: str) -> int:
 
 def _euler_xyz_degrees_to_quaternion(
     x_degrees: float, y_degrees: float, z_degrees: float
-) -> tuple[float, float, float, float]:
+) -> Quaternion:
     x = math.radians(x_degrees) * 0.5
     y = math.radians(y_degrees) * 0.5
     z = math.radians(z_degrees) * 0.5
     cx, sx = math.cos(x), math.sin(x)
     cy, sy = math.cos(y), math.sin(y)
     cz, sz = math.cos(z), math.sin(z)
-    return (
+    return Quaternion(
         (sx * cy * cz) + (cx * sy * sz),
         (cx * sy * cz) - (sx * cy * sz),
         (cx * cy * sz) + (sx * sy * cz),
         (cx * cy * cz) - (sx * sy * sz),
-    )
+    ).normalized_strict()
 
 
 def _option_value(tokens: list[str], index: int, line_no: int, option: str) -> str:
@@ -496,7 +510,7 @@ class _CutScriptParser:
             scene.duration = _float(tokens[1], line_no, "duration")
         elif command == "OFFSET":
             _expect_count(tokens, line_no, 4, "OFFSET x y z")
-            scene.offset = _vec(tokens[1:], line_no, "offset", 3)  # type: ignore[assignment]
+            scene.offset = _parse_vector3(tokens[1:], line_no, "offset")
         elif command == "ROTATION":
             _expect_count(tokens, line_no, 2, "ROTATION degrees")
             scene.rotation = _float(tokens[1], line_no, "rotation")
@@ -693,9 +707,9 @@ class _CutScriptParser:
 
     def _default_light_fields(self) -> dict[str, Any]:
         return {
-            "vDirection": (0.0, 0.0, -1.0),
-            "vColour": (1.0, 1.0, 1.0),
-            "vPosition": (0.0, 0.0, 0.0),
+            "vDirection": Vector3(0.0, 0.0, -1.0),
+            "vColour": Vector3(1.0, 1.0, 1.0),
+            "vPosition": Vector3(),
             "fIntensity": 1.0,
             "fFallOff": 10.0,
             "fConeAngle": 45.0,
@@ -726,9 +740,17 @@ class _CutScriptParser:
                 _enum_value(CutLightType, tokens[1], line_no, "light type")
             )
         elif command in {"POSITION", "POS"}:
-            light.fields["vPosition"] = _vec(tokens[1:], line_no, "position", 3)
+                light.fields["vPosition"] = _parse_vector3(
+                    tokens[1:],
+                    line_no,
+                    "position",
+                )
         elif command in {"DIRECTION", "DIR"}:
-            light.fields["vDirection"] = _vec(tokens[1:], line_no, "direction", 3)
+                light.fields["vDirection"] = _parse_vector3(
+                    tokens[1:],
+                    line_no,
+                    "direction",
+                )
         elif command in {"COLOR", "COLOUR"}:
             light.fields["vColour"] = _css_rgb(tokens[1:], line_no, "color")
         elif command == "INTENSITY":
@@ -943,22 +965,22 @@ class _CutScriptParser:
                 pending.name = _option_value(values, index, line_no, "NAME")
                 index += 2
             elif key in {"POS", "POSITION"}:
-                pending.position = _vec(
-                    values[index + 1 :], line_no, "camera position", 3
-                )  # type: ignore[assignment]
+                pending.position = _parse_vector3(
+                    values[index + 1 :], line_no, "camera position"
+                )
                 index += 4
             elif key in {"ROT", "ROTATION"}:
-                euler = _vec(
-                    values[index + 1 :], line_no, "camera Euler XYZ rotation", 3
+                euler = _parse_vector3(
+                    values[index + 1 :], line_no, "camera Euler XYZ rotation"
                 )
                 pending.rotation_quaternion = _euler_xyz_degrees_to_quaternion(
-                    euler[0], euler[1], euler[2]
+                    euler.x, euler.y, euler.z
                 )
                 index += 4
             elif key == "QUAT":
-                pending.rotation_quaternion = _vec(
-                    values[index + 1 :], line_no, "camera quaternion", 4
-                )  # type: ignore[assignment]
+                pending.rotation_quaternion = _parse_quaternion(
+                    values[index + 1 :], line_no, "camera quaternion"
+                )
                 index += 5
             elif key == "NEAR":
                 pending.near_draw_distance = _float(
@@ -1393,10 +1415,10 @@ def _write_light(lines: list[str], binding: CutBinding, alias: str) -> None:
     if "vDirection" in fields:
         lines.append(f"    DIRECTION {_vector(fields['vDirection'], 3)}")
     if "vColour" in fields:
-        colour = tuple(fields["vColour"])
-        if len(colour) >= 3:
+        colour = fields["vColour"]
+        if isinstance(colour, Vector3):
             lines.append(
-                f"    COLOR {_number(float(colour[0]))} {_number(float(colour[1]))} {_number(float(colour[2]))}"
+                f"    COLOR {_number(colour.x)} {_number(colour.y)} {_number(colour.z)}"
             )
     for source, target in (
         ("fIntensity", "INTENSITY"),

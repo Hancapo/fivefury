@@ -10,6 +10,7 @@ from fivefury import (
     YNV_POLY_ARRAY_BLOCK_SIZE,
     GameFileCache,
     GameFileType,
+    Vector3,
     Ynv,
     YnvAdjacencyType,
     YnvContentFlags,
@@ -160,8 +161,8 @@ def _assert_roundtrip_equivalent(original: Ynv, rebuilt: Ynv) -> None:
 
 def _minimal_sector_tree() -> YnvSector:
     return YnvSector(
-        aabb_min=(0.0, 0.0, 0.0),
-        aabb_max=(10.0, 10.0, 10.0),
+        aabb_min=Vector3(),
+        aabb_max=Vector3(10.0, 10.0, 10.0),
         data=YnvSectorData(),
     )
 
@@ -171,9 +172,9 @@ def _generated_ynv() -> Ynv:
     return Ynv(
         area_id=area_id,
         vertices=[
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         indices=[0, 1, 2],
         edges=[
@@ -202,11 +203,11 @@ def _generated_ynv() -> Ynv:
             )
         ],
         sector_tree=YnvSector(
-            aabb_min=(0.0, 0.0, 0.0),
-            aabb_max=(10.0, 10.0, 10.0),
+            aabb_min=Vector3(),
+            aabb_max=Vector3(10.0, 10.0, 10.0),
             data=YnvSectorData(
                 poly_ids=[0],
-                points=[YnvPoint(position=(0.25, 0.25, 0.0), type=YnvPointType.TYPE_3)],
+                points=[YnvPoint(position=Vector3(0.25, 0.25, 0.0), type=YnvPointType.TYPE_3)],
             ),
         ),
     ).build()
@@ -378,16 +379,16 @@ def test_build_recalculates_content_flags_from_payload_presence() -> None:
 def test_build_reindexes_sector_points() -> None:
     ynv = Ynv(
         sector_tree=YnvSector(
-            aabb_min=(0.0, 0.0, 0.0),
-            aabb_max=(10.0, 10.0, 10.0),
+            aabb_min=Vector3(),
+            aabb_max=Vector3(10.0, 10.0, 10.0),
             data=YnvSectorData(
-                points_start_id=99, points=[YnvPoint(position=(1.0, 1.0, 1.0))]
+                points_start_id=99, points=[YnvPoint(position=Vector3(1.0, 1.0, 1.0))]
             ),
             subtree1=YnvSector(
-                aabb_min=(0.0, 0.0, 0.0),
-                aabb_max=(5.0, 5.0, 5.0),
+                aabb_min=Vector3(),
+                aabb_max=Vector3(5.0, 5.0, 5.0),
                 data=YnvSectorData(
-                    points_start_id=77, points=[YnvPoint(position=(2.0, 2.0, 2.0))]
+                    points_start_id=77, points=[YnvPoint(position=Vector3(2.0, 2.0, 2.0))]
                 ),
             ),
         )
@@ -413,9 +414,9 @@ def test_writer_rejects_more_than_15_bit_polygon_capacity() -> None:
     poly = YnvPoly(index_count=3, area_id=0)
     ynv = Ynv(
         vertices=[
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         indices=[0, 1, 2],
         edges=[YnvEdge(), YnvEdge(), YnvEdge()],
@@ -429,7 +430,7 @@ def test_writer_rejects_more_than_15_bit_polygon_capacity() -> None:
 
 def test_writer_rejects_more_than_16_bit_polygon_index_capacity() -> None:
     ynv = Ynv(
-        vertices=[(0.0, 0.0, 0.0)],
+        vertices=[Vector3()],
         indices=[0] * 0x10001,
         edges=[YnvEdge()] * 0x10001,
         sector_tree=_minimal_sector_tree(),
@@ -443,9 +444,9 @@ def test_writer_assigns_native_polygon_split_array_indices() -> None:
     polygon_count = YNV_POLY_ARRAY_BLOCK_SIZE + 2
     ynv = Ynv(
         vertices=[
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         indices=[value for _ in range(polygon_count) for value in (0, 1, 2)],
         edges=[YnvEdge() for _ in range(polygon_count * 3)],
@@ -572,13 +573,13 @@ def test_writer_rejects_invalid_portal_link_span() -> None:
 
 
 def test_writer_builds_multipage_split_arrays_with_resource_metadata() -> None:
-    vertices = [(float(index % 150), float(index // 150), 0.0) for index in range(6000)]
+    vertices = [Vector3(float(index % 150), float(index // 150), 0.0) for index in range(6000)]
     ynv = Ynv(
-        aabb_size=(150.0, 150.0, 1.0),
+        aabb_size=Vector3(150.0, 150.0, 1.0),
         vertices=vertices,
         sector_tree=YnvSector(
-            aabb_min=(0.0, 0.0, 0.0),
-            aabb_max=(150.0, 150.0, 1.0),
+            aabb_min=Vector3(),
+            aabb_max=Vector3(150.0, 150.0, 1.0),
             subtree1=_minimal_sector_tree(),
             subtree2=_minimal_sector_tree(),
         ),
@@ -628,7 +629,7 @@ def test_resource_layout_relocates_four_byte_aligned_pointers() -> None:
 def test_zero_area_dlc_stitch_poly_accepts_two_vertices() -> None:
     poly = YnvPoly(index_count=2, poly_flags1=YnvPolyFlags1.ZERO_AREA_STITCH_POLY_DLC)
     ynv = Ynv(
-        vertices=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        vertices=[Vector3(), Vector3(1.0, 0.0, 0.0)],
         indices=[0, 1],
         edges=[YnvEdge(), YnvEdge()],
         polys=[poly],

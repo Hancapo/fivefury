@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from ..binary import align
+from ..vector import Vector3
 from .enums import Dat151ExplicitSpawnType, Dat151RelType, Dat151ZoneShape
 from .limits import checked_count
 from .model import RelHashLike, RelItem, rel_hash
@@ -62,7 +63,7 @@ class Dat151StaticEmitter(Dat151RelItem):
     flags: int = 0
     child_sound: RelHashLike = 0
     radio_station: RelHashLike = 0
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = field(default_factory=Vector3)
     min_distance: float = 0.0
     max_distance: float = 0.0
     emitted_volume: int = 0
@@ -89,6 +90,8 @@ class Dat151StaticEmitter(Dat151RelItem):
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat151RelType.STATIC_EMITTER)
+        if not isinstance(self.position, Vector3):
+            raise TypeError("Dat151StaticEmitter.position must be a Vector3")
 
     def to_data(self) -> bytes:
         return self.game_header_bytes() + self.STRUCT.pack(
@@ -148,7 +151,7 @@ class Dat151AmbientRule(Dat151RelItem):
     flags: int = 0
     reserved_01: int = 0
     reserved_02: int = 0
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = field(default_factory=Vector3)
     reserved_03: int = 0
     child_sound: RelHashLike = 0
     category: RelHashLike = 0
@@ -173,6 +176,8 @@ class Dat151AmbientRule(Dat151RelItem):
 
     def __post_init__(self) -> None:
         self.type_id = int(Dat151RelType.AMBIENT_RULE)
+        if not isinstance(self.position, Vector3):
+            raise TypeError("Dat151AmbientRule.position must be a Vector3")
 
     def to_data(self) -> bytes:
         count = checked_count(self.conditions, 0xFFFF, "AmbientRule conditions")
@@ -213,19 +218,24 @@ class Dat151AmbientRule(Dat151RelItem):
 class Dat151ZoneVolume:
     STRUCT: ClassVar[struct.Struct] = struct.Struct("<3ff3ff3fI3fIHHIII")
 
-    center: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    center: Vector3 = field(default_factory=Vector3)
     reserved_center: float = 0.0
-    size: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    size: Vector3 = field(default_factory=Vector3)
     reserved_size: float = 0.0
-    post_rotation_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    post_rotation_offset: Vector3 = field(default_factory=Vector3)
     reserved_post_rotation: int = 0
-    size_scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    size_scale: Vector3 = field(default_factory=lambda: Vector3(1.0, 1.0, 1.0))
     reserved_scale: int = 0
     rotation_angle: int = 0
     reserved_rotation: int = 0
     reserved_04: int = 0
     reserved_05: int = 0
     reserved_06: int = 0
+
+    def __post_init__(self) -> None:
+        for name in ("center", "size", "post_rotation_offset", "size_scale"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"Dat151ZoneVolume.{name} must be a Vector3")
 
     def to_bytes(self) -> bytes:
         return self.STRUCT.pack(

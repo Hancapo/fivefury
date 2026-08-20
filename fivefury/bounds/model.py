@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from .. import _native as _native_backend
 from ..authoring.diagnostics import ValidationReport
 from ..resource import ResourcePagesInfo
-from ..vector import aabb_center, aabb_from_center_size, vec_add, vec_scale, vec_sub
+from ..vector import Aabb3, Vector3
 from .materials import (
     BoundMaterialType,
     coerce_bound_material_index,
@@ -34,6 +34,13 @@ class BoundAxis(enum.IntEnum):
     Y = 1
     Z = 2
 
+    def component(self, value: Vector3) -> float:
+        if self is BoundAxis.X:
+            return value.x
+        if self is BoundAxis.Y:
+            return value.y
+        return value.z
+
 
 class BoundPolygonType(enum.IntEnum):
     TRIANGLE = 0
@@ -45,52 +52,66 @@ class BoundPolygonType(enum.IntEnum):
 
 @dataclasses.dataclass(slots=True)
 class BoundAabb:
-    minimum: tuple[float, float, float]
-    maximum: tuple[float, float, float]
+    minimum: Vector3
+    maximum: Vector3
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.minimum, Vector3) or not isinstance(self.maximum, Vector3):
+            raise TypeError("BoundAabb minimum and maximum must be Vector3 instances")
 
 
 def _normalize_aabb(bounds: BoundAabb) -> BoundAabb:
     return BoundAabb(
-        minimum=tuple(min(bounds.minimum[axis], bounds.maximum[axis]) for axis in range(3)),
-        maximum=tuple(max(bounds.minimum[axis], bounds.maximum[axis]) for axis in range(3)),
+        minimum=Vector3(
+            min(bounds.minimum.x, bounds.maximum.x),
+            min(bounds.minimum.y, bounds.maximum.y),
+            min(bounds.minimum.z, bounds.maximum.z),
+        ),
+        maximum=Vector3(
+            max(bounds.minimum.x, bounds.maximum.x),
+            max(bounds.minimum.y, bounds.maximum.y),
+            max(bounds.minimum.z, bounds.maximum.z),
+        ),
     )
 
 
 def _aabb_is_valid(bounds: BoundAabb) -> bool:
-    return all(
-        math.isfinite(bounds.minimum[axis])
-        and math.isfinite(bounds.maximum[axis])
-        and bounds.minimum[axis] <= bounds.maximum[axis]
-        for axis in range(3)
+    return (
+        bounds.minimum.is_finite
+        and bounds.maximum.is_finite
+        and bounds.minimum.x <= bounds.maximum.x
+        and bounds.minimum.y <= bounds.maximum.y
+        and bounds.minimum.z <= bounds.maximum.z
     )
 
 
 def _merge_bounds(bounds: list[BoundAabb], fallback: BoundAabb) -> BoundAabb:
     if not bounds:
         return fallback
-    minimum = tuple(min(item.minimum[axis] for item in bounds) for axis in range(3))
-    maximum = tuple(max(item.maximum[axis] for item in bounds) for axis in range(3))
-    return BoundAabb(minimum, maximum)
+    return BoundAabb(
+        Vector3.minimum(item.minimum for item in bounds),
+        Vector3.maximum(item.maximum for item in bounds),
+    )
 
 
-def _aabb_from_center_size(center: tuple[float, float, float], size: tuple[float, float, float]) -> BoundAabb:
-    minimum, maximum = aabb_from_center_size(center, size)
-    return BoundAabb(minimum, maximum)
+def _aabb_from_center_size(center: Vector3, size: Vector3) -> BoundAabb:
+    bounds = Aabb3.from_center_size(center, size)
+    return BoundAabb(bounds.minimum, bounds.maximum)
 
 
 @dataclasses.dataclass(slots=True)
 class BoundTransform:
-    column1: tuple[float, float, float]
-    column2: tuple[float, float, float]
-    column3: tuple[float, float, float]
-    column4: tuple[float, float, float]
+    column1: Vector3
+    column2: Vector3
+    column3: Vector3
+    column4: Vector3
     flags1: int = 0
     flags2: int = 0
     flags3: int = 0
     flags4: int = 0
 
     @property
-    def translation(self) -> tuple[float, float, float]:
+    def translation(self) -> Vector3:
         return self.column4
 
 
@@ -140,13 +161,13 @@ class BoundFlag(enum.IntFlag):
     USE_CURRENT_INSTANCE_MATRIX_ONLY = 1 << 5
 
 
-def _transform_point(point: tuple[float, float, float], transform: BoundTransform | None) -> tuple[float, float, float]:
+def _transform_point(point: Vector3, transform: BoundTransform | None) -> Vector3:
     if transform is None:
         return point
-    return (
-        (transform.column1[0] * point[0]) + (transform.column2[0] * point[1]) + (transform.column3[0] * point[2]) + transform.column4[0],
-        (transform.column1[1] * point[0]) + (transform.column2[1] * point[1]) + (transform.column3[1] * point[2]) + transform.column4[1],
-        (transform.column1[2] * point[0]) + (transform.column2[2] * point[1]) + (transform.column3[2] * point[2]) + transform.column4[2],
+    return Vector3(
+        (transform.column1.x * point.x) + (transform.column2.x * point.y) + (transform.column3.x * point.z) + transform.column4.x,
+        (transform.column1.y * point.x) + (transform.column2.y * point.y) + (transform.column3.y * point.z) + transform.column4.y,
+        (transform.column1.z * point.x) + (transform.column2.z * point.y) + (transform.column3.z * point.z) + transform.column4.z,
     )
 
 
@@ -156,47 +177,46 @@ def _transform_bounds(bounds: BoundAabb, transform: BoundTransform | None) -> Bo
     minimum = bounds.minimum
     maximum = bounds.maximum
     corners = [
-        _transform_point((x, y, z), transform)
-        for x in (minimum[0], maximum[0])
-        for y in (minimum[1], maximum[1])
-        for z in (minimum[2], maximum[2])
+        _transform_point(Vector3(x, y, z), transform)
+        for x in (minimum.x, maximum.x)
+        for y in (minimum.y, maximum.y)
+        for z in (minimum.z, maximum.z)
     ]
-    transformed_minimum = tuple(min(point[axis] for point in corners) for axis in range(3))
-    transformed_maximum = tuple(max(point[axis] for point in corners) for axis in range(3))
-    return BoundAabb(transformed_minimum, transformed_maximum)
+    return BoundAabb(Vector3.minimum(corners), Vector3.maximum(corners))
 
 
-def _sphere_radius_from_bounds(bounds: BoundAabb, center: tuple[float, float, float]) -> float:
-    return math.sqrt(
-        max(abs(bounds.minimum[0] - center[0]), abs(bounds.maximum[0] - center[0])) ** 2
-        + max(abs(bounds.minimum[1] - center[1]), abs(bounds.maximum[1] - center[1])) ** 2
-        + max(abs(bounds.minimum[2] - center[2]), abs(bounds.maximum[2] - center[2])) ** 2
+def _sphere_radius_from_bounds(bounds: BoundAabb, center: Vector3) -> float:
+    extent = Vector3(
+        max(abs(bounds.minimum.x - center.x), abs(bounds.maximum.x - center.x)),
+        max(abs(bounds.minimum.y - center.y), abs(bounds.maximum.y - center.y)),
+        max(abs(bounds.minimum.z - center.z), abs(bounds.maximum.z - center.z)),
     )
+    return extent.length
 
 
-def _box_volume_distribution(size: tuple[float, float, float]) -> tuple[float, float, float]:
-    x, y, z = (abs(float(axis)) for axis in size)
-    return (((y * y) + (z * z)) / 12.0, ((x * x) + (z * z)) / 12.0, ((x * x) + (y * y)) / 12.0)
+def _box_volume_distribution(size: Vector3) -> Vector3:
+    x, y, z = abs(size.x), abs(size.y), abs(size.z)
+    return Vector3(((y * y) + (z * z)) / 12.0, ((x * x) + (z * z)) / 12.0, ((x * x) + (y * y)) / 12.0)
 
 
-def _sphere_volume_distribution(radius: float) -> tuple[float, float, float]:
+def _sphere_volume_distribution(radius: float) -> Vector3:
     value = 0.4 * float(radius) * float(radius)
-    return (value, value, value)
+    return Vector3(value, value, value)
 
 
-def _cylinder_volume_distribution(radius: float, length: float) -> tuple[float, float, float]:
+def _cylinder_volume_distribution(radius: float, length: float) -> Vector3:
     radius2 = float(radius) * float(radius)
     central = (radius2 * 0.25) + ((float(length) * float(length)) / 12.0)
     radial = radius2 * 0.5
-    return (central, radial, central)
+    return Vector3(central, radial, central)
 
 
-def _capsule_volume_distribution(radius: float, length: float) -> tuple[float, float, float]:
+def _capsule_volume_distribution(radius: float, length: float) -> Vector3:
     radius = float(radius)
     length = float(length)
     denominator = length + (4.0 / 3.0) * radius
     if denominator <= 0.0:
-        return (0.0, 0.0, 0.0)
+        return Vector3()
     inverse = 1.0 / denominator
     radius2 = radius * radius
     radial = 0.5 * radius2 * (length + 1.0666666666667 * radius) * inverse
@@ -211,7 +231,7 @@ def _capsule_volume_distribution(radius: float, length: float) -> tuple[float, f
         )
         * inverse
     )
-    return (central, radial, central)
+    return Vector3(central, radial, central)
 
 
 @dataclasses.dataclass(slots=True)
@@ -303,9 +323,13 @@ class BoundGeometryOctants:
     @classmethod
     def from_vertices(
         cls,
-        vertices: list[tuple[float, float, float]],
+        vertices: list[Vector3],
     ) -> BoundGeometryOctants:
-        return cls(items=_native_backend._bounds_build_octants(vertices))
+        return cls(
+            items=_native_backend._bounds_build_octants(
+                [vertex.as_tuple() for vertex in vertices]
+            )
+        )
 
     @property
     def counts(self) -> tuple[int, int, int, int, int, int, int, int]:
@@ -337,8 +361,8 @@ class BoundGeometryOctants:
 
 @dataclasses.dataclass(slots=True)
 class BoundBvhNode:
-    minimum: tuple[float, float, float]
-    maximum: tuple[float, float, float]
+    minimum: Vector3
+    maximum: Vector3
     item_id: int
     item_count: int
 
@@ -349,19 +373,19 @@ class BoundBvhNode:
 
 @dataclasses.dataclass(slots=True)
 class BoundBvhTree:
-    minimum: tuple[float, float, float]
-    maximum: tuple[float, float, float]
+    minimum: Vector3
+    maximum: Vector3
     node_index: int
     node_index2: int
 
 
 @dataclasses.dataclass(slots=True)
 class BoundBvh:
-    minimum: tuple[float, float, float]
-    maximum: tuple[float, float, float]
-    center: tuple[float, float, float]
-    quantum_inverse: tuple[float, float, float]
-    quantum: tuple[float, float, float]
+    minimum: Vector3
+    maximum: Vector3
+    center: Vector3
+    quantum_inverse: Vector3
+    quantum: Vector3
     nodes: list[BoundBvhNode] = dataclasses.field(default_factory=list)
     trees: list[BoundBvhTree] = dataclasses.field(default_factory=list)
 
@@ -519,11 +543,11 @@ class BoundPolygonCylinder(BoundPolygon):
 class Bound:
     bound_type: BoundType
     sphere_radius: float
-    box_max: tuple[float, float, float]
+    box_max: Vector3
     margin: float
-    box_min: tuple[float, float, float]
-    box_center: tuple[float, float, float]
-    sphere_center: tuple[float, float, float]
+    box_min: Vector3
+    box_center: Vector3
+    sphere_center: Vector3
     file_vft: int = 0
     file_unknown: int = 1
     file_pages_info: BoundResourcePagesInfo | None = None
@@ -540,8 +564,19 @@ class Bound:
     material_color_index: int = 0
     ref_count: int = 1
     packed_material_hi_bits: int = 0
-    angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    angular_inertia: Vector3 = Vector3()
     volume: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "box_max",
+            "box_min",
+            "box_center",
+            "sphere_center",
+            "angular_inertia",
+        ):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"Bound.{name} must be a Vector3")
 
     @property
     def bounds(self) -> BoundAabb:
@@ -556,27 +591,31 @@ class Bound:
         self.sphere_radius = float(value)
 
     @property
-    def aabb_center(self) -> tuple[float, float, float]:
-        return tuple((self.box_min[axis] + self.box_max[axis]) * 0.5 for axis in range(3))
+    def aabb_center(self) -> Vector3:
+        return (self.box_min + self.box_max) * 0.5
 
     @property
-    def minimum(self) -> tuple[float, float, float]:
+    def minimum(self) -> Vector3:
         return self.box_min
 
     @minimum.setter
-    def minimum(self, value: tuple[float, float, float]) -> None:
-        self.box_min = tuple(float(axis) for axis in value)
+    def minimum(self, value: Vector3) -> None:
+        if not isinstance(value, Vector3):
+            raise TypeError("minimum must be a Vector3")
+        self.box_min = value
 
     @property
-    def maximum(self) -> tuple[float, float, float]:
+    def maximum(self) -> Vector3:
         return self.box_max
 
     @maximum.setter
-    def maximum(self, value: tuple[float, float, float]) -> None:
-        self.box_max = tuple(float(axis) for axis in value)
+    def maximum(self, value: Vector3) -> None:
+        if not isinstance(value, Vector3):
+            raise TypeError("maximum must be a Vector3")
+        self.box_max = value
 
     @property
-    def center(self) -> tuple[float, float, float]:
+    def center(self) -> Vector3:
         return self.aabb_center
 
     @property
@@ -588,29 +627,28 @@ class Bound:
         self.material_index = coerce_bound_material_index(value)
 
     @property
-    def half_extents(self) -> tuple[float, float, float]:
-        center = self.aabb_center
-        return tuple(self.box_max[axis] - center[axis] for axis in range(3))
+    def half_extents(self) -> Vector3:
+        return self.box_max - self.aabb_center
 
     @property
-    def dimensions(self) -> tuple[float, float, float]:
-        return tuple(self.box_max[axis] - self.box_min[axis] for axis in range(3))
+    def dimensions(self) -> Vector3:
+        return self.box_max - self.box_min
 
     @property
-    def size(self) -> tuple[float, float, float]:
+    def size(self) -> Vector3:
         return self.dimensions
 
     @property
     def width(self) -> float:
-        return float(self.dimensions[0])
+        return self.dimensions.x
 
     @property
     def depth(self) -> float:
-        return float(self.dimensions[1])
+        return self.dimensions.y
 
     @property
     def height(self) -> float:
-        return float(self.dimensions[2])
+        return self.dimensions.z
 
     @property
     def type_name(self) -> str:
@@ -653,21 +691,21 @@ class Bound:
             return float(self.volume)
         return abs(self.width * self.depth * self.height)
 
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         if any(abs(value) > 0.0 for value in self.angular_inertia):
-            return tuple(float(value) for value in self.angular_inertia)
+            return self.angular_inertia
         return _box_volume_distribution(self.dimensions)
 
-    def compute_angular_inertia(self, mass: float) -> tuple[float, float, float]:
+    def compute_angular_inertia(self, mass: float) -> Vector3:
         distribution = self.compute_volume_distribution()
-        return tuple(float(value) * float(mass) for value in distribution)
+        return distribution * mass
 
     def build(self) -> Bound:
         normalized = _normalize_aabb(self.bounds)
         self.box_min = normalized.minimum
         self.box_max = normalized.maximum
-        self.box_center = tuple((normalized.minimum[axis] + normalized.maximum[axis]) * 0.5 for axis in range(3))
-        if self.sphere_center == (0.0, 0.0, 0.0) and self.box_center != (0.0, 0.0, 0.0):
+        self.box_center = (normalized.minimum + normalized.maximum) * 0.5
+        if self.sphere_center == Vector3() and self.box_center != Vector3():
             self.sphere_center = self.box_center
         self.flags = BoundFlag(int(self.flags))
         self.part_index = int(self.part_index) & 0xFFFF
@@ -690,20 +728,20 @@ class Bound:
 def _build_primitive_bound(
     cls: type[Bound],
     bound_type: BoundType,
-    minimum: tuple[float, float, float],
-    maximum: tuple[float, float, float],
+    minimum: Vector3,
+    maximum: Vector3,
     *,
     material_index: int | BoundMaterialType = 0,
     margin: float = 0.0,
     ref_count: int = 1,
-    angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    angular_inertia: Vector3 = Vector3(),
     volume: float | None = None,
 ) -> Bound:
     bounds = _normalize_aabb(BoundAabb(minimum, maximum))
-    dimensions = tuple(bounds.maximum[axis] - bounds.minimum[axis] for axis in range(3))
-    center = tuple((bounds.minimum[axis] + bounds.maximum[axis]) * 0.5 for axis in range(3))
+    dimensions = bounds.maximum - bounds.minimum
+    center = (bounds.minimum + bounds.maximum) * 0.5
     if volume is None:
-        volume = dimensions[0] * dimensions[1] * dimensions[2]
+        volume = dimensions.x * dimensions.y * dimensions.z
     return cls(
         bound_type=bound_type,
         sphere_radius=_sphere_radius_from_bounds(bounds, center),
@@ -714,7 +752,7 @@ def _build_primitive_bound(
         sphere_center=center,
         material_index=int(material_index),
         ref_count=int(ref_count),
-        angular_inertia=tuple(float(value) for value in angular_inertia),
+        angular_inertia=angular_inertia,
         volume=float(volume),
     )
 
@@ -736,25 +774,25 @@ class BoundSphere(Bound):
     def compute_volume(self) -> float:
         return (4.0 / 3.0) * math.pi * (self.radius ** 3)
 
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         return _sphere_volume_distribution(self.radius)
 
 
 @dataclasses.dataclass(slots=True)
 class BoundBox(Bound):
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         return _box_volume_distribution(self.dimensions)
 
     @classmethod
     def from_bounds(
         cls,
-        minimum: tuple[float, float, float],
-        maximum: tuple[float, float, float],
+        minimum: Vector3,
+        maximum: Vector3,
         *,
         material_index: int | BoundMaterialType = 0,
         margin: float = 0.0,
         ref_count: int = 1,
-        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        angular_inertia: Vector3 = Vector3(),
         volume: float | None = None,
     ) -> BoundBox:
         return _build_primitive_bound(
@@ -772,18 +810,18 @@ class BoundBox(Bound):
     @classmethod
     def from_center_size(
         cls,
-        center: tuple[float, float, float],
-        size: tuple[float, float, float],
+        center: Vector3,
+        size: Vector3,
         *,
         material_index: int | BoundMaterialType = 0,
         margin: float = 0.0,
         ref_count: int = 1,
-        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        angular_inertia: Vector3 = Vector3(),
         volume: float | None = None,
     ) -> BoundBox:
-        half_size = tuple(float(value) * 0.5 for value in size)
-        minimum = tuple(float(center[axis]) - half_size[axis] for axis in range(3))
-        maximum = tuple(float(center[axis]) + half_size[axis] for axis in range(3))
+        half_size = size * 0.5
+        minimum = center - half_size
+        maximum = center + half_size
         return cls.from_bounds(
             minimum,
             maximum,
@@ -804,13 +842,13 @@ class BoundCapsule(Bound):
 
     @property
     def radius(self) -> float:
-        return max(0.0, min(self.half_extents[0], self.half_extents[2]))
+        return max(0.0, min(self.half_extents.x, self.half_extents.z))
 
     @property
     def shaft_half_height(self) -> float:
         if self.capsule_half_height > 0.0:
             return float(self.capsule_half_height)
-        return max(0.0, self.half_extents[1] - self.radius)
+        return max(0.0, self.half_extents.y - self.radius)
 
     @property
     def shaft_length(self) -> float:
@@ -824,7 +862,7 @@ class BoundCapsule(Bound):
         radius = self.radius
         return math.pi * radius * radius * (self.shaft_length + (4.0 / 3.0) * radius)
 
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         return _capsule_volume_distribution(self.radius, self.shaft_length)
 
 
@@ -838,13 +876,13 @@ class BoundDisc(Bound):
     @classmethod
     def from_bounds(
         cls,
-        minimum: tuple[float, float, float],
-        maximum: tuple[float, float, float],
+        minimum: Vector3,
+        maximum: Vector3,
         *,
         material_index: int | BoundMaterialType = 0,
         margin: float = 0.0,
         ref_count: int = 1,
-        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        angular_inertia: Vector3 = Vector3(),
         volume: float | None = None,
     ) -> BoundDisc:
         return _build_primitive_bound(
@@ -862,9 +900,9 @@ class BoundDisc(Bound):
     @classmethod
     def from_center_size(
         cls,
-        center: tuple[float, float, float],
-        size: tuple[float, float, float],
-        **kwargs: float | tuple[float, float, float],
+        center: Vector3,
+        size: Vector3,
+        **kwargs: float | Vector3,
     ) -> BoundDisc:
         bounds = _aabb_from_center_size(center, size)
         return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
@@ -872,7 +910,7 @@ class BoundDisc(Bound):
     @classmethod
     def from_center_radius(
         cls,
-        center: tuple[float, float, float],
+        center: Vector3,
         radius: float,
         *,
         thickness: float = 0.0,
@@ -880,15 +918,19 @@ class BoundDisc(Bound):
         material_index: int | BoundMaterialType = 0,
         margin: float = 0.0,
         ref_count: int = 1,
-        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        angular_inertia: Vector3 = Vector3(),
         volume: float | None = None,
     ) -> BoundDisc:
         resolved_axis = BoundAxis(thickness_axis)
-        size = [radius * 2.0] * 3
-        size[resolved_axis] = thickness
+        diameter = radius * 2.0
+        size = Vector3(
+            thickness if resolved_axis is BoundAxis.X else diameter,
+            thickness if resolved_axis is BoundAxis.Y else diameter,
+            thickness if resolved_axis is BoundAxis.Z else diameter,
+        )
         disc = cls.from_center_size(
             center,
-            tuple(size),
+            size,
             material_index=material_index,
             margin=margin,
             ref_count=ref_count,
@@ -901,7 +943,7 @@ class BoundDisc(Bound):
     @classmethod
     def vehicle_wheel(
         cls,
-        center: tuple[float, float, float],
+        center: Vector3,
         radius: float,
         thickness: float,
         *,
@@ -929,7 +971,7 @@ class BoundDisc(Bound):
         extents = self.half_extents
         return min(
             (BoundAxis.Y, BoundAxis.X, BoundAxis.Z),
-            key=lambda axis: extents[axis],
+            key=lambda axis: axis.component(extents),
         )
 
     @property
@@ -939,7 +981,10 @@ class BoundDisc(Bound):
     @property
     def radius(self) -> float:
         extents = self.half_extents
-        return max(0.0, min(extents[axis] for axis in self.radial_axes))
+        return max(
+            0.0,
+            min(axis.component(extents) for axis in self.radial_axes),
+        )
 
     @property
     def diameter(self) -> float:
@@ -947,7 +992,7 @@ class BoundDisc(Bound):
 
     @property
     def half_thickness(self) -> float:
-        return max(0.0, self.half_extents[self.thickness_axis])
+        return max(0.0, self.thickness_axis.component(self.half_extents))
 
     @property
     def thickness(self) -> float:
@@ -956,7 +1001,7 @@ class BoundDisc(Bound):
     def compute_volume(self) -> float:
         return math.pi * self.radius * self.radius * self.thickness
 
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         return _cylinder_volume_distribution(self.radius, self.thickness)
 
 
@@ -970,13 +1015,13 @@ class BoundCylinder(Bound):
     @classmethod
     def from_bounds(
         cls,
-        minimum: tuple[float, float, float],
-        maximum: tuple[float, float, float],
+        minimum: Vector3,
+        maximum: Vector3,
         *,
         material_index: int | BoundMaterialType = 0,
         margin: float = 0.0,
         ref_count: int = 1,
-        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        angular_inertia: Vector3 = Vector3(),
         volume: float | None = None,
     ) -> BoundCylinder:
         return _build_primitive_bound(
@@ -994,9 +1039,9 @@ class BoundCylinder(Bound):
     @classmethod
     def from_center_size(
         cls,
-        center: tuple[float, float, float],
-        size: tuple[float, float, float],
-        **kwargs: float | tuple[float, float, float],
+        center: Vector3,
+        size: Vector3,
+        **kwargs: float | Vector3,
     ) -> BoundCylinder:
         bounds = _aabb_from_center_size(center, size)
         return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
@@ -1004,20 +1049,22 @@ class BoundCylinder(Bound):
     @classmethod
     def from_center_radius_height(
         cls,
-        center: tuple[float, float, float],
+        center: Vector3,
         radius: float,
         height: float,
-        **kwargs: float | tuple[float, float, float],
+        **kwargs: float | Vector3,
     ) -> BoundCylinder:
-        return cls.from_center_size(center, (radius * 2.0, height, radius * 2.0), **kwargs)
+        return cls.from_center_size(
+            center, Vector3(radius * 2.0, height, radius * 2.0), **kwargs
+        )
 
     @property
     def radius(self) -> float:
-        return max(0.0, min(self.half_extents[0], self.half_extents[2]))
+        return max(0.0, min(self.half_extents.x, self.half_extents.z))
 
     @property
     def half_height(self) -> float:
-        return max(0.0, self.half_extents[1])
+        return max(0.0, self.half_extents.y)
 
     @property
     def height(self) -> float:
@@ -1026,7 +1073,7 @@ class BoundCylinder(Bound):
     def compute_volume(self) -> float:
         return math.pi * self.radius * self.radius * self.height
 
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         return _cylinder_volume_distribution(self.radius, self.height)
 
 
@@ -1040,13 +1087,13 @@ class BoundCloth(Bound):
     @classmethod
     def from_bounds(
         cls,
-        minimum: tuple[float, float, float],
-        maximum: tuple[float, float, float],
+        minimum: Vector3,
+        maximum: Vector3,
         *,
         material_index: int | BoundMaterialType = 0,
         margin: float = 0.0,
         ref_count: int = 1,
-        angular_inertia: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        angular_inertia: Vector3 = Vector3(),
         volume: float | None = None,
     ) -> BoundCloth:
         return _build_primitive_bound(
@@ -1064,9 +1111,9 @@ class BoundCloth(Bound):
     @classmethod
     def from_center_size(
         cls,
-        center: tuple[float, float, float],
-        size: tuple[float, float, float],
-        **kwargs: float | tuple[float, float, float],
+        center: Vector3,
+        size: Vector3,
+        **kwargs: float | Vector3,
     ) -> BoundCloth:
         bounds = _aabb_from_center_size(center, size)
         return cls.from_bounds(bounds.minimum, bounds.maximum, **kwargs)
@@ -1074,10 +1121,10 @@ class BoundCloth(Bound):
 
 @dataclasses.dataclass(slots=True)
 class BoundGeometry(Bound):
-    quantum: tuple[float, float, float] = (1.0, 1.0, 1.0)
-    center_geom: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    vertices: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
-    vertices_shrunk: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+    quantum: Vector3 = Vector3(1.0, 1.0, 1.0)
+    center_geom: Vector3 = Vector3()
+    vertices: list[Vector3] = dataclasses.field(default_factory=list)
+    vertices_shrunk: list[Vector3] = dataclasses.field(default_factory=list)
     polygons: list[BoundPolygon] = dataclasses.field(default_factory=list)
     polygon_material_indices: list[int] = dataclasses.field(default_factory=list)
     materials: list[BoundMaterial] = dataclasses.field(default_factory=list)
@@ -1134,10 +1181,11 @@ class BoundGeometry(Bound):
     def has_octants(self) -> bool:
         return self.octants is not None and self.octants.has_items
 
-    def vertex(self, vertex: tuple[float, float, float]) -> tuple[float, float, float]:
-        value = (float(vertex[0]), float(vertex[1]), float(vertex[2]))
-        self.vertices.append(value)
-        return value
+    def vertex(self, vertex: Vector3) -> Vector3:
+        if not isinstance(vertex, Vector3):
+            raise TypeError("vertex must be a Vector3")
+        self.vertices.append(vertex)
+        return vertex
 
     def polygon(self, polygon: BoundPolygon) -> BoundPolygon:
         if polygon.index < 0:
@@ -1290,8 +1338,8 @@ class BoundComposite(Bound):
     def compute_center_of_gravity(
         self,
         masses: list[float] | tuple[float, ...] | None = None,
-    ) -> tuple[float, float, float]:
-        weighted = (0.0, 0.0, 0.0)
+    ) -> Vector3:
+        weighted = Vector3()
         total_weight = 0.0
         for index, child in enumerate(self.active_children):
             if child.bound is None:
@@ -1304,22 +1352,22 @@ class BoundComposite(Bound):
             if weight <= 0.0:
                 continue
             child_center = _transform_point(child.bound.sphere_center, child.transform)
-            weighted = vec_add(weighted, vec_scale(child_center, weight))
+            weighted = weighted + (child_center * weight)
             total_weight += weight
-        return vec_scale(weighted, 1.0 / total_weight) if total_weight > 0.0 else (0.0, 0.0, 0.0)
+        return weighted / total_weight if total_weight > 0.0 else Vector3()
 
     def compute_composite_angular_inertia(
         self,
         mass: float,
         *,
         masses: list[float] | tuple[float, ...] | None = None,
-        inertias: list[tuple[float, float, float]] | tuple[tuple[float, float, float], ...] | None = None,
-    ) -> tuple[float, float, float]:
+        inertias: list[Vector3] | tuple[Vector3, ...] | None = None,
+    ) -> Vector3:
         total_mass = float(mass)
         total_volume = self.compute_volume()
         density = total_mass / total_volume if total_volume > 0.0 else 0.0
         center_of_gravity = self.compute_center_of_gravity(masses)
-        total = (0.0, 0.0, 0.0)
+        total = Vector3()
         for index, child in enumerate(self.active_children):
             if child.bound is None:
                 continue
@@ -1332,22 +1380,22 @@ class BoundComposite(Bound):
                 part_inertia = inertias[index]
             else:
                 part_inertia = child.bound.compute_angular_inertia(part_mass)
-            offset = vec_sub(_transform_point(child.bound.sphere_center, child.transform), center_of_gravity)
-            parallel_axis = (
-                part_mass * ((offset[1] * offset[1]) + (offset[2] * offset[2])),
-                part_mass * ((offset[0] * offset[0]) + (offset[2] * offset[2])),
-                part_mass * ((offset[0] * offset[0]) + (offset[1] * offset[1])),
+            offset = _transform_point(child.bound.sphere_center, child.transform) - center_of_gravity
+            parallel_axis = Vector3(
+                part_mass * ((offset.y * offset.y) + (offset.z * offset.z)),
+                part_mass * ((offset.x * offset.x) + (offset.z * offset.z)),
+                part_mass * ((offset.x * offset.x) + (offset.y * offset.y)),
             )
-            total = vec_add(total, vec_add(part_inertia, parallel_axis))
+            total = total + part_inertia + parallel_axis
         return total
 
-    def compute_volume_distribution(self) -> tuple[float, float, float]:
+    def compute_volume_distribution(self) -> Vector3:
         volume = self.compute_volume()
         if volume <= 0.0:
-            return (0.0, 0.0, 0.0)
-        return vec_scale(self.compute_composite_angular_inertia(volume), 1.0 / volume)
+            return Vector3()
+        return self.compute_composite_angular_inertia(volume) / volume
 
-    def compute_angular_inertia(self, mass: float) -> tuple[float, float, float]:
+    def compute_angular_inertia(self, mass: float) -> Vector3:
         return self.compute_composite_angular_inertia(mass)
 
     def build(self) -> BoundComposite:
@@ -1367,7 +1415,7 @@ class BoundComposite(Bound):
                 for child in active_children
             ]
             overall = _merge_bounds(transformed_bounds, self.bounds)
-            center = aabb_center(overall.minimum, overall.maximum)
+            center = (overall.minimum + overall.maximum) * 0.5
             self.box_min = overall.minimum
             self.box_max = overall.maximum
             self.box_center = center

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from fivefury import GameTarget
+from fivefury import GameTarget, Vector2, Vector3, Vector4
 from fivefury.bounds import (
     BoundBox,
     BoundChild,
@@ -99,23 +99,23 @@ def _assert_projection_contains_points(window, points) -> None:
 
 def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
     version = 171 if game is GameTarget.GTA5_ENHANCED else 162
-    positions: list[tuple[float, float, float]] = []
+    positions: list[Vector3] = []
     indices: list[int] = []
-    texcoords: list[tuple[float, float]] = []
+    texcoords: list[Vector2] = []
     blend_indices: list[tuple[int, int, int, int]] = []
     for pane_index in range(6):
         base = len(positions)
         x = float(pane_index * 2)
         positions.extend(
             (
-                (x, 0.0, 0.0),
-                (x + 1.0, 0.0, 0.0),
-                (x + 1.0, 0.0, 0.75),
-                (x, 0.0, 0.75),
+                Vector3(x, 0.0, 0.0),
+                Vector3(x + 1.0, 0.0, 0.0),
+                Vector3(x + 1.0, 0.0, 0.75),
+                Vector3(x, 0.0, 0.75),
             )
         )
         indices.extend((base, base + 1, base + 2, base, base + 2, base + 3))
-        texcoords.extend(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)))
+        texcoords.extend((Vector2(), Vector2(1.0, 0.0), Vector2(1.0, 1.0), Vector2(0.0, 1.0)))
         blend_indices.extend(((pane_index + 1, 0, 0, 0),) * 4)
     skeleton = YdrSkeleton(
         bones=[YdrBone(name="root", tag=0, index=0)]
@@ -133,8 +133,8 @@ def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
         material="outer_glass",
         indices=indices,
         positions=positions,
-        normals=[(0.0, -1.0, 0.0)] * len(positions),
-        tangents=[(1.0, 0.0, 0.0, 1.0)] * len(positions),
+        normals=[Vector3(0.0, -1.0, 0.0)] * len(positions),
+        tangents=[Vector4(1.0, 0.0, 0.0, 1.0)] * len(positions),
         texcoords=[list(texcoords), list(texcoords)],
         colours0=[(1.0, 1.0, 1.0, 1.0)] * len(positions),
         blend_weights=[(1.0, 0.0, 0.0, 0.0)] * len(positions),
@@ -158,8 +158,8 @@ def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
     bounds = []
     for bone in skeleton.bones[1:]:
         bound = BoundBox.from_center_size(
-            (0.0, 0.0, 0.0),
-            (1.0, 0.05, 0.75),
+            Vector3(),
+            Vector3(1.0, 0.05, 0.75),
             material_index=BoundMaterialType.CAR_GLASS_WEAK,
         )
         child_drawable = YftFragmentDrawable.from_ydr(Ydr(version=version, bound=bound))
@@ -173,11 +173,11 @@ def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
     composite = BoundComposite(
         bound_type=BoundType.COMPOSITE,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[BoundChild(bound) for bound in bounds],
     ).build()
     group = YftPhysicsGroup.declare("windows", children=children)
@@ -254,10 +254,10 @@ def test_vehicle_glass_validation_uses_direct_geometry_polygon_materials() -> No
     ).report.raise_for_errors()
     geometry_bvh = build_geometry_bvh_from_chunk(
         BoundTriangleChunk(
-            vertices=[
-                (0.0, 0.0, 0.0),
-                (1.0, 0.0, 0.0),
-                (0.0, 0.0, 1.0),
+                vertices=[
+                    Vector3(),
+                    Vector3(1.0, 0.0, 0.0),
+                    Vector3(0.0, 0.0, 1.0),
             ],
             triangles=[(0, 1, 2)],
             material_indices=[1],

@@ -12,7 +12,7 @@ from ..game_target import GameTarget
 from ..hashing import jenk_continue_hash, jenk_finalize_hash
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
-from ..vector import interpolate_vector4_many
+from ..vector import Quaternion, Vector3, Vector4, interpolate_vector4_many
 from .sequences import (
     YcdAnimationTrack,
     YcdAnimSequence,
@@ -236,22 +236,22 @@ class YcdFramePosition:
 
 @dataclass(slots=True)
 class YcdTransformSample:
-    position: tuple[float, float, float] | None = None
-    rotation: tuple[float, float, float, float] | None = None
+    position: Vector3 | None = None
+    rotation: Quaternion | None = None
     scale: float | None = None
 
 
 @dataclass(slots=True)
 class YcdUvTransformSample:
-    uv0: tuple[float, float, float] | None = None
-    uv1: tuple[float, float, float] | None = None
+    uv0: Vector3 | None = None
+    uv1: Vector3 | None = None
 
     @property
-    def slide_u(self) -> tuple[float, float, float] | None:
+    def slide_u(self) -> Vector3 | None:
         return self.uv0
 
     @property
-    def slide_v(self) -> tuple[float, float, float] | None:
+    def slide_v(self) -> Vector3 | None:
         return self.uv1
 
 
@@ -262,20 +262,20 @@ YcdUvAnimationSample = YcdUvTransformSample
 class YcdFacialAnimationSample:
     blend_shape: float | None = None
     viseme: float | None = None
-    animated_normal_maps: float | tuple[float, float, float] | None = None
+    animated_normal_maps: float | Vector3 | None = None
     control: float | None = None
-    translation: tuple[float, float, float] | None = None
-    rotation: tuple[float, float, float, float] | None = None
-    scale: tuple[float, float, float] | None = None
+    translation: Vector3 | None = None
+    rotation: Quaternion | None = None
+    scale: Vector3 | None = None
     tinting: float | None = None
 
 
 @dataclass(slots=True)
 class YcdCameraAnimationSample:
-    position: tuple[float, float, float] | None = None
-    rotation: tuple[float, float, float, float] | None = None
+    position: Vector3 | None = None
+    rotation: Quaternion | None = None
     field_of_view: float | None = None
-    depth_of_field: tuple[float, float, float] | None = None
+    depth_of_field: Vector3 | None = None
     depth_of_field_strength: float | None = None
     motion_blur: float | None = None
     coc: float | None = None
@@ -285,7 +285,7 @@ class YcdCameraAnimationSample:
     near_in_focus_plane: float | None = None
     far_out_of_focus_plane: float | None = None
     far_in_focus_plane: float | None = None
-    tracks: dict[int, tuple[float, float, float, float]] = field(default_factory=dict)
+    tracks: dict[int, Vector4 | Quaternion] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -547,7 +547,7 @@ class YcdAnimation:
         *,
         track: int | YcdAnimationTrack | None = None,
         interpolate: bool = True,
-    ) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
         if not interpolate or isinstance(frame, int):
             return self._evaluate_integer_tracks(int(frame), track=track)
         pos = self.get_frame_position(frame)
@@ -557,8 +557,8 @@ class YcdAnimation:
         values1 = self._evaluate_integer_tracks(pos.frame1, track=track)
         keys = set(values0) | set(values1)
         ordered_keys: list[tuple[int, int]] = []
-        starts: list[tuple[float, float, float, float]] = []
-        ends: list[tuple[float, float, float, float]] = []
+        starts: list[Vector4 | Quaternion] = []
+        ends: list[Vector4 | Quaternion] = []
         rotations: list[bool] = []
         for key in keys:
             v0 = values0.get(key, values1.get(key))
@@ -574,8 +574,8 @@ class YcdAnimation:
 
     def _evaluate_integer_tracks(
         self, frame: int, *, track: int | YcdAnimationTrack | None = None
-    ) -> dict[tuple[int, int], tuple[float, float, float, float]]:
-        result: dict[tuple[int, int], tuple[float, float, float, float]] = {}
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
+        result: dict[tuple[int, int], Vector4 | Quaternion] = {}
         sequence_block = self.get_sequence_block(frame)
         if sequence_block is None:
             return result
@@ -597,7 +597,7 @@ class YcdAnimation:
 
     def evaluate_uv_animation(
         self, frame: int
-    ) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
         return {
             key: value
             for key, value in self.evaluate_tracks(frame).items()
@@ -606,7 +606,7 @@ class YcdAnimation:
 
     def evaluate_object_animation(
         self, frame: float
-    ) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
         return {
             key: value
             for key, value in self.evaluate_tracks(frame).items()
@@ -621,7 +621,7 @@ class YcdAnimation:
         }
         position = next(
             (
-                value[:3]
+                value.xyz
                 for (_, track), value in tracks.items()
                 if int(track) == int(YcdAnimationTrack.MOVER_TRANSLATION)
             ),
@@ -645,7 +645,7 @@ class YcdAnimation:
         }
         position = next(
             (
-                value[:3]
+                value.xyz
                 for (_, track), value in tracks.items()
                 if int(track) == int(YcdAnimationTrack.CAMERA_TRANSLATION)
             ),
@@ -700,9 +700,9 @@ class YcdAnimation:
         for (bone_id, track), value in tracks.items():
             sample = result.setdefault(int(bone_id), YcdFacialAnimationSample())
             if int(track) == int(YcdAnimationTrack.BLEND_SHAPE):
-                sample.blend_shape = float(value[0])
+                sample.blend_shape = value.x
             elif int(track) == int(YcdAnimationTrack.VISEMES):
-                sample.viseme = float(value[0])
+                sample.viseme = value.x
             elif int(track) == int(YcdAnimationTrack.ANIMATED_NORMAL_MAPS):
                 binding = next(
                     (
@@ -717,26 +717,26 @@ class YcdAnimation:
                 if binding is not None and int(binding.format) == int(
                     YcdTrackFormat.VECTOR3
                 ):
-                    sample.animated_normal_maps = value[:3]
+                    sample.animated_normal_maps = value.xyz
                 else:
-                    sample.animated_normal_maps = float(value[0])
+                    sample.animated_normal_maps = value.x
             elif int(track) == int(YcdAnimationTrack.FACIAL_CONTROL):
-                sample.control = float(value[0])
+                sample.control = value.x
             elif int(track) == int(YcdAnimationTrack.FACIAL_TRANSLATION):
-                sample.translation = value[:3]
+                sample.translation = value.xyz
             elif int(track) == int(YcdAnimationTrack.FACIAL_ROTATION):
-                sample.rotation = value
+                sample.rotation = value if isinstance(value, Quaternion) else None
             elif int(track) == int(YcdAnimationTrack.FACIAL_SCALE):
-                sample.scale = value[:3]
+                sample.scale = value.xyz
             elif int(track) == int(YcdAnimationTrack.FACIAL_TINTING):
-                sample.tinting = float(value[0])
+                sample.tinting = value.x
         return result
 
     def evaluate_uv_transform(self, frame: float) -> YcdUvTransformSample:
         tracks = self.evaluate_uv_animation(frame)
         uv0 = next(
             (
-                value[:3]
+                value.xyz
                 for (_, track), value in tracks.items()
                 if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_U)
             ),
@@ -744,7 +744,7 @@ class YcdAnimation:
         )
         uv1 = next(
             (
-                value[:3]
+                value.xyz
                 for (_, track), value in tracks.items()
                 if int(track) == int(YcdAnimationTrack.SHADER_SLIDE_V)
             ),
@@ -753,7 +753,7 @@ class YcdAnimation:
         return YcdUvTransformSample(uv0=uv0, uv1=uv1)
 
 
-YcdClipPropertyValue = float | int | bool | str | tuple[float, ...] | MetaHash
+YcdClipPropertyValue = float | int | bool | str | Vector3 | Vector4 | Quaternion | MetaHash
 
 
 @dataclass(slots=True)
@@ -967,7 +967,7 @@ class YcdClipAnimation(YcdClip):
         *,
         track: int | YcdAnimationTrack | None = None,
         interpolate: bool = True,
-    ) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
         if self.animation is None:
             return {}
         return self.animation.evaluate_tracks(
@@ -980,7 +980,7 @@ class YcdClipAnimation(YcdClip):
         *,
         track: int | YcdAnimationTrack | None = None,
         interpolate: bool = True,
-    ) -> dict[tuple[int, int], tuple[float, float, float, float]]:
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
         if self.animation is None:
             return {}
         return self.animation.evaluate_tracks(
@@ -1004,7 +1004,7 @@ class YcdClipAnimation(YcdClip):
         )
         position = next(
             (
-                value[:3]
+                value.xyz
                 for (_, track), value in tracks.items()
                 if int(track) == int(YcdAnimationTrack.BONE_TRANSLATION)
             ),
@@ -1398,20 +1398,20 @@ def create_ycd_uv_clip(
 
 
 def _track_scalar(
-    tracks: dict[tuple[int, int], tuple[float, float, float, float]],
+    tracks: dict[tuple[int, int], Vector4 | Quaternion],
     track: int | YcdAnimationTrack,
 ) -> float | None:
     for (_, current_track), value in tracks.items():
         if int(current_track) == int(track):
-            return float(value[0])
+            return value.x
     return None
 
 
 def _track_vector3(
-    tracks: dict[tuple[int, int], tuple[float, float, float, float]],
+    tracks: dict[tuple[int, int], Vector4 | Quaternion],
     track: int | YcdAnimationTrack,
-) -> tuple[float, float, float] | None:
+) -> Vector3 | None:
     for (_, current_track), value in tracks.items():
         if int(current_track) == int(track):
-            return value[:3]
+            return value.xyz
     return None
