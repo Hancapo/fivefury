@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import struct
+
 from ..binary import f32 as _f32
 from ..binary import read_c_string
 from ..resource import read_virtual_pointer_array, virtual_to_offset
+from ..vector import Vector3, Vector4
 from .constants import BOUNDING_SPHERE_OFFSET, DAT_VIRTUAL_BASE
 
 
@@ -27,7 +30,7 @@ def try_read_c_string(system_data: bytes, pointer: int) -> str:
         return ""
     try:
         text = read_c_string(system_data, offset)
-    except Exception:
+    except (IndexError, OverflowError, UnicodeError, ValueError, struct.error):
         return ""
     if not text or any(ord(char) < 32 or ord(char) > 126 for char in text):
         return ""
@@ -43,15 +46,15 @@ def read_string_pointer_array(
     ]
 
 
-def read_bounding_sphere(system_data: bytes) -> tuple[float, float, float, float]:
-    return tuple(
+def read_bounding_sphere(system_data: bytes) -> Vector4:
+    return Vector4.from_iterable(
         float(_f32(system_data, BOUNDING_SPHERE_OFFSET + (index * 4)))
         for index in range(4)
     )
 
 
-def read_vec3(system_data: bytes, offset: int) -> tuple[float, float, float]:
-    return (
+def read_vec3(system_data: bytes, offset: int) -> Vector3:
+    return Vector3(
         float(_f32(system_data, offset)),
         float(_f32(system_data, offset + 4)),
         float(_f32(system_data, offset + 8)),

@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 
 from ..bounds import Bound
+from ..vector import Vector3
 from ..ydr import Ydr
 
 _MATRIX_FLAG = 0x7F800001
@@ -10,16 +11,11 @@ _MATRIX_FLAG = 0x7F800001
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftFragmentMatrix:
-    columns: tuple[
-        tuple[float, float, float],
-        tuple[float, float, float],
-        tuple[float, float, float],
-        tuple[float, float, float],
-    ] = (
-        (1.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0),
-        (0.0, 0.0, 1.0),
-        (0.0, 0.0, 0.0),
+    columns: tuple[Vector3, Vector3, Vector3, Vector3] = (
+        Vector3(1.0, 0.0, 0.0),
+        Vector3(0.0, 1.0, 0.0),
+        Vector3(0.0, 0.0, 1.0),
+        Vector3(),
     )
     flags: tuple[int, int, int, int] = (
         _MATRIX_FLAG,
@@ -27,6 +23,12 @@ class YftFragmentMatrix:
         _MATRIX_FLAG,
         _MATRIX_FLAG,
     )
+
+    def __post_init__(self) -> None:
+        if len(self.columns) != 4 or not all(
+            isinstance(column, Vector3) for column in self.columns
+        ):
+            raise TypeError("YftFragmentMatrix columns must contain four Vector3 values")
 
     @classmethod
     def identity(cls) -> YftFragmentMatrix:

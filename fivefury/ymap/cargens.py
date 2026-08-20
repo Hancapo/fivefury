@@ -6,6 +6,7 @@ from typing import Any
 
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
+from ..vector import Vector3
 from .enums import YmapCarGenFlags, coerce_ymap_cargen_flags
 
 
@@ -13,7 +14,7 @@ from .enums import YmapCarGenFlags, coerce_ymap_cargen_flags
 class CarGen(MetaHashFieldsMixin):
     _hash_fields = ("car_model", "pop_group")
 
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
     orient_x: float = 0.0
     orient_y: float = 0.0
     perpendicular_length: float = 0.0
@@ -27,6 +28,8 @@ class CarGen(MetaHashFieldsMixin):
     livery: int = -1
 
     def __post_init__(self) -> None:
+        if not isinstance(self.position, Vector3):
+            raise TypeError("CarGen.position must be a Vector3")
         self.flags = coerce_ymap_cargen_flags(self.flags)
 
     def to_meta(self) -> dict[str, Any]:
@@ -49,7 +52,7 @@ class CarGen(MetaHashFieldsMixin):
     @classmethod
     def from_meta(cls, value: Any) -> CarGen:
         return cls(
-            position=tuple(value.get("position", (0.0, 0.0, 0.0))),
+            position=Vector3.from_iterable(value.get("position", (0.0, 0.0, 0.0))),
             orient_x=float(value.get("orientX", 0.0)),
             orient_y=float(value.get("orientY", 0.0)),
             perpendicular_length=float(value.get("perpendicularLength", 0.0)),
@@ -93,7 +96,7 @@ class CarGen(MetaHashFieldsMixin):
     def create(
         cls,
         car_model: HashLike,
-        position: tuple[float, float, float],
+        position: Vector3,
         heading: float = 0.0,
         *,
         perpendicular_length: float = 2.6,

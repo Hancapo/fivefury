@@ -4,7 +4,7 @@ import dataclasses
 
 import pytest
 
-from fivefury import AssetSet, BuildContext
+from fivefury import AssetSet, BuildContext, Vector3, Vector4
 from fivefury.bounds import BoundMaterialType, build_bound_from_triangles
 from fivefury.ybn import Ybn
 from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
@@ -18,10 +18,10 @@ from fivefury.ytyp import (
 from fivefury.ytyp.mlo_validation import PORTAL_LOCATION_BIT, exit_portal_count
 
 PORTAL_CORNERS = [
-    (0.0, 0.0, 0.0),
-    (0.0, 2.0, 0.0),
-    (0.0, 2.0, 3.0),
-    (0.0, 0.0, 3.0),
+    Vector3(0.0, 0.0, 0.0),
+    Vector3(0.0, 2.0, 0.0),
+    Vector3(0.0, 2.0, 3.0),
+    Vector3(0.0, 0.0, 3.0),
 ]
 
 
@@ -30,11 +30,11 @@ def _valid_mlo_ytyp() -> tuple[Ytyp, MloArchetypeDef]:
     mlo = ytyp.mlo_archetype("test_mlo", mlo_flags=MloInteriorFlags.ALLOW_RUN)
     mlo.room(
         "limbo",
-        bb_min=(-5.0, -5.0, -1.0),
-        bb_max=(5.0, 5.0, 4.0),
+        bb_min=Vector3(-5.0, -5.0, -1.0),
+        bb_max=Vector3(5.0, 5.0, 4.0),
         flags=RoomFlags.NO_EXTERIOR_LIGHTS,
     )
-    mlo.room("main", bb_min=(0.0, 0.0, 0.0), bb_max=(10.0, 10.0, 4.0))
+    mlo.room("main", bb_min=Vector3(), bb_max=Vector3(10.0, 10.0, 4.0))
     mlo.entity("shell_prop", room=0)
     mlo.entity("interior_prop", room=1)
     mlo.portal(0, 1, list(PORTAL_CORNERS), flags=PortalFlags.ALLOW_CLOSING)
@@ -45,7 +45,7 @@ def _valid_mlo_ytyp() -> tuple[Ytyp, MloArchetypeDef]:
     )
     mlo.time_cycle_modifier(
         "test_timecycle",
-        sphere=(5.0, 5.0, 2.0, 10.0),
+        sphere=Vector4(5.0, 5.0, 2.0, 10.0),
         percentage=1.0,
         range=10.0,
         start_hour=0,
@@ -58,9 +58,9 @@ def _valid_mlo_ybn(mlo: MloArchetypeDef, *, room: int | str = "main") -> Ybn:
     bound = build_bound_from_triangles(
         [
             (
-                (0.0, 0.0, 0.0),
-                (1.0, 0.0, 0.0),
-                (0.0, 1.0, 0.0),
+                Vector3(),
+                Vector3(1.0, 0.0, 0.0),
+                Vector3(0.0, 1.0, 0.0),
             )
         ],
         material=mlo.collision_material(room, BoundMaterialType.CONCRETE),
@@ -301,10 +301,10 @@ def test_ymap_mlo_validation_requires_supplied_static_bound() -> None:
 
 def test_ymap_mlo_extents_use_transformed_archetype_bounds() -> None:
     ytyp, mlo = _valid_mlo_ytyp()
-    mlo.bb_min = (-5.0, -5.0, -1.0)
-    mlo.bb_max = (5.0, 5.0, 4.0)
+    mlo.bb_min = Vector3(-5.0, -5.0, -1.0)
+    mlo.bb_max = Vector3(5.0, 5.0, 4.0)
     ymap = Ymap(name="test_imap")
-    ymap.mlo_instance("test_mlo", position=(100.0, 200.0, 10.0))
+    ymap.mlo_instance("test_mlo", position=Vector3(100.0, 200.0, 10.0))
 
     ymap.recalculate_extents(
         context=_build_context(ytyp),
@@ -312,5 +312,5 @@ def test_ymap_mlo_extents_use_transformed_archetype_bounds() -> None:
         include_lod_distance=False,
     )
 
-    assert ymap.entities_extents_min == (95.0, 195.0, 9.0)
-    assert ymap.entities_extents_max == (105.0, 205.0, 14.0)
+    assert ymap.entities_extents_min == Vector3(95.0, 195.0, 9.0)
+    assert ymap.entities_extents_max == Vector3(105.0, 205.0, 14.0)

@@ -4,6 +4,7 @@ from enum import IntEnum, IntFlag
 from pathlib import Path
 from typing import Any
 
+from ..vector import Vector3
 from ..ydr.model import YdrLightType
 
 
@@ -100,9 +101,9 @@ def cut_light_property_from_ydr_flags(ydr_flags: int) -> CutLightProperty:
 def cut_light_fields_from_ydr_light(light: Any) -> dict[str, Any]:
     ydr_flags = int(light.flags)
     return {
-        "vDirection": tuple(float(value) for value in light.direction),
-        "vColour": tuple(float(value) / 255.0 for value in light.color),
-        "vPosition": tuple(float(value) for value in light.position),
+        "vDirection": Vector3.from_iterable(light.direction),
+        "vColour": Vector3.from_iterable(float(value) / 255.0 for value in light.color),
+        "vPosition": Vector3.from_iterable(light.position),
         "fIntensity": float(light.intensity),
         "fFallOff": float(light.falloff),
         "fConeAngle": float(light.cone_outer_angle),

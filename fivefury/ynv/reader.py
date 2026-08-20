@@ -13,6 +13,7 @@ from ..resource import (
     read_resource_pages_info,
     split_rsc7_sections,
 )
+from ..vector import Vector3
 from .model import (
     Ynv,
     YnvAabb,
@@ -44,21 +45,21 @@ _PORTAL_SIZE = 0x1C
 def _decode_vertex(
     data: bytes,
     offset: int,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
-) -> tuple[float, float, float]:
+    posoffset: Vector3,
+    aabb_size: Vector3,
+) -> Vector3:
     scale = 65535.0
-    x = posoffset[0] + ((u16(data, offset + 0x00) / scale) * aabb_size[0])
-    y = posoffset[1] + ((u16(data, offset + 0x02) / scale) * aabb_size[1])
-    z = posoffset[2] + ((u16(data, offset + 0x04) / scale) * aabb_size[2])
-    return (x, y, z)
+    x = posoffset.x + ((u16(data, offset + 0x00) / scale) * aabb_size.x)
+    y = posoffset.y + ((u16(data, offset + 0x02) / scale) * aabb_size.y)
+    z = posoffset.z + ((u16(data, offset + 0x04) / scale) * aabb_size.z)
+    return Vector3(x, y, z)
 
 
 def _decode_point(
     data: bytes,
     offset: int,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> YnvPoint:
     return YnvPoint(
         position=_decode_vertex(data, offset, posoffset, aabb_size),
@@ -127,8 +128,8 @@ def _read_list_items(
 def _read_sector(
     system_data: bytes,
     pointer: int,
-    posoffset: tuple[float, float, float],
-    aabb_size: tuple[float, float, float],
+    posoffset: Vector3,
+    aabb_size: Vector3,
 ) -> YnvSector:
     offset = checked_virtual_offset(pointer, system_data)
     aabb_min = vec4(system_data, offset + 0x00)
@@ -183,10 +184,10 @@ def _read_sector(
             unused_1ch=unused_1ch,
         )
     return YnvSector(
-        aabb_min=(float(aabb_min[0]), float(aabb_min[1]), float(aabb_min[2])),
-        aabb_max=(float(aabb_max[0]), float(aabb_max[1]), float(aabb_max[2])),
-        aabb_min_w=float(aabb_min[3]),
-        aabb_max_w=float(aabb_max[3]),
+        aabb_min=aabb_min.xyz,
+        aabb_max=aabb_max.xyz,
+        aabb_min_w=aabb_min.w,
+        aabb_max_w=aabb_max.w,
         cell_aabb=cell_aabb,
         data=sector_data,
         subtree1=_read_sector(system_data, subtree1_pointer, posoffset, aabb_size)
@@ -419,7 +420,7 @@ def read_ynv(
         unused_018h=unused_018h,
         unused_01ch=unused_01ch,
         transform=tuple(float(value) for value in transform),
-        aabb_size=(float(aabb_size[0]), float(aabb_size[1]), float(aabb_size[2])),
+        aabb_size=aabb_size,
         aabb_unk=aabb_unk,
         vertices=vertices,
         indices=indices,

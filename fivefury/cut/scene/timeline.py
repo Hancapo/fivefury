@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...common import hash_value
+from ...vector import Quaternion, Vector4
 from ..events import (
     CutEventBehavior,
     CutEventType,
@@ -30,6 +31,21 @@ from .shared import (
     _track_identity,
     _uses_plain_cname,
 )
+
+_QUATERNION_FIELDS = {
+    "vInitialBoneRotation",
+    "vRotation",
+    "vRotationQuaternion",
+}
+
+
+def _typed_payload(fields: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: Quaternion.from_iterable(value)
+        if key in _QUATERNION_FIELDS and isinstance(value, Vector4)
+        else value
+        for key, value in fields.items()
+    }
 
 
 @dataclass(slots=True)
@@ -246,19 +262,19 @@ def _timeline_event_from_resolved(resolved: CutResolvedEvent, bindings_by_id: di
         else None
     )
     args_payload = (
-        {
+        _typed_payload({
             key: value
             for key, value in raw_args.fields.items()
             if key not in _ARGS_BASE_FIELDS
-        }
+        })
         if raw_args is not None
         else {}
     )
-    event_payload = {
+    event_payload = _typed_payload({
         key: value
         for key, value in raw_event.fields.items()
         if key not in _EVENT_BASE_FIELDS
-    }
+    })
     return CutTimelineEvent(
         start=float(event.fields.get("fTime", 0.0) or 0.0),
         kind=kind,

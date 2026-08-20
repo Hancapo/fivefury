@@ -4,6 +4,7 @@ import dataclasses
 
 import pytest
 
+from fivefury import Vector3
 from fivefury.bounds import BoundBox
 from fivefury.ydr import (
     Ydr,
@@ -46,7 +47,7 @@ def _drawable(*, bound: BoundBox | None = None) -> Ydr:
 
 def _glass_child(*, with_bound: bool = True) -> YftPhysicsChild:
     bound = (
-        BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 0.1))
+        BoundBox.from_center_size(Vector3(), Vector3(1.0, 1.0, 0.1))
         if with_bound
         else None
     )

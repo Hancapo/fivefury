@@ -13,6 +13,7 @@ from ..bounds.geometry import (
     chunk_bound_triangles,
 )
 from ..bounds.model import BoundComposite, BoundCompositeFlags, BoundMaterial
+from ..vector import Vector3
 from .defs import YdrLod
 
 if TYPE_CHECKING:
@@ -30,11 +31,15 @@ class YdrCollisionStats:
 
 
 def mesh_collision_triangles(mesh: YdrMesh, *, min_area: float = 1e-10) -> list[BoundTriangle]:
-    return _native_backend._bounds_collect_triangles(
-        mesh.positions or [],
+    triangles = _native_backend._bounds_collect_triangles(
+        [position.as_tuple() for position in mesh.positions],
         mesh.indices or [],
         min_area,
     )
+    return [
+        tuple(Vector3.from_iterable(vertex) for vertex in triangle)
+        for triangle in triangles
+    ]
 
 
 def build_bound_from_render_geometry(

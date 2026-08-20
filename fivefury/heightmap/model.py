@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
+from ..vector import Aabb2, Vector2, Vector3
 
 HeightCell = int | float
 HeightGrid = Sequence[Sequence[float | None]]
@@ -54,8 +55,8 @@ class HeightMapBounds:
         return cls(*(float(component) for component in value))
 
     @property
-    def size(self) -> tuple[float, float, float]:
-        return (
+    def size(self) -> Vector3:
+        return Vector3(
             self.max_x - self.min_x,
             self.max_y - self.min_y,
             self.max_z - self.min_z,
@@ -193,8 +194,8 @@ class HeightMap:
         return self.columns * self.rows
 
     @property
-    def cell_size(self) -> tuple[float, float]:
-        return (
+    def cell_size(self) -> Vector2:
+        return Vector2(
             (self.bounds.max_x - self.bounds.min_x) / self.columns,
             (self.bounds.max_y - self.bounds.min_y) / self.rows,
         )
@@ -245,10 +246,10 @@ class HeightMap:
             math.floor((y - self.bounds.min_y) / cell_y),
         )
 
-    def cell_center(self, column: int, row: int) -> tuple[float, float]:
+    def cell_center(self, column: int, row: int) -> Vector2:
         self._index(column, row)
         cell_x, cell_y = self.cell_size
-        return (
+        return Vector2(
             self.bounds.min_x + (column + 0.5) * cell_x,
             self.bounds.min_y + (row + 0.5) * cell_y,
         )
@@ -257,12 +258,15 @@ class HeightMap:
         self,
         column: int,
         row: int,
-    ) -> tuple[float, float, float, float]:
+    ) -> Aabb2:
         self._index(column, row)
         cell_x, cell_y = self.cell_size
         min_x = self.bounds.min_x + column * cell_x
         min_y = self.bounds.min_y + row * cell_y
-        return min_x, min_y, min_x + cell_x, min_y + cell_y
+        return Aabb2(
+            Vector2(min_x, min_y),
+            Vector2(min_x + cell_x, min_y + cell_y),
+        )
 
     def is_empty(self, column: int, row: int) -> bool:
         index = self._index(column, row)

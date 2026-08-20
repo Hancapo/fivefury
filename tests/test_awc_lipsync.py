@@ -9,7 +9,9 @@ from fivefury import (
     AwcChunk,
     AwcChunkType,
     AwcStream,
+    Quaternion,
     ResolvedCutAudio,
+    Vector3,
     Ycd,
     YcdCutsceneBuilder,
     YcdFacialTrackSet,
@@ -26,8 +28,8 @@ def _facial_ycd() -> Ycd:
     builder = YcdCutsceneBuilder.create("speech", duration=0.1, fps=30.0)
     builder.ped(
         "speaker",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
         facial=YcdFacialTrackSet(visemes={1: {0.0: 0.0, 0.1: 1.0}}),
     )
     return builder.build_ycds()[0]

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ...hashing import jenk_hash, jenk_partial_hash
-from ...vector import is_finite_vector
+from ...vector import Quaternion, Vector3
 from ...ycd.sequence_tracks import is_ycd_camera_track
 from ..events import get_cut_event_name, get_cut_event_spec
 from ..flags import (
@@ -875,8 +875,8 @@ def _validate_cameras(
             )
         position = event.payload.get("vPosition")
         rotation = event.payload.get("vRotationQuaternion")
-        position_missing = not isinstance(position, (list, tuple)) or len(position) != 3
-        rotation_missing = not isinstance(rotation, (list, tuple)) or len(rotation) != 4
+        position_missing = not isinstance(position, Vector3)
+        rotation_missing = not isinstance(rotation, Quaternion)
         if position_missing or rotation_missing:
             _issue(
                 issues,
@@ -884,7 +884,7 @@ def _validate_cameras(
                 "camera_cut.pose.missing",
                 f"CAMERA_CUT '{name or event.start}' has no complete position and rotation pose",
             )
-        elif not is_finite_vector(position, 3) or not is_finite_vector(rotation, 4):
+        elif not position.is_finite or not rotation.is_finite:
             _issue(
                 issues,
                 "error",

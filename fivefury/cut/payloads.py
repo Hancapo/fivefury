@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..colors import CssColor, parse_css_argb
+from ..vector import Quaternion, Vector3
 
 
 @dataclass(slots=True)
@@ -23,7 +24,7 @@ class CutEventPayload:
 @dataclass(slots=True)
 class CutLoadScenePayload(CutEventPayload):
     name: str
-    offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    offset: Vector3 = Vector3()
     rotation: float = 0.0
     pitch: float = 0.0
     roll: float = 0.0
@@ -242,8 +243,8 @@ class CutSubtitlePayload(CutEventPayload):
 @dataclass(slots=True)
 class CutCameraCharacterLightPayload:
     use_timecycle_values: bool = True
-    direction: tuple[float, float, float] = (0.0, 1.0, 0.0)
-    colour: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    direction: Vector3 = Vector3(0.0, 1.0, 0.0)
+    colour: Vector3 = Vector3()
     intensity: float = 0.0
 
     def to_fields(self) -> dict[str, Any]:
@@ -270,8 +271,8 @@ class CutCameraDofModifierPayload:
 @dataclass(slots=True)
 class CutCameraCutPayload(CutEventPayload):
     name: str
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    rotation_quaternion: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    position: Vector3 = Vector3()
+    rotation_quaternion: Quaternion = Quaternion()
     near_draw_distance: float = -1.0
     far_draw_distance: float = -1.0
     map_lod_scale: float = -1.0
@@ -366,7 +367,7 @@ class CutScreenFadePayload(CutEventPayload):
 @dataclass(slots=True)
 class CutCascadeShadowPayload(CutEventPayload):
     camera_cut_hash: int | str
-    position: tuple[float, float, float]
+    position: Vector3
     radius: float
     interp_time: float = 0.0
     cascade_index: int = 0
@@ -387,8 +388,8 @@ class CutCascadeShadowPayload(CutEventPayload):
 
 @dataclass(slots=True)
 class CutPlayParticleEffectPayload(CutEventPayload):
-    initial_bone_rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
-    initial_bone_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    initial_bone_rotation: Quaternion = Quaternion()
+    initial_bone_offset: Vector3 = Vector3()
     attach_parent_id: int = -1
     attach_bone_hash: int = 0
 
@@ -403,8 +404,8 @@ class CutPlayParticleEffectPayload(CutEventPayload):
 
 @dataclass(slots=True)
 class CutDecalPayload(CutEventPayload):
-    position: tuple[float, float, float]
-    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    position: Vector3
+    rotation: Quaternion = Quaternion()
     width: float = 1.0
     height: float = 1.0
     colour: int | CssColor = 0xFFFFFFFF

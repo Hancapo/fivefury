@@ -12,6 +12,8 @@ from fivefury import (
     HashResolver,
     LightAttrDef,
     LodLight,
+    Quaternion,
+    Vector3,
     YcdCutsceneBuilder,
     YdrLight,
     build_ycd_bytes,
@@ -146,8 +148,8 @@ def _sample_ycds():
     builder = YcdCutsceneBuilder.create("miku_test", duration=14.0)
     builder.prop(
         "miku_hatsune",
-        mover_position=(0.0, 0.0, 0.0),
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
     )
     return builder.build_ycds()
 
@@ -160,7 +162,7 @@ def test_cutscript_parses_video_editor_style_script() -> None:
     assert result.save_path.name == "miku_test.cut"
     assert scene.scene_name == "miku_test"
     assert scene.duration == pytest.approx(14.0)
-    assert scene.offset == (0.0, 0.0, 100.0)
+    assert scene.offset == Vector3(0.0, 0.0, 100.0)
     assert len(scene.cameras) == 1
     assert len(scene.props) == 3
     assert len(scene.lights) == 1
@@ -335,7 +337,7 @@ END
         for event in track.events
         if event.event_name == "camera_cut"
     )
-    assert camera_event.payload["vRotationQuaternion"] == (0.0, 0.0, 0.0, 1.0)
+    assert camera_event.payload["vRotationQuaternion"] == Quaternion()
 
 
 def test_cut_can_export_to_cutscript_and_compile_back(tmp_path) -> None:
@@ -479,7 +481,7 @@ def test_css_color_values_work_across_high_level_apis() -> None:
         == 0x80000000
     )
     assert (
-        CutDecalPayload(position=(0, 0, 0), colour="#ff8800").to_fields()["Colour"]
+        CutDecalPayload(position=Vector3(), colour="#ff8800").to_fields()["Colour"]
         == 0xFFFF8800
     )
     assert YdrLight.point(color="orange").color == (255, 165, 0)
@@ -497,6 +499,6 @@ def test_css_color_values_work_across_high_level_apis() -> None:
     assert library.get_color(0) == (255, 105, 180)
     assert library.get_color(1) == (17, 34, 51)
 
-    mesh = YdrMeshInput(material="mat", positions=[(0.0, 0.0, 0.0)], indices=[0])
+    mesh = YdrMeshInput(material="mat", positions=[Vector3()], indices=[0])
     paint_mesh(mesh, "rgba(255 128 0 / 25%)")
     assert mesh.colours0[0] == pytest.approx((1.0, 128 / 255.0, 0.0, 64 / 255.0))

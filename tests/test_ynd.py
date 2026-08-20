@@ -8,6 +8,8 @@ from fivefury import (
     GameFileCache,
     GameFileType,
     GameTarget,
+    Vector2,
+    Vector3,
     Ynd,
     YndLink,
     YndNetwork,
@@ -28,9 +30,9 @@ def _reference_ynd_paths() -> list[Path]:
 
 
 def _generated_ynd() -> Ynd:
-    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
+    area_id = get_ynd_area_id(Vector3())
     return Ynd.from_nodes(
-        [YndNode(area_id=area_id, node_id=0, position=(0.0, 0.0, 0.0))],
+        [YndNode(area_id=area_id, node_id=0, position=Vector3())],
         area_id=area_id,
     )
 
@@ -66,7 +68,9 @@ def _assert_roundtrip_equivalent(original: Ynd, rebuilt: Ynd) -> None:
         assert rebuilt_node.flags3 == original_node.flags3
         assert rebuilt_node.flags4 == original_node.flags4
         assert rebuilt_node.link_count_flags == original_node.link_count_flags
-        assert rebuilt_node.position == pytest.approx(original_node.position)
+        assert rebuilt_node.position.components == pytest.approx(
+            original_node.position.components
+        )
         assert len(rebuilt_node.links) == len(original_node.links)
         for original_link, rebuilt_link in zip(original_node.links, rebuilt_node.links, strict=True):
             assert rebuilt_link.area_id == original_link.area_id
@@ -88,7 +92,9 @@ def _assert_roundtrip_equivalent(original: Ynd, rebuilt: Ynd) -> None:
             assert rebuilt_node.junction is None
         else:
             assert rebuilt_node.junction is not None
-            assert rebuilt_node.junction.position == pytest.approx(original_node.junction.position)
+            assert rebuilt_node.junction.position.components == pytest.approx(
+                original_node.junction.position.components
+            )
             assert rebuilt_node.junction.min_z == pytest.approx(original_node.junction.min_z)
             assert rebuilt_node.junction.max_z == pytest.approx(original_node.junction.max_z)
             assert rebuilt_node.junction.heightmap_dim_x == original_node.junction.heightmap_dim_x
@@ -152,15 +158,15 @@ def test_gamefilecache_parses_loose_ynd(tmp_path: Path) -> None:
 def test_build_junction_heightmap_from_triangles() -> None:
     heightmap = build_junction_heightmap(
         triangles=[
-            ((-1.0, -1.0, 0.0), (1.0, -1.0, 10.0), (-1.0, 1.0, 10.0)),
-            ((1.0, -1.0, 10.0), (1.0, 1.0, 20.0), (-1.0, 1.0, 10.0)),
+            (Vector3(-1.0, -1.0, 0.0), Vector3(1.0, -1.0, 10.0), Vector3(-1.0, 1.0, 10.0)),
+            (Vector3(1.0, -1.0, 10.0), Vector3(1.0, 1.0, 20.0), Vector3(-1.0, 1.0, 10.0)),
         ],
-        bounds=((-1.0, -1.0), (1.0, 1.0)),
+        bounds=(Vector2(-1.0, -1.0), Vector2(1.0, 1.0)),
         dim_x=2,
         dim_y=2,
     )
 
-    assert heightmap.position == pytest.approx((-1.0, -1.0))
+    assert heightmap.position.components == pytest.approx((-1.0, -1.0))
     assert heightmap.min_z == pytest.approx(0.0)
     assert heightmap.max_z == pytest.approx(20.0)
     assert heightmap.data == bytes([0, 128, 128, 255])
@@ -170,16 +176,16 @@ def test_build_junction_heightmap_from_triangles() -> None:
 
 
 def test_junction_heightmap_roundtrips_through_ynd_writer() -> None:
-    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
-    node = YndNode(area_id=area_id, node_id=0, position=(0.0, 0.0, 0.0))
+    area_id = get_ynd_area_id(Vector3())
+    node = YndNode(area_id=area_id, node_id=0, position=Vector3())
     junction = node.ensure_junction_heightmap(
         samples=[
-            (-1.0, -1.0, 0.0),
-            (1.0, -1.0, 10.0),
-            (-1.0, 1.0, 10.0),
-            (1.0, 1.0, 20.0),
+            Vector3(-1.0, -1.0, 0.0),
+            Vector3(1.0, -1.0, 10.0),
+            Vector3(-1.0, 1.0, 10.0),
+            Vector3(1.0, 1.0, 20.0),
         ],
-        bounds=((-1.0, -1.0), (1.0, 1.0)),
+        bounds=(Vector2(-1.0, -1.0), Vector2(1.0, 1.0)),
         dim_x=2,
         dim_y=2,
     )
@@ -187,7 +193,9 @@ def test_junction_heightmap_roundtrips_through_ynd_writer() -> None:
 
     assert node.qualifies_as_junction
     assert rebuilt.nodes[0].junction is not None
-    assert rebuilt.nodes[0].junction.position == pytest.approx(junction.position)
+    assert rebuilt.nodes[0].junction.position.components == pytest.approx(
+        junction.position.components
+    )
     assert rebuilt.nodes[0].junction.min_z == pytest.approx(junction.min_z)
     assert rebuilt.nodes[0].junction.max_z == pytest.approx(junction.max_z)
     assert rebuilt.nodes[0].junction.heightmap_dim_x == 2
@@ -196,8 +204,8 @@ def test_junction_heightmap_roundtrips_through_ynd_writer() -> None:
 
 
 def test_ynd_writer_uses_target_specific_runtime_header() -> None:
-    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
-    node = YndNode(area_id=area_id, node_id=0, position=(0.0, 0.0, 0.0))
+    area_id = get_ynd_area_id(Vector3())
+    node = YndNode(area_id=area_id, node_id=0, position=Vector3())
     ynd = Ynd.from_nodes(
         [node],
         area_id=area_id,
@@ -213,23 +221,23 @@ def test_ynd_writer_uses_target_specific_runtime_header() -> None:
 
 
 def test_ynd_network_propagates_target_to_cells() -> None:
-    node = YndNode(node_id=0, position=(0.0, 0.0, 0.0))
+    node = YndNode(node_id=0, position=Vector3())
     network = YndNetwork.from_nodes([node], game=GameTarget.GTA5_ENHANCED)
 
     assert network.build_ynds()[0].game is GameTarget.GTA5_ENHANCED
 
 
 def test_build_rejects_nodes_outside_ynd_area() -> None:
-    node = YndNode(node_id=10, position=(0.0, 0.0, 0.0))
-    area_id = get_ynd_area_id((4608.0, -6144.0, 0.0))
+    node = YndNode(node_id=10, position=Vector3())
+    area_id = get_ynd_area_id(Vector3(4608.0, -6144.0, 0.0))
 
     with pytest.raises(ValueError, match="does not belong to area_id"):
         Ynd.from_nodes([node], area_id=area_id).build()
 
 
 def test_network_partitions_nodes_into_multiple_ynds() -> None:
-    node_a = YndNode(node_id=10, key="a", position=(0.0, 0.0, 0.0))
-    node_b = YndNode(node_id=11, key="b", position=(600.0, 0.0, 0.0))
+    node_a = YndNode(node_id=10, key="a", position=Vector3())
+    node_b = YndNode(node_id=11, key="b", position=Vector3(600.0, 0.0, 0.0))
     node_a.links.append(YndLink(target_key="b"))
     node_b.links.append(YndLink(target_key="a"))
 
@@ -243,8 +251,8 @@ def test_network_partitions_nodes_into_multiple_ynds() -> None:
 
 
 def test_network_clamps_coincident_link_distance_to_one() -> None:
-    node_a = YndNode(node_id=10, key="a", position=(0.0, 0.0, 0.0))
-    node_b = YndNode(node_id=11, key="b", position=(0.0, 0.0, 0.0))
+    node_a = YndNode(node_id=10, key="a", position=Vector3())
+    node_b = YndNode(node_id=11, key="b", position=Vector3())
     node_a.links.append(YndLink(target_key="b"))
 
     ynd = YndNetwork.from_nodes([node_a, node_b]).build_ynds()[0]
@@ -254,14 +262,14 @@ def test_network_clamps_coincident_link_distance_to_one() -> None:
 
 
 def test_ynd_writer_rejects_position_overflow_before_normalization() -> None:
-    area_id = get_ynd_area_id((0.0, 0.0, 0.0))
+    area_id = get_ynd_area_id(Vector3())
     ynd = Ynd(
         area_id=area_id,
         nodes=[
             YndNode(
                 area_id=area_id,
                 node_id=0,
-                position=(0.0, 0.0, 2000.0),
+                position=Vector3(0.0, 0.0, 2000.0),
             )
         ],
     )

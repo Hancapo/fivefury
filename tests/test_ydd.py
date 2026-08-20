@@ -11,6 +11,8 @@ from fivefury import (
     GameFileCache,
     GameFileType,
     GameTarget,
+    Vector2,
+    Vector3,
     Ydd,
     YddRuntimeContext,
     YdrGen9Shader,
@@ -84,9 +86,9 @@ def test_gamefilecache_parses_loose_ydd(tmp_path: Path) -> None:
 
 def test_build_and_read_ydd_from_created_drawable(tmp_path: Path) -> None:
     mesh = YdrMeshInput(
-        positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        positions=[Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)],
         indices=[0, 1, 2],
-        texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+        texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]],
     )
     drawable = create_ydr(
         meshes=[mesh],
@@ -129,10 +131,10 @@ def test_roundtrip_real_reference_ydd(tmp_path: Path) -> None:
 
 def test_build_enhanced_ydd_uses_gen9_runtime_headers(tmp_path: Path) -> None:
     mesh = YdrMeshInput(
-        positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        positions=[Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)],
         indices=[0, 1, 2],
         material="native_gen9",
-        texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+        texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]],
     )
     drawable = create_ydr(
         meshes=[mesh],
@@ -185,13 +187,13 @@ def _simple_drawable(name: str, *, skeleton=None):
         meshes=[
             YdrMeshInput(
                 positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
+                    Vector3(),
+                    Vector3(1.0, 0.0, 0.0),
+                    Vector3(0.0, 1.0, 0.0),
                 ],
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]],
             )
         ],
         materials=[

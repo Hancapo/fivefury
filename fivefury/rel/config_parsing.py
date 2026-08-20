@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 
+from ..vector import Vector3
 from .config_types import (
     Dat4ConfigErPass,
     Dat4ConfigErSettings,
@@ -89,8 +90,8 @@ def _er_settings(data: bytes, kwargs: dict[str, object]) -> Dat4ConfigErSettings
     return Dat4ConfigErSettings(
         **kwargs,
         room_size=room_size,
-        room_dimensions=tuple(values[0:3]),
-        listener_position=tuple(values[3:6]),
+        room_dimensions=Vector3.from_iterable(values[0:3]),
+        listener_position=Vector3.from_iterable(values[3:6]),
         all_passes=all_passes,
         node_gain_matrix=node_gain_matrix,
         gain_first_order=gain_first_order,
@@ -135,7 +136,7 @@ def parse_dat4_config_item(
             return Dat4ConfigVector3(
                 **kwargs,
                 prefix_padding=data[8:16],
-                value=struct.unpack_from("<3f", data, 16),
+                value=Vector3.from_iterable(struct.unpack_from("<3f", data, 16)),
                 suffix_padding=data[28:32],
             )
         if type_id == int(Dat4ConfigType.VARIABLE_LIST):

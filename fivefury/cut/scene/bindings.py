@@ -7,6 +7,7 @@ from typing import Any
 
 from ...common import hash_value
 from ...hashing import jenk_partial_hash
+from ...vector import Vector3
 from ..model import CutHashedString, CutNode
 from .shared import (
     _clone_value,
@@ -812,19 +813,14 @@ class CutBlockingBounds(_TypedCutBinding):
     ROLE = "blocking_bounds"
 
     @property
-    def corners(self) -> tuple[tuple[float, float, float], ...]:
-        return tuple(
-            tuple(float(axis) for axis in corner)
-            for corner in self.fields.get("vCorners", ())
-        )
+    def corners(self) -> tuple[Vector3, ...]:
+        return tuple(self.fields.get("vCorners", ()))
 
     @corners.setter
-    def corners(self, value: tuple[tuple[float, float, float], ...]) -> None:
-        if len(value) != 4 or any(len(corner) != 3 for corner in value):
-            raise ValueError("blocking bounds require exactly four 3D corners")
-        self.fields["vCorners"] = [
-            tuple(float(axis) for axis in corner) for corner in value
-        ]
+    def corners(self, value: tuple[Vector3, Vector3, Vector3, Vector3]) -> None:
+        if not all(isinstance(corner, Vector3) for corner in value):
+            raise TypeError("blocking bounds corners must be Vector3 instances")
+        self.fields["vCorners"] = list(value)
 
     @property
     def height(self) -> float:
@@ -845,16 +841,17 @@ class CutRayfire(_CutNamedStreamedBinding):
     ROLE = "rayfire"
 
     @property
-    def start_position(self) -> tuple[float, float, float]:
-        return tuple(
-            float(value) for value in self.fields.get("vStartPosition", (0.0, 0.0, 0.0))
-        )
+    def start_position(self) -> Vector3:
+        value = self.fields.get("vStartPosition", Vector3())
+        if not isinstance(value, Vector3):
+            raise TypeError("rayfire vStartPosition must be a Vector3")
+        return value
 
     @start_position.setter
-    def start_position(self, value: tuple[float, float, float]) -> None:
-        if len(value) != 3:
-            raise ValueError("rayfire start_position must contain three values")
-        self.fields["vStartPosition"] = tuple(float(axis) for axis in value)
+    def start_position(self, value: Vector3) -> None:
+        if not isinstance(value, Vector3):
+            raise TypeError("rayfire start_position must be a Vector3")
+        self.fields["vStartPosition"] = value
 
 
 class CutEventObject(_TypedCutBinding):

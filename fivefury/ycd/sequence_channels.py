@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+from ..vector import Quaternion, Vector3, Vector4
 from .sequence_tracks import (
     get_ycd_track_name,
     is_ycd_camera_track,
@@ -109,26 +110,26 @@ class YcdStaticFloatChannel(YcdAnimChannel):
 
 @dataclass(slots=True)
 class YcdStaticVector3Channel(YcdAnimChannel):
-    value: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    value: Vector3 = Vector3()
 
     @property
     def component_count(self) -> int:
         return 3
 
     def evaluate_components(self, frame: int) -> tuple[float, ...]:
-        return self.value
+        return self.value.components
 
 
 @dataclass(slots=True)
 class YcdStaticQuaternionChannel(YcdAnimChannel):
-    value: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    value: Quaternion = Quaternion()
 
     @property
     def component_count(self) -> int:
         return 4
 
     def evaluate_components(self, frame: int) -> tuple[float, ...]:
-        return self.value
+        return self.value.components
 
 
 @dataclass(slots=True)
@@ -261,17 +262,17 @@ class YcdAnimSequence:
             values.append(0.0)
         return tuple(values[:4])
 
-    def evaluate_vector4(self, frame: int) -> tuple[float, float, float, float]:
+    def evaluate_vector4(self, frame: int) -> Vector4:
         values = self.evaluate_components(frame)
-        return (float(values[0]), float(values[1]), float(values[2]), float(values[3]))
+        return Vector4.from_iterable(values)
 
-    def evaluate_vector3(self, frame: int) -> tuple[float, float, float]:
+    def evaluate_vector3(self, frame: int) -> Vector3:
         values = self.evaluate_components(frame)
-        return (float(values[0]), float(values[1]), float(values[2]))
+        return Vector3.from_iterable(values[:3])
 
-    def evaluate_quaternion(self, frame: int) -> tuple[float, float, float, float]:
+    def evaluate_quaternion(self, frame: int) -> Quaternion:
         if not self.is_cached_quaternion:
-            return self.evaluate_vector4(frame)
+            return Quaternion.from_iterable(self.evaluate_components(frame))
 
         explicit: list[float] = []
         normalized = 0.0
@@ -290,18 +291,18 @@ class YcdAnimSequence:
         # CachedQuaternion2 layout follows four explicit components and stores
         # auxiliary cache metadata; those explicit values are the quaternion.
         if len(explicit) >= 4:
-            return tuple(explicit[:4])
+            return Quaternion.from_iterable(explicit[:4])
         xyz = explicit
         while len(xyz) < 3:
             xyz.append(0.0)
         x, y, z = xyz[:3]
         if quat_index == 0:
-            return (normalized, x, y, z)
+            return Quaternion(normalized, x, y, z)
         if quat_index == 1:
-            return (x, normalized, y, z)
+            return Quaternion(x, normalized, y, z)
         if quat_index == 2:
-            return (x, y, normalized, z)
-        return (x, y, z, normalized)
+            return Quaternion(x, y, normalized, z)
+        return Quaternion(x, y, z, normalized)
 
 
 def channel_frame_bits(channel: YcdAnimChannel) -> int:

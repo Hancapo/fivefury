@@ -35,28 +35,20 @@ def _radius_from_center(
     vertices: Sequence[Vector3],
     center: Vector3,
 ) -> float:
-    return math.sqrt(
-        max(
-            sum(
-                (vertex[axis] - center[axis]) ** 2
-                for axis in range(3)
-            )
-            for vertex in vertices
-        )
-    )
+    return max((vertex - center).length for vertex in vertices)
 
 
 def _box_mass_properties(
     minimum: Vector3,
     maximum: Vector3,
 ) -> tuple[Vector3, float, Vector3]:
-    size = tuple(maximum[axis] - minimum[axis] for axis in range(3))
-    center = tuple((minimum[axis] + maximum[axis]) * 0.5 for axis in range(3))
-    volume = abs(size[0] * size[1] * size[2])
-    inertia = (
-        ((size[1] * size[1]) + (size[2] * size[2])) / 12.0,
-        ((size[0] * size[0]) + (size[2] * size[2])) / 12.0,
-        ((size[0] * size[0]) + (size[1] * size[1])) / 12.0,
+    size = maximum - minimum
+    center = (minimum + maximum) * 0.5
+    volume = abs(size.x * size.y * size.z)
+    inertia = Vector3(
+        ((size.y * size.y) + (size.z * size.z)) / 12.0,
+        ((size.x * size.x) + (size.z * size.z)) / 12.0,
+        ((size.x * size.x) + (size.y * size.y)) / 12.0,
     )
     return center, volume, inertia
 
@@ -68,64 +60,63 @@ def _mesh_mass_properties(
     maximum: Vector3,
 ) -> tuple[Vector3, float, Vector3]:
     signed_volume = 0.0
-    first_moment = [0.0, 0.0, 0.0]
-    second_moment = [0.0, 0.0, 0.0]
+    first_moment_x = 0.0
+    first_moment_y = 0.0
+    first_moment_z = 0.0
+    second_moment_x = 0.0
+    second_moment_y = 0.0
+    second_moment_z = 0.0
     for index0, index1, index2 in triangles:
         a = vertices[index0]
         b = vertices[index1]
         c = vertices[index2]
-        cross = (
-            (b[1] * c[2]) - (b[2] * c[1]),
-            (b[2] * c[0]) - (b[0] * c[2]),
-            (b[0] * c[1]) - (b[1] * c[0]),
-        )
-        tetra_volume = (
-            (a[0] * cross[0]) + (a[1] * cross[1]) + (a[2] * cross[2])
-        ) / 6.0
+        cross = b.cross(c)
+        tetra_volume = a.dot(cross) / 6.0
         signed_volume += tetra_volume
-        for axis in range(3):
-            first_moment[axis] += (
-                tetra_volume
-                * (a[axis] + b[axis] + c[axis])
-                / 4.0
-            )
-            second_moment[axis] += tetra_volume * (
-                (a[axis] * a[axis])
-                + (b[axis] * b[axis])
-                + (c[axis] * c[axis])
-                + (a[axis] * b[axis])
-                + (a[axis] * c[axis])
-                + (b[axis] * c[axis])
-            ) / 10.0
+        first_moment_x += tetra_volume * (a.x + b.x + c.x) / 4.0
+        first_moment_y += tetra_volume * (a.y + b.y + c.y) / 4.0
+        first_moment_z += tetra_volume * (a.z + b.z + c.z) / 4.0
+        second_moment_x += tetra_volume * (
+            (a.x * a.x)
+            + (b.x * b.x)
+            + (c.x * c.x)
+            + (a.x * b.x)
+            + (a.x * c.x)
+            + (b.x * c.x)
+        ) / 10.0
+        second_moment_y += tetra_volume * (
+            (a.y * a.y)
+            + (b.y * b.y)
+            + (c.y * c.y)
+            + (a.y * b.y)
+            + (a.y * c.y)
+            + (b.y * c.y)
+        ) / 10.0
+        second_moment_z += tetra_volume * (
+            (a.z * a.z)
+            + (b.z * b.z)
+            + (c.z * c.z)
+            + (a.z * b.z)
+            + (a.z * c.z)
+            + (b.z * c.z)
+        ) / 10.0
 
     if not math.isfinite(signed_volume) or abs(signed_volume) <= 1.0e-9:
         return _box_mass_properties(minimum, maximum)
     sign = 1.0 if signed_volume > 0.0 else -1.0
     volume = abs(signed_volume)
-    center = tuple(
-        (first_moment[axis] * sign) / volume for axis in range(3)
+    center = Vector3(
+        (first_moment_x * sign) / volume,
+        (first_moment_y * sign) / volume,
+        (first_moment_z * sign) / volume,
     )
-    moments = [value * sign for value in second_moment]
-    inertia_origin = (
-        moments[1] + moments[2],
-        moments[0] + moments[2],
-        moments[0] + moments[1],
-    )
-    inertia = tuple(
-        max(
-            0.0,
-            (
-                inertia_origin[axis]
-                - volume
-                * sum(
-                    center[other] * center[other]
-                    for other in range(3)
-                    if other != axis
-                )
-            )
-            / volume,
-        )
-        for axis in range(3)
+    moment_x = second_moment_x * sign
+    moment_y = second_moment_y * sign
+    moment_z = second_moment_z * sign
+    inertia = Vector3(
+        max(0.0, ((moment_y + moment_z) - volume * (center.y**2 + center.z**2)) / volume),
+        max(0.0, ((moment_x + moment_z) - volume * (center.x**2 + center.z**2)) / volume),
+        max(0.0, ((moment_x + moment_y) - volume * (center.x**2 + center.y**2)) / volume),
     )
     if not all(math.isfinite(value) for value in (*center, *inertia)):
         return _box_mass_properties(minimum, maximum)
@@ -150,10 +141,9 @@ def build_fragment_geometry_bound(
     if not math.isfinite(resolved_margin) or resolved_margin < 0.0:
         raise ValueError("fragment geometry margin must be finite and non-negative")
 
-    target_vertices = [
-        (float(vertex[0]), float(vertex[1]), float(vertex[2]))
-        for vertex in vertices
-    ]
+    target_vertices = list(vertices)
+    if any(not isinstance(vertex, Vector3) for vertex in target_vertices):
+        raise TypeError("fragment geometry vertices must be Vector3 values")
     target_triangles: list[IndexedTriangle] = []
     for index, triangle in enumerate(triangles):
         if len(triangle) != 3:
@@ -226,9 +216,7 @@ def build_fragment_geometry_bound(
         raise ValueError("fragment geometry references an invalid material")
 
     minimum, maximum = bounds_from_vertices(target_vertices)
-    center_geom = tuple(
-        (minimum[axis] + maximum[axis]) * 0.5 for axis in range(3)
-    )
+    center_geom = (minimum + maximum) * 0.5
     center_of_gravity, volume, inertia = _mesh_mass_properties(
         target_vertices,
         target_triangles,
@@ -270,7 +258,7 @@ def build_fragment_geometry_bound(
         ref_count=1,
         angular_inertia=inertia,
         volume=volume,
-        quantum=(1.0, 1.0, 1.0),
+        quantum=Vector3(1.0, 1.0, 1.0),
         center_geom=center_geom,
         vertices=target_vertices,
         vertices_shrunk=list(target_vertices),

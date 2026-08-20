@@ -9,11 +9,6 @@ from ..hashing import jenkins_hash_words
 from ..vector import (
     Aabb3,
     Vector3,
-    aabb_transform,
-    quat_rotate_vector,
-    vec_add,
-    vec_scale,
-    vec_sub,
 )
 from ..ydr.model import Ydr, YdrLight, YdrLightFlags, YdrLightType
 from .entities import EntityDef
@@ -69,10 +64,10 @@ class LodLightSourceInstance:
 def calculate_lod_light_hash(entity_bounds: Aabb3, light_index: int) -> int:
     if light_index < 0:
         raise ValueError("light_index must be non-negative")
-    minimum, maximum = _validate_aabb(entity_bounds, name="entity_bounds")
+    bounds = _validate_aabb(entity_bounds, name="entity_bounds")
     words = [
-        *(_quantize_hash_bound(component) for component in minimum),
-        *(_quantize_hash_bound(component) for component in maximum),
+        *(_quantize_hash_bound(component) for component in bounds.minimum),
+        *(_quantize_hash_bound(component) for component in bounds.maximum),
         int(light_index),
     ]
     return jenkins_hash_words(words)
@@ -106,28 +101,32 @@ def validate_lod_light_source_bounds(
 ) -> ValidationReport:
     issues = ValidationReport()
     try:
-        archetype_min, archetype_max = _validate_aabb(archetype_bounds, name="archetype_bounds")
+        archetype = _validate_aabb(archetype_bounds, name="archetype_bounds")
     except ValueError as exc:
         issues.issue("ymap.lod_source.archetype_bounds.invalid", str(exc), path="archetype_bounds")
         return issues
     try:
-        drawable_min, drawable_max = _validate_aabb(drawable_bounds, name="drawable_bounds")
+        drawable = _validate_aabb(drawable_bounds, name="drawable_bounds")
     except ValueError as exc:
         issues.issue("ymap.lod_source.drawable_bounds.invalid", str(exc), path="drawable_bounds")
         return issues
-    axes = "XYZ"
-    for axis in range(3):
-        if drawable_min[axis] < archetype_min[axis] - tolerance:
+    components = (
+        ("x", drawable.minimum.x, archetype.minimum.x, drawable.maximum.x, archetype.maximum.x),
+        ("y", drawable.minimum.y, archetype.minimum.y, drawable.maximum.y, archetype.maximum.y),
+        ("z", drawable.minimum.z, archetype.minimum.z, drawable.maximum.z, archetype.maximum.z),
+    )
+    for axis, drawable_minimum, archetype_minimum, drawable_maximum, archetype_maximum in components:
+        if drawable_minimum < archetype_minimum - tolerance:
             issues.issue(
                 "ymap.lod_source.bounds.minimum",
-                f"archetype bbMin.{axes[axis]} does not contain the drawable bounds",
-                path=f"archetype_bounds.minimum[{axis}]",
+                f"archetype bbMin.{axis} does not contain the drawable bounds",
+                path=f"archetype_bounds.minimum.{axis}",
             )
-        if drawable_max[axis] > archetype_max[axis] + tolerance:
+        if drawable_maximum > archetype_maximum + tolerance:
             issues.issue(
                 "ymap.lod_source.bounds.maximum",
-                f"archetype bbMax.{axes[axis]} does not contain the drawable bounds",
-                path=f"archetype_bounds.maximum[{axis}]",
+                f"archetype bbMax.{axis} does not contain the drawable bounds",
+                path=f"archetype_bounds.maximum.{axis}",
             )
     return issues
 
@@ -149,33 +148,39 @@ def calculate_light_physical_bounds(
     radius = float(light.falloff) + extra_radius
 
     if light.light_type == YdrLightType.POINT:
-        offset = (radius, radius, radius)
-        return vec_sub(world_position, offset), vec_add(world_position, offset)
+        offset = Vector3(radius, radius, radius)
+        return Aabb3(world_position - offset, world_position + offset)
     if light.light_type == YdrLightType.CAPSULE:
-        half_extent = float(light.extent[0]) * 0.5
-        point_a = vec_add(world_position, vec_scale(world_direction, half_extent))
-        point_b = vec_sub(world_position, vec_scale(world_direction, half_extent))
-        offset = (radius, radius, radius)
-        return (
-            tuple(min(point_a[i], point_b[i]) - offset[i] for i in range(3)),
-            tuple(max(point_a[i], point_b[i]) + offset[i] for i in range(3)),
+        half_extent = light.extent.x * 0.5
+        point_a = world_position + (world_direction * half_extent)
+        point_b = world_position - (world_direction * half_extent)
+        offset = Vector3(radius, radius, radius)
+        return Aabb3(
+            Vector3.minimum((point_a, point_b)) - offset,
+            Vector3.maximum((point_a, point_b)) + offset,
         )
     if light.light_type == YdrLightType.SPOT:
-        adjusted_position = vec_sub(
-            world_position, vec_scale(world_direction, extra_radius)
-        )
+        adjusted_position = world_position - (world_direction * extra_radius)
         cone_radius = radius + extra_radius
         angle = math.radians(float(light.cone_outer_angle))
-        minimum: list[float] = []
-        maximum: list[float] = []
-        for axis in range(3):
-            direction_component = max(-1.0, min(1.0, world_direction[axis]))
+
+        def axis_bounds(position_component: float, direction_component: float) -> tuple[float, float]:
+            direction_component = max(-1.0, min(1.0, direction_component))
             direction_angle = math.acos(direction_component)
             min_angle = max(math.pi * 0.5, min(math.pi, direction_angle + angle))
             max_angle = max(0.0, min(math.pi * 0.5, direction_angle - angle))
-            minimum.append(adjusted_position[axis] + math.cos(min_angle) * cone_radius)
-            maximum.append(adjusted_position[axis] + math.cos(max_angle) * cone_radius)
-        return tuple(minimum), tuple(maximum)
+            return (
+                position_component + math.cos(min_angle) * cone_radius,
+                position_component + math.cos(max_angle) * cone_radius,
+            )
+
+        x_min, x_max = axis_bounds(adjusted_position.x, world_direction.x)
+        y_min, y_max = axis_bounds(adjusted_position.y, world_direction.y)
+        z_min, z_max = axis_bounds(adjusted_position.z, world_direction.z)
+        return Aabb3(
+            Vector3(x_min, y_min, z_min),
+            Vector3(x_max, y_max, z_max),
+        )
     raise ValueError(f"unsupported YDR light type: {int(light.light_type)}")
 
 
@@ -190,15 +195,13 @@ def extract_lod_light(
     if light.light_fade_distance > 0:
         return None
 
-    scale = (float(entity.scale_xy), float(entity.scale_xy), float(entity.scale_z))
-    scaled_position = tuple(light.position[i] * scale[i] for i in range(3))
-    world_position = vec_add(
-        quat_rotate_vector(entity.rotation, scaled_position), entity.position
-    )
-    scaled_direction = tuple(light.direction[i] * scale[i] for i in range(3))
-    world_direction = quat_rotate_vector(entity.rotation, scaled_direction)
+    scale = Vector3(float(entity.scale_xy), float(entity.scale_xy), float(entity.scale_z))
+    scaled_position = Vector3(light.position.x * scale.x, light.position.y * scale.y, light.position.z * scale.z)
+    world_position = entity.rotation.rotate(scaled_position) + entity.position
+    scaled_direction = Vector3(light.direction.x * scale.x, light.direction.y * scale.y, light.direction.z * scale.z)
+    world_direction = entity.rotation.rotate(scaled_direction)
 
-    capsule_extent = float(light.extent[0])
+    capsule_extent = light.extent.x
     effective_type = light.light_type
     if (
         effective_type == YdrLightType.CAPSULE
@@ -275,13 +278,12 @@ def extract_lod_lights(
         return []
     validate_lod_light_source_bounds(
         archetype_bounds,
-        (ydr.bounding_box_min, ydr.bounding_box_max),
+        Aabb3(ydr.bounding_box_min, ydr.bounding_box_max),
     ).raise_for_errors()
-    entity_bounds = aabb_transform(
-        archetype_bounds,
+    entity_bounds = archetype_bounds.transformed(
         translation=entity.position,
         rotation=entity.rotation,
-        scale=(entity.scale_xy, entity.scale_xy, entity.scale_z),
+        scale=Vector3(entity.scale_xy, entity.scale_xy, entity.scale_z),
     )
     extracted: list[GeneratedLodLight] = []
     for light_index, light in enumerate(ydr.lights):
@@ -298,13 +300,13 @@ def extract_lod_lights(
 
 
 def _validate_aabb(bounds: Aabb3, *, name: str) -> Aabb3:
-    minimum = tuple(float(value) for value in bounds[0])
-    maximum = tuple(float(value) for value in bounds[1])
-    if not all(math.isfinite(value) for value in (*minimum, *maximum)):
+    if not isinstance(bounds, Aabb3):
+        raise TypeError(f"{name} must be an Aabb3")
+    if not bounds.minimum.is_finite or not bounds.maximum.is_finite:
         raise ValueError(f"{name} must contain finite values")
-    if any(minimum[axis] > maximum[axis] for axis in range(3)):
+    if any(left > right for left, right in zip(bounds.minimum, bounds.maximum, strict=True)):
         raise ValueError(f"{name} minimum must not exceed its maximum")
-    return minimum, maximum
+    return bounds
 
 
 def _quantize_hash_bound(value: float) -> int:

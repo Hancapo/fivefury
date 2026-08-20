@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fivefury import Aabb3, Quaternion, Vector3
 from fivefury.ydr import Ydr, YdrLight
 from fivefury.ymap import (
     EntityDef,
@@ -18,7 +19,7 @@ from fivefury.ymap import (
 
 def _generated_light(
     light_hash: int,
-    position: tuple[float, float, float],
+    position: Vector3,
     *,
     category: YmapLodLightCategory = YmapLodLightCategory.SMALL,
     street: bool = False,
@@ -28,9 +29,9 @@ def _generated_light(
     return GeneratedLodLight(
         light=light,
         category=category,
-        physical_bounds=(
-            tuple(component - 1.0 for component in position),
-            tuple(component + 1.0 for component in position),
+        physical_bounds=Aabb3(
+            position - Vector3(1.0, 1.0, 1.0),
+            position + Vector3(1.0, 1.0, 1.0),
         ),
         source_light_index=light_hash,
         source_model_name=f"model_{light_hash}",
@@ -39,10 +40,10 @@ def _generated_light(
 
 def test_build_lod_light_maps_creates_runtime_parent_child_pair() -> None:
     lights = [
-        _generated_light(5, (10.0, 20.0, 30.0), street=True),
-        _generated_light(2, (20.0, 30.0, 40.0)),
-        _generated_light(3, (30.0, 40.0, 50.0), street=True),
-        _generated_light(1, (40.0, 50.0, 60.0)),
+        _generated_light(5, Vector3(10.0, 20.0, 30.0), street=True),
+        _generated_light(2, Vector3(20.0, 30.0, 40.0)),
+        _generated_light(3, Vector3(30.0, 40.0, 50.0), street=True),
+        _generated_light(1, Vector3(40.0, 50.0, 60.0)),
     ]
 
     pairs = build_lod_light_maps(lights, name_prefix="custom")
@@ -60,15 +61,15 @@ def test_build_lod_light_maps_creates_runtime_parent_child_pair() -> None:
     assert pair.distant.distant_lod_lights.num_street_lights == 2
     assert pair.lod.lod_lights is not None
     assert pair.lod.lod_lights.hash == [3, 5, 1, 2]
-    assert pair.distant.entities_extents_min == (9.0, 19.0, 29.0)
-    assert pair.distant.entities_extents_max == (41.0, 51.0, 61.0)
-    assert pair.distant.streaming_extents_min == (-440.0, -430.0, -420.0)
-    assert pair.lod.streaming_extents_max == (490.0, 500.0, 510.0)
+    assert pair.distant.entities_extents_min == Vector3(9.0, 19.0, 29.0)
+    assert pair.distant.entities_extents_max == Vector3(41.0, 51.0, 61.0)
+    assert pair.distant.streaming_extents_min == Vector3(-440.0, -430.0, -420.0)
+    assert pair.lod.streaming_extents_max == Vector3(490.0, 500.0, 510.0)
 
 
 def test_build_lod_light_maps_partitions_dense_categories() -> None:
     lights = [
-        _generated_light(index + 1, (float(index), 0.0, 0.0))
+        _generated_light(index + 1, Vector3(float(index), 0.0, 0.0))
         for index in range(801)
     ]
 
@@ -89,10 +90,10 @@ def test_build_lod_light_maps_partitions_dense_categories() -> None:
 def test_build_lod_light_maps_supports_script_controlled_groups() -> None:
     pairs = build_lod_light_maps(
         [
-            _generated_light(1, (0.0, 0.0, 0.0)),
+            _generated_light(1, Vector3()),
             _generated_light(
                 2,
-                (1.0, 0.0, 0.0),
+                Vector3(1.0, 0.0, 0.0),
                 category=YmapLodLightCategory.LARGE,
             ),
         ],
@@ -110,8 +111,8 @@ def test_build_lod_light_maps_supports_script_controlled_groups() -> None:
 
 def test_build_lod_light_maps_rejects_hash_collisions() -> None:
     lights = [
-        _generated_light(1, (0.0, 0.0, 0.0)),
-        _generated_light(1, (10.0, 0.0, 0.0)),
+        _generated_light(1, Vector3()),
+        _generated_light(1, Vector3(10.0, 0.0, 0.0)),
     ]
 
     try:
@@ -124,13 +125,13 @@ def test_build_lod_light_maps_rejects_hash_collisions() -> None:
 
 def test_generated_lod_light_maps_roundtrip_and_save(tmp_path) -> None:
     pair = build_lod_light_maps(
-        [_generated_light(0x12345678, (1.0, 2.0, 3.0))]
+        [_generated_light(0x12345678, Vector3(1.0, 2.0, 3.0))]
     )[0]
 
     distant = read_ymap(pair.distant.to_bytes())
     lod = read_ymap(pair.lod.to_bytes())
     assert distant.distant_lod_lights is not None
-    assert distant.distant_lod_lights.position == [(1.0, 2.0, 3.0)]
+    assert distant.distant_lod_lights.position == [Vector3(1.0, 2.0, 3.0)]
     assert lod.lod_lights is not None
     assert lod.lod_lights.hash == [0x12345678]
 
@@ -146,12 +147,12 @@ def test_build_lod_light_maps_from_source_instances() -> None:
     source = LodLightSourceInstance(
         ydr=Ydr(
             version=165,
-            bounding_box_min=(-1.0, -1.0, -1.0),
-            bounding_box_max=(1.0, 1.0, 1.0),
+            bounding_box_min=Vector3(-1.0, -1.0, -1.0),
+            bounding_box_max=Vector3(1.0, 1.0, 1.0),
             lights=[YdrLight.point(intensity=1.0, falloff=2.0)],
         ),
-        entity=EntityDef(position=(10.0, 20.0, 30.0)),
-        archetype_bounds=((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)),
+        entity=EntityDef(position=Vector3(10.0, 20.0, 30.0), rotation=Quaternion()),
+        archetype_bounds=Aabb3(Vector3(-1.0, -1.0, -1.0), Vector3(1.0, 1.0, 1.0)),
         model_name="custom_light",
     )
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..authoring.context import BuildContext
 from ..authoring.diagnostics import DiagnosticSeverity, ValidationReport
+from ..vector import Vector2, Vector3
 from .geometry import (
     WaterAlpha,
     WaterBounds,
@@ -90,8 +91,8 @@ class WaterQuad:
     def rectangle(
         cls,
         *,
-        center: tuple[float, float, float],
-        size: tuple[float, float],
+        center: Vector3,
+        size: Vector2,
         alpha: WaterAlpha = 26,
         invisible: bool = False,
         limited_depth: bool = False,
@@ -111,8 +112,8 @@ class WaterQuad:
     def triangle(
         cls,
         *,
-        center: tuple[float, float, float],
-        size: tuple[float, float],
+        center: Vector3,
+        size: Vector2,
         shape: WaterQuadType,
         alpha: WaterAlpha = 26,
         invisible: bool = False,
@@ -136,24 +137,24 @@ class WaterQuad:
     def _from_center(
         cls,
         *,
-        center: tuple[float, float, float],
-        size: tuple[float, float],
+        center: Vector3,
+        size: Vector2,
         shape: WaterQuadType,
         alpha: WaterAlpha,
         invisible: bool,
         limited_depth: bool,
         no_stencil: bool,
     ) -> WaterQuad:
-        if len(center) != 3:
-            raise ValueError("center must contain x, y, and z")
-        min_x, min_y, max_x, max_y = _centered_bounds(center[:2], size)
+        if not isinstance(center, Vector3):
+            raise TypeError("center must be a Vector3")
+        bounds = _centered_bounds(Vector2(center.x, center.y), size)
         alpha_sw, alpha_se, alpha_ne, alpha_nw = _coerce_alphas(alpha)
         return cls(
-            min_x=min_x,
-            min_y=min_y,
-            max_x=max_x,
-            max_y=max_y,
-            z=float(center[2]),
+            min_x=bounds.min_x,
+            min_y=bounds.min_y,
+            max_x=bounds.max_x,
+            max_y=bounds.max_y,
+            z=center.z,
             type=shape,
             is_invisible=invisible,
             has_limited_depth=limited_depth,
@@ -173,8 +174,8 @@ class WaterQuad:
         return self.max_y - self.min_y
 
     @property
-    def center(self) -> tuple[float, float, float]:
-        return (
+    def center(self) -> Vector3:
+        return Vector3(
             (self.min_x + self.max_x) * 0.5,
             (self.min_y + self.max_y) * 0.5,
             self.z,
@@ -199,11 +200,11 @@ class WaterQuad:
             int(value) for value in values
         )
 
-    def corners(self) -> tuple[tuple[float, float, float], ...]:
-        nw = (float(self.min_x), float(self.max_y), self.z)
-        ne = (float(self.max_x), float(self.max_y), self.z)
-        sw = (float(self.min_x), float(self.min_y), self.z)
-        se = (float(self.max_x), float(self.min_y), self.z)
+    def corners(self) -> tuple[Vector3, ...]:
+        nw = Vector3(self.min_x, self.max_y, self.z)
+        ne = Vector3(self.max_x, self.max_y, self.z)
+        sw = Vector3(self.min_x, self.min_y, self.z)
+        se = Vector3(self.max_x, self.min_y, self.z)
         points = {
             WaterQuadType.RECTANGLE: (sw, se, ne, nw),
             WaterQuadType.TRIANGLE_A: (sw, se, nw),
@@ -279,16 +280,16 @@ class WaterCalmingQuad:
     def rectangle(
         cls,
         *,
-        center: tuple[float, float],
-        size: tuple[float, float],
+        center: Vector2,
+        size: Vector2,
         dampening: float,
     ) -> WaterCalmingQuad:
-        min_x, min_y, max_x, max_y = _centered_bounds(center, size)
+        bounds = _centered_bounds(center, size)
         return cls(
-            min_x=min_x,
-            min_y=min_y,
-            max_x=max_x,
-            max_y=max_y,
+            min_x=bounds.min_x,
+            min_y=bounds.min_y,
+            max_x=bounds.max_x,
+            max_y=bounds.max_y,
             dampening=dampening,
         )
 
@@ -337,13 +338,13 @@ class WaterWaveQuad:
         amplitude: float,
         degrees: float,
     ) -> WaterWaveQuad:
-        min_x, min_y, max_x, max_y = _coerce_bounds(bounds)
+        declared_bounds = _coerce_bounds(bounds)
         radians = math.radians(float(degrees))
         return cls(
-            min_x=min_x,
-            min_y=min_y,
-            max_x=max_x,
-            max_y=max_y,
+            min_x=declared_bounds.min_x,
+            min_y=declared_bounds.min_y,
+            max_x=declared_bounds.max_x,
+            max_y=declared_bounds.max_y,
             amplitude=amplitude,
             direction_x=math.cos(radians),
             direction_y=math.sin(radians),
@@ -353,8 +354,8 @@ class WaterWaveQuad:
     def from_center(
         cls,
         *,
-        center: tuple[float, float],
-        size: tuple[float, float],
+        center: Vector2,
+        size: Vector2,
         amplitude: float,
         degrees: float,
     ) -> WaterWaveQuad:
@@ -365,12 +366,14 @@ class WaterWaveQuad:
         )
 
     @property
-    def direction(self) -> tuple[float, float]:
-        return self.direction_x, self.direction_y
+    def direction(self) -> Vector2:
+        return Vector2(self.direction_x, self.direction_y)
 
     @direction.setter
-    def direction(self, value: tuple[float, float]) -> None:
-        self.direction_x, self.direction_y = (float(component) for component in value)
+    def direction(self, value: Vector2) -> None:
+        if not isinstance(value, Vector2):
+            raise TypeError("WaterWaveQuad.direction must be a Vector2")
+        self.direction_x, self.direction_y = value.x, value.y
 
     def normalize_direction(self) -> WaterWaveQuad:
         length = math.hypot(self.direction_x, self.direction_y)
@@ -451,7 +454,7 @@ class WaterData:
         items = list(self.iter_components())
         if not items:
             return None
-        return (
+        return WaterBounds(
             min(item.min_x for item in items),
             min(item.min_y for item in items),
             max(item.max_x for item in items),

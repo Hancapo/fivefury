@@ -14,8 +14,11 @@ from fivefury import (
     BoundType,
     DiagnosticSeverity,
     GameTarget,
+    Quaternion,
     Texture,
     TextureFormat,
+    Vector2,
+    Vector3,
     Ydr,
     YdrBone,
     YdrBoneFlagName,
@@ -110,17 +113,17 @@ _GEN9_ENVIRONMENT_SHADER_FAMILIES = (
 def _triangle_mesh(material: str = "default") -> YdrMeshInput:
     return YdrMeshInput(
         positions=[
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         indices=[0, 1, 2],
         material=material,
         texcoords=[
             [
-                (0.0, 0.0),
-                (1.0, 0.0),
-                (0.0, 1.0),
+                Vector2(),
+                Vector2(1.0, 0.0),
+                Vector2(0.0, 1.0),
             ]
         ],
     )
@@ -129,17 +132,17 @@ def _triangle_mesh(material: str = "default") -> YdrMeshInput:
 def _offset_triangle_mesh(offset_x: float, material: str = "default") -> YdrMeshInput:
     return YdrMeshInput(
         positions=[
-            (0.0 + offset_x, 0.0, 0.0),
-            (1.0 + offset_x, 0.0, 0.0),
-            (0.0 + offset_x, 1.0, 0.0),
+            Vector3(offset_x, 0.0, 0.0),
+            Vector3(1.0 + offset_x, 0.0, 0.0),
+            Vector3(offset_x, 1.0, 0.0),
         ],
         indices=[0, 1, 2],
         material=material,
         texcoords=[
             [
-                (0.0, 0.0),
-                (1.0, 0.0),
-                (0.0, 1.0),
+                Vector2(),
+                Vector2(1.0, 0.0),
+                Vector2(0.0, 1.0),
             ]
         ],
     )
@@ -249,7 +252,7 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
 def test_rigid_bone_binding_is_applied_to_drawable_bounds(tmp_path: Path) -> None:
     skeleton = YdrSkeleton()
     root = skeleton.bone("root")
-    skeleton.bone("piece", parent=root, translation=(10.0, 2.0, 3.0))
+    skeleton.bone("piece", parent=root, translation=Vector3(10.0, 2.0, 3.0))
     build = create_ydr(
         meshes=[_triangle_mesh()],
         skeleton=skeleton,
@@ -261,9 +264,9 @@ def test_rigid_bone_binding_is_applied_to_drawable_bounds(tmp_path: Path) -> Non
     build.save(ydr_path)
     ydr = read_ydr(ydr_path)
 
-    assert ydr.bounding_box_min == pytest.approx((10.0, 2.0, 3.0))
-    assert ydr.bounding_box_max == pytest.approx((11.0, 3.0, 3.0))
-    assert ydr.bounding_center == pytest.approx((10.5, 2.5, 3.0))
+    assert ydr.bounding_box_min.components == pytest.approx((10.0, 2.0, 3.0))
+    assert ydr.bounding_box_max.components == pytest.approx((11.0, 3.0, 3.0))
+    assert ydr.bounding_center.components == pytest.approx((10.5, 2.5, 3.0))
 
 
 def test_create_ydr_writes_legacy_texture_base_contract(tmp_path: Path) -> None:
@@ -290,16 +293,16 @@ def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
     joints = YdrJoints()
     joints.rotation_limit(
         bone_id=root_bone.tag,
-        min=(-1.0, -0.5, -0.25),
-        max=(1.0, 0.5, 0.25),
+        min=Vector3(-1.0, -0.5, -0.25),
+        max=Vector3(1.0, 0.5, 0.25),
         unknown_ah=7,
         num_control_points=2,
         joint_dofs=3,
     )
     joints.translation_limit(
         bone_id=root_bone.tag,
-        min=(-0.1, -0.2, -0.3),
-        max=(0.1, 0.2, 0.3),
+        min=Vector3(-0.1, -0.2, -0.3),
+        max=Vector3(0.1, 0.2, 0.3),
     )
     build = create_ydr(
         meshes=[_triangle_mesh()],
@@ -324,11 +327,11 @@ def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
     assert ydr.joints.rotation_limits[0].unknown_ah == 7
     assert ydr.joints.rotation_limits[0].num_control_points == 2
     assert ydr.joints.rotation_limits[0].joint_dofs == 3
-    assert ydr.joints.rotation_limits[0].min == pytest.approx((-1.0, -0.5, -0.25))
-    assert ydr.joints.rotation_limits[0].max == pytest.approx((1.0, 0.5, 0.25))
+    assert ydr.joints.rotation_limits[0].min.components == pytest.approx((-1.0, -0.5, -0.25))
+    assert ydr.joints.rotation_limits[0].max.components == pytest.approx((1.0, 0.5, 0.25))
     assert ydr.joints.translation_limits[0].bone_id == root_bone.tag
-    assert ydr.joints.translation_limits[0].min == pytest.approx((-0.1, -0.2, -0.3))
-    assert ydr.joints.translation_limits[0].max == pytest.approx((0.1, 0.2, 0.3))
+    assert ydr.joints.translation_limits[0].min.components == pytest.approx((-0.1, -0.2, -0.3))
+    assert ydr.joints.translation_limits[0].max.components == pytest.approx((0.1, 0.2, 0.3))
 
 
 def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path: Path) -> None:
@@ -730,9 +733,9 @@ def test_read_trimesh_scene_converts_native_scene() -> None:
     assert imported.materials[0].textures["DiffuseSampler"] == "facade_d"
     assert imported.materials[0].textures["BumpSampler"] == "facade_n"
     assert imported.materials[0].textures["SpecSampler"] == "facade_s"
-    assert imported.meshes[0].positions[0] == pytest.approx((2.0, -4.0, 3.0))
-    assert imported.meshes[0].positions[1] == pytest.approx((3.0, -4.0, 3.0))
-    assert imported.meshes[0].texcoords[0][2] == pytest.approx((0.0, 0.0))
+    assert imported.meshes[0].positions[0].components == pytest.approx((2.0, -4.0, 3.0))
+    assert imported.meshes[0].positions[1].components == pytest.approx((3.0, -4.0, 3.0))
+    assert imported.meshes[0].texcoords[0][2].components == pytest.approx((0.0, 0.0))
 
 
 def test_read_trimesh_scene_can_convert_material_colours_to_embedded_textures() -> None:
@@ -804,7 +807,7 @@ def test_read_trimesh_scene_preserves_instances() -> None:
     imported = read_trimesh_scene(scene, name="instances")
 
     assert len(imported.meshes) == 2
-    minimum_x = sorted(min(position[0] for position in mesh.positions) for mesh in imported.meshes)
+    minimum_x = sorted(min(position.x for position in mesh.positions) for mesh in imported.meshes)
     assert minimum_x == pytest.approx([-0.5, 9.5])
 
 
@@ -848,7 +851,7 @@ def test_read_trimesh_scene_uses_inverse_transpose_for_normals() -> None:
 
     imported = read_trimesh_scene(scene, name="scaled")
 
-    assert imported.meshes[0].normals[0] == pytest.approx(
+    assert imported.meshes[0].normals[0].components == pytest.approx(
         (1.0 / 5**0.5, 0.0, 2.0 / 5**0.5)
     )
 
@@ -875,7 +878,7 @@ def test_trimesh_to_ydr_fills_missing_uvs_and_normals(tmp_path: Path) -> None:
 
     assert ydr.meshes[0].normals
     assert ydr.meshes[0].texcoords[0]
-    assert set(ydr.meshes[0].texcoords[0]) == {(0.0, 0.0)}
+    assert set(ydr.meshes[0].texcoords[0]) == {Vector2()}
 
 
 def test_trimesh_scene_to_ydr_accepts_enhanced_game() -> None:
@@ -929,8 +932,8 @@ def test_trimesh_to_ydr_writes_enhanced(tmp_path: Path) -> None:
 
 def test_writer_auto_splits_meshes_over_vertex_limit(tmp_path: Path) -> None:
     vertex_count = 66000
-    positions = [(float(index), 0.0, 0.0) for index in range(vertex_count)]
-    texcoords0 = [(0.0, 0.0)] * vertex_count
+    positions = [Vector3(float(index), 0.0, 0.0) for index in range(vertex_count)]
+    texcoords0 = [Vector2()] * vertex_count
     mesh = YdrMeshInput(
         positions=positions,
         indices=list(range(vertex_count)),
@@ -1085,15 +1088,15 @@ def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
         ],
         lights=[
             YdrLight(
-                position=(1.0, 2.0, 3.0),
+                position=Vector3(1.0, 2.0, 3.0),
                 color=(10, 20, 30),
                 intensity=4.5,
                 light_type=YdrLightType.SPOT,
                 falloff=15.0,
                 volume_outer_color=(40, 50, 60),
                 light_hash=77,
-                direction=(0.0, 0.0, -1.0),
-                tangent=(1.0, 0.0, 0.0),
+                direction=Vector3(0.0, 0.0, -1.0),
+                tangent=Vector3(1.0, 0.0, 0.0),
                 cone_inner_angle=0.25,
                 cone_outer_angle=0.5,
                 projected_texture_hash=0x12345678,
@@ -1108,15 +1111,15 @@ def test_build_and_read_ydr_lights(tmp_path: Path) -> None:
 
     assert len(ydr.lights) == 1
     light = ydr.lights[0]
-    assert light.position == pytest.approx((1.0, 2.0, 3.0))
+    assert light.position.components == pytest.approx((1.0, 2.0, 3.0))
     assert light.color == (10, 20, 30)
     assert light.intensity == pytest.approx(4.5)
     assert light.light_type is YdrLightType.SPOT
     assert light.falloff == pytest.approx(15.0)
     assert light.volume_outer_color == (40, 50, 60)
     assert light.light_hash == 77
-    assert light.direction == pytest.approx((0.0, 0.0, -1.0))
-    assert light.tangent == pytest.approx((1.0, 0.0, 0.0))
+    assert light.direction.components == pytest.approx((0.0, 0.0, -1.0))
+    assert light.tangent.components == pytest.approx((1.0, 0.0, 0.0))
     assert light.cone_inner_angle == pytest.approx(0.25)
     assert light.cone_outer_angle == pytest.approx(0.5)
     assert light.projected_texture_hash == 0x12345678
@@ -1129,18 +1132,18 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
         name="light_helpers",
     )
     point = build.light(YdrLight.point(
-        position=(1.0, 2.0, 3.0),
+        position=Vector3(1.0, 2.0, 3.0),
         color=(10, 20, 30),
         intensity=4.0,
         falloff=25.0,
     ))
     spot = build.light(YdrLight.spot(
-        position=(4.0, 5.0, 6.0),
-        direction=(0.0, 0.0, -1.0),
+        position=Vector3(4.0, 5.0, 6.0),
+        direction=Vector3(0.0, 0.0, -1.0),
         cone_inner_angle=0.2,
         cone_outer_angle=0.6,
     ))
-    capsule = build.light(YdrLight.capsule(position=(7.0, 8.0, 9.0), extent=(0.0, 0.0, 3.0)))
+    capsule = build.light(YdrLight.capsule(position=Vector3(7.0, 8.0, 9.0), extent=Vector3(0.0, 0.0, 3.0)))
 
     assert point.light_type is YdrLightType.POINT
     assert spot.light_type is YdrLightType.SPOT
@@ -1151,15 +1154,15 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
     ydr = read_ydr(path)
 
     assert [light.light_type for light in ydr.lights] == [YdrLightType.POINT, YdrLightType.SPOT, YdrLightType.CAPSULE]
-    assert ydr.lights[0].position == pytest.approx((1.0, 2.0, 3.0))
+    assert ydr.lights[0].position.components == pytest.approx((1.0, 2.0, 3.0))
     assert ydr.lights[0].color == (10, 20, 30)
     assert ydr.lights[0].intensity == pytest.approx(4.0)
     assert ydr.lights[0].falloff == pytest.approx(25.0)
-    assert ydr.lights[1].direction == pytest.approx((0.0, 0.0, -1.0))
+    assert ydr.lights[1].direction.components == pytest.approx((0.0, 0.0, -1.0))
     assert ydr.lights[1].cone_outer_angle == pytest.approx(0.6)
-    assert ydr.lights[2].extent == pytest.approx((0.0, 0.0, 3.0))
+    assert ydr.lights[2].extent.components == pytest.approx((0.0, 0.0, 3.0))
 
-    parsed_spot = ydr.light(YdrLight.spot(position=(10.0, 0.0, 0.0), cone_outer_angle=1.0))
+    parsed_spot = ydr.light(YdrLight.spot(position=Vector3(10.0, 0.0, 0.0), cone_outer_angle=1.0))
     assert parsed_spot.light_type is YdrLightType.SPOT
     assert len(ydr.lights) == 4
     ydr.clear_lights()
@@ -1527,10 +1530,10 @@ def test_build_and_read_ydr_embedded_bound(tmp_path: Path) -> None:
         ],
         bound=BoundSphere(
             bound_type=BoundType.SPHERE,
-            box_min=(-1.0, -1.0, -1.0),
-            box_max=(1.0, 1.0, 1.0),
-            box_center=(0.0, 0.0, 0.0),
-            sphere_center=(0.0, 0.0, 0.0),
+            box_min=Vector3(-1.0, -1.0, -1.0),
+            box_max=Vector3(1.0, 1.0, 1.0),
+            box_center=Vector3(),
+            sphere_center=Vector3(),
             sphere_radius=1.25,
             margin=0.25,
         ),
@@ -1549,17 +1552,17 @@ def test_build_and_read_ydr_embedded_bound(tmp_path: Path) -> None:
 def _skinned_triangle_mesh(material: str = "default") -> YdrMeshInput:
     return YdrMeshInput(
         positions=[
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         indices=[0, 1, 2],
         material=material,
         texcoords=[
             [
-                (0.0, 0.0),
-                (1.0, 0.0),
-                (0.0, 1.0),
+                Vector2(),
+                Vector2(1.0, 0.0),
+                Vector2(0.0, 1.0),
             ]
         ],
         blend_weights=[
@@ -1588,7 +1591,7 @@ def _simple_skeleton() -> YdrSkeleton:
         parent=root,
         tag=1,
         flags=YdrBoneFlags.ROT_X | YdrBoneFlags.ROT_Y | YdrBoneFlags.ROT_Z,
-        translation=(0.0, 0.25, 0.0),
+        translation=Vector3(0.0, 0.25, 0.0),
     )
     return skeleton.build()
 
@@ -1599,27 +1602,27 @@ def _hashable_skeleton() -> YdrSkeleton:
         "root",
         tag=0,
         flags=YdrBoneFlags.ROT_X | YdrBoneFlags.TRANS_Y | YdrBoneFlags.HAS_CHILD,
-        translation=(1.0, 2.0, 3.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
-        scale=(1.0, 1.0, 1.0),
+        translation=Vector3(1.0, 2.0, 3.0),
+        rotation=Quaternion(0.0, 0.0, 0.0, 1.0),
+        scale=Vector3(1.0, 1.0, 1.0),
     )
     mid = skeleton.bone(
         "mid",
         parent=root,
         tag=11,
         flags=YdrBoneFlags.ROT_Y | YdrBoneFlags.TRANS_Z | YdrBoneFlags.SCALE_X,
-        translation=(0.0, 0.25, 0.5),
-        rotation=(0.1, 0.2, 0.3, 0.9),
-        scale=(1.0, 2.0, 1.0),
+        translation=Vector3(0.0, 0.25, 0.5),
+        rotation=Quaternion(0.1, 0.2, 0.3, 0.9),
+        scale=Vector3(1.0, 2.0, 1.0),
     )
     skeleton.bone(
         "leaf",
         parent=mid,
         tag=12,
         flags=YdrBoneFlags.ROT_Z | YdrBoneFlags.LIMIT_ROTATION,
-        translation=(-1.0, 0.0, 1.0),
-        rotation=(0.4, 0.0, 0.0, 0.8),
-        scale=(0.5, 0.5, 0.5),
+        translation=Vector3(-1.0, 0.0, 1.0),
+        rotation=Quaternion(0.4, 0.0, 0.0, 0.8),
+        scale=Vector3(0.5, 0.5, 0.5),
     )
     return skeleton.build()
 
@@ -1643,7 +1646,11 @@ def _tiny_embedded_ytd() -> Ytd:
 def test_declarative_skeleton_helpers() -> None:
     skeleton = YdrSkeleton()
     root = skeleton.bone("root")
-    child = skeleton.bone("child", parent="root", translation=(0.0, 1.0, 0.0))
+    child = skeleton.bone(
+        "child",
+        parent="root",
+        translation=Vector3(0.0, 1.0, 0.0),
+    )
     skeleton.build()
 
     assert root.flags == (
@@ -2223,10 +2230,10 @@ def test_to_build_preserves_embedded_assets(tmp_path: Path) -> None:
         embedded_textures=_tiny_embedded_ytd(),
         bound=BoundSphere(
             bound_type=BoundType.SPHERE,
-            box_min=(-0.5, -0.5, -0.5),
-            box_max=(0.5, 0.5, 0.5),
-            box_center=(0.0, 0.0, 0.0),
-            sphere_center=(0.0, 0.0, 0.0),
+            box_min=Vector3(-0.5, -0.5, -0.5),
+            box_max=Vector3(0.5, 0.5, 0.5),
+            box_center=Vector3(),
+            sphere_center=Vector3(),
             sphere_radius=0.75,
             margin=0.1,
         ),
@@ -2285,10 +2292,10 @@ def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
 
     ydr.bound = BoundSphere(
         bound_type=BoundType.SPHERE,
-        box_min=(-1.0, -1.0, -1.0),
-        box_max=(1.0, 1.0, 1.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-1.0, -1.0, -1.0),
+        box_max=Vector3(1.0, 1.0, 1.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         sphere_radius=1.0,
         margin=0.0,
     )
@@ -2365,7 +2372,7 @@ def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
         | YdrBoneFlags.HAS_CHILD
     )
     assert ydr.skeleton.bones[1].parent_index == 0
-    assert ydr.skeleton.bones[1].translation == pytest.approx((0.0, 0.25, 0.0))
+    assert ydr.skeleton.bones[1].translation.components == pytest.approx((0.0, 0.25, 0.0))
     assert (ydr.skeleton.unknown_50h, ydr.skeleton.unknown_54h, ydr.skeleton.unknown_58h) == skeleton.calculate_unknown_hashes()
 
 
@@ -2447,16 +2454,16 @@ def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
     joints = YdrJoints()
     joints.rotation_limit(
         bone_id=0,
-        min=(-0.1, -0.2, -0.3),
-        max=(0.1, 0.2, 0.3),
+        min=Vector3(-0.1, -0.2, -0.3),
+        max=Vector3(0.1, 0.2, 0.3),
         unknown_ah=7,
         num_control_points=2,
         joint_dofs=3,
     )
     joints.translation_limit(
         bone_id=1,
-        min=(-1.0, -2.0, -3.0),
-        max=(1.0, 2.0, 3.0),
+        min=Vector3(-1.0, -2.0, -3.0),
+        max=Vector3(1.0, 2.0, 3.0),
     )
 
     build = YdrBuild(
@@ -2490,11 +2497,11 @@ def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
     assert ydr.joints.rotation_limits[0].unknown_ah == 7
     assert ydr.joints.rotation_limits[0].num_control_points == 2
     assert ydr.joints.rotation_limits[0].joint_dofs == 3
-    assert ydr.joints.rotation_limits[0].min == pytest.approx((-0.1, -0.2, -0.3))
-    assert ydr.joints.rotation_limits[0].max == pytest.approx((0.1, 0.2, 0.3))
+    assert ydr.joints.rotation_limits[0].min.components == pytest.approx((-0.1, -0.2, -0.3))
+    assert ydr.joints.rotation_limits[0].max.components == pytest.approx((0.1, 0.2, 0.3))
     assert ydr.joints.translation_limits[0].bone_id == 1
-    assert ydr.joints.translation_limits[0].min == pytest.approx((-1.0, -2.0, -3.0))
-    assert ydr.joints.translation_limits[0].max == pytest.approx((1.0, 2.0, 3.0))
+    assert ydr.joints.translation_limits[0].min.components == pytest.approx((-1.0, -2.0, -3.0))
+    assert ydr.joints.translation_limits[0].max.components == pytest.approx((1.0, 2.0, 3.0))
 
 
 def test_joints_validation_detects_unknown_bones() -> None:
@@ -2532,8 +2539,8 @@ def test_skeleton_incremental_and_batch_bone_building() -> None:
 
 
 def test_ydr_meshes_include_every_lod_and_primary_meshes_are_explicit() -> None:
-    high_mesh = YdrMesh(positions=[(0.0, 0.0, 0.0)])
-    low_mesh = YdrMesh(positions=[(10.0, 0.0, 0.0)])
+    high_mesh = YdrMesh(positions=[Vector3()])
+    low_mesh = YdrMesh(positions=[Vector3(10.0, 0.0, 0.0)])
     ydr = Ydr(
         version=165,
         lods={

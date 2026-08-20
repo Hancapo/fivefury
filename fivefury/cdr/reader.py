@@ -6,6 +6,7 @@ from pathlib import Path
 from ..common import ByteSource, read_source_bytes
 from ..drawable import ShaderLibrary, load_shader_library, parameter_component_count
 from ..resolver import resolve_hash
+from ..vector import Quaternion, Vector2, Vector3, Vector4
 from .model import (
     CDR_LOD_ORDER,
     Cdr,
@@ -196,9 +197,9 @@ def _parse_skeleton(view: Ps3ResourceView, pointer: int) -> CdrSkeleton | None:
                 next_sibling_index=view.s16(bone_offset + 0x30),
                 mirror_index=view.u16(bone_offset + 0x3E),
                 flags=view.u16(bone_offset + 0x38),
-                rotation=tuple(float(value) for value in rotation),
-                translation=tuple(float(value) for value in translation4[:3]),
-                scale=tuple(float(value) for value in scale4[:3]),
+                rotation=Quaternion.from_iterable(rotation),
+                translation=Vector3.from_iterable(translation4[:3]),
+                scale=Vector3.from_iterable(scale4[:3]),
                 inverse_bind_transform=_matrix4(view, inverse_transforms_pointer, bone_index),
                 default_transform=_matrix4(view, default_transforms_pointer, bone_index),
             )
@@ -259,7 +260,9 @@ def _parse_joints(view: Ps3ResourceView, pointer: int) -> CdrJoints | None:
                     bone_id=view.s32(item_offset + 0x04),
                     control_point_count=view.s32(item_offset + 0x08),
                     degrees_of_freedom=view.s32(item_offset + 0x0C),
-                    zero_rotation=struct.unpack_from(">4f", view.system, item_offset + 0x10),
+                    zero_rotation=Quaternion.from_iterable(
+                        struct.unpack_from(">4f", view.system, item_offset + 0x10)
+                    ),
                     zero_rotation_euler=view.vec3(item_offset + 0x20),
                     twist_axis=view.vec3(item_offset + 0x30),
                     min_twist=view.f32(item_offset + 0x40),
@@ -383,8 +386,8 @@ def _merge_edge_attributes(target: dict[int, list[tuple[float, ...]]], source: d
         target.setdefault(semantic, []).extend(values)
 
 
-def _edge_vec3(values: list[tuple[float, ...]]) -> list[tuple[float, float, float]]:
-    return [(float(value[0]), float(value[1]), float(value[2])) for value in values]
+def _edge_vec3(values: list[tuple[float, ...]]) -> list[Vector3]:
+    return [Vector3.from_iterable(value[:3]) for value in values]
 
 
 def _edge_vec4(values: list[tuple[float, ...]], default_w: float = 1.0) -> list[tuple[float, float, float, float]]:
@@ -511,11 +514,15 @@ def _parse_edge_mesh(
         blend_weights.extend(segment.blend_weights)
         blend_indices.extend(segment.blend_indices)
     positions = [
-        (value[0] + geometry_offset_xyz[0], value[1] + geometry_offset_xyz[1], value[2] + geometry_offset_xyz[2])
+        value + geometry_offset_xyz
         for value in _edge_vec3(attributes.get(1, []))
     ]
     texcoord_ids = (5, 6, 7, 8, 17, 18)
-    texcoords = [[(float(value[0]), float(value[1])) for value in attributes[semantic]] for semantic in texcoord_ids if semantic in attributes]
+    texcoords = [
+        [Vector2(value[0], value[1]) for value in attributes[semantic]]
+        for semantic in texcoord_ids
+        if semantic in attributes
+    ]
     return CdrMesh(
         geometry_type=CdrGeometryType.EDGE,
         material_index=material_index,
@@ -523,7 +530,10 @@ def _parse_edge_mesh(
         indices=indices,
         positions=positions,
         normals=_edge_vec3(attributes.get(2, [])),
-        tangents=_edge_vec4(attributes.get(3, [])),
+        tangents=[
+            Vector4.from_iterable(value)
+            for value in _edge_vec4(attributes.get(3, []))
+        ],
         texcoords=texcoords,
         colours0=_edge_vec4(attributes.get(9, [])),
         colours1=_edge_vec4(attributes.get(19, [])),

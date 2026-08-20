@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import math
-from collections.abc import Sequence
-
 from ..binary import fits_unsigned
+from ..vector import Vector3
 from .diagnostics import ValidationReport
 
 
@@ -21,15 +19,21 @@ def check_unsigned(
 
 def check_finite_aabb(
     report: ValidationReport,
-    minimum: Sequence[float],
-    maximum: Sequence[float],
+    minimum: Vector3,
+    maximum: Vector3,
     *,
     code: str,
     path: str,
 ) -> None:
-    if not all(math.isfinite(value) for value in (*minimum, *maximum)):
+    if not isinstance(minimum, Vector3) or not isinstance(maximum, Vector3):
+        raise TypeError("AABB bounds must be Vector3 values")
+    if not minimum.is_finite or not maximum.is_finite:
         report.issue(f"{code}.non_finite", f"{path} contains non-finite values", path=path)
-    elif any(minimum[axis] > maximum[axis] for axis in range(3)):
+    elif (
+        minimum.x > maximum.x
+        or minimum.y > maximum.y
+        or minimum.z > maximum.z
+    ):
         report.issue(f"{code}.inverted", f"{path} is inverted", path=path)
 
 

@@ -12,11 +12,7 @@ from ..mesh_math import (
     generate_vertex_tangents,
     triangle_array,
 )
-from ..vector import (
-    aabb_center,
-    aabb_from_points,
-    sphere_radius_from_points,
-)
+from ..vector import Aabb3, Vector2, Vector3, Vector4, sphere_radius_from_points
 from .build_types import (
     YdrBuild,
     YdrMaterialInput,
@@ -107,12 +103,12 @@ class PreparedMaterial:
 
 @dataclasses.dataclass(slots=True)
 class PreparedMesh:
-    positions: list[tuple[float, float, float]]
+    positions: list[Vector3]
     indices: list[int]
     material_index: int
-    normals: list[tuple[float, float, float]]
-    texcoords: list[list[tuple[float, float]]]
-    tangents: list[tuple[float, float, float, float]]
+    normals: list[Vector3]
+    texcoords: list[list[Vector2]]
+    tangents: list[Vector4]
     colours0: list[tuple[float, float, float, float]]
     colours1: list[tuple[float, float, float, float]]
     blend_weights: list[tuple[float, float, float, float]]
@@ -304,10 +300,10 @@ def select_layout(
 
 def _encode_vertex_bytes(
     semantics: Sequence[tuple[VertexSemantic, VertexComponentType]],
-    positions: Sequence[tuple[float, float, float]],
-    normals: Sequence[tuple[float, float, float]],
-    texcoords: Sequence[Sequence[tuple[float, float]]],
-    tangents: Sequence[tuple[float, float, float, float]],
+    positions: Sequence[Vector3],
+    normals: Sequence[Vector3],
+    texcoords: Sequence[Sequence[Vector2]],
+    tangents: Sequence[Vector4],
     colours0: Sequence[tuple[float, float, float, float]],
     colours1: Sequence[tuple[float, float, float, float]],
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
@@ -337,10 +333,13 @@ def _encode_vertex_bytes(
             arity = 3
         else:
             arity = 4
-        return [
-            tuple(value[:arity]) + (fill,) * max(0, arity - len(value))
-            for value in values
-        ]
+        expanded = []
+        for value in values:
+            components = tuple(value)
+            expanded.append(
+                components[:arity] + (fill,) * max(0, arity - len(components))
+            )
+        return expanded
 
     positions = expand(positions, VertexSemantic.POSITION, fill=1.0)
     normals = expand(normals, VertexSemantic.NORMAL)
@@ -374,10 +373,10 @@ def _encode_vertex_bytes(
 
 def _encode_vertex_bytes_from_layout(
     layout: ShaderLayoutDefinition,
-    positions: Sequence[tuple[float, float, float]],
-    normals: Sequence[tuple[float, float, float]],
-    texcoords: Sequence[Sequence[tuple[float, float]]],
-    tangents: Sequence[tuple[float, float, float, float]],
+    positions: Sequence[Vector3],
+    normals: Sequence[Vector3],
+    texcoords: Sequence[Sequence[Vector2]],
+    tangents: Sequence[Vector4],
     colours0: Sequence[tuple[float, float, float, float]],
     colours1: Sequence[tuple[float, float, float, float]],
     *,
@@ -428,10 +427,10 @@ def _encode_vertex_bytes_from_layout(
 def _encode_vertex_bytes_from_declaration(
     flags: int,
     types_value: int,
-    positions: Sequence[tuple[float, float, float]],
-    normals: Sequence[tuple[float, float, float]],
-    texcoords: Sequence[Sequence[tuple[float, float]]],
-    tangents: Sequence[tuple[float, float, float, float]],
+    positions: Sequence[Vector3],
+    normals: Sequence[Vector3],
+    texcoords: Sequence[Sequence[Vector2]],
+    tangents: Sequence[Vector4],
     colours0: Sequence[tuple[float, float, float, float]],
     colours1: Sequence[tuple[float, float, float, float]],
     *,
@@ -456,31 +455,22 @@ def _encode_vertex_bytes_from_declaration(
 
 
 def compute_bounds(
-    positions: Sequence[tuple[float, float, float]],
-) -> tuple[
-    tuple[float, float, float],
-    tuple[float, float, float],
-    tuple[float, float, float],
-    float,
-]:
+    positions: Sequence[Vector3],
+) -> tuple[Vector3, Vector3, Vector3, float]:
     if not positions:
-        return (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.0
-    bb_min, bb_max = aabb_from_points(positions)
-    centre = aabb_center(bb_min, bb_max)
+        zero = Vector3()
+        return zero, zero, zero, 0.0
+    bounds = Aabb3.from_points(positions)
+    centre = bounds.center
     radius = sphere_radius_from_points(centre, positions)
-    return centre, bb_min, bb_max, radius
+    return centre, bounds.minimum, bounds.maximum, radius
 
 
 def compute_model_collection_bounds(
     models: Sequence[PreparedModel],
     *,
     skeleton: YdrSkeleton | None = None,
-) -> tuple[
-    tuple[float, float, float],
-    tuple[float, float, float],
-    tuple[float, float, float],
-    float,
-]:
+) -> tuple[Vector3, Vector3, Vector3, float]:
     absolute_transforms = skeleton_absolute_transforms(skeleton)
     position_groups = []
     for model in models:
@@ -505,10 +495,13 @@ def compute_model_collection_bounds(
             )
     if not position_groups:
         return compute_bounds(())
-    mesh_bounds = [aabb_from_points(positions) for positions in position_groups]
-    bb_min = tuple(min(bounds[0][axis] for bounds in mesh_bounds) for axis in range(3))
-    bb_max = tuple(max(bounds[1][axis] for bounds in mesh_bounds) for axis in range(3))
-    centre = aabb_center(bb_min, bb_max)
+    mesh_bounds = [Aabb3.from_points(positions) for positions in position_groups]
+    bounds = mesh_bounds[0]
+    for mesh_bounds_value in mesh_bounds[1:]:
+        bounds = bounds.merged(mesh_bounds_value)
+    bb_min = bounds.minimum
+    bb_max = bounds.maximum
+    centre = bounds.center
     radius = max(
         sphere_radius_from_points(centre, positions) for positions in position_groups
     )
@@ -516,16 +509,13 @@ def compute_model_collection_bounds(
 
 
 def _transform_position(
-    position: tuple[float, float, float],
+    position: Vector3,
     matrix: Matrix4,
-) -> tuple[float, float, float]:
-    x, y, z = (float(value) for value in position)
-    return tuple(
-        x * matrix[0][axis]
-        + y * matrix[1][axis]
-        + z * matrix[2][axis]
-        + matrix[3][axis]
-        for axis in range(3)
+) -> Vector3:
+    return Vector3(
+        position.x * matrix[0][0] + position.y * matrix[1][0] + position.z * matrix[2][0] + matrix[3][0],
+        position.x * matrix[0][1] + position.y * matrix[1][1] + position.z * matrix[2][1] + matrix[3][1],
+        position.x * matrix[0][2] + position.y * matrix[1][2] + position.z * matrix[2][2] + matrix[3][2],
     )
 
 
@@ -538,9 +528,9 @@ def _copy_vertex_channel(
 
 
 def _copy_texcoord_channels(
-    channels: Sequence[Sequence[tuple[float, float]]] | None,
+    channels: Sequence[Sequence[Vector2]] | None,
     vertex_indices: Sequence[int],
-) -> list[list[tuple[float, float]]] | None:
+) -> list[list[Vector2]] | None:
     if channels is None:
         return None
     return [[channel[index] for index in vertex_indices] for channel in channels]
@@ -605,19 +595,19 @@ def _prepare_meshes(
                 raise ValueError(f"Mesh references unknown material '{mesh.material}'")
             material = prepared_materials[material_lookup[material_key]]
 
-            positions = [tuple(map(float, position)) for position in mesh.positions]
+            positions = list(mesh.positions)
             indices = [int(index) for index in mesh.indices]
             normals = (
-                [tuple(map(float, normal)) for normal in mesh.normals]
+                list(mesh.normals)
                 if mesh.normals is not None
                 else []
             )
             texcoords = [
-                [(float(u), float(v)) for u, v in channel]
+                list(channel)
                 for channel in (mesh.texcoords or [])
             ]
             tangents = (
-                [tuple(map(float, tangent)) for tangent in mesh.tangents]
+                list(mesh.tangents)
                 if mesh.tangents is not None
                 else []
             )
@@ -697,7 +687,7 @@ def _prepare_meshes(
                 normals = (
                     generate_vertex_normals(positions, indices)
                     if generate_normals
-                    else [(0.0, 0.0, 1.0)] * len(positions)
+                    else [Vector3(0.0, 0.0, 1.0)] * len(positions)
                 )
             if len(normals) != len(positions):
                 raise ValueError("Mesh normals length must match positions length")

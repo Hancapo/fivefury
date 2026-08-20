@@ -11,6 +11,7 @@ from ..map_extensions import (
 )
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
+from ..vector import Quaternion, Vector3
 from .enums import (
     YmapEntityFlags,
     YmapLodLevel,
@@ -30,8 +31,8 @@ class EntityDef(MetaHashFieldsMixin, ExtensionContainer):
     archetype_name: MetaHash | HashLike = 0
     flags: YmapEntityFlags | int = YmapEntityFlags.NONE
     guid: int = 0
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
+    rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
     scale_xy: float = 1.0
     scale_z: float = 1.0
     parent_index: int = -1
@@ -46,6 +47,8 @@ class EntityDef(MetaHashFieldsMixin, ExtensionContainer):
     tint_value: int = 0
 
     def __post_init__(self) -> None:
+        if not isinstance(self.position, Vector3) or not isinstance(self.rotation, Quaternion):
+            raise TypeError("EntityDef position and rotation must use nominal math types")
         self.flags = coerce_ymap_entity_flags(self.flags)
         self.lod_level = coerce_ymap_lod_level(self.lod_level)
         self.priority_level = coerce_ymap_priority_level(self.priority_level)
@@ -78,8 +81,8 @@ class EntityDef(MetaHashFieldsMixin, ExtensionContainer):
             archetype_name=value.get("archetypeName", 0),
             flags=coerce_ymap_entity_flags(int(value.get("flags", 0))),
             guid=int(value.get("guid", 0)),
-            position=tuple(value.get("position", (0.0, 0.0, 0.0))),
-            rotation=tuple(value.get("rotation", (0.0, 0.0, 0.0, 1.0))),
+            position=Vector3.from_iterable(value.get("position", (0.0, 0.0, 0.0))),
+            rotation=Quaternion.from_iterable(value.get("rotation", (0.0, 0.0, 0.0, 1.0))),
             scale_xy=float(value.get("scaleXY", 1.0)),
             scale_z=float(value.get("scaleZ", 1.0)),
             parent_index=int(value.get("parentIndex", -1)),

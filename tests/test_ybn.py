@@ -37,6 +37,7 @@ from fivefury import (
     GameFileCache,
     GameFileType,
     GameTarget,
+    Vector3,
     Ybn,
     bounds_from_vertices,
     build_bound_from_triangles,
@@ -97,8 +98,9 @@ def _make_sphere(
     material_index: int = 7,
 ) -> BoundSphere:
     cx, cy, cz = center
-    minimum = (cx - radius, cy - radius, cz - radius)
-    maximum = (cx + radius, cy + radius, cz + radius)
+    center_value = Vector3(cx, cy, cz)
+    minimum = Vector3(cx - radius, cy - radius, cz - radius)
+    maximum = Vector3(cx + radius, cy + radius, cz + radius)
     volume = (4.0 / 3.0) * math.pi * (radius**3)
     return BoundSphere(
         bound_type=0,
@@ -106,11 +108,11 @@ def _make_sphere(
         box_max=maximum,
         margin=0.0,
         box_min=minimum,
-        box_center=center,
-        sphere_center=center,
+        box_center=center_value,
+        sphere_center=center_value,
         material_index=material_index,
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=volume,
     )
 
@@ -121,7 +123,9 @@ def _make_box(
     maximum: tuple[float, float, float] = (1.0, 2.0, 3.0),
     material_index: int = 5,
 ) -> BoundBox:
-    center = tuple((a + b) * 0.5 for a, b in zip(minimum, maximum, strict=True))
+    minimum_value = Vector3(*minimum)
+    maximum_value = Vector3(*maximum)
+    center = (minimum_value + maximum_value) * 0.5
     dx = maximum[0] - minimum[0]
     dy = maximum[1] - minimum[1]
     dz = maximum[2] - minimum[2]
@@ -129,23 +133,23 @@ def _make_box(
     return BoundBox(
         bound_type=3,
         sphere_radius=radius,
-        box_max=maximum,
+        box_max=maximum_value,
         margin=0.0,
-        box_min=minimum,
+        box_min=minimum_value,
         box_center=center,
         sphere_center=center,
         material_index=material_index,
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=dx * dy * dz,
     )
 
 
 def _make_geometry() -> BoundGeometry:
     vertices = [
-        (-1.0, 0.0, 0.0),
-        (1.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0),
+        Vector3(-1.0, 0.0, 0.0),
+        Vector3(1.0, 0.0, 0.0),
+        Vector3(0.0, 1.0, 0.0),
     ]
     polygon = BoundPolygonTriangle(
         polygon_type=0,
@@ -162,15 +166,15 @@ def _make_geometry() -> BoundGeometry:
     return BoundGeometry(
         bound_type=4,
         sphere_radius=1.5,
-        box_max=(1.0, 1.0, 0.0),
+        box_max=Vector3(1.0, 1.0, 0.0),
         margin=0.0,
-        box_min=(-1.0, 0.0, 0.0),
-        box_center=(0.0, 0.5, 0.0),
-        sphere_center=(0.0, 0.5, 0.0),
+        box_min=Vector3(-1.0, 0.0, 0.0),
+        box_center=Vector3(0.0, 0.5, 0.0),
+        sphere_center=Vector3(0.0, 0.5, 0.0),
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=1.0,
-        center_geom=(0.0, 0.5, 0.0),
+        center_geom=Vector3(0.0, 0.5, 0.0),
         vertices=vertices,
         polygons=[polygon],
         polygon_material_indices=[0],
@@ -196,9 +200,13 @@ def _make_geometry() -> BoundGeometry:
 def _make_bvh_geometry() -> BoundBVH:
     geometry = _make_geometry()
     bounds = BoundAabb(geometry.box_min, geometry.box_max)
-    center = tuple((bounds.minimum[axis] + bounds.maximum[axis]) * 0.5 for axis in range(3))
-    quantum = tuple(max(abs(bounds.minimum[axis] - center[axis]), abs(bounds.maximum[axis] - center[axis])) / 32767.0 or (1.0 / 32767.0) for axis in range(3))
-    quantum_inverse = tuple(1.0 / value for value in quantum)
+    center = (bounds.minimum + bounds.maximum) * 0.5
+    quantum = Vector3(
+        max(abs(bounds.minimum.x - center.x), abs(bounds.maximum.x - center.x)) / 32767.0 or (1.0 / 32767.0),
+        max(abs(bounds.minimum.y - center.y), abs(bounds.maximum.y - center.y)) / 32767.0 or (1.0 / 32767.0),
+        max(abs(bounds.minimum.z - center.z), abs(bounds.maximum.z - center.z)) / 32767.0 or (1.0 / 32767.0),
+    )
+    quantum_inverse = Vector3(1.0 / quantum.x, 1.0 / quantum.y, 1.0 / quantum.z)
     return BoundBVH(
         bound_type=8,
         sphere_radius=geometry.sphere_radius,
@@ -239,7 +247,7 @@ def _make_bvh_geometry() -> BoundBVH:
 
 
 def _make_large_bvh_geometry(*, polygon_count: int = 12, with_trivial_bvh: bool = False) -> BoundBVH:
-    vertices: list[tuple[float, float, float]] = []
+    vertices: list[Vector3] = []
     polygons: list[BoundPolygonTriangle] = []
     polygon_material_indices: list[int] = []
     for index in range(polygon_count):
@@ -248,9 +256,9 @@ def _make_large_bvh_geometry(*, polygon_count: int = 12, with_trivial_bvh: bool 
         base = len(vertices)
         vertices.extend(
             [
-                (x, y, 0.0),
-                (x + 0.9, y, 0.0),
-                (x, y + 0.9, 0.0),
+                Vector3(x, y, 0.0),
+                Vector3(x + 0.9, y, 0.0),
+                Vector3(x, y + 0.9, 0.0),
             ]
         )
         polygons.append(
@@ -270,34 +278,34 @@ def _make_large_bvh_geometry(*, polygon_count: int = 12, with_trivial_bvh: bool 
         )
         polygon_material_indices.append(0)
 
-    box_min = (0.0, 0.0, 0.0)
-    box_max = (
-        max(vertex[0] for vertex in vertices),
-        max(vertex[1] for vertex in vertices),
+    box_min = Vector3()
+    box_max = Vector3(
+        max(vertex.x for vertex in vertices),
+        max(vertex.y for vertex in vertices),
         0.0,
     )
-    box_center = ((box_min[0] + box_max[0]) * 0.5, (box_min[1] + box_max[1]) * 0.5, 0.0)
+    box_center = (box_min + box_max) * 0.5
     trivial_bvh = None
     if with_trivial_bvh:
         trivial_bvh = BoundBvh(
             minimum=box_min,
             maximum=box_max,
             center=box_center,
-            quantum_inverse=(32767.0, 32767.0, 32767.0),
-            quantum=(1.0 / 32767.0, 1.0 / 32767.0, 1.0 / 32767.0),
+            quantum_inverse=Vector3(32767.0, 32767.0, 32767.0),
+            quantum=Vector3(1.0 / 32767.0, 1.0 / 32767.0, 1.0 / 32767.0),
             nodes=[BoundBvhNode(minimum=box_min, maximum=box_max, item_id=0, item_count=polygon_count)],
             trees=[BoundBvhTree(minimum=box_min, maximum=box_max, node_index=0, node_index2=1)],
         )
     return BoundBVH(
         bound_type=8,
-        sphere_radius=max(box_max[0], box_max[1]),
+        sphere_radius=max(box_max.x, box_max.y),
         box_max=box_max,
         margin=0.04,
         box_min=box_min,
         box_center=box_center,
         sphere_center=box_center,
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=float(polygon_count),
         center_geom=box_center,
         vertices=vertices,
@@ -315,7 +323,7 @@ def test_read_ybn_reads_sphere_bound() -> None:
     assert ybn.version == 43
     assert isinstance(ybn.bound, BoundSphere)
     assert ybn.bound.bound_type.value == 0
-    assert ybn.bound.sphere_center == (1.0, 2.0, 3.0)
+    assert ybn.bound.sphere_center == Vector3(1.0, 2.0, 3.0)
     assert ybn.bound.sphere_radius == 2.5
     assert ybn.bound.material_index == 7
 
@@ -360,7 +368,7 @@ def test_enhanced_ybn_runtime_headers_propagate_to_composite_children() -> None:
         box_center=geometry.box_center,
         sphere_center=geometry.sphere_center,
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=geometry.volume,
     )
     root.child(geometry)
@@ -376,7 +384,7 @@ def test_enhanced_ybn_runtime_headers_propagate_to_composite_children() -> None:
 
 
 def test_enhanced_ybn_rejects_bound_without_known_runtime_header() -> None:
-    cloth = BoundCloth.from_center_size((0.0, 0.0, 0.0), (2.0, 0.25, 3.0))
+    cloth = BoundCloth.from_center_size(Vector3(), Vector3(2.0, 0.25, 3.0))
 
     with pytest.raises(ValueError, match="does not define a runtime header for CLOTH"):
         build_ybn_bytes(cloth, game=GameTarget.GTA5_ENHANCED)
@@ -504,32 +512,32 @@ def test_ybn_from_bound_and_save_roundtrip_composite() -> None:
     root = BoundComposite(
         bound_type=10,
         sphere_radius=2.0,
-        box_max=(2.0, 2.0, 2.0),
+        box_max=Vector3(2.0, 2.0, 2.0),
         margin=0.0,
-        box_min=(-2.0, -2.0, -2.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-2.0, -2.0, -2.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=1.0,
         children=[
             BoundChild(
                 bound=sphere,
                 transform=BoundTransform(
-                    column1=(1.0, 0.0, 0.0),
-                    column2=(0.0, 1.0, 0.0),
-                    column3=(0.0, 0.0, 1.0),
-                    column4=(1.0, 2.0, 3.0),
+                    column1=Vector3(1.0, 0.0, 0.0),
+                    column2=Vector3(0.0, 1.0, 0.0),
+                    column3=Vector3(0.0, 0.0, 1.0),
+                    column4=Vector3(1.0, 2.0, 3.0),
                 ),
                 bounds=BoundAabb(sphere.box_min, sphere.box_max),
             ),
             BoundChild(
                 bound=box,
                 transform=BoundTransform(
-                    column1=(1.0, 0.0, 0.0),
-                    column2=(0.0, 1.0, 0.0),
-                    column3=(0.0, 0.0, 1.0),
-                    column4=(-1.0, 0.0, 0.5),
+                    column1=Vector3(1.0, 0.0, 0.0),
+                    column2=Vector3(0.0, 1.0, 0.0),
+                    column3=Vector3(0.0, 0.0, 1.0),
+                    column4=Vector3(-1.0, 0.0, 0.5),
                 ),
                 bounds=BoundAabb(box.box_min, box.box_max),
             ),
@@ -548,9 +556,9 @@ def test_ybn_from_bound_and_save_roundtrip_composite() -> None:
     assert isinstance(parsed.bound.children[0].bound, BoundSphere)
     assert isinstance(parsed.bound.children[1].bound, BoundBox)
     assert parsed.bound.children[0].transform is not None
-    assert parsed.bound.children[0].transform.translation == (1.0, 2.0, 3.0)
+    assert parsed.bound.children[0].transform.translation == Vector3(1.0, 2.0, 3.0)
     assert parsed.bound.children[1].transform is not None
-    assert parsed.bound.children[1].transform.translation == (-1.0, 0.0, 0.5)
+    assert parsed.bound.children[1].transform.translation == Vector3(-1.0, 0.0, 0.5)
 
 
 def test_build_ybn_bytes_roundtrips_geometry_bound() -> None:
@@ -583,22 +591,22 @@ def test_ybn_from_bound_and_save_roundtrip_composite_with_geometry_child() -> No
     root = BoundComposite(
         bound_type=10,
         sphere_radius=2.0,
-        box_max=(2.0, 2.0, 2.0),
+        box_max=Vector3(2.0, 2.0, 2.0),
         margin=0.0,
-        box_min=(-2.0, -2.0, -2.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-2.0, -2.0, -2.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=1.0,
         children=[
             BoundChild(
                 bound=geometry,
                 transform=BoundTransform(
-                    column1=(1.0, 0.0, 0.0),
-                    column2=(0.0, 1.0, 0.0),
-                    column3=(0.0, 0.0, 1.0),
-                    column4=(2.0, 0.0, 0.0),
+                    column1=Vector3(1.0, 0.0, 0.0),
+                    column2=Vector3(0.0, 1.0, 0.0),
+                    column3=Vector3(0.0, 0.0, 1.0),
+                    column4=Vector3(2.0, 0.0, 0.0),
                 ),
                 bounds=BoundAabb(geometry.box_min, geometry.box_max),
             )
@@ -614,7 +622,7 @@ def test_ybn_from_bound_and_save_roundtrip_composite_with_geometry_child() -> No
     assert parsed.bound.child_count == 1
     child = parsed.bound.children[0]
     assert child.transform is not None
-    assert child.transform.translation == (2.0, 0.0, 0.0)
+    assert child.transform.translation == Vector3(2.0, 0.0, 0.0)
     assert isinstance(child.bound, BoundGeometry)
     assert child.bound.vertex_count == 3
     assert child.bound.polygon_count == 1
@@ -624,13 +632,13 @@ def test_build_ybn_bytes_roundtrips_composite_bvh_when_child_count_is_six() -> N
     root = BoundComposite(
         bound_type=10,
         sphere_radius=1.0,
-        box_max=(1.0, 1.0, 1.0),
+        box_max=Vector3(1.0, 1.0, 1.0),
         margin=0.0,
-        box_min=(-1.0, -1.0, -1.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-1.0, -1.0, -1.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=1.0,
     )
     for index in range(6):
@@ -638,10 +646,10 @@ def test_build_ybn_bytes_roundtrips_composite_bvh_when_child_count_is_six() -> N
         root.child(
             sphere,
             transform=BoundTransform(
-                column1=(1.0, 0.0, 0.0),
-                column2=(0.0, 1.0, 0.0),
-                column3=(0.0, 0.0, 1.0),
-                column4=(float(index) * 2.0, 0.0, 0.0),
+                column1=Vector3(1.0, 0.0, 0.0),
+                column2=Vector3(0.0, 1.0, 0.0),
+                column3=Vector3(0.0, 0.0, 1.0),
+                column4=Vector3(float(index) * 2.0, 0.0, 0.0),
                 flags2=1,
                 flags3=1,
             ),
@@ -792,8 +800,8 @@ def test_build_ybn_bytes_normalizes_inverted_bound_boxes() -> None:
 
     parsed = read_ybn(build_ybn_bytes(source), path="normalized_box.ybn")
 
-    assert parsed.bound.box_min == (-1.0, -2.0, -3.0)
-    assert parsed.bound.box_max == (4.0, 5.0, 6.0)
+    assert parsed.bound.box_min == Vector3(-1.0, -2.0, -3.0)
+    assert parsed.bound.box_max == Vector3(4.0, 5.0, 6.0)
 
 
 def test_build_ybn_bytes_falls_back_from_invalid_child_bounds() -> None:
@@ -801,18 +809,18 @@ def test_build_ybn_bytes_falls_back_from_invalid_child_bounds() -> None:
     root = BoundComposite(
         bound_type=10,
         sphere_radius=1.0,
-        box_max=(1.0, 1.0, 1.0),
+        box_max=Vector3(1.0, 1.0, 1.0),
         margin=0.0,
-        box_min=(-1.0, -1.0, -1.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-1.0, -1.0, -1.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=1.0,
         children=[
             BoundChild(
                 bound=child,
-                bounds=BoundAabb((5.0, 5.0, 5.0), (0.0, 0.0, 0.0)),
+                bounds=BoundAabb(Vector3(5.0, 5.0, 5.0), Vector3()),
             )
         ],
     )
@@ -850,61 +858,64 @@ def test_build_ybn_bytes_rejects_invalid_triangle_edge_indices() -> None:
 
 def test_bounds_geometry_helpers_compute_expected_values() -> None:
     vertices = [
-        (-4.0, 2.0, 1.5),
-        (3.0, -5.0, 7.5),
-        (0.5, 1.0, -2.0),
+        Vector3(-4.0, 2.0, 1.5),
+        Vector3(3.0, -5.0, 7.5),
+        Vector3(0.5, 1.0, -2.0),
     ]
     minimum, maximum = bounds_from_vertices(vertices)
-    center = ((minimum[0] + maximum[0]) * 0.5, (minimum[1] + maximum[1]) * 0.5, (minimum[2] + maximum[2]) * 0.5)
+    center = (minimum + maximum) * 0.5
 
-    assert minimum == (-4.0, -5.0, -2.0)
-    assert maximum == (3.0, 2.0, 7.5)
-    assert math.isclose(triangle_area((0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 3.0, 0.0)), 3.0)
+    assert minimum == Vector3(-4.0, -5.0, -2.0)
+    assert maximum == Vector3(3.0, 2.0, 7.5)
+    assert math.isclose(
+        triangle_area(Vector3(), Vector3(2.0, 0.0, 0.0), Vector3(0.0, 3.0, 0.0)),
+        3.0,
+    )
     assert math.isclose(sphere_radius_from_vertices(center, vertices), 6.860211367006122)
 
 
 def test_bound_box_exposes_clear_dimension_aliases() -> None:
     box = _make_box(minimum=(-1.0, -2.0, -3.0), maximum=(5.0, 4.0, 9.0))
 
-    assert box.minimum == (-1.0, -2.0, -3.0)
-    assert box.maximum == (5.0, 4.0, 9.0)
-    assert box.center == (2.0, 1.0, 3.0)
-    assert box.size == (6.0, 6.0, 12.0)
+    assert box.minimum == Vector3(-1.0, -2.0, -3.0)
+    assert box.maximum == Vector3(5.0, 4.0, 9.0)
+    assert box.center == Vector3(2.0, 1.0, 3.0)
+    assert box.size == Vector3(6.0, 6.0, 12.0)
     assert box.width == 6.0
     assert box.depth == 6.0
     assert box.height == 12.0
-    assert box.half_extents == (3.0, 3.0, 6.0)
+    assert box.half_extents == Vector3(3.0, 3.0, 6.0)
 
 
 def test_bound_box_from_bounds_builds_consistent_box_metadata() -> None:
     box = BoundBox.from_bounds(
-        (5.0, 4.0, 9.0),
-        (-1.0, -2.0, -3.0),
+        Vector3(5.0, 4.0, 9.0),
+        Vector3(-1.0, -2.0, -3.0),
         material_index=12,
     )
 
     assert box.bound_type.value == 3
-    assert box.minimum == (-1.0, -2.0, -3.0)
-    assert box.maximum == (5.0, 4.0, 9.0)
-    assert box.center == (2.0, 1.0, 3.0)
+    assert box.minimum == Vector3(-1.0, -2.0, -3.0)
+    assert box.maximum == Vector3(5.0, 4.0, 9.0)
+    assert box.center == Vector3(2.0, 1.0, 3.0)
     assert box.box_center == box.center
     assert box.sphere_center == box.center
     assert box.volume == 432.0
-    assert box.compute_angular_inertia(10.0) == (150.0, 150.0, 60.0)
+    assert box.compute_angular_inertia(10.0) == Vector3(150.0, 150.0, 60.0)
     assert math.isclose(box.enclosing_radius, 7.3484692283495345)
 
 
 def test_bound_box_from_center_size_builds_consistent_box_metadata() -> None:
     box = BoundBox.from_center_size(
-        (2.0, 1.0, 3.0),
-        (6.0, 6.0, 12.0),
+        Vector3(2.0, 1.0, 3.0),
+        Vector3(6.0, 6.0, 12.0),
         material_index=4,
         margin=0.05,
     )
 
-    assert box.minimum == (-1.0, -2.0, -3.0)
-    assert box.maximum == (5.0, 4.0, 9.0)
-    assert box.size == (6.0, 6.0, 12.0)
+    assert box.minimum == Vector3(-1.0, -2.0, -3.0)
+    assert box.maximum == Vector3(5.0, 4.0, 9.0)
+    assert box.size == Vector3(6.0, 6.0, 12.0)
     assert box.material_index == 4
     assert math.isclose(box.margin, 0.05)
     assert math.isclose(box.enclosing_radius, 7.3484692283495345)
@@ -912,16 +923,16 @@ def test_bound_box_from_center_size_builds_consistent_box_metadata() -> None:
 
 def test_bound_disc_from_center_radius_exposes_clear_shape_metrics() -> None:
     disc = BoundDisc.from_center_radius(
-        (2.0, 1.0, 3.0),
+        Vector3(2.0, 1.0, 3.0),
         3.0,
         thickness=2.0,
         material_index=8,
     )
 
     assert disc.bound_type.value == 12
-    assert disc.center == (2.0, 1.0, 3.0)
-    assert disc.minimum == (-1.0, 0.0, 0.0)
-    assert disc.maximum == (5.0, 2.0, 6.0)
+    assert disc.center == Vector3(2.0, 1.0, 3.0)
+    assert disc.minimum == Vector3(-1.0, 0.0, 0.0)
+    assert disc.maximum == Vector3(5.0, 2.0, 6.0)
     assert disc.radius == 3.0
     assert disc.diameter == 6.0
     assert disc.half_thickness == 1.0
@@ -931,13 +942,13 @@ def test_bound_disc_from_center_radius_exposes_clear_shape_metrics() -> None:
 
 def test_bound_disc_vehicle_wheel_matches_retail_comet5_metrics() -> None:
     wheel = BoundDisc.vehicle_wheel(
-        (0.0, 0.0, 0.0),
+        Vector3(),
         0.3405,
         0.267,
     )
 
-    assert wheel.minimum == pytest.approx((-0.1335, -0.3405, -0.3405))
-    assert wheel.maximum == pytest.approx((0.1335, 0.3405, 0.3405))
+    assert wheel.minimum.components == pytest.approx((-0.1335, -0.3405, -0.3405))
+    assert wheel.maximum.components == pytest.approx((0.1335, 0.3405, 0.3405))
     assert wheel.thickness_axis is BoundAxis.X
     assert wheel.radial_axes == (BoundAxis.Y, BoundAxis.Z)
     assert wheel.radius == pytest.approx(0.3405)
@@ -945,7 +956,7 @@ def test_bound_disc_vehicle_wheel_matches_retail_comet5_metrics() -> None:
     assert wheel.sphere_radius == pytest.approx(0.3405)
     assert wheel.margin == pytest.approx(0.1335)
     assert wheel.volume == pytest.approx(0.0972512886)
-    assert wheel.angular_inertia == pytest.approx(
+    assert wheel.angular_inertia.components == pytest.approx(
         (0.03492581, 0.057970125, 0.03492581)
     )
 
@@ -956,21 +967,21 @@ def test_bound_disc_vehicle_wheel_rejects_degenerate_dimensions(
     thickness: float,
 ) -> None:
     with pytest.raises(ValueError, match="finite positive"):
-        BoundDisc.vehicle_wheel((0.0, 0.0, 0.0), radius, thickness)
+        BoundDisc.vehicle_wheel(Vector3(), radius, thickness)
 
 
 def test_bound_cylinder_from_center_radius_height_exposes_clear_shape_metrics() -> None:
     cylinder = BoundCylinder.from_center_radius_height(
-        (2.0, 1.0, 3.0),
+        Vector3(2.0, 1.0, 3.0),
         3.0,
         10.0,
         margin=0.1,
     )
 
     assert cylinder.bound_type.value == 13
-    assert cylinder.center == (2.0, 1.0, 3.0)
-    assert cylinder.minimum == (-1.0, -4.0, 0.0)
-    assert cylinder.maximum == (5.0, 6.0, 6.0)
+    assert cylinder.center == Vector3(2.0, 1.0, 3.0)
+    assert cylinder.minimum == Vector3(-1.0, -4.0, 0.0)
+    assert cylinder.maximum == Vector3(5.0, 6.0, 6.0)
     assert cylinder.radius == 3.0
     assert cylinder.half_height == 5.0
     assert cylinder.height == 10.0
@@ -978,39 +989,39 @@ def test_bound_cylinder_from_center_radius_height_exposes_clear_shape_metrics() 
 
 
 def test_bound_inertia_matches_dev_ng_volume_distribution_rules() -> None:
-    cylinder = BoundCylinder.from_center_radius_height((0.0, 0.0, 0.0), 2.0, 6.0).build()
+    cylinder = BoundCylinder.from_center_radius_height(Vector3(), 2.0, 6.0).build()
     capsule = BoundCapsule(
         bound_type=BoundType.CAPSULE,
         sphere_radius=5.0,
-        box_max=(2.0, 5.0, 2.0),
+        box_max=Vector3(2.0, 5.0, 2.0),
         margin=0.0,
-        box_min=(-2.0, -5.0, -2.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-2.0, -5.0, -2.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         capsule_half_height=3.0,
     ).build()
 
     cylinder_inertia = cylinder.compute_angular_inertia(10.0)
     capsule_inertia = capsule.compute_angular_inertia(10.0)
 
-    assert cylinder_inertia == (40.0, 20.0, 40.0)
-    assert math.isclose(capsule_inertia[0], 74.1538461538)
-    assert math.isclose(capsule_inertia[1], 18.7692307692)
-    assert math.isclose(capsule_inertia[2], 74.1538461538)
+    assert cylinder_inertia == Vector3(40.0, 20.0, 40.0)
+    assert math.isclose(capsule_inertia.x, 74.1538461538)
+    assert math.isclose(capsule_inertia.y, 18.7692307692)
+    assert math.isclose(capsule_inertia.z, 74.1538461538)
 
 
 def test_bound_cloth_from_center_size_exposes_clear_bounds_aliases() -> None:
     cloth = BoundCloth.from_center_size(
-        (2.0, 1.0, 3.0),
-        (6.0, 0.5, 12.0),
+        Vector3(2.0, 1.0, 3.0),
+        Vector3(6.0, 0.5, 12.0),
         material_index=2,
     )
 
     assert cloth.bound_type.value == 15
-    assert cloth.center == (2.0, 1.0, 3.0)
-    assert cloth.minimum == (-1.0, 0.75, -3.0)
-    assert cloth.maximum == (5.0, 1.25, 9.0)
-    assert cloth.size == (6.0, 0.5, 12.0)
+    assert cloth.center == Vector3(2.0, 1.0, 3.0)
+    assert cloth.minimum == Vector3(-1.0, 0.75, -3.0)
+    assert cloth.maximum == Vector3(5.0, 1.25, 9.0)
+    assert cloth.size == Vector3(6.0, 0.5, 12.0)
     assert cloth.width == 6.0
     assert cloth.depth == 0.5
     assert cloth.height == 12.0
@@ -1018,10 +1029,18 @@ def test_bound_cloth_from_center_size_exposes_clear_bounds_aliases() -> None:
 
 
 def test_bounds_material_fields_accept_bound_material_enum_consistently() -> None:
-    box = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 4.0, 6.0), material_index=BoundMaterialType.ROCK)
-    disc = BoundDisc.from_center_radius((0.0, 0.0, 0.0), 2.0, thickness=1.0, material_index=BoundMaterialType.GLASS_OPAQUE)
-    cylinder = BoundCylinder.from_center_radius_height((0.0, 0.0, 0.0), 1.5, 5.0, material_index=BoundMaterialType.METAL_SOLID_MEDIUM)
-    cloth = BoundCloth.from_center_size((0.0, 0.0, 0.0), (3.0, 0.25, 4.0), material_index=BoundMaterialType.CLOTH)
+    box = BoundBox.from_center_size(
+        Vector3(), Vector3(2.0, 4.0, 6.0), material_index=BoundMaterialType.ROCK
+    )
+    disc = BoundDisc.from_center_radius(
+        Vector3(), 2.0, thickness=1.0, material_index=BoundMaterialType.GLASS_OPAQUE
+    )
+    cylinder = BoundCylinder.from_center_radius_height(
+        Vector3(), 1.5, 5.0, material_index=BoundMaterialType.METAL_SOLID_MEDIUM
+    )
+    cloth = BoundCloth.from_center_size(
+        Vector3(), Vector3(3.0, 0.25, 4.0), material_index=BoundMaterialType.CLOTH
+    )
     material = BoundMaterial(type=BoundMaterialType.WOOD_SOLID_MEDIUM)
     polygon = BoundPolygonTriangle(polygon_type=0, raw=b"", material_index=BoundMaterialType.CONCRETE)
 
@@ -1038,9 +1057,9 @@ def test_bounds_material_fields_accept_bound_material_enum_consistently() -> Non
 
 def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits() -> None:
     triangles = [
-        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-        ((1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
-        ((2.0, 0.0, 0.0), (3.0, 0.0, 0.0), (2.0, 1.0, 0.0)),
+        (Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)),
+        (Vector3(1.0, 0.0, 0.0), Vector3(1.0, 1.0, 0.0), Vector3(0.0, 1.0, 0.0)),
+        (Vector3(2.0, 0.0, 0.0), Vector3(3.0, 0.0, 0.0), Vector3(2.0, 1.0, 0.0)),
     ]
 
     chunks = chunk_bound_triangles(
@@ -1052,18 +1071,18 @@ def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits()
     assert len(chunks) == 2
     assert chunks[0] == BoundTriangleChunk(
         vertices=[
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (1.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
+            Vector3(1.0, 1.0, 0.0),
         ],
         triangles=[(0, 1, 2), (1, 3, 2)],
     )
     assert chunks[1] == BoundTriangleChunk(
         vertices=[
-            (2.0, 0.0, 0.0),
-            (3.0, 0.0, 0.0),
-            (2.0, 1.0, 0.0),
+            Vector3(2.0, 0.0, 0.0),
+            Vector3(3.0, 0.0, 0.0),
+            Vector3(2.0, 1.0, 0.0),
         ],
         triangles=[(0, 1, 2)],
     )
@@ -1071,9 +1090,9 @@ def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits()
 
 def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chunks() -> None:
     triangles = [
-        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-        ((1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
-        ((2.0, 0.0, 0.0), (3.0, 0.0, 0.0), (2.0, 1.0, 0.0)),
+        (Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)),
+        (Vector3(1.0, 0.0, 0.0), Vector3(1.0, 1.0, 0.0), Vector3(0.0, 1.0, 0.0)),
+        (Vector3(2.0, 0.0, 0.0), Vector3(3.0, 0.0, 0.0), Vector3(2.0, 1.0, 0.0)),
     ]
     materials = [
         BoundMaterial(type=BoundMaterialType.TARMAC),
@@ -1112,11 +1131,11 @@ def test_ybn_rejects_active_flags_on_a_null_composite_child(tmp_path: Path) -> N
     root = BoundComposite(
         bound_type=BoundType.COMPOSITE,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[
             BoundChild(
                 None,

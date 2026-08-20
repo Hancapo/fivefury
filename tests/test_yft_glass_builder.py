@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from fivefury import Vector2, Vector3, Vector4
 from fivefury.bounds import BoundBox
 from fivefury.ydr import (
     Ydr,
@@ -44,13 +45,13 @@ def _glass_fragment() -> Yft:
         material=material,
         indices=[0, 1, 2, 0, 2, 3],
         positions=[
-            (-1.0, 0.0, -1.0),
-            (1.0, 0.0, -1.0),
-            (1.0, 0.0, 1.0),
-            (-1.0, 0.0, 1.0),
+            Vector3(-1.0, 0.0, -1.0),
+            Vector3(1.0, 0.0, -1.0),
+            Vector3(1.0, 0.0, 1.0),
+            Vector3(-1.0, 0.0, 1.0),
         ],
-        tangents=[(1.0, 0.0, 0.0, 1.0)] * 4,
-        texcoords=[[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]],
+        tangents=[Vector4(1.0, 0.0, 0.0, 1.0)] * 4,
+        texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(1.0, 1.0), Vector2(0.0, 1.0)]],
     )
     skeleton = YdrSkeleton(
         bones=[YdrBone(name="pane", tag=3882, index=0)]
@@ -70,8 +71,8 @@ def _glass_fragment() -> Yft:
         Ydr(
             version=162,
             bound=BoundBox.from_center_size(
-                (0.0, 0.0, 0.0),
-                (2.0, 0.04, 2.0),
+                Vector3(),
+                Vector3(2.0, 0.04, 2.0),
             ),
         )
     )
@@ -100,15 +101,15 @@ def _input_glass_fragment(*, bone_index: int = 0, mesh_count: int = 1) -> Yft:
         material="pane",
         indices=[0, 1, 2, 0, 2, 3],
         positions=[
-            (-1.0, 0.0, -1.0),
-            (1.0, 0.0, -1.0),
-            (1.0, 0.0, 1.0),
-            (-1.0, 0.0, 1.0),
+            Vector3(-1.0, 0.0, -1.0),
+            Vector3(1.0, 0.0, -1.0),
+            Vector3(1.0, 0.0, 1.0),
+            Vector3(-1.0, 0.0, 1.0),
         ],
-        tangents=[(1.0, 0.0, 0.0, 1.0)] * 4,
+        tangents=[Vector4(1.0, 0.0, 0.0, 1.0)] * 4,
         texcoords=[
-            [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
-            [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+            [Vector2(), Vector2(1.0, 0.0), Vector2(1.0, 1.0), Vector2(0.0, 1.0)],
+            [Vector2(), Vector2(1.0, 0.0), Vector2(1.0, 1.0), Vector2(0.0, 1.0)],
         ],
     )
     skeleton = YdrSkeleton(
@@ -131,8 +132,8 @@ def _input_glass_fragment(*, bone_index: int = 0, mesh_count: int = 1) -> Yft:
     child_drawable = YdrBuild(
         materials=[],
         bound=BoundBox.from_center_size(
-            (0.0, 0.0, 0.0),
-            (2.0, 0.04, 2.0),
+            Vector3(),
+            Vector3(2.0, 0.04, 2.0),
         ),
     )
     child = YftPhysicsChild.declare(
@@ -162,8 +163,8 @@ def test_build_glass_resolves_group_bone_mesh_shader_and_bound() -> None:
     assert len(panes) == 1
     assert panes[0].glass_type == 2
     assert panes[0].shader_index == 0
-    assert panes[0].position_width == pytest.approx((2.0, 0.0, 0.0))
-    assert panes[0].position_height == pytest.approx((0.0, 0.0, 2.0))
+    assert panes[0].position_width.components == pytest.approx((2.0, 0.0, 0.0))
+    assert panes[0].position_height.components == pytest.approx((0.0, 0.0, 2.0))
     assert panes[0].bounds_offset_front == pytest.approx(0.02)
     assert panes[0].bounds_offset_back == pytest.approx(0.02)
     assert fragment.best_physics_lod.groups[0].glass_pane_model_info_index == 0

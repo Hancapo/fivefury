@@ -7,6 +7,7 @@ from pathlib import Path
 from ..binary import read_c_string
 from ..bounds import Bound, read_bound_from_pointer
 from ..resource import virtual_to_offset
+from ..vector import Vector3
 from ..ydr import Ydr
 from ..ydr.model import YdrMaterial
 from ..ydr.reader import _read_ydr_from_sections
@@ -38,7 +39,11 @@ def _read_fragment_matrix(system_data: bytes, offset: int) -> YftFragmentMatrix:
     flags = []
     for index in range(4):
         column_offset = offset + (index * 16)
-        columns.append(struct.unpack_from("<3f", system_data, column_offset))
+        columns.append(
+            Vector3.from_iterable(
+                struct.unpack_from("<3f", system_data, column_offset)
+            )
+        )
         flags.append(struct.unpack_from("<I", system_data, column_offset + 12)[0])
     return YftFragmentMatrix(
         columns=tuple(columns),  # type: ignore[arg-type]

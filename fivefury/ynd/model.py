@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 from collections.abc import Hashable, Iterable
 from enum import IntFlag
 from pathlib import Path
@@ -11,7 +10,7 @@ from ..authoring.diagnostics import ValidationReport
 from ..common import FlexibleIntEnum
 from ..game_target import GameTarget, coerce_game_target
 from ..resource import ResourcePagesInfo
-from ..vector import vec_distance
+from ..vector import Vector2, Vector3
 from .regions import position_matches_ynd_area
 
 
@@ -201,7 +200,7 @@ class YndLink:
 
 @dataclasses.dataclass(slots=True)
 class YndJunction:
-    position: tuple[float, float] = (0.0, 0.0)
+    position: Vector2 = Vector2()
     min_z: float = 0.0
     max_z: float = 0.0
     heightmap_dim_x: int = 0
@@ -247,15 +246,13 @@ class YndJunction:
     def generate_heightmap(
         self,
         *,
-        samples: Iterable[tuple[float, float, float]] = (),
-        triangles: Iterable[
-            tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
-        ] = (),
+        samples: Iterable[Vector3] = (),
+        triangles: Iterable[tuple[Vector3, Vector3, Vector3]] = (),
         dim_x: int = 16,
         dim_y: int = 16,
-        bounds: tuple[tuple[float, float], tuple[float, float]] | None = None,
-        center: tuple[float, float] | None = None,
-        size: tuple[float, float] | float | None = None,
+        bounds: tuple[Vector2, Vector2] | None = None,
+        center: Vector2 | None = None,
+        size: Vector2 | float | None = None,
         min_z: float | None = None,
         max_z: float | None = None,
         fallback_z: float = 0.0,
@@ -285,7 +282,8 @@ class YndJunction:
         return self
 
     def build(self) -> YndJunction:
-        self.position = (float(self.position[0]), float(self.position[1]))
+        if not isinstance(self.position, Vector2):
+            raise TypeError("YND junction position must be a Vector2")
         self.min_z = float(self.min_z)
         self.max_z = float(self.max_z)
         self.heightmap_dim_x = int(self.heightmap_dim_x) & 0xFF
@@ -303,7 +301,7 @@ class YndNode:
     area_id: int | None = None
     node_id: int = 0
     key: Hashable | None = None
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = Vector3()
     street_name_hash: int = 0
     group: int = 0
     movement_flags: YndNodeMovementFlags = YndNodeMovementFlags.NONE
@@ -331,7 +329,7 @@ class YndNode:
         *,
         area_id: int,
         node_id: int,
-        position: tuple[float, float, float],
+        position: Vector3,
         street_name_hash: int,
         flags0: int,
         flags1: int,
@@ -356,7 +354,7 @@ class YndNode:
         return cls(
             area_id=int(area_id) & 0xFFFF,
             node_id=int(node_id) & 0xFFFF,
-            position=(float(position[0]), float(position[1]), float(position[2])),
+            position=position,
             street_name_hash=int(street_name_hash) & 0xFFFFFFFF,
             group=flags0 & 0x07,
             movement_flags=YndNodeMovementFlags(flags0 & 0xF8),
@@ -448,29 +446,27 @@ class YndNode:
     def ensure_junction_heightmap(
         self,
         *,
-        samples: Iterable[tuple[float, float, float]] = (),
-        triangles: Iterable[
-            tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
-        ] = (),
+        samples: Iterable[Vector3] = (),
+        triangles: Iterable[tuple[Vector3, Vector3, Vector3]] = (),
         dim_x: int = 16,
         dim_y: int = 16,
-        bounds: tuple[tuple[float, float], tuple[float, float]] | None = None,
-        center: tuple[float, float] | None = None,
-        size: tuple[float, float] | float | None = None,
+        bounds: tuple[Vector2, Vector2] | None = None,
+        center: Vector2 | None = None,
+        size: Vector2 | float | None = None,
         min_z: float | None = None,
         max_z: float | None = None,
         fallback_z: float = 0.0,
         grid_spacing: float = 2.0,
     ) -> YndJunction:
         if self.junction is None:
-            self.junction = YndJunction(position=(float(self.position[0]), float(self.position[1])))
+            self.junction = YndJunction(position=Vector2(self.position.x, self.position.y))
         self.junction.generate_heightmap(
             samples=samples,
             triangles=triangles,
             dim_x=dim_x,
             dim_y=dim_y,
             bounds=bounds,
-            center=center or (float(self.position[0]), float(self.position[1])),
+            center=center or Vector2(self.position.x, self.position.y),
             size=size,
             min_z=min_z,
             max_z=max_z,
@@ -485,11 +481,8 @@ class YndNode:
         self.node_id = int(self.node_id) & 0xFFFF
         if self.key is not None and not isinstance(self.key, Hashable):
             raise TypeError("YND node key must be hashable")
-        self.position = (
-            float(self.position[0]),
-            float(self.position[1]),
-            float(self.position[2]),
-        )
+        if not isinstance(self.position, Vector3):
+            raise TypeError("YND node position must be a Vector3")
         self.street_name_hash = int(self.street_name_hash) & 0xFFFFFFFF
         self.group = int(self.group) & 0x07
         self.movement_flags = YndNodeMovementFlags(int(self.movement_flags) & 0xF8)
@@ -515,10 +508,10 @@ class YndNode:
         return self
 
 
-def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> int:
+def _distance(a: Vector3, b: Vector3) -> int:
     # Rockstar's path builder clamps every serialized link distance to the
     # representable 1..255 range; zero is reserved for a degenerate link.
-    return max(1, min(255, int(vec_distance(b, a))))
+    return max(1, min(255, int(b.distance_to(a))))
 
 
 @dataclasses.dataclass(slots=True)
@@ -592,7 +585,7 @@ class Ynd:
                 node.area_id = self.area_id
             if not position_matches_ynd_area(self.area_id, node.position):
                 raise ValueError(
-                    f"YND node at {node.position[:2]} does not belong to area_id {self.area_id}; build a YndNetwork first"
+                    f"YND node at ({node.position.x}, {node.position.y}) does not belong to area_id {self.area_id}; build a YndNetwork first"
                 )
             for link in node.links:
                 if link.area_id is None:
@@ -637,15 +630,13 @@ class Ynd:
                 issues.issue("ynd.node.node_id.range", "node_id does not fit the 16-bit field", path=f"{path}.node_id")
             if len(node.links) > 31:
                 issues.issue("ynd.node.links.capacity", "node exceeds the 31-link packed count", path=f"{path}.links")
-            if len(node.position) != 3 or not all(
-                math.isfinite(float(value)) for value in node.position
-            ):
+            if not isinstance(node.position, Vector3) or not node.position.is_finite:
                 issues.issue("ynd.node.position.invalid", "position must contain three finite values", path=f"{path}.position")
             else:
                 quantized = (
-                    round(node.position[0] * 4.0),
-                    round(node.position[1] * 4.0),
-                    round(node.position[2] * 32.0),
+                    round(node.position.x * 4.0),
+                    round(node.position.y * 4.0),
+                    round(node.position.z * 32.0),
                 )
                 if any(not -0x8000 <= value <= 0x7FFF for value in quantized):
                     issues.issue("ynd.node.position.range", "position exceeds the signed 16-bit storage range", path=f"{path}.position")
@@ -666,8 +657,8 @@ class Ynd:
                 issues.issue("ynd.junction.heightmap_dim_y.range", "heightmap_dim_y exceeds 8 bits", path=f"{path}.junction.heightmap_dim_y")
             junction_values = (
                 round(junction.max_z * 32.0),
-                round(junction.position[0] * 4.0),
-                round(junction.position[1] * 4.0),
+                round(junction.position.x * 4.0),
+                round(junction.position.y * 4.0),
                 round(junction.min_z * 32.0),
             )
             if any(not -0x8000 <= value <= 0x7FFF for value in junction_values):

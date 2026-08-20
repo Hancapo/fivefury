@@ -1,6 +1,8 @@
 from fivefury import (
     CutScene,
     CutsceneProject,
+    Quaternion,
+    Vector3,
     YcdCutsceneBuilder,
     build_ycd_cutscene_clip_hash,
     read_ycd,
@@ -21,8 +23,8 @@ def _duplicate_prop_project(
     )
     project.camera(
         "camera",
-        position={0.0: (0.0, 0.0, 0.0), duration: (1.0, 0.0, 0.0)},
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position={0.0: Vector3(), duration: Vector3(1.0, 0.0, 0.0)},
+        rotation=Quaternion(),
         field_of_view=60.0,
     )
     object_ids: dict[str, int] = {}
@@ -38,10 +40,10 @@ def _duplicate_prop_project(
         project.animate(
             binding,
             mover_position={
-                0.0: (0.0, 0.0, 0.0),
-                duration: (1.0, 0.0, 0.0),
+                0.0: Vector3(),
+                duration: Vector3(1.0, 0.0, 0.0),
             },
-            mover_rotation=(0.0, 0.0, 0.0, 1.0),
+            mover_rotation=Quaternion(),
         )
     return project, object_ids
 
@@ -61,8 +63,8 @@ def _roundtrip_project(project: CutsceneProject) -> CutScene:
 
 def test_clip_for_binding_distinguishes_shared_model_animation_bases() -> None:
     builder = YcdCutsceneBuilder.create("shared_model", duration=1.0)
-    builder.ped("actor_a", mover_position=(0.0, 0.0, 0.0))
-    builder.ped("actor_b", mover_position=(1.0, 0.0, 0.0))
+    builder.ped("actor_a", mover_position=Vector3())
+    builder.ped("actor_b", mover_position=Vector3(1.0, 0.0, 0.0))
 
     scene = CutScene.create(duration=1.0)
     actor_a = scene.object(
@@ -105,7 +107,7 @@ def test_cutscene_assets_accept_template_with_attached_ycds() -> None:
 
 def test_clip_for_binding_does_not_fall_back_from_unresolved_stream_base() -> None:
     builder = YcdCutsceneBuilder.create("shared_model", duration=1.0)
-    builder.ped("shared_model", mover_position=(0.0, 0.0, 0.0))
+    builder.ped("shared_model", mover_position=Vector3())
     scene = CutScene.create(duration=1.0)
     actor = scene.object(
         "ped",
@@ -122,8 +124,8 @@ def test_clip_for_binding_reads_animation_base_from_generic_camera_fields() -> N
     builder = YcdCutsceneBuilder.create("camera_scene", duration=1.0)
     builder.camera(
         "exportcamera",
-        position=(0.0, 0.0, 1.0),
-        rotation=(0.0, 0.0, 0.0, 1.0),
+        position=Vector3(0.0, 0.0, 1.0),
+        rotation=Quaternion(),
     )
     scene = CutScene.create(duration=1.0)
     camera = scene.object(

@@ -5,7 +5,7 @@ from typing import Any
 
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
-from ..vector import aabb_center, aabb_from_center_size, aabb_size
+from ..vector import Aabb3, Vector3
 
 
 @dataclasses.dataclass(slots=True)
@@ -13,12 +13,16 @@ class TimeCycleModifier(MetaHashFieldsMixin):
     _hash_fields = ("name",)
 
     name: MetaHash | HashLike = 0
-    min_extents: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    max_extents: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    min_extents: Vector3 = dataclasses.field(default_factory=Vector3)
+    max_extents: Vector3 = dataclasses.field(default_factory=Vector3)
     percentage: float = 0.0
     range: float = 0.0
     start_hour: int = 0
     end_hour: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.min_extents, Vector3) or not isinstance(self.max_extents, Vector3):
+            raise TypeError("Time-cycle modifier extents must be Vector3 instances")
 
     def to_meta(self) -> dict[str, Any]:
         return {
@@ -36,8 +40,8 @@ class TimeCycleModifier(MetaHashFieldsMixin):
     def from_meta(cls, value: Any) -> TimeCycleModifier:
         return cls(
             name=value.get("name", 0),
-            min_extents=tuple(value.get("minExtents", (0.0, 0.0, 0.0))),
-            max_extents=tuple(value.get("maxExtents", (0.0, 0.0, 0.0))),
+            min_extents=Vector3.from_iterable(value.get("minExtents", (0.0, 0.0, 0.0))),
+            max_extents=Vector3.from_iterable(value.get("maxExtents", (0.0, 0.0, 0.0))),
             percentage=float(value.get("percentage", 0.0)),
             range=float(value.get("range", 0.0)),
             start_hour=int(value.get("startHour", 0)),
@@ -45,14 +49,14 @@ class TimeCycleModifier(MetaHashFieldsMixin):
         )
 
     @property
-    def center(self) -> tuple[float, float, float]:
+    def center(self) -> Vector3:
         """Return the center point of the modifier volume."""
-        return aabb_center(self.min_extents, self.max_extents)
+        return Aabb3(self.min_extents, self.max_extents).center
 
     @property
-    def size(self) -> tuple[float, float, float]:
+    def size(self) -> Vector3:
         """Return the full size (width, depth, height) of the modifier volume."""
-        return aabb_size(self.min_extents, self.max_extents)
+        return Aabb3(self.min_extents, self.max_extents).size
 
     @property
     def hours(self) -> tuple[int, int]:
@@ -68,19 +72,19 @@ class TimeCycleModifier(MetaHashFieldsMixin):
     def create(
         cls,
         name: HashLike,
-        position: tuple[float, float, float],
-        size: tuple[float, float, float],
+        position: Vector3,
+        size: Vector3,
         *,
         percentage: float = 100.0,
         range: float = 50.0,
         hours: tuple[int, int] = (0, 24),
     ) -> TimeCycleModifier:
         """Create a TimeCycleModifier from center position and size."""
-        min_extents, max_extents = aabb_from_center_size(position, size)
+        bounds = Aabb3.from_center_size(position, size)
         return cls(
             name=name,
-            min_extents=min_extents,
-            max_extents=max_extents,
+            min_extents=bounds.minimum,
+            max_extents=bounds.maximum,
             percentage=float(percentage),
             range=float(range),
             start_hour=int(hours[0]),
@@ -91,8 +95,8 @@ class TimeCycleModifier(MetaHashFieldsMixin):
     def from_bounds(
         cls,
         name: HashLike,
-        min_pos: tuple[float, float, float],
-        max_pos: tuple[float, float, float],
+        min_pos: Vector3,
+        max_pos: Vector3,
         *,
         percentage: float = 100.0,
         range: float = 50.0,

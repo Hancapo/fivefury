@@ -7,6 +7,7 @@ from typing import Any
 from ..authoring.diagnostics import ValidationReport
 from ..colors import CssColor
 from ..meta.defs import meta_name
+from ..vector import Vector3
 from .enums import (
     YmapLodLightCategory,
     YmapLodLightType,
@@ -30,8 +31,8 @@ MAX_LOD_LIGHT_ARRAY_COUNT = 0xFFFF
 
 @dataclasses.dataclass(slots=True)
 class LodLight:
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    direction: tuple[float, float, float] = (0.0, 0.0, -1.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
+    direction: Vector3 = dataclasses.field(default_factory=lambda: Vector3(0.0, 0.0, -1.0))
     falloff: float = 1.0
     falloff_exponent: float = 1.0
     time_and_state_flags: int = 0
@@ -40,6 +41,10 @@ class LodLight:
     cone_outer_angle_or_cap_ext: int = 0
     corona_intensity: int = 0
     rgbi: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.position, Vector3) or not isinstance(self.direction, Vector3):
+            raise TypeError("LodLight position and direction must be Vector3 values")
 
     @property
     def light_type(self) -> YmapLodLightType:
@@ -149,7 +154,7 @@ class LodLight:
 
 @dataclasses.dataclass(slots=True)
 class LodLightsSoa:
-    direction: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+    direction: list[Vector3] = dataclasses.field(default_factory=list)
     falloff: list[float] = dataclasses.field(default_factory=list)
     falloff_exponent: list[float] = dataclasses.field(default_factory=list)
     time_and_state_flags: list[int] = dataclasses.field(default_factory=list)
@@ -217,7 +222,7 @@ class LodLightsSoa:
         if not isinstance(value, dict):
             return cls()
         return cls(
-            direction=[tuple(item) for item in value.get("direction", []) or []],
+            direction=[Vector3.from_iterable(item) for item in value.get("direction", []) or []],
             falloff=[float(item) for item in value.get("falloff", []) or []],
             falloff_exponent=[float(item) for item in value.get("falloffExponent", []) or []],
             time_and_state_flags=[int(item) for item in value.get("timeAndStateFlags", []) or []],
@@ -228,7 +233,7 @@ class LodLightsSoa:
         )
 
     def append(self, light: LodLight) -> LodLight:
-        self.direction.append(tuple(light.direction))
+        self.direction.append(light.direction)
         self.falloff.append(float(light.falloff))
         self.falloff_exponent.append(float(light.falloff_exponent))
         self.time_and_state_flags.append(int(light.time_and_state_flags))
@@ -241,7 +246,7 @@ class LodLightsSoa:
 
 @dataclasses.dataclass(slots=True)
 class DistantLodLightsSoa:
-    position: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+    position: list[Vector3] = dataclasses.field(default_factory=list)
     RGBI: list[int] = dataclasses.field(default_factory=list)
     num_street_lights: int = 0
     category: YmapLodLightCategory | int = YmapLodLightCategory.SMALL
@@ -290,14 +295,16 @@ class DistantLodLightsSoa:
         if not isinstance(value, dict):
             return cls()
         return cls(
-            position=[tuple(item) for item in value.get("position", []) or []],
+            position=[Vector3.from_iterable(item) for item in value.get("position", []) or []],
             RGBI=[int(item) for item in value.get("RGBI", []) or []],
             num_street_lights=int(value.get("numStreetLights", 0)),
             category=coerce_ymap_lod_light_category(int(value.get("category", 0))),
         )
 
-    def append(self, position: tuple[float, float, float], rgbi: int) -> None:
-        self.position.append(tuple(position))
+    def append(self, position: Vector3, rgbi: int) -> None:
+        if not isinstance(position, Vector3):
+            raise TypeError("distant LOD light position must be a Vector3")
+        self.position.append(position)
         self.RGBI.append(int(rgbi))
 
     def clamp_street_light_count(self) -> DistantLodLightsSoa:

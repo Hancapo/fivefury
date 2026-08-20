@@ -4,12 +4,11 @@ import dataclasses
 import enum
 from collections.abc import Iterable, Sequence
 
-from ..vector import vec_distance
+from ..vector import Vector3
 from .defs import YdrLod, coerce_lod
 from .model import Ydr, YdrBone, YdrMesh, YdrModel, YdrSkeleton
 
-Vec3 = tuple[float, float, float]
-Vec4 = tuple[float, float, float, float]
+BlendWeights = tuple[float, float, float, float]
 Index4 = tuple[int, int, int, int]
 
 
@@ -24,7 +23,7 @@ class RadialBoneRigRule:
     bone: str | int | YdrBone
     radius: float
     strength: float = 1.0
-    center: Vec3 | None = None
+    center: Vector3 | None = None
     falloff: RadialRigFalloff | str = RadialRigFalloff.SMOOTH
     replace_existing: bool = False
 
@@ -50,18 +49,18 @@ class RadialRigReport:
 class _ResolvedRule:
     bone_tag: int
     bone_index: int | None
-    center: Vec3
+    center: Vector3
     radius: float
     strength: float
     falloff: RadialRigFalloff
     replace_existing: bool
 
 
-def _bone_center(bone: YdrBone, skeleton: YdrSkeleton | None) -> Vec3:
+def _bone_center(bone: YdrBone, skeleton: YdrSkeleton | None) -> Vector3:
     if skeleton is not None and 0 <= int(bone.index) < len(skeleton.transformations):
         matrix = skeleton.transformations[int(bone.index)]
-        return (float(matrix[3][0]), float(matrix[3][1]), float(matrix[3][2]))
-    return tuple(float(value) for value in bone.translation)
+        return Vector3(float(matrix[3][0]), float(matrix[3][1]), float(matrix[3][2]))
+    return bone.translation
 
 
 def _resolve_rule(
@@ -87,14 +86,9 @@ def _resolve_rule(
         raise ValueError(
             "center= is required when radial rigging by numeric bone without a matching skeleton bone"
         )
-    center = tuple(
-        float(value)
-        for value in (
-            rule.center
-            if rule.center is not None
-            else _bone_center(resolved_bone, skeleton)
-        )
-    )
+    center = rule.center if rule.center is not None else _bone_center(resolved_bone, skeleton)
+    if not isinstance(center, Vector3):
+        raise TypeError("radial rig center must be a Vector3")
     return _ResolvedRule(
         bone_tag=bone_tag,
         bone_index=int(resolved_bone.index) if resolved_bone is not None else None,
@@ -106,8 +100,8 @@ def _resolve_rule(
     )
 
 
-def _falloff_weight(rule: _ResolvedRule, position: Vec3) -> float:
-    t = max(0.0, min(1.0, 1.0 - (vec_distance(position, rule.center) / rule.radius)))
+def _falloff_weight(rule: _ResolvedRule, position: Vector3) -> float:
+    t = max(0.0, min(1.0, 1.0 - (position.distance_to(rule.center) / rule.radius)))
     if t <= 0.0:
         return 0.0
     if rule.falloff is RadialRigFalloff.CONSTANT:
@@ -135,7 +129,7 @@ def _ensure_index4(values: Sequence[int], fill: int = 0) -> Index4:
 
 def _normalise_influences(
     influences: dict[int, float], max_influences: int
-) -> tuple[Vec4, Index4]:
+) -> tuple[BlendWeights, Index4]:
     ranked = sorted(
         (
             (int(index), max(0.0, float(weight)))
@@ -166,7 +160,7 @@ def _mesh_palette_index(mesh: YdrMesh, rule: _ResolvedRule) -> tuple[int, bool]:
     return (len(mesh.bone_ids) - 1, True)
 
 
-def _default_skin(mesh: YdrMesh) -> tuple[list[Vec4], list[Index4]]:
+def _default_skin(mesh: YdrMesh) -> tuple[list[BlendWeights], list[Index4]]:
     vertex_count = len(mesh.positions)
     weights = (
         list(mesh.blend_weights)

@@ -12,14 +12,8 @@ from ..drawable import (
     DrawableModel,
     DrawableParameter,
 )
-
-Matrix4 = tuple[
-    tuple[float, float, float, float],
-    tuple[float, float, float, float],
-    tuple[float, float, float, float],
-    tuple[float, float, float, float],
-]
-
+from ..matrix import Matrix4
+from ..vector import Quaternion, Vector2, Vector3, Vector4
 
 CdrLod = DrawableLod
 CDR_LOD_ORDER = DRAWABLE_LOD_ORDER
@@ -119,9 +113,9 @@ class CdrBone:
     next_sibling_index: int
     mirror_index: int
     flags: int
-    rotation: tuple[float, float, float, float]
-    translation: tuple[float, float, float]
-    scale: tuple[float, float, float]
+    rotation: Quaternion
+    translation: Vector3
+    scale: Vector3
     inverse_bind_transform: Matrix4 | None = None
     default_transform: Matrix4 | None = None
 
@@ -158,9 +152,9 @@ class CdrJointRotationLimit:
     bone_id: int
     control_point_count: int
     degrees_of_freedom: int
-    zero_rotation: tuple[float, float, float, float]
-    zero_rotation_euler: tuple[float, float, float]
-    twist_axis: tuple[float, float, float]
+    zero_rotation: Quaternion
+    zero_rotation_euler: Vector3
+    twist_axis: Vector3
     min_twist: float
     max_twist: float
     soft_limit_scale: float
@@ -173,8 +167,8 @@ class CdrJointRotationLimit:
 @dataclasses.dataclass(slots=True)
 class CdrJointVectorLimit:
     bone_id: int
-    min: tuple[float, float, float]
-    max: tuple[float, float, float]
+    min: Vector3
+    max: Vector3
 
 
 @dataclasses.dataclass(slots=True)
@@ -234,10 +228,10 @@ class CdrMesh(DrawableMesh[CdrMaterial]):
     material_index: int = -1
     material: CdrMaterial | None = None
     indices: list[int] = dataclasses.field(default_factory=list)
-    positions: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
-    normals: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
-    tangents: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
-    texcoords: list[list[tuple[float, float]]] = dataclasses.field(default_factory=list)
+    positions: list[Vector3] = dataclasses.field(default_factory=list)
+    normals: list[Vector3] = dataclasses.field(default_factory=list)
+    tangents: list[Vector4] = dataclasses.field(default_factory=list)
+    texcoords: list[list[Vector2]] = dataclasses.field(default_factory=list)
     colours0: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
     colours1: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
     blend_weights: list[tuple[float, float, float, float]] = dataclasses.field(default_factory=list)
@@ -257,8 +251,8 @@ class CdrModel(DrawableModel[CdrMesh, CdrMaterial]):
     matrix_index: int = 0
     render_mask: int = 0
     skin_flags: int = 0
-    bounding_box_min: tuple[float, float, float] | None = None
-    bounding_box_max: tuple[float, float, float] | None = None
+    bounding_box_min: Vector3 | None = None
+    bounding_box_max: Vector3 | None = None
 
 
 @dataclasses.dataclass(slots=True)
@@ -267,10 +261,10 @@ class Cdr(DrawableAsset[CdrMaterial, CdrModel, CdrMesh]):
     path: str = ""
     materials: list[CdrMaterial] = dataclasses.field(default_factory=list)
     lods: dict[CdrLod, list[CdrModel]] = dataclasses.field(default_factory=dict)
-    bounding_center: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bounding_center: Vector3 = dataclasses.field(default_factory=Vector3)
     bounding_sphere_radius: float = 0.0
-    bounding_box_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bounding_box_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bounding_box_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    bounding_box_max: Vector3 = dataclasses.field(default_factory=Vector3)
     lod_distances: dict[CdrLod, float] = dataclasses.field(default_factory=dict)
     render_bucket_masks: dict[CdrLod, int] = dataclasses.field(default_factory=dict)
     texture_dictionary_pointer: int = 0

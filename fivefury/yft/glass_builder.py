@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from ..vector import Vector3
 from ..ydr import YdrBone, YdrLod
 from ..ydr.defs import coerce_lod
 from .glass import YftGlassPane
@@ -88,10 +89,10 @@ def _bound_transform(drawable) -> YftGlassOrthonormalTransform:
         return YftGlassOrthonormalTransform()
     columns = matrix.columns
     return YftGlassOrthonormalTransform(
-        x_axis=columns[0],
-        y_axis=columns[1],
-        z_axis=columns[2],
-        translation=columns[3],
+        x_axis=Vector3.from_iterable(columns[0]),
+        y_axis=Vector3.from_iterable(columns[1]),
+        z_axis=Vector3.from_iterable(columns[2]),
+        translation=Vector3.from_iterable(columns[3]),
     )
 
 

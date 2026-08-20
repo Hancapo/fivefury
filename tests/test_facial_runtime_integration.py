@@ -11,6 +11,7 @@ from fivefury import (
     CutFacialAnimationMode,
     CutScene,
     GameFileCache,
+    Vector3,
     YcdAnimationTrack,
     YcdCutsceneBuilder,
     YcdFacialTrackSet,
@@ -37,7 +38,7 @@ def test_cut_ped_merged_facial_mode_resolves_dual_clip() -> None:
     animations = YcdCutsceneBuilder.create("facial_scene", duration=1.0)
     animations.ped(
         "actor",
-        mover_position=(0.0, 0.0, 0.0),
+        mover_position=Vector3(),
         facial=YcdFacialTrackSet(controls={7: 0.5}),
     )
     scene = CutScene(scene_name="facial_scene", duration=1.0)
@@ -196,7 +197,7 @@ def test_yed_conditional_branches_match_rage_zero_semantics(
 
     result = evaluate_yed(yed, ("branch",), {})
 
-    assert result.output_tracks[(1, 0)][0] == pytest.approx(expected)
+    assert result.output_tracks[(1, 0)].x == pytest.approx(expected)
     assert result.issues == []
 
 

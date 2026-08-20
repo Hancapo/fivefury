@@ -4,7 +4,7 @@ import dataclasses
 from collections.abc import Sequence
 
 from .. import _native as _native_backend
-from ..vector import aabb_center, aabb_from_points, sphere_radius_from_points
+from ..vector import Aabb3, Vector3, sphere_radius_from_points
 from .model import (
     BoundAabb,
     BoundBVH,
@@ -24,7 +24,6 @@ DEFAULT_BOUND_COMPOSITE_FLAGS = BoundCompositeFlags(flags1=62, flags2=133414592)
 DEFAULT_BOUND_MATERIAL = BoundMaterial(type=0)
 
 
-Vector3 = tuple[float, float, float]
 BoundTriangle = tuple[Vector3, Vector3, Vector3]
 
 
@@ -36,15 +35,17 @@ class BoundTriangleChunk:
 
 
 def triangle_area(vertex0: Vector3, vertex1: Vector3, vertex2: Vector3) -> float:
-    return _native_backend._bounds_triangle_area(vertex0, vertex1, vertex2)
+    return _native_backend._bounds_triangle_area(
+        vertex0.as_tuple(), vertex1.as_tuple(), vertex2.as_tuple()
+    )
 
 
-def bounds_from_vertices(vertices: list[Vector3]) -> tuple[Vector3, Vector3]:
-    return aabb_from_points(vertices)
+def bounds_from_vertices(vertices: list[Vector3]) -> Aabb3:
+    return Aabb3.from_points(vertices)
 
 
 def center_from_bounds(minimum: Vector3, maximum: Vector3) -> Vector3:
-    return aabb_center(minimum, maximum)
+    return Aabb3(minimum, maximum).center
 
 
 def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> float:
@@ -53,10 +54,10 @@ def sphere_radius_from_vertices(center: Vector3, vertices: list[Vector3]) -> flo
 
 def identity_bound_transform() -> BoundTransform:
     return BoundTransform(
-        column1=(1.0, 0.0, 0.0),
-        column2=(0.0, 1.0, 0.0),
-        column3=(0.0, 0.0, 1.0),
-        column4=(0.0, 0.0, 0.0),
+        column1=Vector3(1.0, 0.0, 0.0),
+        column2=Vector3(0.0, 1.0, 0.0),
+        column3=Vector3(0.0, 0.0, 1.0),
+        column4=Vector3(),
         flags1=0,
         flags2=1,
         flags3=1,
@@ -77,7 +78,7 @@ def chunk_bound_triangles(
         raise ValueError("triangle_material_indices length must match triangle count")
 
     native_chunks = _native_backend._bounds_chunk_triangles(
-        triangles,
+        [tuple(vertex.as_tuple() for vertex in triangle) for triangle in triangles],
         max_vertices_per_child=max_vertices_per_child,
         max_triangles_per_child=max_triangles_per_child,
     )
@@ -97,7 +98,7 @@ def chunk_bound_triangles(
         )
         chunks.append(
             BoundTriangleChunk(
-                vertices=vertices,
+                vertices=[Vector3.from_iterable(vertex) for vertex in vertices],
                 triangles=chunk_triangles,
                 material_indices=material_indices,
             )
@@ -137,7 +138,7 @@ def build_geometry_bvh_from_chunk(
     center = center_from_bounds(minimum, maximum)
     radius = sphere_radius_from_vertices(center, chunk.vertices)
     areas = _native_backend._bounds_indexed_triangle_areas(
-        chunk.vertices, chunk.triangles
+        [vertex.as_tuple() for vertex in chunk.vertices], chunk.triangles
     )
     polygons = [
         BoundPolygonTriangle(
@@ -175,9 +176,9 @@ def build_geometry_bvh_from_chunk(
         poly_flags=0,
         material_color_index=0,
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=0.0,
-        quantum=(1.0, 1.0, 1.0),
+        quantum=Vector3(1.0, 1.0, 1.0),
         center_geom=center,
         vertices=chunk.vertices,
         vertices_shrunk=[],
@@ -209,8 +210,8 @@ def build_composite_bound_from_chunks(
             material=material,
             materials=materials,
         )
-        minimum = tuple(float(value) for value in geometry.box_min)
-        maximum = tuple(float(value) for value in geometry.box_max)
+        minimum = geometry.box_min
+        maximum = geometry.box_max
         all_vertices.extend(chunk.vertices)
         children.append(
             BoundChild(
@@ -240,7 +241,7 @@ def build_composite_bound_from_chunks(
         poly_flags=0,
         material_color_index=0,
         ref_count=1,
-        angular_inertia=(0.0, 0.0, 0.0),
+        angular_inertia=Vector3(),
         volume=0.0,
         children=children,
         bvh_pointer=0,

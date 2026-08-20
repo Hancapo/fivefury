@@ -65,16 +65,16 @@ Current target-aware authoring covers the main `YDR`, `YDD`, `YFT`, `YBN`, `YCD`
 ### Build and package a map
 
 ```python
-from fivefury import Ymap, create_rpf
+from fivefury import Vector3, Ymap, create_rpf
 
 ymap = Ymap(name="example_map")
 ymap.entity(
     "prop_tree_pine_01",
-    position=(100.0, 200.0, 0.0),
+    position=Vector3(100.0, 200.0, 0.0),
     lod_dist=150.0,
 )
 ymap.physics_dictionary("example_map")
-ymap.car_gen("sultan", (110.0, 205.0, 0.0), heading=90.0)
+ymap.car_gen("sultan", Vector3(110.0, 205.0, 0.0), heading=90.0)
 ymap.save("example_map.ymap", auto_extents=True)
 
 archive = create_rpf("example_pack.rpf")

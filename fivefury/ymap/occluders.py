@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any
 
 from ..meta.defs import meta_name
+from ..vector import Aabb3, Vector3
 
 
 class AngleMode(str, Enum):
@@ -26,32 +27,32 @@ class BoxOccluder:
     iSinZ: int = 0
 
     @property
-    def position(self) -> tuple[float, float, float]:
-        return (self.iCenterX / 4.0, self.iCenterY / 4.0, self.iCenterZ / 4.0)
+    def position(self) -> Vector3:
+        return Vector3(self.iCenterX / 4.0, self.iCenterY / 4.0, self.iCenterZ / 4.0)
 
     @property
-    def size(self) -> tuple[float, float, float]:
+    def size(self) -> Vector3:
         # GTA V's rasterizer expands ``iWidth`` along the local X axis and
         # ``iLength`` along local Y.  Expose the public box size as (X, Y, Z)
         # even though the packed field order is (length, width, height).
-        return (self.iWidth / 4.0, self.iLength / 4.0, self.iHeight / 4.0)
+        return Vector3(self.iWidth / 4.0, self.iLength / 4.0, self.iHeight / 4.0)
 
     @property
     def angle_radians(self) -> float:
         return math.atan2(self.iSinZ / 16384.0, self.iCosZ / 16384.0)
 
     @property
-    def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-        px, py, pz = self.position
-        sx, sy, sz = self.size
-        half_x = sx * 0.5
-        half_y = sy * 0.5
+    def bounds(self) -> Aabb3:
+        position = self.position
+        size = self.size
+        half_x = size.x * 0.5
+        half_y = size.y * 0.5
         radians = self.angle_radians
         extent_x = abs(math.cos(radians)) * half_x + abs(math.sin(radians)) * half_y
         extent_y = abs(math.sin(radians)) * half_x + abs(math.cos(radians)) * half_y
-        return (
-            (px - extent_x, py - extent_y, pz - sz * 0.5),
-            (px + extent_x, py + extent_y, pz + sz * 0.5),
+        return Aabb3(
+            Vector3(position.x - extent_x, position.y - extent_y, position.z - size.z * 0.5),
+            Vector3(position.x + extent_x, position.y + extent_y, position.z + size.z * 0.5),
         )
 
     def to_meta(self) -> dict[str, Any]:
@@ -85,8 +86,8 @@ class BoxOccluder:
     @classmethod
     def from_box(
         cls,
-        position: tuple[float, float, float],
-        size: tuple[float, float, float],
+        position: Vector3,
+        size: Vector3,
         angle: float = 0.0,
         angle_mode: AngleMode = AngleMode.DEGREES,
     ) -> BoxOccluder:
@@ -94,14 +95,14 @@ class BoxOccluder:
             math.radians(angle) if angle_mode == AngleMode.DEGREES else float(angle)
         )
         return cls(
-            iCenterX=round(position[0] * 4),
-            iCenterY=round(position[1] * 4),
-            iCenterZ=round(position[2] * 4),
+            iCenterX=round(position.x * 4),
+            iCenterY=round(position.y * 4),
+            iCenterZ=round(position.z * 4),
             # The runtime's BoxOccluder::CalculateVerts treats width as local
             # X and length as local Y, despite their serialized field order.
-            iLength=max(1, round(abs(size[1]) * 4)),
-            iWidth=max(1, round(abs(size[0]) * 4)),
-            iHeight=max(1, round(abs(size[2]) * 4)),
+            iLength=max(1, round(abs(size.y) * 4)),
+            iWidth=max(1, round(abs(size.x) * 4)),
+            iHeight=max(1, round(abs(size.z) * 4)),
             # Match GTA V's BoxOccluder::SetSize exactly.  Swapping these to
             # match CodeWalker's display convention mirrors non-axis-aligned
             # boxes in the runtime and can make them occlude unrelated assets.
@@ -115,8 +116,8 @@ _OCCLUDE_MAX_VERTICES = 256
 
 @dataclasses.dataclass(slots=True)
 class OccludeModel:
-    bmin: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bmax: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    bmin: Vector3 = dataclasses.field(default_factory=Vector3)
+    bmax: Vector3 = dataclasses.field(default_factory=Vector3)
     data_size: int = 0
     verts: bytes = b""
     num_verts_in_bytes: int = 0
@@ -141,8 +142,8 @@ class OccludeModel:
         if not isinstance(value, dict):
             return cls()
         return cls(
-            bmin=tuple(value.get("bmin", (0.0, 0.0, 0.0))),
-            bmax=tuple(value.get("bmax", (0.0, 0.0, 0.0))),
+            bmin=Vector3.from_iterable(value.get("bmin", (0.0, 0.0, 0.0))),
+            bmax=Vector3.from_iterable(value.get("bmax", (0.0, 0.0, 0.0))),
             data_size=int(value.get("dataSize", 0)),
             verts=bytes(value.get("verts", b"") or b""),
             num_verts_in_bytes=int(value.get("numVertsInBytes", 0)),
@@ -151,19 +152,19 @@ class OccludeModel:
         )
 
     @property
-    def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-        return self.bmin, self.bmax
+    def bounds(self) -> Aabb3:
+        return Aabb3(self.bmin, self.bmax)
 
-    def vertices(self) -> list[tuple[float, float, float]]:
+    def vertices(self) -> list[Vector3]:
         count = self.num_verts_in_bytes // 12 if self.num_verts_in_bytes else 0
-        return [value for value in struct.iter_unpack("<fff", self.verts[: count * 12])]
+        return [Vector3(*value) for value in struct.iter_unpack("<fff", self.verts[: count * 12])]
 
     def indices(self) -> bytes:
         return self.verts[self.num_verts_in_bytes :]
 
     def set_geometry(
         self,
-        vertices: list[tuple[float, float, float]],
+        vertices: list[Vector3],
         indices: bytes,
         *,
         flags: int | None = None,
@@ -174,11 +175,8 @@ class OccludeModel:
         self.data_size = len(self.verts)
         self.num_tris = (len(indices) // 3) + 32768 if indices else 0
         if vertices:
-            xs = [vertex[0] for vertex in vertices]
-            ys = [vertex[1] for vertex in vertices]
-            zs = [vertex[2] for vertex in vertices]
-            self.bmin = (min(xs), min(ys), min(zs))
-            self.bmax = (max(xs), max(ys), max(zs))
+            self.bmin = Vector3.minimum(vertices)
+            self.bmax = Vector3.maximum(vertices)
         if flags is not None:
             self.flags = int(flags)
         return self
@@ -186,7 +184,7 @@ class OccludeModel:
     @classmethod
     def from_geometry(
         cls,
-        vertices: list[tuple[float, float, float]],
+        vertices: list[Vector3],
         indices: bytes = b"",
         *,
         flags: int = 0,
@@ -197,7 +195,7 @@ class OccludeModel:
     @classmethod
     def from_faces(
         cls,
-        vertices: list[tuple[float, float, float]],
+        vertices: list[Vector3],
         faces: list[tuple[int, ...]],
         *,
         flags: int = 0,
@@ -243,22 +241,22 @@ class OccludeModel:
     @classmethod
     def from_box(
         cls,
-        min_pos: tuple[float, float, float],
-        max_pos: tuple[float, float, float],
+        min_pos: Vector3,
+        max_pos: Vector3,
         *,
         flags: int = 0,
     ) -> list[OccludeModel]:
         x0, y0, z0 = min_pos
         x1, y1, z1 = max_pos
         vertices = [
-            (x0, y0, z0),
-            (x1, y0, z0),
-            (x1, y1, z0),
-            (x0, y1, z0),
-            (x0, y0, z1),
-            (x1, y0, z1),
-            (x1, y1, z1),
-            (x0, y1, z1),
+            Vector3(x0, y0, z0),
+            Vector3(x1, y0, z0),
+            Vector3(x1, y1, z0),
+            Vector3(x0, y1, z0),
+            Vector3(x0, y0, z1),
+            Vector3(x1, y0, z1),
+            Vector3(x1, y1, z1),
+            Vector3(x0, y1, z1),
         ]
         faces = [
             (0, 1, 2, 3),
@@ -272,7 +270,7 @@ class OccludeModel:
 
     @classmethod
     def from_quad(
-        cls, corners: list[tuple[float, float, float]], *, flags: int = 0
+        cls, corners: list[Vector3], *, flags: int = 0
     ) -> list[OccludeModel]:
         if len(corners) != 4:
             raise ValueError(

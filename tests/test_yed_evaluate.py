@@ -11,6 +11,9 @@ import pytest
 from fivefury import (
     GameFileType,
     MetaHash,
+    Quaternion,
+    Vector3,
+    Vector4,
     YcdAnimationTrack,
     YedExpression,
     YedInstruction,
@@ -24,12 +27,6 @@ from fivefury import (
     evaluate_yed,
     jenk_hash,
     read_yed,
-)
-from fivefury.vector import (
-    quat_from_euler_xyz,
-    quat_multiply,
-    quat_normalize,
-    quat_to_euler_xyz,
 )
 
 
@@ -100,7 +97,7 @@ def test_missing_facial_scale_whole_vector_preserves_unit_default() -> None:
 
     result = evaluate_yed(create_yed(expression), (expression.short_name,), {})
 
-    assert result.output_tracks[(1, 0)] == (1.0, 1.0, 1.0, 0.0)
+    assert result.output_tracks[(1, 0)] == Vector4(1.0, 1.0, 1.0, 0.0)
 
 
 @pytest.mark.parametrize("component", range(3), ids=("x", "y", "z"))
@@ -115,7 +112,7 @@ def test_missing_facial_scale_component_defaults_to_zero(component: int) -> None
 
     result = evaluate_yed(create_yed(expression), (expression.short_name,), {})
 
-    assert result.output_tracks[(component + 1, 0)] == (0.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(component + 1, 0)] == Vector4()
 
 
 def test_missing_generic_scale_component_defaults_to_zero() -> None:
@@ -129,7 +126,7 @@ def test_missing_generic_scale_component_defaults_to_zero() -> None:
 
     result = evaluate_yed(create_yed(expression), (expression.short_name,), {})
 
-    assert result.output_tracks[(1, 0)] == (0.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(1, 0)] == Vector4()
 
 
 def test_present_facial_scale_component_returns_authored_value() -> None:
@@ -148,7 +145,7 @@ def test_present_facial_scale_component_returns_authored_value() -> None:
         {(10866, track): (1.25, 1.5, 1.75, 0.0)},
     )
 
-    assert result.output_tracks[(1, 0)] == (1.5, 1.5, 1.5, 1.5)
+    assert result.output_tracks[(1, 0)] == Vector4(1.5, 1.5, 1.5, 1.5)
 
 
 @pytest.mark.parametrize(
@@ -177,7 +174,13 @@ def test_missing_bone_component_uses_skeleton_default(
     bone = SimpleNamespace(
         tag=7,
         translation=(4.0, 5.0, 6.0),
-        rotation=quat_from_euler_xyz((math.radians(10.0), math.radians(20.0), math.radians(30.0))),
+        rotation=Quaternion.from_euler_xyz(
+            Vector3(
+                math.radians(10.0),
+                math.radians(20.0),
+                math.radians(30.0),
+            )
+        ),
         scale=(1.5, 2.0, 2.5),
     )
 
@@ -188,7 +191,7 @@ def test_missing_bone_component_uses_skeleton_default(
         skeleton=SimpleNamespace(bones=[bone]),
     )
 
-    assert result.output_tracks[(1, 0)] == pytest.approx((expected,) * 4)
+    assert result.output_tracks[(1, 0)].components == pytest.approx((expected,) * 4)
 
 
 def test_component_use_defaults_ignores_authored_values() -> None:
@@ -230,8 +233,8 @@ def test_component_use_defaults_ignores_authored_values() -> None:
         skeleton=skeleton,
     )
 
-    assert result.output_tracks[(1, 0)] == (0.0, 0.0, 0.0, 0.0)
-    assert result.output_tracks[(2, 0)] == (5.0, 5.0, 5.0, 5.0)
+    assert result.output_tracks[(1, 0)] == Vector4()
+    assert result.output_tracks[(2, 0)] == Vector4(5.0, 5.0, 5.0, 5.0)
 
 
 def _assert_same_rotation(
@@ -240,8 +243,8 @@ def _assert_same_rotation(
     *,
     tolerance: float = 1e-9,
 ) -> None:
-    actual = quat_normalize(actual)
-    expected = quat_normalize(expected)
+    actual = Quaternion.from_iterable(actual).normalized()
+    expected = Quaternion.from_iterable(expected).normalized()
     alignment = abs(sum(left * right for left, right in zip(actual, expected)))
     assert alignment == pytest.approx(1.0, abs=tolerance)
 
@@ -269,10 +272,24 @@ def test_rage_euler_xyz_compound_reference_reaches_the_vm() -> None:
 
     result = evaluate_yed(create_yed(expression), ("compound_euler",), {})
 
-    assert quat_from_euler_xyz(angles) == pytest.approx(expected, abs=1e-12)
-    assert quat_to_euler_xyz(expected) == pytest.approx(angles, abs=1e-12)
-    assert result.output_tracks[(1, 1)] == pytest.approx(expected, abs=1e-12)
-    assert result.output_tracks[(2, 0)][:3] == pytest.approx(angles, abs=1e-12)
+    assert Quaternion.from_euler_xyz(
+        Vector3.from_iterable(angles)
+    ).components == pytest.approx(
+        expected,
+        abs=1e-12,
+    )
+    assert Quaternion.from_iterable(
+        expected
+    ).to_euler_xyz().components == pytest.approx(
+        angles,
+        abs=1e-12,
+    )
+    assert result.output_tracks[(1, 1)].components == pytest.approx(
+        expected, abs=1e-12
+    )
+    assert result.output_tracks[(2, 0)].xyz.components == pytest.approx(
+        angles, abs=1e-12
+    )
     assert result.issues == []
 
 
@@ -289,7 +306,9 @@ def test_euler_xyz_roundtrip_preserves_finite_rotations() -> None:
     ]
     yed = create_yed(expression)
     rotations = [
-        quat_from_euler_xyz(tuple(math.radians(value) for value in angles))
+        Quaternion.from_euler_xyz(
+            Vector3.from_iterable(math.radians(value) for value in angles)
+        )
         for angles in (
             (0.0, 0.0, 0.0),
             (90.0, 0.0, 0.0),
@@ -301,15 +320,17 @@ def test_euler_xyz_roundtrip_preserves_finite_rotations() -> None:
             (-22.0, -89.9, 64.0),
         )
     ]
-    rotations.append(tuple(-value for value in rotations[4]))
+    rotations.append(-rotations[4])
     generator = random.Random(0x594544)
     for _ in range(64):
         rotations.append(
-            quat_normalize(tuple(generator.uniform(-1.0, 1.0) for _ in range(4)))
+            Quaternion.from_iterable(
+                generator.uniform(-1.0, 1.0) for _ in range(4)
+            ).normalized()
         )
 
     for rotation in rotations:
-        python_roundtrip = quat_from_euler_xyz(quat_to_euler_xyz(rotation))
+        python_roundtrip = Quaternion.from_euler_xyz(rotation.to_euler_xyz())
         result = evaluate_yed(yed, ("euler_roundtrip",), {(1, 1): rotation})
         _assert_same_rotation(python_roundtrip, rotation, tolerance=1e-8)
         _assert_same_rotation(result.output_tracks[(2, 1)], rotation, tolerance=1e-8)
@@ -342,7 +363,9 @@ def test_evaluate_yed_maps_a_facial_control_to_a_bone_track() -> None:
         {(8133, int(YcdAnimationTrack.FACIAL_CONTROL)): (0.25, 0.25, 0.25, 0.25)},
     )
 
-    assert result.output_tracks[(59307, 0)] == pytest.approx((1.0, 0.5, 0.25, 0.0))
+    assert result.output_tracks[(59307, 0)].components == pytest.approx(
+        (1.0, 0.5, 0.25, 0.0)
+    )
     assert result.evaluated_expressions == ["head_000_r"]
     assert result.issues == []
 
@@ -364,7 +387,9 @@ def test_vector_transform_preserves_vector_length() -> None:
 
     result = evaluate_yed(create_yed(expression), ("rotate",), {})
 
-    assert result.output_tracks[(1, 0)] == pytest.approx((0.0, 2.0, 0.0, 0.0))
+    assert result.output_tracks[(1, 0)].components == pytest.approx(
+        (0.0, 2.0, 0.0, 0.0)
+    )
 
 
 def test_unsupported_instruction_is_reported_without_guessing() -> None:
@@ -413,8 +438,10 @@ def test_absolute_and_relative_tracks_use_skeleton_defaults_by_tag() -> None:
         skeleton=SimpleNamespace(bones=[target_bone, source_bone]),
     )
 
-    assert result.output_tracks[(30, 0)] == pytest.approx((11.0, 22.0, 33.0, 0.0))
-    assert result.output_tracks[(20, 0)] == pytest.approx(
+    assert result.output_tracks[(30, 0)].components == pytest.approx(
+        (11.0, 22.0, 33.0, 0.0)
+    )
+    assert result.output_tracks[(20, 0)].components == pytest.approx(
         (101.0, 202.0, 303.0, 0.0)
     )
 
@@ -451,8 +478,12 @@ def test_relative_rotation_and_scale_compose_with_skeleton_defaults() -> None:
         skeleton=SimpleNamespace(bones=[bone]),
     )
 
-    assert result.output_tracks[(10, 1)] == pytest.approx((0.5, 0.5, 0.5, 0.5))
-    assert result.output_tracks[(10, 2)] == pytest.approx((2.5, 4.0, 5.5, 0.0))
+    assert result.output_tracks[(10, 1)].components == pytest.approx(
+        (0.5, 0.5, 0.5, 0.5)
+    )
+    assert result.output_tracks[(10, 2)].components == pytest.approx(
+        (2.5, 4.0, 5.5, 0.0)
+    )
 
 
 def test_component_writes_support_vectors_and_quaternions() -> None:
@@ -488,8 +519,10 @@ def test_component_writes_support_vectors_and_quaternions() -> None:
         },
     )
 
-    assert result.output_tracks[(1, 0)] == pytest.approx((1.0, 9.0, 3.0, 0.0))
-    assert result.output_tracks[(2, 1)] == pytest.approx(
+    assert result.output_tracks[(1, 0)].components == pytest.approx(
+        (1.0, 9.0, 3.0, 0.0)
+    )
+    assert result.output_tracks[(2, 1)].components == pytest.approx(
         (0.0, 0.0, 2**-0.5, 2**-0.5)
     )
 
@@ -497,8 +530,10 @@ def test_component_writes_support_vectors_and_quaternions() -> None:
 def test_quaternion_component_write_preserves_compound_rage_axes() -> None:
     angles = tuple(math.radians(value) for value in (30.0, -40.0, 55.0))
     replacement = math.radians(-36.2039)
-    initial = quat_from_euler_xyz(angles)
-    expected = quat_from_euler_xyz((replacement, angles[1], angles[2]))
+    initial = Quaternion.from_euler_xyz(Vector3.from_iterable(angles))
+    expected = Quaternion.from_euler_xyz(
+        Vector3(replacement, angles[1], angles[2])
+    )
     expression = YedExpression.create("compound_component")
     expression.streams = [
         _stream(
@@ -566,7 +601,9 @@ def test_michael_ear_component_regression_stays_near_neutral() -> None:
     )
 
     for bone_tag, neutral_rotation in neutral.items():
-        final_rotation = quat_normalize(result.output_tracks[(bone_tag, 1)])
+        final_rotation = Quaternion.from_iterable(
+            result.output_tracks[(bone_tag, 1)]
+        ).normalized()
         alignment = abs(
             sum(
                 left * right
@@ -585,14 +622,18 @@ def test_relative_quaternion_component_write_uses_compound_default_pose() -> Non
     base_angles = tuple(math.radians(value) for value in (12.0, -25.0, 33.0))
     relative_angles = tuple(math.radians(value) for value in (4.0, -7.0, 11.0))
     replacement = math.radians(-8.0)
-    base = quat_from_euler_xyz(base_angles)
-    current = quat_multiply(base, quat_from_euler_xyz(relative_angles))
+    base = Quaternion.from_euler_xyz(Vector3.from_iterable(base_angles))
+    current = base * Quaternion.from_euler_xyz(
+        Vector3.from_iterable(relative_angles)
+    )
     expected_relative = (
         replacement + base_angles[0],
         relative_angles[1],
         relative_angles[2],
     )
-    expected = quat_multiply(base, quat_from_euler_xyz(expected_relative))
+    expected = base * Quaternion.from_euler_xyz(
+        Vector3.from_iterable(expected_relative)
+    )
     bone = SimpleNamespace(
         tag=4407,
         translation=(0.0, 0.0, 0.0),
@@ -694,7 +735,7 @@ def test_expression_order_and_duplicate_suppression_are_deterministic() -> None:
     )
 
     assert result.evaluated_expressions == ["first", "second"]
-    assert result.output_tracks[(1, 0)][0] == pytest.approx(2.0)
+    assert result.output_tracks[(1, 0)].x == pytest.approx(2.0)
 
 
 def test_variables_persist_only_through_explicit_caller_state() -> None:
@@ -727,7 +768,9 @@ def test_variables_persist_only_through_explicit_caller_state() -> None:
     )
     isolated = evaluate_yed(create_yed(expression), (), {}, variables=None)
 
-    assert state[(variable_hash, 0)] == pytest.approx((0.75, 0.75, 0.75, 0.75))
+    assert state[(variable_hash, 0)].components == pytest.approx(
+        (0.75, 0.75, 0.75, 0.75)
+    )
     assert persisted.variables == state
     assert isolated.variables == {}
 
@@ -752,9 +795,9 @@ def test_track_input_coercion_matches_the_public_vector_rules() -> None:
         {(1, 0): 2.0, (2, 0): (3.0,), (3, 0): (4.0, 5.0, 6.0)},
     )
 
-    assert result.output_tracks[(10, 0)] == (2.0, 0.0, 0.0, 0.0)
-    assert result.output_tracks[(20, 0)] == (3.0, 0.0, 0.0, 0.0)
-    assert result.output_tracks[(30, 0)] == (4.0, 5.0, 6.0, 0.0)
+    assert result.output_tracks[(10, 0)] == Vector4(2.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(20, 0)] == Vector4(3.0, 0.0, 0.0, 0.0)
+    assert result.output_tracks[(30, 0)] == Vector4(4.0, 5.0, 6.0, 0.0)
 
 
 def test_compiled_program_is_reused_and_invalidated_by_stream_replacement() -> None:
@@ -800,7 +843,7 @@ def test_compiled_program_can_evaluate_concurrent_frames() -> None:
     with ThreadPoolExecutor(max_workers=8) as executor:
         values = list(executor.map(run, (float(index) for index in range(64))))
 
-    assert values == [(float(index * 2), 0.0, 0.0, 0.0) for index in range(64)]
+    assert values == [Vector4(float(index * 2), 0.0, 0.0, 0.0) for index in range(64)]
 
 
 def _blend_operands(multiplier: float) -> dict[str, object]:
@@ -877,8 +920,10 @@ def test_linear_vector_and_quaternion_blends_use_serialized_sources() -> None:
         tracks,
     )
 
-    assert result.output_tracks[(20, 0)] == pytest.approx((3.0, 0.0, 0.0, 0.0))
-    assert result.output_tracks[(21, 1)] == pytest.approx(
+    assert result.output_tracks[(20, 0)].components == pytest.approx(
+        (3.0, 0.0, 0.0, 0.0)
+    )
+    assert result.output_tracks[(21, 1)].components == pytest.approx(
         (2**-0.5, 0.0, 0.0, 2**-0.5)
     )
 
@@ -900,9 +945,9 @@ def test_quaternion_blend_preserves_compound_serialized_source_order() -> None:
             _instruction(YedInstructionType.END),
         )
     ]
-    expected = quat_multiply(
-        quat_from_euler_xyz(first),
-        quat_from_euler_xyz(second),
+    expected = (
+        Quaternion.from_euler_xyz(Vector3.from_iterable(first))
+        * Quaternion.from_euler_xyz(Vector3.from_iterable(second))
     )
 
     result = evaluate_yed(
@@ -946,8 +991,8 @@ def test_missing_skeleton_uses_typed_fallback_and_tagged_skeleton_uses_default()
         ),
     )
 
-    assert missing.output_tracks[(8, 0)] == (0.0, 0.0, 0.0, 1.0)
-    assert tagged.output_tracks[(8, 0)] == (4.0, 5.0, 6.0, 0.0)
+    assert missing.output_tracks[(8, 0)] == Vector4(0.0, 0.0, 0.0, 1.0)
+    assert tagged.output_tracks[(8, 0)] == Vector4(4.0, 5.0, 6.0, 0.0)
 
 
 def test_yed_roundtrip_preserves_conditional_branch_opcodes() -> None:

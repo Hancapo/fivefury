@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import struct
 
+from ..vector import Vector3
 from .prepare import compute_bounds
 from .write_buffers import MeshBufferPack
 
@@ -10,8 +11,8 @@ from .write_buffers import MeshBufferPack
 @dataclasses.dataclass(slots=True)
 class GeometryBlock:
     material_index: int
-    bounds_min: tuple[float, float, float]
-    bounds_max: tuple[float, float, float]
+    bounds_min: Vector3
+    bounds_max: Vector3
     geometry_bytes: bytes
 
 

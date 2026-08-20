@@ -8,6 +8,9 @@ import pytest
 from fivefury import (
     GameTarget,
     MetaHash,
+    Quaternion,
+    Vector3,
+    Vector4,
     Ycd,
     YcdAnimation,
     YcdAnimationBoneId,
@@ -921,10 +924,12 @@ def test_ycd_rotation_tracks_interpolate_on_shortest_quaternion_path(
     )
     key = (17, int(track))
 
-    assert animation.evaluate_tracks(0.5)[key] == pytest.approx((0.0, 0.0, 0.0, 1.0))
-    assert animation.evaluate_tracks(0)[key] == (0.0, 0.0, 0.0, 1.0)
-    assert animation.evaluate_tracks(1)[key] == (0.0, 0.0, 0.0, -1.0)
-    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == (0.0, 0.0, 0.0, 1.0)
+    assert animation.evaluate_tracks(0.5)[key].components == pytest.approx(
+        (0.0, 0.0, 0.0, 1.0)
+    )
+    assert animation.evaluate_tracks(0)[key] == Quaternion()
+    assert animation.evaluate_tracks(1)[key] == Quaternion(0.0, 0.0, 0.0, -1.0)
+    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == Quaternion()
 
 
 def test_ycd_non_rotation_track_interpolation_is_unchanged() -> None:
@@ -935,8 +940,8 @@ def test_ycd_non_rotation_track_interpolation_is_unchanged() -> None:
     )
     key = (17, int(YcdAnimationTrack.BONE_TRANSLATION))
 
-    assert animation.evaluate_tracks(0.5)[key] == (3.0, 4.0, 5.0, 6.0)
-    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == (1.0, 2.0, 3.0, 4.0)
+    assert animation.evaluate_tracks(0.5)[key] == Vector4(3.0, 4.0, 5.0, 6.0)
+    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == Vector4(1.0, 2.0, 3.0, 4.0)
 
 
 def test_ycd_rotation_track_restores_cached_quaternion_component() -> None:
@@ -1000,7 +1005,7 @@ def test_ycd_rotation_track_restores_cached_quaternion_component() -> None:
 
     value = animation.evaluate_tracks(0)[(2108, int(YcdAnimationTrack.BONE_ROTATION))]
 
-    assert value == pytest.approx((math.sqrt(0.71), 0.2, 0.3, 0.4))
+    assert value.components == pytest.approx((math.sqrt(0.71), 0.2, 0.3, 0.4))
 
 
 def test_ycd_rotation_track_preserves_four_explicit_cached_components() -> None:
@@ -1024,7 +1029,7 @@ def test_ycd_rotation_track_preserves_four_explicit_cached_components() -> None:
     )
     sequence.channels[-1].parent_sequence = sequence
 
-    assert sequence.evaluate_quaternion(0) == pytest.approx(
+    assert sequence.evaluate_quaternion(0).components == pytest.approx(
         (-0.67, -0.37, -0.25, 0.58)
     )
 
@@ -1328,11 +1333,14 @@ def test_cutscene_builder_splits_long_skeletal_props_into_vanilla_sized_sequence
     builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
     builder.prop(
         "miku_hatsune_metal",
-        mover_position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
-        mover_rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.0, 1.0)},
+        mover_position={0.0: Vector3(), 24.4: Vector3(1.0, 0.0, 0.0)},
+        mover_rotation={0.0: Quaternion(), 24.4: Quaternion()},
         bones={
             6783: YcdCutsceneBoneAnimation(
-                rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.7071068, 0.7071068)}
+                rotation={
+                    0.0: Quaternion(),
+                    24.4: Quaternion(0.0, 0.0, 0.7071068, 0.7071068),
+                }
             )
         },
     )
@@ -1358,12 +1366,21 @@ def test_cutscene_builder_orders_object_tracks_like_game_ycds() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=1.0, fps=30.0)
     builder.prop(
         "miku_hatsune_metal",
-        mover_position={0.0: (0.0, 0.0, 0.0), 1.0: (1.0, 0.0, 0.0)},
-        mover_rotation=(0.0, 0.0, 0.0, 1.0),
+        mover_position={0.0: Vector3(), 1.0: Vector3(1.0, 0.0, 0.0)},
+        mover_rotation=Quaternion(),
         bones={
-            56259: YcdCutsceneBoneAnimation(position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 0.0, 1.0)}),
-            5195: YcdCutsceneBoneAnimation(position={0.0: (0.0, 0.0, 0.0), 1.0: (0.0, 1.0, 0.0)}),
-            6783: YcdCutsceneBoneAnimation(rotation={0.0: (0.0, 0.0, 0.0, 1.0), 1.0: (0.0, 0.0, 0.7071068, 0.7071068)}),
+            56259: YcdCutsceneBoneAnimation(
+                position={0.0: Vector3(), 1.0: Vector3(0.0, 0.0, 1.0)}
+            ),
+            5195: YcdCutsceneBoneAnimation(
+                position={0.0: Vector3(), 1.0: Vector3(0.0, 1.0, 0.0)}
+            ),
+            6783: YcdCutsceneBoneAnimation(
+                rotation={
+                    0.0: Quaternion(),
+                    1.0: Quaternion(0.0, 0.0, 0.7071068, 0.7071068),
+                }
+            ),
         },
     )
 
@@ -1385,8 +1402,11 @@ def test_cutscene_builder_preserves_camera_sequence_splitting() -> None:
     builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
     builder.camera(
         "exportcamera",
-        position={0.0: (0.0, 0.0, 0.0), 24.4: (1.0, 0.0, 0.0)},
-        rotation={0.0: (0.0, 0.0, 0.0, 1.0), 24.4: (0.0, 0.0, 0.7071068, 0.7071068)},
+        position={0.0: Vector3(), 24.4: Vector3(1.0, 0.0, 0.0)},
+        rotation={
+            0.0: Quaternion(),
+            24.4: Quaternion(0.0, 0.0, 0.7071068, 0.7071068),
+        },
     )
 
     ycd = builder.build_ycds()[0]

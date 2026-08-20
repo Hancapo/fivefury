@@ -8,6 +8,9 @@ from fivefury import (
     GameFileCache,
     GameFileType,
     ValidationError,
+    Vector2,
+    Vector3,
+    WaterBounds,
     WaterCalmingQuad,
     WaterCornerAlphas,
     WaterData,
@@ -78,13 +81,13 @@ def test_read_water_maps_every_game_field() -> None:
     assert surface.alpha_ne == 30
     assert surface.alpha_nw == 40
     assert surface.corners() == (
-        (32.0, 64.0, 12.5),
-        (32.0, 128.0, 12.5),
-        (-16.0, 128.0, 12.5),
+        Vector3(32.0, 64.0, 12.5),
+        Vector3(32.0, 128.0, 12.5),
+        Vector3(-16.0, 128.0, 12.5),
     )
 
     assert water.calming_quads[0].dampening == 0.25
-    assert water.wave_quads[0].direction == (-0.8, 0.6)
+    assert water.wave_quads[0].direction == Vector2(-0.8, 0.6)
     assert water.validate().valid
 
 
@@ -116,7 +119,7 @@ def test_water_declarative_components_and_generic_add() -> None:
         dampening=0.2,
     )
     wave = WaterWaveQuad.from_angle(
-        bounds=(0, 0, 100, 50),
+        bounds=WaterBounds(0, 0, 100, 50),
         amplitude=1.0,
         degrees=90.0,
     )
@@ -146,14 +149,14 @@ def test_water_declarative_components_and_generic_add() -> None:
 
 def test_water_geometry_helpers_create_and_query_real_shapes() -> None:
     rectangle = WaterQuad.rectangle(
-        center=(100.0, 200.0, 12.5),
-        size=(80.0, 40.0),
+        center=Vector3(100.0, 200.0, 12.5),
+        size=Vector2(80.0, 40.0),
         alpha=32,
         limited_depth=True,
     )
     triangle = WaterQuad.triangle(
-        center=(100.0, 200.0, 15.0),
-        size=(80.0, 40.0),
+        center=Vector3(100.0, 200.0, 15.0),
+        size=Vector2(80.0, 40.0),
         shape=WaterQuadType.TRIANGLE_A,
         alpha=WaterCornerAlphas(
             southwest=10,
@@ -163,19 +166,19 @@ def test_water_geometry_helpers_create_and_query_real_shapes() -> None:
         ),
     )
     hidden = WaterQuad.rectangle(
-        center=(100.0, 200.0, 20.0),
-        size=(10.0, 10.0),
+        center=Vector3(100.0, 200.0, 20.0),
+        size=Vector2(10.0, 10.0),
         invisible=True,
     )
     water = WaterData().extend((rectangle, triangle, hidden))
 
     assert rectangle.alphas == (32, 32, 32, 32)
     assert rectangle.has_limited_depth
-    assert rectangle.center == (100.0, 200.0, 12.5)
+    assert rectangle.center == Vector3(100.0, 200.0, 12.5)
     assert triangle.alphas == (10, 20, 30, 40)
     assert triangle.contains_xy(70.0, 190.0)
     assert not triangle.contains_xy(130.0, 210.0)
-    assert water.bounds == (60, 180, 140, 220)
+    assert water.bounds == WaterBounds(60, 180, 140, 220)
     assert water.surfaces_at(100.0, 200.0) == [
         rectangle,
         triangle,
@@ -203,8 +206,8 @@ def test_water_triangle_queries_follow_the_selected_corner(
     outside: tuple[float, float],
 ) -> None:
     triangle = WaterQuad.triangle(
-        center=(5.0, 5.0, 0.0),
-        size=(10.0, 10.0),
+        center=Vector3(5.0, 5.0, 0.0),
+        size=Vector2(10.0, 10.0),
         shape=shape,
     )
 
@@ -214,19 +217,19 @@ def test_water_triangle_queries_follow_the_selected_corner(
 
 def test_water_region_helpers_and_translation() -> None:
     calming = WaterCalmingQuad.rectangle(
-        center=(0.0, 0.0),
-        size=(20.0, 10.0),
+        center=Vector2(0.0, 0.0),
+        size=Vector2(20.0, 10.0),
         dampening=0.25,
     )
     wave = WaterWaveQuad.from_center(
-        center=(0.0, 0.0),
-        size=(20.0, 10.0),
+        center=Vector2(0.0, 0.0),
+        size=Vector2(20.0, 10.0),
         amplitude=2.0,
         degrees=180.0,
     )
     water = create_water(calming, wave).translate(x=50, y=-25, z=100.0)
 
-    assert water.bounds == (40, -30, 60, -20)
+    assert water.bounds == WaterBounds(40, -30, 60, -20)
     assert (calming.min_x, calming.min_y) == (40, -30)
     assert (wave.max_x, wave.max_y) == (60, -20)
     assert wave.direction_x == pytest.approx(-1.0)
@@ -239,8 +242,8 @@ def test_centered_water_helpers_reject_fractional_game_bounds() -> None:
         match="must produce integer water bounds",
     ):
         WaterQuad.rectangle(
-            center=(0.25, 0.0, 0.0),
-            size=(10.0, 10.0),
+            center=Vector3(0.25, 0.0, 0.0),
+            size=Vector2(10.0, 10.0),
         )
 
     with pytest.raises(ValueError, match="x translation"):

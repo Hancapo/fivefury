@@ -63,6 +63,7 @@ from ..pso import (
     PsoStruct as _PsoStruct,
 )
 from ..pso.schema import serialize_psch as _serialize_psch
+from ..vector import Quaternion, Vector2, Vector3, Vector4
 from .limits import CUT_MAX_PSO_ARRAY_ITEMS
 from .model import CutFile, CutHashedString, CutNode
 from .names import ARRAY_INFO_HASH, CUT_HASH_NAMES, CUT_NAME_VALUES
@@ -92,11 +93,25 @@ def _string_value(value: Any) -> str:
 
 
 def _ensure_vector(value: Any, size: int) -> tuple[float, ...]:
-    if isinstance(value, tuple) and len(value) == size:
-        return tuple(float(v) for v in value)
-    if isinstance(value, list) and len(value) == size:
-        return tuple(float(v) for v in value)
-    return tuple(0.0 for _ in range(size))
+    if value is None:
+        return (0.0,) * size
+    expected: type[Vector2 | Vector3] | tuple[type[Vector4], type[Quaternion]]
+    if size == 2:
+        expected = Vector2
+    elif size == 3:
+        expected = Vector3
+    elif size == 4:
+        expected = (Vector4, Quaternion)
+    else:
+        raise ValueError(f"unsupported vector size {size}")
+    if not isinstance(value, expected):
+        names = (
+            " or ".join(item.__name__ for item in expected)
+            if isinstance(expected, tuple)
+            else expected.__name__
+        )
+        raise TypeError(f"PSO Float{size} requires {names}, got {type(value).__name__}")
+    return value.as_tuple()
 
 
 class _CutWriter:

@@ -6,6 +6,7 @@ from ..binary import f32 as _f32
 from ..binary import u16 as _u16
 from ..binary import u32 as _u32
 from ..binary import u64 as _u64
+from ..vector import Vector2
 from ..ydr.gen9 import decode_gen9_vertex_declaration
 from .constants import GEN9_YFT_VERSIONS
 from .glass import (
@@ -66,8 +67,8 @@ def _read_glass_pane(
         position_base=read_vec3(data, offset + 0x00),
         position_width=read_vec3(data, offset + 0x10),
         position_height=read_vec3(data, offset + 0x20),
-        uv_min=struct.unpack_from("<2f", data, offset + 0x30),
-        uv_max=struct.unpack_from("<2f", data, offset + 0x38),
+        uv_min=Vector2(*struct.unpack_from("<2f", data, offset + 0x30)),
+        uv_max=Vector2(*struct.unpack_from("<2f", data, offset + 0x38)),
         vertex_declaration=declaration,
         thickness=float(_f32(data, offset + tail_offset)),
         flags=YftGlassPaneFlag(_u16(data, offset + tail_offset + 0x04)),

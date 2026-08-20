@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import pytest
 
-from fivefury import DistantLodLightsSoa, LodLight, LodLightsSoa, ValidationError, Ymap
+from fivefury import (
+    DistantLodLightsSoa,
+    LodLight,
+    LodLightsSoa,
+    ValidationError,
+    Vector3,
+    Ymap,
+)
 
 
 def _lod_light() -> LodLight:
     light = LodLight(
-        position=(10.0, 20.0, 30.0),
-        direction=(0.0, 0.0, -1.0),
+        position=Vector3(10.0, 20.0, 30.0),
+        direction=Vector3(0.0, 0.0, -1.0),
         falloff=12.0,
         falloff_exponent=2.0,
         hash=0x12345678,
@@ -28,9 +35,9 @@ def test_typed_lod_light_authoring_roundtrip() -> None:
 
     assert parsed.lod_lights is not None
     assert parsed.distant_lod_lights is not None
-    assert parsed.lod_lights.direction == [(0.0, 0.0, -1.0)]
+    assert parsed.lod_lights.direction == [Vector3(0.0, 0.0, -1.0)]
     assert parsed.lod_lights.hash == [0x12345678]
-    assert parsed.distant_lod_lights.position == [(10.0, 20.0, 30.0)]
+    assert parsed.distant_lod_lights.position == [Vector3(10.0, 20.0, 30.0)]
     assert parsed.distant_lod_lights.RGBI == [0xFFCC8844]
 
 
@@ -41,7 +48,7 @@ def test_official_lod_child_and_distant_parent_shapes_roundtrip() -> None:
     distant_parent = Ymap(
         name="distlodlights_small000",
         distant_lod_lights=DistantLodLightsSoa(
-            position=[(10.0, 20.0, 30.0)],
+            position=[Vector3(10.0, 20.0, 30.0)],
             RGBI=[0xFFCC8844],
         ),
     )
@@ -63,10 +70,10 @@ def test_official_lod_child_and_distant_parent_shapes_roundtrip() -> None:
 @pytest.mark.parametrize(
     "ymap",
     [
-        Ymap(name="bad_lod", lod_lights=LodLightsSoa(direction=[(0.0, 0.0, -1.0)])),
+        Ymap(name="bad_lod", lod_lights=LodLightsSoa(direction=[Vector3(0.0, 0.0, -1.0)])),
         Ymap(
             name="bad_distant",
-            distant_lod_lights=DistantLodLightsSoa(position=[(0.0, 0.0, 0.0)]),
+            distant_lod_lights=DistantLodLightsSoa(position=[Vector3()]),
         ),
     ],
 )

@@ -23,6 +23,7 @@ from ..resource import (
     split_rsc7_sections,
     virtual_to_offset,
 )
+from ..vector import Vector2, Vector3, Vector4
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import (
     DAT_PHYSICAL_BASE,
@@ -86,7 +87,7 @@ def _try_read_c_string(pointer: int, system_data: bytes) -> str:
         return ""
     try:
         return read_c_string(system_data, _virtual_offset(pointer, system_data))
-    except Exception:
+    except (IndexError, OverflowError, UnicodeError, ValueError, struct.error):
         return ""
 
 
@@ -218,10 +219,13 @@ def _parse_mesh(
         material_index=material_index,
         material=material,
         indices=indices,
-        positions=list(decoded["positions"]),
-        normals=list(decoded["normals"]),
-        tangents=list(decoded["tangents"]),
-        texcoords=list(decoded["texcoords"]),
+        positions=[Vector3.from_iterable(value) for value in decoded["positions"]],
+        normals=[Vector3.from_iterable(value) for value in decoded["normals"]],
+        tangents=[Vector4.from_iterable(value) for value in decoded["tangents"]],
+        texcoords=[
+            [Vector2.from_iterable(value) for value in channel]
+            for channel in decoded["texcoords"]
+        ],
         colours0=list(decoded["colours0"]),
         colours1=list(decoded["colours1"]),
         blend_weights=list(decoded["blend_weights"]),
@@ -313,7 +317,7 @@ def _parse_embedded_textures(system_data: bytes, graphics_data: bytes, version: 
         return None
     try:
         return read_embedded_texture_dictionary(system_data, graphics_data, version=version, pointer=texture_dictionary_pointer)
-    except Exception:
+    except (IndexError, OverflowError, UnicodeError, ValueError, struct.error):
         return None
 
 
@@ -401,7 +405,7 @@ def _read_ydr_from_sections(
         bound_pointer = _u64(system_data, root_offset + 0xB8)
         try:
             bound = read_bound_from_pointer(bound_pointer, system_data) if bound_pointer else None
-        except Exception:
+        except (IndexError, OverflowError, ValueError, struct.error):
             bound = None
     embedded_textures = _parse_embedded_textures(system_data, graphics_data, int(header.version), texture_dictionary_pointer)
 

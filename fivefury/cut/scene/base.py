@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 from ...hashing import jenk_partial_hash
 from ...metahash import MetaHash
+from ...vector import Vector3
 from ..events import CutEventType, get_cut_event_spec
 from ..flags import CutSceneFlags
 from ..model import CutFile
@@ -47,9 +48,9 @@ class CutScene:
     playback_rate: float = 1.0
     face_dir: str | None = None
     cutscene_flags: CutSceneFlags | int | list[int] | None = None
-    offset: tuple[float, float, float] | None = None
+    offset: Vector3 | None = None
     rotation: float | None = None
-    trigger_offset: tuple[float, float, float] | None = None
+    trigger_offset: Vector3 | None = None
     range_start: int | None = None
     range_end: int | None = None
     alt_range_end: int | None = None
@@ -60,6 +61,12 @@ class CutScene:
     tracks: list[CutTrack] = field(default_factory=list)
     clip_dicts: list[Ycd] = field(default_factory=list)
     raw: CutFile | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("offset", "trigger_offset"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, Vector3):
+                raise TypeError(f"CutScene {name} must be a Vector3")
 
     @property
     def actors(self) -> list[CutBinding]:
@@ -306,9 +313,9 @@ class CutScene:
         duration: float = 0.0,
         face_dir: str | None = None,
         cutscene_flags: CutSceneFlags | int | list[int] | None = None,
-        offset: tuple[float, float, float] | None = None,
+        offset: Vector3 | None = None,
         rotation: float = 0.0,
-        trigger_offset: tuple[float, float, float] | None = None,
+        trigger_offset: Vector3 | None = None,
         range_start: int | None = None,
         range_end: int | None = None,
         alt_range_end: int | None = None,
@@ -316,7 +323,7 @@ class CutScene:
         camera_cut_list: list[float] | None = None,
         section_split_list: list[float] | None = None,
     ) -> CutScene:
-        resolved_offset = offset or (0.0, 0.0, 0.0)
+        resolved_offset = offset or Vector3()
         return cls(
             scene_name=scene_name,
             duration=float(duration),
@@ -326,7 +333,7 @@ class CutScene:
             rotation=float(rotation),
             trigger_offset=trigger_offset
             if trigger_offset is not None
-            else (0.0, 0.0, 0.0),
+            else Vector3(),
             range_start=range_start,
             range_end=range_end,
             alt_range_end=alt_range_end,

@@ -14,13 +14,9 @@ from ..game_target import GameTarget, coerce_game_target
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from ..vector import (
-    lerp_tuple,
-    quat_canonicalize,
-    quat_make_continuous,
-    quat_nlerp,
-    quat_normalize_strict,
-    vec3,
-    vec4,
+    Quaternion,
+    Vector3,
+    lerp,
 )
 from .channel_policy import YcdChannelEncoding, YcdChannelEncodingPolicy
 from .model import (
@@ -60,12 +56,7 @@ class YcdQuaternionEncoding(StrEnum):
     EXPLICIT = "explicit"
 
 
-def _nlerp_quaternion(
-    a: tuple[float, float, float, float],
-    b: tuple[float, float, float, float],
-    alpha: float,
-) -> tuple[float, float, float, float]:
-    return quat_nlerp(a, b, alpha)
+YcdTrackSample = float | Vector3 | Quaternion
 
 
 def _track_component_count(
@@ -83,58 +74,51 @@ def _track_component_count(
     }[resolved]
 
 
-def _coerce_tuple(value: object, component_count: int) -> tuple[float, ...]:
-    if component_count == 1:
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
-            if len(value) != 1:
-                raise ValueError(f"Expected 1 component, got {len(value)}")
-            return (float(value[0]),)
-        return (float(value),)
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
-        raise TypeError(f"Expected {component_count} components, got scalar {value!r}")
-    if len(value) != component_count:
-        raise ValueError(f"Expected {component_count} components, got {len(value)}")
-    result = tuple(float(component) for component in value)
-    if component_count == 4:
-        return quat_normalize_strict(result)  # type: ignore[arg-type]
-    return result
+def _coerce_sample(value: object, track_format: YcdTrackFormat) -> YcdTrackSample:
+    if track_format is YcdTrackFormat.FLOAT:
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            raise TypeError("Float tracks require float samples, not sequences")
+        return float(value)
+    if track_format is YcdTrackFormat.VECTOR3:
+        if not isinstance(value, Vector3):
+            raise TypeError(
+                f"Vector3 tracks require Vector3 samples, got {type(value).__name__}"
+            )
+        return value
+    if not isinstance(value, Quaternion):
+        raise TypeError(
+            f"Quaternion tracks require Quaternion samples, got {type(value).__name__}"
+        )
+    return value.normalized_strict()
 
 
 def _interpolate_values(
-    start: tuple[float, ...],
-    end: tuple[float, ...],
+    start: YcdTrackSample,
+    end: YcdTrackSample,
     alpha: float,
-    *,
-    is_quaternion: bool,
-) -> tuple[float, ...]:
-    if is_quaternion:
-        return _nlerp_quaternion(start, end, alpha)  # type: ignore[arg-type]
-    return lerp_tuple(start, end, alpha)
+) -> YcdTrackSample:
+    if type(start) is not type(end):
+        raise TypeError("YCD interpolation endpoints must have the same sample type")
+    if isinstance(start, Quaternion):
+        return start.nlerp(end, alpha)  # type: ignore[arg-type]
+    if isinstance(start, Vector3):
+        return start.lerp(end, alpha)  # type: ignore[arg-type]
+    return lerp(float(start), float(end), alpha)
 
 
 def _is_per_frame_sequence(value: object) -> bool:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
-        return False
-    if not value:
-        return False
-    first = value[0]
-    return (
-        isinstance(first, Mapping)
-        or isinstance(first, Sequence)
-        and not isinstance(first, (str, bytes, bytearray))
+    return isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray, Vector3, Quaternion)
     )
 
 
 def _sample_track_values(
     source: object,
     *,
-    component_count: int,
+    track_format: YcdTrackFormat,
     frame_count: int,
     fps: float,
-    is_quaternion: bool,
-) -> list[tuple[float, ...]]:
+) -> list[YcdTrackSample]:
     if frame_count <= 0:
         return []
 
@@ -145,9 +129,9 @@ def _sample_track_values(
         for key, value in source.items():
             frame = round(float(key) * fps)
             frame = min(max(frame, 0), frame_count - 1)
-            keyed.append((frame, _coerce_tuple(value, component_count)))
+            keyed.append((frame, _coerce_sample(value, track_format)))
         keyed.sort(key=lambda item: item[0])
-        deduped: list[tuple[int, tuple[float, ...]]] = []
+        deduped: list[tuple[int, YcdTrackSample]] = []
         for frame, value in keyed:
             if deduped and deduped[-1][0] == frame:
                 deduped[-1] = (frame, value)
@@ -163,24 +147,30 @@ def _sample_track_values(
             for frame in range(start_frame, min(end_frame, frame_count - 1) + 1):
                 alpha = float(frame - start_frame) / float(span)
                 result[frame] = _interpolate_values(
-                    start_value, end_value, alpha, is_quaternion=is_quaternion
+                    start_value, end_value, alpha
                 )
         last_frame, last_value = deduped[-1]
         for frame in range(last_frame, frame_count):
             result[frame] = last_value
-        return quat_make_continuous(result) if is_quaternion else result
+        return Quaternion.make_continuous(result) if track_format is YcdTrackFormat.QUATERNION else result  # type: ignore[arg-type]
 
     if _is_per_frame_sequence(source):
         if len(source) != frame_count:  # type: ignore[arg-type]
             raise ValueError(
                 f"Expected {frame_count} per-frame samples, got {len(source)}"
             )  # type: ignore[arg-type]
-        result = [_coerce_tuple(item, component_count) for item in source]  # type: ignore[arg-type]
-        return quat_make_continuous(result) if is_quaternion else result
+        result = [_coerce_sample(item, track_format) for item in source]  # type: ignore[arg-type]
+        return Quaternion.make_continuous(result) if track_format is YcdTrackFormat.QUATERNION else result  # type: ignore[arg-type]
 
-    constant = _coerce_tuple(source, component_count)
+    constant = _coerce_sample(source, track_format)
     result = [constant for _ in range(frame_count)]
-    return quat_make_continuous(result) if is_quaternion else result
+    return Quaternion.make_continuous(result) if track_format is YcdTrackFormat.QUATERNION else result  # type: ignore[arg-type]
+
+
+def _sample_components(sample: YcdTrackSample) -> tuple[float, ...]:
+    if isinstance(sample, (Vector3, Quaternion)):
+        return sample.components
+    return (float(sample),)
 
 
 def _make_quantize_channel(
@@ -201,7 +191,7 @@ def _make_quantize_channel(
 
 
 def _make_component_channels(
-    samples: list[tuple[float, ...]],
+    samples: list[YcdTrackSample],
     *,
     encoding: YcdChannelEncoding,
     retail_quantized: bool,
@@ -209,8 +199,9 @@ def _make_component_channels(
     channels: list[
         YcdStaticFloatChannel | YcdQuantizeFloatChannel | YcdRawFloatChannel
     ] = []
-    for component_index in range(len(samples[0])):
-        values = [float(sample[component_index]) for sample in samples]
+    component_count = len(_sample_components(samples[0]))
+    for component_index in range(component_count):
+        values = [float(_sample_components(sample)[component_index]) for sample in samples]
         if all(abs(value - values[0]) <= 1e-9 for value in values[1:]):
             channels.append(
                 YcdStaticFloatChannel(
@@ -233,11 +224,11 @@ def _make_component_channels(
 
 
 def _select_cached_quaternion_component(
-    samples: list[tuple[float, ...]],
+    samples: list[Quaternion],
 ) -> int | None:
     candidates: list[tuple[float, float, float, int]] = []
     for component_index in range(4):
-        values = [sample[component_index] for sample in samples]
+        values = [sample.components[component_index] for sample in samples]
         if min(values) < -1e-8:
             continue
         minimum_magnitude = min(abs(value) for value in values)
@@ -250,7 +241,7 @@ def _select_cached_quaternion_component(
 
 
 def _make_cached_quaternion_channels(
-    samples: list[tuple[float, ...]],
+    samples: list[Quaternion],
     *,
     encoding: YcdChannelEncoding,
     retail_quantized: bool,
@@ -267,9 +258,9 @@ def _make_cached_quaternion_channels(
             "use YcdQuaternionEncoding.EXPLICIT"
         )
     explicit_samples = [
-        tuple(
+        Vector3.from_iterable(
             component
-            for component_index, component in enumerate(sample)
+            for component_index, component in enumerate(sample.components)
             if component_index != omitted_component
         )
         for sample in samples
@@ -290,7 +281,7 @@ def _make_cached_quaternion_channels(
 
 
 def _make_channels(
-    samples: list[tuple[float, ...]],
+    samples: list[YcdTrackSample],
     *,
     track: int | YcdAnimationTrack | None = None,
     quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
@@ -305,7 +296,7 @@ def _make_channels(
 ]:
     if not samples:
         return []
-    component_count = len(samples[0])
+    component_count = len(_sample_components(samples[0]))
     track_value = None if track is None else int(track)
     retail_quantized = track_value in {
         int(YcdAnimationTrack.BONE_TRANSLATION),
@@ -316,32 +307,31 @@ def _make_channels(
     if all(sample == samples[0] for sample in samples[1:]):
         value = samples[0]
         if component_count == 3:
+            if not isinstance(value, Vector3):
+                raise TypeError("Vector3 channel received a non-Vector3 sample")
             return [
                 YcdStaticVector3Channel(
                     channel_type=YcdChannelType.STATIC_VECTOR3,
                     channel_index=0,
-                    value=(float(value[0]), float(value[1]), float(value[2])),
+                    value=value,
                 )
             ]
         if component_count == 4:
-            value = quat_canonicalize(value)  # type: ignore[arg-type]
+            if not isinstance(value, Quaternion):
+                raise TypeError("Quaternion channel received a non-Quaternion sample")
+            value = value.canonicalized()
             return [
                 YcdStaticQuaternionChannel(
                     channel_type=YcdChannelType.STATIC_QUATERNION,
                     channel_index=0,
-                    value=(
-                        float(value[0]),
-                        float(value[1]),
-                        float(value[2]),
-                        float(value[3]),
-                    ),
+                    value=value,
                 )
             ]
         return [
             YcdStaticFloatChannel(
                 channel_type=YcdChannelType.STATIC_FLOAT,
                 channel_index=0,
-                value=float(value[0]),
+                value=float(value),
             )
         ]
 
@@ -352,7 +342,7 @@ def _make_channels(
         and quaternion_encoding is YcdQuaternionEncoding.RETAIL_CACHED
     ):
         return _make_cached_quaternion_channels(
-            samples,
+            samples,  # type: ignore[arg-type]
             encoding=channel_encoding,
             retail_quantized=retail_quantized,
         )
@@ -378,17 +368,17 @@ def _cutscene_track_sort_key(track_spec: YcdCutsceneTrack) -> tuple[int, int, in
 
 
 def _iter_sequence_sample_windows(
-    samples: list[tuple[float, ...]],
+    samples: list[YcdTrackSample],
     *,
     frame_limit: int = YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
-) -> list[tuple[int, list[tuple[float, ...]]]]:
+) -> list[tuple[int, list[YcdTrackSample]]]:
     if not samples:
         return []
     max_step = max(int(frame_limit), 1)
     max_count = max_step + 1
     if len(samples) <= max_count:
         return [(0, samples)]
-    windows: list[tuple[int, list[tuple[float, ...]]]] = []
+    windows: list[tuple[int, list[YcdTrackSample]]] = []
     start = 0
     while start < len(samples):
         chunk = samples[start : min(start + max_count, len(samples))]
@@ -402,16 +392,16 @@ def _iter_sequence_sample_windows(
 
 
 def _orient_cached_quaternion_samples(
-    samples: list[tuple[float, ...]],
+    samples: list[Quaternion],
     *,
     frame_limit: int,
-) -> list[tuple[float, ...]]:
+) -> list[Quaternion]:
     orientations = (
         samples,
-        [tuple(-component for component in sample) for sample in samples],
+        [-sample for sample in samples],
     )
 
-    def score(candidate: list[tuple[float, ...]]) -> int:
+    def score(candidate: list[Quaternion]) -> int:
         return sum(
             _select_cached_quaternion_component(window) is not None
             for _, window in _iter_sequence_sample_windows(
@@ -463,14 +453,14 @@ class YcdCutsceneTrack:
     track: int
     bone_id: int
     format: YcdTrackFormat
-    samples: list[tuple[float, ...]]
+    samples: list[YcdTrackSample]
     channel_policy: YcdChannelEncodingPolicy | None = None
 
 
 @dataclass(slots=True)
 class YcdCutsceneBoneAnimation:
-    position: object | None = None
-    rotation: object | None = None
+    position: Vector3 | Mapping[float, Vector3] | Sequence[Vector3] | None = None
+    rotation: Quaternion | Mapping[float, Quaternion] | Sequence[Quaternion] | None = None
 
 
 @dataclass(slots=True)
@@ -687,7 +677,7 @@ class YcdCutsceneBuilder:
         if clip is None:
             return YcdCameraAnimationSample()
         frame = min(max(float(time) * self.fps, 0.0), self.total_frames - 1)
-        values: dict[int, tuple[float, ...]] = {}
+        values: dict[int, YcdTrackSample] = {}
         for track in clip.tracks:
             track_id = int(track.track)
             if not _is_camera_track_id(track_id) or not track.samples:
@@ -700,24 +690,23 @@ class YcdCutsceneBuilder:
                 start_value,
                 end_value,
                 frame - frame_start,
-                is_quaternion=track.format is YcdTrackFormat.QUATERNION,
             )
 
         def scalar(track: YcdAnimationTrack) -> float | None:
             value = values.get(int(track))
-            return float(value[0]) if value is not None else None
+            return float(value) if isinstance(value, float) else None
 
         def vector3(
             track: YcdAnimationTrack,
-        ) -> tuple[float, float, float] | None:
+        ) -> Vector3 | None:
             value = values.get(int(track))
-            return vec3(value) if value is not None else None
+            return value if isinstance(value, Vector3) else None
 
         rotation = values.get(int(YcdAnimationTrack.CAMERA_ROTATION))
 
         return YcdCameraAnimationSample(
             position=vector3(YcdAnimationTrack.CAMERA_TRANSLATION),
-            rotation=vec4(rotation) if rotation is not None else None,
+            rotation=rotation if isinstance(rotation, Quaternion) else None,
             field_of_view=scalar(YcdAnimationTrack.CAMERA_FIELD_OF_VIEW),
             depth_of_field=vector3(YcdAnimationTrack.CAMERA_DEPTH_OF_FIELD),
             depth_of_field_strength=scalar(
@@ -761,7 +750,6 @@ class YcdCutsceneBuilder:
             if format is None
             else YcdTrackFormat(int(format))
         )
-        component_count = _track_component_count(track_value, track_format)
         clip = self._get_or_create_clip(name)
         if any(
             existing.track == track_value and existing.bone_id == int(bone_id)
@@ -777,10 +765,9 @@ class YcdCutsceneBuilder:
                 format=track_format,
                 samples=_sample_track_values(
                     samples,
-                    component_count=component_count,
+                    track_format=track_format,
                     frame_count=self.total_frames,
                     fps=self.fps,
-                    is_quaternion=component_count == 4,
                 ),
                 channel_policy=channel_policy,
             )
@@ -791,8 +778,8 @@ class YcdCutsceneBuilder:
         self,
         name: str = "exportcamera",
         *,
-        position: object | None = None,
-        rotation: object | None = None,
+        position: Vector3 | Mapping[float, Vector3] | Sequence[Vector3] | None = None,
+        rotation: Quaternion | Mapping[float, Quaternion] | Sequence[Quaternion] | None = None,
         field_of_view: object | None = None,
         depth_of_field: object | None = None,
         depth_of_field_strength: object | None = None,
@@ -829,19 +816,19 @@ class YcdCutsceneBuilder:
         self,
         name: str,
         *,
-        position: object | None = None,
-        rotation: object | None = None,
-        mover_position: object | None = None,
-        mover_rotation: object | None = None,
+        position: Vector3 | Mapping[float, Vector3] | Sequence[Vector3] | None = None,
+        rotation: Quaternion | Mapping[float, Quaternion] | Sequence[Quaternion] | None = None,
+        mover_position: Vector3 | Mapping[float, Vector3] | Sequence[Vector3] | None = None,
+        mover_rotation: Quaternion | Mapping[float, Quaternion] | Sequence[Quaternion] | None = None,
         bone_id: int = 0,
         bones: Mapping[int, YcdCutsceneBoneAnimation | Mapping[str, object]]
         | None = None,
     ) -> YcdCutsceneBuilder:
         if bones:
             if mover_position is None:
-                mover_position = (0.0, 0.0, 0.0)
+                mover_position = Vector3()
             if mover_rotation is None:
-                mover_rotation = (0.0, 0.0, 0.0, 1.0)
+                mover_rotation = Quaternion()
         track_map = {
             YcdAnimationTrack.BONE_TRANSLATION: position,
             YcdAnimationTrack.BONE_ROTATION: rotation,
@@ -947,8 +934,8 @@ class YcdCutsceneBuilder:
         name: str,
         *,
         bone_id: int,
-        position: object | None = None,
-        rotation: object | None = None,
+        position: Vector3 | Mapping[float, Vector3] | Sequence[Vector3] | None = None,
+        rotation: Quaternion | Mapping[float, Quaternion] | Sequence[Quaternion] | None = None,
     ) -> YcdCutsceneBuilder:
         if position is not None:
             self.track(
@@ -978,7 +965,7 @@ class YcdCutsceneBuilder:
             animation_hash = MetaHash(short_name)
             bone_ids: list[YcdAnimationBoneId] = []
             track_windows: list[
-                tuple[YcdCutsceneTrack, list[tuple[int, list[tuple[float, ...]]]]]
+                tuple[YcdCutsceneTrack, list[tuple[int, list[YcdTrackSample]]]]
             ] = []
             sequence_limit = min(
                 YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
@@ -1005,7 +992,7 @@ class YcdCutsceneBuilder:
                     and any(sample != frame_samples[0] for sample in frame_samples[1:])
                 ):
                     frame_samples = _orient_cached_quaternion_samples(
-                        frame_samples,
+                        frame_samples,  # type: ignore[arg-type]
                         frame_limit=sample_frame_limit,
                     )
                 bone = YcdAnimationBoneId(

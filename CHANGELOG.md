@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Spatial vectors, quaternions, and bounds now use immutable typed value classes with named components instead of float tuples, positional indexing, and procedural helpers.
+
 ## [0.4.18] - 2026-08-17
 
 ### Fixed

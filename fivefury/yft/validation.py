@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from ..authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ..bounds import BoundComposite, BoundGeometry
+from ..vector import Vector2, Vector3
 from .bound_profiles import YftPhysicsBoundProfile, validate_bound_profile
 from .constants import MAX_EXTRA_BOUNDS
 from .geometry import (
@@ -891,7 +892,10 @@ def validate_yft(
             light.tangent,
             light.extent,
         )
-        if any(len(vector) != 3 or not _finite_values(vector) for vector in vectors):
+        if any(
+            not isinstance(vector, Vector3) or not vector.is_finite
+            for vector in vectors
+        ):
             _issue(
                 issues,
                 DiagnosticSeverity.ERROR,
@@ -909,16 +913,13 @@ def validate_yft(
         )
     for index, pane in enumerate(source.glass_panes):
         pane_path = f"glass_panes[{index}]"
-        if any(
-            len(value) != size
-            for value, size in (
-                (pane.position_base, 3),
-                (pane.position_width, 3),
-                (pane.position_height, 3),
-                (pane.uv_min, 2),
-                (pane.uv_max, 2),
-                (pane.tangent, 3),
-            )
+        if not (
+            isinstance(pane.position_base, Vector3)
+            and isinstance(pane.position_width, Vector3)
+            and isinstance(pane.position_height, Vector3)
+            and isinstance(pane.uv_min, Vector2)
+            and isinstance(pane.uv_max, Vector2)
+            and isinstance(pane.tangent, Vector3)
         ):
             _issue(
                 issues,

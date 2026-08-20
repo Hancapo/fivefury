@@ -10,7 +10,8 @@ from ...matrix import (
     transform_position_array,
 )
 from ...mesh_source import mesh_triangles, mesh_vertices
-from ...numeric import Float64Array, Int64Array, tuple_rows
+from ...numeric import Float64Array, Int64Array
+from ...vector import Vector2, Vector3
 from ..build_types import YdrMeshInput
 
 
@@ -79,26 +80,28 @@ def mesh_to_ydr_input(
     if numpy.linalg.det(combined_transform[:3, :3]) < 0.0:
         faces = faces[:, (0, 2, 1)]
 
-    texcoords: list[list[tuple[float, float]]]
+    texcoords: list[list[Vector2]]
     uv = numpy.asarray(getattr(mesh.visual, "uv", []), dtype=numpy.float64)
     if uv.ndim == 2 and uv.shape[0] == len(all_vertices) and uv.shape[1] >= 2:
         if vertex_indices is not None:
             uv = uv[vertex_indices]
         uv = uv[:, :2].copy()
         uv[:, 1] = 1.0 - uv[:, 1]
-        texcoords = [tuple_rows(uv, columns=2)]
+        texcoords = [[Vector2.from_iterable(row) for row in uv]]
     else:
-        texcoords = [[(0.0, 0.0)] * len(vertices)]
+        texcoords = [[Vector2()] * len(vertices)]
 
     colours = _vertex_colours(mesh, vertex_indices)
     if colours is None and default_colour is not None:
         colours = [default_colour] * len(vertices)
     return YdrMeshInput(
-        positions=tuple_rows(position_rows, columns=3),
+        positions=[Vector3.from_iterable(row) for row in position_rows],
         indices=faces.reshape(-1).tolist(),
         material=material_name,
         normals=(
-            tuple_rows(normal_rows, columns=3) if normal_rows is not None else None
+            [Vector3.from_iterable(row) for row in normal_rows]
+            if normal_rows is not None
+            else None
         ),
         texcoords=texcoords,
         colours0=colours,

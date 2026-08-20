@@ -10,6 +10,7 @@ from ..authoring.diagnostics import ValidationReport
 from ..common import FlexibleIntEnum
 from ..game_target import GameTarget, coerce_game_target
 from ..resource import ResourcePagesInfo
+from ..vector import Vector3
 
 YnvResourcePagesInfo = ResourcePagesInfo
 # aiSplitArray<TNavMeshPoly> keeps each allocation below 0x4000 bytes.
@@ -168,8 +169,8 @@ class YnvListInfo:
 
 @dataclasses.dataclass(slots=True)
 class YnvAabb:
-    min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    min: Vector3 = dataclasses.field(default_factory=Vector3)
+    max: Vector3 = dataclasses.field(default_factory=Vector3)
 
     @classmethod
     def from_packed(
@@ -182,26 +183,24 @@ class YnvAabb:
         max_z: int,
     ) -> YnvAabb:
         return cls(
-            min=(float(min_x) / 4.0, float(min_y) / 4.0, float(min_z) / 4.0),
-            max=(float(max_x) / 4.0, float(max_y) / 4.0, float(max_z) / 4.0),
+            min=Vector3(float(min_x) / 4.0, float(min_y) / 4.0, float(min_z) / 4.0),
+            max=Vector3(float(max_x) / 4.0, float(max_y) / 4.0, float(max_z) / 4.0),
         )
 
     def build(self) -> YnvAabb:
-        self.min = (float(self.min[0]), float(self.min[1]), float(self.min[2]))
-        self.max = (float(self.max[0]), float(self.max[1]), float(self.max[2]))
+        if not isinstance(self.min, Vector3) or not isinstance(self.max, Vector3):
+            raise TypeError("YNV AABB endpoints must be Vector3 instances")
         return self
 
     def to_packed(self) -> tuple[int, int, int, int, int, int]:
         self.build()
-        scaled_min = tuple(float(value) * 4.0 for value in self.min)
-        scaled_max = tuple(float(value) * 4.0 for value in self.max)
         return (
-            math.floor(scaled_min[0]),
-            math.ceil(scaled_max[0]),
-            math.floor(scaled_min[1]),
-            math.ceil(scaled_max[1]),
-            math.floor(scaled_min[2]),
-            math.ceil(scaled_max[2]),
+            math.floor(self.min.x * 4.0),
+            math.ceil(self.max.x * 4.0),
+            math.floor(self.min.y * 4.0),
+            math.ceil(self.max.y * 4.0),
+            math.floor(self.min.z * 4.0),
+            math.ceil(self.max.z * 4.0),
         )
 
 
@@ -485,7 +484,7 @@ def _radians_to_angle_byte(value: float) -> int:
 
 @dataclasses.dataclass(slots=True)
 class YnvPoint:
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
     angle: int = 0
     type: YnvPointType = YnvPointType.TYPE_0
 
@@ -498,11 +497,8 @@ class YnvPoint:
         self.angle = _radians_to_angle_byte(value)
 
     def build(self) -> YnvPoint:
-        self.position = (
-            float(self.position[0]),
-            float(self.position[1]),
-            float(self.position[2]),
-        )
+        if not isinstance(self.position, Vector3):
+            raise TypeError("YNV point position must be a Vector3")
         self.angle = int(self.angle) & 0xFF
         self.type = YnvPointType(int(self.type) & 0xFF)
         return self
@@ -513,8 +509,8 @@ class YnvPortal:
     type: YnvPortalType = YnvPortalType.TYPE_1
     angle: int = 0
     flags_unk: int = 0
-    position_from: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    position_to: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position_from: Vector3 = dataclasses.field(default_factory=Vector3)
+    position_to: Vector3 = dataclasses.field(default_factory=Vector3)
     poly_id_from1: int = 0
     poly_id_from2: int = 0
     poly_id_to1: int = 0
@@ -543,16 +539,8 @@ class YnvPortal:
         self.type = YnvPortalType(int(self.type) & 0xFF)
         self.angle = int(self.angle) & 0xFF
         self.flags_unk = int(self.flags_unk) & 0xFFFF
-        self.position_from = (
-            float(self.position_from[0]),
-            float(self.position_from[1]),
-            float(self.position_from[2]),
-        )
-        self.position_to = (
-            float(self.position_to[0]),
-            float(self.position_to[1]),
-            float(self.position_to[2]),
-        )
+        if not isinstance(self.position_from, Vector3) or not isinstance(self.position_to, Vector3):
+            raise TypeError("YNV portal endpoints must be Vector3 instances")
         self.poly_id_from1 = int(self.poly_id_from1) & 0xFFFF
         self.poly_id_from2 = int(self.poly_id_from2) & 0xFFFF
         self.poly_id_to1 = int(self.poly_id_to1) & 0xFFFF
@@ -582,8 +570,8 @@ class YnvSectorData:
 
 @dataclasses.dataclass(slots=True)
 class YnvSector:
-    aabb_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    aabb_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    aabb_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    aabb_max: Vector3 = dataclasses.field(default_factory=Vector3)
     aabb_min_w: float = float("nan")
     aabb_max_w: float = float("nan")
     cell_aabb: YnvAabb = dataclasses.field(default_factory=YnvAabb)
@@ -597,16 +585,8 @@ class YnvSector:
     unused_5ch: int = 0
 
     def build(self) -> YnvSector:
-        self.aabb_min = (
-            float(self.aabb_min[0]),
-            float(self.aabb_min[1]),
-            float(self.aabb_min[2]),
-        )
-        self.aabb_max = (
-            float(self.aabb_max[0]),
-            float(self.aabb_max[1]),
-            float(self.aabb_max[2]),
-        )
+        if not isinstance(self.aabb_min, Vector3) or not isinstance(self.aabb_max, Vector3):
+            raise TypeError("YNV sector bounds must be Vector3 instances")
         self.aabb_min_w = float(self.aabb_min_w)
         self.aabb_max_w = float(self.aabb_max_w)
         self.cell_aabb = self.cell_aabb.build()
@@ -636,9 +616,9 @@ class Ynv:
     unused_018h: int = 0
     unused_01ch: int = 0
     transform: tuple[float, ...] = dataclasses.field(default_factory=identity_4x4)
-    aabb_size: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    aabb_size: Vector3 = dataclasses.field(default_factory=Vector3)
     aabb_unk: int = 0x7F800001
-    vertices: list[tuple[float, float, float]] = dataclasses.field(default_factory=list)
+    vertices: list[Vector3] = dataclasses.field(default_factory=list)
     indices: list[int] = dataclasses.field(default_factory=list)
     edges: list[YnvEdge] = dataclasses.field(default_factory=list)
     polys: list[YnvPoly] = dataclasses.field(default_factory=list)
@@ -901,10 +881,16 @@ class Ynv:
             )
 
         for index, vertex in enumerate(self.vertices):
-            if len(vertex) != 3:
+            if not isinstance(vertex, Vector3):
                 report.issue(
                     "ynv.vertex.components",
-                    f"Vertex must contain exactly 3 components, got {len(vertex)}",
+                    "Vertex must be a Vector3",
+                    path=f"vertices[{index}]",
+                )
+            elif not vertex.is_finite:
+                report.issue(
+                    "ynv.vertex.non_finite",
+                    "Vertex components must be finite",
                     path=f"vertices[{index}]",
                 )
 
@@ -1027,15 +1013,11 @@ class Ynv:
         if len(self.transform) != 16:
             raise ValueError("YNV transform must contain 16 floats")
         self.transform = tuple(float(value) for value in self.transform)
-        self.aabb_size = (
-            float(self.aabb_size[0]),
-            float(self.aabb_size[1]),
-            float(self.aabb_size[2]),
-        )
+        if not isinstance(self.aabb_size, Vector3):
+            raise TypeError("YNV aabb_size must be a Vector3")
         self.aabb_unk = int(self.aabb_unk) & 0xFFFFFFFF
-        self.vertices = [
-            tuple(float(component) for component in vertex) for vertex in self.vertices
-        ]
+        if any(not isinstance(vertex, Vector3) for vertex in self.vertices):
+            raise TypeError("YNV vertices must be Vector3 instances")
         self.indices = [int(value) & 0xFFFF for value in self.indices]
         self.edges = [edge.build() for edge in self.edges]
         self.polys = [poly.build() for poly in self.polys]
@@ -1073,11 +1055,7 @@ class Ynv:
         if self.sector_tree is not None and all(
             abs(component) < 1e-8 for component in self.aabb_size
         ):
-            self.aabb_size = (
-                float(self.sector_tree.aabb_max[0] - self.sector_tree.aabb_min[0]),
-                float(self.sector_tree.aabb_max[1] - self.sector_tree.aabb_min[1]),
-                float(self.sector_tree.aabb_max[2] - self.sector_tree.aabb_min[2]),
-            )
+            self.aabb_size = self.sector_tree.aabb_max - self.sector_tree.aabb_min
         self.recalculate_content_flags()
         return self
 

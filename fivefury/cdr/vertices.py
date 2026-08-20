@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import struct
 
+from ..vector import Vector2, Vector3, Vector4
 from .model import (
     CdrEdgeStream,
     CdrEdgeStreamAttribute,
@@ -103,10 +104,10 @@ def decode_fvf_vertices(data: bytes, count: int, vertex_format: CdrVertexFormat)
     if stride <= 0 or len(data) < count * stride:
         raise ValueError("PS3 vertex buffer is truncated")
     offsets = _fvf_offsets(vertex_format)
-    positions: list[tuple[float, float, float]] = []
-    normals: list[tuple[float, float, float]] = []
-    tangents: list[tuple[float, float, float, float]] = []
-    texcoords: list[list[tuple[float, float]]] = [[] for _ in range(8)]
+    positions: list[Vector3] = []
+    normals: list[Vector3] = []
+    tangents: list[Vector4] = []
+    texcoords: list[list[Vector2]] = [[] for _ in range(8)]
     colours0: list[tuple[float, float, float, float]] = []
     colours1: list[tuple[float, float, float, float]] = []
     weights: list[tuple[float, float, float, float]] = []
@@ -117,12 +118,12 @@ def decode_fvf_vertices(data: bytes, count: int, vertex_format: CdrVertexFormat)
         for semantic, relative_offset in offsets.items():
             value = _decode_fvf_value(data, base + relative_offset, vertex_format.type_of(semantic))
             if semantic is CdrVertexSemantic.POSITION:
-                positions.append(tuple(float(component) for component in value[:3]))
+                positions.append(Vector3.from_iterable(value[:3]))
             elif semantic is CdrVertexSemantic.NORMAL:
-                normals.append(tuple(float(component) for component in value[:3]))
+                normals.append(Vector3.from_iterable(value[:3]))
             elif semantic is CdrVertexSemantic.TANGENT0:
                 padded = tuple(float(component) for component in value) + (1.0,) * (4 - len(value))
-                tangents.append(padded[:4])
+                tangents.append(Vector4.from_iterable(padded[:4]))
             elif semantic is CdrVertexSemantic.DIFFUSE:
                 colours0.append(tuple(float(component) for component in value[:4]))
             elif semantic is CdrVertexSemantic.SPECULAR:
@@ -136,7 +137,7 @@ def decode_fvf_vertices(data: bytes, count: int, vertex_format: CdrVertexFormat)
                 bindings.append(tuple(int(component) for component in value[:4]))
             elif CdrVertexSemantic.TEXCOORD0 <= semantic <= CdrVertexSemantic.TEXCOORD7:
                 channel = int(semantic) - int(CdrVertexSemantic.TEXCOORD0)
-                texcoords[channel].append((float(value[0]), float(value[1])))
+                texcoords[channel].append(Vector2(value[0], value[1]))
 
     while texcoords and not texcoords[-1]:
         texcoords.pop()

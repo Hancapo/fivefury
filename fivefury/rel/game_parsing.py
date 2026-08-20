@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 
 from ..binary import align
+from ..vector import Vector3
 from .enums import Dat151ExplicitSpawnType, Dat151RelType, Dat151ZoneShape
 from .game_types import (
     Dat151AmbientCondition,
@@ -61,13 +62,13 @@ def _hash_list(data: bytes) -> list[int]:
 def _zone_volume(data: bytes, offset: int) -> Dat151ZoneVolume:
     values = Dat151ZoneVolume.STRUCT.unpack_from(data, offset)
     return Dat151ZoneVolume(
-        center=values[0:3],
+        center=Vector3.from_iterable(values[0:3]),
         reserved_center=values[3],
-        size=values[4:7],
+        size=Vector3.from_iterable(values[4:7]),
         reserved_size=values[7],
-        post_rotation_offset=values[8:11],
+        post_rotation_offset=Vector3.from_iterable(values[8:11]),
         reserved_post_rotation=values[11],
-        size_scale=values[12:15],
+        size_scale=Vector3.from_iterable(values[12:15]),
         reserved_scale=values[15],
         rotation_angle=values[16],
         reserved_rotation=values[17],
@@ -109,7 +110,7 @@ def _ambient_rule(
         flags=values[0],
         reserved_01=values[1],
         reserved_02=values[2],
-        position=values[3:6],
+        position=Vector3.from_iterable(values[3:6]),
         reserved_03=values[6],
         child_sound=values[7],
         category=values[8],
@@ -209,7 +210,7 @@ def _static_emitter(kwargs: dict[str, object], data: bytes) -> Dat151StaticEmitt
         flags=values[0],
         child_sound=values[1],
         radio_station=values[2],
-        position=values[3:6],
+        position=Vector3.from_iterable(values[3:6]),
         min_distance=values[6],
         max_distance=values[7],
         emitted_volume=values[8],

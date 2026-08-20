@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from fivefury import Quaternion, Vector3
 from fivefury.meta import RawStruct
 from fivefury.meta.defs import meta_name
 from tests.compat import PytestCompat
@@ -513,7 +514,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         if ymap is None:
             self.skipTest("Ymap API not available")
 
-        entity = _make_entity("prop_tree_pine_01", position=(1.0, 2.0, 3.0), lod_dist=25.0)
+        entity = _make_entity("prop_tree_pine_01", position=Vector3(1.0, 2.0, 3.0), lod_dist=25.0)
         if entity is None:
             self.skipTest("Entity constructor not available")
         ymap.entities.append(entity)
@@ -602,12 +603,12 @@ class MetaAndArchiveContractTests(PytestCompat):
         )
 
         ymap = Ymap(name="typed_surfaces.ymap")
-        entity = Entity(archetype_name="prop_tree_pine_01", position=(10.0, 20.0, 30.0), lod_dist=45.0)
+        entity = Entity(archetype_name="prop_tree_pine_01", position=Vector3(10.0, 20.0, 30.0), lod_dist=45.0)
         entity.extensions.append(
             ParticleEffectExtension(
                 name="fx_smoke",
-                offset_position=(1.0, 2.0, 3.0),
-                offset_rotation=(0.0, 0.0, 0.0, 1.0),
+                offset_position=Vector3(1.0, 2.0, 3.0),
+                offset_rotation=Quaternion(),
                 fx_name="scr_wheel_burnout",
                 fx_type=2,
                 bone_tag=0,
@@ -620,8 +621,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         ymap.entities.append(entity)
 
         batch = GrassBatch(
-            batch_aabb=Aabb(minimum=(0.0, 0.0, 0.0), maximum=(20.0, 20.0, 10.0)),
-            scale_range=(0.8, 1.0, 1.2),
+            batch_aabb=Aabb(minimum=Vector3(), maximum=Vector3(20.0, 20.0, 10.0)),
+            scale_range=Vector3(0.8, 1.0, 1.2),
             archetype_name="prop_grass_01",
             lod_dist=80,
             lod_fade_start_dist=40.0,
@@ -630,8 +631,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         )
         batch.instances.append(
             GrassInstance(
-                position=(5.0, 6.0, 2.0),
-                normal=(0.0, 0.0, 1.0),
+                position=Vector3(5.0, 6.0, 2.0),
+                normal=Vector3(0.0, 0.0, 1.0),
                 color=(10, 20, 30),
                 scale=120,
                 ao=90,
@@ -658,9 +659,9 @@ class MetaAndArchiveContractTests(PytestCompat):
         parsed_batch = parsed.instanced_data.grass_instance_list[0]
         self.assertEqual(len(parsed_batch.instances), 1)
         parsed_instance = parsed_batch.instances[0]
-        self.assertAlmostEqual(parsed_instance.position[0], 5.0, places=2)
-        self.assertAlmostEqual(parsed_instance.position[1], 6.0, places=2)
-        self.assertAlmostEqual(parsed_instance.position[2], 2.0, places=2)
+        self.assertAlmostEqual(parsed_instance.position.x, 5.0, places=2)
+        self.assertAlmostEqual(parsed_instance.position.y, 6.0, places=2)
+        self.assertAlmostEqual(parsed_instance.position.z, 2.0, places=2)
         self.assertEqual(parsed_instance.color, (10, 20, 30))
         self.assertEqual(parsed_instance.scale, 120)
         self.assertEqual(parsed_instance.ao, 90)
@@ -680,13 +681,13 @@ class MetaAndArchiveContractTests(PytestCompat):
         )
 
         ymap = Ymap(name="complete_extensions.ymap")
-        entity = Entity(archetype_name="prop_extension_test", position=(1.0, 2.0, 3.0), lod_dist=50.0)
+        entity = Entity(archetype_name="prop_extension_test", position=Vector3(1.0, 2.0, 3.0), lod_dist=50.0)
         entity.extensions.extend(
             [
                 DecalExtension(
                     name="decal_marker",
-                    offset_position=(0.1, 0.2, 0.3),
-                    offset_rotation=(0.0, 0.0, 0.0, 1.0),
+                    offset_position=Vector3(0.1, 0.2, 0.3),
+                    offset_rotation=Quaternion(),
                     decal_name="blood_entry",
                     decal_type=4,
                     bone_tag=2,
@@ -694,25 +695,25 @@ class MetaAndArchiveContractTests(PytestCompat):
                     probability=80,
                     flags=7,
                 ),
-                LightExtension(name="light_marker", offset_position=(1.0, 0.0, 0.0)),
-                WalkDontWalkExtension(name="crossing_marker", offset_position=(2.0, 0.0, 0.0)),
+                LightExtension(name="light_marker", offset_position=Vector3(1.0, 0.0, 0.0)),
+                WalkDontWalkExtension(name="crossing_marker", offset_position=Vector3(2.0, 0.0, 0.0)),
                 ClimbHandHoldExtension(
                     name="climb_marker",
-                    offset_position=(3.0, 0.0, 0.0),
-                    left=(-0.5, 0.0, 1.0),
-                    right=(0.5, 0.0, 1.0),
-                    normal=(0.0, 1.0, 0.0),
+                    offset_position=Vector3(3.0, 0.0, 0.0),
+                    left=Vector3(-0.5, 0.0, 1.0),
+                    right=Vector3(0.5, 0.0, 1.0),
+                    normal=Vector3(0.0, 1.0, 0.0),
                 ),
                 ScrollbarsExtension(
                     name="scroll_marker",
-                    offset_position=(4.0, 0.0, 0.0),
+                    offset_position=Vector3(4.0, 0.0, 0.0),
                     height=2.0,
                     scrollbars_type=3,
-                    points=[(0.0, 0.0, 0.0), (1.0, 2.0, 3.0)],
+                    points=[Vector3(), Vector3(1.0, 2.0, 3.0)],
                 ),
                 SwayableEffectExtension(
                     name="sway_marker",
-                    offset_position=(5.0, 0.0, 0.0),
+                    offset_position=Vector3(5.0, 0.0, 0.0),
                     bone_tag=5,
                     low_wind_speed=1.0,
                     low_wind_amplitude=0.2,
@@ -721,9 +722,9 @@ class MetaAndArchiveContractTests(PytestCompat):
                 ),
                 ScriptExtension(
                     name="script_marker",
-                    offset_position=(6.0, 0.0, 0.0),
+                    offset_position=Vector3(6.0, 0.0, 0.0),
                     script_name="example_script",
-                    children=[ScriptChildExtension(position=(7.0, 8.0, 9.0), rotation_z=1.25)],
+                    children=[ScriptChildExtension(position=Vector3(7.0, 8.0, 9.0), rotation_z=1.25)],
                 ),
             ]
         )
@@ -742,9 +743,12 @@ class MetaAndArchiveContractTests(PytestCompat):
             ScriptExtension,
         ])
         self.assertEqual(parsed_extensions[0].decal_name, "blood_entry")
-        self.assertEqual(parsed_extensions[4].points, [(0.0, 0.0, 0.0), (1.0, 2.0, 3.0)])
+        self.assertEqual(parsed_extensions[4].points, [Vector3(), Vector3(1.0, 2.0, 3.0)])
         self.assertEqual(parsed_extensions[6].script_name, "example_script")
-        self.assertEqual(parsed_extensions[6].children[0].position, (7.0, 8.0, 9.0))
+        self.assertEqual(
+            parsed_extensions[6].children[0].position,
+            Vector3(7.0, 8.0, 9.0),
+        )
 
     def test_ytyp_archetype_extensions_roundtrip(self) -> None:
         from fivefury import Archetype, ParticleEffectExtension, Ytyp
@@ -754,16 +758,16 @@ class MetaAndArchiveContractTests(PytestCompat):
             name="prop_test_arch",
             lod_dist=120.0,
             asset_type=0,
-            bb_min=(-1.0, -1.0, -1.0),
-            bb_max=(1.0, 1.0, 1.0),
-            bs_centre=(0.0, 0.0, 0.0),
+            bb_min=Vector3(-1.0, -1.0, -1.0),
+            bb_max=Vector3(1.0, 1.0, 1.0),
+            bs_centre=Vector3(),
             bs_radius=2.0,
         )
         archetype.extensions.append(
             ParticleEffectExtension(
                 name="fx_arch",
-                offset_position=(0.5, 0.0, 0.0),
-                offset_rotation=(0.0, 0.0, 0.0, 1.0),
+                offset_position=Vector3(0.5, 0.0, 0.0),
+                offset_rotation=Quaternion(),
                 fx_name="scr_rcbarry2_sparks",
                 fx_type=7,
                 scale=0.75,
@@ -2183,7 +2187,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             external = Path(tmpdir) / "external"
             external.mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="external_map.ymap")
-            ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", position=(0.0, 0.0, 0.0), lod_dist=50.0))
+            ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", position=Vector3(), lod_dist=50.0))
             ymap.save(external / "external_map.ymap", auto_extents=True)
 
             cache = GameFileCache(root, use_index_cache=False)
@@ -2267,7 +2271,7 @@ class MetaAndArchiveContractTests(PytestCompat):
             external = Path(tmpdir) / "external"
             external.mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="external_map.ymap")
-            ymap.entities.append(Entity(archetype_name="embedded_tree", position=(0.0, 0.0, 0.0), lod_dist=50.0))
+            ymap.entities.append(Entity(archetype_name="embedded_tree", position=Vector3(), lod_dist=50.0))
             ymap.save(external / "external_map.ymap", auto_extents=True)
 
             cache = GameFileCache(root, use_index_cache=False)

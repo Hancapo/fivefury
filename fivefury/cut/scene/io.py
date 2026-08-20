@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ...vector import Vector3
 from ..flags import (
     DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
     CutSceneFlags,
@@ -81,9 +82,9 @@ def _default_root(cut: CutFile | None) -> CutNode:
             "fTotalDuration": 0.0,
             "cFaceDir": "",
             "iCutsceneFlags": pack_cutscene_flags(None),
-            "vOffset": (0.0, 0.0, 0.0),
+            "vOffset": Vector3(),
             "fRotation": 0.0,
-            "vTriggerOffset": (0.0, 0.0, 0.0),
+            "vTriggerOffset": Vector3(),
             "iRangeStart": 0,
             "iRangeEnd": 0,
             "iAltRangeEnd": 0,
@@ -147,19 +148,19 @@ def _event_sort_key(event: CutNode) -> float:
     return float(event.fields.get("fTime", 0.0) or 0.0)
 
 
-def _scene_offset(scene: CutScene) -> tuple[float, float, float]:
-    return _clone_value(scene.offset) if scene.offset is not None else (0.0, 0.0, 0.0)
+def _scene_offset(scene: CutScene) -> Vector3:
+    return scene.offset if scene.offset is not None else Vector3()
 
 
-def _trigger_offset(scene: CutScene, scene_offset: tuple[float, float, float]) -> tuple[float, float, float]:
-    return _clone_value(scene.trigger_offset) if scene.trigger_offset is not None else (0.0, 0.0, 0.0)
+def _trigger_offset(scene: CutScene, scene_offset: Vector3) -> Vector3:
+    return scene.trigger_offset if scene.trigger_offset is not None else Vector3()
 
 
 def _normalize_load_scene_args(
     event: CutNode,
     args: CutNode | None,
     *,
-    scene_offset: tuple[float, float, float],
+    scene_offset: Vector3,
     rotation: float,
 ) -> None:
     if int(event.fields.get("iEventId", -1)) != 0:

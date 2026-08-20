@@ -2,6 +2,7 @@ from fivefury import (
     ArchetypeAssetType,
     ArchetypeFlags,
     BaseArchetypeDef,
+    Vector3,
     Ytyp,
     cutscene_prop_flags,
     infer_archetype_lod_dist,
@@ -67,8 +68,8 @@ def test_archetype_defaults_infer_visible_lod_dist_from_bounds() -> None:
     archetype = BaseArchetypeDef(
         name="test_arch",
         bs_radius=12.0,
-        bb_min=(-12.0, -12.0, -2.0),
-        bb_max=(12.0, 12.0, 2.0),
+        bb_min=Vector3(-12.0, -12.0, -2.0),
+        bb_max=Vector3(12.0, 12.0, 2.0),
         asset_type=ArchetypeAssetType.DRAWABLE,
     )
 
@@ -89,8 +90,8 @@ def test_archetype_lod_default_scales_for_large_bounds() -> None:
 
 def test_archetype_lod_can_be_inferred_from_aabb_when_radius_missing() -> None:
     lod_dist = infer_archetype_lod_dist(
-        bb_min=(-10.0, -10.0, -10.0),
-        bb_max=(10.0, 10.0, 10.0),
+        bb_min=Vector3(-10.0, -10.0, -10.0),
+        bb_max=Vector3(10.0, 10.0, 10.0),
     )
 
     assert lod_dist == 100.0

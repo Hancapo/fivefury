@@ -75,7 +75,7 @@ _BLEND_OPERATIONS = {
 }
 
 
-def _v(value: object) -> Vector4:
+def _native_vector(value: object) -> tuple[float, float, float, float]:
     if isinstance(value, (int, float)):
         return float(value), 0.0, 0.0, 0.0
     values = tuple(float(item) for item in value)  # type: ignore[arg-type]
@@ -147,7 +147,7 @@ def _instruction_payload(expression: Any, instruction: Any) -> tuple[str, object
         if operation is YedInstructionType.PUSH_FLOAT:
             return "", float(operands["value"])
         if operation is YedInstructionType.PUSH_VECTOR:
-            return "", _v(operands["value"])
+            return "", _native_vector(operands["value"])
         if operation in _TRACK_OPERATIONS:
             return "", (
                 int(operands.get("bone_id", 0)),
@@ -212,9 +212,9 @@ def _skeleton_defaults(skeleton: object | None) -> tuple[Any, ...]:
     return tuple(
         (
             int(getattr(bone, "tag", -1)),
-            _v(getattr(bone, "translation", (0.0, 0.0, 0.0))),
-            _v(getattr(bone, "rotation", (0.0, 0.0, 0.0, 1.0))),
-            _v(getattr(bone, "scale", (1.0, 1.0, 1.0))),
+            _native_vector(getattr(bone, "translation", (0.0, 0.0, 0.0))),
+            _native_vector(getattr(bone, "rotation", (0.0, 0.0, 0.0, 1.0))),
+            _native_vector(getattr(bone, "scale", (1.0, 1.0, 1.0))),
         )
         for bone in getattr(skeleton, "bones", ())
     )
@@ -325,19 +325,28 @@ def evaluate_yed(
     variable_values: MutableMapping[VariableKey, Vector4] = (
         variables if variables is not None else {}
     )
+    native_tracks = {key: _native_vector(value) for key, value in tracks.items()}
+    native_variables = {
+        key: _native_vector(value) for key, value in variable_values.items()
+    }
     result_tracks, outputs, result_variables, native_issues = program.evaluate(
-        tracks,
-        variable_values,
+        native_tracks,
+        native_variables,
         time,
         delta_time,
     )
+    typed_tracks = {key: Vector4.from_iterable(value) for key, value in result_tracks.items()}
+    typed_outputs = {key: Vector4.from_iterable(value) for key, value in outputs.items()}
+    typed_variables = {
+        key: Vector4.from_iterable(value) for key, value in result_variables.items()
+    }
     if variables is not None:
         variables.clear()
-        variables.update(result_variables)
+        variables.update(typed_variables)
     return YedEvaluationResult(
-        tracks=result_tracks,
-        output_tracks=outputs,
-        variables=result_variables,
+        tracks=typed_tracks,
+        output_tracks=typed_outputs,
+        variables=typed_variables,
         evaluated_expressions=[expression.short_name for expression in expressions],
         issues=[*resolution_issues, *_native_issues(native_issues)],
     )

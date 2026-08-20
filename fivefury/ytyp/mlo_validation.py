@@ -5,6 +5,7 @@ from typing import Any
 
 from ..authoring.diagnostics import ValidationReport
 from ..authoring.invariants import check_unsigned
+from ..vector import Vector3, Vector4
 from .flags import PortalFlags
 
 INVALID_ENTITY_INDEX = 0xFFFFFFFF
@@ -20,11 +21,12 @@ MAX_MLO_ROOMS = 31
 PORTAL_LOCATION_BIT = 1 << 31
 
 
-def _is_finite_vector(value: Any, size: int) -> bool:
-    try:
-        return len(value) == size and all(math.isfinite(float(component)) for component in value)
-    except (TypeError, ValueError):
-        return False
+def _is_finite_vector3(value: Any) -> bool:
+    return isinstance(value, Vector3) and value.is_finite
+
+
+def _is_finite_vector4(value: Any) -> bool:
+    return isinstance(value, Vector4) and value.is_finite
 
 
 def _archetype_label(archetype: Any) -> str:
@@ -80,7 +82,7 @@ def validate_mlo_archetype(archetype: Any) -> ValidationReport:
             issues.issue("ytyp.mlo.room.name.duplicate", f"{label} {path} duplicates room name {room.name!r}", path=f"{path}.name")
         room_names.add(room.name)
 
-        if not _is_finite_vector(room.bb_min, 3) or not _is_finite_vector(room.bb_max, 3):
+        if not _is_finite_vector3(room.bb_min) or not _is_finite_vector3(room.bb_max):
             issues.issue("ytyp.mlo.room.bounds.invalid", f"{label} {path} bounds must contain three finite coordinates", path=f"{path}.bounds")
 
         seen_here: set[int] = set()
@@ -109,7 +111,7 @@ def validate_mlo_archetype(archetype: Any) -> ValidationReport:
 
         if len(portal.corners) != 4:
             issues.issue("ytyp.mlo.portal.corners.count", f"{label} {path} must contain exactly four corners", path=f"{path}.corners")
-        elif any(not _is_finite_vector(corner, 3) for corner in portal.corners):
+        elif any(not _is_finite_vector3(corner) for corner in portal.corners):
             issues.issue("ytyp.mlo.portal.corners.invalid", f"{label} {path} corners must contain three finite coordinates", path=f"{path}.corners")
         if not 0 <= int(portal.mirror_priority) <= 3:
             issues.issue("ytyp.mlo.portal.mirror_priority.range", f"{label} {path} mirror_priority must be between 0 and 3", path=f"{path}.mirror_priority")
@@ -179,7 +181,7 @@ def validate_mlo_archetype(archetype: Any) -> ValidationReport:
 
     for modifier_index, modifier in enumerate(archetype.time_cycle_modifiers):
         path = f"time_cycle_modifiers[{modifier_index}]"
-        if not _is_finite_vector(modifier.sphere, 4):
+        if not _is_finite_vector4(modifier.sphere):
             issues.issue("ytyp.mlo.time_modifier.sphere.invalid", f"{label} {path} sphere must contain four finite coordinates", path=f"{path}.sphere")
         if not math.isfinite(float(modifier.percentage)) or not math.isfinite(float(modifier.range)):
             issues.issue("ytyp.mlo.time_modifier.values.non_finite", f"{label} {path} percentage and range must be finite", path=path)

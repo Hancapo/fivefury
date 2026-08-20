@@ -5,82 +5,62 @@ import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ..vector import (
-    Vector3,
-    vec_add,
-    vec_cross,
-    vec_dot,
-    vec_length,
-    vec_normalize,
-    vec_scale,
-    vec_sub,
-)
+from ..vector import Vector2, Vector3
 from .glass import YftGlassPane, YftGlassPaneFlag
 
 if TYPE_CHECKING:
     from ..ydr import YdrMesh, YdrMeshInput
 
-Vector2 = tuple[float, float]
 BlendIndices = tuple[int, int, int, int]
 BlendWeights = tuple[float, float, float, float]
 
 _EPSILON = 1.1920928955078125e-07
 
 
-def _vec3(value: Sequence[float], label: str) -> Vector3:
-    if len(value) < 3:
-        raise ValueError(f"{label} must contain three components")
-    result = (float(value[0]), float(value[1]), float(value[2]))
-    if not all(math.isfinite(component) for component in result):
+def _require_vector(value: object, expected: type[Vector2 | Vector3], label: str):
+    if not isinstance(value, expected):
+        raise TypeError(f"{label} must be a {expected.__name__}")
+    if not value.is_finite:
         raise ValueError(f"{label} must be finite")
-    return result
-
-
-def _vec2(value: Sequence[float], label: str) -> Vector2:
-    if len(value) < 2:
-        raise ValueError(f"{label} must contain two components")
-    result = (float(value[0]), float(value[1]))
-    if not all(math.isfinite(component) for component in result):
-        raise ValueError(f"{label} must be finite")
-    return result
+    return value
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftGlassOrthonormalTransform:
-    x_axis: Vector3 = (1.0, 0.0, 0.0)
-    y_axis: Vector3 = (0.0, 1.0, 0.0)
-    z_axis: Vector3 = (0.0, 0.0, 1.0)
-    translation: Vector3 = (0.0, 0.0, 0.0)
+    x_axis: Vector3 = Vector3(1.0, 0.0, 0.0)
+    y_axis: Vector3 = Vector3(0.0, 1.0, 0.0)
+    z_axis: Vector3 = Vector3(0.0, 0.0, 1.0)
+    translation: Vector3 = Vector3()
 
     def __post_init__(self) -> None:
         axes = tuple(
-            _vec3(axis, label)
+            _require_vector(axis, Vector3, label)
             for axis, label in (
                 (self.x_axis, "x_axis"),
                 (self.y_axis, "y_axis"),
                 (self.z_axis, "z_axis"),
             )
         )
-        _vec3(self.translation, "translation")
-        if any(abs(vec_length(axis) - 1.0) > 1.0e-5 for axis in axes):
+        _require_vector(self.translation, Vector3, "translation")
+        if any(abs(axis.length - 1.0) > 1.0e-5 for axis in axes):
             raise ValueError("transform axes must have unit length")
         if any(
-            abs(vec_dot(axes[first], axes[second])) > 1.0e-5
+            abs(axes[first].dot(axes[second])) > 1.0e-5
             for first, second in ((0, 1), (0, 2), (1, 2))
         ):
             raise ValueError("transform axes must be mutually orthogonal")
-        if vec_dot(vec_cross(axes[0], axes[1]), axes[2]) < 1.0 - 1.0e-5:
+        if axes[0].cross(axes[1]).dot(axes[2]) < 1.0 - 1.0e-5:
             raise ValueError("transform axes must form a right-handed basis")
 
     def untransform_vector(self, value: Vector3) -> Vector3:
-        return (
-            vec_dot(value, self.x_axis),
-            vec_dot(value, self.y_axis),
-            vec_dot(value, self.z_axis),
+        return Vector3(
+            value.dot(self.x_axis),
+            value.dot(self.y_axis),
+            value.dot(self.z_axis),
         )
 
     def untransform_point(self, value: Vector3) -> Vector3:
-        return self.untransform_vector(vec_sub(value, self.translation))
+        return self.untransform_vector(value - self.translation)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -102,7 +82,7 @@ class YftGlassPaneMesh:
             mesh.positions,
             mesh.indices,
             mesh.texcoords[0],
-            mesh.tangents,
+            tuple(tangent.xyz for tangent in mesh.tangents),
             blend_indices=mesh.blend_indices or (),
             blend_weights=mesh.blend_weights or (),
         )
@@ -110,25 +90,19 @@ class YftGlassPaneMesh:
     @classmethod
     def declare(
         cls,
-        positions: Sequence[Sequence[float]],
+        positions: Sequence[Vector3],
         indices: Sequence[int],
-        uv0: Sequence[Sequence[float]],
-        tangents: Sequence[Sequence[float]],
+        uv0: Sequence[Vector2],
+        tangents: Sequence[Vector3],
         *,
         blend_indices: Sequence[Sequence[int]] = (),
         blend_weights: Sequence[Sequence[float]] = (),
     ) -> YftGlassPaneMesh:
         return cls(
-            positions=tuple(
-                _vec3(value, f"positions[{index}]")
-                for index, value in enumerate(positions)
-            ),
+            positions=tuple(_require_vector(value, Vector3, f"positions[{index}]") for index, value in enumerate(positions)),
             indices=tuple(int(value) for value in indices),
-            uv0=tuple(_vec2(value, f"uv0[{index}]") for index, value in enumerate(uv0)),
-            tangents=tuple(
-                _vec3(value, f"tangents[{index}]")
-                for index, value in enumerate(tangents)
-            ),
+            uv0=tuple(_require_vector(value, Vector2, f"uv0[{index}]") for index, value in enumerate(uv0)),
+            tangents=tuple(_require_vector(value, Vector3, f"tangents[{index}]") for index, value in enumerate(tangents)),
             blend_indices=tuple(
                 tuple(int(component) for component in value)  # type: ignore[arg-type]
                 for value in blend_indices
@@ -260,9 +234,9 @@ def _largest_valid_triangle(
         ):
             continue
         uv0, uv1, uv2 = (mesh.uv0[index] for index in triangle)
-        uv10 = (uv1[0] - uv0[0], uv1[1] - uv0[1])
-        uv20 = (uv2[0] - uv0[0], uv2[1] - uv0[1])
-        determinant = (uv20[0] * uv10[1]) - (uv10[0] * uv20[1])
+        uv10 = uv1 - uv0
+        uv20 = uv2 - uv0
+        determinant = (uv20.x * uv10.y) - (uv10.x * uv20.y)
         area_squared = determinant * determinant
         if area_squared <= best_uv_area_squared:
             continue
@@ -284,60 +258,45 @@ def compute_glass_pane_geometry(
     p0, p1, p2 = (mesh.positions[index] for index in triangle)
     uv0, uv1, uv2 = (mesh.uv0[index] for index in triangle)
 
-    p10 = vec_sub(p1, p0)
-    p20 = vec_sub(p2, p0)
-    uv10 = (uv1[0] - uv0[0], uv1[1] - uv0[1])
-    uv20 = (uv2[0] - uv0[0], uv2[1] - uv0[1])
-    denominator = (uv20[0] * uv10[1]) - (uv10[0] * uv20[1])
+    p10 = p1 - p0
+    p20 = p2 - p0
+    uv10 = uv1 - uv0
+    uv20 = uv2 - uv0
+    denominator = (uv20.x * uv10.y) - (uv10.x * uv20.y)
     if abs(denominator) <= _EPSILON:
         raise ValueError("glass pane UV0 coordinates are degenerate")
     alpha = 1.0 / denominator
-    width_basis = vec_sub(
-        vec_scale(p20, uv10[1] * alpha),
-        vec_scale(p10, uv20[1] * alpha),
-    )
-    height_basis = vec_sub(
-        vec_scale(p10, uv20[0] * alpha),
-        vec_scale(p20, uv10[0] * alpha),
-    )
-    origin = vec_sub(
-        vec_sub(p0, vec_scale(width_basis, uv0[0])),
-        vec_scale(height_basis, uv0[1]),
-    )
+    width_basis = (p20 * (uv10.y * alpha)) - (p10 * (uv20.y * alpha))
+    height_basis = (p10 * (uv20.x * alpha)) - (p20 * (uv10.x * alpha))
+    origin = p0 - (width_basis * uv0.x) - (height_basis * uv0.y)
 
     selected = _selected_vertex_indices(mesh, bone_index)
     if not selected:
         raise ValueError(
             f"glass pane mesh has no vertices bound first to bone {bone_index}"
         )
-    uv_min = (
-        min(mesh.uv0[index][0] for index in selected),
-        min(mesh.uv0[index][1] for index in selected),
+    uv_min = Vector2(
+        min(mesh.uv0[index].x for index in selected),
+        min(mesh.uv0[index].y for index in selected),
     )
-    uv_max = (
-        max(mesh.uv0[index][0] for index in selected),
-        max(mesh.uv0[index][1] for index in selected),
+    uv_max = Vector2(
+        max(mesh.uv0[index].x for index in selected),
+        max(mesh.uv0[index].y for index in selected),
     )
-    position_base = vec_add(
-        vec_add(origin, vec_scale(width_basis, uv_min[0])),
-        vec_scale(height_basis, uv_min[1]),
-    )
-    position_width = vec_scale(width_basis, uv_max[0] - uv_min[0])
-    position_height = vec_scale(height_basis, uv_max[1] - uv_min[1])
+    position_base = origin + (width_basis * uv_min.x) + (height_basis * uv_min.y)
+    position_width = width_basis * (uv_max.x - uv_min.x)
+    position_height = height_basis * (uv_max.y - uv_min.y)
 
-    plane_normal = vec_normalize(
-        vec_cross(vec_sub(p0, p1), vec_sub(p2, p1)),
-        fallback=(0.0, 0.0, 0.0),
-    )
-    if vec_length(plane_normal) <= _EPSILON:
+    plane_normal = (p0 - p1).cross(p2 - p1).normalized(fallback=Vector3())
+    if plane_normal.length <= _EPSILON:
         raise ValueError("glass pane basis triangle is geometrically degenerate")
-    depths = [vec_dot(plane_normal, mesh.positions[index]) for index in selected]
+    depths = [plane_normal.dot(mesh.positions[index]) for index in selected]
     thickness = max(depths) - min(depths)
-    tangent_sum = (0.0, 0.0, 0.0)
+    tangent_sum = Vector3()
     for index in selected:
-        tangent_sum = vec_add(tangent_sum, mesh.tangents[index])
-    tangent = vec_normalize(tangent_sum, fallback=(0.0, 0.0, 0.0))
-    if vec_length(tangent) <= _EPSILON:
+        tangent_sum += mesh.tangents[index]
+    tangent = tangent_sum.normalized(fallback=Vector3())
+    if tangent.length <= _EPSILON:
         raise ValueError("glass pane average tangent is degenerate")
     half_thickness = 0.5 * thickness
     return YftGlassPaneGeometry(
@@ -360,30 +319,29 @@ def compute_glass_bounds_offsets(
     *,
     transform: YftGlassOrthonormalTransform | None = None,
 ) -> tuple[float, float]:
-    bound_min = _vec3(minimum, "minimum")
-    bound_max = _vec3(maximum, "maximum")
-    if any(bound_min[axis] > bound_max[axis] for axis in range(3)):
+    bound_min = _require_vector(minimum, Vector3, "minimum")
+    bound_max = _require_vector(maximum, Vector3, "maximum")
+    if bound_min.x > bound_max.x or bound_min.y > bound_max.y or bound_min.z > bound_max.z:
         raise ValueError("bound minimum must not exceed maximum")
-    pane_normal = vec_normalize(
-        vec_cross(geometry.position_height, geometry.position_width),
-        fallback=(0.0, 0.0, 0.0),
-    )
-    if vec_length(pane_normal) <= _EPSILON:
+    pane_normal = geometry.position_height.cross(geometry.position_width).normalized(fallback=Vector3())
+    if pane_normal.length <= _EPSILON:
         raise ValueError("glass pane width and height do not define a plane")
     basis = transform or YftGlassOrthonormalTransform()
     bound_normal = basis.untransform_vector(pane_normal)
     bounds_base = basis.untransform_point(geometry.position_base)
-    front = tuple(
-        bound_max[axis] if bound_normal[axis] >= 0.0 else bound_min[axis]
-        for axis in range(3)
+    front = Vector3(
+        bound_max.x if bound_normal.x >= 0.0 else bound_min.x,
+        bound_max.y if bound_normal.y >= 0.0 else bound_min.y,
+        bound_max.z if bound_normal.z >= 0.0 else bound_min.z,
     )
-    back = tuple(
-        bound_min[axis] if bound_normal[axis] >= 0.0 else bound_max[axis]
-        for axis in range(3)
+    back = Vector3(
+        bound_min.x if bound_normal.x >= 0.0 else bound_max.x,
+        bound_min.y if bound_normal.y >= 0.0 else bound_max.y,
+        bound_min.z if bound_normal.z >= 0.0 else bound_max.z,
     )
     return (
-        vec_dot(bound_normal, vec_sub(front, bounds_base)),
-        vec_dot(bound_normal, vec_sub(bounds_base, back)),
+        bound_normal.dot(front - bounds_base),
+        bound_normal.dot(bounds_base - back),
     )
 
 

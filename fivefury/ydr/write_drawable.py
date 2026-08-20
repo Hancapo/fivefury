@@ -4,6 +4,7 @@ import dataclasses
 from collections.abc import Callable, Mapping, Sequence
 
 from ..resource import ResourceWriter
+from ..vector import Vector3
 from .defs import LOD_ORDER, YdrLod
 from .write_models import PreparedModelBlock
 
@@ -114,9 +115,9 @@ def write_drawable_root(
     lights_block_off: int,
     lights_count: int,
     bound_off: int,
-    center: tuple[float, float, float],
-    bounds_min: tuple[float, float, float],
-    bounds_max: tuple[float, float, float],
+    center: Vector3,
+    bounds_min: Vector3,
+    bounds_max: Vector3,
     radius: float,
     lod_distances: Mapping[YdrLod, float],
     render_mask_flags: Mapping[YdrLod, int],

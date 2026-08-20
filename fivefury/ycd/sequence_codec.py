@@ -7,6 +7,7 @@ from .. import _native as _native_backend
 from ..binary import f32 as _f32
 from ..binary import i32 as _i32
 from ..binary import u16 as _u16
+from ..vector import Quaternion, Vector3
 from .sequence_channels import (
     YcdAnimChannel,
     YcdAnimSequence,
@@ -49,8 +50,8 @@ class _ChannelDataReader:
         self.position += 4
         return value
 
-    def read_vector3(self) -> tuple[float, float, float]:
-        value = (
+    def read_vector3(self) -> Vector3:
+        value = Vector3(
             _f32(self.data, self.position),
             _f32(self.data, self.position + 4),
             _f32(self.data, self.position + 8),
@@ -154,8 +155,8 @@ class _ChannelDataWriter:
         self.main_stream.extend(struct.pack("<f", float(value)))
         self.position += 4
 
-    def write_vector3(self, value: tuple[float, float, float]) -> None:
-        self.main_stream.extend(struct.pack("<3f", float(value[0]), float(value[1]), float(value[2])))
+    def write_vector3(self, value: Vector3) -> None:
+        self.main_stream.extend(struct.pack("<3f", value.x, value.y, value.z))
         self.position += 12
 
     def begin_frame(self, frame: int) -> None:
@@ -347,7 +348,7 @@ def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter, track: i
         writer.write_vector3(channel.value)
         return
     if isinstance(channel, YcdStaticQuaternionChannel):
-        writer.write_vector3((float(channel.value[0]), float(channel.value[1]), float(channel.value[2])))
+        writer.write_vector3(channel.value.xyz)
         return
     if isinstance(channel, YcdRawFloatChannel):
         return
@@ -640,7 +641,7 @@ def _read_channel(channel: YcdAnimChannel, reader: _ChannelDataReader) -> None:
     if isinstance(channel, YcdStaticQuaternionChannel):
         x, y, z = reader.read_vector3()
         w = math.sqrt(max(1.0 - ((x * x) + (y * y) + (z * z)), 0.0))
-        channel.value = (x, y, z, float(w))
+        channel.value = Quaternion(x, y, z, w)
         return
     if isinstance(channel, YcdRawFloatChannel):
         channel.values = [0.0] * reader.num_frames

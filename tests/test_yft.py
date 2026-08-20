@@ -18,6 +18,9 @@ from fivefury import (
     BoundMaterial,
     BoundMaterialType,
     DiagnosticSeverity,
+    Vector2,
+    Vector3,
+    Vector4,
     YdrMaterialInput,
     YdrMeshInput,
     build_bound_from_triangles,
@@ -25,6 +28,9 @@ from fivefury import (
     create_ydr,
     get_bound_material_density,
 )
+
+_TRIANGLE = [Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)]
+_TRIANGLE_UVS = [[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]]
 from fivefury.bounds import (
     GEN9_BOUND_FILE_VFTS,
     LEGACY_BOUND_FILE_VFTS,
@@ -107,11 +113,11 @@ def _composite(*bounds):
     return BoundComposite(
         bound_type=10,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[BoundChild(bound) for bound in bounds],
     ).build()
 
@@ -187,14 +193,10 @@ def _simple_fragment_drawable(name: str):
     return create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="body")],
@@ -239,22 +241,18 @@ def test_yft_light_array_roundtrip():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="default",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="default")],
         name="lit_fragment",
     )
     light = YdrLight.spot(
-        position=(1.0, 2.0, 3.0),
-        direction=(0.0, 0.0, -1.0),
+        position=Vector3(1.0, 2.0, 3.0),
+        direction=Vector3(0.0, 0.0, -1.0),
         color="#80c0ff",
         intensity=4.5,
         falloff=12.0,
@@ -274,7 +272,7 @@ def test_yft_light_array_roundtrip():
     assert struct.unpack_from("<H", system_data, 0x11A)[0] == 1
     assert len(parsed.lights) == 1
     parsed_light = parsed.lights[0]
-    assert parsed_light.position == (1.0, 2.0, 3.0)
+    assert parsed_light.position == Vector3(1.0, 2.0, 3.0)
     assert parsed_light.color == (128, 192, 255)
     assert parsed_light.intensity == 4.5
     assert parsed_light.bone_id == 7
@@ -307,14 +305,10 @@ def test_yft_shared_matrix_set_roundtrip():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="default",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="default")],
@@ -322,7 +316,7 @@ def test_yft_shared_matrix_set_roundtrip():
     )
     skeleton = YdrSkeleton()
     skeleton.bone("root")
-    skeleton.bone("child", parent="root", translation=(0.0, 0.0, 1.0))
+    skeleton.bone("child", parent="root", translation=Vector3(0.0, 0.0, 1.0))
     drawable.skeleton = skeleton
     source = create_yft(drawable, name="matrix_fragment")
 
@@ -397,23 +391,19 @@ def test_yft_glass_roundtrip(version):
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="glass",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="glass")],
         name="glass_fragment",
     )
     pane = YftGlassPane(
-        position_base=(-1.0, 0.0, 0.0),
-        position_width=(2.0, 0.0, 0.0),
-        position_height=(0.0, 1.5, 0.0),
+        position_base=Vector3(-1.0, 0.0, 0.0),
+        position_width=Vector3(2.0, 0.0, 0.0),
+        position_height=Vector3(0.0, 1.5, 0.0),
         shader_index=0,
         glass_type=1,
         bounds_offset_front=0.125,
@@ -456,14 +446,10 @@ def test_yft_environment_cloth_roundtrip(version, runtime_headers):
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="cloth",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="cloth")],
@@ -486,13 +472,13 @@ def test_yft_environment_cloth_roundtrip(version, runtime_headers):
             morph=YftClothMorphController(),
             verlet_lods=(
                 YftVerletCloth(
-                    bounds_min=(0.0, 0.0, 0.0),
-                    bounds_max=(1.0, 1.0, 0.0),
+                        bounds_min=Vector3(),
+                        bounds_max=Vector3(1.0, 1.0, 0.0),
                     vertices=vertices,
                     previous_vertices=list(vertices),
                     bound=BoundBox.from_center_size(
-                        (0.5, 0.5, 0.0),
-                        (1.0, 1.0, 0.1),
+                            Vector3(0.5, 0.5, 0.0),
+                            Vector3(1.0, 1.0, 0.1),
                     ).build(),
                 ),
                 None,
@@ -719,7 +705,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     yft = read_yft(build_rsc7(bytes(system_data), version=162), path="example.yft")
 
     assert yft.version == 162
-    assert yft.bounding_sphere == (1.0, 2.0, 3.0, 4.0)
+    assert yft.bounding_sphere == Vector4(1.0, 2.0, 3.0, 4.0)
     assert yft.pointers.common_drawable == 0x50000100
     assert yft.pointers.root_child == 0x500001E0
     assert yft.pointers.tune_name == 0x500001F0
@@ -741,7 +727,7 @@ def test_read_yft_discovers_fragment_drawables(monkeypatch):
     assert yft.physics_lod_details[0].vft == FRAG_PHYSICS_LOD_VFT
     assert yft.physics_lod_details[0].resource_state == RESOURCE_STATE
     assert yft.physics_lod_details[0].smallest_ang_inertia == 0.25
-    assert yft.physics_lod_details[0].root_cg_offset == (1.0, 2.0, 3.0)
+    assert yft.physics_lod_details[0].root_cg_offset == Vector3(1.0, 2.0, 3.0)
     assert yft.physics_lod_details[0].num_groups == 1
     assert yft.physics_lod_details[0].num_children == 4
     assert yft.physics_lod_details[0].group_names == ("GroupA",)
@@ -912,12 +898,14 @@ def test_create_yft_declares_simple_fragment():
     drawable = Ydr(version=162, lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]})
 
     yft = create_yft(
-        drawable, name="example_fragment", bounding_sphere=(1.0, 2.0, 3.0, 4.0)
+        drawable,
+        name="example_fragment",
+        bounding_sphere=Vector4(1.0, 2.0, 3.0, 4.0),
     )
 
     assert yft.name == "example_fragment"
     assert yft.main_drawable is drawable
-    assert yft.bounding_sphere == (1.0, 2.0, 3.0, 4.0)
+    assert yft.bounding_sphere == Vector4(1.0, 2.0, 3.0, 4.0)
 
 
 def test_resource_chunks_match_runtime_page_map():
@@ -939,10 +927,10 @@ def test_yft_binary_validation_rejects_pointer_outside_resource_chunks():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="default",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="default")],
@@ -1016,10 +1004,10 @@ def test_yft_without_physics_writes_runtime_root_child_header():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="default",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="default")],
@@ -1117,8 +1105,8 @@ def test_yft_relocates_damp_archetype_filename():
 
 def test_yft_preserves_composite_bound_capacity_above_active_count():
     active_bound = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
+        Vector3(),
+        Vector3(1.0, 1.0, 1.0),
     ).build()
     composite = _composite(active_bound, None)
     composite.active_child_count = 1
@@ -1183,19 +1171,19 @@ def test_yft_validation_accepts_native_unavailable_damage_properties():
 
 
 def test_bound_mass_properties_calculate_box_mass_inertia_and_inverses():
-    bound = BoundBox.from_center_size((1.0, 2.0, 3.0), (2.0, 3.0, 4.0))
+    bound = BoundBox.from_center_size(Vector3(1.0, 2.0, 3.0), Vector3(2.0, 3.0, 4.0))
 
     properties = calculate_bound_mass_properties(bound, density=10.0)
     default_properties = calculate_bound_mass_properties(
-        BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        BoundBox.from_center_size(Vector3(), Vector3(1.0, 1.0, 1.0))
     )
 
     assert properties.volume == pytest.approx(24.0)
     assert properties.mass == pytest.approx(240.0)
-    assert properties.center_of_gravity == pytest.approx((1.0, 2.0, 3.0))
-    assert properties.angular_inertia == pytest.approx((500.0, 400.0, 260.0))
+    assert properties.center_of_gravity.components == pytest.approx((1.0, 2.0, 3.0))
+    assert properties.angular_inertia.components == pytest.approx((500.0, 400.0, 260.0))
     assert properties.inverse_mass == pytest.approx(1.0 / 240.0)
-    assert properties.inverse_angular_inertia == pytest.approx(
+    assert properties.inverse_angular_inertia.components == pytest.approx(
         (1.0 / 500.0, 1.0 / 400.0, 1.0 / 260.0)
     )
     assert default_properties.density == pytest.approx(1750.0)
@@ -1204,8 +1192,8 @@ def test_bound_mass_properties_calculate_box_mass_inertia_and_inverses():
 
 def test_bound_mass_properties_use_native_material_density():
     concrete = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (2.0, 2.0, 2.0),
+        Vector3(),
+        Vector3(2.0, 2.0, 2.0),
         material_index=BoundMaterialType.CONCRETE,
     )
 
@@ -1221,13 +1209,13 @@ def test_bound_mass_properties_use_native_material_density():
 
 def test_composite_material_density_is_weighted_by_child_volume():
     concrete = BoundBox.from_center_size(
-        (-2.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
+        Vector3(-2.0, 0.0, 0.0),
+        Vector3(1.0, 1.0, 1.0),
         material_index=BoundMaterialType.CONCRETE,
     )
     wood = BoundBox.from_center_size(
-        (2.0, 0.0, 0.0),
-        (2.0, 2.0, 2.0),
+        Vector3(2.0, 0.0, 0.0),
+        Vector3(2.0, 2.0, 2.0),
         material_index=BoundMaterialType.WOOD_SOLID_SMALL,
     )
 
@@ -1256,8 +1244,8 @@ def test_composite_material_density_is_weighted_by_child_volume():
 
 
 def test_physics_lod_calculates_each_child_from_its_composite_slot():
-    small = BoundBox.from_center_size((-2.0, 0.0, 0.0), (1.0, 1.0, 1.0))
-    large = BoundBox.from_center_size((2.0, 0.0, 0.0), (2.0, 2.0, 2.0))
+    small = BoundBox.from_center_size(Vector3(-2.0, 0.0, 0.0), Vector3(1.0, 1.0, 1.0))
+    large = BoundBox.from_center_size(Vector3(2.0, 0.0, 0.0), Vector3(2.0, 2.0, 2.0))
     groups = (
         YftPhysicsGroup.declare(
             "small",
@@ -1294,9 +1282,9 @@ def test_physics_lod_calculates_each_child_from_its_composite_slot():
     expected_archetype_inertia = lod.composite_bound.compute_composite_angular_inertia(
         18.0,
         masses=[item.mass for item in child_inertias],
-        inertias=[(item.x, item.y, item.z) for item in child_inertias],
+        inertias=[Vector3(item.x, item.y, item.z) for item in child_inertias],
     )
-    assert lod.undamaged_damp_archetype.angular_inertia == pytest.approx(
+    assert lod.undamaged_damp_archetype.angular_inertia.components == pytest.approx(
         expected_archetype_inertia
     )
     assert lod.largest_ang_inertia == pytest.approx(32.0 / 3.0)
@@ -1304,7 +1292,7 @@ def test_physics_lod_calculates_each_child_from_its_composite_slot():
 
 
 def test_mass_calculation_preserves_explicit_values_unless_forced():
-    bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))
+    bound = BoundBox.from_center_size(Vector3(), Vector3(2.0, 2.0, 2.0))
     child = YftPhysicsChild.declare(undamaged_mass=7.0, damaged_mass=9.0)
     declared = YftPhysicsLod.declare(
         "high",
@@ -1326,8 +1314,8 @@ def test_mass_calculation_preserves_explicit_values_unless_forced():
 
 
 def test_damaged_child_uses_its_own_drawable_bound_for_mass_properties():
-    intact = BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
-    damaged = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))
+    intact = BoundBox.from_center_size(Vector3(), Vector3(1.0, 1.0, 1.0))
+    damaged = BoundBox.from_center_size(Vector3(), Vector3(2.0, 2.0, 2.0))
     damaged_drawable = Ydr(version=162)
     damaged_drawable.bound = damaged
     child = YftPhysicsChild.declare(
@@ -1348,7 +1336,7 @@ def test_damaged_child_uses_its_own_drawable_bound_for_mass_properties():
 
 @pytest.mark.parametrize("version", [162, 171])
 def test_calculated_mass_properties_roundtrip_through_yft_writer(version: int):
-    bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 3.0, 4.0))
+    bound = BoundBox.from_center_size(Vector3(), Vector3(2.0, 3.0, 4.0))
     child = YftPhysicsChild.declare()
     group = YftPhysicsGroup.declare("body", children=(child,))
     source = create_yft(
@@ -1379,14 +1367,10 @@ def test_multichild_prop_does_not_invent_euphoria_body():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="default",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="default")],
@@ -1402,8 +1386,8 @@ def test_multichild_prop_does_not_invent_euphoria_body():
     lod = normalize_physics_lod(
         YftPhysicsLod.declare("high", groups=(group,)),
         composite_bound=_composite(
-            simple_physics_bound(center=(-0.5, 0.0, 0.0)),
-            simple_physics_bound(center=(0.5, 0.0, 0.0)),
+            simple_physics_bound(center=Vector3(-0.5, 0.0, 0.0)),
+            simple_physics_bound(center=Vector3(0.5, 0.0, 0.0)),
         ),
     )
     source = create_yft(
@@ -1466,8 +1450,8 @@ def test_physics_authoring_preserves_root_bone_in_bony_child_prefix():
     normalized = normalize_physics_lod(
         declared,
         composite_bound=_composite(
-            simple_physics_bound(center=(-0.5, 0.0, 0.0)),
-            simple_physics_bound(center=(0.5, 0.0, 0.0)),
+            simple_physics_bound(center=Vector3(-0.5, 0.0, 0.0)),
+            simple_physics_bound(center=Vector3(0.5, 0.0, 0.0)),
         ),
     )
 
@@ -1482,16 +1466,10 @@ def test_physics_lods_own_distinct_child_drawable_bound_links():
         return create_ydr(
             meshes=[
                 YdrMeshInput(
-                    positions=[
-                        (0.0, 0.0, 0.0),
-                        (1.0, 0.0, 0.0),
-                        (0.0, 1.0, 0.0),
-                    ],
+                    positions=_TRIANGLE,
                     indices=[0, 1, 2],
                     material="body",
-                    texcoords=[
-                        [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
-                    ],
+                    texcoords=_TRIANGLE_UVS,
                 )
             ],
             materials=[YdrMaterialInput(name="body")],
@@ -1558,11 +1536,11 @@ def test_composite_bound_may_preserve_only_null_native_slots():
     composite = BoundComposite(
         bound_type=10,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[
             BoundChild(None),
             BoundChild(None),
@@ -1577,17 +1555,17 @@ def test_bound_ownership_counts_external_roots_and_composite_edges_once():
         return BoundComposite(
             bound_type=10,
             sphere_radius=0.0,
-            box_max=(0.0, 0.0, 0.0),
+            box_max=Vector3(),
             margin=0.0,
-            box_min=(0.0, 0.0, 0.0),
-            box_center=(0.0, 0.0, 0.0),
-            sphere_center=(0.0, 0.0, 0.0),
+            box_min=Vector3(),
+            box_center=Vector3(),
+            sphere_center=Vector3(),
             children=children,
         )
 
-    nested_leaf = BoundBox.from_bounds((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0))
+    nested_leaf = BoundBox.from_bounds(Vector3(-1.0, -1.0, -1.0), Vector3(1.0, 1.0, 1.0))
     nested = composite([BoundChild(nested_leaf), BoundChild(None)])
-    sibling = BoundBox.from_bounds((-2.0, -2.0, -2.0), (2.0, 2.0, 2.0))
+    sibling = BoundBox.from_bounds(Vector3(-2.0, -2.0, -2.0), Vector3(2.0, 2.0, 2.0))
     root = composite([BoundChild(nested), BoundChild(sibling)])
 
     counts = calculate_bound_ref_counts((root, root, nested))
@@ -1604,10 +1582,10 @@ def test_yft_writer_derives_direct_bound_ownership_and_roundtrips_it():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="body")],
@@ -1644,10 +1622,10 @@ def test_yft_validation_rejects_bound_ref_count_mismatch():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="body")],
@@ -1718,11 +1696,7 @@ def test_physics_lod_with_damaged_entity_synthesizes_damaged_archetype():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="damaged",
             )
@@ -1749,14 +1723,10 @@ def test_damaged_archetype_owns_a_distinct_bound_resource():
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="body")],
@@ -1893,30 +1863,26 @@ def test_composite_bound_ownership_covers_nested_null_and_damage_states():
         return create_ydr(
             meshes=[
                 YdrMeshInput(
-                    positions=[
-                        (0.0, 0.0, 0.0),
-                        (1.0, 0.0, 0.0),
-                        (0.0, 1.0, 0.0),
-                    ],
+                    positions=_TRIANGLE,
                     indices=[0, 1, 2],
                     material="body",
-                    texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                    texcoords=_TRIANGLE_UVS,
                 )
             ],
             materials=[YdrMaterialInput(name="body")],
             name=name,
         )
 
-    intact_piece = BoundBox.from_center_size((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
-    unlinked_piece = BoundBox.from_center_size((2.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+    intact_piece = BoundBox.from_center_size(Vector3(), Vector3(1.0, 1.0, 1.0))
+    unlinked_piece = BoundBox.from_center_size(Vector3(2.0, 0.0, 0.0), Vector3(1.0, 1.0, 1.0))
     composite = BoundComposite(
         bound_type=10,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[
             BoundChild(intact_piece),
             BoundChild(unlinked_piece),
@@ -1978,16 +1944,10 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
         result = create_ydr(
             meshes=[
                 YdrMeshInput(
-                    positions=[
-                        (0.0, 0.0, 0.0),
-                        (1.0, 0.0, 0.0),
-                        (0.0, 1.0, 0.0),
-                    ],
+                    positions=_TRIANGLE,
                     indices=[0, 1, 2],
                     material="body",
-                    texcoords=[
-                        [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
-                    ],
+                    texcoords=_TRIANGLE_UVS,
                 )
             ],
             materials=[YdrMaterialInput(name="body")],
@@ -2023,23 +1983,23 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
     composite = BoundComposite(
         bound_type=10,
         sphere_radius=2.0,
-        box_max=(2.0, 2.0, 2.0),
+        box_max=Vector3(2.0, 2.0, 2.0),
         margin=0.0,
-        box_min=(-2.0, -2.0, -2.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-2.0, -2.0, -2.0),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[
             BoundChild(
-                simple_physics_bound(center=(-0.5, 0.0, 0.0)),
+                simple_physics_bound(center=Vector3(-0.5, 0.0, 0.0)),
             ),
             BoundChild(
-                simple_physics_bound(center=(0.5, 0.0, 0.0)),
+                simple_physics_bound(center=Vector3(0.5, 0.0, 0.0)),
             ),
             BoundChild(
                 None,
                 bounds=BoundAabb(
-                    minimum=(0.0, 0.0, 0.0),
-                    maximum=(0.0, 0.0, 0.0),
+                    minimum=Vector3(),
+                    maximum=Vector3(),
                 ),
             ),
         ]
@@ -2166,8 +2126,8 @@ def test_partial_damage_uses_sparse_damaged_composite_children():
 
 def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
     damaged_bound = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
+        Vector3(),
+        Vector3(1.0, 1.0, 1.0),
     ).build()
     intact_drawable = _simple_fragment_drawable("intact_visual")
     damaged_drawable = _simple_fragment_drawable("damaged_collision")
@@ -2179,11 +2139,11 @@ def test_prop_profile_allows_null_intact_slot_with_damaged_collision():
     composite = BoundComposite(
         bound_type=10,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[BoundChild(None)],
     ).build()
     source = create_yft(
@@ -2314,11 +2274,11 @@ def test_prop_profile_rejects_child_without_collision_in_any_state():
     composite = BoundComposite(
         bound_type=10,
         sphere_radius=0.0,
-        box_max=(0.0, 0.0, 0.0),
+        box_max=Vector3(),
         margin=0.0,
-        box_min=(0.0, 0.0, 0.0),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         children=[BoundChild(None)],
     ).build()
     source = create_yft(
@@ -2341,22 +2301,18 @@ def test_materialless_physics_drawable_uses_null_shader_group():
     main_drawable = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[
-                    (0.0, 0.0, 0.0),
-                    (1.0, 0.0, 0.0),
-                    (0.0, 1.0, 0.0),
-                ],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="body")],
         name="breakable_prop",
     )
     child_bound = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (2.0, 2.0, 2.0),
+        Vector3(),
+        Vector3(2.0, 2.0, 2.0),
     ).build()
     child_drawable = create_ydr(
         meshes=[],
@@ -2393,12 +2349,8 @@ def test_materialless_physics_drawable_uses_null_shader_group():
 
 
 def test_damaged_drawable_inherits_common_shader_group_and_remaps_materials():
-    triangle = [
-        (0.0, 0.0, 0.0),
-        (1.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0),
-    ]
-    texcoords = [[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]]
+    triangle = _TRIANGLE
+    texcoords = _TRIANGLE_UVS
     main = create_ydr(
         meshes=[
             YdrMeshInput(
@@ -2503,16 +2455,16 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     build = create_ydr(
         meshes=[
             YdrMeshInput(
-                positions=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                positions=_TRIANGLE,
                 indices=[0, 1, 2],
                 material="body",
-                texcoords=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
+                texcoords=_TRIANGLE_UVS,
             )
         ],
         materials=[YdrMaterialInput(name="body")],
         name="fragment_drawable",
     )
-    bound = BoundBox.from_center_size((0.0, 0.0, 0.0), (2.0, 2.0, 2.0)).build()
+    bound = BoundBox.from_center_size(Vector3(), Vector3(2.0, 2.0, 2.0)).build()
     build.bound = bound
     child = YftPhysicsChild.declare(
         undamaged_entity=YftPhysicsEntity(
@@ -2713,9 +2665,9 @@ def test_create_yft_writes_declared_physics_lod(tmp_path):
     )
 
     parsed.main_drawable.extra_bounds = (
-        BoundBox.from_bounds(
-            (-0.5, -0.5, -0.5),
-            (0.5, 0.5, 0.5),
+            BoundBox.from_bounds(
+                Vector3(-0.5, -0.5, -0.5),
+                Vector3(0.5, 0.5, 0.5),
         ).build(),
     )
     parsed.main_drawable.extra_bound_matrices = (YftFragmentMatrix.identity(),)
@@ -2915,8 +2867,8 @@ def test_yft_empty_event_sets_roundtrip(version, runtime_headers):
         lods={YdrLod.HIGH: [YdrModel(lod=YdrLod.HIGH)]},
     )
     bound = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
+        Vector3(),
+        Vector3(1.0, 1.0, 1.0),
     ).build()
     drawable.bound = bound
     yft = create_yft(
@@ -2943,10 +2895,10 @@ def test_yft_empty_event_sets_roundtrip(version, runtime_headers):
 def test_fragment_geometry_bound_builder_creates_direct_prop_leaf():
     geometry = build_fragment_geometry_bound(
         [
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (0.0, 0.0, 1.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
+            Vector3(0.0, 0.0, 1.0),
         ],
         [
             (0, 2, 1),
@@ -2962,8 +2914,8 @@ def test_fragment_geometry_bound_builder_creates_direct_prop_leaf():
     assert geometry.vertices_shrunk == geometry.vertices
     assert geometry.octants is not None
     assert geometry.volume == pytest.approx(1.0 / 6.0)
-    assert geometry.box_center == pytest.approx((0.5, 0.5, 0.5))
-    assert geometry.sphere_center == pytest.approx((0.25, 0.25, 0.25))
+    assert geometry.box_center.components == pytest.approx((0.5, 0.5, 0.5))
+    assert geometry.sphere_center.components == pytest.approx((0.25, 0.25, 0.25))
     assert geometry.sphere_radius == pytest.approx(
         math.sqrt((0.75**2) + (0.25**2) + (0.25**2))
     )
@@ -2974,9 +2926,9 @@ def test_fragment_geometry_bound_builder_rejects_packed_material_overflow():
     with pytest.raises(ValueError, match="room_id"):
         build_fragment_geometry_bound(
             [
-                (0.0, 0.0, 0.0),
-                (1.0, 0.0, 0.0),
-                (0.0, 1.0, 0.0),
+                Vector3(),
+                Vector3(1.0, 0.0, 0.0),
+                Vector3(0.0, 1.0, 0.0),
             ],
             [(0, 1, 2)],
             materials=[BoundMaterial(room_id=0x20)],
@@ -2986,10 +2938,10 @@ def test_fragment_geometry_bound_builder_rejects_packed_material_overflow():
 def test_prop_profile_writes_native_composite_and_geometry_vfts():
     geometry = build_fragment_geometry_bound(
         [
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (0.0, 0.0, 1.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
+            Vector3(0.0, 0.0, 1.0),
         ],
         [(0, 2, 1), (0, 1, 3), (1, 2, 3), (2, 0, 3)],
     )
@@ -3046,9 +2998,9 @@ def test_prop_profile_writes_native_composite_and_geometry_vfts():
 
 def test_prop_profile_rejects_ybn_style_bvh():
     triangle = (
-        (0.0, 0.0, 0.0),
-        (1.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0),
+        Vector3(),
+        Vector3(1.0, 0.0, 0.0),
+        Vector3(0.0, 1.0, 0.0),
     )
     bvh = build_bound_from_triangles([triangle])
     drawable = _simple_fragment_drawable("prop_bvh")
@@ -3072,9 +3024,9 @@ def test_prop_profile_rejects_ybn_style_bvh():
 
 def test_vehicle_profile_accepts_bvh_and_writes_native_vfts():
     triangle = (
-        (0.0, 0.0, 0.0),
-        (1.0, 0.0, 0.0),
-        (0.0, 1.0, 0.0),
+        Vector3(),
+        Vector3(1.0, 0.0, 0.0),
+        Vector3(0.0, 1.0, 0.0),
     )
     bvh = build_bound_from_triangles([triangle])
     drawable = _simple_fragment_drawable("vehicle_bvh")
@@ -3128,10 +3080,10 @@ def test_vehicle_profile_accepts_bvh_and_writes_native_vfts():
 def _vehicle_geometry_bound() -> BoundGeometry:
     return build_fragment_geometry_bound(
         (
-            (-1.0, -1.0, -1.0),
-            (1.0, -1.0, -1.0),
-            (0.0, 1.0, -1.0),
-            (0.0, 0.0, 1.0),
+            Vector3(-1.0, -1.0, -1.0),
+            Vector3(1.0, -1.0, -1.0),
+            Vector3(0.0, 1.0, -1.0),
+            Vector3(0.0, 0.0, 1.0),
         ),
         ((0, 2, 1), (0, 1, 3), (1, 2, 3), (2, 0, 3)),
         profile=YftPhysicsBoundProfile.VEHICLE,
@@ -3152,10 +3104,10 @@ def _vehicle_physics_lod(child_count: int) -> YftPhysicsLod:
 
 def test_vehicle_profile_roundtrips_direct_geometry_and_wheels_in_enhanced_yft():
     wheels = (
-        BoundDisc.vehicle_wheel((-0.8, 1.2, -0.3), 0.3405, 0.267),
-        BoundDisc.vehicle_wheel((0.8, 1.2, -0.3), 0.3405, 0.267),
-        BoundDisc.vehicle_wheel((-0.8, -1.2, -0.3), 0.3405, 0.376),
-        BoundDisc.vehicle_wheel((0.8, -1.2, -0.3), 0.3405, 0.376),
+        BoundDisc.vehicle_wheel(Vector3(-0.8, 1.2, -0.3), 0.3405, 0.267),
+        BoundDisc.vehicle_wheel(Vector3(0.8, 1.2, -0.3), 0.3405, 0.267),
+        BoundDisc.vehicle_wheel(Vector3(-0.8, -1.2, -0.3), 0.3405, 0.376),
+        BoundDisc.vehicle_wheel(Vector3(0.8, -1.2, -0.3), 0.3405, 0.376),
     )
     composite = _composite(_vehicle_geometry_bound(), *wheels)
     source = create_yft(
@@ -3223,7 +3175,7 @@ def test_vehicle_profile_uses_retail_legacy_disc_vft():
         _simple_fragment_drawable("legacy_vehicle_wheel"),
         name="legacy_vehicle_wheel",
         physics_lods=(_vehicle_physics_lod(1),),
-        physics_bound=BoundDisc.vehicle_wheel((0.0, 0.0, 0.0), 0.3405, 0.267),
+        physics_bound=BoundDisc.vehicle_wheel(Vector3(), 0.3405, 0.267),
         physics_bound_profile=YftPhysicsBoundProfile.VEHICLE,
     )
 
@@ -3243,11 +3195,11 @@ def test_vehicle_profile_roundtrips_motorcycle_rider_capsule():
     rider = BoundCapsule(
         bound_type=BoundType.CAPSULE,
         sphere_radius=0.5,
-        box_max=(0.25, 0.5, 0.25),
+        box_max=Vector3(0.25, 0.5, 0.25),
         margin=0.25,
-        box_min=(-0.25, -0.5, -0.25),
-        box_center=(0.0, 0.0, 0.0),
-        sphere_center=(0.0, 0.0, 0.0),
+        box_min=Vector3(-0.25, -0.5, -0.25),
+        box_center=Vector3(),
+        sphere_center=Vector3(),
         capsule_half_height=0.25,
     ).build()
     source = create_yft(
@@ -3286,8 +3238,8 @@ def test_vehicle_profile_roundtrips_motorcycle_rider_capsule():
 
 def test_set_piece_profile_roundtrip_preserves_native_vfts():
     bound = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (2.0, 2.0, 2.0),
+        Vector3(),
+        Vector3(2.0, 2.0, 2.0),
     ).build()
     drawable = _simple_fragment_drawable("set_piece")
     child = YftPhysicsChild.declare(
@@ -3328,8 +3280,8 @@ def test_set_piece_profile_roundtrip_preserves_native_vfts():
 
 def test_binary_validation_rejects_swapped_prop_bound_slots():
     bounds = (
-        BoundBox.from_center_size((-2.0, 0.0, 0.0), (1.0, 1.0, 1.0)).build(),
-        BoundBox.from_center_size((2.0, 0.0, 0.0), (2.0, 2.0, 2.0)).build(),
+        BoundBox.from_center_size(Vector3(-2.0, 0.0, 0.0), Vector3(1.0, 1.0, 1.0)).build(),
+        BoundBox.from_center_size(Vector3(2.0, 0.0, 0.0), Vector3(2.0, 2.0, 2.0)).build(),
     )
     composite = _composite(*bounds)
     drawable = _simple_fragment_drawable("ordered_prop")
@@ -3388,9 +3340,9 @@ def test_binary_validation_rejects_swapped_prop_bound_slots():
 def test_binary_validation_rejects_fragment_geometry_vertex_overflow():
     geometry = build_fragment_geometry_bound(
         [
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         [(0, 1, 2)],
     )
@@ -3444,9 +3396,9 @@ def test_binary_validation_rejects_fragment_geometry_vertex_overflow():
 def test_yft_authoring_rejects_fragment_geometry_limits_before_writing():
     geometry = build_fragment_geometry_bound(
         [
-            (0.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
+            Vector3(),
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
         ],
         [(0, 1, 2)],
     )
@@ -3476,8 +3428,8 @@ def test_yft_authoring_rejects_fragment_geometry_limits_before_writing():
 
 def test_yft_authoring_rejects_bone_ids_that_would_be_truncated():
     bound = BoundBox.from_center_size(
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
+        Vector3(),
+        Vector3(1.0, 1.0, 1.0),
     ).build()
     drawable = _simple_fragment_drawable("invalid_bone")
     child = YftPhysicsChild.declare(

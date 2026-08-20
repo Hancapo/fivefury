@@ -631,9 +631,17 @@ class _YftBinaryValidator:
                 "bound metrics contain NaN or infinity",
                 code="yft.binary.profile_bound_tree.bound_metrics_contain_nan_infinity",
             )
-        minimum = struct.unpack_from("<3f", self.system_data, offset + 0x30)
-        maximum = struct.unpack_from("<3f", self.system_data, offset + 0x20)
-        if any(minimum[axis] > maximum[axis] for axis in range(3)):
+        minimum_x, minimum_y, minimum_z = struct.unpack_from(
+            "<3f", self.system_data, offset + 0x30
+        )
+        maximum_x, maximum_y, maximum_z = struct.unpack_from(
+            "<3f", self.system_data, offset + 0x20
+        )
+        if (
+            minimum_x > maximum_x
+            or minimum_y > maximum_y
+            or minimum_z > maximum_z
+        ):
             self.error(
                 path,
                 "bound AABB is inverted",

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ...common import atomic_write_bytes
 from ...game_target import GameTarget
 from ...hashing import jenk_partial_hash
-from ...vector import vec3, vec4
+from ...vector import Quaternion, Vector3
 from ..payloads import CutCameraCutPayload, CutLoadScenePayload
 from .base import CutScene
 from .bindings import CutBinding, CutCamera
@@ -112,7 +112,7 @@ class CutsceneProject:
         name: str,
         *,
         duration: float,
-        offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        offset: Vector3 = Vector3(),
         rotation: float = 0.0,
         camera_cuts: list[float] | None = None,
         fps: float = 30.0,
@@ -184,10 +184,10 @@ class CutsceneProject:
         *,
         clip: str | None = None,
         start: float = 0.0,
-        position: object | None = None,
-        rotation: object | None = None,
-        mover_position: object | None = None,
-        mover_rotation: object | None = None,
+        position: Vector3 | Mapping[float, Vector3] | None = None,
+        rotation: Quaternion | Mapping[float, Quaternion] | None = None,
+        mover_position: Vector3 | Mapping[float, Vector3] | None = None,
+        mover_rotation: Quaternion | Mapping[float, Quaternion] | None = None,
         bone_id: int = 0,
         bones: Mapping[int, YcdCutsceneBoneAnimation | Mapping[str, object]]
         | None = None,
@@ -230,14 +230,14 @@ class CutsceneProject:
         name: str = "exportcamera",
         *,
         start: float = 0.0,
-        position: object | None = None,
-        rotation: object | None = None,
+        position: Vector3 | Mapping[float, Vector3] | None = None,
+        rotation: Quaternion | Mapping[float, Quaternion] | None = None,
         field_of_view: object | None = None,
         near_clip: float = 0.05,
         far_clip: float = 1000.0,
         cut_name: str | None = None,
-        cut_position: object | None = None,
-        cut_rotation: object | None = None,
+        cut_position: Vector3 | None = None,
+        cut_rotation: Quaternion | None = None,
         **tracks: object,
     ) -> CutCamera:
         if self.scene.cameras:
@@ -282,8 +282,8 @@ class CutsceneProject:
         *,
         start: float,
         name: str | None = None,
-        position: object | None = None,
-        rotation: object | None = None,
+        position: Vector3 | None = None,
+        rotation: Quaternion | None = None,
     ) -> CutTimelineEvent:
         self._require_binding(camera)
         if camera.role != "camera":
@@ -298,12 +298,8 @@ class CutsceneProject:
                 "Animated camera cuts require position and rotation tracks "
                 "or explicit cut pose values"
             )
-        cut_position = (0.0, 0.0, 0.0) if cut_position is None else vec3(cut_position)
-        cut_rotation = (
-            (0.0, 0.0, 0.0, 1.0)
-            if cut_rotation is None
-            else vec4(cut_rotation)
-        )
+        cut_position = Vector3() if cut_position is None else cut_position
+        cut_rotation = Quaternion() if cut_rotation is None else cut_rotation
         return self.scene.camera_cut(
             start,
             camera,

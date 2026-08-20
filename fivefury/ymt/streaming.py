@@ -9,6 +9,7 @@ from ..pso_values import fields as _fields
 from ..pso_values import hash_value as _hash_value
 from ..pso_values import list_value as _list
 from ..pso_values import vector
+from ..vector import Vector3
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -27,8 +28,8 @@ class YmtStreamingRequestFrame:
     add_list: list[MetaHash] = dataclasses.field(default_factory=list)
     remove_list: list[MetaHash] = dataclasses.field(default_factory=list)
     promote_to_hd_list: list[MetaHash] = dataclasses.field(default_factory=list)
-    camera_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    camera_direction: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    camera_position: Vector3 = dataclasses.field(default_factory=Vector3)
+    camera_direction: Vector3 = dataclasses.field(default_factory=Vector3)
     common_add_sets: list[int] = dataclasses.field(default_factory=list)
     flags: int = 0
     raw: Any = None
@@ -40,8 +41,12 @@ class YmtStreamingRequestFrame:
             add_list=_hash_list(_field(fields, "AddList", "0x1381EA1A", "hash_1381EA1A")),
             remove_list=_hash_list(_field(fields, "RemoveList", "0xC9027173", "hash_C9027173")),
             promote_to_hd_list=_hash_list(_field(fields, "PromoteToHDList", "0x356A8659", "hash_356A8659")),
-            camera_position=vector(_field(fields, "CamPos", "0x1547E980", "hash_1547E980")),
-            camera_direction=vector(_field(fields, "CamDir", "0x0C8908A1", "hash_0C8908A1")),
+            camera_position=Vector3.from_iterable(
+                vector(_field(fields, "CamPos", "0x1547E980", "hash_1547E980"))
+            ),
+            camera_direction=Vector3.from_iterable(
+                vector(_field(fields, "CamDir", "0x0C8908A1", "hash_0C8908A1"))
+            ),
             common_add_sets=[int(item) for item in _list(_field(fields, "CommonAddSets", "0x690D1327", "hash_690D1327"))],
             flags=int(_field(fields, "Flags", "0x4B5C4FC2", "hash_4B5C4FC2", default=0) or 0),
             raw=value,

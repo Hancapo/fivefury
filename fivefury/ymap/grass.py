@@ -9,6 +9,7 @@ from ..meta import MetaStructInfo
 from ..meta.defs import MetaDataType, meta_name
 from ..meta.utils import meta_array_info as _arrayinfo
 from ..meta.utils import meta_field_entry as _entry
+from ..vector import Aabb3, Vector3
 from .packing import clamp_byte, clamp_ushort
 
 BATCH_VERT_MULTIPLIER = 0.00001525878
@@ -16,8 +17,8 @@ BATCH_VERT_MULTIPLIER = 0.00001525878
 
 @dataclasses.dataclass(slots=True)
 class Aabb:
-    minimum: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    maximum: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    minimum: Vector3 = dataclasses.field(default_factory=Vector3)
+    maximum: Vector3 = dataclasses.field(default_factory=Vector3)
     minimum_w: float = 0.0
     maximum_w: float = 0.0
 
@@ -34,35 +35,37 @@ class Aabb:
             return cls()
         minimum = tuple(value.get("min", (0.0, 0.0, 0.0, 0.0)))
         maximum = tuple(value.get("max", (0.0, 0.0, 0.0, 0.0)))
+        minimum = minimum + (0.0,) * max(0, 4 - len(minimum))
+        maximum = maximum + (0.0,) * max(0, 4 - len(maximum))
+        minimum_x, minimum_y, minimum_z, minimum_w = minimum[:4]
+        maximum_x, maximum_y, maximum_z, maximum_w = maximum[:4]
         return cls(
-            minimum=(float(minimum[0]), float(minimum[1]), float(minimum[2])),
-            maximum=(float(maximum[0]), float(maximum[1]), float(maximum[2])),
-            minimum_w=float(minimum[3]) if len(minimum) > 3 else 0.0,
-            maximum_w=float(maximum[3]) if len(maximum) > 3 else 0.0,
+            minimum=Vector3(minimum_x, minimum_y, minimum_z),
+            maximum=Vector3(maximum_x, maximum_y, maximum_z),
+            minimum_w=float(minimum_w),
+            maximum_w=float(maximum_w),
         )
 
     @property
-    def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-        return self.minimum, self.maximum
+    def bounds(self) -> Aabb3:
+        return Aabb3(self.minimum, self.maximum)
 
-    def size(self) -> tuple[float, float, float]:
-        return (
-            self.maximum[0] - self.minimum[0],
-            self.maximum[1] - self.minimum[1],
-            self.maximum[2] - self.minimum[2],
-        )
+    def size(self) -> Vector3:
+        return self.maximum - self.minimum
 
 
 @dataclasses.dataclass(slots=True)
 class GrassInstance:
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
+    normal: Vector3 = Vector3(0.0, 0.0, 1.0)
     color: tuple[int, int, int] | CssColor = (255, 255, 255)
     scale: int = 255
     ao: int = 255
     pad: tuple[int, int, int] = (0, 0, 0)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.position, Vector3) or not isinstance(self.normal, Vector3):
+            raise TypeError("Grass instance position and normal must be Vector3 instances")
         self.color = parse_css_rgb(self.color)
 
     @classmethod
@@ -71,16 +74,17 @@ class GrassInstance:
             return cls()
         packed_position = tuple(value.get("Position", (0, 0, 0)))
         size = batch_aabb.size()
-        world_position = tuple(
-            batch_aabb.minimum[index] + size[index] * (float(packed_position[index]) * BATCH_VERT_MULTIPLIER)
-            for index in range(3)
+        world_position = Vector3(
+            batch_aabb.minimum.x + size.x * (float(packed_position[0]) * BATCH_VERT_MULTIPLIER),
+            batch_aabb.minimum.y + size.y * (float(packed_position[1]) * BATCH_VERT_MULTIPLIER),
+            batch_aabb.minimum.z + size.z * (float(packed_position[2]) * BATCH_VERT_MULTIPLIER),
         )
         normal_x = (int(value.get("NormalX", 127)) / 255.0) * 2.0 - 1.0
         normal_y = (int(value.get("NormalY", 127)) / 255.0) * 2.0 - 1.0
         normal_z = math.sqrt(max(0.0, 1.0 - min(1.0, normal_x * normal_x + normal_y * normal_y)))
         return cls(
             position=world_position,
-            normal=(normal_x, normal_y, normal_z),
+            normal=Vector3(normal_x, normal_y, normal_z),
             color=parse_css_rgb(value.get("Color", (255, 255, 255))),
             scale=int(value.get("Scale", 255)),
             ao=int(value.get("Ao", 255)),
@@ -90,14 +94,14 @@ class GrassInstance:
     def to_meta(self, batch_aabb: Aabb) -> dict[str, Any]:
         size = batch_aabb.size()
         packed_position = []
-        for index in range(3):
-            axis_size = size[index] if abs(size[index]) > 1e-6 else 1.0
-            rel = (self.position[index] - batch_aabb.minimum[index]) / axis_size
+        for position, minimum, extent in zip(self.position, batch_aabb.minimum, size, strict=True):
+            axis_size = extent if abs(extent) > 1e-6 else 1.0
+            rel = (position - minimum) / axis_size
             packed_position.append(clamp_ushort(rel / BATCH_VERT_MULTIPLIER))
         return {
             "Position": tuple(packed_position),
-            "NormalX": clamp_byte((self.normal[0] + 1.0) * 0.5 * 255.0),
-            "NormalY": clamp_byte((self.normal[1] + 1.0) * 0.5 * 255.0),
+            "NormalX": clamp_byte((self.normal.x + 1.0) * 0.5 * 255.0),
+            "NormalY": clamp_byte((self.normal.y + 1.0) * 0.5 * 255.0),
             "Color": tuple(clamp_byte(component) for component in self.color),
             "Scale": clamp_byte(self.scale),
             "Ao": clamp_byte(self.ao),
@@ -109,7 +113,7 @@ class GrassInstance:
 @dataclasses.dataclass(slots=True)
 class GrassInstanceBatch:
     batch_aabb: Aabb = dataclasses.field(default_factory=Aabb)
-    scale_range: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    scale_range: Vector3 = Vector3(1.0, 1.0, 1.0)
     archetype_name: int | str = 0
     lod_dist: int = 0
     lod_fade_start_dist: float = 0.0
@@ -137,7 +141,7 @@ class GrassInstanceBatch:
         batch_aabb = Aabb.from_meta(value.get("BatchAABB"))
         return cls(
             batch_aabb=batch_aabb,
-            scale_range=tuple(value.get("ScaleRange", (1.0, 1.0, 1.0))),
+            scale_range=Vector3.from_iterable(value.get("ScaleRange", (1.0, 1.0, 1.0))),
             archetype_name=value.get("archetypeName", 0),
             lod_dist=int(value.get("lodDist", 0)),
             lod_fade_start_dist=float(value.get("LodFadeStartDist", 0.0)),
@@ -147,7 +151,7 @@ class GrassInstanceBatch:
         )
 
     @property
-    def bounds(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    def bounds(self) -> Aabb3:
         return self.batch_aabb.bounds
 
 

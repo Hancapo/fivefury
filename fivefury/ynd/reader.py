@@ -10,6 +10,7 @@ from ..resource import (
     read_resource_pages_info,
     split_rsc7_sections,
 )
+from ..vector import Vector2, Vector3
 from .model import Ynd, YndJunction, YndLink, YndNode, YndResourcePagesInfo
 from .runtime_headers import infer_ynd_game
 
@@ -87,7 +88,7 @@ def read_ynd(source: bytes | bytearray | memoryview | str | Path, *, path: str |
         raw_junctions.append(
             (
                 YndJunction(
-                    position=(position_x, position_y),
+                    position=Vector2(position_x, position_y),
                     min_z=min_z,
                     max_z=max_z,
                     heightmap_dim_x=dim_x,
@@ -138,7 +139,7 @@ def read_ynd(source: bytes | bytearray | memoryview | str | Path, *, path: str |
             node_id=node_id,
             street_name_hash=u32(system_data, offset + 0x14),
             unused4=u16(system_data, offset + 0x18),
-            position=(
+            position=Vector3(
                 i16(system_data, offset + 0x1C) / 4.0,
                 i16(system_data, offset + 0x1E) / 4.0,
                 i16(system_data, offset + 0x22) / 32.0,

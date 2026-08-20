@@ -5,6 +5,7 @@ from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from ...common import hash_value
+from ...vector import Quaternion, Vector2, Vector3, Vector4
 from ..model import CutHashedString, CutNode, CutResolvedEvent
 from ..names import CUT_NAME_VALUES
 from ..payloads import CutEventPayload
@@ -189,6 +190,8 @@ def _freeze_value(value: Any) -> Any:
         return ("CutNode", value.type_name, value.type_hash, tuple(sorted((key, _freeze_value(item)) for key, item in value.fields.items())))
     if isinstance(value, CutHashedString):
         return ("CutHashedString", value.hash, value.text)
+    if isinstance(value, (Vector2, Vector3, Vector4, Quaternion)):
+        return (type(value).__name__, value.components)
     if isinstance(value, list):
         return tuple(_freeze_value(item) for item in value)
     if isinstance(value, tuple):

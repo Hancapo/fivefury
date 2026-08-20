@@ -5,6 +5,7 @@ import struct
 import zlib
 
 from ..resource import RSC7_MAGIC, ResourceHeader
+from ..vector import Vector3
 
 PS3_SYSTEM_LEAF_SIZE = 4096
 PS3_GRAPHICS_LEAF_SIZE = 5504
@@ -106,9 +107,9 @@ class Ps3ResourceView:
         self._check(self.system, offset, 4)
         return struct.unpack_from(">f", self.system, offset)[0]
 
-    def vec3(self, offset: int) -> tuple[float, float, float]:
+    def vec3(self, offset: int) -> Vector3:
         self._check(self.system, offset, 12)
-        return struct.unpack_from(">3f", self.system, offset)
+        return Vector3(*struct.unpack_from(">3f", self.system, offset))
 
     def c_string(self, pointer: int) -> str:
         if not pointer:

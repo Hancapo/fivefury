@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from enum import IntEnum
 
 from . import _native as _native_backend
+from .vector import Vector3, Vector4
 
 
 class BinaryEndian(IntEnum):
@@ -124,12 +125,12 @@ def f32(data: bytes, offset: int) -> float:
     return struct.unpack_from("<f", data, offset)[0]
 
 
-def vec3(data: bytes, offset: int) -> tuple[float, float, float]:
-    return struct.unpack_from("<3f", data, offset)
+def vec3(data: bytes, offset: int) -> Vector3:
+    return Vector3(*struct.unpack_from("<3f", data, offset))
 
 
-def vec4(data: bytes, offset: int) -> tuple[float, float, float, float]:
-    return struct.unpack_from("<4f", data, offset)
+def vec4(data: bytes, offset: int) -> Vector4:
+    return Vector4(*struct.unpack_from("<4f", data, offset))
 
 
 def u16_be(data: bytes, offset: int) -> int:

@@ -11,6 +11,7 @@ from ..authoring.diagnostics import ValidationReport
 from ..authoring.invariants import check_finite_aabb, check_unsigned
 from ..common import atomic_write_bytes
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
+from ..vector import Quaternion, Vector3
 
 GTA5_CACHE_VERSION = 46
 GTA5_CACHE_HEADER_SIZE = 100
@@ -38,14 +39,6 @@ class Gta5CacheBoundAssetType(enum.IntEnum):
     MOVER = 0
     WEAPON = 1
     MATERIAL = 2
-
-
-def _vector3(value: Any) -> tuple[float, float, float]:
-    try:
-        x, y, z = value
-    except (TypeError, ValueError) as exc:
-        raise ValueError("expected three vector components") from exc
-    return (float(x), float(y), float(z))
 
 
 @dataclasses.dataclass(slots=True)
@@ -78,20 +71,19 @@ class Gta5CacheMapData(MetaHashFieldsMixin):
     name_hash: MetaHash | HashLike
     parent_name_hash: MetaHash | HashLike = 0
     content_flags: int = 0
-    streaming_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    streaming_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    physics_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    physics_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    streaming_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    streaming_max: Vector3 = dataclasses.field(default_factory=Vector3)
+    physics_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    physics_max: Vector3 = dataclasses.field(default_factory=Vector3)
     dynamic_streaming: bool = True
     contains_block_info: bool = False
     is_parent: bool = False
     reserved: int = 0
 
     def __post_init__(self) -> None:
-        self.streaming_min = _vector3(self.streaming_min)
-        self.streaming_max = _vector3(self.streaming_max)
-        self.physics_min = _vector3(self.physics_min)
-        self.physics_max = _vector3(self.physics_max)
+        for name in ("streaming_min", "streaming_max", "physics_min", "physics_max"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"Gta5CacheMapData.{name} must be a Vector3")
 
     def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
         del context
@@ -119,22 +111,19 @@ class Gta5CacheInteriorProxy(MetaHashFieldsMixin):
     exit_portal_count: int
     archetype_hash: MetaHash | HashLike
     ymap_hash: MetaHash | HashLike
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
-    bounds_min: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    bounds_max: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position: Vector3 = dataclasses.field(default_factory=Vector3)
+    rotation: Quaternion = dataclasses.field(default_factory=Quaternion)
+    bounds_min: Vector3 = dataclasses.field(default_factory=Vector3)
+    bounds_max: Vector3 = dataclasses.field(default_factory=Vector3)
     proxy_name: str = ""
     reserved_name_data: bytes | None = None
 
     def __post_init__(self) -> None:
-        self.position = _vector3(self.position)
-        self.bounds_min = _vector3(self.bounds_min)
-        self.bounds_max = _vector3(self.bounds_max)
-        try:
-            x, y, z, w = self.rotation
-        except (TypeError, ValueError) as exc:
-            raise ValueError("expected four quaternion components") from exc
-        self.rotation = (float(x), float(y), float(z), float(w))
+        for name in ("position", "bounds_min", "bounds_max"):
+            if not isinstance(getattr(self, name), Vector3):
+                raise TypeError(f"Gta5CacheInteriorProxy.{name} must be a Vector3")
+        if not isinstance(self.rotation, Quaternion):
+            raise TypeError("Gta5CacheInteriorProxy.rotation must be a Quaternion")
         if self.reserved_name_data is not None:
             self.reserved_name_data = bytes(self.reserved_name_data)
 
@@ -157,9 +146,9 @@ class Gta5CacheInteriorProxy(MetaHashFieldsMixin):
             issues.issue("cache.interior_proxy.transform.non_finite", "transform contains non-finite values", path="transform")
         check_finite_aabb(issues, self.bounds_min, self.bounds_max, code="cache.interior_proxy.bounds", path="bounds")
         if (
-            math.isfinite(self.bounds_min[0])
-            and math.isfinite(self.bounds_max[0])
-            and abs(self.bounds_max[0] - self.bounds_min[0]) >= 650.0
+            math.isfinite(self.bounds_min.x)
+            and math.isfinite(self.bounds_max.x)
+            and abs(self.bounds_max.x - self.bounds_min.x) >= 650.0
         ):
             issues.issue("cache.interior_proxy.bounds.x_size", "proxy bounds must be narrower than 650 units on X", path="bounds")
         try:
@@ -179,14 +168,14 @@ class Gta5CacheBound(MetaHashFieldsMixin):
     _hash_fields = ("name_hash",)
 
     name_hash: MetaHash | HashLike
-    minimum: tuple[float, float, float]
-    maximum: tuple[float, float, float]
+    minimum: Vector3
+    maximum: Vector3
     asset_type: Gta5CacheBoundAssetType | int = Gta5CacheBoundAssetType.MOVER
     reserved: bytes = b"\0\0\0"
 
     def __post_init__(self) -> None:
-        self.minimum = _vector3(self.minimum)
-        self.maximum = _vector3(self.maximum)
+        if not isinstance(self.minimum, Vector3) or not isinstance(self.maximum, Vector3):
+            raise TypeError("Gta5CacheBound minimum and maximum must be Vector3 instances")
         self.asset_type = Gta5CacheBoundAssetType(int(self.asset_type))
         self.reserved = bytes(self.reserved)
 

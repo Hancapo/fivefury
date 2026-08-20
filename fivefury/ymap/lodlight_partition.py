@@ -25,8 +25,8 @@ def partition_lod_lights(
         axis = _widest_xy_axis(cell)
         cell.sort(
             key=lambda item: (
-                item.light.position[axis],
-                item.light.position[1 - axis],
+                _axis_value(item, axis),
+                _axis_value(item, 1 - axis),
                 int(item.light.hash),
             )
         )
@@ -54,15 +54,19 @@ def partition_lod_lights_by_category(
 
 
 def _widest_xy_axis(lights: Sequence[GeneratedLodLight]) -> int:
-    x_values = [light.light.position[0] for light in lights]
-    y_values = [light.light.position[1] for light in lights]
+    x_values = [light.light.position.x for light in lights]
+    y_values = [light.light.position.y for light in lights]
     return 0 if max(x_values) - min(x_values) >= max(y_values) - min(y_values) else 1
+
+
+def _axis_value(light: GeneratedLodLight, axis: int) -> float:
+    return light.light.position.x if axis == 0 else light.light.position.y
 
 
 def _cell_sort_key(lights: Sequence[GeneratedLodLight]) -> tuple[float, float, int]:
     return (
-        min(light.light.position[0] for light in lights),
-        min(light.light.position[1] for light in lights),
+        min(light.light.position.x for light in lights),
+        min(light.light.position.y for light in lights),
         min(int(light.light.hash) for light in lights),
     )
 
