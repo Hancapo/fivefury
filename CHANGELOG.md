@@ -9,7 +9,21 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
-- Spatial vectors, quaternions, and bounds now use immutable typed value classes with named components instead of float tuples, positional indexing, and procedural helpers.
+- Spatial fields across assets now require and return immutable `Vector2`, `Vector3`, `Vector4`, `Quaternion`, `Aabb2`, and `Aabb3` values instead of anonymous float tuples.
+- Vector and quaternion components are accessed through `x`, `y`, `z`, and `w`; positional indexing and sequence-style length checks are no longer supported.
+- Procedural vector, quaternion, interpolation, and bounding-box helpers have been removed in favor of operations on the value objects themselves.
+- Axis-aligned bounds now expose typed `minimum` and `maximum` values instead of tuple pairs.
+
+### Added
+
+- Public spatial value classes with arithmetic, distance, normalization, interpolation, and finite-value inspection.
+- Quaternion construction, composition, rotation, interpolation, continuity, and Euler conversion as typed operations.
+- Typed two-dimensional and three-dimensional bounds with center, size, radius, containment, union, and point-derived construction.
+
+### Changed
+
+- Readers, writers, validators, authoring APIs, and asset models now preserve the same spatial types across CUT, drawable, fragment, collision, map, navigation, audio, and cache workflows.
+- Conversion to tuples or indexed arrays now occurs only at binary, NumPy, and native-extension boundaries.
 
 ## [0.4.18] - 2026-08-17
 
