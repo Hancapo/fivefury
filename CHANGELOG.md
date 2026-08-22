@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-08-22
+
 ### Breaking Changes
 
 - Spatial fields across assets now require and return immutable `Vector2`, `Vector3`, `Vector4`, `Quaternion`, `Aabb2`, and `Aabb3` values instead of anonymous float tuples.
