@@ -2,11 +2,15 @@ from fivefury import (
     ArchetypeAssetType,
     ArchetypeFlags,
     BaseArchetypeDef,
+    MloArchetypeDef,
+    TimeArchetypeDef,
+    TimeArchetypeFlags,
     Vector3,
     Ytyp,
     cutscene_prop_flags,
     infer_archetype_lod_dist,
     mark_cutscene_prop_archetypes,
+    read_ytyp,
 )
 
 
@@ -112,3 +116,47 @@ def test_archetype_from_meta_preserves_explicit_zero_lod_distances() -> None:
 
     assert parsed.lod_dist == 0.0
     assert parsed.hd_texture_dist == 0.0
+
+
+def test_timed_archetype_binary_roundtrip_preserves_typed_fields_and_flags() -> None:
+    time_flags = 0x00F8000F
+    source = Ytyp(
+        name="timed_test",
+        archetypes=[
+            TimeArchetypeDef(
+                name="timed_prop",
+                bb_min=Vector3(-1.0, -2.0, -3.0),
+                bb_max=Vector3(1.0, 2.0, 3.0),
+                bs_centre=Vector3(0.25, 0.5, 0.75),
+                time_flags=time_flags,
+            )
+        ],
+    )
+
+    parsed = read_ytyp(source.to_bytes())
+    archetype = parsed.archetypes[0]
+
+    assert isinstance(archetype, TimeArchetypeDef)
+    assert isinstance(archetype.bb_min, Vector3)
+    assert isinstance(archetype.bb_max, Vector3)
+    assert isinstance(archetype.bs_centre, Vector3)
+    assert int(archetype.time_flags) == time_flags
+
+
+def test_ytyp_binary_roundtrip_dispatches_all_archetype_types() -> None:
+    source = Ytyp(
+        name="mixed_archetypes",
+        archetypes=[
+            BaseArchetypeDef(name="base_prop"),
+            TimeArchetypeDef(name="timed_prop", time_flags=TimeArchetypeFlags.HOUR_12),
+            MloArchetypeDef(name="interior"),
+        ],
+    )
+
+    parsed = read_ytyp(source.to_bytes(validate=False))
+
+    assert [type(archetype) for archetype in parsed.archetypes] == [
+        BaseArchetypeDef,
+        TimeArchetypeDef,
+        MloArchetypeDef,
+    ]

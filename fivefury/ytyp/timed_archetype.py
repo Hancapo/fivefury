@@ -4,7 +4,7 @@ import dataclasses
 from typing import Any
 
 from ..meta.defs import meta_name
-from .base_archetype import BaseArchetypeDef
+from .base_archetype import BaseArchetypeDef, _base_archetype_values
 from .flags import TimeArchetypeFlags
 
 
@@ -43,7 +43,10 @@ class TimeArchetypeDef(BaseArchetypeDef):
     @classmethod
     def from_meta(cls, value: Any) -> TimeArchetypeDef:
         base = BaseArchetypeDef.from_meta(value)
-        return cls(**dataclasses.asdict(base), time_flags=coerce_time_archetype_flags(int(value.get("timeFlags", 0))))
+        return cls(
+            **_base_archetype_values(base),
+            time_flags=coerce_time_archetype_flags(int(value.get("timeFlags", 0))),
+        )
 
 
 TimeArchetype = TimeArchetypeDef
