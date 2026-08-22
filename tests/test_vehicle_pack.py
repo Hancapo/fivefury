@@ -67,6 +67,46 @@ def _mesh() -> YdrMeshInput:
     )
 
 
+def _skinned_mesh(*, vertex_buffer_flags: int = 0x00580409) -> YdrMeshInput:
+    return YdrMeshInput(
+        positions=[Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)],
+        indices=[0, 1, 2],
+        material="body",
+        texcoords=[[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]],
+        blend_weights=[
+            (1.0, 0.0, 0.0, 0.0),
+            (0.5, 0.5, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+        ],
+        blend_indices=[(0, 0, 0, 0), (0, 1, 0, 0), (1, 0, 0, 0)],
+        bone_ids=[0, 1],
+        vertex_buffer_flags=vertex_buffer_flags,
+    )
+
+
+def _skinned_fragment(name: str, *, high_detail: bool = False):
+    skeleton = YdrSkeleton()
+    root = skeleton.bone("root", tag=0)
+    skeleton.bone("child", parent=root, tag=1)
+    drawable = create_ydr(
+        meshes=[_skinned_mesh()],
+        materials=[YdrMaterialInput(name="body")],
+        skeleton=skeleton.build(),
+        name=name,
+        version=159,
+    )
+    if not high_detail:
+        for lod in (YdrLod.MEDIUM, YdrLod.LOW, YdrLod.VERY_LOW):
+            drawable.model([_skinned_mesh()], lod=lod)
+    fragment = create_yft(drawable, name=name, version=171)
+    fragment.tune_name = f"pack:/{name}"
+    return fragment
+
+
+def _vertex_buffer_flags(fragment) -> list[int]:
+    return [int(mesh.vertex_buffer_flags) for mesh in fragment.iter_meshes()]
+
+
 def _fragment(name: str, *, high_detail: bool = False):
     drawable = create_ydr(
         meshes=[_mesh()],
@@ -330,6 +370,22 @@ def test_vehicle_pair_accepts_typed_and_binary_inputs() -> None:
     ).valid
 
 
+def test_gen9_vehicle_pair_preserves_explicit_vertex_buffer_flags() -> None:
+    fragment = _skinned_fragment("flagcar")
+    high_fragment = _skinned_fragment("flagcar_hi", high_detail=True)
+
+    rebuilt_fragment = read_yft(build_yft_bytes(fragment))
+    rebuilt_high_fragment = read_yft(build_yft_bytes(high_fragment))
+
+    assert _vertex_buffer_flags(rebuilt_fragment) == [0x00580409] * 4
+    assert _vertex_buffer_flags(rebuilt_high_fragment) == [0x00580409]
+    assert validate_vehicle_yft_pair(
+        "flagcar",
+        rebuilt_fragment,
+        rebuilt_high_fragment,
+    ).valid
+
+
 def test_vehicle_pack_roundtrips_binary_fragment_inputs(tmp_path) -> None:
     builder = _builder()
     asset = builder.vehicles[0]
@@ -530,6 +586,46 @@ def test_retail_enhanced_jester_uses_paired_vehicle_fragments() -> None:
     assert len(fragment.vehicle_glass_windows.windows) == 6
     assert high_fragment.vehicle_glass_windows is None
     assert validate_vehicle_yft_pair("jester", fragment, high_fragment).valid
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail vertex-buffer regression",
+)
+def test_retail_enhanced_comet5_reauthoring_preserves_vertex_buffer_flags() -> None:
+    assert _ENHANCED_ROOT is not None
+    rebuilt_fragments = []
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        game=GameTarget.GTA5_ENHANCED,
+        load_audio=False,
+        load_peds=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        for name in ("comet5", "comet5_hi"):
+            asset = cache.get_asset(name, kind=GameFileType.YFT)
+            assert asset is not None
+            game_file = cache.load_asset(asset)
+            assert game_file is not None
+            donor = game_file.parsed
+            donor_flags = _vertex_buffer_flags(donor)
+            assert donor_flags
+            assert set(donor_flags) == {0x00580409}
+            assert donor.main_drawable is not None
+
+            authored = create_yft(
+                donor.main_drawable.to_build(name=name),
+                name=name,
+                version=171,
+            )
+            authored.tune_name = f"pack:/{name}"
+            rebuilt = read_yft(build_yft_bytes(authored))
+
+            assert _vertex_buffer_flags(rebuilt) == donor_flags
+            rebuilt_fragments.append(rebuilt)
+
+    assert validate_vehicle_yft_pair("comet5", *rebuilt_fragments).valid
 
 
 def test_dlc_folder_inference_registers_vehicle_metadata(tmp_path) -> None:

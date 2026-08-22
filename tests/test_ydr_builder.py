@@ -955,6 +955,36 @@ def test_writer_auto_splits_meshes_over_vertex_limit(tmp_path: Path) -> None:
     assert sum(len(mesh.indices) for mesh in ydr.meshes) == vertex_count
 
 
+def test_gen9_mesh_splitting_preserves_explicit_vertex_buffer_flags(
+    tmp_path: Path,
+) -> None:
+    vertex_count = 66000
+    mesh = YdrMeshInput(
+        positions=[
+            Vector3(float(index), 0.0, 0.0) for index in range(vertex_count)
+        ],
+        indices=list(range(vertex_count)),
+        material="default",
+        texcoords=[[Vector2()] * vertex_count],
+        vertex_buffer_flags=0x00580409,
+    )
+    build = create_ydr(
+        meshes=[mesh],
+        material_textures={"DiffuseSampler": "test_diffuse"},
+        name="gen9_split_flags",
+        version=159,
+    )
+
+    output = tmp_path / "gen9_split_flags.ydr"
+    build.save(output)
+    parsed = read_ydr(output)
+
+    assert len(parsed.meshes) >= 2
+    assert {
+        parsed_mesh.vertex_buffer_flags for parsed_mesh in parsed.meshes
+    } == {0x00580409}
+
+
 def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [
@@ -1631,6 +1661,23 @@ def test_gen9_writer_derives_skinned_vertex_buffer_flags_when_zero(
     build.save(output)
 
     assert read_ydr(output).meshes[0].vertex_buffer_flags == 0x00586409
+
+
+def test_gen9_writer_preserves_full_uint32_vertex_buffer_flags(
+    tmp_path: Path,
+) -> None:
+    mesh = _triangle_mesh()
+    mesh.vertex_buffer_flags = 0xF0580409
+    build = create_ydr(
+        meshes=[mesh],
+        name="full_uint32_gen9_buffer_flags",
+        version=159,
+    )
+
+    output = tmp_path / "full_uint32_gen9_buffer_flags.ydr"
+    build.save(output)
+
+    assert read_ydr(output).meshes[0].vertex_buffer_flags == 0xF0580409
 
 
 @pytest.mark.parametrize("flags", (-1, 0x1_0000_0000))
