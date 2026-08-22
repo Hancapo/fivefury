@@ -11,6 +11,7 @@ from .articulation import (
     YftJoint3DofIntent,
     YftJointFrameSpace,
     author_articulated_body,
+    validate_articulated_body,
 )
 from .binary_validation import validate_yft_bytes
 from .bound_profiles import (
@@ -222,6 +223,7 @@ __all__ = [
     "save_yft",
     "scan_yft_corpus",
     "simple_physics_bound",
+    "validate_articulated_body",
     "validate_yft",
     "validate_yft_bytes",
     "validate_yft_vehicle_glass",

@@ -1,3 +1,4 @@
+import dataclasses
 import math
 
 import numpy as np
@@ -13,6 +14,8 @@ from fivefury import (
     YftJointFrameSpace,
     YftPhysicsInertia,
     author_articulated_body,
+    default_articulated_body_type,
+    validate_articulated_body,
 )
 
 
@@ -191,3 +194,60 @@ def test_rejects_cyclic_topology():
         issue.code == YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY.value
         for issue in caught.value.report.errors
     )
+
+
+def test_validates_parent_array_against_canonical_joint_order():
+    body = author_articulated_body(
+        (0, 1),
+        (transform(), transform()),
+        (
+            YftJoint1DofIntent(
+                0,
+                1,
+                Vector3(),
+                Vector3(0.0, 0.0, 1.0),
+                YftAngularRange(-0.5, 0.5),
+            ),
+        ),
+        (inertia(1.0), inertia(2.0)),
+    )
+    invalid = dataclasses.replace(
+        body, joint_parent_indices=(1, *body.joint_parent_indices[1:])
+    )
+
+    report = validate_articulated_body(invalid, physics_child_count=2)
+
+    assert not report.valid
+    assert any(
+        issue.code == YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY.value
+        for issue in report.errors
+    )
+
+
+def test_identity_fixture_uses_joint_indexed_parent_array():
+    body = default_articulated_body_type(link_count=4)
+
+    assert body.joint_parent_indices[:3] == (0, 1, 2)
+
+
+def test_accepts_native_link_and_joint_limits():
+    link_count = 23
+    body = author_articulated_body(
+        tuple(range(link_count)),
+        tuple(transform() for _ in range(link_count)),
+        tuple(
+            YftJoint1DofIntent(
+                child - 1,
+                child,
+                Vector3(),
+                Vector3(0.0, 0.0, 1.0),
+                YftAngularRange(-0.5, 0.5),
+            )
+            for child in range(1, link_count)
+        ),
+        tuple(inertia(float(index + 1)) for index in range(link_count)),
+    )
+
+    assert body.num_links == 23
+    assert body.num_joints == 22
+    assert validate_articulated_body(body, physics_child_count=23).valid

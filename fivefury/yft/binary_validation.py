@@ -125,6 +125,9 @@ class _YftBinaryValidator:
     def u64(self, offset: int) -> int:
         return struct.unpack_from("<Q", self.system_data, offset)[0]
 
+    def i32(self, offset: int) -> int:
+        return struct.unpack_from("<i", self.system_data, offset)[0]
+
     def class_header(
         self,
         pointer: int,
@@ -637,11 +640,7 @@ class _YftBinaryValidator:
         maximum_x, maximum_y, maximum_z = struct.unpack_from(
             "<3f", self.system_data, offset + 0x20
         )
-        if (
-            minimum_x > maximum_x
-            or minimum_y > maximum_y
-            or minimum_z > maximum_z
-        ):
+        if minimum_x > maximum_x or minimum_y > maximum_y or minimum_z > maximum_z:
             self.error(
                 path,
                 "bound AABB is inverted",
@@ -918,12 +917,22 @@ class _YftBinaryValidator:
                 f"{num_joints} exceeds the native limit of 22",
                 code="yft.binary.body.exceeds_native_limit_22",
             )
-        if num_children and num_links not in (0, num_children):
+        expected_joints = max(0, num_links - 1)
+        if num_joints != expected_joints:
+            self.error(
+                f"{path}.num_joints",
+                f"{num_joints} joints do not match {num_links} links",
+                code="yft.binary.body.joints_do_not_match_links",
+            )
+        if num_links > num_children:
             self.error(
                 f"{path}.num_links",
-                f"{num_links} links do not match {num_children} physics children",
-                code="yft.binary.body.links_do_not_match_physics_children",
+                f"{num_links} links exceed {num_children} physics children",
+                code="yft.binary.body.links_exceed_physics_children",
             )
+        parent_indices = tuple(
+            self.i32(offset + 0x10 + index * 4) for index in range(23)
+        )
         joint_pointers = self.pointer_array(
             self.u64(offset + 0x78),
             num_joints,
@@ -939,7 +948,7 @@ class _YftBinaryValidator:
                     code="yft.binary.body.unsupported_joint_type",
                 )
                 continue
-            self.class_header(
+            joint_offset = self.class_header(
                 joint_pointer,
                 f"{path}.joints[{index}]",
                 size=joint_size,
@@ -949,13 +958,95 @@ class _YftBinaryValidator:
                     else self.runtime_headers.joint_3dof
                 ),
             )
-        inertia = self.u64(offset + 0x80)
-        if inertia:
-            self.pointer(
-                inertia,
-                f"{path}.resourced_ang_inertia",
-                size=num_links * 16,
+            if joint_offset is None:
+                continue
+            parent_link = self.u8(joint_offset + 0x16)
+            child_link = self.u8(joint_offset + 0x17)
+            if child_link != index + 1:
+                self.error(
+                    f"{path}.joints[{index}].child_link_index",
+                    f"expected child link {index + 1}, found {child_link}",
+                    code="yft.binary.body.joint_order_does_not_match_child_links",
+                )
+            if parent_link >= num_links or parent_link == child_link:
+                self.error(
+                    f"{path}.joints[{index}].parent_link_index",
+                    f"parent link {parent_link} is invalid for child link {child_link}",
+                    code="yft.binary.body.invalid_joint_parent",
+                )
+            if parent_indices[index] != parent_link:
+                self.error(
+                    f"{path}.joint_parent_indices[{index}]",
+                    f"parent array value {parent_indices[index]} does not match joint value {parent_link}",
+                    code="yft.binary.body.parent_array_does_not_match_joint",
+                )
+            matrix_values = struct.unpack_from(
+                "<32f", self.system_data, joint_offset + 0x20
             )
+            if not all(math.isfinite(value) for value in matrix_values):
+                self.error(
+                    f"{path}.joints[{index}].orientations",
+                    "joint orientation matrices contain non-finite values",
+                    code="yft.binary.body.non_finite_joint_orientation",
+                )
+            if joint_type == 0:
+                hard_min, hard_max = struct.unpack_from(
+                    "<2f", self.system_data, joint_offset + 0xA0
+                )
+                if not (
+                    math.isfinite(hard_min)
+                    and math.isfinite(hard_max)
+                    and hard_min <= hard_max
+                ):
+                    self.error(
+                        f"{path}.joints[{index}].hard_limits",
+                        "1DOF hard limits must be finite and ordered",
+                        code="yft.binary.body.invalid_1dof_hard_limits",
+                    )
+            else:
+                hard_limits = struct.unpack_from(
+                    "<3f", self.system_data, joint_offset + 0xA0
+                )
+                if not all(
+                    math.isfinite(value) and 0.0 < value < math.pi
+                    for value in hard_limits
+                ):
+                    self.error(
+                        f"{path}.joints[{index}].hard_limits",
+                        "3DOF hard limits must be finite, positive, and less than pi",
+                        code="yft.binary.body.invalid_3dof_hard_limits",
+                    )
+        for child_link in range(1, min(num_links, len(parent_indices) + 1)):
+            visited = {child_link}
+            current = child_link
+            while current:
+                parent_index = current - 1
+                current = parent_indices[parent_index]
+                if current in visited or not 0 <= current < num_links:
+                    self.error(
+                        f"{path}.joint_parent_indices[{parent_index}]",
+                        "joint graph must be acyclic and rooted at link 0",
+                        code="yft.binary.body.invalid_joint_graph",
+                    )
+                    break
+                visited.add(current)
+        inertia = self.u64(offset + 0x80)
+        inertia_offset = self.pointer(
+            inertia,
+            f"{path}.resourced_ang_inertia",
+            size=num_links * 16,
+            nullable=num_links == 0,
+        )
+        if inertia_offset is not None:
+            values = struct.unpack_from(
+                f"<{num_links * 4}f", self.system_data, inertia_offset
+            )
+            if not all(math.isfinite(value) and value >= 0.0 for value in values):
+                self.error(
+                    f"{path}.resourced_ang_inertia",
+                    "link mass and angular inertia must be finite and non-negative",
+                    code="yft.binary.body.invalid_resourced_ang_inertia",
+                )
 
     def validate_transforms(self, pointer: int, path: str, num_children: int) -> None:
         offset = self.class_header(
