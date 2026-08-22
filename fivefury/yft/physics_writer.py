@@ -621,7 +621,6 @@ def _write_articulated_body_type(
     writer: ResourceWriter,
     body: YftArticulatedBodyType | None,
     *,
-    inertia: Sequence[YftPhysicsInertia],
     runtime_headers: YftRuntimeHeaders,
 ) -> int:
     if body is None:
@@ -647,7 +646,7 @@ def _write_articulated_body_type(
     joint_pointer_offset = _write_pointer_array(
         writer, [_virtual(joint_offset) for joint_offset in joint_offsets]
     )
-    inertia_offset = _write_inertia_array(writer, body.resourced_ang_inertia or tuple(inertia))
+    inertia_offset = _write_inertia_array(writer, body.resourced_ang_inertia)
     writer.pack_into("Q", offset + 0x78, _virtual(joint_pointer_offset) if joint_pointer_offset else 0)
     writer.pack_into("Q", offset + 0x80, _virtual(inertia_offset) if inertia_offset else 0)
     writer.data[offset + 0x88] = int(body.num_links) & 0xFF
@@ -898,7 +897,6 @@ def _write_physics_lod(
     body_offset = _write_articulated_body_type(
         writer,
         lod.articulated_body_type,
-        inertia=lod.undamaged_ang_inertia,
         runtime_headers=runtime_headers,
     )
     group_names_offset = _group_name_offsets(writer, lod)

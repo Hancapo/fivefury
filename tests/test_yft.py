@@ -63,6 +63,7 @@ from fivefury.ydr.resource_headers import (
 from fivefury.yft import (
     MAX_FRAGMENT_BOUND_VERTICES,
     Yft,
+    YftAngularRange,
     YftClothBridge,
     YftClothController,
     YftClothMorphController,
@@ -75,6 +76,8 @@ from fivefury.yft import (
     YftFragmentMatrix,
     YftFragmentState,
     YftGlassPane,
+    YftJoint1DofIntent,
+    YftJoint3DofIntent,
     YftPhysicsBoundProfile,
     YftPhysicsChild,
     YftPhysicsDampArchetype,
@@ -86,6 +89,7 @@ from fivefury.yft import (
     YftPhysicsLodPointers,
     YftSharedMatrixSet,
     YftVerletCloth,
+    author_articulated_body,
     build_fragment_geometry_bound,
     build_yft_bytes,
     calculate_bound_mass_properties,
@@ -1405,6 +1409,126 @@ def test_multichild_prop_does_not_invent_euphoria_body():
     assert lod.articulated_body_type is None
     assert parsed.physics_lod("high").body_type_pointer == 0
     assert parsed.physics_lod("high").articulated_body_type is None
+
+
+def test_articulated_body_roundtrip_preserves_matrices_limits_and_inertia():
+    from fivefury.yft import simple_physics_bound
+
+    def link_transform(x=0.0, y=0.0, z=0.0):
+        return (
+            (1.0, 0.0, 0.0, x),
+            (0.0, 1.0, 0.0, y),
+            (0.0, 0.0, 1.0, z),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+
+    children = tuple(
+        YftPhysicsChild.declare(undamaged_mass=mass)
+        for mass in (2.0, 3.0, 5.0, 7.0)
+    )
+    group = YftPhysicsGroup.declare("articulated_prop", children=children)
+    link_transforms = (
+        link_transform(),
+        link_transform(1.0, 2.0, 3.0),
+        link_transform(-2.0, 1.0, 0.5),
+    )
+    child_inertia = (
+        YftPhysicsInertia(1.0, 2.0, 3.0, 2.0),
+        YftPhysicsInertia(4.0, 5.0, 6.0, 3.0),
+        YftPhysicsInertia(7.0, 8.0, 9.0, 5.0),
+        YftPhysicsInertia(10.0, 11.0, 12.0, 7.0),
+    )
+    body = author_articulated_body(
+        child_link_indices=(0, 1, 1, 2),
+        link_world_transforms=link_transforms,
+        joints=(
+            YftJoint3DofIntent(
+                parent_link_index=0,
+                child_link_index=1,
+                pivot=Vector3(0.5, 0.25, 0.75),
+                twist_axis=Vector3(0.0, 0.0, 1.0),
+                first_lean_axis=Vector3(1.0, 0.0, 0.0),
+                first_lean=YftAngularRange(-0.2, 0.6),
+                second_lean=YftAngularRange(-0.5, 0.3),
+                twist=YftAngularRange(-0.1, 0.7),
+            ),
+            YftJoint1DofIntent(
+                parent_link_index=0,
+                child_link_index=2,
+                pivot=Vector3(-1.0, 0.5, 0.25),
+                axis=Vector3(0.0, 1.0, 1.0),
+                angle=YftAngularRange(-0.7, 0.4),
+            ),
+        ),
+        child_mass_properties=child_inertia,
+    )
+    lod = dataclasses.replace(
+        YftPhysicsLod.declare("high", groups=(group,)),
+        articulated_body_type=body,
+    )
+    drawable = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=_TRIANGLE,
+                indices=[0, 1, 2],
+                material="default",
+                texcoords=_TRIANGLE_UVS,
+            )
+        ],
+        materials=[YdrMaterialInput(name="default")],
+        name="articulated_prop",
+    )
+    source = create_yft(
+        drawable,
+        name="articulated_prop",
+        physics_lods=(lod,),
+        physics_bound=_composite(
+            *(simple_physics_bound() for _ in range(len(children)))
+        ),
+    )
+
+    data = build_yft_bytes(source)
+    report = validate_yft_bytes(data)
+    parsed = read_yft(data, resolve_physics_entities=False)
+    parsed_body = parsed.physics_lod("high").articulated_body_type
+
+    assert report.valid
+    assert parsed_body is not None
+    assert parsed_body.num_links == 3
+    assert parsed_body.num_joints == 2
+    assert parsed_body.joint_parent_indices[:2] == (0, 0)
+    for actual, expected in zip(
+        parsed_body.resourced_ang_inertia,
+        (
+            (1.0, 2.0, 3.0, 2.0),
+            (11.0, 13.0, 15.0, 8.0),
+            (10.0, 11.0, 12.0, 7.0),
+        ),
+        strict=True,
+    ):
+        assert dataclasses.astuple(actual) == pytest.approx(expected)
+    for actual, expected in zip(parsed_body.joints, body.joints, strict=True):
+        for actual_row, expected_row in zip(
+            actual.orientation_parent,
+            expected.orientation_parent,
+            strict=True,
+        ):
+            assert actual_row == pytest.approx(expected_row)
+        for actual_row, expected_row in zip(
+            actual.orientation_child,
+            expected.orientation_child,
+            strict=True,
+        ):
+            assert actual_row == pytest.approx(expected_row)
+    joint_3dof, joint_1dof = parsed_body.joints
+    assert (
+        joint_3dof.hard_first_lean_angle_max,
+        joint_3dof.hard_second_lean_angle_max,
+        joint_3dof.hard_twist_angle_max,
+    ) == pytest.approx((0.37, 0.37, 0.37))
+    assert (joint_1dof.hard_angle_min, joint_1dof.hard_angle_max) == pytest.approx(
+        (-0.67, 0.37)
+    )
 
 
 def test_physics_lod_without_damaged_entities_omits_damaged_archetype():
