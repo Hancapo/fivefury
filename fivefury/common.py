@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import tempfile
@@ -47,6 +48,14 @@ def hash_value(value: int | MetaHash | str) -> int:
     return int(value) if not isinstance(value, str) else jenk_hash(value)
 
 
+def dataclass_init_values(value: Any, model_type: type[Any]) -> dict[str, Any]:
+    return {
+        field.name: getattr(value, field.name)
+        for field in dataclasses.fields(model_type)
+        if field.init
+    }
+
+
 def clip_short_name(name: str) -> str:
     normalized = str(name or "").replace("\\", "/")
     if "/" in normalized:
@@ -86,6 +95,7 @@ __all__ = [
     "JsonReport",
     "atomic_write_bytes",
     "clip_short_name",
+    "dataclass_init_values",
     "hash_value",
     "read_source_bytes",
 ]
