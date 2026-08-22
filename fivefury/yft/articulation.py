@@ -44,6 +44,8 @@ class YftArticulationIssueCode(enum.Enum):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class YftAngularRange:
+    """Inclusive authored angular range in radians."""
+
     minimum: float
     maximum: float
 
@@ -67,8 +69,10 @@ class YftArticulationPolicy:
 DEFAULT_YFT_ARTICULATION_POLICY = YftArticulationPolicy()
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class YftJoint1DofIntent:
+    """Rotational 1DOF joint declaration in the selected frame space."""
+
     parent_link_index: int
     child_link_index: int
     pivot: Vector3
@@ -79,8 +83,10 @@ class YftJoint1DofIntent:
     enforce_exceeded_limits: bool = False
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
 class YftJoint3DofIntent:
+    """Rotational 3DOF joint declaration with independent authored ranges."""
+
     parent_link_index: int
     child_link_index: int
     pivot: Vector3
@@ -636,12 +642,19 @@ def validate_articulated_body(
 
 
 def author_articulated_body(
+    *,
     child_link_indices: Sequence[int],
     link_world_transforms: Sequence[Matrix4],
     joints: Sequence[YftArticulatedJointIntent],
     child_mass_properties: Sequence[YftPhysicsInertia],
     policy: YftArticulationPolicy = DEFAULT_YFT_ARTICULATION_POLICY,
 ) -> YftArticulatedBodyType:
+    """Build a GTA V articulated-body type without runtime fallbacks.
+
+    Each child inertia is a contribution already expressed around its target
+    link origin and in that link's axes. Contributions assigned to the same
+    link are therefore summed directly.
+    """
     report = ValidationReport()
     link_count = len(link_world_transforms)
     if not 1 <= link_count <= YFT_MAX_ARTICULATED_LINKS:
