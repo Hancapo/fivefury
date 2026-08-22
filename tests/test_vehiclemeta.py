@@ -27,6 +27,7 @@ from fivefury.vehiclemeta import (
     CarHandlingData,
     HandlingData,
     HandlingDataManager,
+    HandlingFlagValue,
     VehicleAppearanceSourceTier,
     VehicleCarCols,
     VehicleClass,
@@ -481,6 +482,71 @@ def test_all_vehicle_metadata_roots_author_roundtrip_semantically() -> None:
 
         assert reread.content == document
         assert reread.to_bytes() == encoded
+
+
+def test_handling_flag_tokens_use_retail_hexadecimal_dialect() -> None:
+    source = b"""<?xml version="1.0" encoding="UTF-8"?>
+<CHandlingDataMgr>
+  <HandlingData>
+    <Item type="CHandlingData">
+      <handlingName>COMET5</handlingName>
+      <fMass value="1600.000000" />
+      <strModelFlags>440010</strModelFlags>
+      <strHandlingFlags>0</strHandlingFlags>
+      <strDamageFlags>80000001</strDamageFlags>
+    </Item>
+  </HandlingData>
+</CHandlingDataMgr>
+"""
+
+    handling = read_vehicle_meta(source).handling
+
+    assert handling is not None
+    entry = handling.entries[0]
+    assert entry.model_flags == HandlingFlagValue(0x00440010)
+    assert entry.handling_flags == HandlingFlagValue(0)
+    assert entry.damage_flags == HandlingFlagValue(0x80000001)
+
+
+def test_handling_flag_authoring_canonicalizes_prefixed_hex_and_zero() -> None:
+    handling = HandlingDataManager(
+        entries=[
+            HandlingData(
+                name=MetaHash("TESTCAR"),
+                mass=1600.0,
+                model_flags=HandlingFlagValue("0x00440010"),
+                handling_flags=HandlingFlagValue(0),
+                damage_flags=HandlingFlagValue("0x80000001"),
+            )
+        ]
+    )
+
+    encoded = handling.to_bytes()
+    reread = read_vehicle_meta(encoded).handling
+
+    assert b"<strModelFlags>440010</strModelFlags>" in encoded
+    assert b"<strHandlingFlags>0</strHandlingFlags>" in encoded
+    assert b"<strDamageFlags>80000001</strDamageFlags>" in encoded
+    assert reread == handling
+
+
+def test_handling_flag_absence_is_distinct_from_explicit_zero() -> None:
+    absent = HandlingData(name=MetaHash("ABSENT"), mass=1000.0)
+    explicit = HandlingData(
+        name=MetaHash("EXPLICIT"),
+        mass=1000.0,
+        model_flags=HandlingFlagValue(0),
+        handling_flags=HandlingFlagValue(0),
+        damage_flags=HandlingFlagValue(0),
+    )
+
+    encoded = HandlingDataManager(entries=[absent, explicit]).to_bytes()
+    reread = read_vehicle_meta(encoded).handling
+
+    assert reread is not None
+    assert reread.entries[0].model_flags is None
+    assert reread.entries[1].model_flags == HandlingFlagValue(0)
+    assert encoded.count(b"<strModelFlags>0</strModelFlags>") == 1
 
 
 def test_vehicle_metadata_save_is_atomic_on_validation_error(tmp_path) -> None:

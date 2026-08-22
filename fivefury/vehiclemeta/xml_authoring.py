@@ -30,6 +30,7 @@ from .enums import (
     vehicle_model_flag_text,
 )
 from .handling import HandlingData, HandlingDataManager, HandlingSubData
+from .handling_flags import HandlingFlagValue
 from .variations import (
     LicensePlateProbability,
     VehicleColorIndices,
@@ -307,6 +308,8 @@ def _field_tag(model: Any, name: str) -> str:
 
 
 def _scalar_text(value: Any) -> str:
+    if isinstance(value, HandlingFlagValue):
+        return value.xml_token
     if isinstance(value, MetaHash):
         return str(value)
     if isinstance(value, VehicleMetaEnum):
@@ -466,6 +469,15 @@ def _append_model_fields(parent: ET.Element, model: Any) -> None:
         if isinstance(model, VehicleInitData) and name == "flags":
             flags = ET.SubElement(parent, "flags")
             flags.text = vehicle_model_flag_text(value) or None
+            continue
+        if isinstance(model, HandlingData) and name in {
+            "model_flags",
+            "handling_flags",
+            "damage_flags",
+        }:
+            if value is not None:
+                element = ET.SubElement(parent, _field_tag(model, name))
+                element.text = value.xml_token
             continue
         if (isinstance(model, VehicleInitData) and name == "required_extras") or (
             isinstance(model, VehicleVfxExtra) and name == "extras"

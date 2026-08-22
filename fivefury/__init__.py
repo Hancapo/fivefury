@@ -660,6 +660,7 @@ from .vector import Aabb2, Aabb3, Quaternion, Vector2, Vector3, Vector4
 from .vehiclemeta import (
     HandlingData,
     HandlingDataManager,
+    HandlingFlagValue,
     HandlingSubData,
     HandlingType,
     ResolvedVehicleAppearance,
@@ -1760,6 +1761,7 @@ __all__ = [
     "Gxt2Entry",
     "HandlingData",
     "HandlingDataManager",
+    "HandlingFlagValue",
     "HandlingSubData",
     "HandlingType",
     "HashResolver",

@@ -152,6 +152,7 @@ _XML_ROOT_CONTENT_TYPES = {
     "cvehiclemodcolors": VehicleMetaContentType.CAR_MOD_COLS,
 }
 
+
 def _map_content(root: Any, content_type: VehicleMetaContentType) -> Any:
     model_type = {
         VehicleMetaContentType.VEHICLES: VehicleInitDataList,
@@ -161,6 +162,27 @@ def _map_content(root: Any, content_type: VehicleMetaContentType) -> Any:
         VehicleMetaContentType.CAR_MOD_COLS: VehicleModColors,
     }.get(content_type)
     return model_type.from_value(root) if model_type is not None else root
+
+
+def _handling_xml_data(root: Any) -> Any:
+    data = element_data(root)
+    if not isinstance(data, dict):
+        return data
+    values = data.get("HandlingData", [])
+    if isinstance(values, dict):
+        values = [values]
+    container = root.find("HandlingData")
+    elements = [] if container is None else container.findall("Item")
+    for value, element in zip(values, elements, strict=False):
+        if not isinstance(value, dict):
+            continue
+        for tag in ("strModelFlags", "strHandlingFlags", "strDamageFlags"):
+            child = element.find(tag)
+            if child is None:
+                value.pop(tag, None)
+            else:
+                value[tag] = (child.text or "").strip()
+    return data
 
 
 @dataclasses.dataclass(slots=True)
@@ -255,7 +277,12 @@ class VehicleMeta:
             return cls(
                 format=VehicleMetaFormat.XML,
                 content_type=content_type,
-                content=_map_content(element_data(root), content_type),
+                content=_map_content(
+                    _handling_xml_data(root)
+                    if content_type is VehicleMetaContentType.HANDLING
+                    else element_data(root),
+                    content_type,
+                ),
                 source=source,
                 raw_bytes=raw,
             )
