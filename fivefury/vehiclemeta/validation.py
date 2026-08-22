@@ -31,6 +31,7 @@ from .enums import (
     vehicle_model_flag_text,
 )
 from .handling import HandlingData, HandlingDataManager
+from .handling_flags import handling_flag_problem
 from .variations import (
     LicensePlateProbability,
     VehicleColorIndices,
@@ -280,6 +281,16 @@ def validate_vehicle_meta_model(
                 "vehicle.handling.mass.invalid",
                 "Vehicle mass must be greater than zero",
                 path="mass",
+            )
+        for name in ("model_flags", "handling_flags", "damage_flags"):
+            value = getattr(model, name)
+            if value is None or (problem := handling_flag_problem(value)) is None:
+                continue
+            suffix, message = problem
+            report.issue(
+                f"vehicle.handling.flags.{suffix}",
+                message,
+                path=name,
             )
     elif isinstance(model, VehicleVariation):
         _identifier(

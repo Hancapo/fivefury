@@ -7,12 +7,17 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
+
 ### Added
 
 - Typed YFT articulated-body authoring with explicit joint frames, angular ranges, branching link graphs, and per-link mass properties.
 
 ### Fixed
 
+- Handling metadata now preserves unsigned 32-bit hexadecimal flag values, explicit zero fields, and unknown bits in the retail XML dialect.
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
 - Timed archetypes now preserve typed spatial and hash fields when read from YTYP metadata.
 
