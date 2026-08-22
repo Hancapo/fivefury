@@ -9,7 +9,7 @@ from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..vector import Vector3, Vector4
 from ..ymap import EntityDef, MloInstanceDef
-from .base_archetype import BaseArchetypeDef
+from .base_archetype import BaseArchetypeDef, _base_archetype_values
 from .flags import MloInteriorFlags, PortalFlags, RoomFlags
 from .mlo_validation import build_mlo_archetype, validate_mlo_archetype
 
@@ -304,7 +304,7 @@ class MloArchetypeDef(BaseArchetypeDef):
     def from_meta(cls, value: Any) -> MloArchetypeDef:
         base = BaseArchetypeDef.from_meta(value)
         return cls(
-            **{field.name: getattr(base, field.name) for field in dataclasses.fields(base)},
+            **_base_archetype_values(base),
             mlo_flags=int(value.get("mloFlags", 0)),
             entities=[_entity_from_meta(item) for item in value.get("entities", []) or []],
             rooms=[MloRoomDef.from_meta(item) if isinstance(item, dict) else item for item in value.get("rooms", []) or []],

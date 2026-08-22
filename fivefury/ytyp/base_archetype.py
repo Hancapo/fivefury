@@ -103,6 +103,10 @@ class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
         return archetype
 
 
+def _base_archetype_values(archetype: BaseArchetypeDef) -> dict[str, Any]:
+    return {field.name: getattr(archetype, field.name) for field in dataclasses.fields(BaseArchetypeDef)}
+
+
 Archetype = BaseArchetypeDef
 
 

@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
+- Timed archetypes now preserve typed spatial and hash fields when read from YTYP metadata.
 
 ## [0.4.19] - 2026-08-22
 
