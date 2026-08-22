@@ -268,7 +268,7 @@ def default_articulated_body_type(
 ) -> YftArticulatedBodyType:
     links = max(1, min(23, int(link_count)))
     joints = max(0, min(22, links - 1))
-    parent_indices = [-1, *range(joints)]
+    parent_indices = list(range(joints))
     parent_indices.extend([-1] * (23 - len(parent_indices)))
     if joint_type is YftPhysicsJointType.PRISMATIC:
         raise ValueError("GTA V fragment resources do not construct prismatic joints")

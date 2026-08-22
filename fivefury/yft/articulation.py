@@ -465,6 +465,176 @@ def _aggregate_link_inertia(
     return tuple(YftPhysicsInertia(*values) for values in totals)
 
 
+def validate_articulated_body(
+    body: YftArticulatedBodyType,
+    *,
+    physics_child_count: int | None = None,
+) -> ValidationReport:
+    report = ValidationReport()
+    if not 1 <= body.num_links <= YFT_MAX_ARTICULATED_LINKS:
+        _issue(
+            report,
+            YftArticulationIssueCode.INVALID_CARDINALITY,
+            f"articulated bodies require 1 to {YFT_MAX_ARTICULATED_LINKS} links",
+            "num_links",
+        )
+    expected_joints = max(0, body.num_links - 1)
+    if body.num_joints != expected_joints or len(body.joints) != expected_joints:
+        _issue(
+            report,
+            YftArticulationIssueCode.INVALID_CARDINALITY,
+            "joint metadata and declarations must equal link count minus one",
+            "joints",
+        )
+    if len(body.resourced_ang_inertia) != body.num_links:
+        _issue(
+            report,
+            YftArticulationIssueCode.INVALID_CARDINALITY,
+            "resourced angular inertia must contain one value per link",
+            "resourced_ang_inertia",
+        )
+    for index, inertia in enumerate(body.resourced_ang_inertia):
+        if not all(
+            math.isfinite(value) and value >= 0.0 for value in inertia.as_tuple()
+        ):
+            _issue(
+                report,
+                YftArticulationIssueCode.INVALID_INERTIA,
+                "mass and diagonal angular inertia must be finite and non-negative",
+                f"resourced_ang_inertia[{index}]",
+            )
+    parents = tuple(body.joint_parent_indices)
+    if len(parents) < expected_joints:
+        _issue(
+            report,
+            YftArticulationIssueCode.INVALID_CARDINALITY,
+            "joint parent array is shorter than the declared joint count",
+            "joint_parent_indices",
+        )
+    for index, joint in enumerate(body.joints):
+        path = f"joints[{index}]"
+        expected_child = index + 1
+        if joint.child_link_index != expected_child:
+            _issue(
+                report,
+                YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+                "joint order must correspond to child links 1 through num_links - 1",
+                f"{path}.child_link_index",
+            )
+        if not 0 <= joint.parent_link_index < body.num_links:
+            _issue(
+                report,
+                YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+                "joint parent must reference an existing link",
+                f"{path}.parent_link_index",
+            )
+        if index < len(parents) and parents[index] != joint.parent_link_index:
+            _issue(
+                report,
+                YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+                "joint parent array must match the joint declaration",
+                f"joint_parent_indices[{index}]",
+            )
+        for field_name, value in (
+            ("orientation_parent", joint.orientation_parent),
+            ("orientation_child", joint.orientation_child),
+        ):
+            try:
+                matrix4(value)
+            except (TypeError, ValueError) as error:
+                _issue(
+                    report,
+                    YftArticulationIssueCode.INVALID_JOINT,
+                    str(error),
+                    f"{path}.{field_name}",
+                )
+        if not math.isfinite(joint.default_stiffness):
+            _issue(
+                report,
+                YftArticulationIssueCode.INVALID_JOINT,
+                "joint stiffness must be finite",
+                f"{path}.default_stiffness",
+            )
+        if isinstance(joint, YftPhysicsJoint1Dof):
+            if not (
+                math.isfinite(joint.hard_angle_min)
+                and math.isfinite(joint.hard_angle_max)
+                and joint.hard_angle_min <= joint.hard_angle_max
+            ):
+                _issue(
+                    report,
+                    YftArticulationIssueCode.INVALID_RANGE,
+                    "1DOF hard limits must be finite and ordered",
+                    path,
+                )
+        elif isinstance(joint, YftPhysicsJoint3Dof):
+            limits = (
+                joint.hard_first_lean_angle_max,
+                joint.hard_second_lean_angle_max,
+                joint.hard_twist_angle_max,
+            )
+            if not all(
+                math.isfinite(value) and 0.0 < value < math.pi for value in limits
+            ):
+                _issue(
+                    report,
+                    YftArticulationIssueCode.INVALID_RANGE,
+                    "3DOF hard limits must be finite, positive, and less than pi",
+                    path,
+                )
+    for child in range(1, min(body.num_links, len(parents) + 1)):
+        visited = {child}
+        current = child
+        while current:
+            parent_index = current - 1
+            if not 0 <= parent_index < len(parents):
+                break
+            current = parents[parent_index]
+            if current in visited:
+                _issue(
+                    report,
+                    YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+                    "joint graph must be acyclic and rooted at link 0",
+                    f"joint_parent_indices[{parent_index}]",
+                )
+                break
+            visited.add(current)
+    if body.child_link_indices:
+        if (
+            physics_child_count is not None
+            and len(body.child_link_indices) != physics_child_count
+        ):
+            _issue(
+                report,
+                YftArticulationIssueCode.INVALID_CARDINALITY,
+                "child-to-link mapping must contain one entry per physics child",
+                "child_link_indices",
+            )
+        if any(not 0 <= value < body.num_links for value in body.child_link_indices):
+            _issue(
+                report,
+                YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+                "child-to-link mapping references a missing link",
+                "child_link_indices",
+            )
+        missing = set(range(body.num_links)) - set(body.child_link_indices)
+        if missing:
+            _issue(
+                report,
+                YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+                "every articulated link must own at least one physics child",
+                "child_link_indices",
+            )
+    elif physics_child_count is not None and body.num_links > physics_child_count:
+        _issue(
+            report,
+            YftArticulationIssueCode.UNREPRESENTABLE_TOPOLOGY,
+            "articulated link count cannot exceed physics child count",
+            "num_links",
+        )
+    return report
+
+
 def author_articulated_body(
     child_link_indices: Sequence[int],
     link_world_transforms: Sequence[Matrix4],
@@ -588,7 +758,7 @@ def author_articulated_body(
         int(by_child[child][1].parent_link_index) for child in range(1, link_count)
     ]
     parent_indices.extend([-1] * (YFT_MAX_ARTICULATED_LINKS - len(parent_indices)))
-    return YftArticulatedBodyType(
+    body = YftArticulatedBodyType(
         vft=PH_ARTICULATED_BODY_TYPE_EUPHORIA_VFT,
         joint_parent_indices=tuple(parent_indices),
         joints=tuple(built_joints),
@@ -599,6 +769,10 @@ def author_articulated_body(
         locally_owned=True,
         child_link_indices=tuple(int(value) for value in child_link_indices),
     )
+    validate_articulated_body(
+        body, physics_child_count=len(child_mass_properties)
+    ).raise_for_errors()
+    return body
 
 
 __all__ = [
@@ -614,4 +788,5 @@ __all__ = [
     "YftJoint3DofIntent",
     "YftJointFrameSpace",
     "author_articulated_body",
+    "validate_articulated_body",
 ]

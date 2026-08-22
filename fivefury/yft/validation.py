@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ..authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ..bounds import BoundComposite, BoundGeometry
 from ..vector import Vector2, Vector3
+from .articulation import validate_articulated_body
 from .bound_profiles import YftPhysicsBoundProfile, validate_bound_profile
 from .constants import MAX_EXTRA_BOUNDS
 from .geometry import (
@@ -185,9 +186,7 @@ def _validate_glass_geometry_relationship(
         return
 
     candidates = tuple(
-        item
-        for model in iter_models()
-        for item in iter_bone_meshes(model, bone)
+        item for model in iter_models() for item in iter_bone_meshes(model, bone)
     )
     if not candidates:
         _issue(
@@ -685,65 +684,13 @@ def _validate_lod(
         )
 
     if lod.articulated_body_type is not None:
-        body = lod.articulated_body_type
-        if body.num_links > 23 or body.num_joints > 22:
-            _issue(
-                issues,
-                DiagnosticSeverity.ERROR,
-                f"{path}.body_type",
-                "articulated body exceeds GTA V link/joint limits",
-                code="yft.lod.articulated_body_exceeds_gta_v_link_joint_limits",
-            )
-        if body.joints and len(body.joints) != body.num_joints:
-            _issue(
-                issues,
-                DiagnosticSeverity.ERROR,
-                f"{path}.body_type.joints",
-                "joint count differs from articulated body metadata",
-                code="yft.lod.joint_count_differs_articulated_body_metadata",
-            )
-        if body.num_joints and not body.joints:
-            _issue(
-                issues,
-                DiagnosticSeverity.ERROR,
-                f"{path}.body_type.joints",
-                "articulated joints must be decoded or declared before writing",
-                code="yft.lod.articulated_joints_must_decoded_declared_before_writing",
-            )
-        for joint_index, joint in enumerate(body.joints):
-            joint_path = f"{path}.body_type.joints[{joint_index}]"
-            if joint.parent_link_index >= body.num_links:
-                _issue(
-                    issues,
-                    DiagnosticSeverity.ERROR,
-                    joint_path,
-                    "parent link index points outside the articulated body",
-                    code="yft.lod.parent_link_index_points_outside_articulated_body",
-                )
-            if joint.child_link_index >= body.num_links:
-                _issue(
-                    issues,
-                    DiagnosticSeverity.ERROR,
-                    joint_path,
-                    "child link index points outside the articulated body",
-                    code="yft.lod.child_link_index_points_outside_articulated_body",
-                )
-            if joint.parent_link_index == joint.child_link_index:
-                _issue(
-                    issues,
-                    DiagnosticSeverity.ERROR,
-                    joint_path,
-                    "parent and child links must be different",
-                    code="yft.lod.parent_child_links_must_different",
-                )
-        if body.num_joints and body.num_joints != max(0, body.num_links - 1):
-            _issue(
-                issues,
-                DiagnosticSeverity.WARNING,
-                f"{path}.body_type",
-                "joint count usually equals link count minus one",
-                code="yft.lod.joint_count_usually_equals_link_count_minus_one",
-            )
+        issues.extend(
+            validate_articulated_body(
+                lod.articulated_body_type,
+                physics_child_count=len(lod.children),
+            ),
+            path=f"{path}.body_type",
+        )
 
 
 def validate_yft(
