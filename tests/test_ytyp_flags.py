@@ -2,6 +2,7 @@ from fivefury import (
     ArchetypeAssetType,
     ArchetypeFlags,
     BaseArchetypeDef,
+    MetaHash,
     MloArchetypeDef,
     TimeArchetypeDef,
     TimeArchetypeFlags,
@@ -140,6 +141,13 @@ def test_timed_archetype_binary_roundtrip_preserves_typed_fields_and_flags() -> 
     assert isinstance(archetype.bb_min, Vector3)
     assert isinstance(archetype.bb_max, Vector3)
     assert isinstance(archetype.bs_centre, Vector3)
+    assert isinstance(archetype.name, MetaHash)
+    assert isinstance(archetype.texture_dictionary, MetaHash)
+    assert isinstance(archetype.clip_dictionary, MetaHash)
+    assert isinstance(archetype.drawable_dictionary, MetaHash)
+    assert isinstance(archetype.physics_dictionary, MetaHash)
+    assert isinstance(archetype.asset_name, MetaHash)
+    assert isinstance(archetype.asset_type, ArchetypeAssetType)
     assert int(archetype.time_flags) == time_flags
 
 
