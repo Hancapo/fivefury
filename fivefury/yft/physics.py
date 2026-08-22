@@ -415,6 +415,9 @@ class YftArticulatedBodyType:
     num_joints: int = 0
     joint_types: tuple[YftPhysicsJointType | int, ...] = ()
     locally_owned: bool = False
+    child_link_indices: tuple[int, ...] = dataclasses.field(
+        default=(), repr=False, compare=False
+    )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
