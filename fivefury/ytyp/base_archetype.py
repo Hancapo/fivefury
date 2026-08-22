@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from ..common import dataclass_init_values
 from ..map_extensions import (
     ExtensionContainer,
     extensions_from_meta,
@@ -104,7 +105,7 @@ class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
 
 
 def _base_archetype_values(archetype: BaseArchetypeDef) -> dict[str, Any]:
-    return {field.name: getattr(archetype, field.name) for field in dataclasses.fields(BaseArchetypeDef)}
+    return dataclass_init_values(archetype, BaseArchetypeDef)
 
 
 Archetype = BaseArchetypeDef

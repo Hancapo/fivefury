@@ -4,6 +4,7 @@ import dataclasses
 from typing import Any
 
 from ..authoring.diagnostics import ValidationReport
+from ..common import dataclass_init_values
 from ..map_extensions import (
     ExtensionContainer,
     extensions_from_meta,
@@ -140,23 +141,7 @@ class MloInstanceDef(EntityDef):
     def from_meta(cls, value: Any) -> MloInstanceDef:
         base = EntityDef.from_meta(value)
         return cls(
-            archetype_name=base.archetype_name,
-            flags=base.flags,
-            guid=base.guid,
-            position=base.position,
-            rotation=base.rotation,
-            scale_xy=base.scale_xy,
-            scale_z=base.scale_z,
-            parent_index=base.parent_index,
-            lod_dist=base.lod_dist,
-            child_lod_dist=base.child_lod_dist,
-            lod_level=base.lod_level,
-            num_children=base.num_children,
-            priority_level=base.priority_level,
-            extensions=base.extensions,
-            ambient_occlusion_multiplier=base.ambient_occlusion_multiplier,
-            artificial_ambient_occlusion=base.artificial_ambient_occlusion,
-            tint_value=base.tint_value,
+            **dataclass_init_values(base, EntityDef),
             group_id=int(value.get("groupId", 0)),
             floor_id=int(value.get("floorId", 0)),
             default_entity_sets=list(value.get("defaultEntitySets", []) or []),

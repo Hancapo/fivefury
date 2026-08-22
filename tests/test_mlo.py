@@ -4,7 +4,18 @@ import dataclasses
 
 import pytest
 
-from fivefury import AssetSet, BuildContext, Vector3, Vector4
+from fivefury import (
+    AssetSet,
+    BuildContext,
+    MetaHash,
+    Quaternion,
+    Vector3,
+    Vector4,
+    YmapEntityFlags,
+    YmapLodLevel,
+    YmapMloInstanceFlags,
+    YmapPriorityLevel,
+)
 from fivefury.bounds import BoundMaterialType, build_bound_from_triangles
 from fivefury.ybn import Ybn
 from fivefury.ymap import EntityDef, MloInstanceDef, Ymap
@@ -232,6 +243,36 @@ def test_ymap_cross_validation_builds_exit_portals_and_checks_entity_sets() -> N
     assert isinstance(parsed.entities[0], MloInstanceDef)
     assert parsed.entities[0].num_exit_portals == 1
     assert parsed.validate(context=context).valid
+
+
+def test_mlo_instance_roundtrip_preserves_typed_base_fields() -> None:
+    source = Ymap(
+        name="typed_mlo_instance",
+        entities=[
+            MloInstanceDef(
+                archetype_name="test_mlo",
+                flags=YmapEntityFlags.LIGHTS_CAST_DYNAMIC_SHADOWS,
+                position=Vector3(1.0, 2.0, 3.0),
+                rotation=Quaternion(0.0, 0.0, 0.0, 1.0),
+                lod_level=YmapLodLevel.DEPTH_ORPHANHD,
+                priority_level=YmapPriorityLevel.OPTIONAL_HIGH,
+                default_entity_sets=["optional_props"],
+                mlo_inst_flags=YmapMloInstanceFlags.GPS_ON,
+            )
+        ],
+    )
+
+    parsed = Ymap.from_bytes(source.to_bytes(validate=False)).entities[0]
+
+    assert isinstance(parsed, MloInstanceDef)
+    assert isinstance(parsed.archetype_name, MetaHash)
+    assert isinstance(parsed.position, Vector3)
+    assert isinstance(parsed.rotation, Quaternion)
+    assert parsed.flags is YmapEntityFlags.LIGHTS_CAST_DYNAMIC_SHADOWS
+    assert parsed.lod_level is YmapLodLevel.DEPTH_ORPHANHD
+    assert parsed.priority_level is YmapPriorityLevel.OPTIONAL_HIGH
+    assert parsed.mlo_inst_flags is YmapMloInstanceFlags.GPS_ON
+    assert all(isinstance(entity_set, MetaHash) for entity_set in parsed.default_entity_sets)
 
 
 def test_mlo_physics_dictionary_and_static_bound_keep_distinct_names() -> None:
