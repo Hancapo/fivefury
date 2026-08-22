@@ -14,6 +14,7 @@ from .enums import (
     VehicleWheelType,
     parse_vehicle_model_flags,
 )
+from .handling_flags import HandlingFlagValue, handling_flag_problem
 
 _FLOAT = re.compile(r"[-+]?(?:\d+\.\d{6})")
 _COLOR32 = re.compile(r"0x[0-9A-F]{8}")
@@ -212,6 +213,28 @@ def _validate_handling(report: ValidationReport, root: ET.Element) -> None:
                 'Handling entries require type="CHandlingData"',
                 path,
             )
+        for tag in ("strModelFlags", "strHandlingFlags", "strDamageFlags"):
+            element = item.find(tag)
+            if element is None:
+                continue
+            flag_path = f"{path}.{tag}"
+            if element.attrib or list(element):
+                _issue(
+                    report,
+                    "vehicle.xml.handling.flags.shape.invalid",
+                    "Handling flags require hexadecimal text without XML attributes",
+                    flag_path,
+                )
+                continue
+            problem = handling_flag_problem(HandlingFlagValue(element.text or ""))
+            if problem is not None:
+                suffix, message = problem
+                _issue(
+                    report,
+                    f"vehicle.xml.handling.flags.{suffix}",
+                    message,
+                    flag_path,
+                )
         sub_data = item.find("SubHandlingData")
         if sub_data is None:
             continue

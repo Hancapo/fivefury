@@ -68,4 +68,23 @@ def handling_flag_value(value: object) -> HandlingFlagValue | None:
     raise TypeError("Handling flags require an integer or hexadecimal token")
 
 
+def handling_flag_problem(value: HandlingFlagValue) -> tuple[str, str] | None:
+    if value.value is None:
+        if value.symbolic:
+            return (
+                "symbolic.unsupported",
+                f"Symbolic handling flag text {value.raw!r} is not supported",
+            )
+        return (
+            "hex.malformed",
+            f"Handling flag token {value.raw!r} is not hexadecimal",
+        )
+    if not 0 <= value.value <= 0xFFFFFFFF:
+        return (
+            "out_of_range",
+            "Retail handling flags require a value from 0x00000000 to 0xFFFFFFFF",
+        )
+    return None
+
+
 __all__ = ["HandlingFlagValue"]

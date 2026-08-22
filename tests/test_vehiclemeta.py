@@ -41,6 +41,7 @@ from fivefury.vehiclemeta import (
     VehicleType,
     VehicleVariation,
     read_vehicle_meta,
+    validate_vehicle_meta_xml,
 )
 from fivefury.vehiclemeta.resource import (
     YMT_C_VEHICLE_MODEL_INFO_VAR_GLOBAL,
@@ -547,6 +548,89 @@ def test_handling_flag_absence_is_distinct_from_explicit_zero() -> None:
     assert reread.entries[0].model_flags is None
     assert reread.entries[1].model_flags == HandlingFlagValue(0)
     assert encoded.count(b"<strModelFlags>0</strModelFlags>") == 1
+
+
+def test_handling_flag_validation_is_typed_and_non_mutating() -> None:
+    handling = HandlingData(
+        name=MetaHash("INVALID"),
+        mass=1000.0,
+        model_flags=HandlingFlagValue(0x1_0000_0000),
+        handling_flags=HandlingFlagValue("0xGG"),
+        damage_flags=HandlingFlagValue("FLAG_SPECIAL"),
+    )
+    before = (
+        handling.model_flags,
+        handling.handling_flags,
+        handling.damage_flags,
+    )
+
+    report = handling.validate()
+
+    assert {issue.code for issue in report.errors} == {
+        "vehicle.handling.flags.out_of_range",
+        "vehicle.handling.flags.hex.malformed",
+        "vehicle.handling.flags.symbolic.unsupported",
+    }
+    assert (
+        handling.model_flags,
+        handling.handling_flags,
+        handling.damage_flags,
+    ) == before
+
+
+def test_handling_flag_xml_validation_reports_invalid_dialect_tokens() -> None:
+    source = """<CHandlingDataMgr><HandlingData><Item type="CHandlingData">
+<strModelFlags>0xGG</strModelFlags>
+<strHandlingFlags>FLAG_SPECIAL</strHandlingFlags>
+<strDamageFlags value="1" />
+</Item></HandlingData></CHandlingDataMgr>"""
+
+    handling = read_vehicle_meta(source.encode()).handling
+    assert handling is not None
+    report = handling.validate()
+    xml_report = validate_vehicle_meta_xml(source)
+
+    assert any(issue.code.endswith("hex.malformed") for issue in report.errors)
+    assert any(issue.code.endswith("symbolic.unsupported") for issue in report.errors)
+    assert any(
+        issue.code.endswith("flags.shape.invalid") for issue in xml_report.errors
+    )
+
+
+@pytest.mark.skipif(
+    not os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH"),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail handling regression",
+)
+def test_enhanced_comet5_handling_flags_survive_typed_clone_roundtrip() -> None:
+    root = Path(os.environ["FIVEFURY_GTA5_ENHANCED_PATH"])
+    with GameFileCache(
+        root,
+        game=GameTarget.GTA5_ENHANCED,
+        load_audio=False,
+    ) as cache:
+        cache.scan_game()
+        source = next(
+            asset
+            for asset in cache.find_assets(
+                "handling.meta",
+                kind=GameFileType.HANDLING,
+            )
+            if "mpchristmas2017" in asset.path.casefold()
+        )
+        game_file = cache.get_file(source)
+        assert game_file is not None
+        comet5 = game_file.parsed.handling.get("COMET5")
+
+    assert comet5 is not None
+    clone = comet5.clone_as("COMET5_COPY")
+    encoded = HandlingDataManager(entries=[clone]).to_bytes()
+    reread = read_vehicle_meta(encoded).handling
+
+    assert reread is not None
+    assert clone.model_flags == HandlingFlagValue(0x00440010)
+    assert clone.handling_flags == HandlingFlagValue(0)
+    assert clone.damage_flags == HandlingFlagValue(0)
+    assert reread.entries[0] == clone
 
 
 def test_vehicle_metadata_save_is_atomic_on_validation_error(tmp_path) -> None:
