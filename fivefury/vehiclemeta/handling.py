@@ -15,6 +15,7 @@ from ..pso_values import (
     vector,
 )
 from .base import VehicleMetaDocument, VehicleMetaModel, without_raw
+from .handling_flags import HandlingFlagValue, handling_flag_value
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -153,9 +154,9 @@ class HandlingData(VehicleMetaModel):
     seat_offset_y: float = 0.0
     seat_offset_z: float = 0.0
     monetary_value: int = 0
-    model_flags: MetaHash = dataclasses.field(default_factory=MetaHash)
-    handling_flags: MetaHash = dataclasses.field(default_factory=MetaHash)
-    damage_flags: MetaHash = dataclasses.field(default_factory=MetaHash)
+    model_flags: HandlingFlagValue | None = None
+    handling_flags: HandlingFlagValue | None = None
+    damage_flags: HandlingFlagValue | None = None
     ai_handling: MetaHash = dataclasses.field(default_factory=MetaHash)
     sub_handling: list[HandlingSubData | None] = dataclasses.field(default_factory=list)
     weapon_damage_to_health_multiplier: float = 0.5
@@ -164,6 +165,10 @@ class HandlingData(VehicleMetaModel):
     rocket_boost_capacity: float = 1.25
     boost_max_speed: float = 70.0
     raw: Any = dataclasses.field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        for name in ("model_flags", "handling_flags", "damage_flags"):
+            object.__setattr__(self, name, handling_flag_value(getattr(self, name)))
 
     @classmethod
     def from_value(cls, value: Any) -> HandlingData:
@@ -312,11 +317,15 @@ class HandlingData(VehicleMetaModel):
             monetary_value=number(
                 field(value, "m_nMonetaryValue", "nMonetaryValue"), 0
             ),
-            model_flags=meta_hash(field(value, "m_strModelFlags", "strModelFlags")),
-            handling_flags=meta_hash(
+            model_flags=handling_flag_value(
+                field(value, "m_strModelFlags", "strModelFlags")
+            ),
+            handling_flags=handling_flag_value(
                 field(value, "m_strHandlingFlags", "strHandlingFlags")
             ),
-            damage_flags=meta_hash(field(value, "m_strDamageFlags", "strDamageFlags")),
+            damage_flags=handling_flag_value(
+                field(value, "m_strDamageFlags", "strDamageFlags")
+            ),
             ai_handling=meta_hash(field(value, "m_AIHandling", "AIHandling")),
             sub_handling=[
                 map_sub_handling(item)
@@ -377,6 +386,7 @@ __all__ = [
     "FlyingHandlingData",
     "HandlingData",
     "HandlingDataManager",
+    "HandlingFlagValue",
     "HandlingSubData",
     "SeaPlaneHandlingData",
     "SpecialFlightHandlingData",

@@ -60,6 +60,7 @@ from .handling import (
     TrailerHandlingData,
     VehicleWeaponHandlingData,
 )
+from .handling_flags import HandlingFlagValue
 from .pack import (
     VehiclePackBuilder,
     VehiclePackOutput,
@@ -98,6 +99,7 @@ __all__ = [
     "FlyingHandlingData",
     "HandlingData",
     "HandlingDataManager",
+    "HandlingFlagValue",
     "HandlingSubData",
     "HandlingType",
     "LicensePlateProbability",
