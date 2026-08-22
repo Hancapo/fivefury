@@ -59,6 +59,11 @@ class MeshBufferPack:
 
 
 def _vertex_buffer_bind_flags(mesh: PreparedMesh) -> int:
+    explicit = int(mesh.vertex_buffer_flags)
+    if not 0 <= explicit <= 0xFFFFFFFF:
+        raise ValueError("Gen9 vertex-buffer flags must fit in an unsigned 32-bit field")
+    if explicit:
+        return explicit
     if mesh.blend_weights or mesh.blend_indices:
         return _G9_VERTEX_BUFFER_BIND_FLAGS_SKINNED
     return _G9_VERTEX_BUFFER_BIND_FLAGS

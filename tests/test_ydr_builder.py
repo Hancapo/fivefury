@@ -1596,6 +1596,58 @@ def _simple_skeleton() -> YdrSkeleton:
     return skeleton.build()
 
 
+def test_gen9_writer_preserves_explicit_vertex_buffer_flags_on_skinned_mesh(
+    tmp_path: Path,
+) -> None:
+    mesh = _skinned_triangle_mesh()
+    mesh.vertex_buffer_flags = 0x00580409
+    build = create_ydr(
+        meshes=[mesh],
+        skeleton=_simple_skeleton(),
+        name="explicit_gen9_buffer_flags",
+        version=159,
+    )
+
+    output = tmp_path / "explicit_gen9_buffer_flags.ydr"
+    build.save(output)
+    parsed = read_ydr(output)
+
+    assert parsed.meshes[0].blend_weights
+    assert parsed.meshes[0].blend_indices
+    assert parsed.meshes[0].vertex_buffer_flags == 0x00580409
+
+
+def test_gen9_writer_derives_skinned_vertex_buffer_flags_when_zero(
+    tmp_path: Path,
+) -> None:
+    build = create_ydr(
+        meshes=[_skinned_triangle_mesh()],
+        skeleton=_simple_skeleton(),
+        name="derived_gen9_buffer_flags",
+        version=159,
+    )
+
+    output = tmp_path / "derived_gen9_buffer_flags.ydr"
+    build.save(output)
+
+    assert read_ydr(output).meshes[0].vertex_buffer_flags == 0x00586409
+
+
+@pytest.mark.parametrize("flags", (-1, 0x1_0000_0000))
+def test_gen9_writer_rejects_vertex_buffer_flags_outside_uint32(flags: int) -> None:
+    mesh = _skinned_triangle_mesh()
+    mesh.vertex_buffer_flags = flags
+    build = create_ydr(
+        meshes=[mesh],
+        skeleton=_simple_skeleton(),
+        name="invalid_gen9_buffer_flags",
+        version=159,
+    )
+
+    with pytest.raises(ValueError, match="unsigned 32-bit"):
+        build.to_bytes()
+
+
 def _hashable_skeleton() -> YdrSkeleton:
     skeleton = YdrSkeleton()
     root = skeleton.bone(
