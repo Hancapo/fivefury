@@ -33,6 +33,8 @@ public:
     ~NativeCryptoContext();
 
     bool can_decrypt() const noexcept;
+    bool can_encrypt() const noexcept;
+    void enable_encryption(std::vector<std::uint8_t> ng_encrypt_blob);
     std::vector<std::uint8_t> decrypt_archive_table(
         const std::vector<std::uint8_t>& data,
         std::uint32_t encryption,
@@ -41,6 +43,20 @@ public:
         const std::string& hash_lut
     ) const;
     std::vector<std::uint8_t> decrypt_data(
+        const std::vector<std::uint8_t>& data,
+        std::uint32_t encryption,
+        const std::string& entry_name,
+        std::uint32_t entry_length,
+        const std::string& hash_lut
+    ) const;
+    std::vector<std::uint8_t> encrypt_archive_table(
+        const std::vector<std::uint8_t>& data,
+        std::uint32_t encryption,
+        const std::string& archive_name,
+        std::uint32_t archive_size,
+        const std::string& hash_lut
+    ) const;
+    std::vector<std::uint8_t> encrypt_data(
         const std::vector<std::uint8_t>& data,
         std::uint32_t encryption,
         const std::string& entry_name,

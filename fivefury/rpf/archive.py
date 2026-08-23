@@ -110,6 +110,9 @@ class RpfArchive:
     _nested_errors: dict[str, str] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
+    _source_snapshot: tuple[object, ...] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         self.name = self.name or "archive.rpf"
@@ -393,6 +396,64 @@ class RpfArchive:
 
         build_dir(self.root, "")
         self._rebuild_index()
+        self._source_snapshot = self._source_signature()
+
+    def _source_signature(self) -> tuple[object, ...]:
+        def entry_signature(entry: RpfEntry) -> tuple[object, ...]:
+            base: tuple[object, ...] = (type(entry), entry.name)
+            if isinstance(entry, RpfDirectoryEntry):
+                return base + (
+                    tuple(entry_signature(child) for child in entry.directories),
+                    tuple(entry_signature(child) for child in entry.files),
+                )
+            if isinstance(entry, RpfBinaryFileEntry):
+                return base + (
+                    entry.file_size,
+                    entry.file_uncompressed_size,
+                    entry.is_encrypted,
+                    entry.encryption_type,
+                    entry._data is None,
+                    entry._source is None,
+                )
+            if isinstance(entry, RpfResourceFileEntry):
+                return base + (
+                    entry.file_size,
+                    entry.system_flags.value,
+                    entry.graphics_flags.value,
+                    entry.is_encrypted,
+                    entry._data is None,
+                    entry._source is None,
+                )
+            return base
+
+        return (
+            self.name,
+            self.version,
+            self.encryption,
+            self.platform,
+            self.name_shift,
+            self.xcompressed,
+            entry_signature(self.root),
+        )
+
+    def _source_is_unchanged(self) -> bool:
+        if self._source_snapshot is None:
+            return False
+        if self._source_signature() != self._source_snapshot:
+            return False
+        return all(child._source_is_unchanged() for child in self.children)
+
+    def _copy_source_to(self, stream: BinaryIO) -> int:
+        if self._source_bytes is not None:
+            stream.write(self._source_bytes)
+            return len(self._source_bytes)
+        if self._source_file is None:
+            raise ValueError("RPF archive has no preservable source")
+        with self._source_file.open("rb") as source:
+            from shutil import copyfileobj
+
+            copyfileobj(source, stream, length=1024 * 1024)
+        return self._source_file.stat().st_size
 
     def load_nested_archive(
         self,
@@ -951,6 +1012,10 @@ class RpfArchive:
 
     def write_to(self, stream: BinaryIO) -> int:
         self.validate().raise_for_errors()
+        if self._source_is_unchanged():
+            stream.seek(0)
+            stream.truncate()
+            return self._copy_source_to(stream)
         return write_archive_stream(self, stream)
 
     def validate(self, *, context: object | None = None) -> ValidationReport:

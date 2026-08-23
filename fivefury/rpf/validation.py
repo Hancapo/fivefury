@@ -94,6 +94,12 @@ def _validate_file(
 
     if not isinstance(entry, RpfResourceFileEntry):
         return
+    if entry.is_encrypted and not entry.name.lower().endswith(".ysc"):
+        report.issue(
+            "rpf.resource.encryption",
+            "Resource entries do not have a serialized encryption field.",
+            path=path,
+        )
     if entry.file_offset > _MAX_RESOURCE_BLOCK_OFFSET:
         report.issue(
             "rpf.resource.offset",
@@ -159,6 +165,15 @@ def validate_rpf_archive(archive: object) -> ValidationReport:
             "rpf.encryption.platform",
             "PS3 archives require NONE, OPEN, or PS3_AES encryption.",
             path="encryption",
+        )
+    elif (
+        archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN)
+        and archive.crypto is None
+    ):
+        report.issue(
+            "rpf.encryption.crypto",
+            "Encrypted archives require a GameCrypto context.",
+            path="crypto",
         )
 
     entries = archive._collect_entries()
