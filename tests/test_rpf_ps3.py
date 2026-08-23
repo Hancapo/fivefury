@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fivefury import GameFileCache, RpfArchive
+from fivefury import GameFileCache
 from fivefury.crypto import GameCrypto
 from fivefury.rpf import (
     RPF_BLOCK_SIZE,
