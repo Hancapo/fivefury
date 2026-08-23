@@ -55,7 +55,12 @@ from .events_writer import (
     write_event_sets,
 )
 from .fragment import Yft
-from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
+from .fragment_drawable import (
+    YftFragmentDrawable,
+    YftFragmentDrawableBuild,
+    YftFragmentDrawableName,
+    YftFragmentMatrix,
+)
 from .glass import YftGlassPane, YftVehicleGlassWindows
 from .glass_writer import write_glass_panes, write_vehicle_glass_windows
 from .matrices import YftSharedMatrixSet
@@ -83,7 +88,7 @@ class _PreparedFragmentDrawable:
     build: YdrBuild
     materials: list[PreparedMaterial]
     lods: PreparedLods
-    fragment: YftFragmentDrawable | None = None
+    fragment: YftFragmentDrawable | YftFragmentDrawableBuild | None = None
     source_id: int = 0
     root_offset: int = 0
 
@@ -91,6 +96,21 @@ class _PreparedFragmentDrawable:
 def _drawable_build(drawable: Ydr | YdrBuild, *, name: str, version: int) -> YdrBuild:
     build = drawable if isinstance(drawable, YdrBuild) else drawable.to_build(name=name)
     return dataclasses.replace(build, name=build.name or name, version=int(version))
+
+
+def _fragment_drawable_name(
+    fragment: YftFragmentDrawable | YftFragmentDrawableBuild | None,
+    default: str,
+) -> str | None:
+    if (
+        fragment is None
+        or fragment.skeleton_type_name is YftFragmentDrawableName.DERIVE
+        or fragment.skeleton_type_name == ""
+    ):
+        return default
+    if fragment.skeleton_type_name is YftFragmentDrawableName.NULL:
+        return None
+    return fragment.skeleton_type_name
 
 
 def _prepare_drawable(
@@ -131,7 +151,11 @@ def _prepare_drawable(
         build=build,
         materials=materials,
         lods=lods,
-        fragment=drawable if isinstance(drawable, YftFragmentDrawable) else None,
+        fragment=(
+            drawable
+            if isinstance(drawable, (YftFragmentDrawable, YftFragmentDrawableBuild))
+            else None
+        ),
         source_id=id(drawable),
     )
 
@@ -302,11 +326,7 @@ def _write_fragment_drawable_tail(
     for index, extra_matrix in enumerate(matrices):
         _write_fragment_matrix(system, matrices_offset + (index * 64), extra_matrix)
 
-    name = (
-        fragment.skeleton_type_name
-        if fragment is not None and fragment.skeleton_type_name
-        else item.name
-    )
+    name = _fragment_drawable_name(fragment, item.name)
     name_offset = system.c_string(name) if name else 0
     root = item.root_offset
     _write_fragment_matrix(system, root + 0xB0, matrix)
@@ -492,7 +512,32 @@ def create_yft(
 
 
 def _validate_authoring_yft(yft: Yft) -> None:
-    validate_yft(yft).raise_for_errors()
+    report = validate_yft(yft)
+    seen: set[int] = set()
+    for entry in (*yft.iter_drawables(), *yft.iter_physics_drawables()):
+        if id(entry.drawable) in seen:
+            continue
+        seen.add(id(entry.drawable))
+        for field_name in (
+            "locators_pointer",
+            "animations_pointer",
+            "cloned_shader_group_pointer",
+        ):
+            pointer = getattr(entry.drawable, field_name, 0)
+            path = f"drawables.{entry.label}.{field_name}"
+            if not isinstance(pointer, int):
+                report.issue(
+                    "yft.drawable.source_pointer.invalid_type",
+                    "source resource pointer must be an integer",
+                    path=path,
+                )
+            elif pointer:
+                report.issue(
+                    "yft.drawable.source_pointer.cannot_reauthor",
+                    "source resource pointers cannot be reused by authoring",
+                    path=path,
+                )
+    report.raise_for_errors()
 
 
 def _write_fragment_root(

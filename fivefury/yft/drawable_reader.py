@@ -18,7 +18,11 @@ from .constants import (
     FRAGMENT_DRAWABLE_SIZE,
     GEN9_YFT_VERSIONS,
 )
-from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
+from .fragment_drawable import (
+    YftFragmentDrawable,
+    YftFragmentDrawableName,
+    YftFragmentMatrix,
+)
 
 
 def drawable_root_offset(system_data: bytes, pointer: int) -> int:
@@ -92,9 +96,11 @@ def _read_fragment_matrices(
     )
 
 
-def _read_optional_string(system_data: bytes, pointer: int) -> str:
+def _read_skeleton_type_name(
+    system_data: bytes, pointer: int
+) -> str | YftFragmentDrawableName:
     if not pointer:
-        return ""
+        return YftFragmentDrawableName.NULL
     offset = virtual_to_offset(pointer, base=DAT_VIRTUAL_BASE)
     if offset < 0 or offset >= len(system_data):
         raise ValueError("YFT fragment drawable string pointer is out of range")
@@ -158,7 +164,7 @@ def read_fragment_drawable(
             matrices_pointer,
             active_bound_count,
         ),
-        skeleton_type_name=_read_optional_string(system_data, name_pointer),
+        skeleton_type_name=_read_skeleton_type_name(system_data, name_pointer),
         load_skeleton=bool(
             struct.unpack_from("<H", system_data, root_offset + 0x112)[0]
         ),

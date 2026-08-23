@@ -31,6 +31,7 @@ from fivefury import (
 
 _TRIANGLE = [Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)]
 _TRIANGLE_UVS = [[Vector2(), Vector2(1.0, 0.0), Vector2(0.0, 1.0)]]
+from fivefury.authoring import ValidationError
 from fivefury.bounds import (
     GEN9_BOUND_FILE_VFTS,
     LEGACY_BOUND_FILE_VFTS,
@@ -72,6 +73,8 @@ from fivefury.yft import (
     YftEnvironmentCloth,
     YftEventSet,
     YftFragmentDrawable,
+    YftFragmentDrawableBuild,
+    YftFragmentDrawableName,
     YftFragmentFlag,
     YftFragmentMatrix,
     YftFragmentState,
@@ -2573,6 +2576,125 @@ def test_damaged_drawable_inherits_common_shader_group_and_remaps_materials():
         and "must inherit" in issue.message
         for issue in validate_yft_bytes(broken)
     )
+
+
+@pytest.mark.parametrize(
+    ("skeleton_type_name", "expected_name", "expect_pointer"),
+    (
+        (YftFragmentDrawableName.DERIVE, "vehicle_drawable", True),
+        ("skel", "skel", True),
+        (YftFragmentDrawableName.NULL, YftFragmentDrawableName.NULL, False),
+        (None, YftFragmentDrawableName.NULL, False),
+        ("", "vehicle_drawable", True),
+    ),
+)
+@pytest.mark.parametrize("version", [162, 171])
+def test_fragment_drawable_build_authors_complete_tail_without_ydr_roundtrip(
+    skeleton_type_name,
+    expected_name,
+    expect_pointer,
+    version,
+):
+    build = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=_TRIANGLE,
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=_TRIANGLE_UVS,
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name="source_geometry",
+        version=version,
+    )
+    extra_bound = BoundBox.from_center_size(
+        Vector3(), Vector3(1.0, 2.0, 3.0)
+    ).build()
+    fragment_matrix = YftFragmentMatrix(
+        columns=(
+            Vector3(1.0, 0.0, 0.0),
+            Vector3(0.0, 1.0, 0.0),
+            Vector3(0.0, 0.0, 1.0),
+            Vector3(4.0, 5.0, 6.0),
+        )
+    )
+    fragment = YftFragmentDrawableBuild.from_build(
+        build,
+        skeleton_type_name=skeleton_type_name,
+        fragment_matrix=fragment_matrix,
+        extra_bounds=(extra_bound,),
+        extra_bound_matrices=(YftFragmentMatrix.identity(),),
+        load_skeleton=False,
+    )
+
+    assert fragment.materials is build.materials
+    assert next(fragment.iter_models()).meshes[0] is next(build.iter_models()).meshes[0]
+
+    raw = build_yft_bytes(create_yft(fragment, name="vehicle", version=version))
+    _header, system_data, _graphics_data = split_rsc7_sections(raw)
+    drawable_offset = virtual_to_offset(struct.unpack_from("<Q", system_data, 0x30)[0])
+    name_pointer = struct.unpack_from("<Q", system_data, drawable_offset + 0x130)[0]
+    parsed = read_yft(raw)
+
+    assert parsed.main_drawable.skeleton_type_name == expected_name
+    assert bool(name_pointer) is expect_pointer
+    assert parsed.main_drawable.fragment_matrix == fragment_matrix
+    assert len(parsed.main_drawable.extra_bounds) == 1
+    assert parsed.main_drawable.extra_bound_matrices == (
+        YftFragmentMatrix.identity(),
+    )
+    assert parsed.main_drawable.load_skeleton is False
+    assert validate_yft_bytes(raw).valid
+
+
+def test_fragment_drawable_from_ydr_distinguishes_null_and_derived_names():
+    derived = YftFragmentDrawable.from_ydr(Ydr(version=162))
+    null = YftFragmentDrawable.from_ydr(
+        Ydr(version=162),
+        skeleton_type_name=None,
+    )
+
+    assert derived.skeleton_type_name is YftFragmentDrawableName.DERIVE
+    assert null.skeleton_type_name is YftFragmentDrawableName.NULL
+
+
+def test_fragment_drawable_authoring_rejects_stale_source_pointers():
+    build = create_ydr(
+        meshes=[
+            YdrMeshInput(
+                positions=_TRIANGLE,
+                indices=[0, 1, 2],
+                material="body",
+                texcoords=_TRIANGLE_UVS,
+            )
+        ],
+        materials=[YdrMaterialInput(name="body")],
+        name="pointer_source",
+    )
+    source = read_yft(
+        build_yft_bytes(
+            create_yft(
+                YftFragmentDrawableBuild.from_build(build),
+                name="stale_pointer",
+            )
+        )
+    )
+    source.main_drawable.locators_pointer = 0x50000100
+
+    assert source.validate().valid
+    with pytest.raises(ValueError, match="unsupported owned resources"):
+        YftFragmentDrawableBuild.from_fragment(
+            source.main_drawable,
+            source.main_drawable.to_build(),
+        )
+    with pytest.raises(ValidationError, match="source resource pointers"):
+        build_yft_bytes(source)
+
+    pointer_field = "locators_pointer"
+    setattr(source.main_drawable, pointer_field, "stale")
+    with pytest.raises(ValidationError, match="must be an integer"):
+        build_yft_bytes(source)
 
 
 def test_create_yft_writes_declared_physics_lod(tmp_path):

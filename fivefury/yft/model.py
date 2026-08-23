@@ -16,7 +16,12 @@ from .cloth import (
 from .drawables import YftDrawable, YftDrawableMatch
 from .events import YftEventSet, YftPhysicsChildEvents, YftPhysicsGroupEvents
 from .fragment import Yft
-from .fragment_drawable import YftFragmentDrawable, YftFragmentMatrix
+from .fragment_drawable import (
+    YftFragmentDrawable,
+    YftFragmentDrawableBuild,
+    YftFragmentDrawableName,
+    YftFragmentMatrix,
+)
 from .glass import (
     YftGlassPane,
     YftGlassPaneFlag,
@@ -73,6 +78,8 @@ __all__ = [
     "YftEnvironmentClothFlag",
     "YftEventSet",
     "YftFragmentDrawable",
+    "YftFragmentDrawableBuild",
+    "YftFragmentDrawableName",
     "YftFragmentFlag",
     "YftFragmentMatrix",
     "YftFragmentPointers",
