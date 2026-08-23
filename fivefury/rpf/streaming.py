@@ -4,9 +4,9 @@ import struct
 from shutil import copyfileobj
 from typing import TYPE_CHECKING, BinaryIO
 
-from ..crypto import NONE_ENCRYPTION, OPEN_ENCRYPTION
 from ..resource import read_rsc7_header
 from .entries import RpfBinaryFileEntry, RpfDirectoryEntry, RpfResourceFileEntry
+from .modes import RpfEncryption
 from .utils import RPF_BLOCK_SIZE, RPF_MAGIC, _ceil_div
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ def _write_file_payload(
 def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
     """Write an archive without retaining all file payloads in memory."""
 
-    if archive.encryption not in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+    if archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN):
         raise NotImplementedError(
             "Writing AES/NG-encrypted RPF archives is not supported"
         )

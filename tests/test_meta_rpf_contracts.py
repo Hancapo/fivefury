@@ -951,7 +951,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertTrue(crypto is get_game_crypto())
 
     def test_encrypted_rpf_can_auto_resolve_default_crypto(self) -> None:
-        from fivefury import NG_ENCRYPTION, RpfArchive, clear_game_crypto, create_rpf
+        from fivefury import RpfArchive, RpfEncryption, clear_game_crypto, create_rpf
 
         class _FakeCrypto:
             def decrypt_archive_table(self, data, encryption, *, archive_name, archive_size):
@@ -963,7 +963,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         archive = create_rpf("auto_crypto.rpf")
         archive.file("hello.txt", b"hello")
         encrypted = bytearray(archive.to_bytes())
-        struct.pack_into("<I", encrypted, 12, NG_ENCRYPTION)
+        struct.pack_into("<I", encrypted, 12, RpfEncryption.NG)
 
         clear_game_crypto()
         with patch("fivefury.rpf.archive.ensure_game_crypto", return_value=_FakeCrypto()) as mocked:
