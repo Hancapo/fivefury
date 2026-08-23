@@ -458,13 +458,28 @@ def _validate_lod(
                     "child group index points outside the group array",
                     code="yft.lod.child_group_index_points_outside_group_array",
                 )
-        if group.total_undamaged_mass < 0.0 or group.total_damaged_mass < 0.0:
+        if group.total_undamaged_mass < 0.0 or (
+            group.total_damaged_mass is not None and group.total_damaged_mass < 0.0
+        ):
             _issue(
                 issues,
                 DiagnosticSeverity.ERROR,
                 group_path,
                 "group mass cannot be negative",
                 code="yft.lod.group_mass_cannot_negative",
+            )
+        if (
+            bound_profile is not YftPhysicsBoundProfile.PRESERVE
+            and group.total_damaged_mass is not None
+            and group.total_damaged_mass <= 0.0
+            and any(child.has_damage_state for child in group.children)
+        ):
+            _issue(
+                issues,
+                DiagnosticSeverity.ERROR,
+                f"{group_path}.total_damaged_mass",
+                "authored damaged groups require positive total damaged mass",
+                code="yft.lod.authored_damaged_group_requires_positive_mass",
             )
         _validate_glass_group(
             lod,
@@ -592,7 +607,11 @@ def _validate_lod(
                 "owner group index points outside the group array",
                 code="yft.lod.owner_group_index_points_outside_group_array",
             )
-        masses = (child.undamaged_mass, child.damaged_mass)
+        masses = tuple(
+            mass
+            for mass in (child.undamaged_mass, child.damaged_mass)
+            if mass is not None
+        )
         if any(
             not math.isfinite(mass) or (mass < 0.0 and mass != -1.0) for mass in masses
         ):
@@ -603,6 +622,19 @@ def _validate_lod(
                 "child mass must be -1 or a finite nonnegative value",
                 code="yft.lod.child_mass_must_1_finite_nonnegative_value",
             )
+        if (
+            bound_profile is not YftPhysicsBoundProfile.PRESERVE
+            and child.has_damage_state
+            and child.damaged_mass is not None
+            and child.damaged_mass <= 0.0
+        ):
+            _issue(
+                issues,
+                DiagnosticSeverity.ERROR,
+                f"{child_path}.damaged_mass",
+                "authored damaged entities require positive damaged mass",
+                code="yft.lod.authored_damaged_entity_requires_positive_mass",
+            )
         if child.min_breaking_impulse < 0.0:
             _issue(
                 issues,
@@ -611,7 +643,11 @@ def _validate_lod(
                 "negative breaking impulse is unusual",
                 code="yft.lod.negative_breaking_impulse_unusual",
             )
-        inertias = (child.undamaged_ang_inertia, child.damaged_ang_inertia)
+        inertias = tuple(
+            inertia
+            for inertia in (child.undamaged_ang_inertia, child.damaged_ang_inertia)
+            if inertia is not None
+        )
         if any(
             not inertia.is_unavailable and not _finite_values(inertia.as_tuple())
             for inertia in inertias
@@ -622,6 +658,20 @@ def _validate_lod(
                 child_path,
                 "angular inertia contains NaN or infinity",
                 code="yft.lod.angular_inertia_contains_nan_infinity",
+            )
+        if (
+            bound_profile is not YftPhysicsBoundProfile.PRESERVE
+            and child.has_damage_state
+            and child.damaged_ang_inertia is not None
+            and not child.damaged_ang_inertia.is_unavailable
+            and child.damaged_ang_inertia.mass <= 0.0
+        ):
+            _issue(
+                issues,
+                DiagnosticSeverity.ERROR,
+                f"{child_path}.damaged_ang_inertia",
+                "authored damaged entities require positive damaged inertia mass",
+                code="yft.lod.authored_damaged_entity_requires_positive_inertia_mass",
             )
 
     for index, (first, second) in enumerate(lod.self_collision_pairs):
@@ -636,7 +686,11 @@ def _validate_lod(
 
     if lod.groups and lod.children:
         grouped_undamaged_mass = sum(group.total_undamaged_mass for group in lod.groups)
-        grouped_damaged_mass = sum(group.total_damaged_mass for group in lod.groups)
+        grouped_damaged_mass = sum(
+            group.total_damaged_mass
+            for group in lod.groups
+            if group.total_damaged_mass is not None
+        )
         if grouped_undamaged_mass and not math.isclose(
             grouped_undamaged_mass, lod.total_undamaged_mass, rel_tol=0.05, abs_tol=0.01
         ):

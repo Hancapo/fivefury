@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Breaking Changes
 
 - Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
+- Omitted YFT damaged mass, damaged inertia, and group damaged-mass totals now use `None`; numeric zero is an explicit preserved value.
 - RPF and DLC authoring now use `RpfEncryption` instead of raw encryption integers or a separate DLC enum.
 - File-backed RPF authoring now requires `RpfFileSource.raw()`, `compressed()`, `resource()`, or `archive()` instead of implicit path and nested-archive APIs.
 
@@ -23,6 +24,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Preserve-profile YFT writing now retains explicit zero damaged mass and inertia values for intact-only physics children.
 - Handling metadata now preserves unsigned 32-bit hexadecimal flag values, explicit zero fields, and unknown bits in the retail XML dialect.
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
 - Timed archetypes now preserve typed spatial and hash fields when read from YTYP metadata.

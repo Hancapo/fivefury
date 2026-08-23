@@ -98,9 +98,7 @@ def read_inertia_array(
     )
 
 
-def read_physics_transforms(
-    system_data: bytes, pointer: int
-) -> YftPhysicsTransforms:
+def read_physics_transforms(system_data: bytes, pointer: int) -> YftPhysicsTransforms:
     offset = try_virtual_offset(system_data, pointer)
     if offset is None or offset + 0x20 > len(system_data):
         return YftPhysicsTransforms()
@@ -440,7 +438,7 @@ def read_physics_child(
         owner_group_name=owner_group_name,
         min_breaking_impulse=min_breaking_impulse,
         undamaged_ang_inertia=undamaged_ang_inertia or YftPhysicsInertia(),
-        damaged_ang_inertia=damaged_ang_inertia or YftPhysicsInertia(),
+        damaged_ang_inertia=damaged_ang_inertia,
         undamaged_entity=undamaged_entity,
         damaged_entity=damaged_entity,
         events=YftPhysicsChildEvents(
@@ -574,9 +572,7 @@ def read_physics_children(
                 else YftPhysicsInertia()
             ),
             damaged_ang_inertia=(
-                damaged_ang_inertia[index]
-                if index < len(damaged_ang_inertia)
-                else YftPhysicsInertia()
+                damaged_ang_inertia[index] if index < len(damaged_ang_inertia) else None
             ),
             undamaged_entity=undamaged_entity,
             damaged_entity=damaged_entity,
@@ -754,9 +750,7 @@ def read_physics_lod(
         min_breaking_impulses=min_breaking_impulses,
         undamaged_ang_inertia=undamaged_ang_inertia,
         damaged_ang_inertia=damaged_ang_inertia,
-        link_attachments=read_physics_transforms(
-            system_data, link_attachments_pointer
-        ),
+        link_attachments=read_physics_transforms(system_data, link_attachments_pointer),
         body_type=YftPhysicsReference(
             _u64(system_data, offset + 0x20), "phArticulatedBodyType"
         ),
