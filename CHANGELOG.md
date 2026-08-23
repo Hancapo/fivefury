@@ -19,6 +19,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Public RSC7 header inspection, file-backed RPF payloads, and reusable YMF dependency indexes.
 - Structured RPF validation for names, directory ranges, platform encryption, packed offsets, payload sizes, nested archives, resource headers, and overlaps.
 - AES and NG RPF writing with encrypted compressed payloads and byte-preserving unchanged round-trips.
+- PS3 RPF writing with big-endian tables, console AES encryption, and platform-correct archive alignment.
 
 ### Fixed
 

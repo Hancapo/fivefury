@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, BinaryIO
 
 from ..resource import read_rsc7_header
 from .entries import RpfBinaryFileEntry, RpfDirectoryEntry, RpfResourceFileEntry
-from .modes import RpfEncryption
+from .modes import RpfEncryption, RpfPlatform
+from .ps3 import normalize_ps3_entries
 from .sources import RpfSourceKind
 from .utils import RPF_BLOCK_SIZE, RPF_MAGIC, _ceil_div
 
@@ -240,6 +241,8 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
         ):  # pragma: no cover - guarded by the exhaustive loop above.
             raise RuntimeError("RPF entry table was not fully encoded")
         entries_data.extend(raw_entry)
+    if archive.platform is RpfPlatform.PS3:
+        entries_data = bytearray(normalize_ps3_entries(entries_data))
     if archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN):
         assert archive.crypto is not None
         entries_data = bytearray(
@@ -264,7 +267,7 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
     )
     stream.write(
         struct.pack(
-            "<4I",
+            f"{archive.platform.struct_prefix}4I",
             RPF_MAGIC,
             entry_count,
             encoded_names_length,
