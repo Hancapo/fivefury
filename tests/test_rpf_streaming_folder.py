@@ -27,7 +27,8 @@ def test_from_folder_keeps_payloads_path_backed_until_save(tmp_path: Path) -> No
     entry = archive.find_entry("region/asset.bin")
 
     assert entry is not None
-    assert entry._source_path == asset.resolve()
+    assert entry._source is not None
+    assert entry._source.path == asset.resolve()
     assert getattr(entry, "_data", None) is None
     assert entry.read() == b"path-backed payload"
 
@@ -93,7 +94,8 @@ def test_from_folder_roundtrips_resource_and_raw_ymap_files(tmp_path: Path) -> N
     ymap_entry = archive.find_entry("map.ymap")
 
     assert isinstance(resource_entry, RpfResourceFileEntry)
-    assert resource_entry._source_path == (source / "asset.ydr").resolve()
+    assert resource_entry._source is not None
+    assert resource_entry._source.path == (source / "asset.ydr").resolve()
     assert resource_entry.read() == b"resource payload"
     assert archive.read_entry_standalone(resource_entry) == resource
     assert isinstance(ymap_entry, RpfResourceFileEntry)
@@ -117,7 +119,7 @@ def test_rpf_writer_does_not_inflate_existing_rsc7(
     payload = _build_rsc7(b"resource payload")
     source.write_bytes(payload)
     archive = RpfArchive.empty("resource.rpf")
-    archive.file_path("asset.ydr", source)
+    archive.file_path("asset.ydr", RpfFileSource.resource(source))
 
     def reject_decompression(*args: object, **kwargs: object) -> bytes:
         raise AssertionError("RPF insertion must not inflate RSC7 payloads")
@@ -150,7 +152,7 @@ def test_file_backed_large_resource_roundtrips_sentinel_header(
     expected_hash = hashlib.sha256(source.read_bytes()).digest()
 
     archive = RpfArchive.empty("large.rpf")
-    archive.file_path("large.ydr", source)
+    archive.file_path("large.ydr", RpfFileSource.resource(source))
     destination = tmp_path / "large.rpf"
     archive.save(destination)
 
@@ -169,7 +171,7 @@ def test_dlc_streams_existing_nested_rpf_without_reserializing(
     payload = tmp_path / "payload.bin"
     payload.write_bytes(b"x" * (8 * 1024 * 1024))
     inner = RpfArchive.empty("maps.rpf")
-    inner.file_path("payload.bin", payload)
+    inner.file_path("payload.bin", RpfFileSource.raw(payload))
     inner_path = tmp_path / "maps.rpf"
     inner.save(inner_path)
     expected_hash = hashlib.sha256(inner_path.read_bytes()).digest()
@@ -177,7 +179,7 @@ def test_dlc_streams_existing_nested_rpf_without_reserializing(
     pack = DlcPack("streamed_maps")
     pack.rpf(
         "x64/levels/gta5/maps.rpf",
-        RpfFileSource(inner_path),
+        RpfFileSource.archive(inner_path),
         map_data=True,
     )
 
@@ -202,6 +204,32 @@ def test_dlc_streams_existing_nested_rpf_without_reserializing(
         actual_hash = hashlib.sha256(written.read_entry_standalone(entry)).digest()
     assert actual_hash == expected_hash
     assert read_dlc_pack(destination.read_bytes(), load_files=False).files == {}
+
+
+def test_file_backed_binary_compression_streams_and_roundtrips(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "large.meta"
+    source.write_bytes(b"streamed metadata\n" * (1024 * 1024))
+    archive = RpfArchive.empty("compressed.rpf")
+    archive.file_path(
+        "data/large.meta",
+        RpfFileSource.compressed(source),
+    )
+
+    destination = tmp_path / "compressed.rpf"
+    tracemalloc.start()
+    archive.save(destination)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert peak < 4 * 1024 * 1024
+    with RpfArchive.from_path(destination) as written:
+        entry = written.find_entry("data/large.meta")
+        assert isinstance(entry, RpfBinaryFileEntry)
+        assert entry.file_size > 0
+        assert entry.file_uncompressed_size == source.stat().st_size
+        assert written.read_entry_standalone(entry) == source.read_bytes()
 
 
 def test_rpf_writer_rejects_offsets_that_would_be_truncated() -> None:

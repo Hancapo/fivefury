@@ -18,11 +18,12 @@ _MAX_NAME_OFFSET = 0xFFFF
 _MAX_BINARY_BLOCK_OFFSET = 0xFFFFFF
 _MAX_RESOURCE_BLOCK_OFFSET = 0x7FFFFF
 _MAX_STORED_SIZE = 0xFFFFFF
+_MAX_UNCOMPRESSED_SIZE = 0xFFFFFFFF
 
 
 def _payload_size(entry: RpfFileEntry) -> int:
-    if entry._source_path is not None:
-        return entry._source_path.stat().st_size
+    if entry._source is not None:
+        return entry._source.size
     data = getattr(entry, "_data", None)
     if data is not None:
         return len(data)
@@ -63,6 +64,12 @@ def _validate_file(
         report.issue("rpf.payload.alignment", "Payload offset is not block-aligned.", path=path)
 
     if isinstance(entry, RpfBinaryFileEntry):
+        if size > _MAX_UNCOMPRESSED_SIZE:
+            report.issue(
+                "rpf.binary.uncompressed_size",
+                "Binary payload exceeds the 32-bit uncompressed-size field.",
+                path=path,
+            )
         if entry.file_offset > _MAX_BINARY_BLOCK_OFFSET:
             report.issue(
                 "rpf.binary.offset",

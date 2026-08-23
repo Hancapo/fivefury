@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .utils import _resource_flags_from_size, _size_from_resource_flags
 
 if TYPE_CHECKING:  # pragma: no cover
     from .rpf import RpfArchive
+    from .sources import RpfFileSource
 
 
 @dataclass(slots=True)
@@ -115,7 +115,7 @@ class RpfFileEntry(RpfEntry):
     file_offset: int = 0
     file_size: int = 0
     is_encrypted: bool = False
-    _source_path: Path | None = field(default=None, repr=False, compare=False)
+    _source: RpfFileSource | None = field(default=None, repr=False, compare=False)
 
     @property
     def is_file(self) -> bool:

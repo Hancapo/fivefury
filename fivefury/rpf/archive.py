@@ -45,7 +45,7 @@ from .modes import (
     coerce_extraction_conflict,
 )
 from .ps3 import GTA5_PS3_AES_KEY, normalize_ps3_entries
-from .sources import RpfFileSource
+from .sources import RpfFileSource, RpfSourceKind
 from .streaming import write_archive_stream
 from .utils import (
     RPF_BLOCK_SIZE,
@@ -520,14 +520,23 @@ class RpfArchive:
     def read_entry_raw(self, entry: RpfFileEntry) -> bytes:
         if getattr(entry, "_data", None) is not None:
             return bytes(entry._data)  # type: ignore[attr-defined]
-        if entry._source_path is not None:
-            return entry._source_path.read_bytes()
+        if entry._source is not None:
+            data = entry._source.path.read_bytes()
+            if entry._source.kind is RpfSourceKind.DEFLATE:
+                return _compress_deflate(data, entry._source.compression_level)
+            return data
         size = entry.get_file_size()
         if size <= 0:
             return b""
         return self._source_read(entry.file_offset * RPF_BLOCK_SIZE, size)
 
     def read_entry_bytes(self, entry: RpfFileEntry, *, logical: bool = True) -> bytes:
+        if (
+            logical
+            and entry._source is not None
+            and entry._source.kind is RpfSourceKind.DEFLATE
+        ):
+            return entry._source.path.read_bytes()
         raw = self.read_entry_raw(entry)
         if not logical:
             return raw
@@ -540,6 +549,11 @@ class RpfArchive:
         return raw
 
     def read_entry_standalone(self, entry: RpfFileEntry) -> bytes:
+        if (
+            entry._source is not None
+            and entry._source.kind is RpfSourceKind.DEFLATE
+        ):
+            return entry._source.path.read_bytes()
         raw = self.read_entry_raw(entry)
         if isinstance(entry, RpfResourceFileEntry):
             if _is_rsc7(raw):
@@ -765,14 +779,13 @@ class RpfArchive:
     def file_path(
         self,
         path: str | Path,
-        source_path: str | Path,
+        source: RpfFileSource,
     ) -> RpfFileEntry:
-        """Add an uncompressed file backed by disk until the archive is written."""
-        source = Path(source_path).resolve(strict=True)
-        if not source.is_file():
-            raise ValueError(f"RPF source path must be a file: {source}")
-        size = source.stat().st_size
-        with source.open("rb") as stream:
+        """Insert an explicitly typed file-backed payload."""
+        if not isinstance(source, RpfFileSource):
+            raise TypeError("source must be an RpfFileSource")
+        size = source.size
+        with source.path.open("rb") as stream:
             header = stream.read(16)
         normalized = _normalize_path(path)
         parent_path, leaf = (
@@ -784,7 +797,7 @@ class RpfArchive:
         if existing is not None:
             parent.remove_file(existing)
 
-        if leaf_lower.endswith(".rpf") and _is_rpf7(header):
+        if source.kind is RpfSourceKind.RPF7:
             entry = RpfBinaryFileEntry(
                 name=leaf,
                 path=normalized,
@@ -792,9 +805,9 @@ class RpfArchive:
                 file_size=0,
                 file_uncompressed_size=size,
                 _archive=self,
-                _source_path=source,
+                _source=source,
             )
-        elif _is_rsc7(header):
+        elif source.kind is RpfSourceKind.RSC7:
             resource_header = read_rsc7_header(header)
             entry: RpfFileEntry = RpfResourceFileEntry(
                 name=leaf,
@@ -804,10 +817,8 @@ class RpfArchive:
                 system_flags=RpfResourcePageFlags(resource_header.system_flags),
                 graphics_flags=RpfResourcePageFlags(resource_header.graphics_flags),
                 _archive=self,
-                _source_path=source,
+                _source=source,
             )
-        elif leaf_lower.endswith((".ymap", ".ytyp")):
-            return self.file(normalized, source.read_bytes())
         else:
             entry = RpfBinaryFileEntry(
                 name=leaf,
@@ -816,16 +827,13 @@ class RpfArchive:
                 file_size=0,
                 file_uncompressed_size=size,
                 _archive=self,
-                _source_path=source,
+                _source=source,
             )
         parent.append_file(entry)
         if leaf_lower.endswith(".rpf"):
             self._nested_entries.append(entry)
         self._invalidate_index()
         return entry
-
-    def rpf_file(self, path: str | Path, source: RpfFileSource) -> RpfFileEntry:
-        return self.file_path(path, source.path)
 
     def _collect_entries(self) -> list[RpfEntry]:
         ordered: list[RpfEntry] = [self.root]
@@ -859,8 +867,8 @@ class RpfArchive:
     def _entry_payload(self, entry: RpfFileEntry) -> bytes:
         if getattr(entry, "_data", None) is not None:
             return bytes(entry._data)  # type: ignore[attr-defined]
-        if entry._source_path is not None:
-            return entry._source_path.read_bytes()
+        if entry._source is not None:
+            return self.read_entry_raw(entry)
         if (
             isinstance(entry, (RpfBinaryFileEntry, RpfResourceFileEntry))
             and entry.child_archive is not None
@@ -882,6 +890,8 @@ class RpfArchive:
             raise ValueError("RPF7 binary entry name offset exceeds 16 bits")
         if not 0 <= int(offset_blocks) <= 0xFFFFFF:
             raise ValueError("RPF7 binary entry block offset exceeds 24 bits")
+        if entry.file_size > 0xFFFFFF:
+            raise ValueError("RPF7 compressed binary payload exceeds 24 bits")
         entry.file_offset = offset_blocks
         if entry.file_size == 0:
             entry.file_uncompressed_size = payload_size
@@ -1123,6 +1133,7 @@ __all__ = [
     "RpfPlatform",
     "RpfResourceFileEntry",
     "RpfResourcePageFlags",
+    "RpfSourceKind",
     "create_rpf",
     "load_rpf",
     "rpf_to_folder",
