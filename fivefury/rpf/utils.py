@@ -8,6 +8,7 @@ from ..resource import (
     get_resource_flags_from_size,
     get_resource_size_from_flags,
     parse_rsc7,
+    read_rsc7_header,
 )
 
 RPF_MAGIC = 0x52504637
@@ -94,6 +95,11 @@ def _split_rsc7(data: bytes) -> tuple[int, int, int, bytes]:
     return header.version, header.system_flags, header.graphics_flags, payload
 
 
+def _read_rsc7_header(data: bytes | bytearray | memoryview) -> tuple[int, int, int]:
+    header = read_rsc7_header(data)
+    return header.version, header.system_flags, header.graphics_flags
+
+
 def _build_rsc7(system_data: bytes, *, version: int = 0, sys_flags: int | None = None, gfx_flags: int = 0) -> bytes:
     if sys_flags is None:
         sys_flags = _resource_flags_from_size(len(system_data), version)
@@ -116,6 +122,7 @@ __all__ = [
     "_normalize_key",
     "_normalize_path",
     "_pad",
+    "_read_rsc7_header",
     "_resource_flags_from_size",
     "_resource_version_from_flags",
     "_size_from_resource_flags",

@@ -504,13 +504,17 @@ def resolve_resource_pointer(
     return chunk
 
 
-def parse_rsc7(data: bytes) -> tuple[ResourceHeader, bytes]:
+def read_rsc7_header(data: bytes | bytearray | memoryview) -> ResourceHeader:
     if len(data) < 16:
         raise ValueError("RSC7 data is too short")
     magic, version, system_flags, graphics_flags = struct.unpack_from("<IIII", data, 0)
     if magic != RSC7_MAGIC:
         raise ValueError("data does not start with an RSC7 header")
-    header = ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
+    return ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
+
+
+def parse_rsc7(data: bytes) -> tuple[ResourceHeader, bytes]:
+    header = read_rsc7_header(data)
     payload = decompress_resource_stream(data[16:], expected_size=header.total_size)
     return header, payload
 

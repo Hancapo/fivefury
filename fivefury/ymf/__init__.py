@@ -4,6 +4,7 @@ from .builder import (
     build_ymf_for_ymaps,
     build_ymf_manifest_for_ymaps,
 )
+from .dependencies import YmfArchetypeBinding, YmfDependencyIndex, YmfYtypBinding
 from .enums import (
     ManifestFlags,
     PackFileMetaDataAssetType,
@@ -59,8 +60,11 @@ __all__ = [
     "PackFileMetaDataAssetType",
     "PackFileMetaDataImapGroupType",
     "Ymf",
+    "YmfArchetypeBinding",
+    "YmfDependencyIndex",
     "YmfRelationship",
     "YmfRelationshipType",
+    "YmfYtypBinding",
     "build_ymf",
     "build_ymf_for_ymaps",
     "build_ymf_manifest_for_ymaps",

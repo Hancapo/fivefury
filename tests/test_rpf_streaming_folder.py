@@ -1,9 +1,18 @@
+import hashlib
 import os
+import tracemalloc
 from pathlib import Path
 
 import pytest
 
-from fivefury import GameFileCache, RpfArchive
+from fivefury import (
+    DlcPack,
+    GameFileCache,
+    RpfArchive,
+    RpfFileSource,
+    read_dlc_pack,
+)
+from fivefury.resource import ResourceHeader, get_resource_flags_from_size
 from fivefury.rpf.entries import RpfBinaryFileEntry, RpfResourceFileEntry
 from fivefury.rpf.utils import _build_rsc7
 
@@ -98,6 +107,101 @@ def test_from_folder_roundtrips_resource_and_raw_ymap_files(tmp_path: Path) -> N
         assert stored_ymap is not None
         assert written.read_entry_standalone(stored_resource) == resource
         assert stored_ymap.read() == b"meta payload"
+
+
+def test_rpf_writer_does_not_inflate_existing_rsc7(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "asset.ydr"
+    payload = _build_rsc7(b"resource payload")
+    source.write_bytes(payload)
+    archive = RpfArchive.empty("resource.rpf")
+    archive.file_path("asset.ydr", source)
+
+    def reject_decompression(*args: object, **kwargs: object) -> bytes:
+        raise AssertionError("RPF insertion must not inflate RSC7 payloads")
+
+    monkeypatch.setattr(
+        "fivefury.resource.decompress_resource_stream", reject_decompression
+    )
+    destination = tmp_path / "resource.rpf"
+    archive.save(destination)
+
+    with RpfArchive.from_path(destination) as written:
+        entry = written.find_entry("asset.ydr")
+        assert entry is not None
+        assert written.read_entry_standalone(entry) == payload
+
+
+def test_file_backed_large_resource_roundtrips_sentinel_header(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "large.ydr"
+    header = ResourceHeader(
+        version=165,
+        system_flags=get_resource_flags_from_size(512, 0xA),
+        graphics_flags=get_resource_flags_from_size(512, 0x5),
+    ).pack()
+    with source.open("wb") as stream:
+        stream.write(header)
+        stream.seek(0x1000000)
+        stream.write(b"\0")
+    expected_hash = hashlib.sha256(source.read_bytes()).digest()
+
+    archive = RpfArchive.empty("large.rpf")
+    archive.file_path("large.ydr", source)
+    destination = tmp_path / "large.rpf"
+    archive.save(destination)
+
+    with RpfArchive.from_path(destination) as written:
+        entry = written.find_entry("large.ydr")
+        assert entry is not None
+        assert entry.file_size == source.stat().st_size
+        actual_hash = hashlib.sha256(written.read_entry_standalone(entry)).digest()
+    assert actual_hash == expected_hash
+
+
+def test_dlc_streams_existing_nested_rpf_without_reserializing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = tmp_path / "payload.bin"
+    payload.write_bytes(b"x" * (8 * 1024 * 1024))
+    inner = RpfArchive.empty("maps.rpf")
+    inner.file_path("payload.bin", payload)
+    inner_path = tmp_path / "maps.rpf"
+    inner.save(inner_path)
+    expected_hash = hashlib.sha256(inner_path.read_bytes()).digest()
+
+    pack = DlcPack("streamed_maps")
+    pack.rpf(
+        "x64/levels/gta5/maps.rpf",
+        RpfFileSource(inner_path),
+        map_data=True,
+    )
+
+    def reject_parse(*args: object, **kwargs: object) -> RpfArchive:
+        raise AssertionError("file-backed nested RPFs must not be parsed while writing")
+
+    def reject_serialize(*args: object, **kwargs: object) -> bytes:
+        raise AssertionError("file-backed nested RPFs must not be reserialized")
+
+    monkeypatch.setattr(RpfArchive, "from_path", reject_parse)
+    monkeypatch.setattr(RpfArchive, "to_bytes", reject_serialize)
+    destination = tmp_path / "dlc.rpf"
+    tracemalloc.start()
+    pack.save_dlc_rpf(destination)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert peak < 4 * 1024 * 1024
+    with RpfArchive.from_bytes(destination.read_bytes(), name="dlc.rpf") as written:
+        entry = written.find_entry("x64/levels/gta5/maps.rpf")
+        assert entry is not None
+        actual_hash = hashlib.sha256(written.read_entry_standalone(entry)).digest()
+    assert actual_hash == expected_hash
+    assert read_dlc_pack(destination.read_bytes(), load_files=False).files == {}
 
 
 def test_rpf_writer_rejects_offsets_that_would_be_truncated() -> None:
