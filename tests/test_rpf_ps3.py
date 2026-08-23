@@ -6,7 +6,14 @@ import unittest
 from pathlib import Path
 
 from fivefury import GameFileCache, RpfArchive
-from fivefury.rpf import RPF_BLOCK_SIZE, RPF_MAGIC, RpfPlatform
+from fivefury.crypto import GameCrypto
+from fivefury.rpf import (
+    RPF_BLOCK_SIZE,
+    RPF_MAGIC,
+    RpfArchive,
+    RpfEncryption,
+    RpfPlatform,
+)
 from tests.helpers import configured_path, reference_root
 
 
@@ -79,6 +86,32 @@ class RpfPs3Tests(unittest.TestCase):
             cache.scan(use_index_cache=False, scan_workers=1)
 
             self.assertIsNotNone(cache.find_path("ps3_test.rpf/hello.bin"))
+
+    def test_ps3_writer_roundtrips_open_and_encrypted_archives(self) -> None:
+        crypto = GameCrypto.from_aes_key(bytes(range(32)))
+        expected = b"compressed ps3 payload" * 1000
+        for encryption in (RpfEncryption.OPEN, RpfEncryption.PS3_AES):
+            with self.subTest(encryption=encryption):
+                archive = RpfArchive.empty(
+                    "ps3_writer.rpf",
+                    platform=RpfPlatform.PS3,
+                    encryption=encryption,
+                    crypto=crypto,
+                )
+                archive.file("payload.bin", expected, compress_binary=True)
+                packed = archive.to_bytes()
+
+                self.assertEqual(len(packed) % 2048, 0)
+                reread = RpfArchive.from_bytes(
+                    packed,
+                    name="ps3_writer.rpf",
+                    crypto=crypto,
+                )
+                entry = reread.find_entry("payload.bin")
+                self.assertIsNotNone(entry)
+                assert entry is not None
+                self.assertEqual(reread.platform, RpfPlatform.PS3)
+                self.assertEqual(entry.read(), expected)
 
     def test_rpf_reader_opens_real_ps3_archive_when_available(self) -> None:
         usrdir = configured_path(
