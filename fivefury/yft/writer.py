@@ -606,7 +606,15 @@ def _write_fragment_root(
             "ff",
             root_child_off + 0x08,
             float(root_child.undamaged_mass) if root_child is not None else 1.0,
-            float(root_child.damaged_mass) if root_child is not None else 1.0,
+            (
+                float(
+                    root_child.undamaged_mass
+                    if root_child.damaged_mass is None
+                    else root_child.damaged_mass
+                )
+                if root_child is not None
+                else 1.0
+            ),
         )
         if root_child is not None:
             system.data[root_child_off + 0x10] = (

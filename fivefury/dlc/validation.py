@@ -10,7 +10,7 @@ from ..authoring.context import BuildContext
 from ..authoring.diagnostics import Diagnostic, DiagnosticSeverity, ValidationReport
 from ..game_target import GameTarget, coerce_game_target
 from ..resource import RSC7_MAGIC
-from ..rpf import RpfArchive, RpfFileEntry, RpfResourceFileEntry
+from ..rpf import RpfArchive, RpfFileEntry, RpfFileSource, RpfResourceFileEntry
 from .content import (
     DlcChangeSetData,
     DlcContentChangeSet,
@@ -327,6 +327,8 @@ def _target_from_resource(path: str, data: bytes) -> GameTarget:
 def _coerce_asset_bytes(value: object) -> bytes:
     if isinstance(value, (bytes, bytearray, memoryview)):
         return bytes(value)
+    if isinstance(value, RpfFileSource):
+        return value.path.read_bytes()
     to_bytes = getattr(value, "to_bytes", None)
     if callable(to_bytes):
         return bytes(to_bytes())

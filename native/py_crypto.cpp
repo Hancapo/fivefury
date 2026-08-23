@@ -11,6 +11,69 @@ using namespace fivefury_native;
 
 namespace fivefury_py {
 
+namespace {
+
+using CryptoTransform = std::vector<std::uint8_t> (NativeCryptoContext::*)(
+    const std::vector<std::uint8_t>&,
+    std::uint32_t,
+    const std::string&,
+    std::uint32_t,
+    const std::string&
+) const;
+
+PyObject* transform_crypto(PyObject* args, const CryptoTransform transform) {
+    PyObject* capsule = nullptr;
+    PyObject* data_object = nullptr;
+    unsigned int encryption = 0;
+    PyObject* name_object = nullptr;
+    unsigned int length = 0;
+    PyObject* lut_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OOIOIO:crypto_transform",
+            &capsule, &data_object, &encryption, &name_object, &length, &lut_object)) {
+        return nullptr;
+    }
+    std::string name;
+    if (!unicode_to_utf8(name_object, name, "name")) {
+        return nullptr;
+    }
+    auto* crypto = require_crypto(capsule);
+    if (crypto == nullptr) {
+        return nullptr;
+    }
+    Py_buffer data_buffer{};
+    if (PyObject_GetBuffer(data_object, &data_buffer, PyBUF_SIMPLE) < 0) {
+        return nullptr;
+    }
+    Py_buffer lut_buffer{};
+    if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
+        PyBuffer_Release(&data_buffer);
+        return nullptr;
+    }
+    try {
+        std::vector<std::uint8_t> data(
+            static_cast<const std::uint8_t*>(data_buffer.buf),
+            static_cast<const std::uint8_t*>(data_buffer.buf) + data_buffer.len
+        );
+        std::string lut(
+            static_cast<const char*>(lut_buffer.buf),
+            std::min(static_cast<std::size_t>(lut_buffer.len), std::size_t{256})
+        );
+        auto result = (crypto->*transform)(data, encryption, name, length, lut);
+        PyBuffer_Release(&lut_buffer);
+        PyBuffer_Release(&data_buffer);
+        return PyBytes_FromStringAndSize(
+            reinterpret_cast<const char*>(result.data()),
+            static_cast<Py_ssize_t>(result.size())
+        );
+    } catch (...) {
+        PyBuffer_Release(&lut_buffer);
+        PyBuffer_Release(&data_buffer);
+        return translate_cpp_exception();
+    }
+}
+
+}  // namespace
+
 PyObject* mod_crypto_new(PyObject*, PyObject* args) {
     PyObject* aes_object = nullptr;
     PyObject* ng_object = nullptr;
@@ -65,104 +128,48 @@ PyObject* mod_crypto_can_decrypt(PyObject*, PyObject* args) {
     }
 }
 
-PyObject* mod_crypto_decrypt_archive_table(PyObject*, PyObject* args) {
+PyObject* mod_crypto_enable_encryption(PyObject*, PyObject* args) {
     PyObject* capsule = nullptr;
-    PyObject* data_object = nullptr;
-    unsigned int encryption = 0;
-    PyObject* archive_name_object = nullptr;
-    unsigned int archive_size = 0;
-    PyObject* lut_object = nullptr;
-    if (!PyArg_ParseTuple(args, "OOIOIO:crypto_decrypt_archive_table",
-            &capsule, &data_object, &encryption,
-            &archive_name_object, &archive_size, &lut_object)) {
-        return nullptr;
-    }
-    std::string name;
-    if (!unicode_to_utf8(archive_name_object, name, "archive_name")) {
+    PyObject* blob_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OO:crypto_enable_encryption", &capsule, &blob_object)) {
         return nullptr;
     }
     auto* crypto = require_crypto(capsule);
     if (crypto == nullptr) {
         return nullptr;
     }
-    Py_buffer data_buf{};
-    if (PyObject_GetBuffer(data_object, &data_buf, PyBUF_SIMPLE) < 0) {
-        return nullptr;
-    }
-    Py_buffer lut_buf{};
-    if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
-        PyBuffer_Release(&data_buf);
+    Py_buffer buffer{};
+    if (PyObject_GetBuffer(blob_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     try {
-        std::vector<std::uint8_t> data(
-            static_cast<const std::uint8_t*>(data_buf.buf),
-            static_cast<const std::uint8_t*>(data_buf.buf) + data_buf.len
+        std::vector<std::uint8_t> blob(
+            static_cast<const std::uint8_t*>(buffer.buf),
+            static_cast<const std::uint8_t*>(buffer.buf) + buffer.len
         );
-        std::string lut(static_cast<const char*>(lut_buf.buf),
-                        std::min(static_cast<std::size_t>(lut_buf.len), std::size_t{256}));
-        PyBuffer_Release(&lut_buf);
-        PyBuffer_Release(&data_buf);
-        auto result = crypto->decrypt_archive_table(data, encryption, name, archive_size, lut);
-        return PyBytes_FromStringAndSize(
-            reinterpret_cast<const char*>(result.data()),
-            static_cast<Py_ssize_t>(result.size())
-        );
+        crypto->enable_encryption(std::move(blob));
+        PyBuffer_Release(&buffer);
+        Py_RETURN_NONE;
     } catch (...) {
-        PyBuffer_Release(&lut_buf);
-        PyBuffer_Release(&data_buf);
+        PyBuffer_Release(&buffer);
         return translate_cpp_exception();
     }
 }
 
+PyObject* mod_crypto_decrypt_archive_table(PyObject*, PyObject* args) {
+    return transform_crypto(args, &NativeCryptoContext::decrypt_archive_table);
+}
+
 PyObject* mod_crypto_decrypt_data(PyObject*, PyObject* args) {
-    PyObject* capsule = nullptr;
-    PyObject* data_object = nullptr;
-    unsigned int encryption = 0;
-    PyObject* entry_name_object = nullptr;
-    unsigned int entry_length = 0;
-    PyObject* lut_object = nullptr;
-    if (!PyArg_ParseTuple(args, "OOIOIO:crypto_decrypt_data",
-            &capsule, &data_object, &encryption,
-            &entry_name_object, &entry_length, &lut_object)) {
-        return nullptr;
-    }
-    std::string name;
-    if (!unicode_to_utf8(entry_name_object, name, "entry_name")) {
-        return nullptr;
-    }
-    auto* crypto = require_crypto(capsule);
-    if (crypto == nullptr) {
-        return nullptr;
-    }
-    Py_buffer data_buf{};
-    if (PyObject_GetBuffer(data_object, &data_buf, PyBUF_SIMPLE) < 0) {
-        return nullptr;
-    }
-    Py_buffer lut_buf{};
-    if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
-        PyBuffer_Release(&data_buf);
-        return nullptr;
-    }
-    try {
-        std::vector<std::uint8_t> data(
-            static_cast<const std::uint8_t*>(data_buf.buf),
-            static_cast<const std::uint8_t*>(data_buf.buf) + data_buf.len
-        );
-        std::string lut(static_cast<const char*>(lut_buf.buf),
-                        std::min(static_cast<std::size_t>(lut_buf.len), std::size_t{256}));
-        PyBuffer_Release(&lut_buf);
-        PyBuffer_Release(&data_buf);
-        auto result = crypto->decrypt_data(data, encryption, name, entry_length, lut);
-        return PyBytes_FromStringAndSize(
-            reinterpret_cast<const char*>(result.data()),
-            static_cast<Py_ssize_t>(result.size())
-        );
-    } catch (...) {
-        PyBuffer_Release(&lut_buf);
-        PyBuffer_Release(&data_buf);
-        return translate_cpp_exception();
-    }
+    return transform_crypto(args, &NativeCryptoContext::decrypt_data);
+}
+
+PyObject* mod_crypto_encrypt_archive_table(PyObject*, PyObject* args) {
+    return transform_crypto(args, &NativeCryptoContext::encrypt_archive_table);
+}
+
+PyObject* mod_crypto_encrypt_data(PyObject*, PyObject* args) {
+    return transform_crypto(args, &NativeCryptoContext::encrypt_data);
 }
 
 PyObject* mod_crypto_magic_mask(PyObject*, PyObject* args) {

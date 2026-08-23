@@ -4,12 +4,12 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypeAlias
 
 from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
 from ..game_target import GameTarget, coerce_game_target
-from ..rpf import RpfArchive
+from ..rpf import RpfArchive, RpfEncryption, RpfFileSource
 from ..xml import (
     append_items,
     append_text,
@@ -30,9 +30,28 @@ from .content import (
     DlcExecutionConditions,
     DlcResourceReference,
 )
-from .enums import DlcContentGroup, DlcRpfEncryption
+from .enums import DlcContentGroup
 from .paths import dlc_platform_payload_path, dlc_platform_registration_path
 from .setup import DlcContentChangeSetGroup, DlcSetupData
+
+
+class _ToBytes(Protocol):
+    def to_bytes(self) -> bytes | bytearray | memoryview: ...
+
+
+class _BuildBytes(Protocol):
+    def build(self) -> bytes | bytearray | memoryview: ...
+
+
+DlcFilePayload: TypeAlias = (
+    bytes
+    | bytearray
+    | memoryview
+    | RpfArchive
+    | RpfFileSource
+    | _ToBytes
+    | _BuildBytes
+)
 
 
 def _device_name(pack_name: str) -> str:
@@ -135,16 +154,17 @@ class DlcPack:
     name: str
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
-    files: dict[str, bytes | bytearray | memoryview | Any] = field(default_factory=dict)
+    files: dict[str, DlcFilePayload] = field(default_factory=dict)
     game: GameTarget | None = None
-    rpf_encryption: DlcRpfEncryption = DlcRpfEncryption.OPEN
+    rpf_encryption: RpfEncryption = RpfEncryption.OPEN
 
     def __post_init__(self) -> None:
         if self.setup is None:
             self.setup = DlcSetupData.compat_pack(self.name)
         if self.game is not None:
             self.game = coerce_game_target(self.game)
-        self.rpf_encryption = DlcRpfEncryption(self.rpf_encryption)
+        if not isinstance(self.rpf_encryption, RpfEncryption):
+            raise TypeError("rpf_encryption must be an RpfEncryption")
 
     @property
     def device_path(self) -> str:
@@ -164,14 +184,14 @@ class DlcPack:
             return None
         return filename[len(self.device_path) :].lstrip("/")
 
-    def file(self, path: str, value: bytes | bytearray | memoryview | Any) -> DlcPack:
+    def file(self, path: str, value: DlcFilePayload) -> DlcPack:
         self.files[path.replace("\\", "/").lstrip("/")] = value
         return self
 
     def rpf(
         self,
         relative_path: str,
-        archive: RpfArchive,
+        archive: RpfArchive | RpfFileSource,
         *,
         map_data: bool = False,
         overlay: bool = False,
@@ -183,7 +203,7 @@ class DlcPack:
     def platform_rpf(
         self,
         relative_path: str,
-        archive: RpfArchive,
+        archive: RpfArchive | RpfFileSource,
         *,
         map_data: bool = False,
         overlay: bool = False,
@@ -234,27 +254,30 @@ class DlcPack:
         self,
         *,
         game: str | GameTarget | None = None,
-        encryption: DlcRpfEncryption | int | None = None,
+        encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> RpfArchive:
         if validate:
             self.validate(game=game).raise_for_errors()
-        archive = RpfArchive.empty("dlc.rpf")
-        archive.encryption = int(
-            self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)
+        archive = RpfArchive.empty(
+            "dlc.rpf",
+            encryption=self.rpf_encryption if encryption is None else encryption,
         )
         assert self.setup is not None
         archive.file("setup2.xml", self.setup.to_xml_bytes())
         archive.file(self.setup.dat_file or "content.xml", self.content.to_xml_bytes())
         for path, value in self.files.items():
-            archive.file(path, value)
+            if isinstance(value, RpfFileSource):
+                archive.file_path(path, value)
+            else:
+                archive.file(path, value)
         return archive
 
     def to_bytes(
         self,
         *,
         game: str | GameTarget | None = None,
-        encryption: DlcRpfEncryption | int | None = None,
+        encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> bytes:
         return self.to_rpf(
@@ -268,7 +291,7 @@ class DlcPack:
         path: str | Path,
         *,
         game: str | GameTarget | None = None,
-        encryption: DlcRpfEncryption | int | None = None,
+        encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> Path:
         target = Path(path)
@@ -288,10 +311,10 @@ class DlcPatch:
     name: str
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
-    files: dict[str, bytes | bytearray | memoryview | Any] = field(default_factory=dict)
+    files: dict[str, DlcFilePayload] = field(default_factory=dict)
     device_name: str | None = None
     game: GameTarget | None = None
-    rpf_encryption: DlcRpfEncryption = DlcRpfEncryption.OPEN
+    rpf_encryption: RpfEncryption = RpfEncryption.OPEN
 
     def __post_init__(self) -> None:
         if self.setup is None:
@@ -302,7 +325,8 @@ class DlcPatch:
             self.device_name = self.setup.device_name
         if self.game is not None:
             self.game = coerce_game_target(self.game)
-        self.rpf_encryption = DlcRpfEncryption(self.rpf_encryption)
+        if not isinstance(self.rpf_encryption, RpfEncryption):
+            raise TypeError("rpf_encryption must be an RpfEncryption")
 
     @property
     def patch_mount(self) -> DlcPatchMount:
@@ -312,7 +336,7 @@ class DlcPatch:
     def patch_root(self) -> str:
         return f"dlc_patch/{self.name}"
 
-    def file(self, path: str, value: bytes | bytearray | memoryview | Any) -> DlcPatch:
+    def file(self, path: str, value: DlcFilePayload) -> DlcPatch:
         self.files[path.replace("\\", "/").lstrip("/")] = value
         return self
 
@@ -373,14 +397,14 @@ class DlcPatch:
         self,
         *,
         game: str | GameTarget | None = None,
-        encryption: DlcRpfEncryption | int | None = None,
+        encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> RpfArchive:
         if validate:
             self.validate(game=game).raise_for_errors()
-        archive = RpfArchive.empty("update.rpf")
-        archive.encryption = int(
-            self.rpf_encryption if encryption is None else DlcRpfEncryption(encryption)
+        archive = RpfArchive.empty(
+            "update.rpf",
+            encryption=self.rpf_encryption if encryption is None else encryption,
         )
         self.install_into(archive)
         return archive
@@ -389,7 +413,7 @@ class DlcPatch:
         self,
         *,
         game: str | GameTarget | None = None,
-        encryption: DlcRpfEncryption | int | None = None,
+        encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> bytes:
         return self.to_update_rpf(
@@ -403,7 +427,7 @@ class DlcPatch:
         path: str | Path,
         *,
         game: str | GameTarget | None = None,
-        encryption: DlcRpfEncryption | int | None = None,
+        encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> Path:
         target = Path(path)

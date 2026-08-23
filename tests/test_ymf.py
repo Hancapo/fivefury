@@ -33,6 +33,7 @@ from fivefury.ymf import (
     PackFileMetaData,
     PackFileMetaDataAssetType,
     PackFileMetaDataImapGroupType,
+    YmfDependencyIndex,
     YmfRelationshipType,
     build_ymf,
     build_ymf_for_ymaps,
@@ -84,6 +85,17 @@ class _FakeCache:
             if candidate is asset:
                 return _FakeGameFile(parsed)
         raise KeyError(asset)
+
+
+class _CountingCache(_FakeCache):
+    def __init__(self, entries: list[tuple[_FakeAsset, object]]) -> None:
+        super().__init__(entries)
+        self.ytyp_iterations = 0
+
+    def iter_assets(self, kind: GameFileType | None = None):
+        if kind is GameFileType.YTYP:
+            self.ytyp_iterations += 1
+        yield from super().iter_assets(kind)
 
 
 def test_ymf_manifest_relationships_cover_map_dependencies() -> None:
@@ -288,6 +300,36 @@ def test_build_ymf_manifest_for_ymaps_resolves_archetypes_from_cache() -> None:
     assert [
         str(item) for item in manifest.ityp_dependencies_2[0].ityp_dependencies
     ] == ["shared_ityp"]
+
+
+def test_prepared_ymf_dependency_index_is_reused_across_manifest_groups() -> None:
+    ytyp = Ytyp(
+        name="city_ityp",
+        archetypes=[Archetype(name="prop_a"), Archetype(name="prop_b")],
+        dependencies=[YtypDependency("shared_ityp")],
+    )
+    cache = _CountingCache(
+        [(_FakeAsset("city_ityp", GameFileType.YTYP), ytyp)]
+    )
+    context = _build_context(cache=cache)
+    first = Ymap(name="first", entities=[EntityDef(archetype_name="prop_a")])
+    second = Ymap(name="second", entities=[EntityDef(archetype_name="prop_b")])
+
+    index = YmfDependencyIndex.from_context(context)
+    first_prepared = build_ymf_for_ymaps(
+        [first], context=context, dependency_index=index
+    ).to_bytes()
+    second_prepared = build_ymf_for_ymaps(
+        [second], context=context, dependency_index=index
+    ).to_bytes()
+
+    assert cache.ytyp_iterations == 1
+    assert first_prepared == build_ymf_for_ymaps(
+        [first], context=_build_context(("city_ityp.ytyp", ytyp))
+    ).to_bytes()
+    assert second_prepared == build_ymf_for_ymaps(
+        [second], context=_build_context(("city_ityp.ytyp", ytyp))
+    ).to_bytes()
 
 
 def test_build_ymf_for_ymaps_can_use_cached_ymaps_and_marks_interiors() -> None:

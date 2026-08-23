@@ -42,12 +42,24 @@ from .physics import (
 from .resource_headers import PH_ARTICULATED_BODY_TYPE_EUPHORIA_VFT
 
 DEFAULT_DAMPING_CONSTANTS: tuple[YftPhysicsDamping, ...] = (
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_CONSTANT, Vector3(0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_VELOCITY, Vector3(0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.LINEAR_VELOCITY_SQUARED, Vector3(0.01, 0.01, 0.01)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_CONSTANT, Vector3(0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY, Vector3(0.02, 0.02, 0.02)),
-    YftPhysicsDamping.declare(YftPhysicsDampingKind.ANGULAR_VELOCITY_SQUARED, Vector3(0.01, 0.01, 0.01)),
+    YftPhysicsDamping.declare(
+        YftPhysicsDampingKind.LINEAR_CONSTANT, Vector3(0.02, 0.02, 0.02)
+    ),
+    YftPhysicsDamping.declare(
+        YftPhysicsDampingKind.LINEAR_VELOCITY, Vector3(0.02, 0.02, 0.02)
+    ),
+    YftPhysicsDamping.declare(
+        YftPhysicsDampingKind.LINEAR_VELOCITY_SQUARED, Vector3(0.01, 0.01, 0.01)
+    ),
+    YftPhysicsDamping.declare(
+        YftPhysicsDampingKind.ANGULAR_CONSTANT, Vector3(0.02, 0.02, 0.02)
+    ),
+    YftPhysicsDamping.declare(
+        YftPhysicsDampingKind.ANGULAR_VELOCITY, Vector3(0.02, 0.02, 0.02)
+    ),
+    YftPhysicsDamping.declare(
+        YftPhysicsDampingKind.ANGULAR_VELOCITY_SQUARED, Vector3(0.01, 0.01, 0.01)
+    ),
 )
 
 IDENTITY_MATRIX44: Matrix4 = (
@@ -89,7 +101,11 @@ def calculate_bound_mass_properties(
     mass: float | None = None,
     fallback_mass: float = 1.0,
 ) -> YftMassProperties:
-    resolved_density = bound_density(bound) if density is None else _nonnegative_finite(density, "density")
+    resolved_density = (
+        bound_density(bound)
+        if density is None
+        else _nonnegative_finite(density, "density")
+    )
     fallback = _nonnegative_finite(fallback_mass, "fallback_mass")
     volume = 0.0 if bound is None else float(bound.compute_volume())
     if not math.isfinite(volume) or volume < 0.0:
@@ -116,7 +132,10 @@ def calculate_bound_mass_properties(
         raise ValueError("bound center of gravity must contain finite values")
     inverse_mass = 1.0 / resolved_mass if resolved_mass > 0.0 else 0.0
     inverse_inertia = Vector3(
-        *(1.0 / value if value > 0.0 else 0.0 for value in (inertia.x, inertia.y, inertia.z))
+        *(
+            1.0 / value if value > 0.0 else 0.0
+            for value in (inertia.x, inertia.y, inertia.z)
+        )
     )
     return YftMassProperties(
         volume=volume,
@@ -184,7 +203,9 @@ def bound_density(
             volume = float(child.compute_volume())
             if not math.isfinite(volume) or volume <= 0.0:
                 continue
-            weighted_density += bound_density(child, fallback=resolved_fallback) * volume
+            weighted_density += (
+                bound_density(child, fallback=resolved_fallback) * volume
+            )
             total_volume += volume
         if total_volume > 0.0:
             return weighted_density / total_volume
@@ -211,16 +232,16 @@ def default_damp_archetype(
 ) -> YftPhysicsDampArchetype:
     if isinstance(bound, BoundComposite) and child_inertias:
         mass_values = tuple(item.mass for item in child_inertias)
-        inertia_values = tuple(Vector3(item.x, item.y, item.z) for item in child_inertias)
+        inertia_values = tuple(
+            Vector3(item.x, item.y, item.z) for item in child_inertias
+        )
         composite = dataclasses.replace(
             bound,
             children=[
                 dataclasses.replace(
                     slot,
                     bound=(
-                        child_bounds[index]
-                        if index < len(child_bounds)
-                        else slot.bound
+                        child_bounds[index] if index < len(child_bounds) else slot.bound
                     ),
                 )
                 for index, slot in enumerate(bound.children)
@@ -334,9 +355,8 @@ def prepare_physics_bound(
     profile: YftPhysicsBoundProfile | str = YftPhysicsBoundProfile.PROP,
 ) -> Bound:
     resolved = coerce_yft_physics_bound_profile(profile)
-    if (
-        resolved is not YftPhysicsBoundProfile.PRESERVE
-        and not isinstance(bound, BoundComposite)
+    if resolved is not YftPhysicsBoundProfile.PRESERVE and not isinstance(
+        bound, BoundComposite
     ):
         return _composite_for_leaf(bound, resolved)
     return bound
@@ -387,7 +407,9 @@ def normalize_physics_lod(
             owner_group_name="default",
         )
         groups = (YftPhysicsGroup.declare("default", children=(child,)),)
-        declared = YftPhysicsLod.declare(lod.label, groups=groups, root_cg_offset=lod.root_cg_offset)
+        declared = YftPhysicsLod.declare(
+            lod.label, groups=groups, root_cg_offset=lod.root_cg_offset
+        )
         return normalize_physics_lod(
             declared,
             composite_bound=bound,
@@ -407,7 +429,9 @@ def normalize_physics_lod(
         group_name = group.name or group.debug_name or f"group_{index}"
         group_children = tuple(group.children)
         if not group_children and group.child_index != 0xFF:
-            group_children = children[group.child_index : group.child_index + group.num_children]
+            group_children = children[
+                group.child_index : group.child_index + group.num_children
+            ]
         normalized_children = []
         for child_index, child in enumerate(group_children, start=cursor):
             child_bound = _bound_for_child(
@@ -422,7 +446,11 @@ def normalize_physics_lod(
                 child_index,
                 damaged=True,
             )
-            if damaged_bound is None and has_damaged_drawable and declared_child_count == 1:
+            if (
+                damaged_bound is None
+                and has_damaged_drawable
+                and declared_child_count == 1
+            ):
                 damaged_bound = child_bound
             mass = (
                 bound_mass(child_bound, density=density)
@@ -435,7 +463,7 @@ def normalize_physics_lod(
                     if damaged_bound is not None
                     else mass
                 )
-                if recalculate_mass_properties or child.damaged_mass <= 0.0
+                if recalculate_mass_properties or child.damaged_mass is None
                 else child.damaged_mass
             )
             undamaged_inertia = (
@@ -450,8 +478,7 @@ def normalize_physics_lod(
                     if damaged_bound is not None
                     else YftPhysicsInertia(mass=damaged_mass)
                 )
-                if recalculate_mass_properties
-                or child.damaged_ang_inertia.mass <= 0.0
+                if recalculate_mass_properties or child.damaged_ang_inertia is None
                 else child.damaged_ang_inertia
             )
             undamaged_child_bounds.append(child_bound)
@@ -476,15 +503,24 @@ def normalize_physics_lod(
                 child_index=cursor if normalized_children else 0xFF,
                 num_children=len(normalized_children),
                 children=tuple(normalized_children),
-                total_undamaged_mass=sum(child.undamaged_mass for child in normalized_children),
-                total_damaged_mass=sum(child.damaged_mass for child in normalized_children),
+                total_undamaged_mass=sum(
+                    child.undamaged_mass for child in normalized_children
+                ),
+                total_damaged_mass=(
+                    sum(child.damaged_mass for child in normalized_children)
+                    if recalculate_mass_properties or group.total_damaged_mass is None
+                    else group.total_damaged_mass
+                ),
             )
         )
         cursor += len(normalized_children)
 
     damping_constants = tuple(lod.damping_constants) or DEFAULT_DAMPING_CONSTANTS
     if len(damping_constants) < 6:
-        damping_constants = (*damping_constants, *DEFAULT_DAMPING_CONSTANTS[len(damping_constants):])
+        damping_constants = (
+            *damping_constants,
+            *DEFAULT_DAMPING_CONSTANTS[len(damping_constants) :],
+        )
     min_impulses = tuple(lod.min_breaking_impulses) or tuple(
         child.min_breaking_impulse for child in resolved_children
     )
@@ -501,7 +537,6 @@ def normalize_physics_lod(
         declared_damaged_inertia
         if not recalculate_mass_properties
         and len(declared_damaged_inertia) == len(resolved_children)
-        and all(item.mass > 0.0 for item in declared_damaged_inertia)
         else tuple(child.damaged_ang_inertia for child in resolved_children)
     )
     link_attachments = lod.link_attachments
@@ -510,9 +545,7 @@ def normalize_physics_lod(
             IDENTITY_MATRIX44 for _ in resolved_children
         )
     elif len(link_attachments.matrices) != len(resolved_children):
-        raise ValueError(
-            "link attachment count must match the physics child count"
-        )
+        raise ValueError("link attachment count must match the physics child count")
     largest = max(
         (
             max(item.x, item.y, item.z)
@@ -534,16 +567,11 @@ def normalize_physics_lod(
     has_damage_state = has_damaged_drawable or any(
         child.has_damage_state for child in resolved_children
     )
-    damp_damaged = (
-        None if recalculate_mass_properties else lod.damaged_damp_archetype
-    )
+    damp_damaged = None if recalculate_mass_properties else lod.damaged_damp_archetype
     if damp_damaged is None and has_damage_state:
         damp_damaged = default_damp_archetype(
             bound=bound,
-            mass=(
-                sum(child.damaged_mass for child in resolved_children)
-                or total_mass
-            ),
+            mass=(sum(child.damaged_mass for child in resolved_children) or total_mass),
             damping_constants=damping_constants,
             child_inertias=damaged_inertia,
             child_bounds=damaged_child_bounds,

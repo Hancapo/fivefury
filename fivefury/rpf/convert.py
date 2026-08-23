@@ -11,7 +11,7 @@ from .utils import _normalize_path
 
 if TYPE_CHECKING:  # pragma: no cover
     from .archive import RpfArchive
-    from .modes import RpfExportMode, RpfExtractionConflict
+    from .modes import RpfEncryption, RpfExportMode, RpfExtractionConflict, RpfPlatform
 
 
 def _ensure_container_path(
@@ -53,7 +53,12 @@ def _insert_source_path(
     archive, relative_path = _ensure_container_path(current, parts[:-1])
     leaf = parts[-1]
     full = f"{relative_path}/{leaf}" if relative_path else leaf
-    archive.file_path(full, source_path)
+    from .sources import _detect_file_source
+
+    if source_path.suffix.lower() in (".ymap", ".ytyp"):
+        archive.file(full, source_path.read_bytes())
+    else:
+        archive.file_path(full, _detect_file_source(source_path))
 
 
 def _ensure_directory_path(current: RpfArchive, parts: list[str]) -> None:
@@ -124,10 +129,20 @@ def load_rpf(source: str | Path | bytes | BinaryIO) -> RpfArchive:
     return _coerce_archive(source)
 
 
-def create_rpf(name: str = "archive.rpf") -> RpfArchive:
+def create_rpf(
+    name: str = "archive.rpf",
+    *,
+    encryption: RpfEncryption | None = None,
+    platform: RpfPlatform | None = None,
+) -> RpfArchive:
     from .archive import RpfArchive
+    from .modes import RpfEncryption, RpfPlatform
 
-    return RpfArchive.empty(name)
+    return RpfArchive.empty(
+        name,
+        encryption=encryption or RpfEncryption.OPEN,
+        platform=platform or RpfPlatform.PC,
+    )
 
 
 def rpf_to_zip(

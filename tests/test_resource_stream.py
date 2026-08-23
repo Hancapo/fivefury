@@ -13,6 +13,7 @@ from fivefury.resource import (
     get_resource_flags_from_size,
     layout_resource_sections,
     parse_rsc7,
+    read_rsc7_header,
 )
 
 
@@ -35,6 +36,26 @@ def test_resource_stream_accepts_zero_initialized_deflate_history():
     assert header.version == 5
     assert header.total_size == 8192
     assert payload == b"\0" * 32
+
+
+@pytest.mark.parametrize("version", [165, 171])
+def test_resource_header_reader_decodes_without_inflating(version: int) -> None:
+    system_flags = get_resource_flags_from_size(8192, version)
+    graphics_flags = get_resource_flags_from_size(4096, version)
+    data = struct.pack("<4I", RSC7_MAGIC, version, system_flags, graphics_flags)
+
+    header = read_rsc7_header(data)
+
+    assert header.version == version
+    assert header.system_flags == system_flags
+    assert header.graphics_flags == graphics_flags
+
+
+def test_resource_header_reader_rejects_short_or_invalid_data() -> None:
+    with pytest.raises(ValueError, match="too short"):
+        read_rsc7_header(b"RSC7")
+    with pytest.raises(ValueError, match="does not start"):
+        read_rsc7_header(b"BAD!" + b"\0" * 12)
 
 
 def test_resource_stream_rejects_trailing_data():
