@@ -268,7 +268,7 @@ class DlcPack:
         archive.file(self.setup.dat_file or "content.xml", self.content.to_xml_bytes())
         for path, value in self.files.items():
             if isinstance(value, RpfFileSource):
-                archive.rpf_file(path, value)
+                archive.file_path(path, value)
             else:
                 archive.file(path, value)
         return archive

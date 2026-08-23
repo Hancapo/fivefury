@@ -11,6 +11,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
 - RPF and DLC authoring now use `RpfEncryption` instead of raw encryption integers or a separate DLC enum.
+- File-backed RPF authoring now requires `RpfFileSource.raw()`, `compressed()`, `resource()`, or `archive()` instead of implicit path and nested-archive APIs.
 
 ### Added
 
@@ -27,6 +28,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Performance
 
 - RPF packaging now streams existing nested archives and inspects resource headers without parsing, reserializing, or inflating their payloads.
+- File-backed binary compression now writes DEFLATE incrementally without retaining the source or compressed payload in memory.
 - Regional YMF builds can reuse one prepared YTYP dependency index across map groups.
 
 ## [0.4.19] - 2026-08-22

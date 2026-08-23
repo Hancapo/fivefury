@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import struct
+import zlib
 from shutil import copyfileobj
 from typing import TYPE_CHECKING, BinaryIO
 
 from ..resource import read_rsc7_header
 from .entries import RpfBinaryFileEntry, RpfDirectoryEntry, RpfResourceFileEntry
 from .modes import RpfEncryption
+from .sources import RpfSourceKind
 from .utils import RPF_BLOCK_SIZE, RPF_MAGIC, _ceil_div
 
 if TYPE_CHECKING:
@@ -21,16 +23,38 @@ def _write_file_payload(
     stream: BinaryIO,
     offset_blocks: int,
 ) -> bytes:
-    source = entry._source_path
+    source = entry._source
     if source is None:
-        raise ValueError("file-backed RPF entry is missing its source path")
-    payload_size = source.stat().st_size
-    with source.open("rb") as input_stream:
+        raise ValueError("file-backed RPF entry is missing its source")
+    with source.path.open("rb") as input_stream:
         if isinstance(entry, RpfBinaryFileEntry):
+            if source.kind is RpfSourceKind.DEFLATE:
+                compressor = zlib.compressobj(
+                    level=source.compression_level,
+                    method=zlib.DEFLATED,
+                    wbits=-15,
+                )
+                payload_size = 0
+                while chunk := input_stream.read(_COPY_BUFFER_SIZE):
+                    encoded = compressor.compress(chunk)
+                    stream.write(encoded)
+                    payload_size += len(encoded)
+                encoded = compressor.flush()
+                stream.write(encoded)
+                payload_size += len(encoded)
+                entry.file_size = payload_size
+                entry.file_uncompressed_size = source.size
+                return archive._encode_binary_entry_header(
+                    entry, payload_size, offset_blocks
+                )
+            payload_size = source.size
             raw_entry = archive._encode_binary_entry_header(
                 entry, payload_size, offset_blocks
             )
         else:
+            if source.kind is not RpfSourceKind.RSC7:
+                raise ValueError("Resource entries require an RSC7 file source")
+            payload_size = source.size
             source_header = input_stream.read(16)
             header = read_rsc7_header(source_header)
             raw_entry = archive._encode_resource_entry_header(
@@ -91,7 +115,7 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             continue
 
         current_offset = stream.tell() // RPF_BLOCK_SIZE
-        if entry._source_path is not None:
+        if entry._source is not None:
             encoded_entries[index] = _write_file_payload(
                 archive, entry, stream, current_offset
             )
