@@ -177,6 +177,9 @@ class NativeCryptoContext:
     def can_decrypt(self) -> bool:
         return bool(_ffi.crypto_can_decrypt(self._capsule))
 
+    def enable_encryption(self, ng_encrypt_blob: bytes | bytearray | memoryview) -> None:
+        _ffi.crypto_enable_encryption(self._capsule, bytes(ng_encrypt_blob))
+
     def decrypt_archive_table(
         self,
         data: bytes | bytearray | memoryview,
@@ -199,6 +202,32 @@ class NativeCryptoContext:
         hash_lut: bytes | bytearray | memoryview,
     ) -> bytes:
         return _ffi.crypto_decrypt_data(
+            self._capsule, bytes(data), int(encryption),
+            str(entry_name), int(entry_length), bytes(hash_lut),
+        )
+
+    def encrypt_archive_table(
+        self,
+        data: bytes | bytearray | memoryview,
+        encryption: int,
+        archive_name: str,
+        archive_length: int,
+        hash_lut: bytes | bytearray | memoryview,
+    ) -> bytes:
+        return _ffi.crypto_encrypt_archive_table(
+            self._capsule, bytes(data), int(encryption),
+            str(archive_name), int(archive_length), bytes(hash_lut),
+        )
+
+    def encrypt_data(
+        self,
+        data: bytes | bytearray | memoryview,
+        encryption: int,
+        entry_name: str,
+        entry_length: int,
+        hash_lut: bytes | bytearray | memoryview,
+    ) -> bytes:
+        return _ffi.crypto_encrypt_data(
             self._capsule, bytes(data), int(encryption),
             str(entry_name), int(entry_length), bytes(hash_lut),
         )

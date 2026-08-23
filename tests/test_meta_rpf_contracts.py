@@ -951,7 +951,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertTrue(crypto is get_game_crypto())
 
     def test_encrypted_rpf_can_auto_resolve_default_crypto(self) -> None:
-        from fivefury import NG_ENCRYPTION, RpfArchive, clear_game_crypto, create_rpf
+        from fivefury import RpfArchive, RpfEncryption, clear_game_crypto, create_rpf
 
         class _FakeCrypto:
             def decrypt_archive_table(self, data, encryption, *, archive_name, archive_size):
@@ -963,7 +963,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         archive = create_rpf("auto_crypto.rpf")
         archive.file("hello.txt", b"hello")
         encrypted = bytearray(archive.to_bytes())
-        struct.pack_into("<I", encrypted, 12, NG_ENCRYPTION)
+        struct.pack_into("<I", encrypted, 12, RpfEncryption.NG)
 
         clear_game_crypto()
         with patch("fivefury.rpf.archive.ensure_game_crypto", return_value=_FakeCrypto()) as mocked:
@@ -2066,7 +2066,6 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertGreaterEqual(header.graphics_size, len(data))
 
     def test_rpf_writer_supports_large_resource_entries(self) -> None:
-        import fivefury.rpf.archive as rpf_module
         from fivefury.rpf import RpfArchive
         from fivefury.rpf.entries import RpfResourceFileEntry
         from fivefury.rpf.utils import RSC7_MAGIC
@@ -2075,9 +2074,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         resource = struct.pack("<IIII", RSC7_MAGIC, 0, 0, 0) + bytes(stored_size - 16)
         archive = RpfArchive.empty("large_resources.rpf")
 
-        with patch.object(rpf_module, "_split_rsc7", return_value=(0, 0, 0, b"")):
-            archive.file("stream/large.ytd", resource)
-            packed = archive.to_bytes()
+        archive.file("stream/large.ytd", resource)
+        packed = archive.to_bytes()
 
         reread = RpfArchive.from_bytes(packed, name="large_resources.rpf")
         entry = reread.find_entry("stream/large.ytd")
