@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import struct
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -45,6 +46,7 @@ class GameCrypto:
     _aes: _AesEcbCipher | None = field(default=None, init=False, repr=False, compare=False)
     _ng_subkeys: tuple[tuple[tuple[int, int, int, int], ...], ...] | None = field(default=None, init=False, repr=False, compare=False)
     _native_context: object | None = field(default=None, init=False, repr=False, compare=False)
+    _ng_encryption_loaded: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.aes_key = bytes(self.aes_key)
@@ -197,6 +199,49 @@ class GameCrypto:
 
         return self.native_context().decrypt_data(data, encryption, entry_name, entry_length, _get_lut())
 
+    def encrypt_archive_table(
+        self,
+        data: bytes,
+        encryption: int,
+        *,
+        archive_name: str,
+        archive_size: int,
+    ) -> bytes:
+        if encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+            return data
+        from ..hashing import _get_lut
+
+        self._ensure_ng_encryption(encryption)
+        return self.native_context().encrypt_archive_table(
+            data, encryption, archive_name, archive_size, _get_lut()
+        )
+
+    def encrypt_entry_payload(
+        self,
+        data: bytes,
+        encryption: int,
+        *,
+        entry_name: str,
+        entry_length: int,
+    ) -> bytes:
+        if not data or encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+            return data
+        from ..hashing import _get_lut
+
+        self._ensure_ng_encryption(encryption)
+        return self.native_context().encrypt_data(
+            data, encryption, entry_name, entry_length, _get_lut()
+        )
+
+    def _ensure_ng_encryption(self, encryption: int) -> None:
+        if encryption != NG_ENCRYPTION or self._ng_encryption_loaded:
+            return
+        packaged = _read_packaged_data("ng_encrypt.dat")
+        if packaged is None:
+            raise RuntimeError("NG encryption tables are unavailable")
+        self.native_context().enable_encryption(zlib.decompress(packaged[0]))
+        self._ng_encryption_loaded = True
+
     def clone_for_worker(self) -> GameCrypto:
         clone = object.__new__(GameCrypto)
         clone.aes_key = self.aes_key
@@ -208,6 +253,7 @@ class GameCrypto:
         clone._aes = None
         clone._ng_subkeys = self._ng_subkeys
         clone._native_context = self._native_context
+        clone._ng_encryption_loaded = self._ng_encryption_loaded
         return clone
 
     def _build_ng_blob(self) -> bytes:

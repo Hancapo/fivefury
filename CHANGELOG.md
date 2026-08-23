@@ -18,6 +18,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Typed YFT articulated-body authoring with explicit joint frames, angular ranges, branching link graphs, and per-link mass properties.
 - Public RSC7 header inspection, file-backed RPF payloads, and reusable YMF dependency indexes.
 - Structured RPF validation for names, directory ranges, platform encryption, packed offsets, payload sizes, nested archives, resource headers, and overlaps.
+- AES and NG RPF writing with encrypted compressed payloads and byte-preserving unchanged round-trips.
 
 ### Fixed
 
@@ -29,6 +30,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - RPF packaging now streams existing nested archives and inspects resource headers without parsing, reserializing, or inflating their payloads.
 - File-backed binary compression now writes DEFLATE incrementally without retaining the source or compressed payload in memory.
+- NG encryption tables are compressed in the package and loaded only when an NG archive is written.
 - Regional YMF builds can reuse one prepared YTYP dependency index across map groups.
 
 ## [0.4.19] - 2026-08-22

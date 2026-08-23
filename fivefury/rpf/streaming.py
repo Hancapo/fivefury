@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import struct
 import zlib
-from shutil import copyfileobj
 from typing import TYPE_CHECKING, BinaryIO
 
 from ..resource import read_rsc7_header
@@ -15,6 +14,75 @@ if TYPE_CHECKING:
     from .archive import RpfArchive
 
 _COPY_BUFFER_SIZE = 1024 * 1024
+
+
+class _PayloadWriter:
+    def __init__(
+        self,
+        archive: RpfArchive,
+        entry: RpfBinaryFileEntry | RpfResourceFileEntry,
+        stream: BinaryIO,
+        entry_length: int,
+    ) -> None:
+        self.archive = archive
+        self.entry = entry
+        self.stream = stream
+        self.entry_length = entry_length
+        self.pending = bytearray()
+        self.written = 0
+
+    def write(self, chunk: bytes) -> None:
+        if not self.entry.is_encrypted:
+            self.stream.write(chunk)
+            self.written += len(chunk)
+            return
+        self.pending.extend(chunk)
+        aligned = len(self.pending) - len(self.pending) % 16
+        if not aligned:
+            return
+        self._write_encrypted(bytes(self.pending[:aligned]))
+        del self.pending[:aligned]
+
+    def finish(self) -> int:
+        if self.pending:
+            self.stream.write(self.pending)
+            self.written += len(self.pending)
+            self.pending.clear()
+        return self.written
+
+    def _write_encrypted(self, payload: bytes) -> None:
+        assert self.archive.crypto is not None
+        encoded = self.archive.crypto.encrypt_entry_payload(
+            payload,
+            self.archive.encryption,
+            entry_name=self.entry.name,
+            entry_length=self.entry_length,
+        )
+        self.stream.write(encoded)
+        self.written += len(encoded)
+
+
+def _encrypt_stored_payload(
+    archive: RpfArchive,
+    entry: RpfBinaryFileEntry | RpfResourceFileEntry,
+    stored: bytes,
+) -> bytes:
+    if not entry.is_encrypted:
+        return stored
+    assert archive.crypto is not None
+    if isinstance(entry, RpfResourceFileEntry):
+        return stored[:16] + archive.crypto.encrypt_entry_payload(
+            stored[16:],
+            archive.encryption,
+            entry_name=entry.name,
+            entry_length=len(stored),
+        )
+    return archive.crypto.encrypt_entry_payload(
+        stored,
+        archive.encryption,
+        entry_name=entry.name,
+        entry_length=entry.file_uncompressed_size,
+    )
 
 
 def _write_file_payload(
@@ -34,14 +102,11 @@ def _write_file_payload(
                     method=zlib.DEFLATED,
                     wbits=-15,
                 )
-                payload_size = 0
+                writer = _PayloadWriter(archive, entry, stream, source.size)
                 while chunk := input_stream.read(_COPY_BUFFER_SIZE):
-                    encoded = compressor.compress(chunk)
-                    stream.write(encoded)
-                    payload_size += len(encoded)
-                encoded = compressor.flush()
-                stream.write(encoded)
-                payload_size += len(encoded)
+                    writer.write(compressor.compress(chunk))
+                writer.write(compressor.flush())
+                payload_size = writer.finish()
                 entry.file_size = payload_size
                 entry.file_uncompressed_size = source.size
                 return archive._encode_binary_entry_header(
@@ -51,6 +116,11 @@ def _write_file_payload(
             raw_entry = archive._encode_binary_entry_header(
                 entry, payload_size, offset_blocks
             )
+            writer = _PayloadWriter(archive, entry, stream, source.size)
+            while chunk := input_stream.read(_COPY_BUFFER_SIZE):
+                writer.write(chunk)
+            writer.finish()
+            return raw_entry
         else:
             if source.kind is not RpfSourceKind.RSC7:
                 raise ValueError("Resource entries require an RSC7 file source")
@@ -67,17 +137,16 @@ def _write_file_payload(
                     source_header, payload_size
                 )
             stream.write(source_header)
-        copyfileobj(input_stream, stream, length=_COPY_BUFFER_SIZE)
+        writer = _PayloadWriter(archive, entry, stream, payload_size)
+        while chunk := input_stream.read(_COPY_BUFFER_SIZE):
+            writer.write(chunk)
+        writer.finish()
     return raw_entry
 
 
 def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
     """Write an archive without retaining all file payloads in memory."""
 
-    if archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN):
-        raise NotImplementedError(
-            "Writing AES/NG-encrypted RPF archives is not supported"
-        )
     if not stream.seekable():
         raise ValueError("RPF output stream must be seekable")
 
@@ -96,11 +165,7 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
 
     stream.seek(0)
     stream.truncate()
-    stream.write(
-        struct.pack("<4I", RPF_MAGIC, entry_count, len(names), archive.encryption)
-    )
-    stream.write(b"\x00" * (entry_count * 16))
-    stream.write(names)
+    stream.write(b"\x00" * header_size)
     stream.write(b"\x00" * (data_start - stream.tell()))
 
     for index, entry in enumerate(entries):
@@ -115,6 +180,18 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             continue
 
         current_offset = stream.tell() // RPF_BLOCK_SIZE
+        if (
+            isinstance(entry, RpfBinaryFileEntry)
+            and archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN)
+            and (
+                entry.file_size > 0
+                or (
+                    entry._source is not None
+                    and entry._source.kind is RpfSourceKind.DEFLATE
+                )
+            )
+        ):
+            entry.is_encrypted = True
         if entry._source is not None:
             encoded_entries[index] = _write_file_payload(
                 archive, entry, stream, current_offset
@@ -146,19 +223,56 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
         else:  # pragma: no cover - _collect_entries only emits known entry types.
             raise TypeError("Unsupported RPF entry type")
         encoded_entries[index] = raw_entry
+        stored = _encrypt_stored_payload(archive, entry, stored)
         stream.write(stored)
         padding = (-stream.tell()) % RPF_BLOCK_SIZE
         if padding:
             stream.write(b"\x00" * padding)
 
+    final_padding = (-stream.tell()) % 2048
+    if final_padding:
+        stream.write(b"\x00" * final_padding)
     total_size = stream.tell()
-    stream.seek(16)
+    entries_data = bytearray()
     for raw_entry in encoded_entries:
         if (
             raw_entry is None
         ):  # pragma: no cover - guarded by the exhaustive loop above.
             raise RuntimeError("RPF entry table was not fully encoded")
-        stream.write(raw_entry)
+        entries_data.extend(raw_entry)
+    if archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN):
+        assert archive.crypto is not None
+        entries_data = bytearray(
+            archive.crypto.encrypt_archive_table(
+                bytes(entries_data),
+                archive.encryption,
+                archive_name=archive.name,
+                archive_size=total_size,
+            )
+        )
+        names = archive.crypto.encrypt_archive_table(
+            names,
+            archive.encryption,
+            archive_name=archive.name,
+            archive_size=total_size,
+        )
+    stream.seek(0)
+    encoded_names_length = (
+        len(names)
+        | ((archive.name_shift & 0x7) << 28)
+        | (0x80000000 if archive.xcompressed else 0)
+    )
+    stream.write(
+        struct.pack(
+            "<4I",
+            RPF_MAGIC,
+            entry_count,
+            encoded_names_length,
+            archive.encryption,
+        )
+    )
+    stream.write(entries_data)
+    stream.write(names)
     stream.seek(total_size)
     archive._rebuild_index()
     return total_size
