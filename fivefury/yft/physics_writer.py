@@ -87,9 +87,7 @@ def write_physics_child_header(
         writer,
         offset,
         vft=runtime_headers.physics_child,
-        resource_state=(
-            child.resource_state if child is not None else RESOURCE_STATE
-        ),
+        resource_state=(child.resource_state if child is not None else RESOURCE_STATE),
         expected_vft=runtime_headers.physics_child,
         label="fragTypeChild",
     )
@@ -141,7 +139,9 @@ def _write_u8_array(writer: ResourceWriter, values: Sequence[int]) -> int:
     if not values:
         return 0
     offset = writer.alloc(len(values), 1, relocate_pointers=False)
-    writer.data[offset : offset + len(values)] = bytes(int(value) & 0xFF for value in values)
+    writer.data[offset : offset + len(values)] = bytes(
+        int(value) & 0xFF for value in values
+    )
     return offset
 
 
@@ -190,9 +190,7 @@ def _physics_bound_child_offsets(
                 writer.data,
                 pointer_offset + index * 8,
             )[0]
-            offsets.append(
-                child_pointer - DAT_VIRTUAL_BASE if child_pointer else 0
-            )
+            offsets.append(child_pointer - DAT_VIRTUAL_BASE if child_pointer else 0)
         return tuple(offsets)
     if child_count == 1:
         return (bound_offset,)
@@ -295,8 +293,7 @@ def _sparsify_damaged_bound_children(
         )
     if not children_pointer and child_count:
         raise ValueError(
-            f"physics LOD '{lod.label}' damaged composite child pointer "
-            "array is null"
+            f"physics LOD '{lod.label}' damaged composite child pointer array is null"
         )
     pointer_offset = children_pointer - DAT_VIRTUAL_BASE
     for index, child in enumerate(lod.children):
@@ -430,6 +427,8 @@ def _write_physics_group(
     *,
     event_set_offsets: dict[int, int],
 ) -> int:
+    if group.total_damaged_mass is None:
+        raise ValueError("physics group damaged mass must be normalized before writing")
     offset = writer.alloc(_PHYSICS_GROUP_SIZE, 16)
     writer.pack_into(
         "Q",
@@ -462,7 +461,9 @@ def _write_physics_group(
         float(group.restoring_max_torque),
         float(group.latch_strength),
     )
-    writer.pack_into("ff", offset + 0x44, group.total_undamaged_mass, group.total_damaged_mass)
+    writer.pack_into(
+        "ff", offset + 0x44, group.total_undamaged_mass, group.total_damaged_mass
+    )
     writer.data[offset + 0x4C] = int(group.child_groups_pointers_index) & 0xFF
     writer.data[offset + 0x4D] = int(group.parent_group_pointer_index) & 0xFF
     writer.data[offset + 0x4E] = int(group.child_index) & 0xFF
@@ -528,6 +529,8 @@ def _write_physics_child(
     allow_fragment_fallback: bool,
     runtime_headers: YftRuntimeHeaders,
 ) -> int:
+    if child.damaged_mass is None:
+        raise ValueError("physics child damaged mass must be normalized before writing")
     child_offset = writer.alloc(_PHYSICS_CHILD_SIZE, 16) if offset is None else offset
     write_physics_child_header(
         writer,
@@ -535,7 +538,9 @@ def _write_physics_child(
         child,
         runtime_headers=runtime_headers,
     )
-    writer.pack_into("ff", child_offset + 0x08, child.undamaged_mass, child.damaged_mass)
+    writer.pack_into(
+        "ff", child_offset + 0x08, child.undamaged_mass, child.damaged_mass
+    )
     writer.data[child_offset + 0x10] = int(child.owner_group_pointer_index) & 0xFF
     writer.data[child_offset + 0x11] = int(child.flags) & 0xFF
     writer.pack_into("H", child_offset + 0x12, int(child.bone_id) & 0xFFFF)
@@ -591,7 +596,9 @@ def _write_damp_archetype(
     )
     writer.pack_into("i", offset + 0x10, int(archetype.resource_type or 2))
     filename_offset = writer.c_string(archetype.filename) if archetype.filename else 0
-    writer.pack_into("Q", offset + 0x18, _virtual(filename_offset) if filename_offset else 0)
+    writer.pack_into(
+        "Q", offset + 0x18, _virtual(filename_offset) if filename_offset else 0
+    )
     writer.pack_into("Q", offset + 0x20, int(bound_pointer))
     writer.pack_into(
         "IIHH",
@@ -638,7 +645,9 @@ def _write_articulated_body_type(
     for index in range(23):
         value = parent_indices[index] if index < len(parent_indices) else -1
         writer.pack_into("i", offset + 0x10 + index * 4, int(value))
-    writer.pack_into("ff", offset + 0x6C, body.replace_upon_reresource, body.angular_decay_rate)
+    writer.pack_into(
+        "ff", offset + 0x6C, body.replace_upon_reresource, body.angular_decay_rate
+    )
     joint_offsets = [
         _write_physics_joint(writer, joint, runtime_headers=runtime_headers)
         for joint in body.joints
@@ -647,8 +656,14 @@ def _write_articulated_body_type(
         writer, [_virtual(joint_offset) for joint_offset in joint_offsets]
     )
     inertia_offset = _write_inertia_array(writer, body.resourced_ang_inertia)
-    writer.pack_into("Q", offset + 0x78, _virtual(joint_pointer_offset) if joint_pointer_offset else 0)
-    writer.pack_into("Q", offset + 0x80, _virtual(inertia_offset) if inertia_offset else 0)
+    writer.pack_into(
+        "Q",
+        offset + 0x78,
+        _virtual(joint_pointer_offset) if joint_pointer_offset else 0,
+    )
+    writer.pack_into(
+        "Q", offset + 0x80, _virtual(inertia_offset) if inertia_offset else 0
+    )
     writer.data[offset + 0x88] = int(body.num_links) & 0xFF
     num_joints = len(body.joints) if body.joints else int(body.num_joints)
     writer.data[offset + 0x89] = num_joints & 0xFF
@@ -882,18 +897,26 @@ def _write_physics_lod(
         undamaged_bound_offsets=undamaged_child_bound_offsets,
         damaged_bound_offsets=damaged_child_bound_offsets,
     )
-    undamaged_damp_offset = _write_damp_archetype(
-        writer,
-        lod.undamaged_damp_archetype,
-        bound_pointer=bound_pointer,
-        runtime_headers=runtime_headers,
-    ) if lod.undamaged_damp_archetype is not None else 0
-    damaged_damp_offset = _write_damp_archetype(
-        writer,
-        lod.damaged_damp_archetype,
-        bound_pointer=damaged_bound_pointer,
-        runtime_headers=runtime_headers,
-    ) if lod.damaged_damp_archetype is not None else 0
+    undamaged_damp_offset = (
+        _write_damp_archetype(
+            writer,
+            lod.undamaged_damp_archetype,
+            bound_pointer=bound_pointer,
+            runtime_headers=runtime_headers,
+        )
+        if lod.undamaged_damp_archetype is not None
+        else 0
+    )
+    damaged_damp_offset = (
+        _write_damp_archetype(
+            writer,
+            lod.damaged_damp_archetype,
+            bound_pointer=damaged_bound_pointer,
+            runtime_headers=runtime_headers,
+        )
+        if lod.damaged_damp_archetype is not None
+        else 0
+    )
     body_offset = _write_articulated_body_type(
         writer,
         lod.articulated_body_type,
@@ -908,7 +931,9 @@ def _write_physics_lod(
         )
         for group in lod.groups
     ]
-    groups_offset = _write_pointer_array(writer, [_virtual(offset) for offset in group_offsets])
+    groups_offset = _write_pointer_array(
+        writer, [_virtual(offset) for offset in group_offsets]
+    )
     children_offset = _write_child_array(
         writer,
         lod,
@@ -927,8 +952,12 @@ def _write_physics_lod(
         lod.link_attachments,
         runtime_headers=runtime_headers,
     )
-    self_collision_a_offset = _write_u8_array(writer, [first for first, _second in lod.self_collision_pairs])
-    self_collision_b_offset = _write_u8_array(writer, [second for _first, second in lod.self_collision_pairs])
+    self_collision_a_offset = _write_u8_array(
+        writer, [first for first, _second in lod.self_collision_pairs]
+    )
+    self_collision_b_offset = _write_u8_array(
+        writer, [second for _first, second in lod.self_collision_pairs]
+    )
 
     offset = writer.alloc(_PHYSICS_LOD_SIZE, 16)
     _write_resource_header(
@@ -939,26 +968,68 @@ def _write_physics_lod(
         expected_vft=runtime_headers.physics_lod,
         label="fragPhysicsLOD",
     )
-    writer.pack_into("fff", offset + 0x14, lod.smallest_ang_inertia, lod.largest_ang_inertia, lod.min_move_force)
+    writer.pack_into(
+        "fff",
+        offset + 0x14,
+        lod.smallest_ang_inertia,
+        lod.largest_ang_inertia,
+        lod.min_move_force,
+    )
     writer.pack_into("Q", offset + 0x20, _virtual(body_offset) if body_offset else 0)
-    writer.pack_into("Q", offset + 0x28, _virtual(min_impulses_offset) if min_impulses_offset else 0)
+    writer.pack_into(
+        "Q", offset + 0x28, _virtual(min_impulses_offset) if min_impulses_offset else 0
+    )
     _write_vec3_padded(writer, offset + 0x30, lod.root_cg_offset)
     _write_vec3_padded(writer, offset + 0x40, lod.original_root_cg_offset)
     _write_vec3_padded(writer, offset + 0x50, lod.unbroken_cg_offset)
     _write_damping(writer, offset + 0x60, lod.damping_constants)
-    writer.pack_into("Q", offset + 0xC0, _virtual(group_names_offset) if group_names_offset else 0)
-    writer.pack_into("Q", offset + 0xC8, _virtual(groups_offset) if groups_offset else 0)
-    writer.pack_into("Q", offset + 0xD0, _virtual(children_offset) if children_offset else 0)
-    writer.pack_into("Q", offset + 0xD8, _virtual(undamaged_damp_offset) if undamaged_damp_offset else 0)
-    writer.pack_into("Q", offset + 0xE0, _virtual(damaged_damp_offset) if damaged_damp_offset else 0)
+    writer.pack_into(
+        "Q", offset + 0xC0, _virtual(group_names_offset) if group_names_offset else 0
+    )
+    writer.pack_into(
+        "Q", offset + 0xC8, _virtual(groups_offset) if groups_offset else 0
+    )
+    writer.pack_into(
+        "Q", offset + 0xD0, _virtual(children_offset) if children_offset else 0
+    )
+    writer.pack_into(
+        "Q",
+        offset + 0xD8,
+        _virtual(undamaged_damp_offset) if undamaged_damp_offset else 0,
+    )
+    writer.pack_into(
+        "Q", offset + 0xE0, _virtual(damaged_damp_offset) if damaged_damp_offset else 0
+    )
     writer.pack_into("Q", offset + 0xE8, bound_pointer)
-    writer.pack_into("Q", offset + 0xF0, _virtual(undamaged_inertia_offset) if undamaged_inertia_offset else 0)
-    writer.pack_into("Q", offset + 0xF8, _virtual(damaged_inertia_offset) if damaged_inertia_offset else 0)
-    writer.pack_into("Q", offset + 0x100, _virtual(link_attachments_offset) if link_attachments_offset else 0)
-    writer.pack_into("Q", offset + 0x108, _virtual(self_collision_a_offset) if self_collision_a_offset else 0)
-    writer.pack_into("Q", offset + 0x110, _virtual(self_collision_b_offset) if self_collision_b_offset else 0)
+    writer.pack_into(
+        "Q",
+        offset + 0xF0,
+        _virtual(undamaged_inertia_offset) if undamaged_inertia_offset else 0,
+    )
+    writer.pack_into(
+        "Q",
+        offset + 0xF8,
+        _virtual(damaged_inertia_offset) if damaged_inertia_offset else 0,
+    )
+    writer.pack_into(
+        "Q",
+        offset + 0x100,
+        _virtual(link_attachments_offset) if link_attachments_offset else 0,
+    )
+    writer.pack_into(
+        "Q",
+        offset + 0x108,
+        _virtual(self_collision_a_offset) if self_collision_a_offset else 0,
+    )
+    writer.pack_into(
+        "Q",
+        offset + 0x110,
+        _virtual(self_collision_b_offset) if self_collision_b_offset else 0,
+    )
     writer.data[offset + 0x118] = len(lod.self_collision_pairs) & 0xFF
-    writer.data[offset + 0x119] = max(lod.max_num_self_collisions, len(lod.self_collision_pairs)) & 0xFF
+    writer.data[offset + 0x119] = (
+        max(lod.max_num_self_collisions, len(lod.self_collision_pairs)) & 0xFF
+    )
     writer.data[offset + 0x11A] = len(lod.groups) & 0xFF
     writer.data[offset + 0x11B] = int(lod.root_group_count) & 0xFF
     writer.data[offset + 0x11C] = int(lod.num_root_damage_regions) & 0xFF
@@ -977,9 +1048,7 @@ def write_physics_lod_group(
     entity_drawable_offsets: dict[int, int],
     event_set_offsets: dict[int, int],
     fallback_bound: Bound | None = None,
-    bound_profile: YftPhysicsBoundProfile | str = (
-        YftPhysicsBoundProfile.PROP
-    ),
+    bound_profile: YftPhysicsBoundProfile | str = (YftPhysicsBoundProfile.PROP),
     runtime_headers: YftRuntimeHeaders = LEGACY_YFT_RUNTIME_HEADERS,
 ) -> tuple[int, tuple[YftPhysicsLod, ...]]:
     if not lods:
@@ -1019,9 +1088,17 @@ def write_physics_lod_group(
         expected_vft=runtime_headers.physics_lod_group,
         label="fragPhysicsLODGroup",
     )
-    writer.pack_into("Q", group_offset + 0x10, _virtual(offsets["high"]) if "high" in offsets else 0)
-    writer.pack_into("Q", group_offset + 0x18, _virtual(offsets["medium"]) if "medium" in offsets else 0)
-    writer.pack_into("Q", group_offset + 0x20, _virtual(offsets["low"]) if "low" in offsets else 0)
+    writer.pack_into(
+        "Q", group_offset + 0x10, _virtual(offsets["high"]) if "high" in offsets else 0
+    )
+    writer.pack_into(
+        "Q",
+        group_offset + 0x18,
+        _virtual(offsets["medium"]) if "medium" in offsets else 0,
+    )
+    writer.pack_into(
+        "Q", group_offset + 0x20, _virtual(offsets["low"]) if "low" in offsets else 0
+    )
     return group_offset, tuple(
         dataclasses.replace(lod, pointer=_virtual(offsets[lod.label.lower()]))
         for lod in normalized

@@ -139,7 +139,7 @@ class YftPhysicsGroup:
     restoring_max_torque: float = 0.0
     latch_strength: float = 0.0
     total_undamaged_mass: float = 0.0
-    total_damaged_mass: float = 0.0
+    total_damaged_mass: float | None = None
     child_groups_pointers_index: int = 0xFF
     parent_group_pointer_index: int = 0xFF
     child_index: int = 0xFF
@@ -241,11 +241,6 @@ class YftPhysicsGroup:
             if total_undamaged_mass is not None
             else sum(child.undamaged_mass for child in declared_children)
         )
-        damaged_mass = (
-            float(total_damaged_mass)
-            if total_damaged_mass is not None
-            else sum(child.damaged_mass for child in declared_children)
-        )
         declared_flags = YftPhysicsGroupFlag(flags)
         if glass_pane_index is not None:
             if not declared_children:
@@ -257,7 +252,9 @@ class YftPhysicsGroup:
             name=str(name),
             strength=float(strength),
             total_undamaged_mass=undamaged_mass,
-            total_damaged_mass=damaged_mass,
+            total_damaged_mass=(
+                float(total_damaged_mass) if total_damaged_mass is not None else None
+            ),
             child_index=0 if declared_children else 0xFF,
             num_children=len(declared_children),
             num_child_groups=len(child_groups),
@@ -444,9 +441,7 @@ class YftPhysicsTransforms:
         return len(self.matrices)
 
     @classmethod
-    def declare(
-        cls, matrices: Sequence[Matrix4] = ()
-    ) -> YftPhysicsTransforms:
+    def declare(cls, matrices: Sequence[Matrix4] = ()) -> YftPhysicsTransforms:
         return cls(matrices=tuple(matrices))
 
 
@@ -456,7 +451,7 @@ class YftPhysicsChild:
     vft: int = FRAG_TYPE_CHILD_VFT
     resource_state: int = RESOURCE_STATE
     undamaged_mass: float = 0.0
-    damaged_mass: float = 0.0
+    damaged_mass: float | None = None
     owner_group_pointer_index: int = 0
     flags: int = 0
     bone_id: int = 0
@@ -468,9 +463,7 @@ class YftPhysicsChild:
     undamaged_ang_inertia: YftPhysicsInertia = dataclasses.field(
         default_factory=YftPhysicsInertia
     )
-    damaged_ang_inertia: YftPhysicsInertia = dataclasses.field(
-        default_factory=YftPhysicsInertia
-    )
+    damaged_ang_inertia: YftPhysicsInertia | None = None
     undamaged_entity: YftPhysicsEntity | None = dataclasses.field(
         default=None, repr=False, compare=False
     )
@@ -548,9 +541,7 @@ class YftPhysicsChild:
     ) -> YftPhysicsChild:
         return cls(
             undamaged_mass=float(undamaged_mass),
-            damaged_mass=float(
-                damaged_mass if damaged_mass is not None else undamaged_mass
-            ),
+            damaged_mass=(float(damaged_mass) if damaged_mass is not None else None),
             flags=int(reserved_flags),
             bone_id=int(bone_id),
             bone_controlled=bone_controlled,
@@ -703,7 +694,11 @@ class YftPhysicsLod:
 
     @property
     def total_damaged_mass(self) -> float:
-        return sum(child.damaged_mass for child in self.children)
+        return sum(
+            child.damaged_mass
+            for child in self.children
+            if child.damaged_mass is not None
+        )
 
     @property
     def is_all_glass(self) -> bool:
@@ -741,7 +736,9 @@ class YftPhysicsLod:
 
     @property
     def glass_groups(self) -> tuple[YftPhysicsGroup, ...]:
-        return tuple(group for group in self.groups if group.is_glass or group.is_legacy_glass)
+        return tuple(
+            group for group in self.groups if group.is_glass or group.is_legacy_glass
+        )
 
     @property
     def cloth_groups(self) -> tuple[YftPhysicsGroup, ...]:
@@ -835,8 +832,16 @@ class YftPhysicsLod:
             undamaged_ang_inertia=tuple(
                 child.undamaged_ang_inertia for child in declared_children
             ),
-            damaged_ang_inertia=tuple(
-                child.damaged_ang_inertia for child in declared_children
+            damaged_ang_inertia=(
+                tuple(
+                    child.damaged_ang_inertia
+                    for child in declared_children
+                    if child.damaged_ang_inertia is not None
+                )
+                if all(
+                    child.damaged_ang_inertia is not None for child in declared_children
+                )
+                else ()
             ),
         )
 
