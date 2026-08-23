@@ -11,6 +11,7 @@ from ..vector import Vector2, Vector3
 from .articulation import validate_articulated_body
 from .bound_profiles import YftPhysicsBoundProfile, validate_bound_profile
 from .constants import MAX_EXTRA_BOUNDS
+from .fragment_drawable import YftFragmentDrawableName, YftFragmentMatrix
 from .geometry import (
     MAX_FRAGMENT_BOUND_MATERIALS,
     MAX_FRAGMENT_BOUND_POLYGONS,
@@ -1218,6 +1219,38 @@ def validate_yft(
             )
         extra_bounds = getattr(drawable, "extra_bounds", ())
         matrices = getattr(drawable, "extra_bound_matrices", ())
+        fragment_matrix = getattr(drawable, "fragment_matrix", None)
+        if fragment_matrix is not None and not isinstance(
+            fragment_matrix, YftFragmentMatrix
+        ):
+            _issue(
+                issues,
+                DiagnosticSeverity.ERROR,
+                f"drawables.{entry.label}.fragment_matrix",
+                "fragment matrix must be a YftFragmentMatrix",
+                code="yft.drawable.fragment_matrix.invalid_type",
+            )
+        skeleton_type_name = getattr(drawable, "skeleton_type_name", None)
+        if skeleton_type_name is not None and not isinstance(
+            skeleton_type_name, (YftFragmentDrawableName, str)
+        ):
+            _issue(
+                issues,
+                DiagnosticSeverity.ERROR,
+                f"drawables.{entry.label}.skeleton_type_name",
+                "skeleton type name must be explicit, derived, or null",
+                code="yft.drawable.skeleton_type_name.invalid",
+            )
+        if hasattr(drawable, "load_skeleton") and not isinstance(
+            drawable.load_skeleton, bool
+        ):
+            _issue(
+                issues,
+                DiagnosticSeverity.ERROR,
+                f"drawables.{entry.label}.load_skeleton",
+                "load_skeleton must be a boolean",
+                code="yft.drawable.load_skeleton.invalid_type",
+            )
         if len(extra_bounds) > MAX_EXTRA_BOUNDS:
             _issue(
                 issues,
@@ -1234,6 +1267,15 @@ def validate_yft(
                 "bound and matrix counts must match",
                 code="yft.bound_matrix_counts_must_match",
             )
+        for index, matrix in enumerate(matrices):
+            if not isinstance(matrix, YftFragmentMatrix):
+                _issue(
+                    issues,
+                    DiagnosticSeverity.ERROR,
+                    f"drawables.{entry.label}.extra_bound_matrices[{index}]",
+                    "extra-bound matrix must be a YftFragmentMatrix",
+                    code="yft.drawable.extra_bound_matrix.invalid_type",
+                )
         for index, bound in enumerate(extra_bounds):
             if bound is None:
                 continue

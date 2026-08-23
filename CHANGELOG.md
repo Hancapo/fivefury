@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Breaking Changes
 
 - Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
+- Null YFT fragment-drawable skeleton names now use `YftFragmentDrawableName.NULL` instead of an empty string.
 - Omitted YFT damaged mass, damaged inertia, and group damaged-mass totals now use `None`; numeric zero is an explicit preserved value.
 - RPF and DLC authoring now use `RpfEncryption` instead of raw encryption integers or a separate DLC enum.
 - File-backed RPF authoring now requires `RpfFileSource.raw()`, `compressed()`, `resource()`, or `archive()` instead of implicit path and nested-archive APIs.
@@ -17,6 +18,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Typed YFT articulated-body authoring with explicit joint frames, angular ranges, branching link graphs, and per-link mass properties.
+- Typed fragment-drawable authoring directly from `YdrBuild` or a donor fragment, including matrices, extra bounds, skeleton-name policy, and skeleton loading state.
 - Public RSC7 header inspection, file-backed RPF payloads, and reusable YMF dependency indexes.
 - Structured RPF validation for names, directory ranges, platform encryption, packed offsets, payload sizes, nested archives, resource headers, and overlaps.
 - AES and NG RPF writing with encrypted compressed payloads and byte-preserving unchanged round-trips.
@@ -28,6 +30,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Handling metadata now preserves unsigned 32-bit hexadecimal flag values, explicit zero fields, and unknown bits in the retail XML dialect.
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
 - Timed archetypes now preserve typed spatial and hash fields when read from YTYP metadata.
+- YFT authoring now preserves explicit null skeleton-name pointers and rejects stale resource pointers in fragment-drawable tail fields.
 
 ### Performance
 

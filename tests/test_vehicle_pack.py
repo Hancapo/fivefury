@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,8 @@ from fivefury import (
     YdrMaterialInput,
     YdrMeshInput,
     YdrSkeleton,
+    YftFragmentDrawableBuild,
+    YftFragmentDrawableName,
     YftPhysicsChild,
     YftPhysicsLod,
     YftVehicleGlassWindows,
@@ -623,6 +626,107 @@ def test_retail_enhanced_comet5_reauthoring_preserves_vertex_buffer_flags() -> N
             rebuilt = read_yft(build_yft_bytes(authored))
 
             assert _vertex_buffer_flags(rebuilt) == donor_flags
+            rebuilt_fragments.append(rebuilt)
+
+    assert validate_vehicle_yft_pair("comet5", *rebuilt_fragments).valid
+
+
+def _fragment_tail(drawable):
+    return (
+        drawable.fragment_matrix,
+        tuple(bound is None for bound in drawable.extra_bounds),
+        drawable.extra_bound_matrices,
+        drawable.skeleton_type_name,
+        drawable.load_skeleton,
+        bool(drawable.locators_pointer),
+        bool(drawable.animations_pointer),
+        bool(drawable.cloned_shader_group_pointer),
+    )
+
+
+def _fragment_build(drawable, *, name: str):
+    return YftFragmentDrawableBuild.from_fragment(
+        drawable,
+        drawable.to_build(name=name),
+    )
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail fragment-tail regression",
+)
+def test_retail_enhanced_comet5_reauthoring_preserves_fragment_drawable_tails() -> None:
+    assert _ENHANCED_ROOT is not None
+    rebuilt_fragments = []
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        game=GameTarget.GTA5_ENHANCED,
+        load_audio=False,
+        load_peds=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        for name in ("comet5", "comet5_hi"):
+            asset = cache.get_asset(name, kind=GameFileType.YFT)
+            assert asset is not None
+            game_file = cache.load_asset(asset)
+            assert game_file is not None
+            donor = game_file.parsed
+            assert donor.main_drawable.skeleton_type_name == "skel"
+
+            expected_tails = {
+                entry.label: _fragment_tail(entry.drawable)
+                for entry in donor.iter_physics_drawables()
+            }
+            assert len(expected_tails) == 21
+            assert all(
+                tail[3] is YftFragmentDrawableName.NULL
+                for tail in expected_tails.values()
+            )
+            main_tail = _fragment_tail(donor.main_drawable)
+            donor.main_drawable = _fragment_build(
+                donor.main_drawable,
+                name=name,
+            )
+            rebuilt_lods = []
+            for lod in donor.physics_lod_details:
+                children = []
+                for child in lod.children:
+                    entities = {}
+                    for field_name in ("undamaged_entity", "damaged_entity"):
+                        entity = getattr(child, field_name)
+                        if entity is None or entity.drawable is None:
+                            continue
+                        entities[field_name] = dataclasses.replace(
+                            entity,
+                            drawable=_fragment_build(
+                                entity.drawable,
+                                name=entity.label,
+                            ),
+                        )
+                    children.append(dataclasses.replace(child, **entities))
+                child_by_pointer = {child.pointer: child for child in children}
+                groups = tuple(
+                    dataclasses.replace(
+                        group,
+                        children=tuple(
+                            child_by_pointer[child.pointer] for child in group.children
+                        ),
+                    )
+                    for group in lod.groups
+                )
+                rebuilt_lods.append(
+                    dataclasses.replace(lod, children=tuple(children), groups=groups)
+                )
+            donor.physics_lod_details = rebuilt_lods
+
+            rebuilt = read_yft(build_yft_bytes(donor))
+            assert _fragment_tail(rebuilt.main_drawable) == main_tail
+            assert {
+                entry.label: _fragment_tail(entry.drawable)
+                for entry in rebuilt.iter_physics_drawables()
+            } == expected_tails
+            assert rebuilt.validate().valid
             rebuilt_fragments.append(rebuilt)
 
     assert validate_vehicle_yft_pair("comet5", *rebuilt_fragments).valid
