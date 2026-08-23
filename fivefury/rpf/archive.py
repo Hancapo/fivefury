@@ -20,7 +20,7 @@ from ..crypto import (
     ensure_game_crypto,
     get_game_crypto,
 )
-from ..resource import parse_rsc7
+from ..resource import ResourceHeader, parse_rsc7, read_rsc7_header
 from .convert import (
     _directory_to_rpf,
     _zip_to_rpf,
@@ -46,6 +46,7 @@ from .modes import (
     coerce_extraction_conflict,
 )
 from .ps3 import GTA5_PS3_AES_KEY, normalize_ps3_entries
+from .sources import RpfFileSource
 from .streaming import write_archive_stream
 from .utils import (
     RPF_BLOCK_SIZE,
@@ -63,7 +64,6 @@ from .utils import (
     _pad,
     _resource_flags_from_size,
     _resource_version_from_flags,
-    _split_rsc7,
 )
 
 
@@ -699,14 +699,14 @@ class RpfArchive:
             self.children.append(child)
         elif leaf_lower.endswith((".ymap", ".ytyp")) or _is_rsc7(data):
             if _is_rsc7(data):
-                _, sys_flags, gfx_flags, _ = _split_rsc7(data)
+                header = read_rsc7_header(data)
                 entry = RpfResourceFileEntry(
                     name=leaf,
                     path=normalized,
                     parent=parent,
                     file_size=len(data),
-                    system_flags=RpfResourcePageFlags(sys_flags),
-                    graphics_flags=RpfResourcePageFlags(gfx_flags),
+                    system_flags=RpfResourcePageFlags(header.system_flags),
+                    graphics_flags=RpfResourcePageFlags(header.graphics_flags),
                     _archive=self,
                     _data=data,
                 )
@@ -771,19 +771,24 @@ class RpfArchive:
             parent.remove_file(existing)
 
         if leaf_lower.endswith(".rpf") and _is_rpf7(header):
-            return self.file(normalized, source.read_bytes())
-        if _is_rsc7(header):
-            _magic, _version, system_flags, graphics_flags = struct.unpack(
-                "<4I",
-                header,
+            entry = RpfBinaryFileEntry(
+                name=leaf,
+                path=normalized,
+                parent=parent,
+                file_size=0,
+                file_uncompressed_size=size,
+                _archive=self,
+                _source_path=source,
             )
+        elif _is_rsc7(header):
+            resource_header = read_rsc7_header(header)
             entry: RpfFileEntry = RpfResourceFileEntry(
                 name=leaf,
                 path=normalized,
                 parent=parent,
                 file_size=size,
-                system_flags=RpfResourcePageFlags(system_flags),
-                graphics_flags=RpfResourcePageFlags(graphics_flags),
+                system_flags=RpfResourcePageFlags(resource_header.system_flags),
+                graphics_flags=RpfResourcePageFlags(resource_header.graphics_flags),
                 _archive=self,
                 _source_path=source,
             )
@@ -800,8 +805,13 @@ class RpfArchive:
                 _source_path=source,
             )
         parent.append_file(entry)
+        if leaf_lower.endswith(".rpf"):
+            self._nested_entries.append(entry)
         self._invalidate_index()
         return entry
+
+    def rpf_file(self, path: str | Path, source: RpfFileSource) -> RpfFileEntry:
+        return self.file_path(path, source.path)
 
     def _collect_entries(self) -> list[RpfEntry]:
         ordered: list[RpfEntry] = [self.root]
@@ -849,13 +859,18 @@ class RpfArchive:
     def _encode_binary_entry(
         self, entry: RpfBinaryFileEntry, data: bytes, offset_blocks: int
     ) -> tuple[bytes, bytes]:
+        return self._encode_binary_entry_header(entry, len(data), offset_blocks), data
+
+    def _encode_binary_entry_header(
+        self, entry: RpfBinaryFileEntry, payload_size: int, offset_blocks: int
+    ) -> bytes:
         if not 0 <= int(entry.name_offset) <= 0xFFFF:
             raise ValueError("RPF7 binary entry name offset exceeds 16 bits")
         if not 0 <= int(offset_blocks) <= 0xFFFFFF:
             raise ValueError("RPF7 binary entry block offset exceeds 24 bits")
         entry.file_offset = offset_blocks
         if entry.file_size == 0:
-            entry.file_uncompressed_size = len(data)
+            entry.file_uncompressed_size = payload_size
         low = (
             (entry.name_offset & 0xFFFF)
             | ((entry.file_size & 0xFFFFFF) << 16)
@@ -863,29 +878,39 @@ class RpfArchive:
         )
         return struct.pack(
             "<QII", low, entry.file_uncompressed_size, 1 if entry.is_encrypted else 0
-        ), data
+        )
 
     def _encode_resource_entry(
         self, entry: RpfResourceFileEntry, data: bytes, offset_blocks: int
     ) -> tuple[bytes, bytes]:
+        if _is_rsc7(data):
+            header = read_rsc7_header(data)
+            payload = _encode_large_resource_header_size(data, len(data))
+        else:
+            sys_flags = _resource_flags_from_size(len(data), 0)
+            payload = _build_rsc7(data, version=0, sys_flags=sys_flags, gfx_flags=0)
+            header = read_rsc7_header(payload)
+            payload = _encode_large_resource_header_size(payload, len(payload))
+        raw_entry = self._encode_resource_entry_header(
+            entry, len(payload), offset_blocks, header
+        )
+        return raw_entry, payload
+
+    def _encode_resource_entry_header(
+        self,
+        entry: RpfResourceFileEntry,
+        payload_size: int,
+        offset_blocks: int,
+        header: ResourceHeader,
+    ) -> bytes:
         if not 0 <= int(entry.name_offset) <= 0xFFFF:
             raise ValueError("RPF7 resource entry name offset exceeds 16 bits")
         if not 0 <= int(offset_blocks) <= 0x7FFFFF:
             raise ValueError("RPF7 resource entry block offset exceeds 23 bits")
         entry.file_offset = offset_blocks
-        if _is_rsc7(data):
-            _, sys_flags, gfx_flags, _ = _split_rsc7(data)
-            entry.system_flags = RpfResourcePageFlags(sys_flags)
-            entry.graphics_flags = RpfResourcePageFlags(gfx_flags)
-            entry.file_size = len(data)
-            payload = _encode_large_resource_header_size(data, entry.file_size)
-        else:
-            sys_flags = _resource_flags_from_size(len(data), 0)
-            payload = _build_rsc7(data, version=0, sys_flags=sys_flags, gfx_flags=0)
-            entry.system_flags = RpfResourcePageFlags(sys_flags)
-            entry.graphics_flags = RpfResourcePageFlags()
-            entry.file_size = len(payload)
-            payload = _encode_large_resource_header_size(payload, entry.file_size)
+        entry.system_flags = RpfResourcePageFlags(header.system_flags)
+        entry.graphics_flags = RpfResourcePageFlags(header.graphics_flags)
+        entry.file_size = payload_size
         stored_file_size = min(16777215, entry.file_size)
         size_bytes = int(stored_file_size).to_bytes(3, "little", signed=False)
         offset_bytes = bytearray(
@@ -898,7 +923,7 @@ class RpfArchive:
             + bytes(offset_bytes)
             + struct.pack("<II", entry.system_flags.value, entry.graphics_flags.value)
         )
-        return raw_entry, payload
+        return raw_entry
 
     def write_to(self, stream: BinaryIO) -> int:
         return write_archive_stream(self, stream)
@@ -1077,6 +1102,7 @@ __all__ = [
     "RpfExportMode",
     "RpfExtractionConflict",
     "RpfFileEntry",
+    "RpfFileSource",
     "RpfPlatform",
     "RpfResourceFileEntry",
     "RpfResourcePageFlags",

@@ -4,12 +4,12 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Protocol, TypeAlias
 
 from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
 from ..game_target import GameTarget, coerce_game_target
-from ..rpf import RpfArchive
+from ..rpf import RpfArchive, RpfFileSource
 from ..xml import (
     append_items,
     append_text,
@@ -33,6 +33,25 @@ from .content import (
 from .enums import DlcContentGroup, DlcRpfEncryption
 from .paths import dlc_platform_payload_path, dlc_platform_registration_path
 from .setup import DlcContentChangeSetGroup, DlcSetupData
+
+
+class _ToBytes(Protocol):
+    def to_bytes(self) -> bytes | bytearray | memoryview: ...
+
+
+class _BuildBytes(Protocol):
+    def build(self) -> bytes | bytearray | memoryview: ...
+
+
+DlcFilePayload: TypeAlias = (
+    bytes
+    | bytearray
+    | memoryview
+    | RpfArchive
+    | RpfFileSource
+    | _ToBytes
+    | _BuildBytes
+)
 
 
 def _device_name(pack_name: str) -> str:
@@ -135,7 +154,7 @@ class DlcPack:
     name: str
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
-    files: dict[str, bytes | bytearray | memoryview | Any] = field(default_factory=dict)
+    files: dict[str, DlcFilePayload] = field(default_factory=dict)
     game: GameTarget | None = None
     rpf_encryption: DlcRpfEncryption = DlcRpfEncryption.OPEN
 
@@ -164,14 +183,14 @@ class DlcPack:
             return None
         return filename[len(self.device_path) :].lstrip("/")
 
-    def file(self, path: str, value: bytes | bytearray | memoryview | Any) -> DlcPack:
+    def file(self, path: str, value: DlcFilePayload) -> DlcPack:
         self.files[path.replace("\\", "/").lstrip("/")] = value
         return self
 
     def rpf(
         self,
         relative_path: str,
-        archive: RpfArchive,
+        archive: RpfArchive | RpfFileSource,
         *,
         map_data: bool = False,
         overlay: bool = False,
@@ -183,7 +202,7 @@ class DlcPack:
     def platform_rpf(
         self,
         relative_path: str,
-        archive: RpfArchive,
+        archive: RpfArchive | RpfFileSource,
         *,
         map_data: bool = False,
         overlay: bool = False,
@@ -247,7 +266,10 @@ class DlcPack:
         archive.file("setup2.xml", self.setup.to_xml_bytes())
         archive.file(self.setup.dat_file or "content.xml", self.content.to_xml_bytes())
         for path, value in self.files.items():
-            archive.file(path, value)
+            if isinstance(value, RpfFileSource):
+                archive.rpf_file(path, value)
+            else:
+                archive.file(path, value)
         return archive
 
     def to_bytes(
@@ -288,7 +310,7 @@ class DlcPatch:
     name: str
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
-    files: dict[str, bytes | bytearray | memoryview | Any] = field(default_factory=dict)
+    files: dict[str, DlcFilePayload] = field(default_factory=dict)
     device_name: str | None = None
     game: GameTarget | None = None
     rpf_encryption: DlcRpfEncryption = DlcRpfEncryption.OPEN
@@ -312,7 +334,7 @@ class DlcPatch:
     def patch_root(self) -> str:
         return f"dlc_patch/{self.name}"
 
-    def file(self, path: str, value: bytes | bytearray | memoryview | Any) -> DlcPatch:
+    def file(self, path: str, value: DlcFilePayload) -> DlcPatch:
         self.files[path.replace("\\", "/").lstrip("/")] = value
         return self
 

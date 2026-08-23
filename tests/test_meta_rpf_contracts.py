@@ -2066,7 +2066,6 @@ class MetaAndArchiveContractTests(PytestCompat):
         self.assertGreaterEqual(header.graphics_size, len(data))
 
     def test_rpf_writer_supports_large_resource_entries(self) -> None:
-        import fivefury.rpf.archive as rpf_module
         from fivefury.rpf import RpfArchive
         from fivefury.rpf.entries import RpfResourceFileEntry
         from fivefury.rpf.utils import RSC7_MAGIC
@@ -2075,9 +2074,8 @@ class MetaAndArchiveContractTests(PytestCompat):
         resource = struct.pack("<IIII", RSC7_MAGIC, 0, 0, 0) + bytes(stored_size - 16)
         archive = RpfArchive.empty("large_resources.rpf")
 
-        with patch.object(rpf_module, "_split_rsc7", return_value=(0, 0, 0, b"")):
-            archive.file("stream/large.ytd", resource)
-            packed = archive.to_bytes()
+        archive.file("stream/large.ytd", resource)
+        packed = archive.to_bytes()
 
         reread = RpfArchive.from_bytes(packed, name="large_resources.rpf")
         entry = reread.find_entry("stream/large.ytd")

@@ -14,12 +14,18 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Typed YFT articulated-body authoring with explicit joint frames, angular ranges, branching link graphs, and per-link mass properties.
+- Public RSC7 header inspection, file-backed RPF payloads, and reusable YMF dependency indexes.
 
 ### Fixed
 
 - Handling metadata now preserves unsigned 32-bit hexadecimal flag values, explicit zero fields, and unknown bits in the retail XML dialect.
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
 - Timed archetypes now preserve typed spatial and hash fields when read from YTYP metadata.
+
+### Performance
+
+- RPF packaging now streams existing nested archives and inspects resource headers without parsing, reserializing, or inflating their payloads.
+- Regional YMF builds can reuse one prepared YTYP dependency index across map groups.
 
 ## [0.4.19] - 2026-08-22
 

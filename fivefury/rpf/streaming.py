@@ -1,14 +1,50 @@
 from __future__ import annotations
 
 import struct
+from shutil import copyfileobj
 from typing import TYPE_CHECKING, BinaryIO
 
 from ..crypto import NONE_ENCRYPTION, OPEN_ENCRYPTION
+from ..resource import read_rsc7_header
 from .entries import RpfBinaryFileEntry, RpfDirectoryEntry, RpfResourceFileEntry
 from .utils import RPF_BLOCK_SIZE, RPF_MAGIC, _ceil_div
 
 if TYPE_CHECKING:
     from .archive import RpfArchive
+
+_COPY_BUFFER_SIZE = 1024 * 1024
+
+
+def _write_file_payload(
+    archive: RpfArchive,
+    entry: RpfBinaryFileEntry | RpfResourceFileEntry,
+    stream: BinaryIO,
+    offset_blocks: int,
+) -> bytes:
+    source = entry._source_path
+    if source is None:
+        raise ValueError("file-backed RPF entry is missing its source path")
+    payload_size = source.stat().st_size
+    with source.open("rb") as input_stream:
+        if isinstance(entry, RpfBinaryFileEntry):
+            raw_entry = archive._encode_binary_entry_header(
+                entry, payload_size, offset_blocks
+            )
+        else:
+            source_header = input_stream.read(16)
+            header = read_rsc7_header(source_header)
+            raw_entry = archive._encode_resource_entry_header(
+                entry, payload_size, offset_blocks, header
+            )
+            if payload_size >= 0xFFFFFF:
+                from .archive import _encode_large_resource_header_size
+
+                source_header = _encode_large_resource_header_size(
+                    source_header, payload_size
+                )
+            stream.write(source_header)
+        copyfileobj(input_stream, stream, length=_COPY_BUFFER_SIZE)
+    return raw_entry
 
 
 def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
@@ -55,6 +91,15 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             continue
 
         current_offset = stream.tell() // RPF_BLOCK_SIZE
+        if entry._source_path is not None:
+            encoded_entries[index] = _write_file_payload(
+                archive, entry, stream, current_offset
+            )
+            padding = (-stream.tell()) % RPF_BLOCK_SIZE
+            if padding:
+                stream.write(b"\x00" * padding)
+            continue
+
         payload = archive._entry_payload(entry)
         if isinstance(entry, RpfBinaryFileEntry):
             if current_offset > 0xFFFFFF:
