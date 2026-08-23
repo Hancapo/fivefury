@@ -10,11 +10,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Breaking Changes
 
 - Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
+- RPF and DLC authoring now use `RpfEncryption` instead of raw encryption integers or a separate DLC enum.
 
 ### Added
 
 - Typed YFT articulated-body authoring with explicit joint frames, angular ranges, branching link graphs, and per-link mass properties.
 - Public RSC7 header inspection, file-backed RPF payloads, and reusable YMF dependency indexes.
+- Structured RPF validation for names, directory ranges, platform encryption, packed offsets, payload sizes, nested archives, resource headers, and overlaps.
 
 ### Fixed
 

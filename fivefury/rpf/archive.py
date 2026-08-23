@@ -10,12 +10,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Self
 
+from ..authoring import ValidationReport
 from ..crypto import (
-    AES_ENCRYPTION,
-    NG_ENCRYPTION,
     NONE_ENCRYPTION,
     OPEN_ENCRYPTION,
-    PS3_AES_ENCRYPTION,
     GameCrypto,
     ensure_game_crypto,
     get_game_crypto,
@@ -39,6 +37,7 @@ from .entries import (
     RpfResourcePageFlags,
 )
 from .modes import (
+    RpfEncryption,
     RpfExportMode,
     RpfExtractionConflict,
     RpfPlatform,
@@ -86,7 +85,7 @@ class RpfArchive:
     name: str = "archive.rpf"
     source_path: str = ""
     prefix: str = ""
-    encryption: int = OPEN_ENCRYPTION
+    encryption: RpfEncryption = RpfEncryption.OPEN
     version: int = RPF_MAGIC
     platform: RpfPlatform = RpfPlatform.PC
     name_shift: int = 0
@@ -114,6 +113,10 @@ class RpfArchive:
 
     def __post_init__(self) -> None:
         self.name = self.name or "archive.rpf"
+        if not isinstance(self.encryption, RpfEncryption):
+            raise TypeError("encryption must be an RpfEncryption")
+        if not isinstance(self.platform, RpfPlatform):
+            raise TypeError("platform must be an RpfPlatform")
         if self.crypto is None:
             self.crypto = get_game_crypto()
         self.root.name = ""
@@ -127,8 +130,16 @@ class RpfArchive:
         *,
         prefix: str = "",
         crypto: GameCrypto | None = None,
+        encryption: RpfEncryption = RpfEncryption.OPEN,
+        platform: RpfPlatform = RpfPlatform.PC,
     ) -> RpfArchive:
-        return cls(name=_archive_name(name), prefix=prefix, crypto=crypto)
+        return cls(
+            name=_archive_name(name),
+            prefix=prefix,
+            crypto=crypto,
+            encryption=encryption,
+            platform=platform,
+        )
 
     @classmethod
     def from_path(
@@ -298,7 +309,10 @@ class RpfArchive:
 
         version, entry_count, names_length, encryption = self._parse_header(header)
         self.version = version
-        self.encryption = encryption
+        try:
+            self.encryption = RpfEncryption(encryption)
+        except ValueError as exc:
+            raise ValueError(f"Unsupported RPF7 encryption identifier 0x{encryption:08X}") from exc
 
         entries_offset = 16
         entries_size = entry_count * 16
@@ -926,7 +940,14 @@ class RpfArchive:
         return raw_entry
 
     def write_to(self, stream: BinaryIO) -> int:
+        self.validate().raise_for_errors()
         return write_archive_stream(self, stream)
+
+    def validate(self, *, context: object | None = None) -> ValidationReport:
+        del context
+        from .validation import validate_rpf_archive
+
+        return validate_rpf_archive(self)
 
     def to_bytes(self) -> bytes:
         output = io.BytesIO()
@@ -1086,18 +1107,14 @@ class RpfArchive:
 
 
 __all__ = [
-    "AES_ENCRYPTION",
     "GTA5_PS3_AES_KEY",
-    "NG_ENCRYPTION",
-    "NONE_ENCRYPTION",
-    "OPEN_ENCRYPTION",
-    "PS3_AES_ENCRYPTION",
     "RPF_BLOCK_SIZE",
     "RPF_MAGIC",
     "RSC7_MAGIC",
     "RpfArchive",
     "RpfBinaryFileEntry",
     "RpfDirectoryEntry",
+    "RpfEncryption",
     "RpfEntry",
     "RpfExportMode",
     "RpfExtractionConflict",

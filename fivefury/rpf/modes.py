@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, IntEnum
+
+
+class RpfEncryption(IntEnum):
+    """Encryption identifier stored in an RPF7 header."""
+
+    NONE = 0
+    OPEN = 0x4E45504F
+    AES = 0x0FFFFFF9
+    PS3_AES = 0x0FFFFFF8
+    NG = 0x0FEFFFFF
 
 
 class RpfExportMode(str, Enum):
@@ -58,6 +68,7 @@ def coerce_extraction_conflict(value: RpfExtractionConflict) -> RpfExtractionCon
 
 
 __all__ = [
+    "RpfEncryption",
     "RpfExportMode",
     "RpfExtractionConflict",
     "RpfPlatform",

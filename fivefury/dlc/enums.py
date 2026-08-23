@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from enum import IntEnum, StrEnum
-
-from ..crypto import NONE_ENCRYPTION, OPEN_ENCRYPTION
+from enum import StrEnum
 
 
 class DlcPackType(StrEnum):
@@ -278,8 +276,3 @@ class DlcLoadingScreenContext(StrEnum):
     LOAD_LEVEL = "LOADINGSCREEN_CONTEXT_LOADLEVEL"
     MAP_CHANGE = "LOADINGSCREEN_CONTEXT_MAPCHANGE"
     LAST_FRAME = "LOADINGSCREEN_CONTEXT_LAST_FRAME"
-
-
-class DlcRpfEncryption(IntEnum):
-    NONE = NONE_ENCRYPTION
-    OPEN = OPEN_ENCRYPTION

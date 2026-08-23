@@ -7,7 +7,6 @@ from .enums import (
     DlcInstallPartition,
     DlcLoadingScreenContext,
     DlcPackType,
-    DlcRpfEncryption,
 )
 from .highlevel import (
     DlcFolderMetadata,
@@ -83,7 +82,6 @@ __all__ = [
     "DlcPatch",
     "DlcPatchMount",
     "DlcResourceReference",
-    "DlcRpfEncryption",
     "DlcSetupData",
     "build_dlc_content_xml",
     "build_dlc_extra_title_update_data_xml",

@@ -16,10 +16,10 @@ from fivefury import (
     DlcLoadingScreenContext,
     DlcPack,
     DlcPatch,
-    DlcRpfEncryption,
     DlcSetupData,
     GameTarget,
     RpfArchive,
+    RpfEncryption,
     Texture,
     TextureFormat,
     TextureUsage,
@@ -439,8 +439,10 @@ def test_folder_asset_validation_rejects_unreadable_nested_rpfs(tmp_path) -> Non
     folder = tmp_path / "enhanced_pack"
     folder.mkdir()
     archive = RpfArchive.empty("outer.rpf")
-    archive.file("broken.rpf", b"not an rpf")
-    archive.save(folder / "outer.rpf")
+    archive.file("broken.bin", b"not an rpf")
+    archive_path = folder / "outer.rpf"
+    archive.save(archive_path)
+    archive_path.write_bytes(archive_path.read_bytes().replace(b"broken.bin", b"broken.rpf"))
 
     with pytest.raises(ValidationError, match="outer.rpf/broken.rpf"):
         write_dlc_folder_metadata(folder, game=GameTarget.GTA5_ENHANCED)
@@ -511,15 +513,15 @@ def test_dlc_pack_writes_target_compatible_assets_with_explicit_open_encryption(
     pack = DlcPack(
         "enhanced_pack",
         game=GameTarget.GTA5_ENHANCED,
-        rpf_encryption=DlcRpfEncryption.OPEN,
+        rpf_encryption=RpfEncryption.OPEN,
     )
     pack.file("x64/models/enhanced.ydr", enhanced_ydr)
 
     archive = pack.to_rpf()
     raw = archive.to_bytes()
 
-    assert archive.encryption == DlcRpfEncryption.OPEN
-    assert struct.unpack_from("<I", raw, 12)[0] == DlcRpfEncryption.OPEN
+    assert archive.encryption == RpfEncryption.OPEN
+    assert struct.unpack_from("<I", raw, 12)[0] == RpfEncryption.OPEN
 
 
 def test_read_dlc_pack_preserves_non_metadata_payloads() -> None:

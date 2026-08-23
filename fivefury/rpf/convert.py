@@ -11,7 +11,7 @@ from .utils import _normalize_path
 
 if TYPE_CHECKING:  # pragma: no cover
     from .archive import RpfArchive
-    from .modes import RpfExportMode, RpfExtractionConflict
+    from .modes import RpfEncryption, RpfExportMode, RpfExtractionConflict, RpfPlatform
 
 
 def _ensure_container_path(
@@ -124,10 +124,20 @@ def load_rpf(source: str | Path | bytes | BinaryIO) -> RpfArchive:
     return _coerce_archive(source)
 
 
-def create_rpf(name: str = "archive.rpf") -> RpfArchive:
+def create_rpf(
+    name: str = "archive.rpf",
+    *,
+    encryption: RpfEncryption | None = None,
+    platform: RpfPlatform | None = None,
+) -> RpfArchive:
     from .archive import RpfArchive
+    from .modes import RpfEncryption, RpfPlatform
 
-    return RpfArchive.empty(name)
+    return RpfArchive.empty(
+        name,
+        encryption=encryption or RpfEncryption.OPEN,
+        platform=platform or RpfPlatform.PC,
+    )
 
 
 def rpf_to_zip(
