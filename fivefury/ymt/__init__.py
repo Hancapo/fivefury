@@ -10,6 +10,7 @@ from ..meta.defs import META_NAME_REVERSE
 from ..meta.resource import MetaResource
 from ..pso import PsoDocument, PsoNode, PsoReader, is_pso
 from ..rbf import RbfStructure, is_rbf, read_rbf
+from . import schema as ymt_schema
 from .ped_metadata import YmtPedInitData, YmtPedMetadata
 from .scenario import (
     YmtAabb,
@@ -241,12 +242,13 @@ class Ymt(MetaResource):
         pso = PsoReader(data, name_resolver=cls._name).read()
         content: Any = pso.root
         content_type = ymt_content_type(pso.root.type_hash)
-        if pso.root.type_hash == C_SCENARIO_POINT_MANIFEST:
-            content = YmtScenarioPointManifest.from_pso_node(pso.root)
-        elif pso.root.type_hash == C_PED_MODEL_INFO_INIT_DATA_LIST:
-            content = YmtPedMetadata.from_value(pso.root)
-        elif pso.root.type_hash == C_STREAMING_REQUEST_RECORD:
-            content = YmtStreamingRequestRecord.from_value(pso.root)
+        match pso.root.type_hash:
+            case ymt_schema.C_SCENARIO_POINT_MANIFEST:
+                content = YmtScenarioPointManifest.from_pso_node(pso.root)
+            case ymt_schema.C_PED_MODEL_INFO_INIT_DATA_LIST:
+                content = YmtPedMetadata.from_value(pso.root)
+            case ymt_schema.C_STREAMING_REQUEST_RECORD:
+                content = YmtStreamingRequestRecord.from_value(pso.root)
         return cls(
             meta=Meta(Name=Path(source).stem if source else ""),
             source=source,
@@ -261,10 +263,11 @@ class Ymt(MetaResource):
     def _from_meta_resource(cls, resource: MetaResource, *, source: str = "") -> Ymt:
         content_type = ymt_content_type(resource.root_name_hash)
         content: Any = resource.root_value
-        if resource.root_name_hash == C_PED_MODEL_INFO_INIT_DATA_LIST:
-            content = YmtPedMetadata.from_value(resource.root_value)
-        elif resource.root_name_hash == C_STREAMING_REQUEST_RECORD:
-            content = YmtStreamingRequestRecord.from_value(resource.root_value)
+        match resource.root_name_hash:
+            case ymt_schema.C_PED_MODEL_INFO_INIT_DATA_LIST:
+                content = YmtPedMetadata.from_value(resource.root_value)
+            case ymt_schema.C_STREAMING_REQUEST_RECORD:
+                content = YmtStreamingRequestRecord.from_value(resource.root_value)
         return cls(
             meta=resource.to_meta(),
             source=source or resource.source,

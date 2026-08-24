@@ -489,38 +489,39 @@ class _YftBinaryValidator:
             for index in range(polygon_count):
                 polygon = polygons_offset + index * 16
                 polygon_type = self.u8(polygon) & 0x07
-                if polygon_type == 0:
-                    vertex_indices = tuple(
-                        value & 0x7FFF
-                        for value in struct.unpack_from(
-                            "<3H",
-                            self.system_data,
-                            polygon + 4,
+                match polygon_type:
+                    case 0:
+                        vertex_indices = tuple(
+                            value & 0x7FFF
+                            for value in struct.unpack_from(
+                                "<3H",
+                                self.system_data,
+                                polygon + 4,
+                            )
                         )
-                    )
-                elif polygon_type == 1:
-                    vertex_indices = (self.u16(polygon + 2),)
-                elif polygon_type in (2, 4):
-                    vertex_indices = (
-                        self.u16(polygon + 2),
-                        self.u16(polygon + 8),
-                    )
-                elif polygon_type == 3:
-                    vertex_indices = tuple(
-                        value & 0xFFFF
-                        for value in struct.unpack_from(
-                            "<4h",
-                            self.system_data,
-                            polygon + 4,
+                    case 1:
+                        vertex_indices = (self.u16(polygon + 2),)
+                    case 2 | 4:
+                        vertex_indices = (
+                            self.u16(polygon + 2),
+                            self.u16(polygon + 8),
                         )
-                    )
-                else:
-                    self.error(
-                        f"{path}.polygons[{index}]",
-                        f"unsupported polygon type {polygon_type}",
-                        code="yft.binary.validate_geometry_bound.unsupported_polygon_type",
-                    )
-                    continue
+                    case 3:
+                        vertex_indices = tuple(
+                            value & 0xFFFF
+                            for value in struct.unpack_from(
+                                "<4h",
+                                self.system_data,
+                                polygon + 4,
+                            )
+                        )
+                    case _:
+                        self.error(
+                            f"{path}.polygons[{index}]",
+                            f"unsupported polygon type {polygon_type}",
+                            code="yft.binary.validate_geometry_bound.unsupported_polygon_type",
+                        )
+                        continue
                 for vertex_index in vertex_indices:
                     if vertex_index >= vertex_count:
                         self.error(

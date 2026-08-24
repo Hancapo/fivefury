@@ -74,21 +74,26 @@ def decode_game_file_payload(
 ) -> tuple[Any, GameFileType]:
     ext = Path(path).suffix.lower()
     name = Path(path).name.lower()
-    if name == "gta5_cache_y.dat":
-        return _decode_or_fallback(GameFileType.GTA5_CACHE, data, data, read_gta5_cache_y)
-    if name.startswith("heightmap") and name.endswith(".dat"):
-        return _decode_or_fallback(GameFileType.HEIGHTMAP, data, data, read_heightmap)
-    if name == "water.xml":
-        return _decode_or_fallback(GameFileType.WATER, data, data, read_water)
-    if name == "expression_sets.xml":
-        return _decode_or_fallback(
-            GameFileType.EXPRESSION_SETS,
-            data,
-            data,
-            lambda payload: read_ped_expression_sets(payload, source_path=path),
-        )
-    if name == "gtxd.meta":
-        return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
+    match name:
+        case "gta5_cache_y.dat":
+            return _decode_or_fallback(
+                GameFileType.GTA5_CACHE, data, data, read_gta5_cache_y
+            )
+        case value if value.startswith("heightmap") and value.endswith(".dat"):
+            return _decode_or_fallback(
+                GameFileType.HEIGHTMAP, data, data, read_heightmap
+            )
+        case "water.xml":
+            return _decode_or_fallback(GameFileType.WATER, data, data, read_water)
+        case "expression_sets.xml":
+            return _decode_or_fallback(
+                GameFileType.EXPRESSION_SETS,
+                data,
+                data,
+                lambda payload: read_ped_expression_sets(payload, source_path=path),
+            )
+        case "gtxd.meta":
+            return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
     vehicle_meta_type = guess_game_file_type(path)
     if vehicle_meta_type in {
         GameFileType.VEHICLES,

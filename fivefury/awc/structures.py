@@ -267,41 +267,44 @@ class AwcChunk:
             info=info,
             seek_table_entry_size=seek_table_entry_size,
         )
-        if info.type_value == int(AwcChunkType.FORMAT):
-            chunk.format = AwcFormat.from_bytes(data, endian)
-        elif info.type_value == int(AwcChunkType.STREAM_FORMAT):
-            chunk.stream_format = AwcStreamFormatChunk.from_bytes(data, endian)
-        elif info.type_value == int(AwcChunkType.PEAK):
-            if len(data) % 2:
-                raise ValueError("AWC peak chunk size must be even")
-            chunk.peaks = (
-                list(struct.unpack(f"{endian}{len(data) // 2}H", data)) if data else []
-            )
-        elif info.type_value == int(AwcChunkType.SEEK_TABLE):
-            if seek_table_entry_size not in {2, 4}:
-                raise ValueError("AWC seektable entry size must be 2 or 4 bytes")
-            if len(data) % seek_table_entry_size:
-                raise ValueError(
-                    "AWC seektable chunk size is not aligned to its entry width"
+        match info.type_value:
+            case AwcChunkType.FORMAT:
+                chunk.format = AwcFormat.from_bytes(data, endian)
+            case AwcChunkType.STREAM_FORMAT:
+                chunk.stream_format = AwcStreamFormatChunk.from_bytes(data, endian)
+            case AwcChunkType.PEAK:
+                if len(data) % 2:
+                    raise ValueError("AWC peak chunk size must be even")
+                chunk.peaks = (
+                    list(struct.unpack(f"{endian}{len(data) // 2}H", data))
+                    if data
+                    else []
                 )
-            value_format = "H" if seek_table_entry_size == 2 else "I"
-            chunk.seek_table = (
-                list(
-                    struct.unpack(
-                        f"{endian}{len(data) // seek_table_entry_size}{value_format}",
-                        data,
+            case AwcChunkType.SEEK_TABLE:
+                if seek_table_entry_size not in {2, 4}:
+                    raise ValueError("AWC seektable entry size must be 2 or 4 bytes")
+                if len(data) % seek_table_entry_size:
+                    raise ValueError(
+                        "AWC seektable chunk size is not aligned to its entry width"
                     )
+                value_format = "H" if seek_table_entry_size == 2 else "I"
+                chunk.seek_table = (
+                    list(
+                        struct.unpack(
+                            f"{endian}{len(data) // seek_table_entry_size}{value_format}",
+                            data,
+                        )
+                    )
+                    if data
+                    else []
                 )
-                if data
-                else []
-            )
-        elif is_lipsync_chunk_type(info.type_value) and data:
-            from ..ycd import read_ycd_embedded_resource
+            case chunk_type if is_lipsync_chunk_type(chunk_type) and data:
+                from ..ycd import read_ycd_embedded_resource
 
-            try:
-                chunk.lipsync = read_ycd_embedded_resource(data)
-            except (IndexError, ValueError, struct.error) as exc:
-                chunk.lipsync_error = str(exc)
+                try:
+                    chunk.lipsync = read_ycd_embedded_resource(data)
+                except (IndexError, ValueError, struct.error) as exc:
+                    chunk.lipsync_error = str(exc)
         return chunk
 
     @property
@@ -964,24 +967,27 @@ def _extract_multichannel_channel_pcm(source: AwcStream) -> list[bytes]:
         for sample_count, payload in channel_blocks:
             channel = stream_format.channels[channel_index]
             codec = channel.codec
-            if codec is AwcCodecType.PCM:
-                decoded = payload[: sample_count * 2]
-            elif codec is AwcCodecType.ADPCM:
-                decoded = decode_awc_adpcm(payload, sample_count)
-            elif codec in {AwcCodecType.MP3, AwcCodecType.VORBIS}:
-                from .conversion import decode_audio
+            match codec:
+                case AwcCodecType.PCM:
+                    decoded = payload[: sample_count * 2]
+                case AwcCodecType.ADPCM:
+                    decoded = decode_awc_adpcm(payload, sample_count)
+                case AwcCodecType.MP3 | AwcCodecType.VORBIS:
+                    from .conversion import decode_audio
 
-                decoded = decode_audio(
-                    payload,
-                    sample_rate=channel.sample_rate or None,
-                    channels=1,
-                    source_format=(".mp3" if codec is AwcCodecType.MP3 else ".ogg"),
-                ).pcm
-                decoded = decoded[: sample_count * 2]
-            else:
-                raise NotImplementedError(
-                    f"AWC codec {codec.name} cannot be decoded to PCM"
-                )
+                    decoded = decode_audio(
+                        payload,
+                        sample_rate=channel.sample_rate or None,
+                        channels=1,
+                        source_format=(
+                            ".mp3" if codec is AwcCodecType.MP3 else ".ogg"
+                        ),
+                    ).pcm
+                    decoded = decoded[: sample_count * 2]
+                case _:
+                    raise NotImplementedError(
+                        f"AWC codec {codec.name} cannot be decoded to PCM"
+                    )
             outputs[channel_index].extend(decoded)
     return [bytes(output) for output in outputs]
 

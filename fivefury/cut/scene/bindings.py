@@ -411,16 +411,17 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
             type_source = ytyp
 
         resolved_type_file: str | None = None
-        if strategy is CutTypeFileStrategy.NONE:
-            resolved_type_file = None
-        elif strategy is CutTypeFileStrategy.YTYP:
-            resolved_type_file = _extract_source_stem(type_source)
-        elif strategy is CutTypeFileStrategy.CONTAINER:
-            resolved_type_file = _extract_container_stem(model)
-        else:
-            resolved_type_file = _extract_source_stem(
-                type_source
-            ) or _extract_container_stem(model)
+        match strategy:
+            case CutTypeFileStrategy.NONE:
+                resolved_type_file = None
+            case CutTypeFileStrategy.YTYP:
+                resolved_type_file = _extract_source_stem(type_source)
+            case CutTypeFileStrategy.CONTAINER:
+                resolved_type_file = _extract_container_stem(model)
+            case _:
+                resolved_type_file = _extract_source_stem(
+                    type_source
+                ) or _extract_container_stem(model)
 
         if resolved_type_file is None:
             if strategy is CutTypeFileStrategy.NONE:

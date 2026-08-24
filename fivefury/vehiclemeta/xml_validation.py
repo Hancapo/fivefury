@@ -391,14 +391,15 @@ def validate_vehicle_meta_xml(
             "xml",
         )
         return report
-    if root.tag == "CVehicleModelInfo__InitDataList":
-        _validate_vehicles(report, root)
-    elif root.tag == "CHandlingDataMgr":
-        _validate_handling(report, root)
-    elif root.tag == "CVehicleModelInfoVariation":
-        _validate_variations(report, root)
-    elif root.tag == "CVehicleModelInfoVarGlobal":
-        _validate_carcols(report, root)
+    match root.tag:
+        case "CVehicleModelInfo__InitDataList":
+            _validate_vehicles(report, root)
+        case "CHandlingDataMgr":
+            _validate_handling(report, root)
+        case "CVehicleModelInfoVariation":
+            _validate_variations(report, root)
+        case "CVehicleModelInfoVarGlobal":
+            _validate_carcols(report, root)
     return report
 
 

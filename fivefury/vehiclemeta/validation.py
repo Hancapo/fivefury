@@ -219,182 +219,189 @@ def validate_vehicle_meta_model(
     context: BuildContext | None = None,
 ) -> ValidationReport:
     report = ValidationReport()
-    if isinstance(model, VehicleInitData):
-        _identifier(
-            report,
-            model.model_name,
-            code="vehicle.model_name.required",
-            path="model_name",
-        )
-        _identifier(
-            report, model.txd_name, code="vehicle.txd_name.required", path="txd_name"
-        )
-        _identifier(
-            report,
-            model.handling_id,
-            code="vehicle.handling_id.required",
-            path="handling_id",
-        )
-        if len(model.lod_distances) > 8:
-            report.issue(
-                "vehicle.lod_distances.limit",
-                "Vehicle LOD distance arrays cannot contain more than 8 entries",
-                path="lod_distances",
+    match model:
+        case VehicleInitData():
+            _identifier(
+                report,
+                model.model_name,
+                code="vehicle.model_name.required",
+                path="model_name",
             )
-        try:
-            vehicle_model_flag_text(model.flags)
-        except (TypeError, ValueError) as exc:
-            report.issue(
-                "vehicle.flags.invalid",
-                str(exc),
-                path="flags",
+            _identifier(
+                report,
+                model.txd_name,
+                code="vehicle.txd_name.required",
+                path="txd_name",
             )
-        if isinstance(model.flags, VehicleModelFlags):
-            for index, token in enumerate(model.flags.unknown_tokens):
+            _identifier(
+                report,
+                model.handling_id,
+                code="vehicle.handling_id.required",
+                path="handling_id",
+            )
+            if len(model.lod_distances) > 8:
                 report.issue(
-                    "vehicle.flags.token.unknown",
-                    f"Preserving unknown vehicle flag token {token!r}",
-                    path=f"flags[{index}]",
-                    severity=DiagnosticSeverity.WARNING,
+                    "vehicle.lod_distances.limit",
+                    "Vehicle LOD distance arrays cannot contain more than 8 entries",
+                    path="lod_distances",
                 )
-        extras = [("required_extras", model.required_extras)]
-        extras.extend(
-            (f"extra_includes[{index}]", value)
-            for index, value in enumerate(model.extra_includes)
-        )
-        for path, value in extras:
             try:
-                vehicle_extra_flag_text(value)
+                vehicle_model_flag_text(model.flags)
             except (TypeError, ValueError) as exc:
-                report.issue("vehicle.extras.invalid", str(exc), path=path)
-    elif isinstance(model, VehicleVfxExtra):
-        try:
-            vehicle_extra_flag_text(model.extras)
-        except (TypeError, ValueError) as exc:
-            report.issue("vehicle.extras.invalid", str(exc), path="extras")
-    elif isinstance(model, HandlingData):
-        _identifier(
-            report, model.name, code="vehicle.handling_name.required", path="name"
-        )
-        if model.mass <= 0.0:
-            report.issue(
-                "vehicle.handling.mass.invalid",
-                "Vehicle mass must be greater than zero",
-                path="mass",
-            )
-        for name in ("model_flags", "handling_flags", "damage_flags"):
-            value = getattr(model, name)
-            if value is None or (problem := handling_flag_problem(value)) is None:
-                continue
-            suffix, message = problem
-            report.issue(
-                f"vehicle.handling.flags.{suffix}",
-                message,
-                path=name,
-            )
-    elif isinstance(model, VehicleVariation):
-        _identifier(
-            report,
-            model.model_name,
-            code="vehicle.variation.model_name.required",
-            path="model_name",
-        )
-    elif isinstance(model, VehicleColorIndices):
-        maximum = 6 if context is not None and context.game is GameTarget.GTA5 else 7
-        if len(model.indices) > maximum:
-            report.issue(
-                "vehicle.color.indices.limit",
-                f"A vehicle color set cannot contain more than {maximum} indices",
-                path="indices",
-            )
-        for index, color_index in enumerate(model.indices):
-            if not 0 <= color_index <= 0xFF:
                 report.issue(
-                    "vehicle.color.index.out_of_range",
-                    "Vehicle color indices must fit an unsigned byte",
-                    path=f"indices[{index}]",
+                    "vehicle.flags.invalid",
+                    str(exc),
+                    path="flags",
                 )
-    elif isinstance(model, LicensePlateProbability) and model.weight < 0:
-        report.issue(
-            "vehicle.plate_probability.weight.invalid",
-            "License plate probability weights cannot be negative",
-            path="weight",
-        )
-    elif isinstance(model, VehicleModelColor):
-        if not 0 <= model.color <= 0xFFFFFFFF:
-            report.issue(
-                "vehicle.color.value.out_of_range",
-                "Packed vehicle colors must fit ARGB8",
-                path="color",
+            if isinstance(model.flags, VehicleModelFlags):
+                for index, token in enumerate(model.flags.unknown_tokens):
+                    report.issue(
+                        "vehicle.flags.token.unknown",
+                        f"Preserving unknown vehicle flag token {token!r}",
+                        path=f"flags[{index}]",
+                        severity=DiagnosticSeverity.WARNING,
+                    )
+            extras = [("required_extras", model.required_extras)]
+            extras.extend(
+                (f"extra_includes[{index}]", value)
+                for index, value in enumerate(model.extra_includes)
             )
-        if not -1 <= model.metallic_id <= 0xFF:
-            report.issue(
-                "vehicle.color.metallic_id.out_of_range",
-                "Vehicle metallic IDs must be -1 or fit an unsigned byte",
-                path="metallic_id",
+            for path, value in extras:
+                try:
+                    vehicle_extra_flag_text(value)
+                except (TypeError, ValueError) as exc:
+                    report.issue("vehicle.extras.invalid", str(exc), path=path)
+        case VehicleVfxExtra():
+            try:
+                vehicle_extra_flag_text(model.extras)
+            except (TypeError, ValueError) as exc:
+                report.issue("vehicle.extras.invalid", str(exc), path="extras")
+        case HandlingData():
+            _identifier(
+                report, model.name, code="vehicle.handling_name.required", path="name"
             )
-    elif isinstance(model, VehicleLightSettings) and not 0 <= model.id <= 0xFF:
-        report.issue(
-            "vehicle.light.id.out_of_range",
-            "Light setting IDs must fit an unsigned byte",
-            path="id",
-        )
-    elif isinstance(model, VehicleSirenSettings) and not 0 <= model.id <= 0xFF:
-        report.issue(
-            "vehicle.siren.id.out_of_range",
-            "Siren setting IDs must fit an unsigned byte",
-            path="id",
-        )
-    elif isinstance(model, VehicleModKit) and not 0 <= model.id <= 0xFFFF:
-        report.issue(
-            "vehicle.mod_kit.id.out_of_range",
-            "Mod kit IDs must fit an unsigned short",
-            path="id",
-        )
+            if model.mass <= 0.0:
+                report.issue(
+                    "vehicle.handling.mass.invalid",
+                    "Vehicle mass must be greater than zero",
+                    path="mass",
+                )
+            for name in ("model_flags", "handling_flags", "damage_flags"):
+                value = getattr(model, name)
+                if value is None or (problem := handling_flag_problem(value)) is None:
+                    continue
+                suffix, message = problem
+                report.issue(
+                    f"vehicle.handling.flags.{suffix}",
+                    message,
+                    path=name,
+                )
+        case VehicleVariation():
+            _identifier(
+                report,
+                model.model_name,
+                code="vehicle.variation.model_name.required",
+                path="model_name",
+            )
+        case VehicleColorIndices():
+            maximum = (
+                6 if context is not None and context.game is GameTarget.GTA5 else 7
+            )
+            if len(model.indices) > maximum:
+                report.issue(
+                    "vehicle.color.indices.limit",
+                    f"A vehicle color set cannot contain more than {maximum} indices",
+                    path="indices",
+                )
+            for index, color_index in enumerate(model.indices):
+                if not 0 <= color_index <= 0xFF:
+                    report.issue(
+                        "vehicle.color.index.out_of_range",
+                        "Vehicle color indices must fit an unsigned byte",
+                        path=f"indices[{index}]",
+                    )
+        case LicensePlateProbability() if model.weight < 0:
+            report.issue(
+                "vehicle.plate_probability.weight.invalid",
+                "License plate probability weights cannot be negative",
+                path="weight",
+            )
+        case VehicleModelColor():
+            if not 0 <= model.color <= 0xFFFFFFFF:
+                report.issue(
+                    "vehicle.color.value.out_of_range",
+                    "Packed vehicle colors must fit ARGB8",
+                    path="color",
+                )
+            if not -1 <= model.metallic_id <= 0xFF:
+                report.issue(
+                    "vehicle.color.metallic_id.out_of_range",
+                    "Vehicle metallic IDs must be -1 or fit an unsigned byte",
+                    path="metallic_id",
+                )
+        case VehicleLightSettings() if not 0 <= model.id <= 0xFF:
+            report.issue(
+                "vehicle.light.id.out_of_range",
+                "Light setting IDs must fit an unsigned byte",
+                path="id",
+            )
+        case VehicleSirenSettings() if not 0 <= model.id <= 0xFF:
+            report.issue(
+                "vehicle.siren.id.out_of_range",
+                "Siren setting IDs must fit an unsigned byte",
+                path="id",
+            )
+        case VehicleModKit() if not 0 <= model.id <= 0xFFFF:
+            report.issue(
+                "vehicle.mod_kit.id.out_of_range",
+                "Mod kit IDs must fit an unsigned short",
+                path="id",
+            )
 
-    if isinstance(model, VehicleInitDataList):
-        _duplicate_identifiers(
-            report,
-            [vehicle.model_name for vehicle in model.vehicles],
-            code="vehicle.model_name.duplicate",
-            path="vehicles",
-        )
-        _validate_vehicle_references(report, model, context)
-    elif isinstance(model, HandlingDataManager):
-        _duplicate_identifiers(
-            report,
-            [str(entry.name) for entry in model.entries],
-            code="vehicle.handling_name.duplicate",
-            path="entries",
-        )
-    elif isinstance(model, VehicleModelInfoVariation):
-        _duplicate_identifiers(
-            report,
-            [vehicle.model_name for vehicle in model.vehicles],
-            code="vehicle.variation.model_name.duplicate",
-            path="vehicles",
-            severity=DiagnosticSeverity.WARNING,
-        )
-        _validate_variation_references(report, model, context)
-    elif isinstance(model, VehicleCarCols):
-        if len(model.colors) > 0x100:
-            report.issue(
-                "vehicle.colors.limit",
-                "Vehicle color tables cannot contain more than 256 entries",
-                path="colors",
+    match model:
+        case VehicleInitDataList():
+            _duplicate_identifiers(
+                report,
+                [vehicle.model_name for vehicle in model.vehicles],
+                code="vehicle.model_name.duplicate",
+                path="vehicles",
             )
-        seen_colors: dict[int, int] = {}
-        for index, color in enumerate(model.colors):
-            previous = seen_colors.get(color.color)
-            if previous is not None:
+            _validate_vehicle_references(report, model, context)
+        case HandlingDataManager():
+            _duplicate_identifiers(
+                report,
+                [str(entry.name) for entry in model.entries],
+                code="vehicle.handling_name.duplicate",
+                path="entries",
+            )
+        case VehicleModelInfoVariation():
+            _duplicate_identifiers(
+                report,
+                [vehicle.model_name for vehicle in model.vehicles],
+                code="vehicle.variation.model_name.duplicate",
+                path="vehicles",
+                severity=DiagnosticSeverity.WARNING,
+            )
+            _validate_variation_references(report, model, context)
+        case VehicleCarCols():
+            if len(model.colors) > 0x100:
                 report.issue(
-                    "vehicle.color.duplicate",
-                    f"Packed color duplicates colors[{previous}]",
-                    path=f"colors[{index}]",
-                    severity=DiagnosticSeverity.ERROR,
+                    "vehicle.colors.limit",
+                    "Vehicle color tables cannot contain more than 256 entries",
+                    path="colors",
                 )
-            else:
-                seen_colors[color.color] = index
+            seen_colors: dict[int, int] = {}
+            for index, color in enumerate(model.colors):
+                previous = seen_colors.get(color.color)
+                if previous is not None:
+                    report.issue(
+                        "vehicle.color.duplicate",
+                        f"Packed color duplicates colors[{previous}]",
+                        path=f"colors[{index}]",
+                        severity=DiagnosticSeverity.ERROR,
+                    )
+                else:
+                    seen_colors[color.color] = index
 
     _validate_children(report, model, context=context)
     return report

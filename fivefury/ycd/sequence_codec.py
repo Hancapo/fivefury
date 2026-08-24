@@ -551,12 +551,19 @@ def build_sequence_data(sequence: object) -> bytes:
             channel.frame_offset = frame_bit_offset
             bit_count = channel_frame_bits(channel)
             frame_bit_offset += bit_count
-            if isinstance(channel, YcdRawFloatChannel):
-                frame_descriptors.append((int(channel.channel_type), bit_count, channel.values))
-            elif isinstance(channel, YcdQuantizeFloatChannel):
-                frame_descriptors.append((int(channel.channel_type), bit_count, channel.value_list))
-            elif isinstance(channel, YcdIndirectQuantizeFloatChannel):
-                frame_descriptors.append((int(channel.channel_type), bit_count, channel.frames))
+            match channel:
+                case YcdRawFloatChannel():
+                    frame_descriptors.append(
+                        (int(channel.channel_type), bit_count, channel.values)
+                    )
+                case YcdQuantizeFloatChannel():
+                    frame_descriptors.append(
+                        (int(channel.channel_type), bit_count, channel.value_list)
+                    )
+                case YcdIndirectQuantizeFloatChannel():
+                    frame_descriptors.append(
+                        (int(channel.channel_type), bit_count, channel.frames)
+                    )
 
     frame_data, writer.frame_length = _native_backend._ycd_encode_frame_channels(
         num_frames,

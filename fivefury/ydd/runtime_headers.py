@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from enum import Enum
+from enum import StrEnum
 
 from ..game_target import GameTarget, coerce_game_target
 from ..ydr.resource_headers import (
@@ -23,7 +23,7 @@ class YddRuntimeProfile:
     drawable_headers: DrawableRuntimeHeaders
 
 
-class YddRuntimeContext(str, Enum):
+class YddRuntimeContext(StrEnum):
     GENERIC = "generic"
     CUTSCENE_PED_COMPONENT = "cutscene_ped_component"
     FULL_PED_DICTIONARY = "full_ped_dictionary"

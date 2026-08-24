@@ -219,14 +219,15 @@ class Ytyp(MetaHashFieldsMixin, ExtensionContainer):
             raise ValueError("META payload is not a CMapTypes/YTYP")
         archetypes: list[Any] = []
         for item in root.get("archetypes", []) or []:
-            if isinstance(item, dict) and item.get("_meta_name") == "CTimeArchetypeDef":
-                archetypes.append(TimeArchetypeDef.from_meta(item))
-            elif isinstance(item, dict) and item.get("_meta_name") == "CMloArchetypeDef":
-                archetypes.append(MloArchetypeDef.from_meta(item))
-            elif isinstance(item, dict) and item.get("_meta_name") == "CBaseArchetypeDef":
-                archetypes.append(BaseArchetypeDef.from_meta(item))
-            else:
-                archetypes.append(item)
+            match item:
+                case {"_meta_name": "CTimeArchetypeDef"}:
+                    archetypes.append(TimeArchetypeDef.from_meta(item))
+                case {"_meta_name": "CMloArchetypeDef"}:
+                    archetypes.append(MloArchetypeDef.from_meta(item))
+                case {"_meta_name": "CBaseArchetypeDef"}:
+                    archetypes.append(BaseArchetypeDef.from_meta(item))
+                case _:
+                    archetypes.append(item)
         return cls(
             extensions=extensions_from_meta(root.get("extensions", []) or []),
             archetypes=archetypes,

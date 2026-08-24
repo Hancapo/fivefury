@@ -38,16 +38,17 @@ def _bound_entries(ybns: Any) -> list[Gta5CacheBound]:
     entries: list[Gta5CacheBound] = []
     if isinstance(ybns, Mapping):
         for name, value in ybns.items():
-            if isinstance(value, Gta5CacheBound):
-                entries.append(value)
-            elif isinstance(value, Ybn):
-                entries.append(Gta5CacheBound.from_ybn(name, value))
-            elif isinstance(value, Bound):
-                entries.append(Gta5CacheBound.from_bound(name, value))
-            else:
-                raise TypeError(
-                    f"unsupported YBN mapping value: {type(value).__name__}"
-                )
+            match value:
+                case Gta5CacheBound():
+                    entries.append(value)
+                case Ybn():
+                    entries.append(Gta5CacheBound.from_ybn(name, value))
+                case Bound():
+                    entries.append(Gta5CacheBound.from_bound(name, value))
+                case _:
+                    raise TypeError(
+                        f"unsupported YBN mapping value: {type(value).__name__}"
+                    )
         return entries
     if isinstance(ybns, (Ybn, Gta5CacheBound)):
         ybns = (ybns,)

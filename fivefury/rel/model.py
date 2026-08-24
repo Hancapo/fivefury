@@ -255,47 +255,54 @@ class Dat16Curve(NamedRelItem):
     def to_data(self) -> bytes:
         data = bytearray(self.typed_name_header_bytes())
         data += struct.pack("<ff", float(self.min_input), float(self.max_input))
-        curve_type = int(self.curve_type)
-        if curve_type == int(Dat16RelType.CONSTANT_CURVE):
-            data += struct.pack("<f", float(self.value))
-        elif curve_type in {int(Dat16RelType.LINEAR_CURVE), int(Dat16RelType.LINEAR_DB_CURVE)}:
-            data += struct.pack(
-                "<ffff",
-                float(self.left_hand_pair_x),
-                float(self.left_hand_pair_y),
-                float(self.right_hand_pair_x),
-                float(self.right_hand_pair_y),
-            )
-        elif curve_type == int(Dat16RelType.PIECEWISE_LINEAR_CURVE):
-            data += struct.pack("<I", len(self.points))
-            for x, y in self.points:
-                data += struct.pack("<ff", float(x), float(y))
-        elif curve_type == int(Dat16RelType.EQUAL_POWER_CURVE):
-            data += struct.pack("<i", int(self.flip))
-        elif curve_type in {int(Dat16RelType.VALUE_TABLE_CURVE), int(Dat16RelType.DISTANCE_ATTENUATION_VALUE_TABLE_CURVE)}:
-            data += struct.pack("<i", len(self.values))
-            data += struct.pack("<" + "f" * len(self.values), *[float(v) for v in self.values]) if self.values else b""
-        elif curve_type == int(Dat16RelType.EXPONENTIAL_CURVE):
-            data += struct.pack("<if", int(self.flip), float(self.exponent))
-        elif curve_type in {
-            int(Dat16RelType.DECAYING_EXPONENTIAL_CURVE),
-            int(Dat16RelType.DECAYING_SQUARED_EXPONENTIAL_CURVE),
-            int(Dat16RelType.ONE_OVER_X_SQUARED_CURVE),
-        }:
-            data += struct.pack("<f", float(self.horizontal_scaling))
-        elif curve_type == int(Dat16RelType.SINE_CURVE):
-            data += struct.pack(
-                "<fffff",
-                float(self.start_phase),
-                float(self.end_phase),
-                float(self.frequency),
-                float(self.vertical_scaling),
-                float(self.vertical_offset),
-            )
-        elif curve_type == int(Dat16RelType.DEFAULT_DISTANCE_ATTENUATION_CURVE):
-            pass
-        else:
-            return bytes(self.raw_data)
+        match self.curve_type:
+            case Dat16RelType.CONSTANT_CURVE:
+                data += struct.pack("<f", float(self.value))
+            case Dat16RelType.LINEAR_CURVE | Dat16RelType.LINEAR_DB_CURVE:
+                data += struct.pack(
+                    "<ffff",
+                    float(self.left_hand_pair_x),
+                    float(self.left_hand_pair_y),
+                    float(self.right_hand_pair_x),
+                    float(self.right_hand_pair_y),
+                )
+            case Dat16RelType.PIECEWISE_LINEAR_CURVE:
+                data += struct.pack("<I", len(self.points))
+                for x, y in self.points:
+                    data += struct.pack("<ff", float(x), float(y))
+            case Dat16RelType.EQUAL_POWER_CURVE:
+                data += struct.pack("<i", int(self.flip))
+            case (
+                Dat16RelType.VALUE_TABLE_CURVE
+                | Dat16RelType.DISTANCE_ATTENUATION_VALUE_TABLE_CURVE
+            ):
+                data += struct.pack("<i", len(self.values))
+                if self.values:
+                    data += struct.pack(
+                        "<" + "f" * len(self.values),
+                        *(float(value) for value in self.values),
+                    )
+            case Dat16RelType.EXPONENTIAL_CURVE:
+                data += struct.pack("<if", int(self.flip), float(self.exponent))
+            case (
+                Dat16RelType.DECAYING_EXPONENTIAL_CURVE
+                | Dat16RelType.DECAYING_SQUARED_EXPONENTIAL_CURVE
+                | Dat16RelType.ONE_OVER_X_SQUARED_CURVE
+            ):
+                data += struct.pack("<f", float(self.horizontal_scaling))
+            case Dat16RelType.SINE_CURVE:
+                data += struct.pack(
+                    "<fffff",
+                    float(self.start_phase),
+                    float(self.end_phase),
+                    float(self.frequency),
+                    float(self.vertical_scaling),
+                    float(self.vertical_offset),
+                )
+            case Dat16RelType.DEFAULT_DISTANCE_ATTENUATION_CURVE:
+                pass
+            case _:
+                return bytes(self.raw_data)
         return bytes(data)
 
 

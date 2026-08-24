@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from ..common import hash_value
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .views import AssetRecord
 
 
-class TextureGraphIssueSeverity(str, Enum):
+class TextureGraphIssueSeverity(StrEnum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"

@@ -133,10 +133,11 @@ def parse_material(
             data_type = system_data[entry_off]
             data_pointer = u64(system_data, entry_off + 0x08)
             params.append((data_type, data_pointer))
-            if data_type == 1:
-                inline_size += 16
-            elif data_type > 1:
-                inline_size += 16 * int(data_type)
+            match data_type:
+                case 1:
+                    inline_size += 16
+                case value if value > 1:
+                    inline_size += 16 * value
         hashes_off = params_off + (parameter_count * 16) + inline_size
         if hashes_off + (parameter_count * 4) <= len(system_data):
             parameter_hashes = list(struct.unpack_from(f'<{parameter_count}I', system_data, hashes_off))
@@ -154,32 +155,33 @@ def parse_material(
 
             texture_ref = None
             numeric_value = None
-            if data_type == 0 and data_pointer:
-                texture_name = parse_texture_base(
-                    system_data,
-                    data_pointer,
-                    virtual_offset=virtual_offset,
-                    u64=u64,
-                    try_read_c_string=try_read_c_string,
-                )
-                if texture_name:
-                    texture_ref = YdrTextureRef(
-                        name=texture_name,
-                        parameter_hash=parameter_hash,
-                        parameter_name=parameter_name,
-                        name_hash=hash_name(texture_name),
-                        uv_index=parameter_definition.uv_index if parameter_definition is not None else None,
-                        parameter_type=parameter_definition.type_name if parameter_definition is not None else None,
-                        hidden=parameter_definition.hidden if parameter_definition is not None else False,
+            match data_type, data_pointer:
+                case 0, pointer if pointer:
+                    texture_name = parse_texture_base(
+                        system_data,
+                        pointer,
+                        virtual_offset=virtual_offset,
+                        u64=u64,
+                        try_read_c_string=try_read_c_string,
                     )
-                    textures.append(texture_ref)
-            else:
-                numeric_value = decode_parameter_value(
-                    data_type,
-                    data_pointer,
-                    system_data,
-                    type_name=parameter_definition.type_name if parameter_definition is not None else None,
-                )
+                    if texture_name:
+                        texture_ref = YdrTextureRef(
+                            name=texture_name,
+                            parameter_hash=parameter_hash,
+                            parameter_name=parameter_name,
+                            name_hash=hash_name(texture_name),
+                            uv_index=parameter_definition.uv_index if parameter_definition is not None else None,
+                            parameter_type=parameter_definition.type_name if parameter_definition is not None else None,
+                            hidden=parameter_definition.hidden if parameter_definition is not None else False,
+                        )
+                        textures.append(texture_ref)
+                case _:
+                    numeric_value = decode_parameter_value(
+                        data_type,
+                        data_pointer,
+                        system_data,
+                        type_name=parameter_definition.type_name if parameter_definition is not None else None,
+                    )
 
             parameters.append(
                 YdrMaterialParameterRef(
@@ -333,60 +335,103 @@ def parse_material_gen9(
             if parameter_name is None:
                 parameter_name = f'hash_{parameter_hash:08X}' if parameter_hash else f'param_{param_index}'
             legacy_parameter_definition = shader_definition.get_parameter(parameter_name) if shader_definition is not None else None
-            if kind == int(ShaderParamTypeG9.TEXTURE):
-                if legacy_parameter_definition is not None and not legacy_parameter_definition.is_texture:
+            match kind:
+                case ShaderParamTypeG9.TEXTURE:
+                    if (
+                        legacy_parameter_definition is not None
+                        and not legacy_parameter_definition.is_texture
+                    ):
+                        legacy_parameter_definition = None
+                    parameter_type_name = "Texture"
+                case ShaderParamTypeG9.CBUFFER:
+                    if (
+                        legacy_parameter_definition is not None
+                        and legacy_parameter_definition.is_texture
+                    ):
+                        legacy_parameter_definition = None
+                    parameter_type_name = (
+                        legacy_parameter_definition.type_name
+                        if legacy_parameter_definition is not None
+                        else None
+                    )
+                case _:
+                    # Sampler-state and unknown resources must not inherit legacy
+                    # texture metadata merely because their names compare equally.
                     legacy_parameter_definition = None
-                parameter_type_name = "Texture"
-            elif kind == int(ShaderParamTypeG9.CBUFFER):
-                if legacy_parameter_definition is not None and legacy_parameter_definition.is_texture:
-                    legacy_parameter_definition = None
-                parameter_type_name = (
-                    legacy_parameter_definition.type_name if legacy_parameter_definition is not None else None
-                )
-            else:
-                # Gen9 sampler-state and unknown resources are distinct from texture
-                # resources even when their names differ only by case.  The legacy
-                # shader library is case-insensitive, so carrying its metadata across
-                # kinds would turn e.g. ``diffusesampler`` into ``DiffuseSampler``.
-                legacy_parameter_definition = None
-                parameter_type_name = None
+                    parameter_type_name = None
 
             texture_ref = None
             value = None
             data_type = 0
-            if kind == int(ShaderParamTypeG9.TEXTURE):
-                pointer = texture_ptrs[raw_index] if raw_index < len(texture_ptrs) else 0
-                if pointer:
-                    texture_name = parse_texture_base(
-                        system_data,
-                        pointer,
-                        virtual_offset=virtual_offset,
-                        u64=u64,
-                        try_read_c_string=try_read_c_string,
+            match kind:
+                case ShaderParamTypeG9.TEXTURE:
+                    pointer = (
+                        texture_ptrs[raw_index]
+                        if raw_index < len(texture_ptrs)
+                        else 0
                     )
-                    if texture_name:
-                        texture_ref = YdrTextureRef(
-                            name=texture_name,
-                            parameter_hash=parameter_hash,
-                            parameter_name=parameter_name,
-                            name_hash=hash_name(texture_name),
-                            uv_index=legacy_parameter_definition.uv_index if legacy_parameter_definition is not None else None,
-                            parameter_type=legacy_parameter_definition.type_name if legacy_parameter_definition is not None else None,
-                            hidden=legacy_parameter_definition.hidden if legacy_parameter_definition is not None else False,
+                    if pointer:
+                        texture_name = parse_texture_base(
+                            system_data,
+                            pointer,
+                            virtual_offset=virtual_offset,
+                            u64=u64,
+                            try_read_c_string=try_read_c_string,
                         )
-                        textures.append(texture_ref)
-            elif kind == int(ShaderParamTypeG9.CBUFFER):
-                data_type = max(1, int(param_length) // 16) if int(param_length) > 16 else 1
-                if raw_index < len(first_buffer_ptrs):
-                    buffer_base_off = virtual_offset(first_buffer_ptrs[raw_index], system_data)
-                    raw = system_data[buffer_base_off + int(param_offset) : buffer_base_off + int(param_offset) + int(param_length)]
-                    value = _decode_numeric_parameter(
-                        raw,
-                        type_name=legacy_parameter_definition.type_name if legacy_parameter_definition is not None else None,
+                        if texture_name:
+                            texture_ref = YdrTextureRef(
+                                name=texture_name,
+                                parameter_hash=parameter_hash,
+                                parameter_name=parameter_name,
+                                name_hash=hash_name(texture_name),
+                                uv_index=(
+                                    legacy_parameter_definition.uv_index
+                                    if legacy_parameter_definition is not None
+                                    else None
+                                ),
+                                parameter_type=(
+                                    legacy_parameter_definition.type_name
+                                    if legacy_parameter_definition is not None
+                                    else None
+                                ),
+                                hidden=(
+                                    legacy_parameter_definition.hidden
+                                    if legacy_parameter_definition is not None
+                                    else False
+                                ),
+                            )
+                            textures.append(texture_ref)
+                case ShaderParamTypeG9.CBUFFER:
+                    data_type = (
+                        max(1, int(param_length) // 16)
+                        if int(param_length) > 16
+                        else 1
                     )
-            elif kind == int(ShaderParamTypeG9.SAMPLER):
-                data_type = 1
-                value = int(samplers[raw_index]) if raw_index < len(samplers) else 0
+                    if raw_index < len(first_buffer_ptrs):
+                        buffer_base_off = virtual_offset(
+                            first_buffer_ptrs[raw_index], system_data
+                        )
+                        raw = system_data[
+                            buffer_base_off
+                            + int(param_offset) : buffer_base_off
+                            + int(param_offset)
+                            + int(param_length)
+                        ]
+                        value = _decode_numeric_parameter(
+                            raw,
+                            type_name=(
+                                legacy_parameter_definition.type_name
+                                if legacy_parameter_definition is not None
+                                else None
+                            ),
+                        )
+                case ShaderParamTypeG9.SAMPLER:
+                    data_type = 1
+                    value = (
+                        int(samplers[raw_index])
+                        if raw_index < len(samplers)
+                        else 0
+                    )
 
             parameters.append(
                 YdrMaterialParameterRef(

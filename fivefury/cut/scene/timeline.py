@@ -128,16 +128,22 @@ class CutTimelineEvent:
             duration = payload_duration
         if track is None:
             role_or_kind = target_role
-            if event_kind == "camera_cut":
-                track = "camera"
-            elif event_kind == "show_subtitle":
-                track = "subtitle"
-            elif is_load_event or (spec is not None and spec.is_load_event):
-                track = "load"
-            elif role_or_kind:
-                track = f"{role_or_kind}:{target_name or target_id if target_id is not None else role_or_kind}"
-            else:
-                track = event_kind
+            match event_kind:
+                case "camera_cut":
+                    track = "camera"
+                case "show_subtitle":
+                    track = "subtitle"
+                case _ if is_load_event or (
+                    spec is not None and spec.is_load_event
+                ):
+                    track = "load"
+                case _ if role_or_kind:
+                    track = (
+                        f"{role_or_kind}:"
+                        f"{target_name or target_id if target_id is not None else role_or_kind}"
+                    )
+                case _:
+                    track = event_kind
         return cls(
             start=float(start),
             kind=event_kind,

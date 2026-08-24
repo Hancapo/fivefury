@@ -699,37 +699,38 @@ class YcdAnimation:
         }
         for (bone_id, track), value in tracks.items():
             sample = result.setdefault(int(bone_id), YcdFacialAnimationSample())
-            if int(track) == int(YcdAnimationTrack.BLEND_SHAPE):
-                sample.blend_shape = value.x
-            elif int(track) == int(YcdAnimationTrack.VISEMES):
-                sample.viseme = value.x
-            elif int(track) == int(YcdAnimationTrack.ANIMATED_NORMAL_MAPS):
-                binding = next(
-                    (
-                        sequence.bone_id
-                        for sequence in self.facial_sequences
-                        if sequence.bone_id is not None
-                        and int(sequence.bone_id.bone_id) == int(bone_id)
-                        and int(sequence.bone_id.track) == int(track)
-                    ),
-                    None,
-                )
-                if binding is not None and int(binding.format) == int(
-                    YcdTrackFormat.VECTOR3
-                ):
-                    sample.animated_normal_maps = value.xyz
-                else:
-                    sample.animated_normal_maps = value.x
-            elif int(track) == int(YcdAnimationTrack.FACIAL_CONTROL):
-                sample.control = value.x
-            elif int(track) == int(YcdAnimationTrack.FACIAL_TRANSLATION):
-                sample.translation = value.xyz
-            elif int(track) == int(YcdAnimationTrack.FACIAL_ROTATION):
-                sample.rotation = value if isinstance(value, Quaternion) else None
-            elif int(track) == int(YcdAnimationTrack.FACIAL_SCALE):
-                sample.scale = value.xyz
-            elif int(track) == int(YcdAnimationTrack.FACIAL_TINTING):
-                sample.tinting = value.x
+            match int(track):
+                case YcdAnimationTrack.BLEND_SHAPE:
+                    sample.blend_shape = value.x
+                case YcdAnimationTrack.VISEMES:
+                    sample.viseme = value.x
+                case YcdAnimationTrack.ANIMATED_NORMAL_MAPS:
+                    binding = next(
+                        (
+                            sequence.bone_id
+                            for sequence in self.facial_sequences
+                            if sequence.bone_id is not None
+                            and int(sequence.bone_id.bone_id) == int(bone_id)
+                            and int(sequence.bone_id.track) == int(track)
+                        ),
+                        None,
+                    )
+                    if binding is not None and int(binding.format) == int(
+                        YcdTrackFormat.VECTOR3
+                    ):
+                        sample.animated_normal_maps = value.xyz
+                    else:
+                        sample.animated_normal_maps = value.x
+                case YcdAnimationTrack.FACIAL_CONTROL:
+                    sample.control = value.x
+                case YcdAnimationTrack.FACIAL_TRANSLATION:
+                    sample.translation = value.xyz
+                case YcdAnimationTrack.FACIAL_ROTATION:
+                    sample.rotation = value if isinstance(value, Quaternion) else None
+                case YcdAnimationTrack.FACIAL_SCALE:
+                    sample.scale = value.xyz
+                case YcdAnimationTrack.FACIAL_TINTING:
+                    sample.tinting = value.x
         return result
 
     def evaluate_uv_transform(self, frame: float) -> YcdUvTransformSample:

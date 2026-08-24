@@ -292,12 +292,13 @@ def set_variation(
         raise TypeError(f"unsupported variation payload: {type(payload).__name__}")
     elif payload.object_id != object_id:
         raise ValueError("variation payload object_id must match the target object")
-    if isinstance(payload, CutVehicleVariationPayload):
-        args_type = "rage__cutfVehicleVariationEventArgs"
-    elif isinstance(payload, CutVehicleExtraPayload):
-        args_type = "rage__cutfVehicleExtraEventArgs"
-    elif isinstance(payload, CutObjectVariationPayload):
-        args_type = "rage__cutfObjectVariationEventArgs"
+    match payload:
+        case CutVehicleVariationPayload():
+            args_type = "rage__cutfVehicleVariationEventArgs"
+        case CutVehicleExtraPayload():
+            args_type = "rage__cutfVehicleExtraEventArgs"
+        case CutObjectVariationPayload():
+            args_type = "rage__cutfObjectVariationEventArgs"
     return self.event(
         CutEventType.SET_VARIATION,
         start=start,

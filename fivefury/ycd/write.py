@@ -304,27 +304,55 @@ class _YcdWriter:
         )
         value_offset = offset + 0x20
         attr_type = attribute.attribute_type
-        if attr_type is YcdClipPropertyAttributeType.FLOAT:
-            self.writer.pack_into("fIII", value_offset, float(attribute.value), 0, 0, 0)
-        elif attr_type is YcdClipPropertyAttributeType.INT:
-            self.writer.pack_into("iIII", value_offset, int(attribute.value), 0, 0, 0)
-        elif attr_type is YcdClipPropertyAttributeType.BOOL:
-            self.writer.pack_into("IIII", value_offset, 1 if bool(attribute.value) else 0, 0, 0, 0)
-        elif attr_type is YcdClipPropertyAttributeType.STRING:
-            text = str(attribute.value)
-            string_offset = self.write_string(text) if text else 0
-            self.writer.pack_into("QHHI", value_offset, self.vptr(string_offset) if string_offset else 0, len(text), len(text) + 1 if text else 0, 0)
-        elif attr_type is YcdClipPropertyAttributeType.VECTOR3:
-            x, y, z = tuple(float(component) for component in attribute.value)
-            extra = 0.0 if attribute.extra is None else float(attribute.extra)
-            self.writer.pack_into("ffff", value_offset, x, y, z, extra)
-        elif attr_type is YcdClipPropertyAttributeType.VECTOR4:
-            x, y, z, w = tuple(float(component) for component in attribute.value)
-            self.writer.pack_into("ffff", value_offset, x, y, z, w)
-        elif attr_type is YcdClipPropertyAttributeType.HASH_STRING:
-            self.writer.pack_into("IIII", value_offset, _resolve_hash(attribute.value).uint, 0, 0, 0)
-        else:  # pragma: no cover - guarded by current enum
-            raise ValueError(f"Unsupported YCD clip property attribute type: {attr_type!r}")
+        match attr_type:
+            case YcdClipPropertyAttributeType.FLOAT:
+                self.writer.pack_into(
+                    "fIII", value_offset, float(attribute.value), 0, 0, 0
+                )
+            case YcdClipPropertyAttributeType.INT:
+                self.writer.pack_into(
+                    "iIII", value_offset, int(attribute.value), 0, 0, 0
+                )
+            case YcdClipPropertyAttributeType.BOOL:
+                self.writer.pack_into(
+                    "IIII",
+                    value_offset,
+                    1 if bool(attribute.value) else 0,
+                    0,
+                    0,
+                    0,
+                )
+            case YcdClipPropertyAttributeType.STRING:
+                text = str(attribute.value)
+                string_offset = self.write_string(text) if text else 0
+                self.writer.pack_into(
+                    "QHHI",
+                    value_offset,
+                    self.vptr(string_offset) if string_offset else 0,
+                    len(text),
+                    len(text) + 1 if text else 0,
+                    0,
+                )
+            case YcdClipPropertyAttributeType.VECTOR3:
+                x, y, z = tuple(float(component) for component in attribute.value)
+                extra = 0.0 if attribute.extra is None else float(attribute.extra)
+                self.writer.pack_into("ffff", value_offset, x, y, z, extra)
+            case YcdClipPropertyAttributeType.VECTOR4:
+                x, y, z, w = tuple(float(component) for component in attribute.value)
+                self.writer.pack_into("ffff", value_offset, x, y, z, w)
+            case YcdClipPropertyAttributeType.HASH_STRING:
+                self.writer.pack_into(
+                    "IIII",
+                    value_offset,
+                    _resolve_hash(attribute.value).uint,
+                    0,
+                    0,
+                    0,
+                )
+            case _:  # pragma: no cover - guarded by current enum
+                raise ValueError(
+                    f"Unsupported YCD clip property attribute type: {attr_type!r}"
+                )
         return offset
 
     def write_clip_property(self, prop: YcdClipProperty) -> int:

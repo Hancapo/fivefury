@@ -346,29 +346,30 @@ def _append_vector(parent: ET.Element, tag: str, value: Sequence[Any]) -> ET.Ele
 
 def _append_item(container: ET.Element, value: Any) -> None:
     item = ET.SubElement(container, "Item")
-    if value is None:
-        item.set("type", "NULL")
-    elif isinstance(value, Mapping):
-        if type_name := value.get("__type__", value.get("type", "")):
-            item.set("type", str(type_name))
-        _append_mapping(item, value)
-    elif dataclasses.is_dataclass(value):
-        if type_name := getattr(value, "TYPE_NAME", ""):
-            item.set("type", type_name)
-        _append_model_fields(item, value)
-    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        for nested in value:
-            _append_item(item, nested)
-    elif isinstance(value, VehicleMetaEnum):
-        item.text = value.token
-    elif isinstance(value, VehicleExtraFlag):
-        item.text = vehicle_extra_flag_text(value)
-    elif isinstance(value, (bool, int, float, IntEnum)):
-        item.set("value", _scalar_text(value))
-    else:
-        text = _scalar_text(value)
-        if text:
-            item.text = text
+    match value:
+        case None:
+            item.set("type", "NULL")
+        case Mapping():
+            if type_name := value.get("__type__", value.get("type", "")):
+                item.set("type", str(type_name))
+            _append_mapping(item, value)
+        case value if dataclasses.is_dataclass(value):
+            if type_name := getattr(value, "TYPE_NAME", ""):
+                item.set("type", type_name)
+            _append_model_fields(item, value)
+        case Sequence() if not isinstance(value, (str, bytes)):
+            for nested in value:
+                _append_item(item, nested)
+        case VehicleMetaEnum():
+            item.text = value.token
+        case VehicleExtraFlag():
+            item.text = vehicle_extra_flag_text(value)
+        case bool() | int() | float() | IntEnum():
+            item.set("value", _scalar_text(value))
+        case _:
+            text = _scalar_text(value)
+            if text:
+                item.text = text
 
 
 def _append_sequence(parent: ET.Element, tag: str, values: Sequence[Any]) -> ET.Element:
@@ -401,18 +402,19 @@ def _append_mapping(parent: ET.Element, values: Mapping[str, Any]) -> None:
 def _append_value(parent: ET.Element, tag: str, value: Any) -> None:
     if value is None:
         return
-    if isinstance(value, Mapping):
-        child = ET.SubElement(parent, tag)
-        _append_mapping(child, value)
-    elif dataclasses.is_dataclass(value):
-        child = ET.SubElement(parent, tag)
-        _append_model_fields(child, value)
-    elif isinstance(value, tuple):
-        _append_vector(parent, tag, value)
-    elif isinstance(value, list):
-        _append_sequence(parent, tag, value)
-    else:
-        _append_scalar(parent, tag, value)
+    match value:
+        case Mapping():
+            child = ET.SubElement(parent, tag)
+            _append_mapping(child, value)
+        case value if dataclasses.is_dataclass(value):
+            child = ET.SubElement(parent, tag)
+            _append_model_fields(child, value)
+        case tuple():
+            _append_vector(parent, tag, value)
+        case list():
+            _append_sequence(parent, tag, value)
+        case _:
+            _append_scalar(parent, tag, value)
 
 
 def _append_color_indices(parent: ET.Element, value: VehicleColorIndices) -> None:

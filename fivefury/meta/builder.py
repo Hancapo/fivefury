@@ -214,84 +214,99 @@ class MetaBuilder:
 
     def _encode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, value: Any) -> bytes:
         data_type = field.data_type
-        if data_type is MetaDataType.BOOLEAN:
-            return struct.pack("<?", bool(value))
-        if data_type is MetaDataType.SIGNED_BYTE:
-            return struct.pack("<b", int(value or 0))
-        if data_type is MetaDataType.UNSIGNED_BYTE:
-            return struct.pack("<B", int(value or 0))
-        if data_type is MetaDataType.SIGNED_SHORT:
-            return struct.pack("<h", int(value or 0))
-        if data_type is MetaDataType.UNSIGNED_SHORT:
-            return struct.pack("<H", int(value or 0))
-        if data_type is MetaDataType.SIGNED_INT:
-            return struct.pack("<i", int(value or 0))
-        if data_type is MetaDataType.UNSIGNED_INT:
-            return struct.pack("<I", int(value or 0))
-        if data_type is MetaDataType.FLOAT:
-            return struct.pack("<f", float(value or 0.0))
-        if data_type is MetaDataType.FLOAT_XYZ:
-            x, y, z = _coerce_vector(value, 3)
-            return struct.pack("<fff", x, y, z)
-        if data_type is MetaDataType.FLOAT_XYZW:
-            x, y, z, w = _coerce_vector(value, 4)
-            return struct.pack("<ffff", x, y, z, w)
-        if data_type is MetaDataType.HASH:
-            return struct.pack("<I", _coerce_hash(value))
-        if data_type is MetaDataType.BYTE_ENUM:
-            return struct.pack("<B", int(value or 0))
-        if data_type is MetaDataType.INT_ENUM:
-            return struct.pack("<i", int(value or 0))
-        if data_type is MetaDataType.SHORT_FLAGS:
-            return struct.pack("<h", int(value or 0))
-        if data_type in (MetaDataType.INT_FLAGS_1, MetaDataType.INT_FLAGS_2):
-            return struct.pack("<i", int(value or 0))
-        if data_type is MetaDataType.ARRAY_OF_CHARS:
-            length = field.reference_key & 0xFFFF
-            text = (value or "").encode("ascii", errors="ignore")[:length]
-            return text + (b"\x00" * (length - len(text)))
-        if data_type is MetaDataType.ARRAY_OF_BYTES:
-            count = field.reference_key & 0xFFFF
-            array_info = array_info_for_field(struct_info, field_index)
-            if array_info is None:
-                raw = bytes(value or b"")[:count]
-                return raw + (b"\x00" * (count - len(raw)))
-            return _pack_inline_array(array_info.data_type, value, count)
-        if data_type is MetaDataType.CHAR_POINTER:
-            if not value:
-                return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
-            raw = str(value).encode("ascii", errors="ignore") + b"\x00"
-            pointer = self._add_block(META_TYPE_NAME_STRING, raw, align_item=1, group=True)
-            return MetaArrayRef(pointer, len(raw) - 1, len(raw) - 1, 0).to_bytes()
-        if data_type is MetaDataType.DATA_BLOCK_POINTER:
-            raw = bytes(value or b"")
-            if not raw:
-                return MetaDataRef(MetaPointer(0, 0)).to_bytes()
-            target_hash = field.reference_key if field.reference_key not in (0, 2) else META_TYPE_NAME_BYTE
-            pointer = self._add_block(target_hash, raw, align_item=1, group=False)
-            return MetaDataRef(pointer).to_bytes()
-        if data_type is MetaDataType.STRUCTURE_POINTER:
-            if value is None:
-                return MetaDataRef(MetaPointer(0, 0)).to_bytes()
-            target_hash = _value_struct_hash(value, fallback=field.reference_key)
-            self._mark_struct_used(target_hash)
-            pointer = self._add_block(target_hash, self._encode_struct_payload(target_hash, value))
-            return MetaDataRef(pointer).to_bytes()
-        if data_type is MetaDataType.STRUCTURE:
-            target_hash = field.reference_key or _value_struct_hash(value, fallback=0)
-            self._mark_struct_used(target_hash)
-            if value is None:
-                nested_info = self.struct_infos.get(field.reference_key)
-                if nested_info is not None:
-                    return bytes(nested_info.structure_size)
-                nested_def = STRUCTS_BY_HASH.get(field.reference_key)
-                if nested_def is not None:
-                    return bytes(nested_def.size)
-                raise KeyError(f"No size information available for inline structure 0x{field.reference_key:08X}")
-            return self._encode_struct_payload(target_hash, value)
-        if data_type is MetaDataType.ARRAY:
-            return self._encode_array(struct_info, field_index, value)
-        raise NotImplementedError(f"Unsupported META field type {data_type}")
+        match data_type:
+            case MetaDataType.BOOLEAN:
+                return struct.pack("<?", bool(value))
+            case MetaDataType.SIGNED_BYTE:
+                return struct.pack("<b", int(value or 0))
+            case MetaDataType.UNSIGNED_BYTE:
+                return struct.pack("<B", int(value or 0))
+            case MetaDataType.SIGNED_SHORT:
+                return struct.pack("<h", int(value or 0))
+            case MetaDataType.UNSIGNED_SHORT:
+                return struct.pack("<H", int(value or 0))
+            case MetaDataType.SIGNED_INT:
+                return struct.pack("<i", int(value or 0))
+            case MetaDataType.UNSIGNED_INT:
+                return struct.pack("<I", int(value or 0))
+            case MetaDataType.FLOAT:
+                return struct.pack("<f", float(value or 0.0))
+            case MetaDataType.FLOAT_XYZ:
+                x, y, z = _coerce_vector(value, 3)
+                return struct.pack("<fff", x, y, z)
+            case MetaDataType.FLOAT_XYZW:
+                x, y, z, w = _coerce_vector(value, 4)
+                return struct.pack("<ffff", x, y, z, w)
+            case MetaDataType.HASH:
+                return struct.pack("<I", _coerce_hash(value))
+            case MetaDataType.BYTE_ENUM:
+                return struct.pack("<B", int(value or 0))
+            case MetaDataType.INT_ENUM:
+                return struct.pack("<i", int(value or 0))
+            case MetaDataType.SHORT_FLAGS:
+                return struct.pack("<h", int(value or 0))
+            case MetaDataType.INT_FLAGS_1 | MetaDataType.INT_FLAGS_2:
+                return struct.pack("<i", int(value or 0))
+            case MetaDataType.ARRAY_OF_CHARS:
+                length = field.reference_key & 0xFFFF
+                text = (value or "").encode("ascii", errors="ignore")[:length]
+                return text + (b"\x00" * (length - len(text)))
+            case MetaDataType.ARRAY_OF_BYTES:
+                count = field.reference_key & 0xFFFF
+                array_info = array_info_for_field(struct_info, field_index)
+                if array_info is None:
+                    raw = bytes(value or b"")[:count]
+                    return raw + (b"\x00" * (count - len(raw)))
+                return _pack_inline_array(array_info.data_type, value, count)
+            case MetaDataType.CHAR_POINTER:
+                if not value:
+                    return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
+                raw = str(value).encode("ascii", errors="ignore") + b"\x00"
+                pointer = self._add_block(
+                    META_TYPE_NAME_STRING, raw, align_item=1, group=True
+                )
+                return MetaArrayRef(pointer, len(raw) - 1, len(raw) - 1, 0).to_bytes()
+            case MetaDataType.DATA_BLOCK_POINTER:
+                raw = bytes(value or b"")
+                if not raw:
+                    return MetaDataRef(MetaPointer(0, 0)).to_bytes()
+                target_hash = (
+                    field.reference_key
+                    if field.reference_key not in (0, 2)
+                    else META_TYPE_NAME_BYTE
+                )
+                pointer = self._add_block(target_hash, raw, align_item=1, group=False)
+                return MetaDataRef(pointer).to_bytes()
+            case MetaDataType.STRUCTURE_POINTER:
+                if value is None:
+                    return MetaDataRef(MetaPointer(0, 0)).to_bytes()
+                target_hash = _value_struct_hash(value, fallback=field.reference_key)
+                self._mark_struct_used(target_hash)
+                pointer = self._add_block(
+                    target_hash, self._encode_struct_payload(target_hash, value)
+                )
+                return MetaDataRef(pointer).to_bytes()
+            case MetaDataType.STRUCTURE:
+                target_hash = field.reference_key or _value_struct_hash(
+                    value, fallback=0
+                )
+                self._mark_struct_used(target_hash)
+                if value is None:
+                    nested_info = self.struct_infos.get(field.reference_key)
+                    if nested_info is not None:
+                        return bytes(nested_info.structure_size)
+                    nested_def = STRUCTS_BY_HASH.get(field.reference_key)
+                    if nested_def is not None:
+                        return bytes(nested_def.size)
+                    raise KeyError(
+                        "No size information available for inline structure "
+                        f"0x{field.reference_key:08X}"
+                    )
+                return self._encode_struct_payload(target_hash, value)
+            case MetaDataType.ARRAY:
+                return self._encode_array(struct_info, field_index, value)
+            case _:
+                raise NotImplementedError(f"Unsupported META field type {data_type}")
 
     def _encode_array(self, struct_info: MetaStructInfo, field_index: int, value: Any) -> bytes:
         items = list(value or [])

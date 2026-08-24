@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from .utils import _is_rpf7, _is_rsc7
 
 
-class RpfSourceKind(str, Enum):
+class RpfSourceKind(StrEnum):
     RAW = "raw"
     DEFLATE = "deflate"
     RSC7 = "rsc7"

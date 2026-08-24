@@ -22,21 +22,22 @@ def _subtitle_requests(scene: CutScene) -> dict[str | int, set[int]]:
     requests: dict[str | int, set[int]] = {}
     active: list[str | int] = []
     for event in scene.timeline:
-        if event.event_name == "load_subtitles":
-            reference = field_reference(event.payload.get("cName"))
-            if reference is not None:
-                requests.setdefault(reference, set())
-                if reference not in active:
-                    active.append(reference)
-        elif event.event_name == "unload_subtitles":
-            reference = field_reference(event.payload.get("cName"))
-            if reference in active:
-                active.remove(reference)
-        elif event.event_name == "show_subtitle":
-            key_hash = subtitle_hash(event.payload.get("cName"))
-            if key_hash is not None:
-                for reference in active:
-                    requests.setdefault(reference, set()).add(key_hash)
+        match event.event_name:
+            case "load_subtitles":
+                reference = field_reference(event.payload.get("cName"))
+                if reference is not None:
+                    requests.setdefault(reference, set())
+                    if reference not in active:
+                        active.append(reference)
+            case "unload_subtitles":
+                reference = field_reference(event.payload.get("cName"))
+                if reference in active:
+                    active.remove(reference)
+            case "show_subtitle":
+                key_hash = subtitle_hash(event.payload.get("cName"))
+                if key_hash is not None:
+                    for reference in active:
+                        requests.setdefault(reference, set()).add(key_hash)
     return requests
 
 

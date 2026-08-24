@@ -25,6 +25,7 @@ from ..binary import (
     u32_be as _u32,
 )
 from ..vector import Vector2, Vector3, Vector4
+from . import model as pso_model
 from .codec import (
     decode_array_header,
     decode_pointer,
@@ -39,7 +40,6 @@ from .model import (
     PSCH,
     PSIN,
     PsoBlock,
-    PsoDataTypeArray,
     PsoDataTypeBool,
     PsoDataTypeEnum,
     PsoDataTypeFlags,
@@ -51,7 +51,6 @@ from .model import (
     PsoDataTypeFloat4a,
     PsoDataTypeHFloat,
     PsoDataTypeLong,
-    PsoDataTypeMap,
     PsoDataTypeSByte,
     PsoDataTypeSInt,
     PsoDataTypeSShort,
@@ -351,21 +350,31 @@ class PsoReader:
                 continue
             name = self._name(entry.name_hash)
             absolute_offset = base + entry.data_offset
-            if entry.type_id == PsoDataTypeString:
-                fields[name] = self._read_string(absolute_offset, entry)
-            elif entry.type_id == PsoDataTypeStructure:
-                if entry.subtype == 0:
-                    fields[name] = self._read_structure(entry.reference_key, block_id, relative_offset + entry.data_offset)
-                elif entry.subtype in {3, 4}:
-                    fields[name] = self._read_pointer_target(decode_pointer(self.psin, absolute_offset))
-                else:
+            match entry.type_id:
+                case pso_model.PsoDataTypeString:
+                    fields[name] = self._read_string(absolute_offset, entry)
+                case pso_model.PsoDataTypeStructure:
+                    match entry.subtype:
+                        case 0:
+                            fields[name] = self._read_structure(
+                                entry.reference_key,
+                                block_id,
+                                relative_offset + entry.data_offset,
+                            )
+                        case 3 | 4:
+                            fields[name] = self._read_pointer_target(
+                                decode_pointer(self.psin, absolute_offset)
+                            )
+                        case _:
+                            fields[name] = None
+                case pso_model.PsoDataTypeArray:
+                    fields[name] = self._read_array_values(
+                        entry, array_info, block_id, absolute_offset
+                    )
+                case pso_model.PsoDataTypeMap:
                     fields[name] = None
-            elif entry.type_id == PsoDataTypeArray:
-                fields[name] = self._read_array_values(entry, array_info, block_id, absolute_offset)
-            elif entry.type_id == PsoDataTypeMap:
-                fields[name] = None
-            else:
-                fields[name] = self._read_scalar(absolute_offset, entry.type_id)
+                case _:
+                    fields[name] = self._read_scalar(absolute_offset, entry.type_id)
         return self._node(type_hash, fields)
 
     def read(self) -> PsoDocument:

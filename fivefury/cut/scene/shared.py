@@ -258,33 +258,30 @@ def _runtime_animation_section_index(
 def _event_category(resolved: CutResolvedEvent) -> str:
     object_role = _object_role(resolved.object.type_name) if resolved.object is not None else None
     if resolved.event_args is not None:
-        if resolved.event_args.type_name in {"rage__cutfNameEventArgs", "rage__cutfFinalNameEventArgs"}:
-            if object_role == "audio":
+        match resolved.event_args.type_name, object_role:
+            case ("rage__cutfNameEventArgs" | "rage__cutfFinalNameEventArgs", "audio"):
                 return "audio_cue"
-            if object_role == "animation_manager":
+            case ("rage__cutfNameEventArgs" | "rage__cutfFinalNameEventArgs", "animation_manager"):
                 return "animation_state"
-            if object_role == "asset_manager":
+            case ("rage__cutfNameEventArgs" | "rage__cutfFinalNameEventArgs", "asset_manager"):
                 return "asset_state"
-        if resolved.event_args.type_name == "rage__cutfObjectIdEventArgs":
-            if object_role == "animation_manager":
+            case ("rage__cutfObjectIdEventArgs" | "rage__cutfObjectIdNameEventArgs", "animation_manager"):
                 return "animation_binding"
-            if object_role == "camera":
+            case ("rage__cutfObjectIdEventArgs", "camera"):
                 return "camera_binding"
-        if (
-            resolved.event_args.type_name == "rage__cutfObjectIdNameEventArgs"
-            and object_role == "animation_manager"
-        ):
-            return "animation_binding"
-        if resolved.event_args.type_name == "rage__cutfObjectIdListEventArgs" and object_role == "asset_manager":
-            return "asset_group"
+            case ("rage__cutfObjectIdListEventArgs", "asset_manager"):
+                return "asset_group"
         category = _ARGS_CATEGORY_MAP.get(resolved.event_args.type_name)
         if category is not None:
             return category
     if resolved.object is not None:
-        if object_role == "light":
-            return "light_state"
-        if object_role != "object":
-            return object_role
+        match object_role:
+            case "light":
+                return "light_state"
+            case "object":
+                pass
+            case str(role):
+                return role
     return "event"
 
 

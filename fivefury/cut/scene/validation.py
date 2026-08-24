@@ -437,40 +437,41 @@ def _validate_sections(scene: CutScene, issues: ValidationReport) -> None:
     if range_end <= range_start:
         return
     boundaries = [range_start]
-    if modes == CutSceneFlags.SECTION_BY_CAMERA_CUTS:
-        boundaries.extend(
-            _validate_section_list(
-                scene.camera_cut_list,
-                label="camera_cut",
-                range_start=range_start,
-                range_end=range_end,
-                issues=issues,
+    match modes:
+        case CutSceneFlags.SECTION_BY_CAMERA_CUTS:
+            boundaries.extend(
+                _validate_section_list(
+                    scene.camera_cut_list,
+                    label="camera_cut",
+                    range_start=range_start,
+                    range_end=range_end,
+                    issues=issues,
+                )
             )
-        )
-    elif modes == CutSceneFlags.SECTION_BY_SPLIT:
-        boundaries.extend(
-            _validate_section_list(
-                scene.section_split_list,
-                label="split",
-                range_start=range_start,
-                range_end=range_end,
-                issues=issues,
+        case CutSceneFlags.SECTION_BY_SPLIT:
+            boundaries.extend(
+                _validate_section_list(
+                    scene.section_split_list,
+                    label="split",
+                    range_start=range_start,
+                    range_end=range_end,
+                    issues=issues,
+                )
             )
-        )
-    elif modes == CutSceneFlags.SECTION_BY_DURATION:
-        section_duration = float(scene.section_by_time_slice_duration or 0.0)
-        if section_duration < CUT_MINIMUM_SECTION_DURATION:
-            _issue(
-                issues,
-                "error",
-                "cut.section.duration.too_short",
-                f"Duration-based sections must be at least {CUT_MINIMUM_SECTION_DURATION:g} second",
-            )
-        elif isfinite(section_duration):
-            next_boundary = range_start + section_duration
-            while next_boundary < range_end:
-                boundaries.append(next_boundary)
-                next_boundary += section_duration
+        case CutSceneFlags.SECTION_BY_DURATION:
+            section_duration = float(scene.section_by_time_slice_duration or 0.0)
+            if section_duration < CUT_MINIMUM_SECTION_DURATION:
+                _issue(
+                    issues,
+                    "error",
+                    "cut.section.duration.too_short",
+                    f"Duration-based sections must be at least {CUT_MINIMUM_SECTION_DURATION:g} second",
+                )
+            elif isfinite(section_duration):
+                next_boundary = range_start + section_duration
+                while next_boundary < range_end:
+                    boundaries.append(next_boundary)
+                    next_boundary += section_duration
     boundaries.append(range_end)
     for index, (start, end) in enumerate(itertools.pairwise(boundaries)):
         if end - start < CUT_MINIMUM_SECTION_DURATION - 1e-4:
@@ -1217,40 +1218,41 @@ def _validate_audio_timeline(
         if target_id is None:
             continue
         name = _event_name(event)
-        if name == "load_audio":
-            loaded.add(target_id)
-        elif name == "play_audio":
-            if strict and target_id not in loaded:
-                _issue(
-                    issues,
-                    "error",
-                    "play_audio.not_loaded",
-                    f"PLAY_AUDIO for object {target_id} occurs before LOAD_AUDIO",
-                    hint=(
-                        "Author a LOAD_AUDIO event unless playback intentionally relies "
-                        "on the external force-load runtime flag."
-                    ),
-                )
-            playing.add(target_id)
-        elif name == "stop_audio":
-            if target_id not in playing:
-                _issue(
-                    issues,
-                    "warning",
-                    "stop_audio.not_playing",
-                    f"STOP_AUDIO for object {target_id} has no preceding PLAY_AUDIO",
-                )
-            playing.discard(target_id)
-        else:
-            if target_id not in loaded:
-                _issue(
-                    issues,
-                    "warning",
-                    "unload_audio.not_loaded",
-                    f"UNLOAD_AUDIO for object {target_id} has no preceding LOAD_AUDIO",
-                )
-            loaded.discard(target_id)
-            playing.discard(target_id)
+        match name:
+            case "load_audio":
+                loaded.add(target_id)
+            case "play_audio":
+                if strict and target_id not in loaded:
+                    _issue(
+                        issues,
+                        "error",
+                        "play_audio.not_loaded",
+                        f"PLAY_AUDIO for object {target_id} occurs before LOAD_AUDIO",
+                        hint=(
+                            "Author a LOAD_AUDIO event unless playback intentionally relies "
+                            "on the external force-load runtime flag."
+                        ),
+                    )
+                playing.add(target_id)
+            case "stop_audio":
+                if target_id not in playing:
+                    _issue(
+                        issues,
+                        "warning",
+                        "stop_audio.not_playing",
+                        f"STOP_AUDIO for object {target_id} has no preceding PLAY_AUDIO",
+                    )
+                playing.discard(target_id)
+            case _:
+                if target_id not in loaded:
+                    _issue(
+                        issues,
+                        "warning",
+                        "unload_audio.not_loaded",
+                        f"UNLOAD_AUDIO for object {target_id} has no preceding LOAD_AUDIO",
+                    )
+                loaded.discard(target_id)
+                playing.discard(target_id)
 
 
 def _validate_flags(scene: CutScene, issues: ValidationReport) -> None:

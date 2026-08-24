@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- Public textual enums now use Python 3.11 `StrEnum` semantics, so `str(member)` returns the serialized value.
 - Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
 - Null YFT fragment-drawable skeleton names now use `YftFragmentDrawableName.NULL` instead of an empty string.
 - Omitted YFT damaged mass, damaged inertia, and group damaged-mass totals now use `None`; numeric zero is an explicit preserved value.
@@ -27,10 +28,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- Binary readers, writers, validators, and DSL parsers now use structural pattern matching for typed dispatch.
 - Multi-cell YNV authoring now rejects unresolved or non-reciprocal polygon networks before returning assets.
 
 ### Fixed
 
+- CUTScript exports now use parser-compatible canonical track names for audio, animation, subtitle, and light events.
 - Preserve-profile YFT writing now retains explicit zero damaged mass and inertia values for intact-only physics children.
 - Handling metadata now preserves unsigned 32-bit hexadecimal flag values, explicit zero fields, and unknown bits in the retail XML dialect.
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.

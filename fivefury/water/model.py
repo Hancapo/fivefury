@@ -435,14 +435,15 @@ class WaterData:
         return self.water_quads
 
     def _append_component(self, item: WaterComponent) -> None:
-        if isinstance(item, WaterQuad):
-            self.water_quads.append(item)
-        elif isinstance(item, WaterCalmingQuad):
-            self.calming_quads.append(item)
-        elif isinstance(item, WaterWaveQuad):
-            self.wave_quads.append(item)
-        else:
-            raise TypeError(f"Unsupported water component: {type(item).__name__}")
+        match item:
+            case WaterQuad():
+                self.water_quads.append(item)
+            case WaterCalmingQuad():
+                self.calming_quads.append(item)
+            case WaterWaveQuad():
+                self.wave_quads.append(item)
+            case _:
+                raise TypeError(f"Unsupported water component: {type(item).__name__}")
 
     def extend(self, items: Iterable[WaterComponent]) -> WaterData:
         for item in items:
