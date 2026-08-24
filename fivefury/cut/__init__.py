@@ -1,4 +1,5 @@
 from .analysis import analyze_cut
+from .audio_authoring import CutsceneAudioAssets, build_cutscene_audio_assets
 from .audit import (
     CutsceneAuditEntry,
     CutsceneAuditReport,
@@ -197,6 +198,7 @@ __all__ = [
     "CutWeapon",
     "CutsceneAssetBundle",
     "CutsceneAssets",
+    "CutsceneAudioAssets",
     "CutsceneAuditEntry",
     "CutsceneAuditReport",
     "CutsceneProject",
@@ -216,6 +218,7 @@ __all__ = [
     "audit_cutscene_resolution",
     "benchmark_cutscene_resolution",
     "build_cut_bytes",
+    "build_cutscene_audio_assets",
     "build_subtitle_gxt2",
     "cut_light_fields_from_ydr_light",
     "cut_light_flags_from_ydr_flags",
