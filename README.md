@@ -33,7 +33,7 @@ Static mesh import uses Trimesh and accepts file paths, bytes, `trimesh.Trimesh`
 | Navigation | `YND`, `YNV` | Road nodes and links, area partitioning, junction heightmaps, navmesh sectors/polygons/portals, typed network validation, in-memory cell builders, and Trimesh conversion |
 | World data | `heightmap.dat`, `water.xml` | Quantized height grids, row RLE, water masks and queries, water surfaces, wave quads, and calming regions |
 | Animation | `YCD`, `YED` | Skeletal, object, UV, camera, root-motion, and bone-scale tracks; clip dictionaries; expression dictionaries and spring data |
-| Cutscenes | `.cut`, `.cuts` | Binary cutscene read/write, declarative scene authoring, validation, YCD section generation, and a readable CutScript round-trip format |
+| Cutscenes | `.cut` | Binary cutscene read/write, declarative scene authoring, validation, and YCD section generation |
 | Audio and text | `AWC`, `REL`, `GXT2` | Audio containers and common codecs, typed audio metadata graphs, synth/curve/category records, and hashed text tables |
 | Packaging | `RPF7`, DLC metadata | PC archive creation, nested archives, folder/ZIP conversion, standalone resource extraction, encrypted archive reading, and generated DLC setup/content metadata |
 | Generic metadata | `YMT`, META, PSO, RBF | Typed known roots, generic binary containers, PSCH enums, and preservation of unknown schemas or payloads during supported rewrites |

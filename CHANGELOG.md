@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- Deprecated authoring exports have been removed from the public package.
 - Public textual enums now use Python 3.11 `StrEnum` semantics, so `str(member)` returns the serialized value.
 - Handling model, handling, and damage flags now use `HandlingFlagValue` instead of `MetaHash`, with `None` representing an absent XML field.
 - Null YFT fragment-drawable skeleton names now use `YftFragmentDrawableName.NULL` instead of an empty string.
@@ -28,12 +29,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
-- Binary readers, writers, validators, and DSL parsers now use structural pattern matching for typed dispatch.
+- Binary readers, writers, and validators now use structural pattern matching for typed dispatch.
 - Multi-cell YNV authoring now rejects unresolved or non-reciprocal polygon networks before returning assets.
 
 ### Fixed
 
-- CUTScript exports now use parser-compatible canonical track names for audio, animation, subtitle, and light events.
 - Preserve-profile YFT writing now retains explicit zero damaged mass and inertia values for intact-only physics children.
 - Handling metadata now preserves unsigned 32-bit hexadecimal flag values, explicit zero fields, and unknown bits in the retail XML dialect.
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
@@ -524,7 +524,6 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Breaking Changes
 - `set_draw_distance` now requires near and far distances.
 - `set_attachment` now identifies the child, parent, and attachment bone.
-- CutScript `DRAW_DISTANCE` and `ATTACH` use the corresponding explicit forms.
 
 ### Added
 - Named animation clip events.
@@ -906,19 +905,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Typed REL coverage for synth presets, curves, audio categories, sound graphs, routing data, randomization, sound sets, hashes, and lookup tables.
 - Audio conversion from WAV, MP3, OGG, and FLAC into PCM AWC, including mono and multichannel output.
 - AWC helpers for PCM and WAV extraction from streams and dictionaries.
-- CUT to CutScript export with hash resolution from known names and sibling files.
-- CutScript declarations for static props, animated props, peds, vehicles, camera quaternions, type files, animation bases, and raw flags.
 - Declarative YMAP component authoring for entities, physics dictionaries, occluders, LOD lights, car generators, timecycle modifiers, instanced data, and block descriptors.
 - Declarative YTYP dependency and composite-entry authoring with build-time deduplication.
 
-### Changed
-- CUT decompilation now emits a readable script instead of a noisy dump of internal fields.
-- CutScript keeps unresolved hashes readable while preserving their numeric value.
-- Streamed model declarations now separate loaded model name, cutscene binding name, animation base, and type file.
-
 ### Fixed
 - Hex strings assigned to hashed cutscene fields now stay numeric instead of being hashed as text.
-- CUT roundtrips now preserve camera quaternions, raw flags, load events, animation events, object events, light events, subtitle events, audio events, and animated/static model intent.
 
 ### Performance
 - GameFileCache format views now reuse native kind buckets instead of rescanning every asset in Python.
@@ -926,10 +917,6 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ## [0.2.1] - 2026-05-02
 
 ### Added
-- Initial CutScript DSL for authoring CUT files from readable timeline scripts.
-- CutScript asset declarations for managers, cameras, props, peds, vehicles, lights, audio, subtitles, fades, overlays, and decals.
-- CutScript timeline commands for loading, camera cuts, draw distance, animation binding, visibility, attachments, fades, overlays, lights, subtitles, audio, and cleanup.
-- Multiline CutScript blocks with explicit section endings.
 - Cutscene validation with structured errors before binary export.
 - CSS-style color parsing shared across cutscenes, YDR lights, vertex colors, YMAP lights, bounds material colors, and light extensions.
 - Native-backed magic-table decryption for encrypted game data.
@@ -937,14 +924,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Changed
 - CUT export validates authored scenes by default before writing bytes.
 - CUT serialization now handles optional templates consistently.
-- CutScript examples now match the multiline syntax accepted by the parser.
-- Local VS Code CutScript tooling is kept outside the Python package.
 
 ### Fixed
 - Cutscene validation now catches missing metadata, invalid duration, duplicate object IDs, missing streamed-object metadata, invalid event targets, unsafe camera clipping, missing camera cuts, and events outside the scene range.
 - CUT writing without a template now rejects obviously incomplete scenes instead of producing unreadable files.
-- CutScript no longer treats CSS hex colors as comments.
-- CutScript errors now include concrete line numbers.
 - Windows magic-table decryption no longer depends on the removed Python-only path.
 
 ## [0.2.0] - 2026-04-28
