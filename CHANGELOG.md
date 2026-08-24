@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-08-24
+
 ### Breaking Changes
 
 - Deprecated authoring exports have been removed from the public package.
