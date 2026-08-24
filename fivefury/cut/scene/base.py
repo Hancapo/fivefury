@@ -10,6 +10,7 @@ from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
 if TYPE_CHECKING:
     from ...ycd.cutscene import YcdCutsceneBuilder
     from ...ycd.model import Ycd, YcdAnimation, YcdClip
+    from ..audio_authoring import CutsceneAudioAssets
     from .authoring import CutsceneAssets
 
 from ...hashing import jenk_partial_hash
@@ -290,6 +291,7 @@ class CutScene:
         animations: YcdCutsceneBuilder | None = None,
         *,
         cut_name: str | None = None,
+        audio: tuple[CutsceneAudioAssets, ...] = (),
     ) -> CutsceneAssets:
         from .authoring import CutsceneAssets
 
@@ -303,7 +305,12 @@ class CutScene:
                     f"expected YcdCutsceneBuilder, got {type(animations).__name__}"
                 )
             ycds = tuple(animations.build_ycds())
-        return CutsceneAssets(scene=self, ycds=ycds, cut_name=cut_name)
+        return CutsceneAssets(
+            scene=self,
+            ycds=ycds,
+            audio=audio,
+            cut_name=cut_name,
+        )
 
     @classmethod
     def create(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from copy import deepcopy
+from math import isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -101,16 +102,115 @@ def _validate_ycd_paths(assets: CutsceneAssets, report: ValidationReport) -> Non
         names.add(name)
 
 
+def _validate_authored_audio(
+    assets: CutsceneAssets,
+    scene: CutScene,
+    report: ValidationReport,
+) -> frozenset[str]:
+    if not assets.audio:
+        return frozenset()
+    references: dict[str, int] = {}
+    output_names = {assets.output_name.casefold()}
+    for index, audio in enumerate(assets.audio):
+        path = f"audio[{index}]"
+        report.extend(audio.validate(), path=path, asset=assets.output_name)
+        key = audio.reference.casefold()
+        references[key] = references.get(key, 0) + 1
+        for name in (audio.awc_name, audio.sounds_name):
+            output_key = name.casefold()
+            if output_key in output_names:
+                report.issue(
+                    "cut.audio.name.duplicate",
+                    f"Duplicate cutscene output name: {name}",
+                    asset=assets.output_name,
+                    path=path,
+                )
+            output_names.add(output_key)
+    for name in (
+        Path(ycd.path).name.casefold() for ycd in assets.ycds if ycd.path
+    ):
+        if name in output_names:
+            report.issue(
+                "cut.audio.name.duplicate",
+                f"Duplicate cutscene output name: {name}",
+                asset=assets.output_name,
+                path="audio",
+            )
+        output_names.add(name)
+
+    scene_references = {
+        str(reference).casefold()
+        for reference in cut_audio_references(scene)
+        if isinstance(reference, str)
+    }
+    for reference, count in references.items():
+        if count != 1:
+            report.issue(
+                "cut.audio.reference.duplicate",
+                f"CUT audio reference {reference!r} has {count} authored asset sets",
+                asset=assets.output_name,
+                path="audio",
+            )
+        if reference not in scene_references:
+            report.issue(
+                "cut.audio.reference.unused",
+                f"Authored audio {reference!r} is not referenced by the CUT",
+                asset=assets.output_name,
+                path="audio",
+            )
+    for reference in scene_references - references.keys():
+        report.issue(
+            "cut.audio.sound.unresolved",
+            f"CUT audio cue {reference!r} has no authored audio assets",
+            asset=assets.output_name,
+            path="timeline.audio",
+        )
+
+    duration = float(scene.duration or 0.0)
+    for binding in scene.bindings_for_role("audio"):
+        reference = (binding.name or "").casefold()
+        matching = [
+            audio for audio in assets.audio if audio.reference.casefold() == reference
+        ]
+        if len(matching) != 1:
+            continue
+        offset = binding.offset
+        stops = [
+            float(event.start)
+            for event in scene.timeline
+            if event.event_name == "stop_audio" and event.target_id == binding.object_id
+        ]
+        stop = min(stops) if stops else duration
+        if not isfinite(offset) or offset < 0.0:
+            report.issue(
+                "cut.audio.offset.invalid",
+                "CUT audio fOffset must be finite and non-negative",
+                asset=assets.output_name,
+                path=f"bindings[{binding.object_id}].fOffset",
+            )
+        elif offset + stop > matching[0].duration + 1e-6:
+            report.issue(
+                "cut.audio.duration.insufficient",
+                "CUT audio offset and playback range exceed the mastered AWC duration",
+                asset=assets.output_name,
+                path=f"bindings[{binding.object_id}].fOffset",
+            )
+    return frozenset(references)
+
+
 class _CutsceneContextValidator:
     def __init__(
         self,
         scene: CutScene,
         context: BuildContext,
         report: ValidationReport,
+        *,
+        owned_audio_references: frozenset[str] = frozenset(),
     ) -> None:
         self.scene = scene
         self.context = context
         self.report = report
+        self.owned_audio_references = owned_audio_references
         self.assets = CutAssetContext(context)
         self.models: dict[int, tuple[object, str | int]] = {}
 
@@ -510,7 +610,14 @@ class _CutsceneContextValidator:
         return result
 
     def _validate_audio(self) -> None:
-        references = cut_audio_references(self.scene)
+        references = tuple(
+            reference
+            for reference in cut_audio_references(self.scene)
+            if not (
+                isinstance(reference, str)
+                and reference.casefold() in self.owned_audio_references
+            )
+        )
         if not references:
             return
         rels: list[RelFile] = []
@@ -690,9 +797,15 @@ def validate_cutscene_assets(
 ) -> ValidationReport:
     _validate_ycd_paths(assets, report := ValidationReport())
     scene = _scene_copy(assets)
+    owned_audio_references = _validate_authored_audio(assets, scene, report)
     validator = None
     if context is not None:
-        validator = _CutsceneContextValidator(scene, context, report)
+        validator = _CutsceneContextValidator(
+            scene,
+            context,
+            report,
+            owned_audio_references=owned_audio_references,
+        )
         validator.resolve_ycds()
     _extend_scene_report(assets, scene, report)
     if validator is not None:

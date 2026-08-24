@@ -778,6 +778,14 @@ class CutAudio(_TypedCutBinding):
     TYPE_NAME = "rage__cutfAudioObject"
     ROLE = "audio"
 
+    @property
+    def offset(self) -> float:
+        return self._get_float_field("fOffset") or 0.0
+
+    @offset.setter
+    def offset(self, value: float) -> None:
+        self._set_float_field("fOffset", value)
+
 
 class CutSubtitle(_TypedCutBinding):
     TYPE_NAME = "rage__cutfSubtitleObject"

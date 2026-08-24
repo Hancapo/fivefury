@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,13 +12,14 @@ from ...hashing import jenk_partial_hash
 from ...vector import Quaternion, Vector3
 from ..payloads import CutCameraCutPayload, CutLoadScenePayload
 from .base import CutScene
-from .bindings import CutBinding, CutCamera
+from .bindings import CutAudio, CutBinding, CutCamera
 from .io import read_cut_scene
 
 if TYPE_CHECKING:
     from ...authoring import BuildContext, ValidationReport
     from ...ycd.cutscene import YcdCutsceneBoneAnimation, YcdCutsceneBuilder
     from ...ycd.model import Ycd
+    from ..audio_authoring import CutsceneAudioAssets
     from ..model import CutFile
     from .timeline import CutTimelineEvent
 
@@ -31,6 +33,7 @@ def _file_name(value: str, suffix: str) -> str:
 class CutsceneAssets:
     scene: CutScene
     ycds: tuple[Ycd, ...] = ()
+    audio: tuple[CutsceneAudioAssets, ...] = ()
     cut_name: str | None = None
 
     @property
@@ -62,6 +65,7 @@ class CutsceneAssets:
         self.validate(context=context).raise_for_errors()
         files: dict[str, bytes] = {}
         rebuilt_ycds: list[Ycd] = []
+        rebuilt_audio: list[CutsceneAudioAssets] = []
         for ycd in self.ycds:
             name = _file_name(ycd.path or "cutscene", ".ycd")
             data = build_ycd_bytes(ycd)
@@ -71,12 +75,33 @@ class CutsceneAssets:
             rebuilt_ycds.append(rebuilt)
             files[name] = data
 
+        from ...awc import read_awc
+        from ...rel import read_rel
+        from ..audio_authoring import CutsceneAudioAssets
+
+        for audio in self.audio:
+            audio_files = audio.build_files()
+            files.update(audio_files)
+            rebuilt_audio.append(
+                CutsceneAudioAssets(
+                    reference=audio.reference,
+                    awc=read_awc(audio_files[audio.awc_name], path=audio.awc_name),
+                    sounds=read_rel(
+                        audio_files[audio.sounds_name], path=audio.sounds_name
+                    ),
+                    awc_name=audio.awc_name,
+                    sounds_name=audio.sounds_name,
+                    wavepack_name=audio.wavepack_name,
+                )
+            )
+
         cut_data = self.scene.to_bytes(template=template)
         rebuilt_scene = read_cut_scene(cut_data)
         rebuilt_scene.clip_dicts = rebuilt_ycds
         CutsceneAssets(
             scene=rebuilt_scene,
             ycds=tuple(rebuilt_ycds),
+            audio=tuple(rebuilt_audio),
             cut_name=self.output_name,
         ).validate().raise_for_errors()
         files[self.output_name] = cut_data
@@ -100,6 +125,7 @@ class CutsceneProject:
         self.animations = animations
         self.asset_manager = scene.asset_manager("assets")
         self.animation_manager = scene.animation_manager("animations")
+        self.audio_assets: list[CutsceneAudioAssets] = []
         self.scene.load_scene(
             0.0,
             CutLoadScenePayload(scene.scene_name or animations.name),
@@ -312,10 +338,55 @@ class CutsceneProject:
             ),
         )
 
+    def audio(
+        self,
+        assets: CutsceneAudioAssets,
+        *,
+        start: float = 0.0,
+        offset: float = 0.0,
+        stop: float | None = None,
+    ) -> CutAudio:
+        from ..audio_authoring import CutsceneAudioAssets
+
+        if not isinstance(assets, CutsceneAudioAssets):
+            raise TypeError(
+                f"expected CutsceneAudioAssets, got {type(assets).__name__}"
+            )
+        assets.validate().raise_for_errors()
+        start_time = float(start)
+        offset_time = float(offset)
+        stop_time = float(self.scene.duration or 0.0) if stop is None else float(stop)
+        if not all(isfinite(value) for value in (start_time, offset_time, stop_time)):
+            raise ValueError("CUT audio times must be finite")
+        if start_time < 0.0 or offset_time < 0.0 or stop_time <= start_time:
+            raise ValueError(
+                "CUT audio requires non-negative start/offset and stop after start"
+            )
+        if stop_time > float(self.scene.duration or 0.0):
+            raise ValueError("CUT audio stop cannot exceed the cutscene duration")
+        if any(
+            current.reference.casefold() == assets.reference.casefold()
+            for current in self.audio_assets
+        ):
+            raise ValueError(f"CUT audio reference {assets.reference!r} is already bound")
+        if offset_time + stop_time > assets.duration + 1e-6:
+            raise ValueError("CUT audio offset and stop exceed the mastered AWC duration")
+
+        binding = self.scene.audio(
+            assets.reference,
+            fields={"fOffset": offset_time},
+        )
+        self.scene.load_audio(start_time, assets.reference, target=binding)
+        self.scene.play_audio(start_time, binding, assets.reference)
+        self.scene.stop_audio(stop_time, binding, assets.reference)
+        self.audio_assets.append(assets)
+        return binding
+
     def build(self, *, cut_name: str | None = None) -> CutsceneAssets:
         return CutsceneAssets(
             scene=self.scene,
             ycds=tuple(self.animations.build_ycds()),
+            audio=tuple(self.audio_assets),
             cut_name=cut_name,
         )
 
