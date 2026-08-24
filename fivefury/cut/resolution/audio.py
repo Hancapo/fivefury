@@ -6,6 +6,7 @@ from ...awc.structures import Awc
 from ...awc.validation import validate_awc_stream
 from ...gamefile import GameFileType
 from ..audio_references import (
+    cut_audio_asset_container_hashes,
     cut_audio_asset_reference_hashes,
     cut_audio_hint_names,
     cut_audio_hint_rank,
@@ -114,6 +115,14 @@ def _endpoint_assets(
                 for endpoint in graph.endpoints
             )
         ]
+    endpoint_hashes = set(graph.container_hashes)
+    matched_ids = {asset.id for asset in matches}
+    matches.extend(
+        asset
+        for asset in cache.iter_assets(GameFileType.AWC)
+        if asset.id not in matched_ids
+        and endpoint_hashes.intersection(cut_audio_asset_container_hashes(asset))
+    )
     return tuple({asset.id: asset for asset in matches}.values())
 
 
@@ -234,9 +243,12 @@ def _resolve_audio(
                     )
                 )
 
-        matches = tuple(direct_candidates[reference].values())
-        if not matches and graph is not None:
-            matches = tuple((asset, 2) for asset in _endpoint_assets(cache, graph))
+        endpoint_matches = _endpoint_assets(cache, graph) if graph is not None else ()
+        matches = (
+            tuple((asset, 0) for asset in endpoint_matches)
+            if endpoint_matches
+            else tuple(direct_candidates[reference].values())
+        )
         if not matches:
             issues.append(
                 CutsceneResolveIssue(

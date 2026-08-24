@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .cutscene import DlcCutsceneRegistration
 from .enums import (
     DlcContentGroup,
     DlcDataFileContents,
@@ -68,6 +69,7 @@ __all__ = [
     "DlcContentFileArray",
     "DlcContentGroup",
     "DlcContentXml",
+    "DlcCutsceneRegistration",
     "DlcDataFileContents",
     "DlcDataFileType",
     "DlcExecutionCondition",

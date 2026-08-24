@@ -587,6 +587,11 @@ def validate_dlc_pack(
     target = game if game is not None else getattr(pack, "game", None)
     if target is not None:
         issues.extend(validate_dlc_asset_targets(pack, target))
+    cutscenes = getattr(pack, "cutscenes", ())
+    if cutscenes:
+        from .cutscene import validate_dlc_cutscenes
+
+        issues.extend(validate_dlc_cutscenes(pack))
     return issues
 
 

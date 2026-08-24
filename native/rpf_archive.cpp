@@ -177,6 +177,13 @@ std::int32_t guess_kind(std::string_view path) {
     if (starts_with(name, "heightmap") && ends_with(name, ".dat")) {
         return 28;
     }
+    if (
+        ends_with(name, "_amp.dat") || ends_with(name, "_game.dat") ||
+        ends_with(name, "_mix.dat") || ends_with(name, "_sounds.dat") ||
+        ends_with(name, "_speech.dat")
+    ) {
+        return 13;
+    }
     static const std::unordered_map<std::string_view, std::int32_t> kind_by_name = {
         {"gta5_cache_y.dat", 36}, {"gtxd.meta", 26}, {"vehicles.meta", 18},
         {"handling.meta", 35},    {"carcols.meta", 19}, {"carcols.ymt", 19},

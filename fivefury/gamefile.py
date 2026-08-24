@@ -80,6 +80,14 @@ _FILE_TYPE_MAP: dict[str, GameFileType] = {
     ".rpf": GameFileType.RPF,
 }
 
+_AUDIO_REL_SUFFIXES = (
+    "_amp.dat",
+    "_game.dat",
+    "_mix.dat",
+    "_sounds.dat",
+    "_speech.dat",
+)
+
 
 def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.UNKNOWN) -> GameFileType:
     parsed = Path(str(path))
@@ -88,6 +96,8 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
         return GameFileType.HEIGHTMAP
     if normalized_name == "gta5_cache_y.dat":
         return GameFileType.GTA5_CACHE
+    if normalized_name.endswith(_AUDIO_REL_SUFFIXES):
+        return GameFileType.REL
     named_meta_types = {
         "gtxd.meta": GameFileType.GTXD,
         "vehicles.meta": GameFileType.VEHICLES,

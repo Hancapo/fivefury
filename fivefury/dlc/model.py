@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -8,6 +10,7 @@ from typing import Protocol, TypeAlias
 
 from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
+from ..cut.scene import CutsceneAssets
 from ..game_target import GameTarget, coerce_game_target
 from ..rpf import RpfArchive, RpfEncryption, RpfFileSource
 from ..xml import (
@@ -30,6 +33,7 @@ from .content import (
     DlcExecutionConditions,
     DlcResourceReference,
 )
+from .cutscene import DlcCutsceneRegistration
 from .enums import DlcContentGroup
 from .paths import dlc_platform_payload_path, dlc_platform_registration_path
 from .setup import DlcContentChangeSetGroup, DlcSetupData
@@ -155,6 +159,7 @@ class DlcPack:
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
     files: dict[str, DlcFilePayload] = field(default_factory=dict)
+    cutscenes: list[DlcCutsceneRegistration] = field(default_factory=list)
     game: GameTarget | None = None
     rpf_encryption: RpfEncryption = RpfEncryption.OPEN
 
@@ -220,6 +225,11 @@ class DlcPack:
     def ityp(self, relative_path: str) -> DlcContentFile:
         return self.content.ityp(self.path(relative_path))
 
+    def cutscene(self, assets: CutsceneAssets) -> DlcCutsceneRegistration:
+        from .cutscene import register_dlc_cutscene
+
+        return register_dlc_cutscene(self, assets)
+
     def change_set(
         self,
         name: str,
@@ -280,11 +290,24 @@ class DlcPack:
         encryption: RpfEncryption | None = None,
         validate: bool = True,
     ) -> bytes:
-        return self.to_rpf(
+        data = self.to_rpf(
             game=game,
             encryption=encryption,
             validate=validate,
         ).to_bytes()
+        if self.cutscenes:
+            from .cutscene import validate_dlc_cutscene_archive
+
+            rebuilt = RpfArchive.from_bytes(
+                data,
+                name="dlc.rpf",
+                load_nested=True,
+            )
+            try:
+                validate_dlc_cutscene_archive(self, rebuilt).raise_for_errors()
+            finally:
+                rebuilt.close()
+        return data
 
     def save_dlc_rpf(
         self,
@@ -298,12 +321,37 @@ class DlcPack:
         if target.is_dir() or not target.suffix:
             target = target / self.name / "dlc.rpf"
         target.parent.mkdir(parents=True, exist_ok=True)
-        self.to_rpf(
+        archive = self.to_rpf(
             game=game,
             encryption=encryption,
             validate=validate,
-        ).save(target)
-        return target
+        )
+        if not self.cutscenes:
+            archive.save(target)
+            return target
+
+        from .cutscene import validate_dlc_cutscene_archive
+
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=target.parent,
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+            archive.save(temporary_path)
+            rebuilt = RpfArchive.from_path(temporary_path, load_nested=True)
+            try:
+                validate_dlc_cutscene_archive(self, rebuilt).raise_for_errors()
+            finally:
+                rebuilt.close()
+            os.replace(temporary_path, target)
+            return target
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
 
 @dataclass(slots=True)
