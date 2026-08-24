@@ -45,6 +45,9 @@ class _NamedAsset(Protocol):
     @property
     def stem(self) -> str: ...
 
+    @property
+    def path(self) -> str: ...
+
 
 def cut_event_references(
     scene: CutScene, names: set[str]
@@ -132,6 +135,21 @@ def cut_audio_asset_reference_hashes(asset: _NamedAsset) -> tuple[int, ...]:
     return tuple(dict.fromkeys(MetaHash(name).uint for name in names if name))
 
 
+def cut_audio_asset_container_hashes(asset: _NamedAsset) -> tuple[int, ...]:
+    path = asset.path.strip().replace("\\", "/").casefold()
+    marker = "audio/sfx/"
+    marker_index = path.find(marker)
+    if marker_index < 0 or not path.endswith(".awc"):
+        return ()
+    relative = path[marker_index + len(marker) : -4].strip("/")
+    parts = list(PurePosixPath(relative).parts)
+    if len(parts) < 2:
+        return ()
+    parts[0] = parts[0].removesuffix(".rpf")
+    bank_name = "/".join(parts)
+    return (MetaHash(bank_name).uint,) if bank_name else ()
+
+
 def _normalize_audio_container_hint(value: object) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -208,6 +226,7 @@ def cut_audio_hint_names(hints: tuple[str, ...]) -> tuple[str, ...]:
 
 
 __all__ = [
+    "cut_audio_asset_container_hashes",
     "cut_audio_asset_rank",
     "cut_audio_asset_reference_hashes",
     "cut_audio_container_hints",

@@ -137,6 +137,11 @@ class RpfFileEntry(RpfEntry):
             raise ValueError("Detached RPF entry")
         return self._archive.read_entry_bytes(self, logical=logical)
 
+    def read_standalone(self) -> bytes:
+        if self._archive is None:
+            raise ValueError("Detached RPF entry")
+        return self._archive.read_entry_standalone(self)
+
 
 @dataclass(slots=True)
 class RpfBinaryFileEntry(RpfFileEntry):

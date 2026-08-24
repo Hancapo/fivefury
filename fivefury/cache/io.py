@@ -95,6 +95,13 @@ def decode_game_file_payload(
         case "gtxd.meta":
             return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
     vehicle_meta_type = guess_game_file_type(path)
+    if vehicle_meta_type is GameFileType.REL:
+        return _decode_or_fallback(
+            GameFileType.REL,
+            data,
+            data,
+            lambda payload: read_rel(payload, path=path),
+        )
     if vehicle_meta_type in {
         GameFileType.VEHICLES,
         GameFileType.HANDLING,

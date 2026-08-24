@@ -18,7 +18,7 @@ from ..hashing import _get_lut
 from ..rpf import RpfArchive, RpfFileEntry
 from ..rpf.utils import _normalize_key
 
-_SCAN_INDEX_VERSION = 13
+_SCAN_INDEX_VERSION = 14
 _SCAN_GC_INTERVAL = 8
 
 _FLAG_LOOSE = 1
