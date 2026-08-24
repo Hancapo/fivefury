@@ -101,62 +101,88 @@ def _build_polygon(
         "raw": raw,
         "index": index,
     }
-    if polygon_type is BoundPolygonType.TRIANGLE:
-        tri_area, tri_index1, tri_index2, tri_index3, edge_index1, edge_index2, edge_index3 = values
-        return BoundPolygonTriangle(
-            **common,
-            tri_area=float(tri_area),
-            tri_index1=int(tri_index1),
-            tri_index2=int(tri_index2),
-            tri_index3=int(tri_index3),
-            edge_index1=int(edge_index1),
-            edge_index2=int(edge_index2),
-            edge_index3=int(edge_index3),
-        )
-    if polygon_type is BoundPolygonType.SPHERE:
-        sphere_type, sphere_index, sphere_radius, unused0, unused1 = values
-        return BoundPolygonSphere(
-            **common,
-            sphere_type=int(sphere_type),
-            sphere_index=int(sphere_index),
-            sphere_radius=float(sphere_radius),
-            unused0=int(unused0),
-            unused1=int(unused1),
-        )
-    if polygon_type is BoundPolygonType.CAPSULE:
-        capsule_type, capsule_index1, capsule_radius, capsule_index2, unused0, unused1 = values
-        return BoundPolygonCapsule(
-            **common,
-            capsule_type=int(capsule_type),
-            capsule_index1=int(capsule_index1),
-            capsule_radius=float(capsule_radius),
-            capsule_index2=int(capsule_index2),
-            unused0=int(unused0),
-            unused1=int(unused1),
-        )
-    if polygon_type is BoundPolygonType.BOX:
-        box_type, box_index1, box_index2, box_index3, box_index4, unused0 = values
-        return BoundPolygonBox(
-            **common,
-            box_type=int(box_type),
-            box_index1=int(box_index1),
-            box_index2=int(box_index2),
-            box_index3=int(box_index3),
-            box_index4=int(box_index4),
-            unused0=int(unused0),
-        )
-    if polygon_type is BoundPolygonType.CYLINDER:
-        cylinder_type, cylinder_index1, cylinder_radius, cylinder_index2, unused0, unused1 = values
-        return BoundPolygonCylinder(
-            **common,
-            cylinder_type=int(cylinder_type),
-            cylinder_index1=int(cylinder_index1),
-            cylinder_radius=float(cylinder_radius),
-            cylinder_index2=int(cylinder_index2),
-            unused0=int(unused0),
-            unused1=int(unused1),
-        )
-    return BoundPolygon(**common)
+    match polygon_type:
+        case BoundPolygonType.TRIANGLE:
+            (
+                tri_area,
+                tri_index1,
+                tri_index2,
+                tri_index3,
+                edge_index1,
+                edge_index2,
+                edge_index3,
+            ) = values
+            return BoundPolygonTriangle(
+                **common,
+                tri_area=float(tri_area),
+                tri_index1=int(tri_index1),
+                tri_index2=int(tri_index2),
+                tri_index3=int(tri_index3),
+                edge_index1=int(edge_index1),
+                edge_index2=int(edge_index2),
+                edge_index3=int(edge_index3),
+            )
+        case BoundPolygonType.SPHERE:
+            sphere_type, sphere_index, sphere_radius, unused0, unused1 = values
+            return BoundPolygonSphere(
+                **common,
+                sphere_type=int(sphere_type),
+                sphere_index=int(sphere_index),
+                sphere_radius=float(sphere_radius),
+                unused0=int(unused0),
+                unused1=int(unused1),
+            )
+        case BoundPolygonType.CAPSULE:
+            (
+                capsule_type,
+                capsule_index1,
+                capsule_radius,
+                capsule_index2,
+                unused0,
+                unused1,
+            ) = values
+            return BoundPolygonCapsule(
+                **common,
+                capsule_type=int(capsule_type),
+                capsule_index1=int(capsule_index1),
+                capsule_radius=float(capsule_radius),
+                capsule_index2=int(capsule_index2),
+                unused0=int(unused0),
+                unused1=int(unused1),
+            )
+        case BoundPolygonType.BOX:
+            box_type, box_index1, box_index2, box_index3, box_index4, unused0 = (
+                values
+            )
+            return BoundPolygonBox(
+                **common,
+                box_type=int(box_type),
+                box_index1=int(box_index1),
+                box_index2=int(box_index2),
+                box_index3=int(box_index3),
+                box_index4=int(box_index4),
+                unused0=int(unused0),
+            )
+        case BoundPolygonType.CYLINDER:
+            (
+                cylinder_type,
+                cylinder_index1,
+                cylinder_radius,
+                cylinder_index2,
+                unused0,
+                unused1,
+            ) = values
+            return BoundPolygonCylinder(
+                **common,
+                cylinder_type=int(cylinder_type),
+                cylinder_index1=int(cylinder_index1),
+                cylinder_radius=float(cylinder_radius),
+                cylinder_index2=int(cylinder_index2),
+                unused0=int(unused0),
+                unused1=int(unused1),
+            )
+        case _:
+            return BoundPolygon(**common)
 
 
 def _read_polygon_types(pointer: int, count: int, system_data: bytes) -> list[BoundPolygon]:

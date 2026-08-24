@@ -220,64 +220,64 @@ def _parse_dat16_item(
         max_input=max_input,
     )
     try:
-        if type_id == int(Dat16RelType.CONSTANT_CURVE):
-            curve.value = struct.unpack_from("<f", raw, offset)[0]
-        elif type_id in {
-            int(Dat16RelType.LINEAR_CURVE),
-            int(Dat16RelType.LINEAR_DB_CURVE),
-        }:
-            (
-                curve.left_hand_pair_x,
-                curve.left_hand_pair_y,
-                curve.right_hand_pair_x,
-                curve.right_hand_pair_y,
-            ) = struct.unpack_from("<ffff", raw, offset)
-        elif type_id == int(Dat16RelType.PIECEWISE_LINEAR_CURVE):
-            count = struct.unpack_from("<I", raw, offset)[0]
-            offset += 4
-            curve.points = [
-                struct.unpack_from("<ff", raw, offset + i * 8)
-                for i in range(count)
-                if offset + i * 8 + 8 <= len(raw)
-            ]
-        elif type_id == int(Dat16RelType.EQUAL_POWER_CURVE):
-            curve.flip = struct.unpack_from("<i", raw, offset)[0]
-        elif type_id in {
-            int(Dat16RelType.VALUE_TABLE_CURVE),
-            int(Dat16RelType.DISTANCE_ATTENUATION_VALUE_TABLE_CURVE),
-        }:
-            count = struct.unpack_from("<i", raw, offset)[0]
-            offset += 4
-            curve.values = (
-                list(struct.unpack_from("<" + "f" * count, raw, offset))
-                if count and offset + count * 4 <= len(raw)
-                else []
-            )
-        elif type_id == int(Dat16RelType.EXPONENTIAL_CURVE):
-            curve.flip, curve.exponent = struct.unpack_from("<if", raw, offset)
-        elif type_id in {
-            int(Dat16RelType.DECAYING_EXPONENTIAL_CURVE),
-            int(Dat16RelType.DECAYING_SQUARED_EXPONENTIAL_CURVE),
-            int(Dat16RelType.ONE_OVER_X_SQUARED_CURVE),
-        }:
-            curve.horizontal_scaling = struct.unpack_from("<f", raw, offset)[0]
-        elif type_id == int(Dat16RelType.SINE_CURVE):
-            (
-                curve.start_phase,
-                curve.end_phase,
-                curve.frequency,
-                curve.vertical_scaling,
-                curve.vertical_offset,
-            ) = struct.unpack_from("<fffff", raw, offset)
-        elif type_id != int(Dat16RelType.DEFAULT_DISTANCE_ATTENUATION_CURVE):
-            return RelRawItem(
-                index.name_hash,
-                name=name,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
+        match curve.curve_type:
+            case Dat16RelType.CONSTANT_CURVE:
+                curve.value = struct.unpack_from("<f", raw, offset)[0]
+            case Dat16RelType.LINEAR_CURVE | Dat16RelType.LINEAR_DB_CURVE:
+                (
+                    curve.left_hand_pair_x,
+                    curve.left_hand_pair_y,
+                    curve.right_hand_pair_x,
+                    curve.right_hand_pair_y,
+                ) = struct.unpack_from("<ffff", raw, offset)
+            case Dat16RelType.PIECEWISE_LINEAR_CURVE:
+                count = struct.unpack_from("<I", raw, offset)[0]
+                offset += 4
+                curve.points = [
+                    struct.unpack_from("<ff", raw, offset + i * 8)
+                    for i in range(count)
+                    if offset + i * 8 + 8 <= len(raw)
+                ]
+            case Dat16RelType.EQUAL_POWER_CURVE:
+                curve.flip = struct.unpack_from("<i", raw, offset)[0]
+            case (
+                Dat16RelType.VALUE_TABLE_CURVE
+                | Dat16RelType.DISTANCE_ATTENUATION_VALUE_TABLE_CURVE
+            ):
+                count = struct.unpack_from("<i", raw, offset)[0]
+                offset += 4
+                curve.values = (
+                    list(struct.unpack_from("<" + "f" * count, raw, offset))
+                    if count and offset + count * 4 <= len(raw)
+                    else []
+                )
+            case Dat16RelType.EXPONENTIAL_CURVE:
+                curve.flip, curve.exponent = struct.unpack_from("<if", raw, offset)
+            case (
+                Dat16RelType.DECAYING_EXPONENTIAL_CURVE
+                | Dat16RelType.DECAYING_SQUARED_EXPONENTIAL_CURVE
+                | Dat16RelType.ONE_OVER_X_SQUARED_CURVE
+            ):
+                curve.horizontal_scaling = struct.unpack_from("<f", raw, offset)[0]
+            case Dat16RelType.SINE_CURVE:
+                (
+                    curve.start_phase,
+                    curve.end_phase,
+                    curve.frequency,
+                    curve.vertical_scaling,
+                    curve.vertical_offset,
+                ) = struct.unpack_from("<fffff", raw, offset)
+            case Dat16RelType.DEFAULT_DISTANCE_ATTENUATION_CURVE:
+                pass
+            case _:
+                return RelRawItem(
+                    index.name_hash,
+                    name=name,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
     except struct.error:
         return RelRawItem(
             index.name_hash,
@@ -501,126 +501,420 @@ def _parse_dat54_item(index: RelIndexHash, raw: bytes) -> RelItem:
         )
     header, header_length = RelSoundHeader.from_bytes(raw, 1)
     offset = 1 + header_length
-    if type_id in ADDITIONAL_DAT54_SOUND_TYPES:
-        sound = parse_additional_dat54_sound(type_id, raw[offset:])
-        if sound is None:
-            return RelRawItem(
-                index.name_hash,
+    match type_id:
+        case value if value in ADDITIONAL_DAT54_SOUND_TYPES:
+            sound = parse_additional_dat54_sound(type_id, raw[offset:])
+            if sound is None:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            sound.name_hash = index.name_hash
+            sound.data_offset = index.offset
+            sound.data_length = index.length
+            sound.raw_data = raw
+            sound.header = header
+            return sound
+        case Dat54SoundType.LOOPING_SOUND:
+            if offset + 14 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            (
+                loop_count,
+                loop_count_variance,
+                loop_point,
+                child_sound,
+                loop_count_variable,
+            ) = struct.unpack_from("<hHHII", raw, offset)
+            return Dat54LoopingSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                loop_count=loop_count,
+                loop_count_variance=loop_count_variance,
+                loop_point=loop_point,
+                child_sound=child_sound,
+                loop_count_variable=loop_count_variable,
             )
-        sound.name_hash = index.name_hash
-        sound.data_offset = index.offset
-        sound.data_length = index.length
-        sound.raw_data = raw
-        sound.header = header
-        return sound
-    if type_id == int(Dat54SoundType.LOOPING_SOUND):
-        if offset + 14 > len(raw):
-            return RelRawItem(
-                index.name_hash,
+        case Dat54SoundType.SIMPLE_SOUND:
+            if offset + 9 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            container_name, file_name, wave_slot_index = struct.unpack_from(
+                "<IIB", raw, offset
+            )
+            return Dat54SimpleSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                container_name=container_name,
+                file_name=file_name,
+                wave_slot_index=wave_slot_index,
             )
-        (
-            loop_count,
-            loop_count_variance,
-            loop_point,
-            child_sound,
-            loop_count_variable,
-        ) = struct.unpack_from("<hHHII", raw, offset)
-        return Dat54LoopingSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            loop_count=loop_count,
-            loop_count_variance=loop_count_variance,
-            loop_point=loop_point,
-            child_sound=child_sound,
-            loop_count_variable=loop_count_variable,
-        )
-    if type_id == int(Dat54SoundType.SIMPLE_SOUND):
-        if offset + 9 > len(raw):
-            return RelRawItem(
-                index.name_hash,
+        case Dat54SoundType.WRAPPER_SOUND:
+            if offset + 15 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sound, last_play_time, fallback_sound, min_repeat_time, variable_count = (
+                struct.unpack_from("<IIIHB", raw, offset)
+            )
+            if variable_count > Dat54WrapperSound.MAX_VARIABLES:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 15
+            if offset + variable_count * 5 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            variables = [
+                Dat54WrapperVariable(*struct.unpack_from("<IB", raw, offset + i * 5))
+                for i in range(variable_count)
+                if offset + i * 5 + 5 <= len(raw)
+            ]
+            return Dat54WrapperSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                last_play_time=last_play_time,
+                fallback_sound=fallback_sound,
+                min_repeat_time=min_repeat_time,
+                variables=variables,
             )
-        container_name, file_name, wave_slot_index = struct.unpack_from(
-            "<IIB", raw, offset
-        )
-        return Dat54SimpleSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            container_name=container_name,
-            file_name=file_name,
-            wave_slot_index=wave_slot_index,
-        )
-    if type_id == int(Dat54SoundType.WRAPPER_SOUND):
-        if offset + 15 > len(raw):
-            return RelRawItem(
-                index.name_hash,
+        case value if value in {
+            int(Dat54SoundType.SEQUENTIAL_SOUND),
+            int(Dat54SoundType.MULTITRACK_SOUND),
+            int(Dat54SoundType.STREAMING_SOUND),
+        }:
+            duration = 0
+            child_offset = 0
+            match type_id:
+                case Dat54SoundType.STREAMING_SOUND:
+                    if offset + 5 > len(raw):
+                        return RelRawItem(
+                            index.name_hash,
+                            data_offset=index.offset,
+                            data_length=index.length,
+                            type_id=type_id,
+                            raw_data=raw,
+                        )
+                    duration = struct.unpack_from("<I", raw, offset)[0]
+                    offset += 4
+                    child_offset = 4
+            child_limit = {
+                int(Dat54SoundType.SEQUENTIAL_SOUND): Dat54SequentialSound.MAX_CHILD_SOUNDS,
+                int(Dat54SoundType.MULTITRACK_SOUND): Dat54MultitrackSound.MAX_CHILD_SOUNDS,
+                int(Dat54SoundType.STREAMING_SOUND): Dat54StreamingSound.MAX_CHILD_SOUNDS,
+            }[type_id]
+            if (
+                offset >= len(raw)
+                or raw[offset] > child_limit
+                or offset + 1 + raw[offset] * 4 > len(raw)
+            ):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sounds, _ = _parse_dat54_child_list(raw, offset)
+            cls: type[Dat54ChildListSound]
+            match type_id:
+                case Dat54SoundType.SEQUENTIAL_SOUND:
+                    cls = Dat54SequentialSound
+                case Dat54SoundType.MULTITRACK_SOUND:
+                    cls = Dat54MultitrackSound
+                case _:
+                    return Dat54StreamingSound(
+                        name_hash=index.name_hash,
+                        data_offset=index.offset,
+                        data_length=index.length,
+                        raw_data=raw,
+                        header=header,
+                        child_sounds=child_sounds,
+                        child_offset=child_offset,
+                        duration=duration,
+                    )
+            return cls(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                child_sounds=child_sounds,
+                child_offset=child_offset,
             )
-        child_sound, last_play_time, fallback_sound, min_repeat_time, variable_count = (
-            struct.unpack_from("<IIIHB", raw, offset)
-        )
-        if variable_count > Dat54WrapperSound.MAX_VARIABLES:
-            return RelRawItem(
-                index.name_hash,
+        case Dat54SoundType.RANDOMIZED_SOUND:
+            if offset + 3 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            history_index = raw[offset]
+            history_count = raw[offset + 1]
+            if history_count > Dat54RandomizedSound.MAX_HISTORY:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 2
+            if offset + history_count > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            history_space = raw[offset : offset + history_count]
+            offset += history_count
+            if offset >= len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            variation_count = raw[offset]
+            if variation_count > Dat54RandomizedSound.MAX_VARIATIONS:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 1
+            if offset + variation_count * 8 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            variations = [
+                Dat54RandomizedVariation(*struct.unpack_from("<If", raw, offset + i * 8))
+                for i in range(variation_count)
+            ]
+            return Dat54RandomizedSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                history_index=history_index,
+                history_space=history_space,
+                variations=variations,
             )
-        offset += 15
-        if offset + variable_count * 5 > len(raw):
-            return RelRawItem(
-                index.name_hash,
+        case Dat54SoundType.MODULAR_SYNTH_SOUND:
+            if offset + 40 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            (
+                synth_sound,
+                synth_preset,
+                playback_time_limit,
+                virtualisation_mode,
+                environment_sound_count,
+            ) = struct.unpack_from("<IIfB3xI", raw, offset)
+            if environment_sound_count > Dat54ModularSynthSound.MAX_ENVIRONMENT_SOUNDS:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 20
+            environment_sounds = list(struct.unpack_from("<4I", raw, offset))
+            offset += 16
+            exposed_count = struct.unpack_from("<I", raw, offset)[0]
+            if (
+                exposed_count > Dat54ModularSynthSound.MAX_EXPOSED_VARIABLES
+                or offset + 4 + exposed_count * 12 > len(raw)
+            ):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 4
+            exposed_variables = [
+                Dat54ModularSynthSoundVariable(
+                    *struct.unpack_from("<IIf", raw, offset + i * 12)
+                )
+                for i in range(exposed_count)
+            ]
+            return Dat54ModularSynthSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                synth_sound=synth_sound,
+                synth_preset=synth_preset,
+                playback_time_limit=playback_time_limit,
+                virtualisation_mode=virtualisation_mode,
+                environment_sound_count=environment_sound_count,
+                environment_sounds=environment_sounds,
+                exposed_variables=exposed_variables,
             )
-        variables = [
-            Dat54WrapperVariable(*struct.unpack_from("<IB", raw, offset + i * 5))
-            for i in range(variable_count)
-            if offset + i * 5 + 5 <= len(raw)
-        ]
-        return Dat54WrapperSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            last_play_time=last_play_time,
-            fallback_sound=fallback_sound,
-            min_repeat_time=min_repeat_time,
-            variables=variables,
-        )
-    if type_id in {
-        int(Dat54SoundType.SEQUENTIAL_SOUND),
-        int(Dat54SoundType.MULTITRACK_SOUND),
-        int(Dat54SoundType.STREAMING_SOUND),
-    }:
-        duration = 0
-        child_offset = 0
-        if type_id == int(Dat54SoundType.STREAMING_SOUND):
+        case Dat54SoundType.VARIABLE_CURVE_SOUND:
+            if offset + 16 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sound, input_variable, output_variable, curve = struct.unpack_from(
+                "<IIII", raw, offset
+            )
+            return Dat54VariableCurveSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                input_variable=input_variable,
+                output_variable=output_variable,
+                curve=curve,
+            )
+        case Dat54SoundType.IF_SOUND:
+            if offset + 21 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            (
+                true_sound,
+                false_sound,
+                condition_variable,
+                condition_type,
+                condition_value,
+                rhs,
+            ) = struct.unpack_from("<IIIBfI", raw, offset)
+            return Dat54IfSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                true_sound=true_sound,
+                false_sound=false_sound,
+                condition_variable=condition_variable,
+                condition_type=condition_type,
+                condition_value=condition_value,
+                rhs=rhs,
+            )
+        case Dat54SoundType.DIRECTIONAL_SOUND:
+            if offset + 24 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            (
+                child_sound,
+                inner_angle,
+                outer_angle,
+                rear_attenuation,
+                yaw_angle,
+                pitch_angle,
+            ) = struct.unpack_from("<Ifffff", raw, offset)
+            return Dat54DirectionalSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                inner_angle=inner_angle,
+                outer_angle=outer_angle,
+                rear_attenuation=rear_attenuation,
+                yaw_angle=yaw_angle,
+                pitch_angle=pitch_angle,
+            )
+        case Dat54SoundType.KINETIC_SOUND:
+            if offset + 16 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sound, mass, yaw_angle, pitch_angle = struct.unpack_from(
+                "<Ifff", raw, offset
+            )
+            return Dat54KineticSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                mass=mass,
+                yaw_angle=yaw_angle,
+                pitch_angle=pitch_angle,
+            )
+        case Dat54SoundType.VARIABLE_BLOCK_SOUND:
             if offset + 5 > len(raw):
                 return RelRawItem(
                     index.name_hash,
@@ -629,358 +923,209 @@ def _parse_dat54_item(index: RelIndexHash, raw: bytes) -> RelItem:
                     type_id=type_id,
                     raw_data=raw,
                 )
-            duration = struct.unpack_from("<I", raw, offset)[0]
+            child_sound = struct.unpack_from("<I", raw, offset)[0]
             offset += 4
-            child_offset = 4
-        child_limit = {
-            int(Dat54SoundType.SEQUENTIAL_SOUND): Dat54SequentialSound.MAX_CHILD_SOUNDS,
-            int(Dat54SoundType.MULTITRACK_SOUND): Dat54MultitrackSound.MAX_CHILD_SOUNDS,
-            int(Dat54SoundType.STREAMING_SOUND): Dat54StreamingSound.MAX_CHILD_SOUNDS,
-        }[type_id]
-        if (
-            offset >= len(raw)
-            or raw[offset] > child_limit
-            or offset + 1 + raw[offset] * 4 > len(raw)
-        ):
-            return RelRawItem(
-                index.name_hash,
+            count = raw[offset]
+            if count > Dat54VariableBlockSound.MAX_VARIABLES:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 1
+            if offset + count * 13 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            variables: list[Dat54VariableData] = []
+            for _ in range(count):
+                variable, offset = _parse_dat54_variable_data(raw, offset)
+                if variable is None:
+                    break
+                variables.append(variable)
+            return Dat54VariableBlockSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                variables=variables,
             )
-        child_sounds, _ = _parse_dat54_child_list(raw, offset)
-        cls: type[Dat54ChildListSound]
-        if type_id == int(Dat54SoundType.SEQUENTIAL_SOUND):
-            cls = Dat54SequentialSound
-        elif type_id == int(Dat54SoundType.MULTITRACK_SOUND):
-            cls = Dat54MultitrackSound
-        else:
-            return Dat54StreamingSound(
+        case Dat54SoundType.MATH_OPERATION_SOUND:
+            if offset + 5 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sound, count = struct.unpack_from("<IB", raw, offset)
+            if (
+                count > Dat54MathOperationSound.MAX_OPERATIONS
+                or offset + 5 + count * struct.calcsize("<BfIfIfII") > len(raw)
+            ):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 5
+            operations: list[Dat54MathOperation] = []
+            for _ in range(max(count, 0)):
+                operation, offset = _parse_dat54_math_operation(raw, offset)
+                if operation is None:
+                    return RelRawItem(
+                        index.name_hash,
+                        data_offset=index.offset,
+                        data_length=index.length,
+                        type_id=type_id,
+                        raw_data=raw,
+                    )
+                operations.append(operation)
+            return Dat54MathOperationSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                operations=operations,
+            )
+        case Dat54SoundType.PARAMETER_TRANSFORM_SOUND:
+            if offset + 8 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sound, count = struct.unpack_from("<II", raw, offset)
+            if count > Dat54ParameterTransformSound.MAX_PARAMETER_TRANSFORMS:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 8
+            blocks: list[Dat54ParameterTransformBlock] = []
+            for _ in range(count):
+                block, offset = _parse_dat54_parameter_transform_block(raw, offset)
+                if block is None:
+                    return RelRawItem(
+                        index.name_hash,
+                        data_offset=index.offset,
+                        data_length=index.length,
+                        type_id=type_id,
+                        raw_data=raw,
+                    )
+                blocks.append(block)
+            return Dat54ParameterTransformSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                parameter_transforms=blocks,
+            )
+        case Dat54SoundType.FLUCTUATOR_SOUND:
+            if offset + 8 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sound, count = struct.unpack_from("<II", raw, offset)
+            if (
+                count > Dat54FluctuatorSound.MAX_FLUCTUATORS
+                or offset + 8 + count * struct.calcsize("<BBI8fIIf") > len(raw)
+            ):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 8
+            fluctuators: list[Dat54Fluctuator] = []
+            for _ in range(count):
+                fluctuator, offset = _parse_dat54_fluctuator(raw, offset)
+                if fluctuator is None:
+                    return RelRawItem(
+                        index.name_hash,
+                        data_offset=index.offset,
+                        data_length=index.length,
+                        type_id=type_id,
+                        raw_data=raw,
+                    )
+                fluctuators.append(fluctuator)
+            return Dat54FluctuatorSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                child_sound=child_sound,
+                fluctuators=fluctuators,
+            )
+        case Dat54SoundType.EXTERNAL_STREAM_SOUND:
+            if offset >= len(raw) or raw[offset] > Dat54ExternalStreamSound.MAX_CHILD_SOUNDS:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            child_sounds, offset = _parse_dat54_child_list(raw, offset)
+            if offset + 8 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            environment_sound_1, environment_sound_2 = struct.unpack_from(
+                "<II", raw, offset
+            )
+            offset += 8
+            environment_sound_3 = 0
+            environment_sound_4 = 0
+            if not child_sounds and offset + 8 <= len(raw):
+                environment_sound_3, environment_sound_4 = struct.unpack_from(
+                    "<II", raw, offset
+                )
+            return Dat54ExternalStreamSound(
                 name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
                 raw_data=raw,
                 header=header,
                 child_sounds=child_sounds,
-                child_offset=child_offset,
-                duration=duration,
+                environment_sound_1=environment_sound_1,
+                environment_sound_2=environment_sound_2,
+                environment_sound_3=environment_sound_3,
+                environment_sound_4=environment_sound_4,
             )
-        return cls(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sounds=child_sounds,
-            child_offset=child_offset,
-        )
-    if type_id == int(Dat54SoundType.RANDOMIZED_SOUND):
-        if offset + 3 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        history_index = raw[offset]
-        history_count = raw[offset + 1]
-        if history_count > Dat54RandomizedSound.MAX_HISTORY:
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 2
-        if offset + history_count > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        history_space = raw[offset : offset + history_count]
-        offset += history_count
-        if offset >= len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        variation_count = raw[offset]
-        if variation_count > Dat54RandomizedSound.MAX_VARIATIONS:
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 1
-        if offset + variation_count * 8 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        variations = [
-            Dat54RandomizedVariation(*struct.unpack_from("<If", raw, offset + i * 8))
-            for i in range(variation_count)
-        ]
-        return Dat54RandomizedSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            history_index=history_index,
-            history_space=history_space,
-            variations=variations,
-        )
-    if type_id == int(Dat54SoundType.MODULAR_SYNTH_SOUND):
-        if offset + 40 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        (
-            synth_sound,
-            synth_preset,
-            playback_time_limit,
-            virtualisation_mode,
-            environment_sound_count,
-        ) = struct.unpack_from("<IIfB3xI", raw, offset)
-        if environment_sound_count > Dat54ModularSynthSound.MAX_ENVIRONMENT_SOUNDS:
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 20
-        environment_sounds = list(struct.unpack_from("<4I", raw, offset))
-        offset += 16
-        exposed_count = struct.unpack_from("<I", raw, offset)[0]
-        if (
-            exposed_count > Dat54ModularSynthSound.MAX_EXPOSED_VARIABLES
-            or offset + 4 + exposed_count * 12 > len(raw)
-        ):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 4
-        exposed_variables = [
-            Dat54ModularSynthSoundVariable(
-                *struct.unpack_from("<IIf", raw, offset + i * 12)
-            )
-            for i in range(exposed_count)
-        ]
-        return Dat54ModularSynthSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            synth_sound=synth_sound,
-            synth_preset=synth_preset,
-            playback_time_limit=playback_time_limit,
-            virtualisation_mode=virtualisation_mode,
-            environment_sound_count=environment_sound_count,
-            environment_sounds=environment_sounds,
-            exposed_variables=exposed_variables,
-        )
-    if type_id == int(Dat54SoundType.VARIABLE_CURVE_SOUND):
-        if offset + 16 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        child_sound, input_variable, output_variable, curve = struct.unpack_from(
-            "<IIII", raw, offset
-        )
-        return Dat54VariableCurveSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            input_variable=input_variable,
-            output_variable=output_variable,
-            curve=curve,
-        )
-    if type_id == int(Dat54SoundType.IF_SOUND):
-        if offset + 21 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        (
-            true_sound,
-            false_sound,
-            condition_variable,
-            condition_type,
-            condition_value,
-            rhs,
-        ) = struct.unpack_from("<IIIBfI", raw, offset)
-        return Dat54IfSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            true_sound=true_sound,
-            false_sound=false_sound,
-            condition_variable=condition_variable,
-            condition_type=condition_type,
-            condition_value=condition_value,
-            rhs=rhs,
-        )
-    if type_id == int(Dat54SoundType.DIRECTIONAL_SOUND):
-        if offset + 24 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        (
-            child_sound,
-            inner_angle,
-            outer_angle,
-            rear_attenuation,
-            yaw_angle,
-            pitch_angle,
-        ) = struct.unpack_from("<Ifffff", raw, offset)
-        return Dat54DirectionalSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            inner_angle=inner_angle,
-            outer_angle=outer_angle,
-            rear_attenuation=rear_attenuation,
-            yaw_angle=yaw_angle,
-            pitch_angle=pitch_angle,
-        )
-    if type_id == int(Dat54SoundType.KINETIC_SOUND):
-        if offset + 16 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        child_sound, mass, yaw_angle, pitch_angle = struct.unpack_from(
-            "<Ifff", raw, offset
-        )
-        return Dat54KineticSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            mass=mass,
-            yaw_angle=yaw_angle,
-            pitch_angle=pitch_angle,
-        )
-    if type_id == int(Dat54SoundType.VARIABLE_BLOCK_SOUND):
-        if offset + 5 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        child_sound = struct.unpack_from("<I", raw, offset)[0]
-        offset += 4
-        count = raw[offset]
-        if count > Dat54VariableBlockSound.MAX_VARIABLES:
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 1
-        if offset + count * 13 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        variables: list[Dat54VariableData] = []
-        for _ in range(count):
-            variable, offset = _parse_dat54_variable_data(raw, offset)
-            if variable is None:
-                break
-            variables.append(variable)
-        return Dat54VariableBlockSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            variables=variables,
-        )
-    if type_id == int(Dat54SoundType.MATH_OPERATION_SOUND):
-        if offset + 5 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        child_sound, count = struct.unpack_from("<IB", raw, offset)
-        if (
-            count > Dat54MathOperationSound.MAX_OPERATIONS
-            or offset + 5 + count * struct.calcsize("<BfIfIfII") > len(raw)
-        ):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 5
-        operations: list[Dat54MathOperation] = []
-        for _ in range(max(count, 0)):
-            operation, offset = _parse_dat54_math_operation(raw, offset)
-            if operation is None:
+        case Dat54SoundType.AUTOMATION_SOUND:
+            if offset + 32 > len(raw):
                 return RelRawItem(
                     index.name_hash,
                     data_offset=index.offset,
@@ -988,39 +1133,20 @@ def _parse_dat54_item(index: RelIndexHash, raw: bytes) -> RelItem:
                     type_id=type_id,
                     raw_data=raw,
                 )
-            operations.append(operation)
-        return Dat54MathOperationSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            operations=operations,
-        )
-    if type_id == int(Dat54SoundType.PARAMETER_TRANSFORM_SOUND):
-        if offset + 8 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        child_sound, count = struct.unpack_from("<II", raw, offset)
-        if count > Dat54ParameterTransformSound.MAX_PARAMETER_TRANSFORMS:
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 8
-        blocks: list[Dat54ParameterTransformBlock] = []
-        for _ in range(count):
-            block, offset = _parse_dat54_parameter_transform_block(raw, offset)
-            if block is None:
+            (
+                fallback_sound,
+                playback_rate,
+                playback_rate_variance,
+                playback_rate_variable,
+                note_map,
+                container_name,
+                file_name,
+                output_count,
+            ) = struct.unpack_from("<IffIIIII", raw, offset)
+            if (
+                output_count > Dat54AutomationSound.MAX_VARIABLE_OUTPUTS
+                or offset + 32 + output_count * 8 > len(raw)
+            ):
                 return RelRawItem(
                     index.name_hash,
                     data_offset=index.offset,
@@ -1028,42 +1154,30 @@ def _parse_dat54_item(index: RelIndexHash, raw: bytes) -> RelItem:
                     type_id=type_id,
                     raw_data=raw,
                 )
-            blocks.append(block)
-        return Dat54ParameterTransformSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            parameter_transforms=blocks,
-        )
-    if type_id == int(Dat54SoundType.FLUCTUATOR_SOUND):
-        if offset + 8 > len(raw):
-            return RelRawItem(
-                index.name_hash,
+            offset += 32
+            variable_outputs = [
+                Dat54AutomationSoundVariableOutput(
+                    *struct.unpack_from("<II", raw, offset + i * 8)
+                )
+                for i in range(output_count)
+            ]
+            return Dat54AutomationSound(
+                name_hash=index.name_hash,
                 data_offset=index.offset,
                 data_length=index.length,
-                type_id=type_id,
                 raw_data=raw,
+                header=header,
+                fallback_sound=fallback_sound,
+                playback_rate=playback_rate,
+                playback_rate_variance=playback_rate_variance,
+                playback_rate_variable=playback_rate_variable,
+                note_map=note_map,
+                container_name=container_name,
+                file_name=file_name,
+                variable_outputs=variable_outputs,
             )
-        child_sound, count = struct.unpack_from("<II", raw, offset)
-        if (
-            count > Dat54FluctuatorSound.MAX_FLUCTUATORS
-            or offset + 8 + count * struct.calcsize("<BBI8fIIf") > len(raw)
-        ):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 8
-        fluctuators: list[Dat54Fluctuator] = []
-        for _ in range(count):
-            fluctuator, offset = _parse_dat54_fluctuator(raw, offset)
-            if fluctuator is None:
+        case Dat54SoundType.AUTOMATION_NOTE_MAP_SOUND:
+            if offset + 1 > len(raw):
                 return RelRawItem(
                     index.name_hash,
                     data_offset=index.offset,
@@ -1071,18 +1185,137 @@ def _parse_dat54_item(index: RelIndexHash, raw: bytes) -> RelItem:
                     type_id=type_id,
                     raw_data=raw,
                 )
-            fluctuators.append(fluctuator)
-        return Dat54FluctuatorSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sound=child_sound,
-            fluctuators=fluctuators,
-        )
-    if type_id == int(Dat54SoundType.EXTERNAL_STREAM_SOUND):
-        if offset >= len(raw) or raw[offset] > Dat54ExternalStreamSound.MAX_CHILD_SOUNDS:
+            count = raw[offset]
+            if count > Dat54AutomationNoteMapSound.MAX_RANGES:
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 1
+            if offset + count * 7 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            ranges = [
+                Dat54AutomationNoteMapRange(
+                    *struct.unpack_from("<BBBI", raw, offset + i * 7)
+                )
+                for i in range(count)
+                if offset + i * 7 + 7 <= len(raw)
+            ]
+            return Dat54AutomationNoteMapSound(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                ranges=ranges,
+            )
+        case Dat54SoundType.SOUND_SET:
+            if offset + 4 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            count = struct.unpack_from("<I", raw, offset)[0]
+            if count > Dat54SoundSet.MAX_SOUND_SETS or offset + 4 + count * 8 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 4
+            sound_sets = [
+                Dat54SoundSetItem(*struct.unpack_from("<II", raw, offset + i * 8))
+                for i in range(count)
+            ]
+            return Dat54SoundSet(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                sound_sets=sound_sets,
+            )
+        case Dat54SoundType.SOUND_SET_LIST:
+            if offset + 4 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            count = struct.unpack_from("<I", raw, offset)[0]
+            if count > Dat54SoundSetList.MAX_SOUND_SETS or offset + 4 + count * 4 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 4
+            sound_sets = [
+                struct.unpack_from("<I", raw, offset + i * 4)[0]
+                for i in range(count)
+            ]
+            return Dat54SoundSetList(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                sound_sets=sound_sets,
+            )
+        case Dat54SoundType.SOUND_HASH_LIST:
+            if offset + 6 > len(raw):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            current_sound_index, count = struct.unpack_from("<HI", raw, offset)
+            if (
+                count > Dat54SoundHashList.MAX_SOUND_HASHES
+                or offset + 6 + count * 4 > len(raw)
+            ):
+                return RelRawItem(
+                    index.name_hash,
+                    data_offset=index.offset,
+                    data_length=index.length,
+                    type_id=type_id,
+                    raw_data=raw,
+                )
+            offset += 6
+            hashes = [
+                struct.unpack_from("<I", raw, offset + i * 4)[0]
+                for i in range(count)
+            ]
+            return Dat54SoundHashList(
+                name_hash=index.name_hash,
+                data_offset=index.offset,
+                data_length=index.length,
+                raw_data=raw,
+                header=header,
+                current_sound_index=current_sound_index,
+                sound_hashes_list=hashes,
+            )
+        case _:
             return RelRawItem(
                 index.name_hash,
                 data_offset=index.offset,
@@ -1090,235 +1323,6 @@ def _parse_dat54_item(index: RelIndexHash, raw: bytes) -> RelItem:
                 type_id=type_id,
                 raw_data=raw,
             )
-        child_sounds, offset = _parse_dat54_child_list(raw, offset)
-        if offset + 8 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        environment_sound_1, environment_sound_2 = struct.unpack_from(
-            "<II", raw, offset
-        )
-        offset += 8
-        environment_sound_3 = 0
-        environment_sound_4 = 0
-        if not child_sounds and offset + 8 <= len(raw):
-            environment_sound_3, environment_sound_4 = struct.unpack_from(
-                "<II", raw, offset
-            )
-        return Dat54ExternalStreamSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            child_sounds=child_sounds,
-            environment_sound_1=environment_sound_1,
-            environment_sound_2=environment_sound_2,
-            environment_sound_3=environment_sound_3,
-            environment_sound_4=environment_sound_4,
-        )
-    if type_id == int(Dat54SoundType.AUTOMATION_SOUND):
-        if offset + 32 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        (
-            fallback_sound,
-            playback_rate,
-            playback_rate_variance,
-            playback_rate_variable,
-            note_map,
-            container_name,
-            file_name,
-            output_count,
-        ) = struct.unpack_from("<IffIIIII", raw, offset)
-        if (
-            output_count > Dat54AutomationSound.MAX_VARIABLE_OUTPUTS
-            or offset + 32 + output_count * 8 > len(raw)
-        ):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 32
-        variable_outputs = [
-            Dat54AutomationSoundVariableOutput(
-                *struct.unpack_from("<II", raw, offset + i * 8)
-            )
-            for i in range(output_count)
-        ]
-        return Dat54AutomationSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            fallback_sound=fallback_sound,
-            playback_rate=playback_rate,
-            playback_rate_variance=playback_rate_variance,
-            playback_rate_variable=playback_rate_variable,
-            note_map=note_map,
-            container_name=container_name,
-            file_name=file_name,
-            variable_outputs=variable_outputs,
-        )
-    if type_id == int(Dat54SoundType.AUTOMATION_NOTE_MAP_SOUND):
-        if offset + 1 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        count = raw[offset]
-        if count > Dat54AutomationNoteMapSound.MAX_RANGES:
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 1
-        if offset + count * 7 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        ranges = [
-            Dat54AutomationNoteMapRange(
-                *struct.unpack_from("<BBBI", raw, offset + i * 7)
-            )
-            for i in range(count)
-            if offset + i * 7 + 7 <= len(raw)
-        ]
-        return Dat54AutomationNoteMapSound(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            ranges=ranges,
-        )
-    if type_id == int(Dat54SoundType.SOUND_SET):
-        if offset + 4 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        count = struct.unpack_from("<I", raw, offset)[0]
-        if count > Dat54SoundSet.MAX_SOUND_SETS or offset + 4 + count * 8 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 4
-        sound_sets = [
-            Dat54SoundSetItem(*struct.unpack_from("<II", raw, offset + i * 8))
-            for i in range(count)
-        ]
-        return Dat54SoundSet(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            sound_sets=sound_sets,
-        )
-    if type_id == int(Dat54SoundType.SOUND_SET_LIST):
-        if offset + 4 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        count = struct.unpack_from("<I", raw, offset)[0]
-        if count > Dat54SoundSetList.MAX_SOUND_SETS or offset + 4 + count * 4 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 4
-        sound_sets = [
-            struct.unpack_from("<I", raw, offset + i * 4)[0]
-            for i in range(count)
-        ]
-        return Dat54SoundSetList(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            sound_sets=sound_sets,
-        )
-    if type_id == int(Dat54SoundType.SOUND_HASH_LIST):
-        if offset + 6 > len(raw):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        current_sound_index, count = struct.unpack_from("<HI", raw, offset)
-        if (
-            count > Dat54SoundHashList.MAX_SOUND_HASHES
-            or offset + 6 + count * 4 > len(raw)
-        ):
-            return RelRawItem(
-                index.name_hash,
-                data_offset=index.offset,
-                data_length=index.length,
-                type_id=type_id,
-                raw_data=raw,
-            )
-        offset += 6
-        hashes = [
-            struct.unpack_from("<I", raw, offset + i * 4)[0]
-            for i in range(count)
-        ]
-        return Dat54SoundHashList(
-            name_hash=index.name_hash,
-            data_offset=index.offset,
-            data_length=index.length,
-            raw_data=raw,
-            header=header,
-            current_sound_index=current_sound_index,
-            sound_hashes_list=hashes,
-        )
-    return RelRawItem(
-        index.name_hash,
-        data_offset=index.offset,
-        data_length=index.length,
-        type_id=type_id,
-        raw_data=raw,
-    )
 
 
 def _parse_item(
@@ -1330,30 +1334,27 @@ def _parse_item(
     is_audio_config: bool = False,
 ) -> RelItem:
     raw = data_block[index.offset : index.offset + index.length]
-    if rel_type == int(RelDatFileType.DAT4) and is_audio_config:
-        item = parse_dat4_config_item(index, raw, name_by_offset)
-        if item is not None:
-            return item
-    if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
-        return _parse_dat10_item(index, raw, name_by_offset)
-    if rel_type == int(RelDatFileType.DAT15_DYNAMIC_MIXER):
-        item = parse_dat15_item(index, raw, name_by_offset)
-        if item is not None:
-            return item
-    if rel_type == int(RelDatFileType.DAT16_CURVES):
-        return _parse_dat16_item(index, raw, name_by_offset)
-    if rel_type == int(RelDatFileType.DAT22_CATEGORIES):
-        return _parse_dat22_item(index, raw, name_by_offset)
-    if rel_type == int(RelDatFileType.DAT54_DATA_ENTRIES):
-        return _parse_dat54_item(index, raw)
-    if rel_type in {
-        int(RelDatFileType.DAT149),
-        int(RelDatFileType.DAT150),
-        int(RelDatFileType.DAT151),
-    }:
-        item = parse_game_rel_item(index, raw, name_by_offset)
-        if item is not None:
-            return item
+    match rel_type:
+        case RelDatFileType.DAT4 if is_audio_config:
+            item = parse_dat4_config_item(index, raw, name_by_offset)
+            if item is not None:
+                return item
+        case RelDatFileType.DAT10_MODULAR_SYNTH:
+            return _parse_dat10_item(index, raw, name_by_offset)
+        case RelDatFileType.DAT15_DYNAMIC_MIXER:
+            item = parse_dat15_item(index, raw, name_by_offset)
+            if item is not None:
+                return item
+        case RelDatFileType.DAT16_CURVES:
+            return _parse_dat16_item(index, raw, name_by_offset)
+        case RelDatFileType.DAT22_CATEGORIES:
+            return _parse_dat22_item(index, raw, name_by_offset)
+        case RelDatFileType.DAT54_DATA_ENTRIES:
+            return _parse_dat54_item(index, raw)
+        case RelDatFileType.DAT149 | RelDatFileType.DAT150 | RelDatFileType.DAT151:
+            item = parse_game_rel_item(index, raw, name_by_offset)
+            if item is not None:
+                return item
     type_id = raw[0] if raw else 0
     return RelRawItem(
         index.name_hash,
@@ -1534,21 +1535,18 @@ _GAME_REL_ALIGN_4 = frozenset(
 
 def _rel_item_alignment(rel: RelFile, type_id: int) -> int:
     rel_type = int(rel.rel_type)
-    if rel_type == int(RelDatFileType.DAT10_MODULAR_SYNTH):
-        return 4
-    if rel_type == int(RelDatFileType.DAT15_DYNAMIC_MIXER):
-        return 4 if type_id in _DAT15_ALIGN_4 else 1
-    if rel.is_audio_config and rel_type == int(RelDatFileType.DAT4):
-        return 16 if type_id == int(Dat4ConfigType.VECTOR3) else 1
-    if rel_type in {
-        int(RelDatFileType.DAT149),
-        int(RelDatFileType.DAT150),
-        int(RelDatFileType.DAT151),
-    }:
-        if type_id in _GAME_REL_ALIGN_16:
-            return 16
-        if type_id in _GAME_REL_ALIGN_4:
+    match rel_type:
+        case RelDatFileType.DAT10_MODULAR_SYNTH:
             return 4
+        case RelDatFileType.DAT15_DYNAMIC_MIXER:
+            return 4 if type_id in _DAT15_ALIGN_4 else 1
+        case RelDatFileType.DAT4 if rel.is_audio_config:
+            return 16 if type_id == int(Dat4ConfigType.VECTOR3) else 1
+        case RelDatFileType.DAT149 | RelDatFileType.DAT150 | RelDatFileType.DAT151:
+            if type_id in _GAME_REL_ALIGN_16:
+                return 16
+            if type_id in _GAME_REL_ALIGN_4:
+                return 4
     return 1
 
 

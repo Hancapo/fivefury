@@ -117,27 +117,40 @@ def decode_fvf_vertices(data: bytes, count: int, vertex_format: CdrVertexFormat)
         base = vertex_index * stride
         for semantic, relative_offset in offsets.items():
             value = _decode_fvf_value(data, base + relative_offset, vertex_format.type_of(semantic))
-            if semantic is CdrVertexSemantic.POSITION:
-                positions.append(Vector3.from_iterable(value[:3]))
-            elif semantic is CdrVertexSemantic.NORMAL:
-                normals.append(Vector3.from_iterable(value[:3]))
-            elif semantic is CdrVertexSemantic.TANGENT0:
-                padded = tuple(float(component) for component in value) + (1.0,) * (4 - len(value))
-                tangents.append(Vector4.from_iterable(padded[:4]))
-            elif semantic is CdrVertexSemantic.DIFFUSE:
-                colours0.append(tuple(float(component) for component in value[:4]))
-            elif semantic is CdrVertexSemantic.SPECULAR:
-                colours1.append(tuple(float(component) for component in value[:4]))
-            elif semantic is CdrVertexSemantic.WEIGHT:
-                values = tuple(float(component) for component in value)
-                if values and max(abs(component) for component in values) > 1.0:
-                    values = tuple(component / 255.0 for component in values)
-                weights.append((values + (0.0, 0.0, 0.0, 0.0))[:4])
-            elif semantic is CdrVertexSemantic.BINDING:
-                bindings.append(tuple(int(component) for component in value[:4]))
-            elif CdrVertexSemantic.TEXCOORD0 <= semantic <= CdrVertexSemantic.TEXCOORD7:
-                channel = int(semantic) - int(CdrVertexSemantic.TEXCOORD0)
-                texcoords[channel].append(Vector2(value[0], value[1]))
+            match semantic:
+                case CdrVertexSemantic.POSITION:
+                    positions.append(Vector3.from_iterable(value[:3]))
+                case CdrVertexSemantic.NORMAL:
+                    normals.append(Vector3.from_iterable(value[:3]))
+                case CdrVertexSemantic.TANGENT0:
+                    padded = tuple(float(component) for component in value) + (1.0,) * (
+                        4 - len(value)
+                    )
+                    tangents.append(Vector4.from_iterable(padded[:4]))
+                case CdrVertexSemantic.DIFFUSE:
+                    colours0.append(
+                        tuple(float(component) for component in value[:4])
+                    )
+                case CdrVertexSemantic.SPECULAR:
+                    colours1.append(
+                        tuple(float(component) for component in value[:4])
+                    )
+                case CdrVertexSemantic.WEIGHT:
+                    values = tuple(float(component) for component in value)
+                    if values and max(abs(component) for component in values) > 1.0:
+                        values = tuple(component / 255.0 for component in values)
+                    weights.append((values + (0.0, 0.0, 0.0, 0.0))[:4])
+                case CdrVertexSemantic.BINDING:
+                    bindings.append(tuple(int(component) for component in value[:4]))
+                case channel_semantic if (
+                    CdrVertexSemantic.TEXCOORD0
+                    <= channel_semantic
+                    <= CdrVertexSemantic.TEXCOORD7
+                ):
+                    channel = int(channel_semantic) - int(
+                        CdrVertexSemantic.TEXCOORD0
+                    )
+                    texcoords[channel].append(Vector2(value[0], value[1]))
 
     while texcoords and not texcoords[-1]:
         texcoords.pop()
@@ -332,16 +345,19 @@ def decompress_edge_indices(raw: bytes, index_count: int) -> list[int]:
         consumed = 3 if code == 3 else 1
         if sequence_index + consumed > len(sequence):
             raise ValueError("compressed EDGE triangle stream consumes too many indices")
-        if code == 3:
-            output.extend(sequence[sequence_index : sequence_index + 3])
-        elif not output:
-            raise ValueError("compressed EDGE triangle stream starts with a reused triangle")
-        elif code == 2:
-            output.extend((output[-2], output[-3], sequence[sequence_index]))
-        elif code == 1:
-            output.extend((output[-1], output[-2], sequence[sequence_index]))
-        else:
-            output.extend((output[-3], output[-1], sequence[sequence_index]))
+        match code:
+            case 3:
+                output.extend(sequence[sequence_index : sequence_index + 3])
+            case _ if not output:
+                raise ValueError(
+                    "compressed EDGE triangle stream starts with a reused triangle"
+                )
+            case 2:
+                output.extend((output[-2], output[-3], sequence[sequence_index]))
+            case 1:
+                output.extend((output[-1], output[-2], sequence[sequence_index]))
+            case _:
+                output.extend((output[-3], output[-1], sequence[sequence_index]))
         sequence_index += consumed
     return output[:index_count]
 

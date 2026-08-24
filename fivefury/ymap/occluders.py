@@ -3,14 +3,14 @@ from __future__ import annotations
 import dataclasses
 import math
 import struct
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from ..meta.defs import meta_name
 from ..vector import Aabb3, Vector3
 
 
-class AngleMode(str, Enum):
+class AngleMode(StrEnum):
     DEGREES = "degrees"
     RADIANS = "radians"
 

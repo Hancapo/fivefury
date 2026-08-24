@@ -139,62 +139,63 @@ class ParsedMeta:
     def _decode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, raw: bytes) -> Any:
         offset = field.data_offset
         data_type = field.data_type
-        if data_type is MetaDataType.BOOLEAN:
-            return raw[offset] != 0
-        if data_type is MetaDataType.SIGNED_BYTE:
-            return struct.unpack_from("<b", raw, offset)[0]
-        if data_type is MetaDataType.UNSIGNED_BYTE:
-            return raw[offset]
-        if data_type is MetaDataType.SIGNED_SHORT:
-            return struct.unpack_from("<h", raw, offset)[0]
-        if data_type is MetaDataType.UNSIGNED_SHORT:
-            return struct.unpack_from("<H", raw, offset)[0]
-        if data_type is MetaDataType.SIGNED_INT:
-            return struct.unpack_from("<i", raw, offset)[0]
-        if data_type is MetaDataType.UNSIGNED_INT:
-            return struct.unpack_from("<I", raw, offset)[0]
-        if data_type is MetaDataType.FLOAT:
-            return struct.unpack_from("<f", raw, offset)[0]
-        if data_type is MetaDataType.FLOAT_XYZ:
-            return struct.unpack_from("<fff", raw, offset)
-        if data_type is MetaDataType.FLOAT_XYZW:
-            return struct.unpack_from("<ffff", raw, offset)
-        if data_type is MetaDataType.HASH:
-            return struct.unpack_from("<I", raw, offset)[0]
-        if data_type in (MetaDataType.BYTE_ENUM, MetaDataType.INT_ENUM, MetaDataType.INT_FLAGS_1, MetaDataType.INT_FLAGS_2, MetaDataType.SHORT_FLAGS):
-            if data_type is MetaDataType.BYTE_ENUM:
+        match data_type:
+            case MetaDataType.BOOLEAN:
+                return raw[offset] != 0
+            case MetaDataType.SIGNED_BYTE:
+                return struct.unpack_from("<b", raw, offset)[0]
+            case MetaDataType.UNSIGNED_BYTE:
                 return raw[offset]
-            if data_type is MetaDataType.SHORT_FLAGS:
+            case MetaDataType.SIGNED_SHORT:
                 return struct.unpack_from("<h", raw, offset)[0]
-            return struct.unpack_from("<i", raw, offset)[0]
-        if data_type is MetaDataType.ARRAY_OF_CHARS:
-            length = field.reference_key & 0xFFFF
-            end = raw.find(b"\x00", offset, offset + length)
-            if end == -1:
-                end = offset + length
-            return raw[offset:end].decode("ascii", errors="ignore")
-        if data_type is MetaDataType.ARRAY_OF_BYTES:
-            count = field.reference_key & 0xFFFF
-            array_info = array_info_for_field(struct_info, field_index)
-            if array_info is None:
-                return bytes(raw[offset : offset + count])
-            return _unpack_inline_array(array_info.data_type, raw[offset:], count)
-        if data_type is MetaDataType.CHAR_POINTER:
-            ref = MetaArrayRef.from_bytes(raw, offset)
-            return self._resolve_char_pointer(ref)
-        if data_type is MetaDataType.DATA_BLOCK_POINTER:
-            ref = MetaDataRef.from_bytes(raw, offset)
-            return self._resolve_data_pointer(ref)
-        if data_type is MetaDataType.STRUCTURE_POINTER:
-            pointer = MetaDataRef.from_bytes(raw, offset).pointer
-            return self._resolve_struct_pointer(pointer)
-        if data_type is MetaDataType.STRUCTURE:
-            nested_hash = field.reference_key
-            return self._decode_inline_structure(nested_hash, raw[offset:])
-        if data_type is MetaDataType.ARRAY:
-            array_ref = MetaArrayRef.from_bytes(raw, offset)
-            return self._resolve_array(struct_info, field_index, array_ref)
-        return None
+            case MetaDataType.UNSIGNED_SHORT:
+                return struct.unpack_from("<H", raw, offset)[0]
+            case MetaDataType.SIGNED_INT:
+                return struct.unpack_from("<i", raw, offset)[0]
+            case MetaDataType.UNSIGNED_INT:
+                return struct.unpack_from("<I", raw, offset)[0]
+            case MetaDataType.FLOAT:
+                return struct.unpack_from("<f", raw, offset)[0]
+            case MetaDataType.FLOAT_XYZ:
+                return struct.unpack_from("<fff", raw, offset)
+            case MetaDataType.FLOAT_XYZW:
+                return struct.unpack_from("<ffff", raw, offset)
+            case MetaDataType.HASH:
+                return struct.unpack_from("<I", raw, offset)[0]
+            case MetaDataType.BYTE_ENUM:
+                return raw[offset]
+            case MetaDataType.SHORT_FLAGS:
+                return struct.unpack_from("<h", raw, offset)[0]
+            case MetaDataType.INT_ENUM | MetaDataType.INT_FLAGS_1 | MetaDataType.INT_FLAGS_2:
+                return struct.unpack_from("<i", raw, offset)[0]
+            case MetaDataType.ARRAY_OF_CHARS:
+                length = field.reference_key & 0xFFFF
+                end = raw.find(b"\x00", offset, offset + length)
+                if end == -1:
+                    end = offset + length
+                return raw[offset:end].decode("ascii", errors="ignore")
+            case MetaDataType.ARRAY_OF_BYTES:
+                count = field.reference_key & 0xFFFF
+                array_info = array_info_for_field(struct_info, field_index)
+                if array_info is None:
+                    return bytes(raw[offset : offset + count])
+                return _unpack_inline_array(array_info.data_type, raw[offset:], count)
+            case MetaDataType.CHAR_POINTER:
+                ref = MetaArrayRef.from_bytes(raw, offset)
+                return self._resolve_char_pointer(ref)
+            case MetaDataType.DATA_BLOCK_POINTER:
+                ref = MetaDataRef.from_bytes(raw, offset)
+                return self._resolve_data_pointer(ref)
+            case MetaDataType.STRUCTURE_POINTER:
+                pointer = MetaDataRef.from_bytes(raw, offset).pointer
+                return self._resolve_struct_pointer(pointer)
+            case MetaDataType.STRUCTURE:
+                return self._decode_inline_structure(field.reference_key, raw[offset:])
+            case MetaDataType.ARRAY:
+                array_ref = MetaArrayRef.from_bytes(raw, offset)
+                return self._resolve_array(struct_info, field_index, array_ref)
+            case _:
+                return None
 
     def _resolve_char_pointer(self, array_ref: MetaArrayRef) -> str:
         if array_ref.pointer.is_null or array_ref.count == 0:
@@ -257,44 +258,61 @@ class ParsedMeta:
         data = block.data[start:end]
         element_type = array_info.data_type
         document = BinaryDocument(block.data)
-        if element_type is MetaDataType.STRUCTURE_POINTER:
-            return [
-                self._resolve_struct_pointer(MetaPointer.from_uint64(int(pointer_value)))
-                for pointer_value in document.read_array(
-                    start, array_ref.count, BinaryScalarType.UNSIGNED_LONG
+        match element_type:
+            case MetaDataType.STRUCTURE_POINTER:
+                return [
+                    self._resolve_struct_pointer(
+                        MetaPointer.from_uint64(int(pointer_value))
+                    )
+                    for pointer_value in document.read_array(
+                        start, array_ref.count, BinaryScalarType.UNSIGNED_LONG
+                    )
+                ]
+            case MetaDataType.STRUCTURE:
+                nested_hash = array_info.reference_key
+                nested_info = self.struct_infos.get(nested_hash)
+                nested_def = STRUCTS_BY_HASH.get(nested_hash)
+                size = (
+                    nested_info.structure_size
+                    if nested_info is not None
+                    else nested_def.size
+                    if nested_def is not None
+                    else 0
                 )
-            ]
-        if element_type is MetaDataType.STRUCTURE:
-            nested_hash = array_info.reference_key
-            nested_info = self.struct_infos.get(nested_hash)
-            nested_def = STRUCTS_BY_HASH.get(nested_hash)
-            size = nested_info.structure_size if nested_info is not None else (nested_def.size if nested_def is not None else 0)
-            if size <= 0:
-                return [RawStruct(nested_hash, data, nested_info)]
-            items = []
-            for index in range(array_ref.count):
-                chunk = data[index * size : (index + 1) * size]
-                items.append(self._decode_inline_structure(nested_hash, chunk))
-            return items
-        if element_type is MetaDataType.FLOAT:
-            return document.read_array(start, array_ref.count, BinaryScalarType.FLOAT)
-        if element_type is MetaDataType.UNSIGNED_INT:
-            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_INT)
-        if element_type is MetaDataType.UNSIGNED_SHORT:
-            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_SHORT)
-        if element_type is MetaDataType.UNSIGNED_BYTE:
-            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_BYTE)
-        if element_type is MetaDataType.HASH:
-            return document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_INT)
-        if element_type is MetaDataType.FLOAT_XYZ:
-            return document.read_array(
-                start,
-                array_ref.count,
-                BinaryScalarType.FLOAT,
-                stride=16,
-                components=3,
-            )
-        return bytes(data)
+                if size <= 0:
+                    return [RawStruct(nested_hash, data, nested_info)]
+                return [
+                    self._decode_inline_structure(
+                        nested_hash, data[index * size : (index + 1) * size]
+                    )
+                    for index in range(array_ref.count)
+                ]
+            case MetaDataType.FLOAT:
+                return document.read_array(
+                    start, array_ref.count, BinaryScalarType.FLOAT
+                )
+            case MetaDataType.UNSIGNED_INT | MetaDataType.HASH:
+                return document.read_array(
+                    start, array_ref.count, BinaryScalarType.UNSIGNED_INT
+                )
+            case MetaDataType.UNSIGNED_SHORT:
+                return document.read_array(
+                    start, array_ref.count, BinaryScalarType.UNSIGNED_SHORT
+                )
+            case MetaDataType.UNSIGNED_BYTE:
+                return document.read_array(
+                    start, array_ref.count, BinaryScalarType.UNSIGNED_BYTE
+                )
+            case MetaDataType.FLOAT_XYZ:
+                return document.read_array(
+                    start,
+                    array_ref.count,
+                    BinaryScalarType.FLOAT,
+                    stride=16,
+                    components=3,
+                )
+            case _:
+                return bytes(data)
 
 
 def _absolute_to_offset(pointer: int) -> int:

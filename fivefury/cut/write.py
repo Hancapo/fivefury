@@ -24,21 +24,15 @@ from ..pso import (
     PSCH,
     PSIG,
     STRE,
-    PsoDataTypeArray,
     PsoDataTypeBool,
-    PsoDataTypeEnum,
-    PsoDataTypeFlags,
     PsoDataTypeFloat,
     PsoDataTypeFloat2,
     PsoDataTypeFloat3,
     PsoDataTypeFloat3a,
     PsoDataTypeFloat4,
     PsoDataTypeFloat4a,
-    PsoDataTypeHFloat,
-    PsoDataTypeLong,
     PsoDataTypeSByte,
     PsoDataTypeSInt,
-    PsoDataTypeSShort,
     PsoDataTypeString,
     PsoDataTypeStructure,
     PsoDataTypeUByte,
@@ -62,6 +56,7 @@ from ..pso import (
 from ..pso import (
     PsoStruct as _PsoStruct,
 )
+from ..pso import model as pso_model
 from ..pso.schema import serialize_psch as _serialize_psch
 from ..vector import Quaternion, Vector2, Vector3, Vector4
 from .limits import CUT_MAX_PSO_ARRAY_ITEMS
@@ -96,14 +91,15 @@ def _ensure_vector(value: Any, size: int) -> tuple[float, ...]:
     if value is None:
         return (0.0,) * size
     expected: type[Vector2 | Vector3] | tuple[type[Vector4], type[Quaternion]]
-    if size == 2:
-        expected = Vector2
-    elif size == 3:
-        expected = Vector3
-    elif size == 4:
-        expected = (Vector4, Quaternion)
-    else:
-        raise ValueError(f"unsupported vector size {size}")
+    match size:
+        case 2:
+            expected = Vector2
+        case 3:
+            expected = Vector3
+        case 4:
+            expected = (Vector4, Quaternion)
+        case _:
+            raise ValueError(f"unsupported vector size {size}")
     if not isinstance(value, expected):
         names = (
             " or ".join(item.__name__ for item in expected)
@@ -140,82 +136,94 @@ class _CutWriter:
 
     def _alloc_primitive_array(self, type_id: int, values: list[Any]) -> tuple[int, int]:
         payload = bytearray()
-        if type_id == PsoDataTypeSInt:
-            for value in values:
-                payload.extend(_i32(int(value)))
-        elif type_id == PsoDataTypeUInt:
-            for value in values:
-                payload.extend(_u32(int(value)))
-        elif type_id == PsoDataTypeUShort:
-            for value in values:
-                payload.extend(_u16(int(value)))
-        elif type_id == PsoDataTypeUByte:
-            payload.extend(int(value) & 0xFF for value in values)
-        elif type_id == PsoDataTypeBool:
-            payload.extend(1 if value else 0 for value in values)
-        elif type_id == PsoDataTypeFloat:
-            for value in values:
-                payload.extend(_f32(float(value)))
-        elif type_id == PsoDataTypeFloat2:
-            for value in values:
-                x, y = _ensure_vector(value, 2)
-                payload.extend(_f32(x))
-                payload.extend(_f32(y))
-        elif type_id in {PsoDataTypeFloat3, PsoDataTypeFloat3a}:
-            for value in values:
-                x, y, z = _ensure_vector(value, 3)
-                payload.extend(_f32(x))
-                payload.extend(_f32(y))
-                payload.extend(_f32(z))
-                if type_id == PsoDataTypeFloat3:
-                    payload.extend(b"\x00\x00\x00\x00")
-        elif type_id in {PsoDataTypeFloat4, PsoDataTypeFloat4a}:
-            for value in values:
-                x, y, z, w = _ensure_vector(value, 4)
-                payload.extend(_f32(x))
-                payload.extend(_f32(y))
-                payload.extend(_f32(z))
-                payload.extend(_f32(w))
-        else:
-            raise ValueError(f"unsupported primitive array type {type_id}")
+        match type_id:
+            case pso_model.PsoDataTypeSInt:
+                for value in values:
+                    payload.extend(_i32(int(value)))
+            case pso_model.PsoDataTypeUInt:
+                for value in values:
+                    payload.extend(_u32(int(value)))
+            case pso_model.PsoDataTypeUShort:
+                for value in values:
+                    payload.extend(_u16(int(value)))
+            case pso_model.PsoDataTypeUByte:
+                payload.extend(int(value) & 0xFF for value in values)
+            case pso_model.PsoDataTypeBool:
+                payload.extend(1 if value else 0 for value in values)
+            case pso_model.PsoDataTypeFloat:
+                for value in values:
+                    payload.extend(_f32(float(value)))
+            case pso_model.PsoDataTypeFloat2:
+                for value in values:
+                    x, y = _ensure_vector(value, 2)
+                    payload.extend(_f32(x))
+                    payload.extend(_f32(y))
+            case pso_model.PsoDataTypeFloat3 | pso_model.PsoDataTypeFloat3a:
+                for value in values:
+                    x, y, z = _ensure_vector(value, 3)
+                    payload.extend(_f32(x))
+                    payload.extend(_f32(y))
+                    payload.extend(_f32(z))
+                    if type_id == PsoDataTypeFloat3:
+                        payload.extend(b"\x00\x00\x00\x00")
+            case pso_model.PsoDataTypeFloat4 | pso_model.PsoDataTypeFloat4a:
+                for value in values:
+                    x, y, z, w = _ensure_vector(value, 4)
+                    payload.extend(_f32(x))
+                    payload.extend(_f32(y))
+                    payload.extend(_f32(z))
+                    payload.extend(_f32(w))
+            case _:
+                raise ValueError(f"unsupported primitive array type {type_id}")
         block = self._get_block(type_id)
         return block.name_hash, block.append(bytes(payload))
 
     def _write_scalar(self, buffer: bytearray, offset: int, type_id: int, value: Any) -> None:
-        if type_id == PsoDataTypeBool:
-            buffer[offset] = 1 if bool(value) else 0
-        elif type_id == PsoDataTypeSByte:
-            buffer[offset : offset + 1] = int(value or 0).to_bytes(1, "big", signed=True)
-        elif type_id == PsoDataTypeUByte:
-            buffer[offset] = int(value or 0) & 0xFF
-        elif type_id == PsoDataTypeSShort:
-            buffer[offset : offset + 2] = int(value or 0).to_bytes(2, "big", signed=True)
-        elif type_id == PsoDataTypeUShort:
-            buffer[offset : offset + 2] = _u16(int(value or 0))
-        elif type_id in {PsoDataTypeSInt, PsoDataTypeEnum, PsoDataTypeFlags}:
-            buffer[offset : offset + 4] = _i32(int(value or 0))
-        elif type_id == PsoDataTypeUInt:
-            buffer[offset : offset + 4] = _u32(int(value or 0))
-        elif type_id == PsoDataTypeFloat:
-            buffer[offset : offset + 4] = _f32(float(value or 0.0))
-        elif type_id == PsoDataTypeFloat2:
-            x, y = _ensure_vector(value, 2)
-            buffer[offset : offset + 8] = _f32(x) + _f32(y)
-        elif type_id in {PsoDataTypeFloat3, PsoDataTypeFloat3a}:
-            x, y, z = _ensure_vector(value, 3)
-            payload = _f32(x) + _f32(y) + _f32(z)
-            if type_id == PsoDataTypeFloat3:
-                payload += b"\x00\x00\x00\x00"
-            buffer[offset : offset + len(payload)] = payload
-        elif type_id in {PsoDataTypeFloat4, PsoDataTypeFloat4a}:
-            x, y, z, w = _ensure_vector(value, 4)
-            buffer[offset : offset + 16] = _f32(x) + _f32(y) + _f32(z) + _f32(w)
-        elif type_id == PsoDataTypeHFloat:
-            buffer[offset : offset + 2] = _u16(int(value or 0))
-        elif type_id == PsoDataTypeLong:
-            buffer[offset : offset + 8] = _i64(int(value or 0))
-        else:
-            raise ValueError(f"unsupported scalar type {type_id}")
+        match type_id:
+            case pso_model.PsoDataTypeBool:
+                buffer[offset] = 1 if bool(value) else 0
+            case pso_model.PsoDataTypeSByte:
+                buffer[offset : offset + 1] = int(value or 0).to_bytes(
+                    1, "big", signed=True
+                )
+            case pso_model.PsoDataTypeUByte:
+                buffer[offset] = int(value or 0) & 0xFF
+            case pso_model.PsoDataTypeSShort:
+                buffer[offset : offset + 2] = int(value or 0).to_bytes(
+                    2, "big", signed=True
+                )
+            case pso_model.PsoDataTypeUShort:
+                buffer[offset : offset + 2] = _u16(int(value or 0))
+            case (
+                pso_model.PsoDataTypeSInt
+                | pso_model.PsoDataTypeEnum
+                | pso_model.PsoDataTypeFlags
+            ):
+                buffer[offset : offset + 4] = _i32(int(value or 0))
+            case pso_model.PsoDataTypeUInt:
+                buffer[offset : offset + 4] = _u32(int(value or 0))
+            case pso_model.PsoDataTypeFloat:
+                buffer[offset : offset + 4] = _f32(float(value or 0.0))
+            case pso_model.PsoDataTypeFloat2:
+                x, y = _ensure_vector(value, 2)
+                buffer[offset : offset + 8] = _f32(x) + _f32(y)
+            case pso_model.PsoDataTypeFloat3 | pso_model.PsoDataTypeFloat3a:
+                x, y, z = _ensure_vector(value, 3)
+                payload = _f32(x) + _f32(y) + _f32(z)
+                if type_id == PsoDataTypeFloat3:
+                    payload += b"\x00\x00\x00\x00"
+                buffer[offset : offset + len(payload)] = payload
+            case pso_model.PsoDataTypeFloat4 | pso_model.PsoDataTypeFloat4a:
+                x, y, z, w = _ensure_vector(value, 4)
+                buffer[offset : offset + 16] = (
+                    _f32(x) + _f32(y) + _f32(z) + _f32(w)
+                )
+            case pso_model.PsoDataTypeHFloat:
+                buffer[offset : offset + 2] = _u16(int(value or 0))
+            case pso_model.PsoDataTypeLong:
+                buffer[offset : offset + 8] = _i64(int(value or 0))
+            case _:
+                raise ValueError(f"unsupported scalar type {type_id}")
 
     def _write_string(self, buffer: bytearray, offset: int, entry: _PsoEntry, value: Any) -> None:
         if entry.subtype == 0:
@@ -436,32 +444,47 @@ class _CutWriter:
             if value is None:
                 value = node.fields.get(f"hash_{entry.name_hash:08X}")
             offset = entry.data_offset
-            if entry.type_id == PsoDataTypeString:
-                self._write_string(buffer, offset, entry, value)
-            elif entry.type_id == PsoDataTypeStructure:
-                if entry.subtype == 0:
-                    child = self._write_inline_structure(entry.reference_key, value)
-                    buffer[offset : offset + len(child)] = child
-                elif entry.subtype in {3, 4}:
-                    if value is None:
-                        continue
-                    child_node = self._coerce_node(value, entry.reference_key)
-                    block_hash = (
-                        entry.reference_key
-                        if entry.reference_key not in {None, 0}
-                        else self._resolve_dynamic_type_hash(
-                            child_node,
-                            context=f"pointer field {CUT_HASH_NAMES.get(entry.name_hash, f'hash_{entry.name_hash:08X}')}",
-                        )
-                    )
-                    block_hash, rel = self._alloc_structure(block_hash, child_node)
-                    self._record_pointer_patch(buffer, offset, block_hash, rel)
-                else:
-                    raise ValueError(f"unsupported structure subtype {entry.subtype}")
-            elif entry.type_id == PsoDataTypeArray:
-                self._write_array(buffer, offset, entry, array_info, value)
-            else:
-                self._write_scalar(buffer, offset, entry.type_id, value)
+            match entry.type_id:
+                case pso_model.PsoDataTypeString:
+                    self._write_string(buffer, offset, entry, value)
+                case pso_model.PsoDataTypeStructure:
+                    match entry.subtype:
+                        case 0:
+                            child = self._write_inline_structure(
+                                entry.reference_key, value
+                            )
+                            buffer[offset : offset + len(child)] = child
+                        case 3 | 4:
+                            if value is None:
+                                continue
+                            child_node = self._coerce_node(
+                                value, entry.reference_key
+                            )
+                            block_hash = (
+                                entry.reference_key
+                                if entry.reference_key not in {None, 0}
+                                else self._resolve_dynamic_type_hash(
+                                    child_node,
+                                    context=(
+                                        "pointer field "
+                                        f"{CUT_HASH_NAMES.get(entry.name_hash, f'hash_{entry.name_hash:08X}')}"
+                                    ),
+                                )
+                            )
+                            block_hash, rel = self._alloc_structure(
+                                block_hash, child_node
+                            )
+                            self._record_pointer_patch(
+                                buffer, offset, block_hash, rel
+                            )
+                        case _:
+                            raise ValueError(
+                                f"unsupported structure subtype {entry.subtype}"
+                            )
+                case pso_model.PsoDataTypeArray:
+                    self._write_array(buffer, offset, entry, array_info, value)
+                case _:
+                    self._write_scalar(buffer, offset, entry.type_id, value)
         return buffer
 
     def _ordered_blocks(self) -> list[_BlockBuilder]:

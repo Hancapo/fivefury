@@ -505,34 +505,35 @@ class _CutScriptParser:
             self.scene = CutScene.create(scene_name=tokens[1])
             return
         scene = self._require_scene(line_no)
-        if command == "DURATION":
-            _expect_count(tokens, line_no, 2, "DURATION seconds")
-            scene.duration = _float(tokens[1], line_no, "duration")
-        elif command == "OFFSET":
-            _expect_count(tokens, line_no, 4, "OFFSET x y z")
-            scene.offset = _parse_vector3(tokens[1:], line_no, "offset")
-        elif command == "ROTATION":
-            _expect_count(tokens, line_no, 2, "ROTATION degrees")
-            scene.rotation = _float(tokens[1], line_no, "rotation")
-        elif command == "FLAGS":
-            scene.cutscene_flags = _flag_value(tokens[1:], line_no)
-        elif command == "ASSETS":
-            self.section = "ASSETS"
-            self.track = None
-            self.last_asset = None
-        elif command == "TRACK":
-            _expect_count(tokens, line_no, 2, "TRACK name")
-            self.section = "TRACK"
-            self.track = tokens[1].upper()
-            self.last_asset = None
-        elif command == "SAVE":
-            _expect_count(tokens, line_no, 2, 'SAVE "path.cut"')
-            path = Path(tokens[1])
-            self.save_path = (
-                path
-                if self.base_path is None or path.is_absolute()
-                else self.base_path / path
-            )
+        match command:
+            case "DURATION":
+                _expect_count(tokens, line_no, 2, "DURATION seconds")
+                scene.duration = _float(tokens[1], line_no, "duration")
+            case "OFFSET":
+                _expect_count(tokens, line_no, 4, "OFFSET x y z")
+                scene.offset = _parse_vector3(tokens[1:], line_no, "offset")
+            case "ROTATION":
+                _expect_count(tokens, line_no, 2, "ROTATION degrees")
+                scene.rotation = _float(tokens[1], line_no, "rotation")
+            case "FLAGS":
+                scene.cutscene_flags = _flag_value(tokens[1:], line_no)
+            case "ASSETS":
+                self.section = "ASSETS"
+                self.track = None
+                self.last_asset = None
+            case "TRACK":
+                _expect_count(tokens, line_no, 2, "TRACK name")
+                self.section = "TRACK"
+                self.track = tokens[1].upper()
+                self.last_asset = None
+            case "SAVE":
+                _expect_count(tokens, line_no, 2, 'SAVE "path.cut"')
+                path = Path(tokens[1])
+                self.save_path = (
+                    path
+                    if self.base_path is None or path.is_absolute()
+                    else self.base_path / path
+                )
 
     def _parse_asset(self, tokens: list[str], line_no: int) -> None:
         command = tokens[0].upper()
@@ -556,53 +557,56 @@ class _CutScriptParser:
             self._apply_light_property(self.last_asset, tokens, line_no)
             return
         self.last_asset = None
-        if command == "ASSET_MANAGER":
-            _expect_count(tokens, line_no, 2, "ASSET_MANAGER name")
-            name = _block_name(tokens[1], line_no, "asset manager")
-            self._register(name, scene.asset_manager(name), line_no)
-        elif command == "ANIM_MANAGER":
-            _expect_count(tokens, line_no, 2, "ANIM_MANAGER name")
-            name = _block_name(tokens[1], line_no, "animation manager")
-            self._register(name, scene.animation_manager(name), line_no)
-        elif command == "CAMERA":
-            _expect_count(tokens, line_no, 2, "CAMERA name")
-            if scene.cameras:
+        match command:
+            case "ASSET_MANAGER":
+                _expect_count(tokens, line_no, 2, "ASSET_MANAGER name")
+                name = _block_name(tokens[1], line_no, "asset manager")
+                self._register(name, scene.asset_manager(name), line_no)
+            case "ANIM_MANAGER":
+                _expect_count(tokens, line_no, 2, "ANIM_MANAGER name")
+                name = _block_name(tokens[1], line_no, "animation manager")
+                self._register(name, scene.animation_manager(name), line_no)
+            case "CAMERA":
+                _expect_count(tokens, line_no, 2, "CAMERA name")
+                if scene.cameras:
+                    raise CutScriptError(
+                        line_no,
+                        "a CUTSCENE supports one runtime CAMERA; use multiple CUT events for shots",
+                    )
+                name = _block_name(tokens[1], line_no, "camera")
+                self._register(name, scene.camera(name), line_no)
+            case model_command if model_command in _STREAMED_MODEL_COMMANDS:
+                self.last_asset = self._parse_streamed_model(tokens, line_no)
+            case "LIGHT":
+                _expect_count(tokens, line_no, 2, "LIGHT name")
+                name = _block_name(tokens[1], line_no, "light")
+                light = scene.light(name, fields=self._default_light_fields())
+                self._register(name, light, line_no)
+                self.last_asset = light
+            case "AUDIO":
+                _expect_count(tokens, line_no, 2, "AUDIO name")
+                name = _block_name(tokens[1], line_no, "audio")
+                self._register(name, scene.audio(name), line_no)
+            case "SUBTITLE":
+                _expect_count(tokens, line_no, 2, "SUBTITLE name")
+                name = _block_name(tokens[1], line_no, "subtitle")
+                self._register(name, scene.subtitle(name), line_no)
+            case "FADE":
+                _expect_count(tokens, line_no, 2, "FADE name")
+                name = _block_name(tokens[1], line_no, "fade")
+                self._register(name, scene.fade(name), line_no)
+            case "OVERLAY":
+                _expect_count(tokens, line_no, 2, "OVERLAY name")
+                name = _block_name(tokens[1], line_no, "overlay")
+                self._register(name, scene.overlay(name), line_no)
+            case "DECAL":
+                _expect_count(tokens, line_no, 2, "DECAL name")
+                name = _block_name(tokens[1], line_no, "decal")
+                self._register(name, scene.decal(name), line_no)
+            case _:
                 raise CutScriptError(
-                    line_no,
-                    "a CUTSCENE supports one runtime CAMERA; use multiple CUT events for shots",
+                    line_no, f"unknown ASSETS command {tokens[0]!r}"
                 )
-            name = _block_name(tokens[1], line_no, "camera")
-            self._register(name, scene.camera(name), line_no)
-        elif command in _STREAMED_MODEL_COMMANDS:
-            self.last_asset = self._parse_streamed_model(tokens, line_no)
-        elif command == "LIGHT":
-            _expect_count(tokens, line_no, 2, "LIGHT name")
-            name = _block_name(tokens[1], line_no, "light")
-            light = scene.light(name, fields=self._default_light_fields())
-            self._register(name, light, line_no)
-            self.last_asset = light
-        elif command == "AUDIO":
-            _expect_count(tokens, line_no, 2, "AUDIO name")
-            name = _block_name(tokens[1], line_no, "audio")
-            self._register(name, scene.audio(name), line_no)
-        elif command == "SUBTITLE":
-            _expect_count(tokens, line_no, 2, "SUBTITLE name")
-            name = _block_name(tokens[1], line_no, "subtitle")
-            self._register(name, scene.subtitle(name), line_no)
-        elif command == "FADE":
-            _expect_count(tokens, line_no, 2, "FADE name")
-            name = _block_name(tokens[1], line_no, "fade")
-            self._register(name, scene.fade(name), line_no)
-        elif command == "OVERLAY":
-            _expect_count(tokens, line_no, 2, "OVERLAY name")
-            name = _block_name(tokens[1], line_no, "overlay")
-            self._register(name, scene.overlay(name), line_no)
-        elif command == "DECAL":
-            _expect_count(tokens, line_no, 2, "DECAL name")
-            name = _block_name(tokens[1], line_no, "decal")
-            self._register(name, scene.decal(name), line_no)
-        else:
-            raise CutScriptError(line_no, f"unknown ASSETS command {tokens[0]!r}")
 
     def _register(self, name: str, binding: CutBinding, line_no: int) -> None:
         if name in self.bindings:
@@ -676,26 +680,32 @@ class _CutScriptParser:
     ) -> None:
         command = tokens[0].upper()
         _expect_count(tokens, line_no, 2, f"{command} value")
-        if command == "MODEL":
-            binding.model_name = tokens[1]  # type: ignore[attr-defined]
-        elif command == "YTYP" or command == "TYPE_FILE":
-            binding.ytyp_name = tokens[1]  # type: ignore[attr-defined]
-        elif command == "ANIM_BASE":
-            binding.animation_clip_base = tokens[1]  # type: ignore[attr-defined]
-        elif command == "ANIM_STREAMING_BASE":
-            binding.anim_streaming_base = _int(tokens[1], line_no, "AnimStreamingBase")  # type: ignore[attr-defined]
-        elif command == "ANIM_EXPORT":
-            binding.anim_export_ctrl_spec_file = tokens[1]  # type: ignore[attr-defined]
-        elif command == "FACE_EXPORT":
-            binding.face_export_ctrl_spec_file = tokens[1]  # type: ignore[attr-defined]
-        elif command == "CNAME":
-            binding.cutscene_name = tokens[1]  # type: ignore[attr-defined]
-        elif command == "PRESET":
-            binding.apply_animation_preset(
-                _enum_value(
-                    CutPropAnimationPreset, tokens[1], line_no, "animation preset"
+        match command:
+            case "MODEL":
+                binding.model_name = tokens[1]  # type: ignore[attr-defined]
+            case "YTYP" | "TYPE_FILE":
+                binding.ytyp_name = tokens[1]  # type: ignore[attr-defined]
+            case "ANIM_BASE":
+                binding.animation_clip_base = tokens[1]  # type: ignore[attr-defined]
+            case "ANIM_STREAMING_BASE":
+                binding.anim_streaming_base = _int(  # type: ignore[attr-defined]
+                    tokens[1], line_no, "AnimStreamingBase"
                 )
-            )  # type: ignore[attr-defined]
+            case "ANIM_EXPORT":
+                binding.anim_export_ctrl_spec_file = tokens[1]  # type: ignore[attr-defined]
+            case "FACE_EXPORT":
+                binding.face_export_ctrl_spec_file = tokens[1]  # type: ignore[attr-defined]
+            case "CNAME":
+                binding.cutscene_name = tokens[1]  # type: ignore[attr-defined]
+            case "PRESET":
+                binding.apply_animation_preset(  # type: ignore[attr-defined]
+                    _enum_value(
+                        CutPropAnimationPreset,
+                        tokens[1],
+                        line_no,
+                        "animation preset",
+                    )
+                )
 
     def _key_values(self, tokens: list[str], line_no: int) -> dict[str, str]:
         if len(tokens) % 2 != 0:
@@ -734,53 +744,67 @@ class _CutScriptParser:
         self, light: CutLight, tokens: list[str], line_no: int
     ) -> None:
         command = tokens[0].upper()
-        if command == "TYPE":
-            _expect_count(tokens, line_no, 2, "TYPE POINT|SPOT|DIRECTIONAL")
-            light.fields["iLightType"] = int(
-                _enum_value(CutLightType, tokens[1], line_no, "light type")
-            )
-        elif command in {"POSITION", "POS"}:
+        match command:
+            case "TYPE":
+                _expect_count(tokens, line_no, 2, "TYPE POINT|SPOT|DIRECTIONAL")
+                light.fields["iLightType"] = int(
+                    _enum_value(CutLightType, tokens[1], line_no, "light type")
+                )
+            case "POSITION" | "POS":
                 light.fields["vPosition"] = _parse_vector3(
                     tokens[1:],
                     line_no,
                     "position",
                 )
-        elif command in {"DIRECTION", "DIR"}:
+            case "DIRECTION" | "DIR":
                 light.fields["vDirection"] = _parse_vector3(
                     tokens[1:],
                     line_no,
                     "direction",
                 )
-        elif command in {"COLOR", "COLOUR"}:
-            light.fields["vColour"] = _css_rgb(tokens[1:], line_no, "color")
-        elif command == "INTENSITY":
-            _expect_count(tokens, line_no, 2, "INTENSITY value")
-            light.fields["fIntensity"] = _float(tokens[1], line_no, "intensity")
-        elif command == "FALLOFF":
-            _expect_count(tokens, line_no, 2, "FALLOFF value")
-            light.fields["fFallOff"] = _float(tokens[1], line_no, "falloff")
-        elif command == "CONE":
-            _expect_count(tokens, line_no, 2, "CONE degrees")
-            light.fields["fConeAngle"] = _float(tokens[1], line_no, "cone")
-        elif command == "INNER_CONE":
-            _expect_count(tokens, line_no, 2, "INNER_CONE degrees")
-            light.fields["fInnerConeAngle"] = _float(tokens[1], line_no, "inner cone")
-        elif command == "CORONA":
-            _expect_count(tokens, line_no, 3, "CORONA size intensity")
-            light.fields["fCoronaSize"] = _float(tokens[1], line_no, "corona size")
-            light.fields["fCoronaIntensity"] = _float(
-                tokens[2], line_no, "corona intensity"
-            )
-        elif command == "FLAGS":
-            light.fields["uLightFlags"] = int(_light_flags(tokens[1:], line_no))
-        elif command == "PROPERTY":
-            _expect_count(tokens, line_no, 2, "PROPERTY name")
-            light.fields["iLightProperty"] = int(
-                _enum_value(CutLightProperty, tokens[1], line_no, "light property")
-            )
-        elif command == "STATIC":
-            _expect_count(tokens, line_no, 2, "STATIC true|false")
-            light.fields["bStatic"] = tokens[1].lower() in {"1", "true", "yes", "on"}
+            case "COLOR" | "COLOUR":
+                light.fields["vColour"] = _css_rgb(tokens[1:], line_no, "color")
+            case "INTENSITY":
+                _expect_count(tokens, line_no, 2, "INTENSITY value")
+                light.fields["fIntensity"] = _float(
+                    tokens[1], line_no, "intensity"
+                )
+            case "FALLOFF":
+                _expect_count(tokens, line_no, 2, "FALLOFF value")
+                light.fields["fFallOff"] = _float(tokens[1], line_no, "falloff")
+            case "CONE":
+                _expect_count(tokens, line_no, 2, "CONE degrees")
+                light.fields["fConeAngle"] = _float(tokens[1], line_no, "cone")
+            case "INNER_CONE":
+                _expect_count(tokens, line_no, 2, "INNER_CONE degrees")
+                light.fields["fInnerConeAngle"] = _float(
+                    tokens[1], line_no, "inner cone"
+                )
+            case "CORONA":
+                _expect_count(tokens, line_no, 3, "CORONA size intensity")
+                light.fields["fCoronaSize"] = _float(
+                    tokens[1], line_no, "corona size"
+                )
+                light.fields["fCoronaIntensity"] = _float(
+                    tokens[2], line_no, "corona intensity"
+                )
+            case "FLAGS":
+                light.fields["uLightFlags"] = int(_light_flags(tokens[1:], line_no))
+            case "PROPERTY":
+                _expect_count(tokens, line_no, 2, "PROPERTY name")
+                light.fields["iLightProperty"] = int(
+                    _enum_value(
+                        CutLightProperty, tokens[1], line_no, "light property"
+                    )
+                )
+            case "STATIC":
+                _expect_count(tokens, line_no, 2, "STATIC true|false")
+                light.fields["bStatic"] = tokens[1].lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                }
 
     def _parse_track(self, tokens: list[str], line_no: int) -> None:
         if self.track is None:
@@ -815,90 +839,94 @@ class _CutScriptParser:
     def _dispatch_asset_track_event(
         self, time: float, command: str, args: list[str], line_no: int
     ) -> bool:
-        if command == "SCENE":
-            self._load_scene(time, args, line_no, unload=False)
-        elif command == "UNLOAD_SCENE":
-            self._load_scene(time, args, line_no, unload=True)
-        elif command == "MODELS":
-            self._models(time, args, line_no, unload=False)
-        elif command == "UNLOAD_MODELS":
-            self._models(time, args, line_no, unload=True)
-        elif command == "ANIM_DICT":
-            self._anim_dict(time, args, line_no, unload=False)
-        elif command == "UNLOAD_ANIM_DICT":
-            self._anim_dict(time, args, line_no, unload=True)
-        elif command == "CUT":
-            self._start_camera_cut(time, args, line_no)
-        elif command == "DRAW_DISTANCE":
-            self._draw_distance(time, args, line_no)
-        else:
-            return False
+        match command:
+            case "SCENE":
+                self._load_scene(time, args, line_no, unload=False)
+            case "UNLOAD_SCENE":
+                self._load_scene(time, args, line_no, unload=True)
+            case "MODELS":
+                self._models(time, args, line_no, unload=False)
+            case "UNLOAD_MODELS":
+                self._models(time, args, line_no, unload=True)
+            case "ANIM_DICT":
+                self._anim_dict(time, args, line_no, unload=False)
+            case "UNLOAD_ANIM_DICT":
+                self._anim_dict(time, args, line_no, unload=True)
+            case "CUT":
+                self._start_camera_cut(time, args, line_no)
+            case "DRAW_DISTANCE":
+                self._draw_distance(time, args, line_no)
+            case _:
+                return False
         return True
 
     def _dispatch_playback_track_event(
         self, time: float, command: str, args: list[str], line_no: int
     ) -> bool:
-        if command == "PLAY" and self.track == "AUDIO":
-            self._audio_event(time, args, line_no, action="play")
-        elif command == "PLAY":
-            self._play_anim(time, args, line_no, stop=False)
-        elif command == "STOP":
-            if self.track == "AUDIO":
+        match command, self.track:
+            case "PLAY", "AUDIO":
+                self._audio_event(time, args, line_no, action="play")
+            case "PLAY", _:
+                self._play_anim(time, args, line_no, stop=False)
+            case "STOP", "AUDIO":
                 self._audio_event(time, args, line_no, action="stop")
-            else:
+            case "STOP", _:
                 self._play_anim(time, args, line_no, stop=True)
-        else:
-            return False
+            case _:
+                return False
         return True
 
     def _dispatch_visual_track_event(
         self, time: float, command: str, args: list[str], line_no: int
     ) -> bool:
-        if command == "SHOW":
-            if self.track == "SUBTITLES":
+        match command, self.track:
+            case "SHOW", "SUBTITLES":
                 self._subtitle_event(time, args, line_no, show=True)
-            elif self.track in {"OVERLAY", "OVERLAYS"}:
+            case "SHOW", "OVERLAY" | "OVERLAYS":
                 self._overlay_event(time, args, line_no, show=True)
-            else:
+            case "SHOW", _:
                 self._visibility(time, args, line_no, show=True)
-        elif command == "HIDE":
-            if self.track == "SUBTITLES":
+            case "HIDE", "SUBTITLES":
                 self._subtitle_event(time, args, line_no, show=False)
-            elif self.track in {"OVERLAY", "OVERLAYS"}:
+            case "HIDE", "OVERLAY" | "OVERLAYS":
                 self._overlay_event(time, args, line_no, show=False)
-            else:
+            case "HIDE", _:
                 self._visibility(time, args, line_no, show=False)
-        elif command in {"LOAD_OVERLAYS", "UNLOAD_OVERLAYS"}:
-            self._overlays(time, args, line_no, unload=command.startswith("UNLOAD"))
-        elif command in {"LOAD", "UNLOAD"} and self.track in {"OVERLAY", "OVERLAYS"}:
-            self._overlays(time, args, line_no, unload=command == "UNLOAD")
-        elif command in {"ATTACH", "ATTACHMENT"}:
-            self._attachment(time, args, line_no)
-        elif command in {"FADE_IN", "FADE_OUT", "IN", "OUT"}:
-            self._fade(time, args, line_no, fade_in=command in {"FADE_IN", "IN"})
-        elif command in {"ENABLE", "ON"}:
-            self._light(time, args, line_no, enabled=True)
-        elif command in {"DISABLE", "OFF"}:
-            self._light(time, args, line_no, enabled=False)
-        else:
-            return False
+            case "LOAD_OVERLAYS" | "UNLOAD_OVERLAYS", _:
+                self._overlays(
+                    time, args, line_no, unload=command.startswith("UNLOAD")
+                )
+            case "LOAD" | "UNLOAD", "OVERLAY" | "OVERLAYS":
+                self._overlays(time, args, line_no, unload=command == "UNLOAD")
+            case "ATTACH" | "ATTACHMENT", _:
+                self._attachment(time, args, line_no)
+            case "FADE_IN" | "FADE_OUT" | "IN" | "OUT", _:
+                self._fade(
+                    time,
+                    args,
+                    line_no,
+                    fade_in=command in {"FADE_IN", "IN"},
+                )
+            case "ENABLE" | "ON", _:
+                self._light(time, args, line_no, enabled=True)
+            case "DISABLE" | "OFF", _:
+                self._light(time, args, line_no, enabled=False)
+            case _:
+                return False
         return True
 
     def _dispatch_auxiliary_track_event(
         self, time: float, command: str, args: list[str], line_no: int
     ) -> bool:
-        if command in {"LOAD", "UNLOAD"} and self.track in {
-            "AUDIO",
-            "LOAD",
-            "CLEANUP",
-        }:
-            self._audio_event(time, args, line_no, action=command.lower())
-        elif command in {"SUBTITLES", "UNLOAD_SUBTITLES"}:
-            self._subtitles_dict(
-                time, args, line_no, unload=command.startswith("UNLOAD")
-            )
-        else:
-            return False
+        match command, self.track:
+            case ("LOAD" | "UNLOAD"), ("AUDIO" | "LOAD" | "CLEANUP"):
+                self._audio_event(time, args, line_no, action=command.lower())
+            case ("SUBTITLES" | "UNLOAD_SUBTITLES"), _:
+                self._subtitles_dict(
+                    time, args, line_no, unload=command.startswith("UNLOAD")
+                )
+            case _:
+                return False
         return True
 
     def _load_scene(
@@ -961,46 +989,53 @@ class _CutScriptParser:
         index = 0
         while index < len(values):
             key = values[index].upper()
-            if key == "NAME":
-                pending.name = _option_value(values, index, line_no, "NAME")
-                index += 2
-            elif key in {"POS", "POSITION"}:
-                pending.position = _parse_vector3(
-                    values[index + 1 :], line_no, "camera position"
-                )
-                index += 4
-            elif key in {"ROT", "ROTATION"}:
-                euler = _parse_vector3(
-                    values[index + 1 :], line_no, "camera Euler XYZ rotation"
-                )
-                pending.rotation_quaternion = _euler_xyz_degrees_to_quaternion(
-                    euler.x, euler.y, euler.z
-                )
-                index += 4
-            elif key == "QUAT":
-                pending.rotation_quaternion = _parse_quaternion(
-                    values[index + 1 :], line_no, "camera quaternion"
-                )
-                index += 5
-            elif key == "NEAR":
-                pending.near_draw_distance = _float(
-                    _option_value(values, index, line_no, "NEAR"), line_no, "near"
-                )
-                index += 2
-            elif key == "FAR":
-                pending.far_draw_distance = _float(
-                    _option_value(values, index, line_no, "FAR"), line_no, "far"
-                )
-                index += 2
-            elif key == "MAP_LOD":
-                pending.map_lod_scale = _float(
-                    _option_value(values, index, line_no, "MAP_LOD"), line_no, "map_lod"
-                )
-                index += 2
-            else:
-                raise CutScriptError(
-                    line_no, f"unknown CAMERA CUT option {values[index]!r}"
-                )
+            match key:
+                case "NAME":
+                    pending.name = _option_value(values, index, line_no, "NAME")
+                    index += 2
+                case "POS" | "POSITION":
+                    pending.position = _parse_vector3(
+                        values[index + 1 :], line_no, "camera position"
+                    )
+                    index += 4
+                case "ROT" | "ROTATION":
+                    euler = _parse_vector3(
+                        values[index + 1 :], line_no, "camera Euler XYZ rotation"
+                    )
+                    pending.rotation_quaternion = _euler_xyz_degrees_to_quaternion(
+                        euler.x, euler.y, euler.z
+                    )
+                    index += 4
+                case "QUAT":
+                    pending.rotation_quaternion = _parse_quaternion(
+                        values[index + 1 :], line_no, "camera quaternion"
+                    )
+                    index += 5
+                case "NEAR":
+                    pending.near_draw_distance = _float(
+                        _option_value(values, index, line_no, "NEAR"),
+                        line_no,
+                        "near",
+                    )
+                    index += 2
+                case "FAR":
+                    pending.far_draw_distance = _float(
+                        _option_value(values, index, line_no, "FAR"),
+                        line_no,
+                        "far",
+                    )
+                    index += 2
+                case "MAP_LOD":
+                    pending.map_lod_scale = _float(
+                        _option_value(values, index, line_no, "MAP_LOD"),
+                        line_no,
+                        "map_lod",
+                    )
+                    index += 2
+                case _:
+                    raise CutScriptError(
+                        line_no, f"unknown CAMERA CUT option {values[index]!r}"
+                    )
 
     def _draw_distance(self, time: float, args: list[str], line_no: int) -> None:
         _expect_count(args, line_no, 3, "DRAW_DISTANCE camera near far")
@@ -1148,14 +1183,15 @@ class _CutScriptParser:
         _expect_count(args, line_no, 1, f"{action.upper()} audio_name")
         scene = self._require_scene(line_no)
         audio = self._audio(line_no)
-        if action == "load":
-            scene.load_audio(time, args[0], target=audio)
-        elif action == "unload":
-            scene.unload_audio(time, args[0], target=audio)
-        elif action == "play":
-            scene.play_audio(time, audio, args[0])
-        elif action == "stop":
-            scene.stop_audio(time, audio, args[0])
+        match action:
+            case "load":
+                scene.load_audio(time, args[0], target=audio)
+            case "unload":
+                scene.unload_audio(time, args[0], target=audio)
+            case "play":
+                scene.play_audio(time, audio, args[0])
+            case "stop":
+                scene.stop_audio(time, audio, args[0])
 
     def _attachment(self, time: float, args: list[str], line_no: int) -> None:
         _expect_count(args, line_no, 5, "ATTACH child TO parent BONE bone_name")
@@ -1303,25 +1339,13 @@ def _asset_aliases(scene: CutScene) -> dict[int, str]:
     aliases: dict[int, str] = {}
     for binding in scene.bindings:
         base = binding.role or "asset"
-        if base in {
-            "prop",
-            "ped",
-            "vehicle",
-            "camera",
-            "light",
-            "audio",
-            "subtitle",
-            "fade",
-            "overlay",
-            "decal",
-        }:
-            candidate = f"{base}_{binding.object_id}"
-        elif base == "asset_manager":
-            candidate = "assets"
-        elif base == "animation_manager":
-            candidate = "anims"
-        else:
-            candidate = f"{base}_{binding.object_id}"
+        match base:
+            case "asset_manager":
+                candidate = "assets"
+            case "animation_manager":
+                candidate = "anims"
+            case _:
+                candidate = f"{base}_{binding.object_id}"
         count = counts.get(candidate, 0)
         counts[candidate] = count + 1
         aliases[binding.object_id] = (
@@ -1468,122 +1492,143 @@ def _write_track_event(
     time = _number(event.start)
     name = event.event_name or event.kind
     payload = event.payload
-    if name in {"load_scene", "unload_scene"}:
-        command = "UNLOAD_SCENE" if name.startswith("unload") else "SCENE"
-        lines.append(
-            f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
-        )
-    elif name in {"load_models", "unload_models"}:
-        command = "UNLOAD_MODELS" if name.startswith("unload") else "MODELS"
-        lines.append(
-            f"  {time} {command} {_object_alias_list(payload.get('iObjectIdList') or [], aliases)}"
-        )
-    elif name in {"load_overlays", "unload_overlays"}:
-        command = "UNLOAD_OVERLAYS" if name.startswith("unload") else "LOAD_OVERLAYS"
-        lines.append(
-            f"  {time} {command} {_object_alias_list(payload.get('iObjectIdList') or [], aliases)}"
-        )
-    elif name in {"load_anim_dict", "unload_anim_dict"}:
-        command = "UNLOAD_ANIM_DICT" if name.startswith("unload") else "ANIM_DICT"
-        lines.append(
-            f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
-        )
-    elif name in {"load_subtitles", "unload_subtitles"}:
-        command = "UNLOAD_SUBTITLES" if name.startswith("unload") else "SUBTITLES"
-        lines.append(
-            f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
-        )
-    elif name in {"load_audio", "unload_audio", "play_audio", "stop_audio"}:
-        command = {
-            "load_audio": "LOAD",
-            "unload_audio": "UNLOAD",
-            "play_audio": "PLAY",
-            "stop_audio": "STOP",
-        }[name]
-        lines.append(
-            f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
-        )
-    elif name in {"set_anim", "clear_anim"}:
-        alias = _event_object_alias(event, aliases)
-        if alias:
-            command = "STOP" if name == "clear_anim" else "PLAY"
-            clip_name = payload.get("cName")
-            clip_suffix = (
-                f" CLIP {_token(clip_name, resolver=resolver)}"
-                if clip_name
-                else ""
-            )
-            lines.append(f"  {time} {command} {alias}{clip_suffix}")
-    elif name in {"show_objects", "hide_objects"}:
-        alias = _event_object_alias(event, aliases)
-        if alias:
+    match name:
+        case "load_scene" | "unload_scene":
+            command = "UNLOAD_SCENE" if name.startswith("unload") else "SCENE"
             lines.append(
-                f"  {time} {'SHOW' if name == 'show_objects' else 'HIDE'} {alias}"
+                f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
             )
-    elif name == "set_attachment":
-        child = (
-            aliases.get(int(event.target_id), f"object_{event.target_id}")
-            if event.target_id is not None
-            else None
-        )
-        parent_id = payload.get("iObjectId")
-        parent = (
-            aliases.get(int(parent_id), f"object_{parent_id}")
-            if parent_id is not None
-            else None
-        )
-        if child and parent:
-            bone_name = _token(payload.get("cBoneName"), resolver=resolver)
+        case "load_models" | "unload_models":
+            command = "UNLOAD_MODELS" if name.startswith("unload") else "MODELS"
             lines.append(
-                f"  {time} ATTACH {child} TO {parent} BONE {bone_name}"
+                f"  {time} {command} {_object_alias_list(payload.get('iObjectIdList') or [], aliases)}"
             )
-    elif name == "set_draw_distance":
-        camera = (
-            aliases.get(int(event.target_id), f"camera_{event.target_id}")
-            if event.target_id is not None
-            else "camera"
-        )
-        near_distance = _number(payload.get("fValue", -1.0))
-        far_distance = _number(payload.get("fValue2", -1.0))
-        lines.append(f"  {time} DRAW_DISTANCE {camera} {near_distance} {far_distance}")
-    elif name == "camera_cut":
-        camera = (
-            aliases.get(int(event.target_id), f"camera_{event.target_id}")
-            if event.target_id is not None
-            else "camera"
-        )
-        lines.append(f"  {time} CUT {camera}:")
-        lines.append(
-            f"    NAME {_token(payload.get('cName') or event.label, resolver=resolver)}"
-        )
-        lines.append(f"    POS {_vector(payload.get('vPosition'), 3)}")
-        lines.append(f"    QUAT {_vector(payload.get('vRotationQuaternion'), 4)}")
-        lines.append(f"    NEAR {_number(payload.get('fNearDrawDistance', 0.05))}")
-        lines.append(f"    FAR {_number(payload.get('fFarDrawDistance', 1000.0))}")
-        if "fMapLodScale" in payload:
-            lines.append(f"    MAP_LOD {_number(payload['fMapLodScale'])}")
-    elif name in {"show_subtitle", "hide_subtitle"}:
-        command = "HIDE" if name == "hide_subtitle" else "SHOW"
-        line = f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
-        if name == "show_subtitle":
-            line += f" FOR {_number(payload.get('fSubtitleDuration', event.duration or 0.0))}"
-            if "iLanguageID" in payload:
-                line += f" LANG {int(payload['iLanguageID'])}"
-        lines.append(line)
-    elif name in {"set_light", "clear_light"}:
-        alias = (
-            aliases.get(int(event.target_id), f"light_{event.target_id}")
-            if event.target_id is not None
-            else None
-        )
-        if alias:
+        case "load_overlays" | "unload_overlays":
+            command = (
+                "UNLOAD_OVERLAYS" if name.startswith("unload") else "LOAD_OVERLAYS"
+            )
             lines.append(
-                f"  {time} {'ENABLE' if name == 'set_light' else 'DISABLE'} {alias}"
+                f"  {time} {command} {_object_alias_list(payload.get('iObjectIdList') or [], aliases)}"
             )
-    elif include_comments:
-        lines.append(
-            f"  # unsupported {time} {name} target={event.target_id} payload={payload!r}"
-        )
+        case "load_anim_dict" | "unload_anim_dict":
+            command = (
+                "UNLOAD_ANIM_DICT" if name.startswith("unload") else "ANIM_DICT"
+            )
+            lines.append(
+                f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
+            )
+        case "load_subtitles" | "unload_subtitles":
+            command = (
+                "UNLOAD_SUBTITLES" if name.startswith("unload") else "SUBTITLES"
+            )
+            lines.append(
+                f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
+            )
+        case "load_audio" | "unload_audio" | "play_audio" | "stop_audio":
+            command = {
+                "load_audio": "LOAD",
+                "unload_audio": "UNLOAD",
+                "play_audio": "PLAY",
+                "stop_audio": "STOP",
+            }[name]
+            lines.append(
+                f"  {time} {command} {_token(payload.get('cName') or event.label, resolver=resolver)}"
+            )
+        case "set_anim" | "clear_anim":
+            alias = _event_object_alias(event, aliases)
+            if alias:
+                command = "STOP" if name == "clear_anim" else "PLAY"
+                clip_name = payload.get("cName")
+                clip_suffix = (
+                    f" CLIP {_token(clip_name, resolver=resolver)}"
+                    if clip_name
+                    else ""
+                )
+                lines.append(f"  {time} {command} {alias}{clip_suffix}")
+        case "show_objects" | "hide_objects":
+            alias = _event_object_alias(event, aliases)
+            if alias:
+                lines.append(
+                    f"  {time} {'SHOW' if name == 'show_objects' else 'HIDE'} {alias}"
+                )
+        case "set_attachment":
+            child = (
+                aliases.get(int(event.target_id), f"object_{event.target_id}")
+                if event.target_id is not None
+                else None
+            )
+            parent_id = payload.get("iObjectId")
+            parent = (
+                aliases.get(int(parent_id), f"object_{parent_id}")
+                if parent_id is not None
+                else None
+            )
+            if child and parent:
+                bone_name = _token(payload.get("cBoneName"), resolver=resolver)
+                lines.append(
+                    f"  {time} ATTACH {child} TO {parent} BONE {bone_name}"
+                )
+        case "set_draw_distance":
+            camera = (
+                aliases.get(int(event.target_id), f"camera_{event.target_id}")
+                if event.target_id is not None
+                else "camera"
+            )
+            near_distance = _number(payload.get("fValue", -1.0))
+            far_distance = _number(payload.get("fValue2", -1.0))
+            lines.append(
+                f"  {time} DRAW_DISTANCE {camera} {near_distance} {far_distance}"
+            )
+        case "camera_cut":
+            camera = (
+                aliases.get(int(event.target_id), f"camera_{event.target_id}")
+                if event.target_id is not None
+                else "camera"
+            )
+            lines.append(f"  {time} CUT {camera}:")
+            lines.append(
+                f"    NAME {_token(payload.get('cName') or event.label, resolver=resolver)}"
+            )
+            lines.append(f"    POS {_vector(payload.get('vPosition'), 3)}")
+            lines.append(
+                f"    QUAT {_vector(payload.get('vRotationQuaternion'), 4)}"
+            )
+            lines.append(
+                f"    NEAR {_number(payload.get('fNearDrawDistance', 0.05))}"
+            )
+            lines.append(
+                f"    FAR {_number(payload.get('fFarDrawDistance', 1000.0))}"
+            )
+            if "fMapLodScale" in payload:
+                lines.append(f"    MAP_LOD {_number(payload['fMapLodScale'])}")
+        case "show_subtitle" | "hide_subtitle":
+            command = "HIDE" if name == "hide_subtitle" else "SHOW"
+            line = (
+                f"  {time} {command} "
+                f"{_token(payload.get('cName') or event.label, resolver=resolver)}"
+            )
+            if name == "show_subtitle":
+                line += (
+                    " FOR "
+                    f"{_number(payload.get('fSubtitleDuration', event.duration or 0.0))}"
+                )
+                if "iLanguageID" in payload:
+                    line += f" LANG {int(payload['iLanguageID'])}"
+            lines.append(line)
+        case "set_light" | "clear_light":
+            alias = (
+                aliases.get(int(event.target_id), f"light_{event.target_id}")
+                if event.target_id is not None
+                else None
+            )
+            if alias:
+                lines.append(
+                    f"  {time} {'ENABLE' if name == 'set_light' else 'DISABLE'} {alias}"
+                )
+        case _ if include_comments:
+            lines.append(
+                f"  # unsupported {time} {name} target={event.target_id} payload={payload!r}"
+            )
 
 
 def cutscript_from_scene(
@@ -1610,41 +1655,45 @@ def cutscript_from_scene(
     lines.append("ASSETS")
     for binding in scene.bindings:
         alias = aliases[binding.object_id]
-        if binding.role in {"prop", "ped", "vehicle"}:
-            _write_streamed_model(lines, binding, alias, resolver)
-        elif binding.role == "light":
-            _write_light(lines, binding, alias)
-        else:
-            command = {
-                "asset_manager": "ASSET_MANAGER",
-                "animation_manager": "ANIM_MANAGER",
-                "camera": "CAMERA",
-                "audio": "AUDIO",
-                "subtitle": "SUBTITLE",
-                "fade": "FADE",
-                "overlay": "OVERLAY",
-                "decal": "DECAL",
-            }.get(binding.role)
-            if command is not None:
-                lines.append(f"  {command} {alias}")
-            elif include_comments:
-                lines.append(
-                    f"  # unsupported asset {binding.object_id}: {binding.type_name}"
-                )
+        match binding.role:
+            case "prop" | "ped" | "vehicle":
+                _write_streamed_model(lines, binding, alias, resolver)
+            case "light":
+                _write_light(lines, binding, alias)
+            case role:
+                command = {
+                    "asset_manager": "ASSET_MANAGER",
+                    "animation_manager": "ANIM_MANAGER",
+                    "camera": "CAMERA",
+                    "audio": "AUDIO",
+                    "subtitle": "SUBTITLE",
+                    "fade": "FADE",
+                    "overlay": "OVERLAY",
+                    "decal": "DECAL",
+                }.get(role)
+                if command is not None:
+                    lines.append(f"  {command} {alias}")
+                elif include_comments:
+                    lines.append(
+                        f"  # unsupported asset {binding.object_id}: {binding.type_name}"
+                    )
     lines.append("END")
     for track in scene.tracks:
         lines.append("")
         track_name = (track.name or track.key or track.kind).upper().replace(" ", "_")
-        if track.key == "load":
-            track_name = "LOAD"
-        elif track.kind == "camera_cut" or track.key == "camera":
-            track_name = "CAMERA"
-        elif track.kind == "subtitle" or track.key == "subtitle":
-            track_name = "SUBTITLES"
-        elif track.kind == "animation_binding":
-            track_name = "ANIMATION"
-        elif track.kind == "light_state":
-            track_name = "LIGHTS"
+        match track.key, track.kind:
+            case "load", _:
+                track_name = "LOAD"
+            case ("camera", _) | (_, "camera_cut"):
+                track_name = "CAMERA"
+            case key, _ if key.startswith("subtitle"):
+                track_name = "SUBTITLES"
+            case key, _ if key.startswith("animation"):
+                track_name = "ANIMATION"
+            case key, _ if key.startswith("audio"):
+                track_name = "AUDIO"
+            case key, _ if key.startswith("light"):
+                track_name = "LIGHTS"
         lines.append(f"TRACK {track_name}")
         for event in track.events:
             _write_track_event(

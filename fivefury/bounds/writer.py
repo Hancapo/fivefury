@@ -183,14 +183,17 @@ def _write_bound(
     prepared_bvhs: dict[int, tuple[BoundBvh, list[BoundPolygon], list[int]]] | None = None,
 ) -> int:
     prepared_bvh = None
-    if isinstance(bound, BoundComposite):
-        _refresh_composite_metrics(bound)
-    elif isinstance(bound, BoundBVH):
-        prepared_bvh = prepared_bvhs.get(id(bound)) if prepared_bvhs is not None else None
-        if prepared_bvh is None:
-            prepared_bvh = _refresh_geometry_bvh_metrics(bound)
-            if prepared_bvhs is not None:
-                prepared_bvhs[id(bound)] = prepared_bvh
+    match bound:
+        case BoundComposite():
+            _refresh_composite_metrics(bound)
+        case BoundBVH():
+            prepared_bvh = (
+                prepared_bvhs.get(id(bound)) if prepared_bvhs is not None else None
+            )
+            if prepared_bvh is None:
+                prepared_bvh = _refresh_geometry_bvh_metrics(bound)
+                if prepared_bvhs is not None:
+                    prepared_bvhs[id(bound)] = prepared_bvh
     bound_offset = 0 if offset is None else offset
     if offset is None:
         bound_offset = writer.alloc(_bound_size(bound), 16)
@@ -201,31 +204,45 @@ def _write_bound(
         ref_counts=ref_counts,
         file_vft_resolver=file_vft_resolver,
     )
-    if isinstance(bound, BoundComposite):
-        _write_composite(
-            writer,
-            bound_offset,
-            bound,
-            ref_counts=ref_counts,
-            file_vft_resolver=file_vft_resolver,
-            prepared_bvhs=prepared_bvhs,
-        )
-    elif isinstance(bound, BoundBVH):
-        _write_geometry(writer, bound_offset, bound, with_bvh=True, prepared=prepared_bvh)
-    elif isinstance(bound, BoundGeometry):
-        _write_geometry(writer, bound_offset, bound, with_bvh=False)
-    elif not isinstance(bound, (BoundSphere, BoundBox, BoundCapsule, BoundDisc, BoundCylinder, BoundCloth)):
-        raise NotImplementedError(f"bound writer does not support {bound.__class__.__name__} yet")
-    if isinstance(bound, BoundCapsule):
-        writer.pack_into("f", bound_offset + 0x70, float(bound.capsule_half_height))
-        writer.pack_into("I", bound_offset + 0x74, bound.padding_74h)
-        writer.pack_into("I", bound_offset + 0x78, bound.padding_78h)
-        writer.pack_into("I", bound_offset + 0x7C, bound.padding_7ch)
-    elif isinstance(bound, (BoundDisc, BoundCylinder, BoundCloth)):
-        writer.pack_into("I", bound_offset + 0x70, bound.padding_70h)
-        writer.pack_into("I", bound_offset + 0x74, bound.padding_74h)
-        writer.pack_into("I", bound_offset + 0x78, bound.padding_78h)
-        writer.pack_into("I", bound_offset + 0x7C, bound.padding_7ch)
+    match bound:
+        case BoundComposite():
+            _write_composite(
+                writer,
+                bound_offset,
+                bound,
+                ref_counts=ref_counts,
+                file_vft_resolver=file_vft_resolver,
+                prepared_bvhs=prepared_bvhs,
+            )
+        case BoundBVH():
+            _write_geometry(
+                writer,
+                bound_offset,
+                bound,
+                with_bvh=True,
+                prepared=prepared_bvh,
+            )
+        case BoundGeometry():
+            _write_geometry(writer, bound_offset, bound, with_bvh=False)
+        case BoundSphere() | BoundBox() | BoundCapsule() | BoundDisc() | BoundCylinder() | BoundCloth():
+            pass
+        case _:
+            raise NotImplementedError(
+                f"bound writer does not support {bound.__class__.__name__} yet"
+            )
+    match bound:
+        case BoundCapsule():
+            writer.pack_into(
+                "f", bound_offset + 0x70, float(bound.capsule_half_height)
+            )
+            writer.pack_into("I", bound_offset + 0x74, bound.padding_74h)
+            writer.pack_into("I", bound_offset + 0x78, bound.padding_78h)
+            writer.pack_into("I", bound_offset + 0x7C, bound.padding_7ch)
+        case BoundDisc() | BoundCylinder() | BoundCloth():
+            writer.pack_into("I", bound_offset + 0x70, bound.padding_70h)
+            writer.pack_into("I", bound_offset + 0x74, bound.padding_74h)
+            writer.pack_into("I", bound_offset + 0x78, bound.padding_78h)
+            writer.pack_into("I", bound_offset + 0x7C, bound.padding_7ch)
     return bound_offset
 
 
@@ -431,59 +448,69 @@ def _encode_polygon(polygon: BoundPolygon) -> bytes:
         raw = bytearray(polygon.raw)
     else:
         raw = bytearray(16)
-        if isinstance(polygon, BoundPolygonTriangle):
-            struct.pack_into(
-                "<f6H",
-                raw,
-                0,
-                polygon.tri_area,
-                polygon.tri_index1,
-                polygon.tri_index2,
-                polygon.tri_index3,
-                polygon.edge_index1,
-                polygon.edge_index2,
-                polygon.edge_index3,
-            )
-        elif isinstance(polygon, BoundPolygonSphere):
-            struct.pack_into("<HHfII", raw, 0, polygon.sphere_type, polygon.sphere_index, polygon.sphere_radius, polygon.unused0, polygon.unused1)
-        elif isinstance(polygon, BoundPolygonCapsule):
-            struct.pack_into(
-                "<HHfHHI",
-                raw,
-                0,
-                polygon.capsule_type,
-                polygon.capsule_index1,
-                polygon.capsule_radius,
-                polygon.capsule_index2,
-                polygon.unused0,
-                polygon.unused1,
-            )
-        elif isinstance(polygon, BoundPolygonBox):
-            struct.pack_into(
-                "<I4hI",
-                raw,
-                0,
-                polygon.box_type,
-                polygon.box_index1,
-                polygon.box_index2,
-                polygon.box_index3,
-                polygon.box_index4,
-                polygon.unused0,
-            )
-        elif isinstance(polygon, BoundPolygonCylinder):
-            struct.pack_into(
-                "<HHfHHI",
-                raw,
-                0,
-                polygon.cylinder_type,
-                polygon.cylinder_index1,
-                polygon.cylinder_radius,
-                polygon.cylinder_index2,
-                polygon.unused0,
-                polygon.unused1,
-            )
-        else:
-            raw[: len(polygon.raw[:16])] = polygon.raw[:16]
+        match polygon:
+            case BoundPolygonTriangle():
+                struct.pack_into(
+                    "<f6H",
+                    raw,
+                    0,
+                    polygon.tri_area,
+                    polygon.tri_index1,
+                    polygon.tri_index2,
+                    polygon.tri_index3,
+                    polygon.edge_index1,
+                    polygon.edge_index2,
+                    polygon.edge_index3,
+                )
+            case BoundPolygonSphere():
+                struct.pack_into(
+                    "<HHfII",
+                    raw,
+                    0,
+                    polygon.sphere_type,
+                    polygon.sphere_index,
+                    polygon.sphere_radius,
+                    polygon.unused0,
+                    polygon.unused1,
+                )
+            case BoundPolygonCapsule():
+                struct.pack_into(
+                    "<HHfHHI",
+                    raw,
+                    0,
+                    polygon.capsule_type,
+                    polygon.capsule_index1,
+                    polygon.capsule_radius,
+                    polygon.capsule_index2,
+                    polygon.unused0,
+                    polygon.unused1,
+                )
+            case BoundPolygonBox():
+                struct.pack_into(
+                    "<I4hI",
+                    raw,
+                    0,
+                    polygon.box_type,
+                    polygon.box_index1,
+                    polygon.box_index2,
+                    polygon.box_index3,
+                    polygon.box_index4,
+                    polygon.unused0,
+                )
+            case BoundPolygonCylinder():
+                struct.pack_into(
+                    "<HHfHHI",
+                    raw,
+                    0,
+                    polygon.cylinder_type,
+                    polygon.cylinder_index1,
+                    polygon.cylinder_radius,
+                    polygon.cylinder_index2,
+                    polygon.unused0,
+                    polygon.unused1,
+                )
+            case _:
+                raw[: len(polygon.raw[:16])] = polygon.raw[:16]
     raw[0] = (raw[0] & 0xF8) | (int(polygon.polygon_type) & 0x07)
     return bytes(raw)
 
@@ -492,35 +519,34 @@ def _primitive_bounds(bound: BoundGeometry, polygon: BoundPolygon) -> BoundAabb:
     vertices = bound.vertices
     if not vertices:
         return BoundAabb(bound.box_min, bound.box_max)
-    if isinstance(polygon, BoundPolygonTriangle):
-        index0, index1, index2 = polygon.vertex_indices
-        points = (vertices[index0], vertices[index1], vertices[index2])
-        return BoundAabb(
-            Vector3.minimum(points),
-            Vector3.maximum(points),
-        )
-    if isinstance(polygon, BoundPolygonSphere):
-        center = vertices[polygon.sphere_index]
-        radius = polygon.sphere_radius
-        extent = Vector3(radius, radius, radius)
-        minimum = center - extent
-        maximum = center + extent
-        return BoundAabb(minimum, maximum)
-    if isinstance(polygon, (BoundPolygonCapsule, BoundPolygonCylinder)):
-        index1, index2 = polygon.vertex_indices
-        point1 = vertices[index1]
-        point2 = vertices[index2]
-        radius = polygon.capsule_radius if isinstance(polygon, BoundPolygonCapsule) else polygon.cylinder_radius
-        extent = Vector3(radius, radius, radius)
-        minimum = Vector3.minimum((point1, point2)) - extent
-        maximum = Vector3.maximum((point1, point2)) + extent
-        return BoundAabb(minimum, maximum)
-    if isinstance(polygon, BoundPolygonBox):
-        points = [vertices[index] for index in polygon.vertex_indices]
-        minimum = Vector3.minimum(points)
-        maximum = Vector3.maximum(points)
-        return BoundAabb(minimum, maximum)
-    return BoundAabb(bound.box_min, bound.box_max)
+    match polygon:
+        case BoundPolygonTriangle():
+            index0, index1, index2 = polygon.vertex_indices
+            points = (vertices[index0], vertices[index1], vertices[index2])
+            return BoundAabb(
+                Vector3.minimum(points),
+                Vector3.maximum(points),
+            )
+        case BoundPolygonSphere():
+            center = vertices[polygon.sphere_index]
+            radius = polygon.sphere_radius
+            extent = Vector3(radius, radius, radius)
+            return BoundAabb(center - extent, center + extent)
+        case BoundPolygonCapsule(capsule_radius=radius) | BoundPolygonCylinder(
+            cylinder_radius=radius
+        ):
+            index1, index2 = polygon.vertex_indices
+            point1 = vertices[index1]
+            point2 = vertices[index2]
+            extent = Vector3(radius, radius, radius)
+            minimum = Vector3.minimum((point1, point2)) - extent
+            maximum = Vector3.maximum((point1, point2)) + extent
+            return BoundAabb(minimum, maximum)
+        case BoundPolygonBox():
+            points = [vertices[index] for index in polygon.vertex_indices]
+            return BoundAabb(Vector3.minimum(points), Vector3.maximum(points))
+        case _:
+            return BoundAabb(bound.box_min, bound.box_max)
 
 
 def _quantize_bvh_point(

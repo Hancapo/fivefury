@@ -143,27 +143,28 @@ def _read_rbf_value(
         return value, offset
     if current is None:
         raise ValueError("RBF primitive node outside a structure")
-    if data_type == 0x10:
-        number, offset = _read_u32(data, offset)
-        value = RbfValue(name=name, value=number)
-    elif data_type == 0x20:
-        value = RbfValue(name=name, value=True)
-    elif data_type == 0x30:
-        value = RbfValue(name=name, value=False)
-    elif data_type == 0x40:
-        number, offset = _read_f32(data, offset)
-        value = RbfValue(name=name, value=number)
-    elif data_type == 0x50:
-        numbers = struct.unpack_from("<fff", data, offset)
-        offset += 12
-        value = RbfValue(name=name, value=numbers)
-    elif data_type == 0x60:
-        length, offset = _read_i16(data, offset)
-        text = data[offset : offset + length].decode("ascii")
-        offset += length
-        value = RbfValue(name=name, value=text)
-    else:
-        raise ValueError(f"Unsupported RBF data type 0x{data_type:02X}")
+    match data_type:
+        case 0x10:
+            number, offset = _read_u32(data, offset)
+            value = RbfValue(name=name, value=number)
+        case 0x20:
+            value = RbfValue(name=name, value=True)
+        case 0x30:
+            value = RbfValue(name=name, value=False)
+        case 0x40:
+            number, offset = _read_f32(data, offset)
+            value = RbfValue(name=name, value=number)
+        case 0x50:
+            numbers = struct.unpack_from("<fff", data, offset)
+            offset += 12
+            value = RbfValue(name=name, value=numbers)
+        case 0x60:
+            length, offset = _read_i16(data, offset)
+            text = data[offset : offset + length].decode("ascii")
+            offset += length
+            value = RbfValue(name=name, value=text)
+        case _:
+            raise ValueError(f"Unsupported RBF data type 0x{data_type:02X}")
     current.consume(value)
     return value, offset
 

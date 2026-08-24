@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum, IntEnum
+from enum import IntEnum, StrEnum
 
 
 class RpfEncryption(IntEnum):
@@ -13,7 +13,7 @@ class RpfEncryption(IntEnum):
     NG = 0x0FEFFFFF
 
 
-class RpfExportMode(str, Enum):
+class RpfExportMode(StrEnum):
     """Representation written when an archive entry is exported."""
 
     STORED = "stored"
@@ -32,7 +32,7 @@ class RpfExportMode(str, Enum):
         return self.value
 
 
-class RpfPlatform(str, Enum):
+class RpfPlatform(StrEnum):
     """Platform byte order used by an RPF archive."""
 
     PC = "pc"
@@ -47,7 +47,7 @@ class RpfPlatform(str, Enum):
         return ">" if self is RpfPlatform.PS3 else "<"
 
 
-class RpfExtractionConflict(str, Enum):
+class RpfExtractionConflict(StrEnum):
     """Policy used when an RPF path is both a file and a directory."""
 
     ERROR = "error"

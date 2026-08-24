@@ -15,17 +15,22 @@ class HandlingFlagValue:
 
     def __post_init__(self) -> None:
         value = self.raw
-        if isinstance(value, bool):
-            object.__setattr__(self, "raw", int(value))
-        elif isinstance(value, str):
-            token = value.strip()
-            object.__setattr__(
-                self,
-                "raw",
-                int(token, 16) if _HEX_TOKEN.fullmatch(token) else token,
-            )
-        elif not isinstance(value, int):
-            raise TypeError("Handling flags require an integer or hexadecimal token")
+        match value:
+            case bool():
+                object.__setattr__(self, "raw", int(value))
+            case str():
+                token = value.strip()
+                object.__setattr__(
+                    self,
+                    "raw",
+                    int(token, 16) if _HEX_TOKEN.fullmatch(token) else token,
+                )
+            case int():
+                pass
+            case _:
+                raise TypeError(
+                    "Handling flags require an integer or hexadecimal token"
+                )
 
     @property
     def value(self) -> int | None:

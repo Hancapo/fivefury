@@ -322,17 +322,15 @@ def _encode_vertex_bytes(
         component_type = component_types.get(semantic)
         if component_type is None:
             return values
-        if component_type is VertexComponentType.FLOAT:
-            arity = 1
-        elif component_type in {
-            VertexComponentType.FLOAT2,
-            VertexComponentType.HALF2,
-        }:
-            arity = 2
-        elif component_type is VertexComponentType.FLOAT3:
-            arity = 3
-        else:
-            arity = 4
+        match component_type:
+            case VertexComponentType.FLOAT:
+                arity = 1
+            case VertexComponentType.FLOAT2 | VertexComponentType.HALF2:
+                arity = 2
+            case VertexComponentType.FLOAT3:
+                arity = 3
+            case _:
+                arity = 4
         expanded = []
         for value in values:
             components = tuple(value)

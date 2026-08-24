@@ -132,95 +132,100 @@ def parse_instruction_buffers(
             operands: dict[str, Any] = {}
             data1_offset = offset1
             data2_offset = offset2
-            if instruction_type in _EMPTY_INSTRUCTIONS:
-                pass
-            elif instruction_type is YedInstructionType.PUSH_FLOAT:
-                (value,) = struct.unpack(
-                    "<f", _take(data2, offset2, 4, instruction_type.name)
-                )
-                operands["value"] = value
-                offset2 += 4
-            elif instruction_type is YedInstructionType.PUSH_VECTOR:
-                operands["value"] = struct.unpack(
-                    "<4f", _take(data1, offset1, 16, instruction_type.name)
-                )
-                offset1 += 16
-            elif instruction_type in _BONE_INSTRUCTIONS:
-                (
-                    track_index,
-                    bone_id,
-                    track,
-                    format_value,
-                    component_index,
-                    use_defaults,
-                ) = struct.unpack(
-                    "<HHBBBB",
-                    _take(data2, offset2, 8, instruction_type.name),
-                )
-                operands.update(
-                    {
-                        "track_index": track_index,
-                        "bone_id": bone_id,
-                        "track": track,
-                        "format": format_value,
-                        "component_index": component_index,
-                        "use_defaults": bool(use_defaults),
-                    }
-                )
-                offset2 += 8
-            elif instruction_type in _VARIABLE_INSTRUCTIONS:
-                variable, variable_index = struct.unpack(
-                    "<II", _take(data2, offset2, 8, instruction_type.name)
-                )
-                operands.update(
-                    {"variable": variable, "variable_index": variable_index}
-                )
-                offset2 += 8
-            elif instruction_type in _JUMP_INSTRUCTIONS:
-                data1_offset_delta, data2_offset_delta, data3_offset = struct.unpack(
-                    "<III", _take(data2, offset2, 12, instruction_type.name)
-                )
-                operands.update(
-                    {
-                        "data1_offset": data1_offset_delta,
-                        "data2_offset": data2_offset_delta,
-                        "instruction_offset": data3_offset,
-                    }
-                )
-                offset2 += 12
-            elif instruction_type is YedInstructionType.DEFINE_SPRING:
-                raw = _take(
-                    data1, offset1, SPRING_BLOCK_SIZE + 16, instruction_type.name
-                )
-                bone_track_rot, bone_track_pos, unknown_13, unknown_14 = (
-                    struct.unpack_from("<IIII", raw, SPRING_BLOCK_SIZE)
-                )
-                operands.update(
-                    {
-                        "spring_raw": raw[:SPRING_BLOCK_SIZE],
-                        "bone_track_rot": bone_track_rot,
-                        "bone_track_pos": bone_track_pos,
-                        "unknown_13": unknown_13,
-                        "unknown_14": unknown_14,
-                    }
-                )
-                offset1 += SPRING_BLOCK_SIZE + 16
-            elif instruction_type is YedInstructionType.LOOK_AT:
-                raw = _take(data1, offset1, 32, instruction_type.name)
-                operands.update(
-                    {
-                        "offset": struct.unpack_from("<4f", raw, 0),
-                        "look_at_axis": struct.unpack_from("<I", raw, 16)[0],
-                        "up_axis": struct.unpack_from("<I", raw, 20)[0],
-                        "origin": struct.unpack_from("<I", raw, 24)[0],
-                        "unknown_05": struct.unpack_from("<I", raw, 28)[0],
-                    }
-                )
-                offset1 += 32
-            elif instruction_type in _BLEND_INSTRUCTIONS:
-                operands, offset1 = _parse_blend(data1, offset1)
-            else:
-                raise ValueError(f"unsupported YED instruction opcode {opcode:#04x}")
+            match instruction_type:
+                case kind if kind in _EMPTY_INSTRUCTIONS:
+                    pass
+                case YedInstructionType.PUSH_FLOAT:
+                    (value,) = struct.unpack(
+                        "<f", _take(data2, offset2, 4, instruction_type.name)
+                    )
+                    operands["value"] = value
+                    offset2 += 4
+                case YedInstructionType.PUSH_VECTOR:
+                    operands["value"] = struct.unpack(
+                        "<4f", _take(data1, offset1, 16, instruction_type.name)
+                    )
+                    offset1 += 16
+                case kind if kind in _BONE_INSTRUCTIONS:
+                    (
+                        track_index,
+                        bone_id,
+                        track,
+                        format_value,
+                        component_index,
+                        use_defaults,
+                    ) = struct.unpack(
+                        "<HHBBBB",
+                        _take(data2, offset2, 8, instruction_type.name),
+                    )
+                    operands.update(
+                        {
+                            "track_index": track_index,
+                            "bone_id": bone_id,
+                            "track": track,
+                            "format": format_value,
+                            "component_index": component_index,
+                            "use_defaults": bool(use_defaults),
+                        }
+                    )
+                    offset2 += 8
+                case kind if kind in _VARIABLE_INSTRUCTIONS:
+                    variable, variable_index = struct.unpack(
+                        "<II", _take(data2, offset2, 8, instruction_type.name)
+                    )
+                    operands.update(
+                        {"variable": variable, "variable_index": variable_index}
+                    )
+                    offset2 += 8
+                case kind if kind in _JUMP_INSTRUCTIONS:
+                    data1_offset_delta, data2_offset_delta, data3_offset = (
+                        struct.unpack(
+                            "<III", _take(data2, offset2, 12, instruction_type.name)
+                        )
+                    )
+                    operands.update(
+                        {
+                            "data1_offset": data1_offset_delta,
+                            "data2_offset": data2_offset_delta,
+                            "instruction_offset": data3_offset,
+                        }
+                    )
+                    offset2 += 12
+                case YedInstructionType.DEFINE_SPRING:
+                    raw = _take(
+                        data1, offset1, SPRING_BLOCK_SIZE + 16, instruction_type.name
+                    )
+                    bone_track_rot, bone_track_pos, unknown_13, unknown_14 = (
+                        struct.unpack_from("<IIII", raw, SPRING_BLOCK_SIZE)
+                    )
+                    operands.update(
+                        {
+                            "spring_raw": raw[:SPRING_BLOCK_SIZE],
+                            "bone_track_rot": bone_track_rot,
+                            "bone_track_pos": bone_track_pos,
+                            "unknown_13": unknown_13,
+                            "unknown_14": unknown_14,
+                        }
+                    )
+                    offset1 += SPRING_BLOCK_SIZE + 16
+                case YedInstructionType.LOOK_AT:
+                    raw = _take(data1, offset1, 32, instruction_type.name)
+                    operands.update(
+                        {
+                            "offset": struct.unpack_from("<4f", raw, 0),
+                            "look_at_axis": struct.unpack_from("<I", raw, 16)[0],
+                            "up_axis": struct.unpack_from("<I", raw, 20)[0],
+                            "origin": struct.unpack_from("<I", raw, 24)[0],
+                            "unknown_05": struct.unpack_from("<I", raw, 28)[0],
+                        }
+                    )
+                    offset1 += 32
+                case kind if kind in _BLEND_INSTRUCTIONS:
+                    operands, offset1 = _parse_blend(data1, offset1)
+                case _:
+                    raise ValueError(
+                        f"unsupported YED instruction opcode {opcode:#04x}"
+                    )
             instructions.append(
                 YedInstruction(
                     instruction_type,
@@ -309,72 +314,75 @@ def build_instruction_buffers(
         instruction_type = YedInstructionType(instruction.opcode)
         operands = instruction.operands
         data3.append(instruction_type.value)
-        if instruction_type in _EMPTY_INSTRUCTIONS:
-            continue
-        if instruction_type is YedInstructionType.PUSH_FLOAT:
-            data2.extend(struct.pack("<f", float(operands["value"])))
-        elif instruction_type is YedInstructionType.PUSH_VECTOR:
-            data1.extend(struct.pack("<4f", *operands["value"]))
-        elif instruction_type in _BONE_INSTRUCTIONS:
-            data2.extend(
-                struct.pack(
-                    "<HHBBBB",
-                    int(operands["track_index"]) & 0xFFFF,
-                    int(operands["bone_id"]) & 0xFFFF,
-                    int(operands["track"]) & 0xFF,
-                    int(operands["format"]) & 0xFF,
-                    int(operands["component_index"]) & 0xFF,
-                    1 if operands.get("use_defaults") else 0,
+        match instruction_type:
+            case kind if kind in _EMPTY_INSTRUCTIONS:
+                continue
+            case YedInstructionType.PUSH_FLOAT:
+                data2.extend(struct.pack("<f", float(operands["value"])))
+            case YedInstructionType.PUSH_VECTOR:
+                data1.extend(struct.pack("<4f", *operands["value"]))
+            case kind if kind in _BONE_INSTRUCTIONS:
+                data2.extend(
+                    struct.pack(
+                        "<HHBBBB",
+                        int(operands["track_index"]) & 0xFFFF,
+                        int(operands["bone_id"]) & 0xFFFF,
+                        int(operands["track"]) & 0xFF,
+                        int(operands["format"]) & 0xFF,
+                        int(operands["component_index"]) & 0xFF,
+                        1 if operands.get("use_defaults") else 0,
+                    )
                 )
-            )
-        elif instruction_type in _VARIABLE_INSTRUCTIONS:
-            data2.extend(
-                struct.pack(
-                    "<II",
-                    int(operands["variable"]),
-                    int(operands.get("variable_index", 0)),
+            case kind if kind in _VARIABLE_INSTRUCTIONS:
+                data2.extend(
+                    struct.pack(
+                        "<II",
+                        int(operands["variable"]),
+                        int(operands.get("variable_index", 0)),
+                    )
                 )
-            )
-        elif instruction_type in _JUMP_INSTRUCTIONS:
-            data2.extend(
-                struct.pack(
-                    "<III",
-                    int(operands.get("data1_offset", 0)),
-                    int(operands.get("data2_offset", 0)),
-                    int(operands["instruction_offset"]),
+            case kind if kind in _JUMP_INSTRUCTIONS:
+                data2.extend(
+                    struct.pack(
+                        "<III",
+                        int(operands.get("data1_offset", 0)),
+                        int(operands.get("data2_offset", 0)),
+                        int(operands["instruction_offset"]),
+                    )
                 )
-            )
-        elif instruction_type is YedInstructionType.DEFINE_SPRING:
-            spring_raw = bytes(operands["spring_raw"])
-            if len(spring_raw) != SPRING_BLOCK_SIZE:
-                raise ValueError("YED spring instruction raw block has invalid size")
-            data1.extend(spring_raw)
-            data1.extend(
-                struct.pack(
-                    "<IIII",
-                    int(operands.get("bone_track_rot", 0)),
-                    int(operands.get("bone_track_pos", 0)),
-                    int(operands.get("unknown_13", 0)),
-                    int(operands.get("unknown_14", 0)),
+            case YedInstructionType.DEFINE_SPRING:
+                spring_raw = bytes(operands["spring_raw"])
+                if len(spring_raw) != SPRING_BLOCK_SIZE:
+                    raise ValueError(
+                        "YED spring instruction raw block has invalid size"
+                    )
+                data1.extend(spring_raw)
+                data1.extend(
+                    struct.pack(
+                        "<IIII",
+                        int(operands.get("bone_track_rot", 0)),
+                        int(operands.get("bone_track_pos", 0)),
+                        int(operands.get("unknown_13", 0)),
+                        int(operands.get("unknown_14", 0)),
+                    )
                 )
-            )
-        elif instruction_type is YedInstructionType.LOOK_AT:
-            data1.extend(struct.pack("<4f", *operands["offset"]))
-            data1.extend(
-                struct.pack(
-                    "<IIII",
-                    int(operands["look_at_axis"]),
-                    int(operands["up_axis"]),
-                    int(operands["origin"]),
-                    int(operands.get("unknown_05", 0)),
+            case YedInstructionType.LOOK_AT:
+                data1.extend(struct.pack("<4f", *operands["offset"]))
+                data1.extend(
+                    struct.pack(
+                        "<IIII",
+                        int(operands["look_at_axis"]),
+                        int(operands["up_axis"]),
+                        int(operands["origin"]),
+                        int(operands.get("unknown_05", 0)),
+                    )
                 )
-            )
-        elif instruction_type in _BLEND_INSTRUCTIONS:
-            _append_blend(data1, operands)
-        else:
-            raise ValueError(
-                f"unsupported YED instruction opcode {instruction.opcode:#04x}"
-            )
+            case kind if kind in _BLEND_INSTRUCTIONS:
+                _append_blend(data1, operands)
+            case _:
+                raise ValueError(
+                    f"unsupported YED instruction opcode {instruction.opcode:#04x}"
+                )
     return bytes(data1), bytes(data2), bytes(data3)
 
 

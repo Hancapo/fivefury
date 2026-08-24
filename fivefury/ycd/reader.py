@@ -223,32 +223,37 @@ class _YcdReader:
         value_offset = offset + 0x20
         value: object
         extra: float | int | None = None
-        if attribute_type is YcdClipPropertyAttributeType.FLOAT:
-            value = _f32(self.data, value_offset)
-        elif attribute_type is YcdClipPropertyAttributeType.INT:
-            value = int.from_bytes(self.data[value_offset : value_offset + 4], "little", signed=True)
-        elif attribute_type is YcdClipPropertyAttributeType.BOOL:
-            value = bool(_u32(self.data, value_offset))
-        elif attribute_type is YcdClipPropertyAttributeType.STRING:
-            value = self.read_c_string_at(_u64(self.data, value_offset))
-        elif attribute_type is YcdClipPropertyAttributeType.VECTOR3:
-            value = (
-                _f32(self.data, value_offset + 0x00),
-                _f32(self.data, value_offset + 0x04),
-                _f32(self.data, value_offset + 0x08),
-            )
-            extra = _f32(self.data, value_offset + 0x0C)
-        elif attribute_type is YcdClipPropertyAttributeType.VECTOR4:
-            value = (
-                _f32(self.data, value_offset + 0x00),
-                _f32(self.data, value_offset + 0x04),
-                _f32(self.data, value_offset + 0x08),
-                _f32(self.data, value_offset + 0x0C),
-            )
-        elif attribute_type is YcdClipPropertyAttributeType.HASH_STRING:
-            value = MetaHash(_u32(self.data, value_offset))
-        else:  # pragma: no cover
-            value = bytes(self.data[value_offset : value_offset + 0x10])
+        match attribute_type:
+            case YcdClipPropertyAttributeType.FLOAT:
+                value = _f32(self.data, value_offset)
+            case YcdClipPropertyAttributeType.INT:
+                value = int.from_bytes(
+                    self.data[value_offset : value_offset + 4],
+                    "little",
+                    signed=True,
+                )
+            case YcdClipPropertyAttributeType.BOOL:
+                value = bool(_u32(self.data, value_offset))
+            case YcdClipPropertyAttributeType.STRING:
+                value = self.read_c_string_at(_u64(self.data, value_offset))
+            case YcdClipPropertyAttributeType.VECTOR3:
+                value = (
+                    _f32(self.data, value_offset + 0x00),
+                    _f32(self.data, value_offset + 0x04),
+                    _f32(self.data, value_offset + 0x08),
+                )
+                extra = _f32(self.data, value_offset + 0x0C)
+            case YcdClipPropertyAttributeType.VECTOR4:
+                value = (
+                    _f32(self.data, value_offset + 0x00),
+                    _f32(self.data, value_offset + 0x04),
+                    _f32(self.data, value_offset + 0x08),
+                    _f32(self.data, value_offset + 0x0C),
+                )
+            case YcdClipPropertyAttributeType.HASH_STRING:
+                value = MetaHash(_u32(self.data, value_offset))
+            case _:  # pragma: no cover
+                value = bytes(self.data[value_offset : value_offset + 0x10])
         return YcdClipPropertyAttribute(
             name_hash=MetaHash(_u32(self.data, offset + 0x18)),
             attribute_type=attribute_type,

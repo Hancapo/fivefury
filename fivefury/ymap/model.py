@@ -391,14 +391,22 @@ class Ymap(MetaHashFieldsMixin):
 
         for entity in self.entities:
             lod_level = YmapLodLevel(int(getattr(entity, "lod_level", YmapLodLevel.DEPTH_HD) or 0))
-            if lod_level in (YmapLodLevel.DEPTH_HD, YmapLodLevel.DEPTH_ORPHANHD):
-                content_flags |= YmapContentFlags.ENTITIES_HD
-            elif lod_level == YmapLodLevel.DEPTH_LOD:
-                content_flags |= YmapContentFlags.ENTITIES_LOD
-            elif lod_level == YmapLodLevel.DEPTH_SLOD1:
-                content_flags |= YmapContentFlags.ENTITIES_CRITICAL
-            elif lod_level in (YmapLodLevel.DEPTH_SLOD2, YmapLodLevel.DEPTH_SLOD3, YmapLodLevel.DEPTH_SLOD4):
-                content_flags |= YmapContentFlags.ENTITIES_CONTAINER_LOD | YmapContentFlags.ENTITIES_CRITICAL
+            match lod_level:
+                case YmapLodLevel.DEPTH_HD | YmapLodLevel.DEPTH_ORPHANHD:
+                    content_flags |= YmapContentFlags.ENTITIES_HD
+                case YmapLodLevel.DEPTH_LOD:
+                    content_flags |= YmapContentFlags.ENTITIES_LOD
+                case YmapLodLevel.DEPTH_SLOD1:
+                    content_flags |= YmapContentFlags.ENTITIES_CRITICAL
+                case (
+                    YmapLodLevel.DEPTH_SLOD2
+                    | YmapLodLevel.DEPTH_SLOD3
+                    | YmapLodLevel.DEPTH_SLOD4
+                ):
+                    content_flags |= (
+                        YmapContentFlags.ENTITIES_CONTAINER_LOD
+                        | YmapContentFlags.ENTITIES_CRITICAL
+                    )
 
             if isinstance(entity, MloInstanceDef) or getattr(entity, "_meta_name", "") == "CMloInstanceDef":
                 content_flags |= YmapContentFlags.MLO

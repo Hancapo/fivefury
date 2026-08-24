@@ -21,19 +21,20 @@ class MetaHash:
         return cls(value)
 
     def __init__(self, value: HashLike | None = 0) -> None:
-        if isinstance(value, MetaHash):
-            self._value = value.raw
-            self._cached_uint = value._cached_uint
-        elif value in (None, ""):
-            self._value = 0
-            self._cached_uint = 0
-        elif isinstance(value, str):
-            self._value = value
-            self._cached_uint = None
-        else:
-            int_val = int(value)
-            self._value = int_val
-            self._cached_uint = int_val
+        match value:
+            case MetaHash():
+                self._value = value.raw
+                self._cached_uint = value._cached_uint
+            case None | "":
+                self._value = 0
+                self._cached_uint = 0
+            case str():
+                self._value = value
+                self._cached_uint = None
+            case _:
+                int_val = int(value)
+                self._value = int_val
+                self._cached_uint = int_val
 
     @property
     def raw(self) -> int | str:

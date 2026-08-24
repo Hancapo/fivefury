@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum, IntEnum
+from enum import IntEnum, StrEnum
 from typing import Any
 
 from ..vector import Quaternion, Vector3
@@ -104,7 +104,7 @@ CUT_EVENT_ID_TO_NAME: dict[int, str] = {index: _normalize_event_name(enum_name) 
 CUT_EVENT_NAME_TO_ID: dict[str, int] = {name: index for index, name in CUT_EVENT_ID_TO_NAME.items()}
 CutEventType = IntEnum("CutEventType", {name.upper(): index for index, name in CUT_EVENT_ID_TO_NAME.items()})
 
-class CutEventBehavior(str, Enum):
+class CutEventBehavior(StrEnum):
     INSTANT = "instant"
     DURATION = "duration"
     STATE = "state"
