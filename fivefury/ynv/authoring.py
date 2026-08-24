@@ -19,6 +19,7 @@ from .model import (
     YnvSector,
     YnvSectorData,
 )
+from .network import YnvNetwork
 
 YNV_CELL_SIZE = 150.0
 YNV_GRID_MIN = -6000.0
@@ -506,10 +507,12 @@ def build_ynv_cells(
 ) -> list[tuple[Ynv, Mapping[Hashable, Sequence[int]]]]:
     groups = _prepare_groups(polygons, clip_to_grid=True)
     edge_map = _build_edge_map(groups)
-    return [
+    results = [
         _build_cell(groups[key], edge_map, source_path=source_path, game=game)
         for key in sorted(groups)
     ]
+    YnvNetwork([ynv for ynv, _provenance in results]).validate().raise_for_errors()
+    return results
 
 
 def build_ynv_cell(
