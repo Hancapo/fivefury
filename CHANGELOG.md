@@ -25,6 +25,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - AES and NG RPF writing with encrypted compressed payloads and byte-preserving unchanged round-trips.
 - PS3 RPF writing with big-endian tables, console AES encryption, and platform-correct archive alignment.
 
+### Changed
+
+- Multi-cell YNV authoring now rejects unresolved or non-reciprocal polygon networks before returning assets.
+
 ### Fixed
 
 - Preserve-profile YFT writing now retains explicit zero damaged mass and inertia values for intact-only physics children.

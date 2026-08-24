@@ -10,8 +10,10 @@ import trimesh
 from fivefury import (
     YNV_MAX_POLYGON_VERTICES,
     GameTarget,
+    ValidationError,
     Vector3,
     YnvEdgeFlags,
+    YnvNetwork,
     YnvPortal,
     YnvSourcePolygon,
     build_ynv_bytes,
@@ -144,24 +146,31 @@ def test_provenance_can_bind_portals_to_authored_polygons() -> None:
     assert ynv.validate().valid
 
 
-def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
+@pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
+def test_build_cells_preserves_cross_cell_adjacency_and_provenance(
+    game: GameTarget,
+) -> None:
     cells = build_ynv_cells(
         [
             YnvSourcePolygon(
                 [Vector3(-10.0, 10.0, 0.0), Vector3(10.0, 10.0, 0.0), Vector3(10.0, 40.0, 0.0)],
                 source_key=77,
             )
-        ]
+        ],
+        game=game,
     )
 
     assert [ynv.area_id for ynv, _ in cells] == [4039, 4040]
+    assert all(ynv.game is game for ynv, _ in cells)
     assert all(provenance == {77: (0,)} for _, provenance in cells)
     assert all(
         any(edge.flags & YnvEdgeFlags.EXTERNAL_EDGE for edge in ynv.edges)
         for ynv, _ in cells
     )
     assert all(ynv.validate().valid for ynv, _ in cells)
+    assert YnvNetwork([ynv for ynv, _ in cells]).validate().valid
     rebuilt = [read_ynv(ynv.to_bytes()) for ynv, _ in cells]
+    assert YnvNetwork(rebuilt).validate().valid
     assert all(
         any(
             edge.flags & YnvEdgeFlags.EXTERNAL_EDGE
@@ -175,6 +184,20 @@ def test_build_cells_preserves_cross_cell_adjacency_and_provenance() -> None:
         all(edge.references_match for edge in ynv.edges)
         for ynv in rebuilt
     )
+
+
+def test_build_cells_rejects_ambiguous_nonreciprocal_edges() -> None:
+    vertices = [
+        Vector3(10.0, 10.0, 0.0),
+        Vector3(20.0, 10.0, 0.0),
+        Vector3(10.0, 20.0, 0.0),
+    ]
+
+    with pytest.raises(
+        ValidationError,
+        match="ynv.network.edge.reciprocal.missing",
+    ):
+        build_ynv_cells([YnvSourcePolygon(vertices) for _ in range(3)])
 
 
 def test_polygon_over_binary_vertex_limit_is_triangulated() -> None:
