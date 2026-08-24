@@ -17,6 +17,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- Typed whole-network YNV validation for area identity, target resolution, and reciprocal polygon links.
 - Typed YFT articulated-body authoring with explicit joint frames, angular ranges, branching link graphs, and per-link mass properties.
 - Typed fragment-drawable authoring directly from `YdrBuild` or a donor fragment, including matrices, extra bounds, skeleton-name policy, and skeleton loading state.
 - Public RSC7 header inspection, file-backed RPF payloads, and reusable YMF dependency indexes.

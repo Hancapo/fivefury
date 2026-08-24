@@ -30,7 +30,7 @@ Static mesh import uses Trimesh and accepts file paths, bytes, `trimesh.Trimesh`
 | World placement | `YMAP`, `YTYP` | Entities, physics dictionaries, MLO instances and definitions, archetypes, rooms, portals, entity sets, car generators, occluders, timecycle modifiers, and LOD lights |
 | Streaming metadata | `YMF`, `GTXD`, `gta5_cache_y.dat` | Map/type dependencies, MLO registration, texture-dictionary parent chains, runtime PSO validation, and cache generation from in-memory or loose assets |
 | Collision | `YBN` | Primitive, composite, geometry, and BVH bounds; materials, octants, MLO room IDs, and collision generation from triangle meshes |
-| Navigation | `YND`, `YNV` | Road nodes and links, area partitioning, junction heightmaps, navmesh sectors/polygons/portals, in-memory cell builders, and Trimesh conversion |
+| Navigation | `YND`, `YNV` | Road nodes and links, area partitioning, junction heightmaps, navmesh sectors/polygons/portals, typed network validation, in-memory cell builders, and Trimesh conversion |
 | World data | `heightmap.dat`, `water.xml` | Quantized height grids, row RLE, water masks and queries, water surfaces, wave quads, and calming regions |
 | Animation | `YCD`, `YED` | Skeletal, object, UV, camera, root-motion, and bone-scale tracks; clip dictionaries; expression dictionaries and spring data |
 | Cutscenes | `.cut`, `.cuts` | Binary cutscene read/write, declarative scene authoring, validation, YCD section generation, and a readable CutScript round-trip format |

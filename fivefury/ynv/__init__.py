@@ -38,6 +38,7 @@ from .model import (
     YnvSectorData,
     identity_4x4,
 )
+from .network import YnvNetwork
 from .reader import read_ynv
 from .runtime_headers import (
     GEN9_YNV_RUNTIME_PROFILE,
@@ -70,6 +71,7 @@ __all__ = [
     "YnvEdgeFlags",
     "YnvEdgePart",
     "YnvListInfo",
+    "YnvNetwork",
     "YnvPoint",
     "YnvPointType",
     "YnvPoly",
