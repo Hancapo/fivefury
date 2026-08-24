@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Typed CUT audio authoring from mastered AWC streams, including DAT54 sound graphs, deterministic bank naming, duration derivation, and binary round-trip validation.
+- Declarative CUT audio binding with explicit offsets, lifecycle events, owned REL/AWC assets, and playback-range validation.
 
 ## [0.4.20] - 2026-08-24
 
