@@ -63,6 +63,9 @@ class CutsceneResolutionPreparationProgress:
     index: CutsceneResolutionIndex
     completed: int
     total: int
+    index_completed: int
+    index_total: int
+    asset: str | None = None
 
     @property
     def fraction(self) -> float:
@@ -89,28 +92,43 @@ def _diagnostics_for_rel(cache: GameFileCache) -> tuple[Diagnostic, ...]:
 def _prepare_asset_textures(
     cache: GameFileCache,
     cancellation: CutsceneResolutionCancellation | None,
+    asset_progress: Callable[[str], None],
 ) -> tuple[CutsceneIndexPreparationStatus, tuple[Diagnostic, ...]]:
     from .views import _ArchetypeMap
 
     if cache._archetype_view is None:
         cache._archetype_view = _ArchetypeMap(cache)
-    return cache._archetype_view.prepare_texture_index(cancellation), ()
+    return (
+        cache._archetype_view.prepare_texture_index(
+            cancellation,
+            asset_progress=asset_progress,
+        ),
+        (),
+    )
 
 
 def _prepare_texture_parents(
     cache: GameFileCache,
     cancellation: CutsceneResolutionCancellation | None,
+    asset_progress: Callable[[str], None],
 ) -> tuple[CutsceneIndexPreparationStatus, tuple[Diagnostic, ...]]:
     from .views import _TextureParentMap
 
     if cache._texture_parent_view is None:
         cache._texture_parent_view = _TextureParentMap(cache)
-    return cache._texture_parent_view.prepare(cancellation), ()
+    return (
+        cache._texture_parent_view.prepare(
+            cancellation,
+            asset_progress=asset_progress,
+        ),
+        (),
+    )
 
 
 def _prepare_rel_sounds(
     cache: GameFileCache,
     cancellation: CutsceneResolutionCancellation | None,
+    asset_progress: Callable[[str], None] | None = None,
 ) -> tuple[CutsceneIndexPreparationStatus, tuple[Diagnostic, ...]]:
     from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
     from ..rel import RelFile, RelSoundIndex
@@ -131,6 +149,8 @@ def _prepare_rel_sounds(
     errors: list[str] = []
     for asset in assets:
         check_cutscene_resolution_cancelled(cancellation)
+        if asset_progress is not None:
+            asset_progress(asset.path)
         try:
             game_file = cache.load_asset(asset)
         except Exception as exc:  # noqa: BLE001
@@ -154,6 +174,7 @@ def _prepare_rel_sounds(
 def _prepare_ped_init(
     cache: GameFileCache,
     cancellation: CutsceneResolutionCancellation | None,
+    asset_progress: Callable[[str], None] | None = None,
 ) -> tuple[CutsceneIndexPreparationStatus, tuple[Diagnostic, ...]]:
     from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
     from .ped_index import load_ped_init_index, save_ped_init_index
@@ -173,6 +194,8 @@ def _prepare_ped_init(
         key=asset_source_rank,
     ):
         check_cutscene_resolution_cancelled(cancellation)
+        if asset_progress is not None:
+            asset_progress(asset.path)
         try:
             game_file = cache.load_asset(asset)
         except (OSError, ValueError) as exc:
@@ -221,6 +244,26 @@ def _prepare_index(
     )
 
 
+def _index_work(cache: GameFileCache) -> dict[CutsceneResolutionIndex, int]:
+    return {
+        CutsceneResolutionIndex.ASSET_TEXTURES: sum(
+            1 for _ in cache.iter_assets(GameFileType.YTYP)
+        ),
+        CutsceneResolutionIndex.TEXTURE_PARENTS: cache.texture_graph.source_count,
+        CutsceneResolutionIndex.VEHICLE_APPEARANCES: sum(
+            1
+            for kind in (GameFileType.CAR_VARIATIONS, GameFileType.CAR_COLS)
+            for _ in cache.iter_assets(kind)
+        ),
+        CutsceneResolutionIndex.REL_SOUNDS: sum(
+            1 for _ in cache.iter_assets(GameFileType.REL)
+        ),
+        CutsceneResolutionIndex.PED_INIT: len(
+            cache.find_assets("peds.ymt", kind=GameFileType.YMT)
+        ),
+    }
+
+
 def prepare_cutscene_resolution(
     cache: GameFileCache,
     *,
@@ -247,32 +290,76 @@ def prepare_cutscene_resolution(
     operations = (
         (
             CutsceneResolutionIndex.ASSET_TEXTURES,
-            lambda: _prepare_asset_textures(cache, cancellation),
+            lambda notify: _prepare_asset_textures(cache, cancellation, notify),
         ),
         (
             CutsceneResolutionIndex.TEXTURE_PARENTS,
-            lambda: _prepare_texture_parents(cache, cancellation),
+            lambda notify: _prepare_texture_parents(cache, cancellation, notify),
         ),
         (
             CutsceneResolutionIndex.VEHICLE_APPEARANCES,
-            lambda: prepare_vehicle_appearance_index(cache, cancellation=cancellation),
+            lambda notify: prepare_vehicle_appearance_index(
+                cache,
+                cancellation=cancellation,
+                asset_progress=notify,
+            ),
         ),
         (
             CutsceneResolutionIndex.REL_SOUNDS,
-            lambda: _prepare_rel_sounds(cache, cancellation),
+            lambda notify: _prepare_rel_sounds(cache, cancellation, notify),
         ),
         (
             CutsceneResolutionIndex.PED_INIT,
-            lambda: _prepare_ped_init(cache, cancellation),
+            lambda notify: _prepare_ped_init(cache, cancellation, notify),
         ),
     )
     try:
-        total = len(operations)
-        for completed, (index, operation) in enumerate(operations, start=1):
+        work = _index_work(cache)
+        total = sum(max(1, value) for value in work.values())
+        completed = 0
+        for index, operation in operations:
             check_cutscene_resolution_cancelled(cancellation)
-            indexes.append(_prepare_index(index, operation))
-            if progress is not None:
-                progress(CutsceneResolutionPreparationProgress(index, completed, total))
+            index_total = max(1, work[index])
+            index_completed = 0
+
+            def asset_progress(
+                asset: str,
+                *,
+                active_index: CutsceneResolutionIndex = index,
+                base_completed: int = completed,
+                active_total: int = index_total,
+            ) -> None:
+                nonlocal index_completed
+                index_completed += 1
+                if progress is not None:
+                    progress(
+                        CutsceneResolutionPreparationProgress(
+                            index=active_index,
+                            completed=base_completed + index_completed,
+                            total=total,
+                            index_completed=index_completed,
+                            index_total=active_total,
+                            asset=asset,
+                        )
+                    )
+
+            indexes.append(
+                _prepare_index(
+                    index,
+                    lambda operation=operation: operation(asset_progress),
+                )
+            )
+            if index_completed < index_total and progress is not None:
+                progress(
+                    CutsceneResolutionPreparationProgress(
+                        index=index,
+                        completed=completed + index_total,
+                        total=total,
+                        index_completed=index_total,
+                        index_total=index_total,
+                    )
+                )
+            completed += index_total
         result = CutsceneResolutionPreparation(
             indexes=tuple(indexes),
             elapsed_ns=time.perf_counter_ns() - started_ns,

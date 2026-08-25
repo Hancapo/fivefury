@@ -4,7 +4,7 @@ from collections import OrderedDict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Condition
+from threading import Condition, RLock
 from typing import TYPE_CHECKING, Any, Self
 
 if TYPE_CHECKING:
@@ -141,6 +141,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     _cutscene_preparation_active: bool = field(default=False, init=False, repr=False)
     _cutscene_preparation_generation: int = field(default=-1, init=False, repr=False)
     _cutscene_preparation_result: Any | None = field(default=None, init=False, repr=False)
+    _runtime_cache_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _payload_cache: OrderedDict[tuple[int, bool], bytes] = field(
         default_factory=OrderedDict,
         init=False,
@@ -302,30 +303,37 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             self.files.clear()
 
     def _clear_payload_cache(self) -> None:
-        self._payload_cache.clear()
-        self._payload_cache_bytes = 0
+        with self._runtime_cache_lock:
+            self._payload_cache.clear()
+            self._payload_cache_bytes = 0
 
     def _cached_payload(self, asset_id: int, logical: bool) -> bytes | None:
-        key = (int(asset_id), bool(logical))
-        payload = self._payload_cache.get(key)
-        if payload is not None:
-            self._payload_cache.move_to_end(key)
-        return payload
+        with self._runtime_cache_lock:
+            key = (int(asset_id), bool(logical))
+            payload = self._payload_cache.get(key)
+            if payload is not None:
+                self._payload_cache.move_to_end(key)
+            return payload
 
     def _remember_payload(self, asset_id: int, logical: bool, payload: bytes) -> bytes:
-        limit = max(0, int(self.max_cached_payload_bytes))
-        if limit == 0 or len(payload) > limit:
-            return payload
-        key = (int(asset_id), bool(logical))
-        previous = self._payload_cache.pop(key, None)
-        if previous is not None:
-            self._payload_cache_bytes -= len(previous)
-        self._payload_cache[key] = payload
-        self._payload_cache_bytes += len(payload)
-        while self._payload_cache_bytes > limit:
-            _, evicted = self._payload_cache.popitem(last=False)
-            self._payload_cache_bytes -= len(evicted)
+        with self._runtime_cache_lock:
+            limit = max(0, int(self.max_cached_payload_bytes))
+            if limit == 0 or len(payload) > limit:
+                return payload
+            key = (int(asset_id), bool(logical))
+            previous = self._payload_cache.pop(key, None)
+            if previous is not None:
+                self._payload_cache_bytes -= len(previous)
+            self._payload_cache[key] = payload
+            self._payload_cache_bytes += len(payload)
+            while self._payload_cache_bytes > limit:
+                _, evicted = self._payload_cache.popitem(last=False)
+                self._payload_cache_bytes -= len(evicted)
         return payload
+
+    @property
+    def concurrent_asset_reads(self) -> bool:
+        return self.root is not None
 
     def _log(self, message: str) -> None:
         if self.verbose:
@@ -475,21 +483,22 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             self.register_archive(child, source_prefix=prefix)
 
     def _remember_archive(self, key: str, archive: RpfArchive) -> None:
-        normalized = _normalize_key(key)
-        limit = max(0, int(self.max_open_archives))
-        if limit <= 0:
-            for cached in self._archive_lookup.values():
-                cached.close()
-            self._archive_lookup.clear()
-            return
-        previous = self._archive_lookup.pop(normalized, None)
-        if previous is not None and previous is not archive:
-            previous.close()
-        self._archive_lookup[normalized] = archive
-        while len(self._archive_lookup) > limit:
-            _, evicted = self._archive_lookup.popitem(last=False)
-            if all(cached is not evicted for cached in self._archive_lookup.values()):
-                evicted.close()
+        with self._runtime_cache_lock:
+            normalized = _normalize_key(key)
+            limit = max(0, int(self.max_open_archives))
+            if limit <= 0:
+                for cached in self._archive_lookup.values():
+                    cached.close()
+                self._archive_lookup.clear()
+                return
+            previous = self._archive_lookup.pop(normalized, None)
+            if previous is not None and previous is not archive:
+                previous.close()
+            self._archive_lookup[normalized] = archive
+            while len(self._archive_lookup) > limit:
+                _, evicted = self._archive_lookup.popitem(last=False)
+                if all(cached is not evicted for cached in self._archive_lookup.values()):
+                    evicted.close()
 
     def _register_asset(
         self,

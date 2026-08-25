@@ -159,14 +159,15 @@ class GameFileCacheIOMixin:
         yield from self.files.values()
 
     def _remember_file(self, key: str, game_file: GameFile) -> None:
-        limit = max(0, int(self.max_loaded_files))
-        if limit <= 0:
-            return
-        self.files.pop(key, None)
-        self.files[key] = game_file
-        while len(self.files) > limit:
-            evicted_key, _ = self.files.popitem(last=False)
-            self._log(f"evict file {evicted_key}")
+        with self._runtime_cache_lock:
+            limit = max(0, int(self.max_loaded_files))
+            if limit <= 0:
+                return
+            self.files.pop(key, None)
+            self.files[key] = game_file
+            while len(self.files) > limit:
+                evicted_key, _ = self.files.popitem(last=False)
+                self._log(f"evict file {evicted_key}")
 
     def _native_crypto_context(self) -> Any | None:
         if self.crypto is None:
@@ -231,18 +232,19 @@ class GameFileCacheIOMixin:
         if archive_rel is None or self.root is None:
             return None
         key = _normalize_key(archive_rel)
-        cached = self._archive_lookup.get(key)
-        if cached is not None:
-            self._archive_lookup.move_to_end(key)
-            self._log(f"archive cache hit {archive_rel}")
-            return cached
-        archive_path = Path(self.root) / archive_rel
-        if not archive_path.is_file():
-            return None
-        self._log(f"open archive {archive_rel}")
-        archive = RpfArchive.from_path(archive_path, crypto=self.crypto)
-        self._remember_archive(key, archive)
-        return archive
+        with self._runtime_cache_lock:
+            cached = self._archive_lookup.get(key)
+            if cached is not None:
+                self._archive_lookup.move_to_end(key)
+                self._log(f"archive cache hit {archive_rel}")
+                return cached
+            archive_path = Path(self.root) / archive_rel
+            if not archive_path.is_file():
+                return None
+            self._log(f"open archive {archive_rel}")
+            archive = RpfArchive.from_path(archive_path, crypto=self.crypto)
+            self._remember_archive(key, archive)
+            return archive
 
     def _get_entry_for_asset(self, asset: AssetRecord) -> RpfEntry | None:
         if asset.entry is not None and asset.archive is not None:
@@ -280,11 +282,12 @@ class GameFileCacheIOMixin:
         asset = self._coerce_asset(path)
         if asset is None:
             return None
-        cached = self.files.get(asset.key)
-        if cached is not None:
-            self.files.move_to_end(asset.key)
-            self._log(f"file cache hit {asset.path}")
-            return cached
+        with self._runtime_cache_lock:
+            cached = self.files.get(asset.key)
+            if cached is not None:
+                self.files.move_to_end(asset.key)
+                self._log(f"file cache hit {asset.path}")
+                return cached
 
         native_variants = self._read_archive_asset_native_variants(asset)
         if native_variants is not None:

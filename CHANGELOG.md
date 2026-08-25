@@ -18,6 +18,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Concurrent CUT preparation and resolution now share one coordinated index build instead of repeating full-corpus work.
 - Vehicle appearance and REL sound indexes now persist in compact validated sidecars and load without reparsing their META or REL sources.
+- Selective native YTYP relationship extraction makes cold Enhanced asset-to-texture indexing about 10.8 times faster on the tested game corpus.
+- Independent vehicle, facial, subtitle, and audio resolution stages run concurrently while retaining deterministic outputs and diagnostics.
 
 ## [0.4.20] - 2026-08-24
 

@@ -301,7 +301,11 @@ class _ArchetypeMap(Mapping[int, Any]):
         except OSError:
             pass
 
-    def _ensure_index(self, cancellation: Any | None = None) -> None:
+    def _ensure_index(
+        self,
+        cancellation: Any | None = None,
+        asset_progress: Any | None = None,
+    ) -> None:
         if self._generation == self._cache._view_generation:
             return
         from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
@@ -309,6 +313,8 @@ class _ArchetypeMap(Mapping[int, Any]):
         hash_to_archetype: dict[int, Any] = {}
         for asset in self._cache.iter_assets(kind=GameFileType.YTYP):
             check_cutscene_resolution_cancelled(cancellation)
+            if asset_progress is not None:
+                asset_progress(asset.path)
             game_file = self._cache.get_file(asset)
             if game_file is None:
                 continue
@@ -332,21 +338,41 @@ class _ArchetypeMap(Mapping[int, Any]):
         self._build_relationship_indexes()
         self._save_texture_index()
 
+    def _build_texture_index(
+        self,
+        cancellation: Any | None = None,
+        asset_progress: Any | None = None,
+    ) -> None:
+        from .archetype_relationships import build_asset_texture_relationships
+
+        self._asset_hash_to_textures = build_asset_texture_relationships(
+            self._cache,
+            cancellation=cancellation,
+            progress=asset_progress,
+        )
+        self._texture_generation = self._cache._view_generation
+        self._save_texture_index()
+
     def _ensure_texture_index(self, cancellation: Any | None = None) -> None:
         if self._texture_generation == self._cache._view_generation:
             return
         if self._load_texture_index():
             return
-        self._ensure_index(cancellation)
+        self._build_texture_index(cancellation)
 
-    def prepare_texture_index(self, cancellation: Any | None = None) -> Any:
+    def prepare_texture_index(
+        self,
+        cancellation: Any | None = None,
+        *,
+        asset_progress: Any | None = None,
+    ) -> Any:
         from .cutscene_preparation import CutsceneIndexPreparationStatus
 
         if self._texture_generation == self._cache._view_generation:
             return CutsceneIndexPreparationStatus.READY
         if self._load_texture_index():
             return CutsceneIndexPreparationStatus.LOADED
-        self._ensure_index(cancellation)
+        self._build_texture_index(cancellation, asset_progress)
         return CutsceneIndexPreparationStatus.REBUILT
 
     def for_asset_hashes(self, values: set[int]) -> tuple[Any, ...]:
@@ -424,7 +450,12 @@ class _TextureParentMap(Mapping[int, int]):
             pass
         self._generation = self._cache._view_generation
 
-    def prepare(self, cancellation: Any | None = None) -> Any:
+    def prepare(
+        self,
+        cancellation: Any | None = None,
+        *,
+        asset_progress: Any | None = None,
+    ) -> Any:
         from .cutscene_preparation import CutsceneIndexPreparationStatus
 
         if self._generation == self._cache._view_generation:
@@ -435,7 +466,8 @@ class _TextureParentMap(Mapping[int, int]):
             self._generation = self._cache._view_generation
             return CutsceneIndexPreparationStatus.LOADED
         self._hash_to_parent = self._cache.texture_graph.parent_map(
-            cancellation=cancellation
+            cancellation=cancellation,
+            asset_progress=asset_progress,
         )
         try:
             save_texture_parent_index(
