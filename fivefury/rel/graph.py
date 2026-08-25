@@ -45,12 +45,41 @@ class RelSoundGraph:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class RelSoundRecord:
+    name_hash: int
+    sound_hashes: tuple[int, ...]
+    container_hashes: tuple[int, ...]
+    stream_hashes: tuple[int, ...]
+
+
 class RelSoundIndex:
     def __init__(self, rels: Iterable[RelFile]) -> None:
         self.sounds: dict[int, Dat54Sound] = {}
         for rel in rels:
             for item in rel.iter_items(Dat54Sound):
                 self.sounds.setdefault(int(item.name_hash) & 0xFFFFFFFF, item)
+        self._records = {
+            sound_hash: RelSoundRecord(
+                name_hash=sound_hash,
+                sound_hashes=tuple(sound.sound_hashes()),
+                container_hashes=tuple(sound.audio_container_hashes()),
+                stream_hashes=tuple(sound.audio_stream_hashes()),
+            )
+            for sound_hash, sound in self.sounds.items()
+        }
+
+    @classmethod
+    def from_records(cls, records: Iterable[RelSoundRecord]) -> RelSoundIndex:
+        instance = cls(())
+        instance._records = {
+            int(record.name_hash) & 0xFFFFFFFF: record for record in records
+        }
+        return instance
+
+    @property
+    def records(self) -> tuple[RelSoundRecord, ...]:
+        return tuple(self._records[key] for key in sorted(self._records))
 
     def resolve(self, root: RelHashLike) -> RelSoundGraph:
         root_hash = rel_hash(root)
@@ -64,13 +93,13 @@ class RelSoundIndex:
             if not sound_hash or sound_hash in visited:
                 continue
             visited.add(sound_hash)
-            sound = self.sounds.get(sound_hash)
+            sound = self._records.get(sound_hash)
             if sound is None:
                 unresolved.append(sound_hash)
                 continue
             resolved.append(sound_hash)
-            containers = sound.audio_container_hashes()
-            streams = sound.audio_stream_hashes()
+            containers = sound.container_hashes
+            streams = sound.stream_hashes
             for index, container_hash in enumerate(containers):
                 if not container_hash:
                     continue
@@ -84,7 +113,7 @@ class RelSoundIndex:
                     )
                 )
             pending.extend(
-                reversed([value for value in sound.sound_hashes() if value])
+                reversed([value for value in sound.sound_hashes if value])
             )
 
         return RelSoundGraph(
@@ -106,5 +135,6 @@ __all__ = [
     "RelSoundEndpoint",
     "RelSoundGraph",
     "RelSoundIndex",
+    "RelSoundRecord",
     "resolve_rel_sound_graph",
 ]

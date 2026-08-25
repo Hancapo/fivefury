@@ -114,6 +114,7 @@ def _prepare_rel_sounds(
 ) -> tuple[CutsceneIndexPreparationStatus, tuple[Diagnostic, ...]]:
     from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
     from ..rel import RelFile, RelSoundIndex
+    from .rel_sound_index import load_rel_sound_index, save_rel_sound_index
 
     assets = tuple(cache.iter_assets(GameFileType.REL))
     if (
@@ -121,6 +122,11 @@ def _prepare_rel_sounds(
         and cache._rel_sound_asset_count == len(assets)
     ):
         return CutsceneIndexPreparationStatus.READY, _diagnostics_for_rel(cache)
+    cached = load_rel_sound_index(cache.get_index_cache_path())
+    if cached is not None:
+        cache._rel_sound_index, cache._rel_sound_index_errors = cached
+        cache._rel_sound_asset_count = len(assets)
+        return CutsceneIndexPreparationStatus.LOADED, _diagnostics_for_rel(cache)
     rels = []
     errors: list[str] = []
     for asset in assets:
@@ -137,6 +143,11 @@ def _prepare_rel_sounds(
     cache._rel_sound_index = RelSoundIndex(rels)
     cache._rel_sound_asset_count = len(assets)
     cache._rel_sound_index_errors = tuple(errors)
+    save_rel_sound_index(
+        cache.get_index_cache_path(),
+        cache._rel_sound_index,
+        cache._rel_sound_index_errors,
+    )
     return CutsceneIndexPreparationStatus.REBUILT, _diagnostics_for_rel(cache)
 
 

@@ -112,8 +112,8 @@ def _build_index(
 def _index(cache: GameFileCache) -> _VehicleAppearanceIndex:
     cached = cache._vehicle_appearance_index
     if cached is None:
-        cached = _build_index(cache)
-        cache._vehicle_appearance_index = cached
+        prepare_vehicle_appearance_index(cache)
+        cached = cache._vehicle_appearance_index
     return cached
 
 
@@ -123,13 +123,22 @@ def prepare_vehicle_appearance_index(
     cancellation: Any | None = None,
 ) -> tuple[Any, tuple[Diagnostic, ...]]:
     from .cutscene_preparation import CutsceneIndexPreparationStatus
+    from .vehicle_appearance_index import (
+        load_vehicle_appearance_index,
+        save_vehicle_appearance_index,
+    )
 
     if cache._vehicle_appearance_index is not None:
         return (
             CutsceneIndexPreparationStatus.READY,
             cache._vehicle_appearance_index.diagnostics,
         )
+    cached = load_vehicle_appearance_index(cache.get_index_cache_path())
+    if cached is not None:
+        cache._vehicle_appearance_index = cached
+        return CutsceneIndexPreparationStatus.LOADED, cached.diagnostics
     index = _build_index(cache, cancellation)
+    save_vehicle_appearance_index(cache.get_index_cache_path(), index)
     cache._vehicle_appearance_index = index
     return CutsceneIndexPreparationStatus.REBUILT, index.diagnostics
 

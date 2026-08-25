@@ -222,30 +222,13 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._cutscene_preparation_generation = -1
 
     def ensure_rel_sound_index(self) -> RelSoundIndex:
-        from ..rel import RelFile, RelSoundIndex
+        from .cutscene_preparation import _prepare_rel_sounds
 
-        assets = tuple(self.iter_assets(GameFileType.REL))
-        if (
-            self._rel_sound_index is not None
-            and self._rel_sound_asset_count == len(assets)
-        ):
-            return self._rel_sound_index
-        rels = []
-        errors: list[str] = []
-        for asset in assets:
-            try:
-                game_file = self.load_asset(asset)
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"{asset.path}: {type(exc).__name__}: {exc}")
-                continue
-            if game_file is None or not isinstance(game_file.parsed, RelFile):
-                errors.append(asset.path)
-                continue
-            rels.append(game_file.parsed)
-        self._rel_sound_index = RelSoundIndex(rels)
-        self._rel_sound_asset_count = len(assets)
-        self._rel_sound_index_errors = tuple(errors)
-        return self._rel_sound_index
+        _prepare_rel_sounds(self, None)
+        index = self._rel_sound_index
+        if index is None:
+            raise RuntimeError("REL sound index preparation produced no index")
+        return index
 
     def prepare_cutscene_resolution(
         self,

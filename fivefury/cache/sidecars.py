@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import struct
 from collections.abc import Iterable, Iterator, Mapping
+from functools import lru_cache
+from hashlib import blake2s
 from pathlib import Path
 
 from ..common import atomic_write_bytes
 
-_HEADER = struct.Struct("<8sQQI")
+_HEADER = struct.Struct("<8sQQ16sI")
 _PAIR = struct.Struct("<II")
+_MAX_SIDECAR_BYTES = 512 * 1024 * 1024
 
 
 class UInt32MultiMap(Mapping[int, tuple[int, ...]]):
@@ -21,7 +24,7 @@ class UInt32MultiMap(Mapping[int, tuple[int, ...]]):
         self._key_count: int | None = None
 
     def _key_at(self, index: int) -> int:
-        return _PAIR.unpack_from(self._payload, _HEADER.size + (index * _PAIR.size))[0]
+        return _PAIR.unpack_from(self._payload, index * _PAIR.size)[0]
 
     def _lower_bound(self, key: int) -> int:
         lower = 0
@@ -47,7 +50,7 @@ class UInt32MultiMap(Mapping[int, tuple[int, ...]]):
         while last < self._pair_count and self._key_at(last) == value:
             last += 1
         return tuple(
-            _PAIR.unpack_from(self._payload, _HEADER.size + (index * _PAIR.size))[1]
+            _PAIR.unpack_from(self._payload, index * _PAIR.size)[1]
             for index in range(first, last)
         )
 
@@ -76,19 +79,35 @@ def sidecar_path(index_path: str | Path, suffix: str) -> Path:
     return source.with_suffix(f"{source.suffix}.{suffix}")
 
 
-def _index_signature(index_path: Path) -> tuple[int, int] | None:
+@lru_cache(maxsize=16)
+def _index_digest(
+    path: str,
+    _size: int,
+    _mtime_ns: int,
+    _ctime_ns: int,
+) -> bytes:
+    return blake2s(Path(path).read_bytes(), digest_size=16).digest()
+
+
+def _index_signature(index_path: Path) -> tuple[int, int, bytes] | None:
     try:
         stat = index_path.stat()
+        digest = _index_digest(
+            str(index_path.resolve()),
+            stat.st_size,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+        )
     except OSError:
         return None
-    return stat.st_size, stat.st_mtime_ns
+    return stat.st_size, stat.st_mtime_ns, digest
 
 
-def load_uint32_multimap(
+def load_sidecar_payload(
     index_path: str | Path,
     suffix: str,
     magic_value: bytes,
-) -> UInt32MultiMap | None:
+) -> bytes | None:
     source = Path(index_path)
     signature = _index_signature(source)
     if signature is None:
@@ -97,16 +116,49 @@ def load_uint32_multimap(
         payload = sidecar_path(source, suffix).read_bytes()
     except OSError:
         return None
-    if len(payload) < _HEADER.size:
+    if len(payload) < _HEADER.size or len(payload) > _MAX_SIDECAR_BYTES:
         return None
-    magic, index_size, index_mtime, pair_count = _HEADER.unpack_from(payload)
+    magic, index_size, index_mtime, index_digest, payload_size = _HEADER.unpack_from(
+        payload
+    )
     if (
         magic != magic_value
-        or (index_size, index_mtime) != signature
-        or len(payload) != _HEADER.size + (int(pair_count) * _PAIR.size)
+        or (index_size, index_mtime, index_digest) != signature
+        or payload_size != len(payload) - _HEADER.size
     ):
         return None
-    return UInt32MultiMap(payload, pair_count)
+    return payload[_HEADER.size :]
+
+
+def save_sidecar_payload(
+    index_path: str | Path,
+    suffix: str,
+    magic_value: bytes,
+    payload: bytes,
+) -> Path | None:
+    source = Path(index_path)
+    signature = _index_signature(source)
+    if signature is None:
+        return None
+    if len(payload) > _MAX_SIDECAR_BYTES:
+        raise ValueError("Sidecar payload exceeds the supported size")
+    header = _HEADER.pack(magic_value, *signature, len(payload))
+    return atomic_write_bytes(sidecar_path(source, suffix), header + payload)
+
+
+def load_uint32_multimap(
+    index_path: str | Path,
+    suffix: str,
+    magic_value: bytes,
+) -> UInt32MultiMap | None:
+    payload = load_sidecar_payload(index_path, suffix, magic_value)
+    if payload is None or len(payload) < 4:
+        return None
+    pair_count = struct.unpack_from("<I", payload)[0]
+    pair_payload = payload[4:]
+    if len(pair_payload) != int(pair_count) * _PAIR.size:
+        return None
+    return UInt32MultiMap(pair_payload, pair_count)
 
 
 def save_uint32_pairs(
@@ -115,10 +167,6 @@ def save_uint32_pairs(
     magic_value: bytes,
     pairs: Iterable[tuple[int, int]],
 ) -> Path | None:
-    source = Path(index_path)
-    signature = _index_signature(source)
-    if signature is None:
-        return None
     ordered = sorted(
         {
             (int(left) & 0xFFFFFFFF, int(right) & 0xFFFFFFFF)
@@ -126,15 +174,17 @@ def save_uint32_pairs(
             if int(left) != 0
         }
     )
-    payload = bytearray(_HEADER.pack(magic_value, *signature, len(ordered)))
+    payload = bytearray(struct.pack("<I", len(ordered)))
     for left, right in ordered:
         payload.extend(_PAIR.pack(left, right))
-    return atomic_write_bytes(sidecar_path(source, suffix), bytes(payload))
+    return save_sidecar_payload(index_path, suffix, magic_value, bytes(payload))
 
 
 __all__ = [
     "UInt32MultiMap",
+    "load_sidecar_payload",
     "load_uint32_multimap",
+    "save_sidecar_payload",
     "save_uint32_pairs",
     "sidecar_path",
 ]

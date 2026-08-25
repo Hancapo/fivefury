@@ -47,6 +47,7 @@ from .graph import (
     RelSoundEndpoint,
     RelSoundGraph,
     RelSoundIndex,
+    RelSoundRecord,
     resolve_rel_sound_graph,
 )
 from .io import build_rel_bytes, read_rel, save_rel
@@ -262,6 +263,7 @@ __all__ = [
     "RelSoundGraph",
     "RelSoundHeader",
     "RelSoundIndex",
+    "RelSoundRecord",
     "RelTriState",
     "build_rel_bytes",
     "read_rel",

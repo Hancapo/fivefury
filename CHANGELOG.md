@@ -17,6 +17,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Performance
 
 - Concurrent CUT preparation and resolution now share one coordinated index build instead of repeating full-corpus work.
+- Vehicle appearance and REL sound indexes now persist in compact validated sidecars and load without reparsing their META or REL sources.
 
 ## [0.4.20] - 2026-08-24
 
