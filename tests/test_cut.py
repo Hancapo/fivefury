@@ -8,6 +8,7 @@ import pytest
 from fivefury import (
     CutCameraCutPayload,
     CutCascadeShadowPayload,
+    CutConcatMode,
     CutDecalPayload,
     CutEventType,
     CutFile,
@@ -21,6 +22,8 @@ from fivefury import (
     CutPropAnimationPreset,
     CutScene,
     CutSceneFlags,
+    CutSceneSettings,
+    CutSectioningMode,
     CutTypeFileStrategy,
     GameFileType,
     Quaternion,
@@ -29,6 +32,7 @@ from fivefury import (
     YdrLight,
     analyze_cut,
     build_cut_bytes,
+    derive_cutscene_flags,
     get_cut_event_name,
     read_cut,
     read_cut_scene,
@@ -247,10 +251,11 @@ def test_cut_scene_builder_defaults_to_playable_root_metadata() -> None:
     load_scene_args = cut.event_args[load_scene.fields["iEventArgsIndex"]]
     assert load_scene_args.fields["cName"].hash == 0
     assert flags & CutSceneFlags.IS_SECTIONED
-    assert flags & CutSceneFlags.USE_ONE_AUDIO
+    assert not flags & CutSceneFlags.USE_ONE_AUDIO
     assert flags & CutSceneFlags.USE_STORY_MODE
     assert flags & CutSceneFlags.USE_IN_GAME_DOF_START
-    assert flags & CutSceneFlags.INTERNAL_CONCAT
+    assert flags & CutSceneFlags.EXTERNAL_CONCAT
+    assert not flags & CutSceneFlags.INTERNAL_CONCAT
     assert not flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
 
     rebuilt = read_cut(build_cut_bytes(cut))
@@ -317,17 +322,74 @@ def test_cut_scene_builder_keeps_explicit_streaming_cuts_separate_from_shots() -
     assert cut.root.fields["cameraCutList"] == [2.0, 4.0]
 
 
-def test_cut_scene_builder_uses_external_concat_for_streamed_props() -> None:
+def test_cut_scene_builder_derives_observable_flags() -> None:
     scene = CutScene.create(scene_name="sample_scene", duration=2.5)
+    scene.audio("dialogue")
+    scene.camera_cut_list = [1.0]
+    scene.blend_out_cutscene_duration = 15
+
+    flags = derive_cutscene_flags(scene)
+
+    assert flags & CutSceneFlags.USE_ONE_AUDIO
+    assert flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+    assert flags & CutSceneFlags.USE_BLENDOUT_CAMERA
+
+
+def test_cut_scene_builder_concat_mode_is_explicit_and_not_prop_dependent() -> None:
+    scene = CutScene.create(
+        scene_name="sample_scene",
+        duration=2.5,
+        settings=CutSceneSettings(concat=CutConcatMode.INTERNAL),
+    )
     scene.prop("prop_a")
 
-    cut = scene_to_cut(scene)
-    flags = CutSceneFlags(cut.root.fields["iCutsceneFlags"][0])
+    flags = derive_cutscene_flags(scene)
 
-    assert flags & CutSceneFlags.IS_SECTIONED
-    assert flags & CutSceneFlags.EXTERNAL_CONCAT
-    assert not flags & CutSceneFlags.INTERNAL_CONCAT
-    assert not flags & CutSceneFlags.SECTION_BY_CAMERA_CUTS
+    assert flags & CutSceneFlags.INTERNAL_CONCAT
+    assert not flags & CutSceneFlags.EXTERNAL_CONCAT
+
+
+def test_cut_scene_settings_reproduce_every_serialized_flag() -> None:
+    for index in range(32):
+        expected = CutSceneFlags(1 << index)
+        scene = CutScene.create(
+            duration=2.5,
+            settings=CutSceneSettings.from_flags(expected),
+        )
+
+        assert derive_cutscene_flags(scene) == expected
+
+    expected = CutSceneFlags(0xFFFFFFFF)
+    scene = CutScene.create(
+        duration=2.5,
+        settings=CutSceneSettings.from_flags(expected),
+    )
+
+    assert derive_cutscene_flags(scene) == expected
+
+
+def test_cut_scene_settings_preserve_root_fade_metadata() -> None:
+    scene = CutScene.create(
+        duration=2.5,
+        settings=CutSceneSettings(
+            fade_in_game=True,
+            fade_out_cutscene=True,
+            sectioning=CutSectioningMode.NONE,
+        ),
+    )
+    scene.fade_in_game_duration = 1.25
+    scene.fade_out_cutscene_duration = 0.5
+    scene.fade_in_color = 0xFF102030
+    scene.fade_out_color = 0xFF405060
+
+    rebuilt = read_cut_scene(build_cut_bytes(scene_to_cut(scene)))
+
+    assert rebuilt.settings.fade_in_game
+    assert rebuilt.settings.fade_out_cutscene
+    assert rebuilt.fade_in_game_duration == pytest.approx(1.25)
+    assert rebuilt.fade_out_cutscene_duration == pytest.approx(0.5)
+    assert rebuilt.fade_in_color == 0xFF102030
+    assert rebuilt.fade_out_color == 0xFF405060
 
 
 def test_cut_scene_builder_preserves_authored_loader_order() -> None:
@@ -842,21 +904,15 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
     )
 
     first = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=0)
-    first.prop(
-        "decoy", mover_position=Vector3(), mover_rotation=Quaternion()
-    )
+    first.prop("decoy", mover_position=Vector3(), mover_rotation=Quaternion())
     second = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=1)
-    second.prop(
-        "target", mover_position=Vector3(), mover_rotation=Quaternion()
-    )
+    second.prop("target", mover_position=Vector3(), mover_rotation=Quaternion())
     scene.clip_dictionary(first.build_ycds()[0])
     scene.clip_dictionary(second.build_ycds()[0])
     scene.set_anim(1.0, prop, target=manager)
 
     assert not scene.validate_animations()
-    assert not any(
-        issue.code == "set_anim.clip.missing" for issue in scene.validate()
-    )
+    assert not any(issue.code == "set_anim.clip.missing" for issue in scene.validate())
 
     scene.timeline[-1].start = 0.0
     assert any(

@@ -33,6 +33,7 @@ from .bindings import (
     CutTypeFileStrategy,
     _TypedCutBinding,
 )
+from .settings import CutSceneSettings, derive_cutscene_flags
 from .shared import (
     _ROLE_DEFAULT_OBJECT_TYPE,
     _is_scene_entity,
@@ -48,7 +49,7 @@ class CutScene:
     duration: float | None = None
     playback_rate: float = 1.0
     face_dir: str | None = None
-    cutscene_flags: CutSceneFlags | int | list[int] | None = None
+    settings: CutSceneSettings = field(default_factory=CutSceneSettings)
     offset: Vector3 | None = None
     rotation: float | None = None
     trigger_offset: Vector3 | None = None
@@ -58,12 +59,22 @@ class CutScene:
     section_by_time_slice_duration: float | None = None
     camera_cut_list: list[float] | None = None
     section_split_list: list[float] | None = None
+    fade_out_cutscene_duration: float = 0.8
+    fade_in_game_duration: float = 0.8
+    fade_in_color: int = 0xFF000000
+    blend_out_cutscene_duration: int = 0
+    blend_out_cutscene_offset: int = 0
+    fade_out_game_duration: float = 0.8
+    fade_in_cutscene_duration: float = 0.8
+    fade_out_color: int = 0xFF000000
     bindings: list[CutBinding] = field(default_factory=list)
     tracks: list[CutTrack] = field(default_factory=list)
     clip_dicts: list[Ycd] = field(default_factory=list)
     raw: CutFile | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.settings, CutSceneSettings):
+            raise TypeError("CutScene settings must be CutSceneSettings")
         for name in ("offset", "trigger_offset"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, Vector3):
@@ -76,6 +87,10 @@ class CutScene:
     @property
     def entities(self) -> list[CutBinding]:
         return [item for item in self.bindings if _is_scene_entity(item.role)]
+
+    @property
+    def flags(self) -> CutSceneFlags:
+        return CutSceneFlags(derive_cutscene_flags(self))
 
     def bindings_for_role(self, role: str) -> list[CutBinding]:
         return [item for item in self.bindings if item.role == role]
@@ -319,14 +334,14 @@ class CutScene:
         scene_name: str | None = None,
         duration: float = 0.0,
         face_dir: str | None = None,
-        cutscene_flags: CutSceneFlags | int | list[int] | None = None,
+        settings: CutSceneSettings | None = None,
         offset: Vector3 | None = None,
         rotation: float = 0.0,
         trigger_offset: Vector3 | None = None,
         range_start: int | None = None,
         range_end: int | None = None,
         alt_range_end: int | None = None,
-        section_by_time_slice_duration: float = 4.0,
+        section_by_time_slice_duration: float | None = None,
         camera_cut_list: list[float] | None = None,
         section_split_list: list[float] | None = None,
     ) -> CutScene:
@@ -335,12 +350,10 @@ class CutScene:
             scene_name=scene_name,
             duration=float(duration),
             face_dir=face_dir,
-            cutscene_flags=cutscene_flags,
+            settings=settings or CutSceneSettings(),
             offset=resolved_offset,
             rotation=float(rotation),
-            trigger_offset=trigger_offset
-            if trigger_offset is not None
-            else Vector3(),
+            trigger_offset=trigger_offset if trigger_offset is not None else Vector3(),
             range_start=range_start,
             range_end=range_end,
             alt_range_end=alt_range_end,

@@ -40,18 +40,9 @@ class CutSceneFlags(IntFlag):
     USE_IN_GAME_DOF_START_SECOND_CUT = 1 << 31
 
 
-DEFAULT_PLAYABLE_CUTSCENE_FLAGS = (
-    CutSceneFlags.USE_ONE_AUDIO
-    | CutSceneFlags.IS_SECTIONED
-    | CutSceneFlags.USE_STORY_MODE
-    | CutSceneFlags.USE_IN_GAME_DOF_START
-    | CutSceneFlags.INTERNAL_CONCAT
-)
-
-
 def pack_cutscene_flags(value: CutSceneFlags | int | Sequence[int] | None) -> list[int]:
     if value is None:
-        packed = int(DEFAULT_PLAYABLE_CUTSCENE_FLAGS)
+        packed = 0
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [int(item) & 0xFFFFFFFF for item in list(value)[:4]] + [0] * max(0, 4 - len(value))
     else:
@@ -69,7 +60,6 @@ def unpack_cutscene_flags(value: Iterable[int] | int | None) -> CutSceneFlags:
 
 
 __all__ = [
-    "DEFAULT_PLAYABLE_CUTSCENE_FLAGS",
     "CutSceneFlags",
     "pack_cutscene_flags",
     "unpack_cutscene_flags",

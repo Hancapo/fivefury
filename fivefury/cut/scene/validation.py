@@ -10,11 +10,7 @@ from ...hashing import jenk_hash, jenk_partial_hash
 from ...vector import Quaternion, Vector3
 from ...ycd.sequence_tracks import is_ycd_camera_track
 from ..events import get_cut_event_name, get_cut_event_spec
-from ..flags import (
-    DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
-    CutSceneFlags,
-    unpack_cutscene_flags,
-)
+from ..flags import CutSceneFlags
 from ..limits import (
     CUT_FPS,
     CUT_MAX_CONCATENATED_SCENES,
@@ -29,6 +25,7 @@ from .bindings import (
     CutCamera,
     CutPed,
 )
+from .settings import derive_cutscene_flags
 from .shared import (
     _coerce_name,
     _is_scene_entity,
@@ -226,16 +223,7 @@ def _camera_clip_bases_by_section(scene: CutScene) -> dict[int, set[str]]:
 
 
 def _scene_flags(scene: CutScene) -> CutSceneFlags:
-    if scene.cutscene_flags is not None:
-        return unpack_cutscene_flags(scene.cutscene_flags)
-    if scene.raw is not None:
-        stored = scene.raw.root.fields.get("iCutsceneFlags")
-        if stored is not None:
-            return unpack_cutscene_flags(stored)
-    flags = CutSceneFlags(DEFAULT_PLAYABLE_CUTSCENE_FLAGS)
-    if scene.camera_cut_list:
-        flags |= CutSceneFlags.SECTION_BY_CAMERA_CUTS
-    return flags
+    return derive_cutscene_flags(scene)
 
 
 def _validate_root(scene: CutScene, issues: ValidationReport, *, strict: bool) -> None:
@@ -276,10 +264,29 @@ def _validate_root(scene: CutScene, issues: ValidationReport, *, strict: bool) -
             "offset": scene.offset,
             "rotation": scene.rotation,
             "trigger_offset": scene.trigger_offset,
+            "fade_out_cutscene_duration": scene.fade_out_cutscene_duration,
+            "fade_in_game_duration": scene.fade_in_game_duration,
+            "fade_out_game_duration": scene.fade_out_game_duration,
+            "fade_in_cutscene_duration": scene.fade_in_cutscene_duration,
         },
         "cut",
     ):
         _issue(issues, "error", "cut.value.non_finite", f"{path} must be finite")
+    for name in (
+        "fade_out_cutscene_duration",
+        "fade_in_game_duration",
+        "fade_out_game_duration",
+        "fade_in_cutscene_duration",
+        "blend_out_cutscene_duration",
+        "blend_out_cutscene_offset",
+    ):
+        if getattr(scene, name) < 0:
+            _issue(
+                issues,
+                "error",
+                "cut.fade.negative",
+                f"{name} cannot be negative",
+            )
     if scene.section_by_time_slice_duration is not None:
         section_duration = float(scene.section_by_time_slice_duration)
         if not isfinite(section_duration) or section_duration <= 0.0:
@@ -1055,9 +1062,7 @@ def _validate_animations(
                     f"{_binding_name(binding)} AnimStreamingBase=0x{anim_streaming_base:08X}, expected 0x{expected_base:08X}",
                 )
             if scene.clip_dicts:
-                cut_index = _runtime_animation_section_index(
-                    scene, float(event.start)
-                )
+                cut_index = _runtime_animation_section_index(scene, float(event.start))
                 expected_clip_name = f"{animation_clip_base}-{cut_index}"
                 if not _has_segmented_clip(scene, animation_clip_base, cut_index):
                     _issue(
@@ -1257,6 +1262,14 @@ def _validate_audio_timeline(
 
 def _validate_flags(scene: CutScene, issues: ValidationReport) -> None:
     flags = _scene_flags(scene)
+    concat = flags & (CutSceneFlags.INTERNAL_CONCAT | CutSceneFlags.EXTERNAL_CONCAT)
+    if int(concat).bit_count() > 1:
+        _issue(
+            issues,
+            "error",
+            "cut.concat.mode.multiple",
+            "CutScene can use only one concatenation mode",
+        )
     if (
         CutSceneFlags.IS_SECTIONED in flags
         and scene.section_by_time_slice_duration is not None

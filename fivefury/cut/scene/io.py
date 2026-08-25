@@ -3,16 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...vector import Vector3
-from ..flags import (
-    DEFAULT_PLAYABLE_CUTSCENE_FLAGS,
-    CutSceneFlags,
-    pack_cutscene_flags,
-    unpack_cutscene_flags,
-)
+from ..flags import pack_cutscene_flags
 from ..model import CutFile, CutHashedString, CutNode
 from ..pso import read_cut
 from .base import CutScene
 from .bindings import _binding_from_node
+from .settings import CutSceneSettings, derive_cutscene_flags
 from .shared import _clone_value, _coerce_name, _freeze_value, _hashed_string
 from .timeline import CutTrack, _timeline_event_from_resolved
 
@@ -31,7 +27,9 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
         track = tracks_by_key.get(timeline_event.track)
         if track is None:
             name = timeline_event.track.split(":", 1)[-1].replace("_", " ").title()
-            track = CutTrack(key=timeline_event.track, name=name, kind=timeline_event.kind)
+            track = CutTrack(
+                key=timeline_event.track, name=name, kind=timeline_event.kind
+            )
             tracks_by_key[timeline_event.track] = track
         track.events.append(timeline_event)
     tracks = list(tracks_by_key.values())
@@ -43,7 +41,7 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
         duration=root.get("fTotalDuration"),
         playback_rate=1.0,
         face_dir=_coerce_name(root.get("cFaceDir")),
-        cutscene_flags=unpack_cutscene_flags(root.get("iCutsceneFlags")),
+        settings=CutSceneSettings.from_flags(root.get("iCutsceneFlags") or [0]),
         offset=_clone_value(root.get("vOffset")),
         rotation=root.get("fRotation"),
         trigger_offset=_clone_value(root.get("vTriggerOffset")),
@@ -53,6 +51,14 @@ def cut_to_scene(data: CutFile | CutNode) -> CutScene:
         section_by_time_slice_duration=root.get("fSectionByTimeSliceDuration"),
         camera_cut_list=list(root.get("cameraCutList") or []),
         section_split_list=list(root.get("sectionSplitList") or []),
+        fade_out_cutscene_duration=float(root.get("fFadeOutCutsceneDuration", 0.8)),
+        fade_in_game_duration=float(root.get("fFadeInGameDuration", 0.8)),
+        fade_in_color=int(root.get("fadeInColor", 0xFF000000)),
+        blend_out_cutscene_duration=int(root.get("iBlendOutCutsceneDuration", 0)),
+        blend_out_cutscene_offset=int(root.get("iBlendOutCutsceneOffset", 0)),
+        fade_out_game_duration=float(root.get("fFadeOutGameDuration", 0.8)),
+        fade_in_cutscene_duration=float(root.get("fFadeInCutsceneDuration", 0.8)),
+        fade_out_color=int(root.get("fadeOutColor", 0xFF000000)),
         bindings=bindings,
         tracks=sorted(tracks, key=lambda item: item.key),
         raw=cut,
@@ -140,7 +146,9 @@ def _timeline_camera_cut_list(scene: CutScene) -> list[float]:
         # have camera events while leaving cameraCutList empty.
         values = []
     duration = float(scene.duration or 0.0)
-    result = sorted({round(float(value), 6) for value in values if 0.0 < float(value) < duration})
+    result = sorted(
+        {round(float(value), 6) for value in values if 0.0 < float(value) < duration}
+    )
     return result
 
 
@@ -177,10 +185,6 @@ def _normalize_load_scene_args(
     args.fields.setdefault("fRoll", 0.0)
 
 
-def _has_streamed_prop_models(scene: CutScene) -> bool:
-    return any(binding.type_name == "rage__cutfPropModelObject" for binding in scene.bindings)
-
-
 def _hash_value(value: object) -> int:
     if isinstance(value, CutHashedString):
         return int(value.hash)
@@ -215,29 +219,15 @@ def _normalize_prop_model_node(node: CutNode) -> None:
         fields["cHandle"] = _hashed_string(None)
 
 
-def _resolved_cutscene_flags(scene: CutScene, camera_cut_list: list[float]) -> list[int]:
-    if scene.cutscene_flags is not None:
-        return pack_cutscene_flags(scene.cutscene_flags)
-    if scene.raw is not None:
-        existing = scene.raw.root.fields.get("iCutsceneFlags")
-        if existing:
-            return pack_cutscene_flags(existing)
-    flags = CutSceneFlags(DEFAULT_PLAYABLE_CUTSCENE_FLAGS)
-    if _has_streamed_prop_models(scene):
-        flags &= ~CutSceneFlags.INTERNAL_CONCAT
-        flags |= CutSceneFlags.EXTERNAL_CONCAT
-    if camera_cut_list:
-        flags |= CutSceneFlags.SECTION_BY_CAMERA_CUTS
-    return pack_cutscene_flags(flags)
-
-
 def _range_end(scene: CutScene) -> int:
     if scene.range_end is not None:
         return int(scene.range_end)
     return max(0, round(float(scene.duration or 0.0) * _CUTSCENE_FPS))
 
 
-def _concat_data(scene: CutScene, scene_name: str, range_start: int, range_end: int) -> list[CutNode]:
+def _concat_data(
+    scene: CutScene, scene_name: str, range_start: int, range_end: int
+) -> list[CutNode]:
     scene_offset = _scene_offset(scene)
     if scene.raw is not None:
         existing = scene.raw.root.fields.get("concatDataList")
@@ -309,17 +299,29 @@ def scene_to_cut(scene: CutScene) -> CutFile:
     scene_rotation = float(scene.rotation or 0.0)
     root.fields["fTotalDuration"] = float(scene.duration or 0.0)
     root.fields["cFaceDir"] = _infer_face_dir(scene, scene_name)
-    root.fields["iCutsceneFlags"] = _resolved_cutscene_flags(scene, camera_cut_list)
+    root.fields["iCutsceneFlags"] = pack_cutscene_flags(derive_cutscene_flags(scene))
     root.fields["vOffset"] = _clone_value(scene_offset)
     root.fields["fRotation"] = scene_rotation
     root.fields["vTriggerOffset"] = _trigger_offset(scene, scene_offset)
     root.fields["iRangeStart"] = range_start
     root.fields["iRangeEnd"] = range_end
     root.fields["iAltRangeEnd"] = int(scene.alt_range_end or 0)
-    root.fields["fSectionByTimeSliceDuration"] = float(scene.section_by_time_slice_duration or 4.0)
+    root.fields["fSectionByTimeSliceDuration"] = float(
+        scene.section_by_time_slice_duration or 4.0
+    )
     root.fields["cameraCutList"] = camera_cut_list
     root.fields["sectionSplitList"] = list(scene.section_split_list or [])
-    root.fields["concatDataList"] = _concat_data(scene, scene_name, range_start, range_end)
+    root.fields["fFadeOutCutsceneDuration"] = float(scene.fade_out_cutscene_duration)
+    root.fields["fFadeInGameDuration"] = float(scene.fade_in_game_duration)
+    root.fields["fadeInColor"] = int(scene.fade_in_color) & 0xFFFFFFFF
+    root.fields["iBlendOutCutsceneDuration"] = int(scene.blend_out_cutscene_duration)
+    root.fields["iBlendOutCutsceneOffset"] = int(scene.blend_out_cutscene_offset)
+    root.fields["fFadeOutGameDuration"] = float(scene.fade_out_game_duration)
+    root.fields["fFadeInCutsceneDuration"] = float(scene.fade_in_cutscene_duration)
+    root.fields["fadeOutColor"] = int(scene.fade_out_color) & 0xFFFFFFFF
+    root.fields["concatDataList"] = _concat_data(
+        scene, scene_name, range_start, range_end
+    )
     root.fields["discardFrameList"] = _discard_frame_list(scene, scene_name)
     object_nodes = [binding.to_node() for binding in scene.bindings]
     for node in object_nodes:
@@ -349,8 +351,13 @@ def scene_to_cut(scene: CutScene) -> CutFile:
                     event_args[source_index] = resolved.event_args
                     assigned_index = source_index
                 else:
-                    same_type = existing_args.type_name == resolved.event_args.type_name and existing_args.type_hash == resolved.event_args.type_hash
-                    same_fields = _freeze_value(existing_args.fields) == _freeze_value(resolved.event_args.fields)
+                    same_type = (
+                        existing_args.type_name == resolved.event_args.type_name
+                        and existing_args.type_hash == resolved.event_args.type_hash
+                    )
+                    same_fields = _freeze_value(existing_args.fields) == _freeze_value(
+                        resolved.event_args.fields
+                    )
                     if same_type and same_fields:
                         assigned_index = source_index
             if assigned_index is None:
@@ -379,5 +386,11 @@ def scene_to_cut(scene: CutScene) -> CutFile:
                 event.fields["iEventArgsIndex"] = remap[current_index]
         root.fields["pCutsceneEventArgsList"] = compact_args
     else:
-        root.fields["pCutsceneEventArgsList"] = [item for item in event_args if item is not None]
-    return CutFile(root=root, source="cutscene", metadata=dict(base_cut.metadata) if base_cut is not None else {})
+        root.fields["pCutsceneEventArgsList"] = [
+            item for item in event_args if item is not None
+        ]
+    return CutFile(
+        root=root,
+        source="cutscene",
+        metadata=dict(base_cut.metadata) if base_cut is not None else {},
+    )

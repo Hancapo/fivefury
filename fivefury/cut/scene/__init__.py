@@ -45,6 +45,12 @@ from .core import (
     read_cut_scene,
     scene_to_cut,
 )
+from .settings import (
+    CutConcatMode,
+    CutSceneSettings,
+    CutSectioningMode,
+    derive_cutscene_flags,
+)
 from .subtitles import (
     CutSubtitleCue,
     CutSubtitleTrack,
@@ -63,6 +69,7 @@ __all__ = [
     "CutBinding",
     "CutBlockingBounds",
     "CutCamera",
+    "CutConcatMode",
     "CutDecal",
     "CutEventObject",
     "CutFacialAnimationMode",
@@ -81,6 +88,8 @@ __all__ = [
     "CutRayfire",
     "CutRemovalBounds",
     "CutScene",
+    "CutSceneSettings",
+    "CutSectioningMode",
     "CutSubtitle",
     "CutSubtitleCue",
     "CutSubtitleTrack",
@@ -97,6 +106,7 @@ __all__ = [
     "cut_light_property_from_ydr_flags",
     "cut_light_type_from_ydr_light_type",
     "cut_to_scene",
+    "derive_cutscene_flags",
     "ensure_ydr_embedded_lights",
     "read_cut_scene",
     "scene_to_cut",

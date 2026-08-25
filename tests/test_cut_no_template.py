@@ -13,6 +13,7 @@ from fivefury import (
     CutCameraCharacterLightPayload,
     CutCameraCutPayload,
     CutCameraDofModifierPayload,
+    CutConcatMode,
     CutDrawDistancePayload,
     CutEventBehavior,
     CutEventType,
@@ -24,8 +25,9 @@ from fivefury import (
     CutPropAnimationPreset,
     CutScene,
     CutsceneAssets,
-    CutSceneFlags,
     CutsceneProject,
+    CutSceneSettings,
+    CutSectioningMode,
     CutSubtitle,
     CutSubtitleCue,
     CutSubtitlePayload,
@@ -461,20 +463,18 @@ def test_cut_validation_rejects_runtime_duration_and_range_errors() -> None:
 def test_cut_validation_rejects_unsafe_section_layouts() -> None:
     duration_sections = CutScene.create(
         duration=5.0,
-        cutscene_flags=CutSceneFlags.IS_SECTIONED | CutSceneFlags.SECTION_BY_DURATION,
+        settings=CutSceneSettings(sectioning=CutSectioningMode.DURATION),
         section_by_time_slice_duration=0.5,
     )
     split_sections = CutScene.create(
         duration=5.0,
-        cutscene_flags=CutSceneFlags.IS_SECTIONED | CutSceneFlags.SECTION_BY_SPLIT,
+        settings=CutSceneSettings(sectioning=CutSectioningMode.SPLIT),
         section_split_list=[2.0, 1.0],
     )
     conflicting_modes = CutScene.create(
         duration=5.0,
-        cutscene_flags=(
-            CutSceneFlags.IS_SECTIONED
-            | CutSceneFlags.SECTION_BY_CAMERA_CUTS
-            | CutSceneFlags.SECTION_BY_SPLIT
+        settings=CutSceneSettings(
+            sectioning=(CutSectioningMode.CAMERA_CUTS | CutSectioningMode.SPLIT)
         ),
     )
 
@@ -492,11 +492,24 @@ def test_cut_validation_rejects_unsafe_section_layouts() -> None:
     )
 
 
+def test_cut_validation_rejects_conflicting_concat_modes() -> None:
+    scene = CutScene.create(
+        duration=5.0,
+        settings=CutSceneSettings(
+            concat=CutConcatMode.INTERNAL | CutConcatMode.EXTERNAL
+        ),
+    )
+
+    assert any(
+        issue.code == "cut.concat.mode.multiple"
+        for issue in validate_cut_scene(scene)
+    )
+
+
 def test_cut_validation_accepts_retail_camera_cut_precision() -> None:
     scene = CutScene.create(
         duration=2.0,
-        cutscene_flags=CutSceneFlags.IS_SECTIONED
-        | CutSceneFlags.SECTION_BY_CAMERA_CUTS,
+        settings=CutSceneSettings(sectioning=CutSectioningMode.CAMERA_CUTS),
         camera_cut_list=[0.9999964],
     )
 
@@ -524,12 +537,8 @@ def test_cut_writer_rejects_fixed_and_dynamic_array_overflow() -> None:
 
 
 def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
-    project = CutsceneProject.create(
-        "demo_scene", duration=2.0, camera_cuts=[1.0]
-    )
-    prop = project.scene.prop(
-        "box", model_name="prop_box", ytyp_name="demo_props"
-    )
+    project = CutsceneProject.create("demo_scene", duration=2.0, camera_cuts=[1.0])
+    prop = project.scene.prop("box", model_name="prop_box", ytyp_name="demo_props")
     project.animate(
         prop,
         mover_position={0.0: Vector3(), 2.0: Vector3(1.0, 0.0, 0.0)},
@@ -607,9 +616,7 @@ def test_cutscene_rejects_attachment_cycles() -> None:
 
 def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None:
     project = CutsceneProject.create("dict_mismatch", duration=1.0)
-    prop = project.scene.prop(
-        "box", model_name="prop_box", ytyp_name="demo_props"
-    )
+    prop = project.scene.prop("box", model_name="prop_box", ytyp_name="demo_props")
     project.animate(
         prop,
         mover_position=Vector3(),
@@ -628,16 +635,13 @@ def test_cutscene_rejects_animation_dictionary_that_does_not_match_ycd() -> None
         project.build().build_files()
 
     assert any(
-        issue.code == "set_anim.dict.mismatch"
-        for issue in excinfo.value.report.errors
+        issue.code == "set_anim.dict.mismatch" for issue in excinfo.value.report.errors
     )
 
 
 def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
     project = CutsceneProject.create("unloaded_model", duration=1.0)
-    prop = project.scene.prop(
-        "box", model_name="prop_box", ytyp_name="demo_props"
-    )
+    prop = project.scene.prop("box", model_name="prop_box", ytyp_name="demo_props")
     project.animate(
         prop,
         start=0.5,
@@ -645,9 +649,7 @@ def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
         mover_rotation=Quaternion(),
     )
     project.camera()
-    project.scene.unload_models(
-        0.25, [prop.object_id], target=project.asset_manager
-    )
+    project.scene.unload_models(0.25, [prop.object_id], target=project.asset_manager)
 
     with pytest.raises(ValidationError) as excinfo:
         project.build().build_files()
@@ -660,9 +662,7 @@ def test_cutscene_rejects_animation_after_model_was_unloaded() -> None:
 
 def _cutscene_prop_project(*, bones: dict[int, object] | None = None):
     project = CutsceneProject.create("context_scene", duration=1.0)
-    prop = project.scene.prop(
-        "box", model_name="prop_box", ytyp_name="demo_props"
-    )
+    prop = project.scene.prop("box", model_name="prop_box", ytyp_name="demo_props")
     project.animate(
         prop,
         mover_position=Vector3(),
@@ -721,17 +721,13 @@ def test_cutscene_asset_validation_rejects_invalid_decoded_model() -> None:
 
     report = _cutscene_prop_project().build().validate(context=context)
 
-    assert any(
-        issue.code == "cut.binding.model.invalid" for issue in report.errors
-    )
+    assert any(issue.code == "cut.binding.model.invalid" for issue in report.errors)
 
 
 def test_cutscene_asset_validation_checks_animation_bones() -> None:
     skeleton = YdrSkeleton()
     skeleton.bone("root", tag=0)
-    assets = _cutscene_prop_project(
-        bones={42: {"position": Vector3()}}
-    ).build()
+    assets = _cutscene_prop_project(bones={42: {"position": Vector3()}}).build()
 
     report = assets.validate(
         context=_cutscene_prop_context(Ydr(version=165, skeleton=skeleton))
@@ -770,8 +766,8 @@ def test_cutscene_asset_validation_resolves_game_file_cache(tmp_path) -> None:
 
     with GameFileCache(tmp_path, use_index_cache=False) as cache:
         cache.scan(load_keys=False)
-        report = _cutscene_prop_project().build().validate(
-            context=BuildContext(cache=cache)
+        report = (
+            _cutscene_prop_project().build().validate(context=BuildContext(cache=cache))
         )
 
     assert report.valid
