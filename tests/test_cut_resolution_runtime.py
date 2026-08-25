@@ -132,3 +132,31 @@ def test_cutscene_resolution_preparation_shares_concurrent_build(tmp_path) -> No
         second_result = second.result(timeout=5.0)
 
     assert second_result is first_result
+
+
+def test_cutscene_resolution_runs_independent_stages_concurrently(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rendezvous = threading.Barrier(2, timeout=5.0)
+
+    def vehicle_stage(*_args, **_kwargs) -> None:
+        rendezvous.wait()
+
+    def audio_stage(*_args, **_kwargs) -> dict:
+        rendezvous.wait()
+        return {}
+
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.core._resolve_vehicle_appearances",
+        vehicle_stage,
+    )
+    monkeypatch.setattr(
+        "fivefury.cut.resolution.core._resolve_audio",
+        audio_stage,
+    )
+
+    with _build_cache(tmp_path) as cache:
+        bundle = cache.resolve_cutscene("trace.cut")
+
+    assert bundle.audio == {}

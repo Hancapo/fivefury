@@ -26,6 +26,7 @@ PyMethodDef module_methods[] = {
     {"index_get_short_hash", mod_index_get_short_hash, METH_VARARGS, nullptr},
     {"index_export_state", mod_index_export_state, METH_VARARGS, nullptr},
     {"index_import_state", mod_index_import_state, METH_VARARGS, nullptr},
+    {"meta_extract_ytyp_texture_relationships", mod_meta_extract_ytyp_texture_relationships, METH_VARARGS, nullptr},
     {"texture_index_new", mod_texture_index_new, METH_NOARGS, nullptr},
     {"texture_index_clear", mod_texture_index_clear, METH_VARARGS, nullptr},
     {"texture_index_count", mod_texture_index_count, METH_VARARGS, nullptr},

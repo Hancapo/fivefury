@@ -168,6 +168,12 @@ class NativeTextureIndex:
         )
 
 
+def extract_ytyp_texture_relationships(
+    data: bytes | bytearray | memoryview,
+) -> list[tuple[int, int, int]]:
+    return _ffi.meta_extract_ytyp_texture_relationships(bytes(data))
+
+
 class NativeCryptoContext:
     __slots__ = ("_capsule",)
 

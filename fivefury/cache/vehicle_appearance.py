@@ -45,6 +45,7 @@ def _source(asset: AssetRecord) -> VehicleAppearanceSource:
 def _build_index(
     cache: GameFileCache,
     cancellation: Any | None = None,
+    asset_progress: Any | None = None,
 ) -> _VehicleAppearanceIndex:
     from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
 
@@ -57,6 +58,8 @@ def _build_index(
     ]
     for asset in sorted(assets, key=asset_source_rank, reverse=True):
         check_cutscene_resolution_cancelled(cancellation)
+        if asset_progress is not None:
+            asset_progress(asset.path)
         try:
             game_file = cache.load_asset(asset)
         except (OSError, ValueError) as exc:
@@ -121,6 +124,7 @@ def prepare_vehicle_appearance_index(
     cache: GameFileCache,
     *,
     cancellation: Any | None = None,
+    asset_progress: Any | None = None,
 ) -> tuple[Any, tuple[Diagnostic, ...]]:
     from .cutscene_preparation import CutsceneIndexPreparationStatus
     from .vehicle_appearance_index import (
@@ -137,7 +141,7 @@ def prepare_vehicle_appearance_index(
     if cached is not None:
         cache._vehicle_appearance_index = cached
         return CutsceneIndexPreparationStatus.LOADED, cached.diagnostics
-    index = _build_index(cache, cancellation)
+    index = _build_index(cache, cancellation, asset_progress)
     save_vehicle_appearance_index(cache.get_index_cache_path(), index)
     cache._vehicle_appearance_index = index
     return CutsceneIndexPreparationStatus.REBUILT, index.diagnostics

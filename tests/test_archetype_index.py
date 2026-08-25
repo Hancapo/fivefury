@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from fivefury import GameFileCache
+import pytest
+
+from fivefury import (
+    CutsceneResolutionCancellation,
+    CutsceneResolutionCancelled,
+    CutsceneResolutionIndex,
+    GameFileCache,
+)
+from fivefury._native import extract_ytyp_texture_relationships
 from fivefury.cache.archetype_index import (
     asset_texture_index_path,
     load_asset_texture_index,
@@ -14,6 +22,8 @@ from fivefury.cache.ped_index import (
     ped_init_index_path,
     save_ped_init_index,
 )
+from fivefury.hashing import jenk_hash
+from fivefury.ytyp import Ytyp
 
 
 def test_asset_texture_index_roundtrip_and_source_validation(tmp_path) -> None:
@@ -74,3 +84,73 @@ def test_clear_index_cache_removes_dependency_sidecars(tmp_path) -> None:
     assert not asset_texture_index_path(source).exists()
     assert not texture_parent_index_path(source).exists()
     assert not ped_init_index_path(source).exists()
+
+
+def test_asset_texture_preparation_uses_selective_meta_index(tmp_path) -> None:
+    root = tmp_path / "game"
+    root.mkdir()
+    ytyp = Ytyp(name="test_types")
+    ytyp.archetype(
+        "test_prop",
+        asset_name="test_drawable",
+        texture_dictionary="test_textures",
+    )
+    ytyp.time_archetype(
+        "timed_prop",
+        texture_dictionary="timed_textures",
+    )
+    ytyp.mlo_archetype(
+        "test_mlo",
+        texture_dictionary="mlo_textures",
+    )
+    root.joinpath("test_types.ytyp").write_bytes(ytyp.to_bytes(validate=False))
+    cache = GameFileCache(root, use_index_cache=False)
+    cache.scan(load_keys=False)
+
+    cache.prepare_cutscene_resolution()
+
+    assert cache.archetype_dict.texture_dictionaries_for_asset_hashes(
+        {jenk_hash("test_prop")}
+    ) == (
+        jenk_hash("test_textures"),
+    )
+    assert cache.archetype_dict.texture_dictionaries_for_asset_hashes(
+        {jenk_hash("test_drawable")}
+    ) == (
+        jenk_hash("test_textures"),
+    )
+    assert cache._archetype_view is not None
+    assert cache._archetype_view._generation == -1
+
+
+def test_selective_ytyp_meta_extractor_rejects_truncated_payload() -> None:
+    with pytest.raises(ValueError, match="truncated"):
+        extract_ytyp_texture_relationships(b"META")
+
+
+def test_asset_texture_preparation_cancels_without_partial_sidecar(tmp_path) -> None:
+    root = tmp_path / "game"
+    root.mkdir()
+    for index in range(2):
+        ytyp = Ytyp(name=f"types_{index}")
+        ytyp.archetype(f"prop_{index}", texture_dictionary=f"textures_{index}")
+        root.joinpath(f"types_{index}.ytyp").write_bytes(ytyp.to_bytes())
+    index_path = tmp_path / "game.ffindex"
+    cache = GameFileCache(root, index_cache_path=index_path)
+    cache.scan(load_keys=False)
+    cancellation = CutsceneResolutionCancellation()
+
+    def cancel_after_first_asset(progress) -> None:
+        if (
+            progress.index is CutsceneResolutionIndex.ASSET_TEXTURES
+            and progress.asset is not None
+        ):
+            cancellation.cancel()
+
+    with pytest.raises(CutsceneResolutionCancelled):
+        cache.prepare_cutscene_resolution(
+            cancellation=cancellation,
+            progress=cancel_after_first_asset,
+        )
+
+    assert not asset_texture_index_path(index_path).exists()

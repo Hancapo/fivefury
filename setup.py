@@ -28,6 +28,7 @@ ext_modules = [
             "native/crypto_magic.cpp",
             "native/resource_layout.cpp",
             "native/py_index.cpp",
+            "native/py_meta.cpp",
             "native/py_texture_index.cpp",
             "native/py_crypto.cpp",
             "native/py_rpf.cpp",

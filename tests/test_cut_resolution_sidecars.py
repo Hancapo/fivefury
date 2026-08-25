@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import pairwise
 from pathlib import Path
 
 from fivefury import (
@@ -51,7 +52,8 @@ def test_vehicle_appearance_sidecar_avoids_clean_process_metadata_parse(
 
     with GameFileCache(root, index_cache_path=index_path) as cache:
         cache.scan(load_keys=False)
-        first = cache.prepare_cutscene_resolution()
+        progress = []
+        first = cache.prepare_cutscene_resolution(progress=progress.append)
         expected = cache.resolve_vehicle_appearance("testcar")
 
     with GameFileCache(root, index_cache_path=index_path) as cache:
@@ -67,6 +69,19 @@ def test_vehicle_appearance_sidecar_avoids_clean_process_metadata_parse(
     )
     assert actual == expected
     assert vehicle_appearance_index_path(index_path).is_file()
+    vehicle_progress = [
+        item
+        for item in progress
+        if item.index is CutsceneResolutionIndex.VEHICLE_APPEARANCES
+        and item.asset is not None
+    ]
+    assert {Path(item.asset).name for item in vehicle_progress} == {
+        "carcols.meta",
+        "carvariations.meta",
+    }
+    assert all(
+        left.completed <= right.completed for left, right in pairwise(progress)
+    )
 
 
 def test_rel_sound_sidecar_roundtrips_graph_without_rel_objects(tmp_path) -> None:
