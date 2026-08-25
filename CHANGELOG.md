@@ -9,9 +9,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- Explicit typed preparation of the global indexes required by CUT dependency resolution, with cancellation, monotonic progress, diagnostics, and per-index timings.
 - Typed CUT audio authoring from mastered AWC streams, including DAT54 sound graphs, deterministic bank naming, duration derivation, and binary round-trip validation.
 - Declarative CUT audio binding with explicit offsets, lifecycle events, owned REL/AWC assets, and playback-range validation.
 - CUT audio DLC packaging with typed sound-data and wavepack registrations, final RPF verification, and exact cache resolution by bank path.
+
+### Performance
+
+- Concurrent CUT preparation and resolution now share one coordinated index build instead of repeating full-corpus work.
 
 ## [0.4.20] - 2026-08-24
 

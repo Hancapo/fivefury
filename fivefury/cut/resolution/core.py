@@ -50,6 +50,8 @@ def resolve_cutscene_assets(
 
     active_trace = trace or CutsceneResolutionTrace()
     try:
+        with active_trace.span("preparation"):
+            cache.prepare_cutscene_resolution(cancellation=cancellation)
         with active_trace.span("source"):
             check_cutscene_resolution_cancelled(cancellation)
             if isinstance(query, AssetRecord):

@@ -1,5 +1,14 @@
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .core import GameFileCache
+from .cutscene_preparation import (
+    CutsceneIndexPreparation,
+    CutsceneIndexPreparationStatus,
+    CutsceneResolutionIndex,
+    CutsceneResolutionPreparation,
+    CutsceneResolutionPreparationCallback,
+    CutsceneResolutionPreparationProgress,
+    prepare_cutscene_resolution,
+)
 from .io import GameFileCacheIOMixin
 from .scan import (
     GameFileCacheScanMixin,
@@ -31,6 +40,12 @@ __all__ = [
     "GameFileCacheIOMixin",
     "GameFileCacheScanMixin",
     "ScanStats",
+    "CutsceneIndexPreparation",
+    "CutsceneIndexPreparationStatus",
+    "CutsceneResolutionIndex",
+    "CutsceneResolutionPreparation",
+    "CutsceneResolutionPreparationCallback",
+    "CutsceneResolutionPreparationProgress",
     "TextureCatalog",
     "TextureCatalogEntry",
     "TextureDictionaryGraph",
@@ -47,4 +62,5 @@ __all__ = [
     "_coerce_folder_prefixes",
     "_scan_archive_sources_batch",
     "resolve_texture",
+    "prepare_cutscene_resolution",
 ]

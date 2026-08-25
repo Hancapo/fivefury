@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
 
 import pytest
 
@@ -8,6 +11,7 @@ from fivefury import (
     CutScene,
     CutsceneResolutionCancellation,
     CutsceneResolutionCancelled,
+    CutsceneResolutionIndex,
     CutsceneResolutionTrace,
     GameFileCache,
     audit_cutscene_resolution,
@@ -35,6 +39,7 @@ def test_cutscene_resolution_trace_records_resolver_phases(tmp_path) -> None:
     assert trace.source == "trace.cut"
     assert trace.elapsed_ns > 0
     assert [span.name for span in trace.spans] == [
+        "preparation",
         "source",
         "cut",
         "animations",
@@ -74,3 +79,56 @@ def test_cutscene_resolution_audit_and_benchmark_are_structured(tmp_path) -> Non
     assert report.entries[0].trace is not None
     assert len(traces) == 2
     assert all(trace.elapsed_ns > 0 for trace in traces)
+
+
+def test_cutscene_resolution_preparation_is_typed_and_idempotent(tmp_path) -> None:
+    progress = []
+    with _build_cache(tmp_path) as cache:
+        first = cache.prepare_cutscene_resolution(progress=progress.append)
+        second = cache.prepare_cutscene_resolution()
+
+    assert second is first
+    assert tuple(item.index for item in first.indexes) == tuple(CutsceneResolutionIndex)
+    assert [item.completed for item in progress] == [1, 2, 3, 4, 5]
+    assert all(item.total == 5 for item in progress)
+    assert all(left.fraction <= right.fraction for left, right in pairwise(progress))
+
+
+def test_cutscene_resolution_preparation_cancels_between_indexes(tmp_path) -> None:
+    cancellation = CutsceneResolutionCancellation()
+
+    def cancel_after_first(progress) -> None:
+        if progress.completed == 1:
+            cancellation.cancel()
+
+    with (
+        _build_cache(tmp_path) as cache,
+        pytest.raises(CutsceneResolutionCancelled),
+    ):
+        cache.prepare_cutscene_resolution(
+            cancellation=cancellation,
+            progress=cancel_after_first,
+        )
+
+
+def test_cutscene_resolution_preparation_shares_concurrent_build(tmp_path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def hold_first_index(progress) -> None:
+        if progress.completed == 1:
+            entered.set()
+            assert release.wait(timeout=5.0)
+
+    with _build_cache(tmp_path) as cache, ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
+            cache.prepare_cutscene_resolution,
+            progress=hold_first_index,
+        )
+        assert entered.wait(timeout=5.0)
+        second = pool.submit(cache.prepare_cutscene_resolution)
+        release.set()
+        first_result = first.result(timeout=5.0)
+        second_result = second.result(timeout=5.0)
+
+    assert second_result is first_result

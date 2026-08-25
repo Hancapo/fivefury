@@ -126,6 +126,12 @@ from .bounds import (
 )
 from .cache import (
     AssetRecord,
+    CutsceneIndexPreparation,
+    CutsceneIndexPreparationStatus,
+    CutsceneResolutionIndex,
+    CutsceneResolutionPreparation,
+    CutsceneResolutionPreparationCallback,
+    CutsceneResolutionPreparationProgress,
     GameFileCache,
     ScanStats,
     TextureCatalog,
@@ -141,6 +147,7 @@ from .cache import (
     TextureResolutionSeverity,
     TextureResolutionStatus,
     TextureResolutionStep,
+    prepare_cutscene_resolution,
     resolve_texture,
 )
 from .cdr import (
@@ -1417,6 +1424,12 @@ __all__ = [
     "ArchetypeAssetType",
     "ArchetypeFlags",
     "AssetRecord",
+    "CutsceneIndexPreparation",
+    "CutsceneIndexPreparationStatus",
+    "CutsceneResolutionIndex",
+    "CutsceneResolutionPreparation",
+    "CutsceneResolutionPreparationCallback",
+    "CutsceneResolutionPreparationProgress",
     "AssetRef",
     "AssetSet",
     "AudioCollisionSettingsExtension",
@@ -2456,6 +2469,7 @@ __all__ = [
     "resolve_rel_sound_graph",
     "resolve_shader_reference",
     "resolve_texture",
+    "prepare_cutscene_resolution",
     "rewrite_yft_tune_name",
     "rig_body_folder_jiggle_bones",
     "rig_mesh_to_bones_radially",

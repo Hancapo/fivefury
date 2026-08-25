@@ -301,11 +301,14 @@ class _ArchetypeMap(Mapping[int, Any]):
         except OSError:
             pass
 
-    def _ensure_index(self) -> None:
+    def _ensure_index(self, cancellation: Any | None = None) -> None:
         if self._generation == self._cache._view_generation:
             return
+        from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
+
         hash_to_archetype: dict[int, Any] = {}
         for asset in self._cache.iter_assets(kind=GameFileType.YTYP):
+            check_cutscene_resolution_cancelled(cancellation)
             game_file = self._cache.get_file(asset)
             if game_file is None:
                 continue
@@ -329,12 +332,22 @@ class _ArchetypeMap(Mapping[int, Any]):
         self._build_relationship_indexes()
         self._save_texture_index()
 
-    def _ensure_texture_index(self) -> None:
+    def _ensure_texture_index(self, cancellation: Any | None = None) -> None:
         if self._texture_generation == self._cache._view_generation:
             return
         if self._load_texture_index():
             return
-        self._ensure_index()
+        self._ensure_index(cancellation)
+
+    def prepare_texture_index(self, cancellation: Any | None = None) -> Any:
+        from .cutscene_preparation import CutsceneIndexPreparationStatus
+
+        if self._texture_generation == self._cache._view_generation:
+            return CutsceneIndexPreparationStatus.READY
+        if self._load_texture_index():
+            return CutsceneIndexPreparationStatus.LOADED
+        self._ensure_index(cancellation)
+        return CutsceneIndexPreparationStatus.REBUILT
 
     def for_asset_hashes(self, values: set[int]) -> tuple[Any, ...]:
         self._ensure_index()
@@ -410,6 +423,29 @@ class _TextureParentMap(Mapping[int, int]):
         except OSError:
             pass
         self._generation = self._cache._view_generation
+
+    def prepare(self, cancellation: Any | None = None) -> Any:
+        from .cutscene_preparation import CutsceneIndexPreparationStatus
+
+        if self._generation == self._cache._view_generation:
+            return CutsceneIndexPreparationStatus.READY
+        cached = load_texture_parent_index(self._cache.get_index_cache_path())
+        if cached is not None:
+            self._hash_to_parent = cached
+            self._generation = self._cache._view_generation
+            return CutsceneIndexPreparationStatus.LOADED
+        self._hash_to_parent = self._cache.texture_graph.parent_map(
+            cancellation=cancellation
+        )
+        try:
+            save_texture_parent_index(
+                self._cache.get_index_cache_path(),
+                self._hash_to_parent,
+            )
+        except OSError:
+            pass
+        self._generation = self._cache._view_generation
+        return CutsceneIndexPreparationStatus.REBUILT
 
     def __len__(self) -> int:
         self._ensure_index()
