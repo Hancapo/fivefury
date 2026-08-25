@@ -34,6 +34,7 @@ from .structures import (
     AwcStreamFormatChunk,
 )
 from .validation import (
+    awc_channel_codecs,
     awc_playback_streams,
     resolve_awc_playback_stream,
     validate_awc,
@@ -62,6 +63,7 @@ __all__ = [
     "AwcStreamFormat",
     "AwcStreamFormatChunk",
     "DecodedAudio",
+    "awc_channel_codecs",
     "awc_chunk_name",
     "awc_playback_streams",
     "build_awc_bytes",

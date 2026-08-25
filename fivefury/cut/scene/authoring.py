@@ -92,6 +92,8 @@ class CutsceneAssets:
                     awc_name=audio.awc_name,
                     sounds_name=audio.sounds_name,
                     wavepack_name=audio.wavepack_name,
+                    game=audio.game,
+                    channels=audio.channels,
                 )
             )
 

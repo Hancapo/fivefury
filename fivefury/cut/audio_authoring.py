@@ -125,7 +125,7 @@ class CutsceneAudioAssets:
         *,
         context: BuildContext | None = None,
     ) -> ValidationReport:
-        from ..awc import validate_awc
+        from ..awc import awc_channel_codecs, validate_awc
         from ..rel import (
             Dat54SimpleSound,
             Dat54StreamingSound,
@@ -273,12 +273,7 @@ class CutsceneAudioAssets:
                 f"CUT multichannel AWC flags must be 0x{profile.multichannel_flags:04X} for {self.game.value}",
                 path="awc.flags",
             )
-        codecs = {
-            channel.codec
-            for stream in self.awc.streams
-            if stream.stream_format_chunk is not None
-            for channel in stream.stream_format_chunk.channels
-        }
+        codecs = awc_channel_codecs(self.awc)
         if self.game is GameTarget.GTA5_ENHANCED and codecs and any(
             int(codec) == 0 for codec in codecs
         ):
