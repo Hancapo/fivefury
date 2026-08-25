@@ -22,6 +22,7 @@ from .conversion import (
 )
 from .crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
 from .io import build_awc_bytes, read_awc, save_awc
+from .layout import AwcSpeaker, default_awc_speakers
 from .lipsync import require_valid_awc_lipsync, validate_awc_lipsync
 from .structures import (
     Awc,
@@ -56,6 +57,7 @@ __all__ = [
     "AwcChunkType",
     "AwcCodecType",
     "AwcFormat",
+    "AwcSpeaker",
     "AwcStream",
     "AwcStreamFormat",
     "AwcStreamFormatChunk",
@@ -68,6 +70,7 @@ __all__ = [
     "decode_audio",
     "decode_awc_adpcm",
     "decrypt_awc_rsxxtea",
+    "default_awc_speakers",
     "encrypt_awc_rsxxtea",
     "is_lipsync_chunk_type",
     "parse_pcm_wav",

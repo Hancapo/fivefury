@@ -11,6 +11,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - `CutScene.cutscene_flags` and its factory argument have been replaced by typed `CutSceneSettings`; direct flag packing is now owned by the writer.
 - The fixed `DEFAULT_PLAYABLE_CUTSCENE_FLAGS` constant has been removed.
+- `build_cutscene_audio_assets()` now requires `BuildContext` so edition policy is explicit.
 
 ### Added
 
@@ -23,6 +24,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - CUT concatenation flags no longer depend on whether the scene contains prop models.
+- Authored CUT audio now uses retail DAT54 streaming headers, channel routing, and edition-specific multichannel AWC flags.
 
 ### Performance
 

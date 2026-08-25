@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from math import ceil
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from ..authoring import ValidationReport
+from ..authoring import DiagnosticSeverity, ValidationReport
+from ..awc.layout import AwcSpeaker, default_awc_speakers
+from ..game_target import GameTarget, coerce_game_target
+from .audio_profiles import (
+    CutAudioProfile,
+)
 
 if TYPE_CHECKING:
     from ..authoring import BuildContext
@@ -84,6 +90,16 @@ class CutsceneAudioAssets:
     awc_name: str
     sounds_name: str
     wavepack_name: str
+    game: GameTarget = GameTarget.GTA5
+    channels: tuple[AwcSpeaker, ...] = ()
+
+    def __post_init__(self) -> None:
+        self.game = coerce_game_target(self.game)
+        channel_count = len(_stream_durations(self.awc))
+        if not self.channels and channel_count:
+            self.channels = default_awc_speakers(channel_count)
+        else:
+            self.channels = tuple(AwcSpeaker(channel) for channel in self.channels)
 
     @property
     def base_name(self) -> str:
@@ -118,8 +134,14 @@ class CutsceneAudioAssets:
             rel_hash,
         )
 
-        del context
+        target = self.game if context is None else context.game
         report = ValidationReport()
+        if target is not self.game:
+            report.issue(
+                "cut.audio.target.mismatch",
+                "CUT audio target does not match the build context",
+                path="game",
+            )
         try:
             _reference_base(self.reference)
         except ValueError as exc:
@@ -152,6 +174,12 @@ class CutsceneAudioAssets:
                 "CUT audio streams must have matching durations",
                 path="awc.streams",
             )
+        if len(self.channels) != len(streams):
+            report.issue(
+                "cut.audio.routing.count_mismatch",
+                "CUT audio channel layout does not match the AWC channel count",
+                path="channels",
+            )
         if int(self.sounds.rel_type) != int(RelDatFileType.DAT54_DATA_ENTRIES):
             report.issue(
                 "cut.audio.sounddata.invalid",
@@ -178,6 +206,16 @@ class CutsceneAudioAssets:
             )
             return report
 
+        profile = CutAudioProfile.retail(self.game)
+        expected_root = profile.streaming_header()
+        for field in ("flags", "flags2", "release_time", "category", "speaker_mask"):
+            if getattr(root.header, field) != getattr(expected_root, field):
+                report.issue(
+                    "cut.audio.header.streaming.invalid",
+                    f"CUT streaming root has an invalid {field}",
+                    path=f"sounds.items[0x{root.name_hash:08X}].header.{field}",
+                )
+
         graph = RelSoundIndex((self.sounds,)).resolve(root.name_hash)
         for unresolved_hash in graph.unresolved_hashes:
             report.issue(
@@ -202,6 +240,25 @@ class CutsceneAudioAssets:
                 "DAT54 container does not match the authored wavepack bank name",
                 path="sounds.items",
             )
+        children = [items_by_hash.get(rel_hash(value)) for value in root.child_sounds]
+        if len(children) != len(self.channels):
+            report.issue(
+                "cut.audio.routing.count_mismatch",
+                "DAT54 child count does not match the CUT audio channel layout",
+                path="sounds.items",
+            )
+        routes = profile.routes(self.channels)
+        for index, (item, route) in enumerate(zip(children, routes)):
+            if not isinstance(item, Dat54SimpleSound):
+                continue
+            expected = route.header()
+            for field in ("flags", "pan", "speaker_mask"):
+                if getattr(item.header, field) != getattr(expected, field):
+                    report.issue(
+                        "cut.audio.routing.invalid",
+                        f"CUT channel {index} has an invalid {field}",
+                        path=f"sounds.items[0x{item.name_hash:08X}].header.{field}",
+                    )
         for sound_hash in graph.sound_hashes:
             item = items_by_hash.get(sound_hash)
             if isinstance(item, Dat54SimpleSound) and item.wave_slot_index != 0:
@@ -210,6 +267,27 @@ class CutsceneAudioAssets:
                     "CUT mastered audio requires wave slot index 0",
                     path=f"sounds.items[0x{sound_hash:08X}].wave_slot_index",
                 )
+        if self.awc.multi_channel_flag and int(self.awc.flags) != profile.multichannel_flags:
+            report.issue(
+                "cut.audio.awc.flags.invalid",
+                f"CUT multichannel AWC flags must be 0x{profile.multichannel_flags:04X} for {self.game.value}",
+                path="awc.flags",
+            )
+        codecs = {
+            channel.codec
+            for stream in self.awc.streams
+            if stream.stream_format_chunk is not None
+            for channel in stream.stream_format_chunk.channels
+        }
+        if self.game is GameTarget.GTA5_ENHANCED and codecs and any(
+            int(codec) == 0 for codec in codecs
+        ):
+            report.issue(
+                "cut.audio.codec.uncompressed",
+                "Enhanced CUT audio is authored as uncompressed PCM",
+                severity=DiagnosticSeverity.WARNING,
+                path="awc.streams",
+            )
         required_duration = _duration_ms(streams)
         if int(root.duration) < required_duration:
             report.issue(
@@ -239,8 +317,12 @@ class CutsceneAudioAssets:
             awc_name=self.awc_name,
             sounds_name=self.sounds_name,
             wavepack_name=self.wavepack_name,
+            game=self.game,
+            channels=self.channels,
         )
-        rebuilt.validate().raise_for_errors()
+        from ..authoring import BuildContext
+
+        rebuilt.validate(context=BuildContext(game=self.game)).raise_for_errors()
         return {self.sounds_name: sounds_data, self.awc_name: awc_data}
 
 
@@ -250,6 +332,8 @@ def build_cutscene_audio_assets(
     *,
     wavepack_name: str,
     awc_name: str | None = None,
+    context: BuildContext,
+    channels: tuple[AwcSpeaker, ...] | None = None,
 ) -> CutsceneAudioAssets:
     from ..rel import (
         Dat54SimpleSound,
@@ -268,7 +352,11 @@ def build_cutscene_audio_assets(
         field="awc_name",
     )
     sounds_name = f"{base.casefold()}_sounds.dat"
-    streams = _stream_durations(awc)
+    authored_awc = deepcopy(awc)
+    profile = CutAudioProfile.retail(context.game)
+    if authored_awc.multi_channel_flag:
+        authored_awc.flags = profile.multichannel_flags
+    streams = _stream_durations(authored_awc)
     if not streams:
         raise ValueError("AWC contains no playable stream for CUT audio")
     stream_hashes = [stream_hash & 0xFFFFFFFF for stream_hash, _ in streams]
@@ -284,23 +372,33 @@ def build_cutscene_audio_assets(
     all_hashes = [rel_hash(root_name), *child_hashes]
     if len(all_hashes) != len(set(all_hashes)):
         raise ValueError("Derived DAT54 sound names contain a hash collision")
+    channel_layout = (
+        default_awc_speakers(len(streams))
+        if channels is None
+        else tuple(AwcSpeaker(channel) for channel in channels)
+    )
+    if len(channel_layout) != len(streams):
+        raise ValueError("CUT audio channel layout must match the AWC channel count")
+    routes = profile.routes(channel_layout)
     sounds = RelFile(
         RelDatFileType.DAT54_DATA_ENTRIES,
         items=[
             Dat54StreamingSound(
                 name_hash=all_hashes[0],
+                header=profile.streaming_header(),
                 child_sounds=child_hashes,
                 duration=_duration_ms(streams),
             ),
             *(
                 Dat54SimpleSound(
                     name_hash=child_hash,
+                    header=route.header(),
                     container_name=bank_name,
                     file_name=stream_hash,
                     wave_slot_index=0,
                 )
-                for child_hash, stream_hash in zip(
-                    child_hashes, stream_hashes, strict=True
+                for child_hash, stream_hash, route in zip(
+                    child_hashes, stream_hashes, routes, strict=True
                 )
             ),
         ],
@@ -309,13 +407,15 @@ def build_cutscene_audio_assets(
     )
     assets = CutsceneAudioAssets(
         reference=logical_reference,
-        awc=awc,
+        awc=authored_awc,
         sounds=sounds,
         awc_name=physical_name,
         sounds_name=sounds_name,
         wavepack_name=pack_name,
+        game=context.game,
+        channels=channel_layout,
     )
-    assets.validate().raise_for_errors()
+    assets.validate(context=context).raise_for_errors()
     return assets
 
 
