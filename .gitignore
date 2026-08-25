@@ -12,6 +12,8 @@ venv/
 
 build/
 dist/
+dist_*/
+release_dist_*/
 *.egg-info/
 
 references/
