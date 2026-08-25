@@ -18,7 +18,7 @@ from ..hashing import _get_lut
 from ..rpf import RpfArchive, RpfFileEntry
 from ..rpf.utils import _normalize_key
 
-_SCAN_INDEX_VERSION = 14
+_SCAN_INDEX_VERSION = 15
 _SCAN_GC_INTERVAL = 8
 
 _FLAG_LOOSE = 1
@@ -190,7 +190,9 @@ class GameFileCacheScanMixin:
         root_text = str(Path(self.root or ".").resolve()).lower()
         config_text = f"{self._normalized_dlc_level()}|{';'.join(self._exclude_prefixes)}"
         flags_text = f"{int(self.load_vehicles)}|{int(self.load_peds)}|{int(self.load_audio)}"
-        digest = hashlib.sha1(f"{root_text}|{config_text}|{flags_text}".encode()).hexdigest()
+        digest = hashlib.sha1(
+            f"{root_text}|{self.game.value}|{config_text}|{flags_text}".encode()
+        ).hexdigest()
         return _default_index_cache_dir() / f"{digest}.ffindex"
 
     def clear_index_cache(self) -> None:
@@ -202,10 +204,14 @@ class GameFileCacheScanMixin:
             texture_parent_index_path,
         )
         from .ped_index import ped_init_index_path
+        from .rel_sound_index import rel_sound_index_path
+        from .vehicle_appearance_index import vehicle_appearance_index_path
 
         asset_texture_index_path(path).unlink(missing_ok=True)
         texture_parent_index_path(path).unlink(missing_ok=True)
         ped_init_index_path(path).unlink(missing_ok=True)
+        rel_sound_index_path(path).unlink(missing_ok=True)
+        vehicle_appearance_index_path(path).unlink(missing_ok=True)
 
     def _normalized_dlc_level(self) -> str | int | None:
         value = self.dlc_level
@@ -299,6 +305,7 @@ class GameFileCacheScanMixin:
         config = payload.get("config")
         expected_config = {
             "root": str(root.resolve()).lower(),
+            "game": self.game.value,
             "dlc_level": self._normalized_dlc_level(),
             "exclude_folders": list(self._exclude_prefixes),
             "load_vehicles": self.load_vehicles,
@@ -326,6 +333,7 @@ class GameFileCacheScanMixin:
             "version": _SCAN_INDEX_VERSION,
             "config": {
                 "root": str(root.resolve()).lower(),
+                "game": self.game.value,
                 "dlc_level": self._normalized_dlc_level(),
                 "exclude_folders": list(self._exclude_prefixes),
                 "load_vehicles": self.load_vehicles,
