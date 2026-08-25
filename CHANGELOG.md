@@ -55,6 +55,9 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Enhanced drawable writers now preserve explicit 32-bit vertex-buffer bind flags across standalone YDRs, embedded YFT drawables, and split meshes.
 - Timed archetypes now preserve typed spatial and hash fields when read from YTYP metadata.
 - YFT authoring now preserves explicit null skeleton-name pointers and rejects stale resource pointers in fragment-drawable tail fields.
+- Gen9 shader adaptation now omits unsupported Legacy parameters only when they retain their default values and rejects non-default values that cannot be represented.
+- Preserve-profile YFT writing now retains legitimate unowned null bound slots in imported fragments.
+- YFT cloth writers now preserve controller names that fill the complete 32-byte runtime field.
 
 ### Performance
 

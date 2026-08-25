@@ -341,8 +341,8 @@ def _write_controller(
     writer.pack_into("3Q", offset + 0x38, 0, 0, 0)
     writer.pack_into("I", offset + 0x50, int(controller.controller_type))
     encoded_name = controller.name.encode("utf-8")
-    if len(encoded_name) > 31:
-        raise ValueError("cloth controller names cannot exceed 31 UTF-8 bytes")
+    if len(encoded_name) > 32:
+        raise ValueError("cloth controller names cannot exceed 32 UTF-8 bytes")
     writer.data[offset + 0x58 : offset + 0x78] = encoded_name.ljust(32, b"\0")
     writer.pack_into("f", offset + 0x78, float(controller.blend))
     return offset

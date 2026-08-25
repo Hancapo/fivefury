@@ -104,6 +104,7 @@ from fivefury.yft import (
     validate_yft_bytes,
 )
 from fivefury.yft import drawable_reader as yft_drawable_reader
+from fivefury.yft.bound_profiles import validate_bound_profile
 from fivefury.yft.resource_headers import (
     FRAG_PHYS_ARCHETYPE_DAMP_VFT,
     FRAG_PHYS_TRANSFORMS_VFT,
@@ -449,7 +450,8 @@ def test_yft_glass_roundtrip(version):
         (171, GEN9_YFT_RUNTIME_HEADERS),
     ],
 )
-def test_yft_environment_cloth_roundtrip(version, runtime_headers):
+@pytest.mark.parametrize("controller_name", ["cloth_fragment", "x" * 32])
+def test_yft_environment_cloth_roundtrip(version, runtime_headers, controller_name):
     drawable = create_ydr(
         meshes=[
             YdrMeshInput(
@@ -469,7 +471,7 @@ def test_yft_environment_cloth_roundtrip(version, runtime_headers):
     ]
     cloth = YftEnvironmentCloth(
         controller=YftClothController(
-            name="cloth_fragment",
+            name=controller_name,
             bridge=YftClothBridge(
                 mesh_vertex_counts=(3, 0, 0, 0),
                 pin_radii=([0.0, 0.0, 0.0], [], [], []),
@@ -502,7 +504,7 @@ def test_yft_environment_cloth_roundtrip(version, runtime_headers):
     assert len(parsed.environment_cloths) == 1
     parsed_cloth = parsed.environment_cloths[0]
     assert parsed_cloth.drawable_label == "drawable"
-    assert parsed_cloth.controller.name == "cloth_fragment"
+    assert parsed_cloth.controller.name == controller_name
     assert parsed_cloth.controller.bridge.mesh_vertex_counts == (3, 0, 0, 0)
     assert parsed_cloth.controller.bridge.display_maps[0] == [0, 1, 2]
     assert parsed_cloth.controller.verlet_lods[0].vertices == vertices
@@ -1406,6 +1408,19 @@ def test_preserve_profile_roundtrips_explicit_zero_damaged_properties() -> None:
         == 0
         for index in range(21)
     )
+
+
+def test_preserve_profile_accepts_unowned_null_bound_slots() -> None:
+    composite = _composite(None, None)
+    composite.file_vft = LEGACY_BOUND_FILE_VFTS[BoundType.COMPOSITE]
+
+    report = validate_bound_profile(
+        composite,
+        YftPhysicsBoundProfile.PRESERVE,
+        expected_slots=1,
+    )
+
+    assert report.valid
 
 
 def test_damaged_child_uses_its_own_drawable_bound_for_mass_properties():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import struct
 from collections.abc import Callable, Sequence
 
@@ -148,8 +149,33 @@ def _merge_gen9_material_parameters(
             names = {name.lower() for name in definition.candidate_names}
             if "hardalphablend" in names and not any(key.lower() in names for key in merged):
                 merged[definition.name] = 1.0
+    legacy_parameters = {
+        definition.name.casefold(): definition
+        for definition in shader_definition.parameters
+        if not definition.is_texture
+    }
     for name, value in parameters.items():
-        merged[str(name)] = value
+        parameter_name = str(name)
+        gen9_parameter = gen9_definition.get_parameter(parameter_name)
+        if gen9_parameter is not None:
+            merged[gen9_parameter.name] = value
+            continue
+
+        legacy_parameter = legacy_parameters.get(parameter_name.casefold())
+        default = (
+            None if legacy_parameter is None else legacy_parameter.default_value
+        )
+        actual_values = value if isinstance(value, tuple) else (value,)
+        default_values = default if isinstance(default, tuple) else (default,)
+        if default is not None and len(actual_values) == len(default_values) and all(
+            math.isclose(float(actual), float(expected), rel_tol=1e-6, abs_tol=1e-6)
+            for actual, expected in zip(actual_values, default_values, strict=True)
+        ):
+            continue
+        raise ValueError(
+            f"Legacy shader parameter '{parameter_name}' has no Gen9 equivalent "
+            f"for shader '{gen9_definition.name}'"
+        )
     return merged
 
 

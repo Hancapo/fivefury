@@ -1494,6 +1494,44 @@ def test_build_and_read_ydr_gen9_adapts_legacy_shader_variants(
         assert material.get_numeric_parameter("HardAlphaBlend") == pytest.approx(1.0)
 
 
+def test_gen9_adaptation_omits_unrepresented_legacy_defaults() -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh("glass")],
+        materials=[
+            YdrMaterialInput(
+                name="glass",
+                shader=YdrShader.GLASS_PV_ENV,
+                render_bucket=1,
+                parameters={"DecalTint": (1.0, 1.0, 1.0, 1.0)},
+            )
+        ],
+        version=159,
+    )
+
+    ydr = read_ydr(build.to_bytes())
+
+    assert ydr.version == 159
+    assert ydr.materials[0].resolved_shader_file_name == "glass_pv_env.sps"
+
+
+def test_gen9_adaptation_rejects_unrepresented_legacy_override() -> None:
+    build = create_ydr(
+        meshes=[_triangle_mesh("glass")],
+        materials=[
+            YdrMaterialInput(
+                name="glass",
+                shader=YdrShader.GLASS_PV_ENV,
+                render_bucket=1,
+                parameters={"DecalTint": (0.5, 1.0, 1.0, 1.0)},
+            )
+        ],
+        version=159,
+    )
+
+    with pytest.raises(ValueError, match="DecalTint.*no Gen9 equivalent"):
+        build.to_bytes()
+
+
 @pytest.mark.parametrize("shader", _GEN9_ENVIRONMENT_SHADER_FAMILIES)
 def test_build_and_read_ydr_gen9_preserves_environment_sampler_binding(tmp_path: Path, shader: str) -> None:
     build = YdrBuild(

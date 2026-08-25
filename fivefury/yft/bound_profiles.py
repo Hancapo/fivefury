@@ -109,14 +109,6 @@ def validate_bound_profile(
                     f"bound {index} has no explicit file_vft to preserve",
                     path=f"bounds[{index}].file_vft",
                 )
-        if expected_slots is not None:
-            actual_slots = root.child_count if isinstance(root, BoundComposite) else 1
-            if actual_slots != expected_slots:
-                issues.issue(
-                    "yft.bound_profile.slot_count",
-                    f"bound tree has {actual_slots} slots for {expected_slots} physics children",
-                    path="children",
-                )
         return issues
 
     if not isinstance(root, BoundComposite):

@@ -700,7 +700,11 @@ class _YftBinaryValidator:
                 f"active count {count} exceeds capacity {capacity}",
                 code="yft.binary.profile_bound_tree.active_count_exceeds_capacity",
             )
-        if expected_slots is not None and count != expected_slots:
+        if (
+            self.profile is not YftPhysicsBoundProfile.PRESERVE
+            and expected_slots is not None
+            and count != expected_slots
+        ):
             self.error(
                 f"{path}.children",
                 f"composite has {count} slots for {expected_slots} physics children",
