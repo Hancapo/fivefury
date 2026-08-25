@@ -5,6 +5,7 @@ import pytest
 from fivefury import (
     Awc,
     AwcStream,
+    BuildContext,
     CutsceneProject,
     DlcDataFileType,
     DlcPack,
@@ -20,7 +21,7 @@ from fivefury.cut.audio_references import cut_audio_asset_container_hashes
 from fivefury.hashing import jenk_hash
 
 
-def _assets():
+def _assets(game: GameTarget = GameTarget.GTA5):
     awc = Awc(
         [
             AwcStream.from_pcm(
@@ -34,8 +35,9 @@ def _assets():
         "EXAMPLE_SEQ.WA",
         awc,
         wavepack_name="dlc_exam_audio",
+        context=BuildContext(game=game),
     )
-    project = CutsceneProject.create("example", duration=1.0)
+    project = CutsceneProject.create("example", duration=1.0, game=game)
     project.camera(position=Vector3(), rotation=Quaternion())
     project.audio(audio)
     return project.build(cut_name="example.cut")
@@ -44,7 +46,7 @@ def _assets():
 @pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
 def test_dlc_cutscene_preserves_target_and_registers_audio(game: GameTarget) -> None:
     pack = DlcPack("example_audio", game=game)
-    registration = pack.cutscene(_assets())
+    registration = pack.cutscene(_assets(game))
 
     rebuilt = RpfArchive.from_bytes(pack.to_bytes(), load_nested=True)
     content_entry = rebuilt.find_entry("content.xml")

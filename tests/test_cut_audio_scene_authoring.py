@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from fivefury import Awc, AwcStream, CutScene, CutsceneAssets, CutsceneProject
+from fivefury import (
+    Awc,
+    AwcStream,
+    BuildContext,
+    CutScene,
+    CutsceneAssets,
+    CutsceneProject,
+)
 from fivefury.cut import build_cutscene_audio_assets
 
 
@@ -21,6 +28,7 @@ def _audio(duration: float = 2.0):
         "EXAMPLE_SEQ.WA",
         awc,
         wavepack_name="dlc_exam_audio",
+        context=BuildContext(),
     )
 
 
@@ -103,6 +111,7 @@ def test_assets_report_duplicate_audio_output_names() -> None:
         _audio().awc,
         wavepack_name="dlc_exam_audio",
         awc_name=first.awc_name,
+        context=BuildContext(),
     )
     second_binding = project.scene.audio(second.reference, fields={"fOffset": 0.0})
     project.scene.load_audio(0.0, second.reference, target=second_binding)

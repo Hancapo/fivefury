@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- General AWC channel-codec inspection and validation of incompatible encryption flags.
 - Automatic CUT flag derivation from semantic authoring settings, audio bindings, section data, blend-out metadata, and concatenation mode.
 - Explicit typed preparation of the global indexes required by CUT dependency resolution, with cancellation, monotonic progress, diagnostics, and per-index timings.
 - Typed CUT audio authoring from mastered AWC streams, including DAT54 sound graphs, deterministic bank naming, duration derivation, and binary round-trip validation.
@@ -23,6 +24,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- CUT audio round-trips now preserve the target edition and speaker layout, including mono codec diagnostics.
 - CUT concatenation flags no longer depend on whether the scene contains prop models.
 - Authored CUT audio now uses retail DAT54 streaming headers, channel routing, and edition-specific multichannel AWC flags.
 

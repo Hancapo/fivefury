@@ -4,14 +4,18 @@ import pytest
 
 from fivefury import (
     Awc,
+    AwcCodecType,
     AwcSpeaker,
     AwcStream,
     BuildContext,
     CutsceneAudioAssets,
+    CutsceneProject,
     Dat54SimpleSound,
     Dat54StreamingSound,
+    DlcPack,
     GameTarget,
     RelSoundIndex,
+    awc_channel_codecs,
     build_cutscene_audio_assets,
     read_awc,
     read_rel,
@@ -117,12 +121,66 @@ def test_cut_audio_validation_rejects_generic_headers() -> None:
     assert "cut.audio.routing.invalid" in codes
 
 
-def test_enhanced_pcm_is_reported_as_uncompressed() -> None:
-    report = _assets(2).validate()
+@pytest.mark.parametrize("channel_count", (1, 2))
+def test_enhanced_pcm_is_reported_as_uncompressed(channel_count: int) -> None:
+    report = _assets(channel_count).validate()
 
     assert {warning.code for warning in report.warnings} == {
         "cut.audio.codec.uncompressed"
     }
+
+
+@pytest.mark.parametrize("channel_count", (1, 3))
+def test_awc_channel_codecs_cover_single_and_multichannel_audio(
+    channel_count: int,
+) -> None:
+    assert awc_channel_codecs(_awc(channel_count)) == (
+        AwcCodecType.PCM,
+    ) * channel_count
+
+
+def test_awc_validation_rejects_incompatible_encryption_flags() -> None:
+    awc = _awc(1)
+    awc.multi_channel_encrypt_flag = True
+
+    assert "awc.flags.multichannel_encryption.invalid" in {
+        issue.code for issue in awc.validate().errors
+    }
+
+    awc = _awc(2)
+    awc.single_channel_encrypt_flag = True
+
+    assert "awc.flags.encryption_mode.invalid" in {
+        issue.code for issue in awc.validate().errors
+    }
+
+
+def test_enhanced_cut_audio_survives_final_dlc_round_trip() -> None:
+    assets = build_cutscene_audio_assets(
+        "SCENE.WA",
+        Awc(
+            [
+                AwcStream.from_pcm(
+                    "voice",
+                    b"\x00\x00" * 48_000,
+                    sample_rate=48_000,
+                )
+            ]
+        ),
+        wavepack_name="scene_audio",
+        context=BuildContext(game=GameTarget.GTA5_ENHANCED),
+    )
+    project = CutsceneProject.create(
+        "scene",
+        duration=1.0,
+        game=GameTarget.GTA5_ENHANCED,
+    )
+    project.camera()
+    project.audio(assets, stop=1.0)
+    pack = DlcPack("scene_pack", game=GameTarget.GTA5_ENHANCED)
+    pack.cutscene(project.build(cut_name="scene.cut"))
+
+    assert pack.to_bytes(game=GameTarget.GTA5_ENHANCED)
 
 
 def test_explicit_cut_audio_layout_must_match_awc() -> None:

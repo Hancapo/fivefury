@@ -6,6 +6,7 @@ from ..authoring import DiagnosticSeverity, ValidationReport
 from .constants import AWC_STREAM_ID_MASK
 
 if TYPE_CHECKING:
+    from .constants import AwcCodecType
     from .structures import Awc, AwcStream
 
 
@@ -21,6 +22,16 @@ def awc_playback_streams(awc: Awc) -> tuple[AwcStream, ...]:
         for stream in awc.streams
         if stream.data_chunk is not None and stream.codec is not None
     )
+
+
+def awc_channel_codecs(awc: Awc) -> tuple[AwcCodecType, ...]:
+    """Return one codec for each logical playback channel."""
+    streams = awc_playback_streams(awc)
+    if awc.multi_channel_flag:
+        if len(streams) != 1 or streams[0].stream_format_chunk is None:
+            return ()
+        return tuple(channel.codec for channel in streams[0].stream_format_chunk.channels)
+    return tuple(stream.codec for stream in streams if stream.codec is not None)
 
 
 def resolve_awc_playback_stream(
@@ -155,6 +166,18 @@ def validate_awc_stream(awc: Awc, stream: AwcStream) -> ValidationReport:
 
 def validate_awc(awc: Awc) -> ValidationReport:
     report = ValidationReport()
+    if awc.multi_channel_encrypt_flag and not awc.multi_channel_flag:
+        report.issue(
+            "awc.flags.multichannel_encryption.invalid",
+            "Multichannel encryption requires a multichannel container",
+            path="flags",
+        )
+    if awc.multi_channel_flag and awc.single_channel_encrypt_flag:
+        report.issue(
+            "awc.flags.encryption_mode.invalid",
+            "Multichannel containers cannot use single-channel encryption",
+            path="flags",
+        )
     stream_ids = [stream.hash for stream in awc.streams]
     if len(stream_ids) != len(set(stream_ids)):
         report.issue(
@@ -182,6 +205,7 @@ def validate_awc(awc: Awc) -> ValidationReport:
 
 
 __all__ = [
+    "awc_channel_codecs",
     "awc_playback_streams",
     "resolve_awc_playback_stream",
     "validate_awc",

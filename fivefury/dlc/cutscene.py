@@ -258,6 +258,11 @@ def validate_dlc_cutscene_archive(
     pack: DlcPack,
     archive: RpfArchive,
 ) -> ValidationReport:
+    from ..authoring import BuildContext
+    from ..awc import read_awc
+    from ..cut.audio_authoring import CutsceneAudioAssets
+    from ..rel import read_rel
+
     report = ValidationReport()
     assert pack.setup is not None
     content_name = pack.setup.dat_file or "content.xml"
@@ -315,6 +320,38 @@ def validate_dlc_cutscene_archive(
                 report.issue(
                     "cut.audio.package.invalid",
                     f"Generated DLC payload did not survive its RPF round-trip: {payload_path}",
+                    path=path,
+                )
+        for audio, sounds_path, awc_path in zip(
+            registration.assets.audio,
+            registration.sounddata_paths,
+            registration.awc_paths,
+            strict=True,
+        ):
+            sounds_data = _entry_bytes(archive, sounds_path)
+            awc_data = _entry_bytes(archive, awc_path)
+            if sounds_data is None or awc_data is None:
+                continue
+            try:
+                rebuilt_audio = CutsceneAudioAssets(
+                    reference=audio.reference,
+                    awc=read_awc(awc_data, path=audio.awc_name),
+                    sounds=read_rel(sounds_data, path=audio.sounds_name),
+                    awc_name=audio.awc_name,
+                    sounds_name=audio.sounds_name,
+                    wavepack_name=audio.wavepack_name,
+                    game=audio.game,
+                    channels=audio.channels,
+                )
+            except (TypeError, ValueError) as exc:
+                report.issue(
+                    "cut.audio.package.invalid",
+                    f"Generated DLC audio cannot be read: {exc}",
+                    path=path,
+                )
+            else:
+                report.extend(
+                    rebuilt_audio.validate(context=BuildContext(game=audio.game)),
                     path=path,
                 )
         enabled = change_sets.get(registration.change_set_name, set())
