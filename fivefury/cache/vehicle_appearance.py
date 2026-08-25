@@ -42,7 +42,12 @@ def _source(asset: AssetRecord) -> VehicleAppearanceSource:
     )
 
 
-def _build_index(cache: GameFileCache) -> _VehicleAppearanceIndex:
+def _build_index(
+    cache: GameFileCache,
+    cancellation: Any | None = None,
+) -> _VehicleAppearanceIndex:
+    from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
+
     variations: dict[int, tuple[VehicleVariation, VehicleAppearanceSource]] = {}
     colors: dict[int, tuple[VehicleModelColor, VehicleAppearanceSource]] = {}
     diagnostics: list[Diagnostic] = []
@@ -51,6 +56,7 @@ def _build_index(cache: GameFileCache) -> _VehicleAppearanceIndex:
         *cache.iter_assets(GameFileType.CAR_COLS),
     ]
     for asset in sorted(assets, key=asset_source_rank, reverse=True):
+        check_cutscene_resolution_cancelled(cancellation)
         try:
             game_file = cache.load_asset(asset)
         except (OSError, ValueError) as exc:
@@ -109,6 +115,23 @@ def _index(cache: GameFileCache) -> _VehicleAppearanceIndex:
         cached = _build_index(cache)
         cache._vehicle_appearance_index = cached
     return cached
+
+
+def prepare_vehicle_appearance_index(
+    cache: GameFileCache,
+    *,
+    cancellation: Any | None = None,
+) -> tuple[Any, tuple[Diagnostic, ...]]:
+    from .cutscene_preparation import CutsceneIndexPreparationStatus
+
+    if cache._vehicle_appearance_index is not None:
+        return (
+            CutsceneIndexPreparationStatus.READY,
+            cache._vehicle_appearance_index.diagnostics,
+        )
+    index = _build_index(cache, cancellation)
+    cache._vehicle_appearance_index = index
+    return CutsceneIndexPreparationStatus.REBUILT, index.diagnostics
 
 
 def _identity(cache: GameFileCache, value: Any) -> tuple[str | None, int]:

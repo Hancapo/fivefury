@@ -94,7 +94,7 @@ class TextureDictionaryGraph:
             if data:
                 try:
                     relationships = tuple(read_gtxd(data).relationships)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     relationships = ()
         if not relationships:
             self._issues.append(
@@ -178,13 +178,16 @@ class TextureDictionaryGraph:
                 current = self._selected[current].parent_hash
             visited.update(path)
 
-    def _ensure_graph(self) -> None:
+    def _ensure_graph(self, cancellation: Any | None = None) -> None:
         if self._generation == self.cache._view_generation:
             return
+        from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
+
         self._edges_by_child.clear()
         self._selected.clear()
         self._issues.clear()
         for asset in self._candidate_assets():
+            check_cutscene_resolution_cancelled(cancellation)
             self._load_asset_edges(asset)
         for child_hash, edges in self._edges_by_child.items():
             edges.sort(key=lambda edge: (edge.source_rank, edge.parent_hash))
@@ -213,8 +216,8 @@ class TextureDictionaryGraph:
         edge = self.selected_edge(child)
         return edge.parent_hash if edge is not None else None
 
-    def parent_map(self) -> dict[int, int]:
-        self._ensure_graph()
+    def parent_map(self, *, cancellation: Any | None = None) -> dict[int, int]:
+        self._ensure_graph(cancellation)
         return {child_hash: edge.parent_hash for child_hash, edge in self._selected.items()}
 
     def iter_chain(self, child: str | int, *, max_depth: int = 64) -> Iterator[TextureGraphEdge]:

@@ -4,6 +4,7 @@ from collections import OrderedDict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Condition
 from typing import TYPE_CHECKING, Any, Self
 
 if TYPE_CHECKING:
@@ -18,6 +19,10 @@ if TYPE_CHECKING:
     )
     from ..cut.resolve import CutsceneAssetBundle
     from ..rel import RelSoundIndex
+    from .cutscene_preparation import (
+        CutsceneResolutionPreparation,
+        CutsceneResolutionPreparationCallback,
+    )
     from .texture_resolution import TextureResolution
 
 from ..crypto import GameCrypto
@@ -128,6 +133,14 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         repr=False,
     )
     _vehicle_appearance_index: Any | None = field(default=None, init=False, repr=False)
+    _cutscene_preparation_condition: Condition = field(
+        default_factory=Condition,
+        init=False,
+        repr=False,
+    )
+    _cutscene_preparation_active: bool = field(default=False, init=False, repr=False)
+    _cutscene_preparation_generation: int = field(default=-1, init=False, repr=False)
+    _cutscene_preparation_result: Any | None = field(default=None, init=False, repr=False)
     _payload_cache: OrderedDict[tuple[int, bool], bytes] = field(
         default_factory=OrderedDict,
         init=False,
@@ -205,6 +218,8 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._rel_sound_asset_count = -1
         self._rel_sound_index_errors = ()
         self._vehicle_appearance_index = None
+        self._cutscene_preparation_result = None
+        self._cutscene_preparation_generation = -1
 
     def ensure_rel_sound_index(self) -> RelSoundIndex:
         from ..rel import RelFile, RelSoundIndex
@@ -231,6 +246,21 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         self._rel_sound_asset_count = len(assets)
         self._rel_sound_index_errors = tuple(errors)
         return self._rel_sound_index
+
+    def prepare_cutscene_resolution(
+        self,
+        *,
+        cancellation: CutsceneResolutionCancellation | None = None,
+        progress: CutsceneResolutionPreparationCallback | None = None,
+    ) -> CutsceneResolutionPreparation:
+        """Prepare the global indexes shared by CUT dependency resolution."""
+        from .cutscene_preparation import prepare_cutscene_resolution
+
+        return prepare_cutscene_resolution(
+            self,
+            cancellation=cancellation,
+            progress=progress,
+        )
 
     @property
     def rel_sound_index_errors(self) -> tuple[str, ...]:
