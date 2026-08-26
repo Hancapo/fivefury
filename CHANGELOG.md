@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- Typed compiled REL metadata families with runtime, release, and external-name-table payloads.
 - General AWC channel-codec inspection and validation of incompatible encryption flags.
 - Automatic CUT flag derivation from semantic authoring settings, audio bindings, section data, blend-out metadata, and concatenation mode.
 - Explicit typed preparation of the global indexes required by CUT dependency resolution, with cancellation, monotonic progress, diagnostics, and per-index timings.

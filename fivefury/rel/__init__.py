@@ -51,6 +51,7 @@ from .graph import (
     resolve_rel_sound_graph,
 )
 from .io import build_rel_bytes, read_rel, save_rel
+from .metadata import RelExternalNameTable, RelMetadataChunk
 from .mixer_types import (
     Dat15DynamicMixModuleSettings,
     Dat15MixCategory,
@@ -254,10 +255,12 @@ __all__ = [
     "Dat151ZoneVolume",
     "NamedRelItem",
     "RelDatFileType",
+    "RelExternalNameTable",
     "RelFile",
     "RelIndexHash",
     "RelIndexString",
     "RelItem",
+    "RelMetadataChunk",
     "RelRawItem",
     "RelSoundEndpoint",
     "RelSoundGraph",
