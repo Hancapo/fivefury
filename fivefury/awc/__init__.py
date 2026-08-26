@@ -36,6 +36,7 @@ from .mp3 import (
 from .streaming import (
     Mp3StreamingBlock,
     Mp3StreamingChannel,
+    Mp3StreamingData,
     inspect_mp3_streaming_data,
 )
 from .structures import (
@@ -84,6 +85,7 @@ __all__ = [
     "Mp3Frame",
     "Mp3StreamingBlock",
     "Mp3StreamingChannel",
+    "Mp3StreamingData",
     "awc_channel_codecs",
     "awc_chunk_name",
     "awc_playback_streams",

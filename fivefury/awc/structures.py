@@ -922,9 +922,9 @@ def _awc_mp3_source_stream(
     if len(encoded) != len(channels):
         raise TypeError("MP3 source stream requires encoded MP3 channels")
     block_size = 524_288
-    data, block_count = build_mp3_streaming_data(encoded, block_size=block_size)
+    streaming = build_mp3_streaming_data(encoded, block_size=block_size)
     stream_format = AwcStreamFormatChunk(
-        block_count=block_count,
+        block_count=streaming.block_count,
         block_size=block_size,
         channels=[
             stream.stream_format
@@ -936,7 +936,12 @@ def _awc_mp3_source_stream(
         0,
         [
             AwcChunk(AwcChunkType.STREAM_FORMAT, stream_format=stream_format),
-            AwcChunk(AwcChunkType.DATA, data=data),
+            AwcChunk(AwcChunkType.DATA, data=streaming.data),
+            AwcChunk(
+                AwcChunkType.SEEK_TABLE,
+                seek_table=list(streaming.seek_table),
+                seek_table_entry_size=4,
+            ),
         ],
     )
 

@@ -26,6 +26,30 @@ class Mp3StreamingChannel:
 class Mp3StreamingBlock:
     channels: tuple[Mp3StreamingChannel, ...]
 
+    @property
+    def first_packet_sample_offset(self) -> int:
+        return _first_packet_sample_offset(
+            tuple(channel.packet_offsets for channel in self.channels)
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Mp3StreamingData:
+    data: bytes
+    block_count: int
+    seek_table: tuple[int, ...]
+
+
+def _first_packet_sample_offset(
+    offsets_by_channel: tuple[tuple[int, ...], ...],
+) -> int:
+    if not offsets_by_channel or any(not offsets for offsets in offsets_by_channel):
+        raise ValueError("Every MP3 block channel must contain a packet offset")
+    value = max(offsets[0] for offsets in offsets_by_channel)
+    if value < 0 or value > 0xFFFFFFFF:
+        raise ValueError("MP3 block seek offset exceeds uint32")
+    return value
+
 
 def _align(value: int, alignment: int) -> int:
     return value + (-value % alignment)
@@ -97,7 +121,7 @@ def build_mp3_streaming_data(
     channels: tuple[EncodedMp3Channel, ...],
     *,
     block_size: int = 524_288,
-) -> tuple[bytes, int]:
+) -> Mp3StreamingData:
     if not channels:
         raise ValueError("MP3 streaming authoring requires at least one channel")
     if block_size <= 0 or block_size % MP3_STREAMING_PACKET_SIZE:
@@ -126,6 +150,7 @@ def build_mp3_streaming_data(
     sample_count = sample_counts.pop()
     prefixes = tuple(_frame_prefix(channel) for channel in channels)
     blocks: list[bytes] = []
+    seek_table: list[int] = []
     first_frame = 0
     while first_frame < frame_count:
         end_frame = _block_end(
@@ -158,6 +183,7 @@ def build_mp3_streaming_data(
                 len(sizes),
                 len(payload),
             )
+        seek_table.append(_first_packet_sample_offset(tuple(offsets_by_channel)))
         for offsets in offsets_by_channel:
             block += struct.pack(f"<{len(offsets)}i", *offsets)
         block += bytes(-len(block) % MP3_STREAMING_PACKET_SIZE)
@@ -168,7 +194,7 @@ def build_mp3_streaming_data(
         block += bytes(block_size - len(block))
         blocks.append(bytes(block))
         first_frame = end_frame
-    return b"".join(blocks), len(blocks)
+    return Mp3StreamingData(b"".join(blocks), len(blocks), tuple(seek_table))
 
 
 def inspect_mp3_streaming_data(
@@ -250,6 +276,7 @@ def inspect_mp3_streaming_data(
 __all__ = [
     "Mp3StreamingBlock",
     "Mp3StreamingChannel",
+    "Mp3StreamingData",
     "build_mp3_streaming_data",
     "inspect_mp3_streaming_data",
 ]
