@@ -29,14 +29,16 @@ from ..audio_references import (
     cut_audio_container_hints,
     cut_audio_reference_hash,
     cut_audio_references,
-    cut_event_references,
     resolve_cut_audio_sound_graph,
 )
 from ..reference_values import field_reference
 from .animation_dictionary import CutsceneAnimationDictionary
 from .asset_context import CutAssetContext, CutContextAsset, cut_asset_reference_hash
 from .bindings import CutBinding, CutPed
-from .shared import _runtime_animation_section_index
+from .shared import (
+    _runtime_animation_section_index,
+    _runtime_animation_section_starts,
+)
 
 if TYPE_CHECKING:
     from ...ycd.model import YcdAnimation, YcdClip
@@ -228,27 +230,41 @@ class _CutsceneContextValidator:
         self._validate_audio()
 
     def resolve_ycds(self) -> None:
+        if not any(
+            event.event_name in {"load_anim_dict", "set_anim"}
+            for event in self.scene.timeline
+        ):
+            return
         if (
             self.scene.animation_dictionary is not None
             and self.scene.animation_dictionary.sections
         ):
             return
-        known_hashes: set[int] = set()
-        for reference in cut_event_references(
-            self.scene,
-            {"load_anim_dict"},
-        ):
-            reference_hash = cut_asset_reference_hash(reference)
-            if reference_hash in known_hashes:
-                continue
-            asset = self.assets.find(reference, (GameFileType.YCD,))
+        scene_name = self.scene.scene_name
+        if not scene_name:
+            return
+        dictionary = CutsceneAnimationDictionary()
+        section_count = len(_runtime_animation_section_starts(self.scene))
+        for section in range(section_count):
+            candidates = [f"{scene_name}-{section}"]
+            if section_count == 1:
+                candidates.append(scene_name)
+            asset = next(
+                (
+                    match
+                    for candidate in candidates
+                    if (match := self.assets.find(candidate, (GameFileType.YCD,)))
+                    is not None
+                ),
+                None,
+            )
             if asset is None:
                 self.report.issue(
-                    "cut.ycd.unresolved",
-                    f"No YCD matches animation dictionary {reference!s}",
+                    "cut.ycd.section_unresolved",
+                    f"No YCD matches technical animation section {scene_name}-{section}",
                     severity=_severity(self.context),
                     asset=self.scene.scene_name,
-                    path="timeline.animation",
+                    path=f"animation_dictionary.sections[{section}]",
                 )
                 continue
             ycd = self._load(
@@ -266,12 +282,8 @@ class _CutsceneContextValidator:
                         path="timeline.animation",
                     )
                 continue
-            if self.scene.animation_dictionary is None:
-                self.scene.animation_dictionary = CutsceneAnimationDictionary(
-                    reference=str(reference)
-                )
-            self.scene.animation_dictionary.sections.append(ycd)
-            known_hashes.add(reference_hash)
+            dictionary.sections.append(ycd)
+        self.scene.animation_dictionary = dictionary
 
     def _load(
         self,

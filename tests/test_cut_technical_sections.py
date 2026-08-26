@@ -1,7 +1,10 @@
 import pytest
 
 from fivefury import (
+    AssetSet,
+    BuildContext,
     CutsceneAnimationDictionary,
+    CutsceneAssets,
     CutsceneProject,
     GameTarget,
     Quaternion,
@@ -104,3 +107,95 @@ def test_single_ycd_project_uses_the_same_logical_animation_lifecycle() -> None:
         for event in assets.scene.timeline
         if event.event_name in {"set_anim", "clear_anim"}
     }
+
+
+def test_validation_checks_every_active_technical_ycd_section() -> None:
+    project = CutsceneProject.create(
+        "section_validation",
+        duration=3.0,
+        camera_cuts=[1.0, 2.0],
+    )
+    actor = project.scene.prop("actor", model_name="actor", ytyp_name="actors")
+    project.animate(
+        actor,
+        mover_position=Vector3(),
+        mover_rotation=Quaternion(),
+    )
+    project.camera(position=Vector3(), rotation=Quaternion())
+    assets = project.build()
+    assert assets.scene.animation_dictionary is not None
+    assets.scene.animation_dictionary.sections[2].clips = [
+        clip
+        for clip in assets.scene.animation_dictionary.sections[2].clips
+        if clip.short_name != "actor-2"
+    ]
+
+    report = assets.validate()
+
+    issue = next(
+        issue for issue in report.errors if issue.code == "set_anim.clip.missing"
+    )
+    assert "segment 2" in issue.message
+
+
+def test_validation_rejects_physical_loads_and_boundary_rebinds() -> None:
+    project = CutsceneProject.create(
+        "redundant_sections",
+        duration=2.0,
+        camera_cuts=[1.0],
+    )
+    actor = project.scene.prop("actor", model_name="actor", ytyp_name="actors")
+    project.animate(actor, mover_position=Vector3(), mover_rotation=Quaternion())
+    project.camera(position=Vector3(), rotation=Quaternion())
+    project.scene.load_anim_dict(
+        1.0,
+        "redundant_sections-1",
+        target=project.animation_manager,
+    )
+    project.scene.set_anim(1.0, actor, target=project.animation_manager)
+
+    codes = {issue.code for issue in project.build().validate().errors}
+
+    assert "load_anim_dict.physical_section" in codes
+    assert "load_anim_dict.redundant" in codes
+    assert "set_anim.section_rebind.redundant" in codes
+
+
+def test_semantic_clear_allows_a_new_binding_at_a_section_boundary() -> None:
+    project = CutsceneProject.create(
+        "semantic_rebind",
+        duration=2.0,
+        camera_cuts=[1.0],
+    )
+    actor = project.scene.prop("actor", model_name="actor", ytyp_name="actors")
+    project.animate(actor, mover_position=Vector3(), mover_rotation=Quaternion())
+    project.camera(position=Vector3(), rotation=Quaternion())
+    project.scene.clear_anim(1.0, actor, target=project.animation_manager)
+    project.scene.set_anim(1.0, actor, target=project.animation_manager)
+
+    codes = {issue.code for issue in project.build().validate().errors}
+
+    assert "set_anim.section_rebind.redundant" not in codes
+    assert "clear_anim.lifecycle.unbalanced" not in codes
+
+
+def test_loose_ycd_resolution_uses_physical_section_names() -> None:
+    project = CutsceneProject.create(
+        "loose_sections",
+        duration=2.0,
+        camera_cuts=[1.0],
+    )
+    project.camera(position=Vector3(), rotation=Quaternion())
+    authored = project.build()
+    assert authored.scene.animation_dictionary is not None
+    assets = AssetSet()
+    for ycd in authored.scene.animation_dictionary.sections:
+        assets[f"stream/{ycd.path}"] = ycd
+    authored.scene.animation_dictionary.sections = []
+
+    report = CutsceneAssets(authored.scene).validate(
+        context=BuildContext(assets=assets)
+    )
+
+    assert "cut.ycd.section_unresolved" not in {issue.code for issue in report.errors}
+    assert report.valid
