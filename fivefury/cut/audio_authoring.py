@@ -16,7 +16,7 @@ from .audio_profiles import (
 if TYPE_CHECKING:
     from ..authoring import BuildContext
     from ..awc import Awc
-    from ..rel import RelFile
+    from ..rel import RelFile, RelMetadataChunk
 
 
 _LOGICAL_SUFFIXES = (
@@ -53,7 +53,9 @@ def _wavepack_name(value: str) -> str:
     path = PurePosixPath(str(value).strip().replace("\\", "/"))
     name = path.name.casefold()
     if not name or name != str(path) or len(name) < 8:
-        raise ValueError("wavepack_name must be one folder name of at least 8 characters")
+        raise ValueError(
+            "wavepack_name must be one folder name of at least 8 characters"
+        )
     return name
 
 
@@ -79,7 +81,9 @@ def _stream_durations(awc: Awc) -> tuple[tuple[int, float], ...]:
 
 
 def _duration_ms(streams: tuple[tuple[int, float], ...]) -> int:
-    return ceil(max((duration for _stream_hash, duration in streams), default=0.0) * 1000.0)
+    return ceil(
+        max((duration for _stream_hash, duration in streams), default=0.0) * 1000.0
+    )
 
 
 @dataclass(slots=True)
@@ -233,7 +237,8 @@ class CutsceneAudioAssets:
             )
         expected_container = rel_hash(self.bank_name)
         if any(
-            endpoint.container_hash != expected_container for endpoint in graph.endpoints
+            endpoint.container_hash != expected_container
+            for endpoint in graph.endpoints
         ):
             report.issue(
                 "cut.audio.container.unresolved",
@@ -267,15 +272,20 @@ class CutsceneAudioAssets:
                     "CUT mastered audio requires wave slot index 0",
                     path=f"sounds.items[0x{sound_hash:08X}].wave_slot_index",
                 )
-        if self.awc.multi_channel_flag and int(self.awc.flags) != profile.multichannel_flags:
+        if (
+            self.awc.multi_channel_flag
+            and int(self.awc.flags) != profile.multichannel_flags
+        ):
             report.issue(
                 "cut.audio.awc.flags.invalid",
                 f"CUT multichannel AWC flags must be 0x{profile.multichannel_flags:04X} for {self.game.value}",
                 path="awc.flags",
             )
         codecs = awc_channel_codecs(self.awc)
-        if self.game is GameTarget.GTA5_ENHANCED and codecs and any(
-            int(codec) == 0 for codec in codecs
+        if (
+            self.game is GameTarget.GTA5_ENHANCED
+            and codecs
+            and any(int(codec) == 0 for codec in codecs)
         ):
             report.issue(
                 "cut.audio.codec.uncompressed",
@@ -304,11 +314,11 @@ class CutsceneAudioAssets:
 
         self.validate().raise_for_errors()
         awc_data = self.awc.to_bytes()
-        sounds_data = self.sounds.to_bytes()
+        sounddata = self.build_sounddata()
         rebuilt = CutsceneAudioAssets(
             reference=self.reference,
             awc=read_awc(awc_data, path=self.awc_name),
-            sounds=read_rel(sounds_data, path=self.sounds_name),
+            sounds=read_rel(sounddata.release_payload, path=self.sounds_name),
             awc_name=self.awc_name,
             sounds_name=self.sounds_name,
             wavepack_name=self.wavepack_name,
@@ -318,7 +328,18 @@ class CutsceneAudioAssets:
         from ..authoring import BuildContext
 
         rebuilt.validate(context=BuildContext(game=self.game)).raise_for_errors()
-        return {self.sounds_name: sounds_data, self.awc_name: awc_data}
+        return {**sounddata.payloads, self.awc_name: awc_data}
+
+    def build_sounddata(self) -> RelMetadataChunk:
+        from ..authoring import BuildContext
+        from ..rel import RelMetadataChunk
+
+        self.validate(context=BuildContext(game=self.game)).raise_for_errors()
+        return RelMetadataChunk.from_rel(
+            self.sounds_name,
+            self.sounds,
+            context=BuildContext(game=self.game),
+        )
 
 
 def build_cutscene_audio_assets(
@@ -380,6 +401,7 @@ def build_cutscene_audio_assets(
         items=[
             Dat54StreamingSound(
                 name_hash=all_hashes[0],
+                name=root_name,
                 header=profile.streaming_header(),
                 child_sounds=child_hashes,
                 duration=_duration_ms(streams),
@@ -387,13 +409,14 @@ def build_cutscene_audio_assets(
             *(
                 Dat54SimpleSound(
                     name_hash=child_hash,
+                    name=child_name,
                     header=route.header(),
                     container_name=bank_name,
                     file_name=stream_hash,
                     wave_slot_index=0,
                 )
-                for child_hash, stream_hash, route in zip(
-                    child_hashes, stream_hashes, routes, strict=True
+                for child_name, child_hash, stream_hash, route in zip(
+                    child_names, child_hashes, stream_hashes, routes, strict=True
                 )
             ),
         ],

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ..authoring import ValidationReport
 from ..cut.scene import CutsceneAssets
 from ..rpf import RpfArchive, RpfFileEntry
+from .audio import DlcSounddataRegistration
 from .content import DlcContentFile, DlcContentXml
 from .enums import DlcDataFileType
 
@@ -19,9 +20,8 @@ class DlcCutsceneRegistration:
     assets: CutsceneAssets
     archive_path: str
     cutscene_names: tuple[str, ...]
-    sounddata_paths: tuple[str, ...]
+    sounddata: tuple[DlcSounddataRegistration, ...]
     awc_paths: tuple[str, ...]
-    sounddata_registrations: tuple[str, ...]
     wavepack_registrations: tuple[str, ...]
     change_set_name: str
 
@@ -44,38 +44,33 @@ def _content_file(
 def _change_set_name(pack: DlcPack, cut_name: str) -> str:
     stem = PurePosixPath(cut_name).stem
     value = f"{pack.name}_{stem}_CUTSCENE"
-    return "".join(character if character.isalnum() else "_" for character in value).upper()
+    return "".join(
+        character if character.isalnum() else "_" for character in value
+    ).upper()
 
 
 def _preflight_registration(
     pack: DlcPack,
     *,
     archive_path: str,
-    sounddata_paths: tuple[str, ...],
     awc_paths: tuple[str, ...],
-    sounddata_registrations: tuple[str, ...],
     wavepack_registrations: tuple[str, ...],
 ) -> ValidationReport:
     report = ValidationReport()
     existing_paths = {path.casefold() for path in pack.files}
-    for path in (archive_path, *sounddata_paths, *awc_paths):
+    for path in (archive_path, *awc_paths):
         if path.casefold() in existing_paths:
             report.issue(
                 "cut.audio.name.duplicate",
                 f"DLC payload path is already in use: {path}",
                 path=path,
             )
-    for path in sounddata_registrations:
-        existing = _content_file(pack.content, path)
-        if existing is not None:
-            report.issue(
-                "cut.audio.sounddata.unregistered",
-                f"DLC content path is already registered: {path}",
-                path=path,
-            )
     for path in wavepack_registrations:
         existing = _content_file(pack.content, path)
-        if existing is not None and _file_type(existing) != DlcDataFileType.AUDIO_WAVEPACK.value:
+        if (
+            existing is not None
+            and _file_type(existing) != DlcDataFileType.AUDIO_WAVEPACK.value
+        ):
             report.issue(
                 "cut.audio.wavepack.unregistered",
                 f"DLC content path is not registered as AUDIO_WAVEPACK: {path}",
@@ -91,17 +86,20 @@ def register_dlc_cutscene(
     if not isinstance(assets, CutsceneAssets):
         raise TypeError(f"expected CutsceneAssets, got {type(assets).__name__}")
     assets.validate().raise_for_errors()
+    sounddata_chunks = tuple(audio.build_sounddata() for audio in assets.audio)
     files = assets.build_files()
     audio_names = {
         name.casefold()
-        for audio in assets.audio
-        for name in (audio.sounds_name, audio.awc_name)
+        for audio, sounddata in zip(assets.audio, sounddata_chunks, strict=True)
+        for name in (*sounddata.payloads, audio.awc_name)
     }
     cutscene_files = {
         name: data for name, data in files.items() if name.casefold() not in audio_names
     }
     invalid_cutscene_names = [
-        name for name in cutscene_files if PurePosixPath(name).suffix.casefold() not in {".cut", ".ycd"}
+        name
+        for name in cutscene_files
+        if PurePosixPath(name).suffix.casefold() not in {".cut", ".ycd"}
     ]
     if invalid_cutscene_names:
         raise ValueError(
@@ -111,26 +109,19 @@ def register_dlc_cutscene(
 
     cut_stem = PurePosixPath(assets.output_name).stem.casefold()
     archive_path = f"x64/cutscenes/{cut_stem}.rpf"
-    sounddata_paths = tuple(
-        f"x64/audio/config/{audio.sounds_name}" for audio in assets.audio
-    )
     awc_paths = tuple(
         f"x64/audio/sfx/{audio.wavepack_name}/{audio.awc_name}"
         for audio in assets.audio
     )
-    sounddata_registrations = tuple(pack.path(path) for path in sounddata_paths)
     wavepack_registrations = tuple(
         dict.fromkeys(
-            pack.path(f"x64/audio/sfx/{audio.wavepack_name}")
-            for audio in assets.audio
+            pack.path(f"x64/audio/sfx/{audio.wavepack_name}") for audio in assets.audio
         )
     )
     _preflight_registration(
         pack,
         archive_path=archive_path,
-        sounddata_paths=sounddata_paths,
         awc_paths=awc_paths,
-        sounddata_registrations=sounddata_registrations,
         wavepack_registrations=wavepack_registrations,
     ).raise_for_errors()
 
@@ -138,14 +129,7 @@ def register_dlc_cutscene(
     for name, data in cutscene_files.items():
         archive.file(name, data)
     archive_registration = pack.rpf(archive_path, archive)
-    for audio, path, registration_path in zip(
-        assets.audio,
-        sounddata_paths,
-        sounddata_registrations,
-        strict=True,
-    ):
-        pack.file(path, files[audio.sounds_name])
-        pack.content.file(registration_path, DlcDataFileType.AUDIO_SOUNDDATA)
+    sounddata = tuple(pack.mount_sounddata(chunk) for chunk in sounddata_chunks)
     for audio, path in zip(assets.audio, awc_paths, strict=True):
         pack.file(path, files[audio.awc_name])
     for registration_path in wavepack_registrations:
@@ -156,16 +140,15 @@ def register_dlc_cutscene(
     change_set = pack.change_set(change_set_name, enable_all=False)
     change_set.enable(
         archive_registration.filename,
-        *sounddata_registrations,
+        *(item.logical_registration for item in sounddata),
         *wavepack_registrations,
     )
     registration = DlcCutsceneRegistration(
         assets=assets,
         archive_path=archive_path,
         cutscene_names=tuple(cutscene_files),
-        sounddata_paths=sounddata_paths,
+        sounddata=sounddata,
         awc_paths=awc_paths,
-        sounddata_registrations=sounddata_registrations,
         wavepack_registrations=wavepack_registrations,
         change_set_name=change_set_name,
     )
@@ -198,15 +181,11 @@ def validate_dlc_cutscenes(pack: DlcPack) -> ValidationReport:
                 f"CUT archive is not mounted as an RPF: {archive_registration}",
                 path=path,
             )
-        for physical, virtual in zip(
-            registration.sounddata_paths,
-            registration.sounddata_registrations,
-            strict=True,
-        ):
+        for sounddata in registration.sounddata:
+            virtual = sounddata.logical_registration
             content_file = content_files.get(virtual.casefold())
             if (
-                physical.casefold() not in payload_paths
-                or content_file is None
+                content_file is None
                 or _file_type(content_file) != DlcDataFileType.AUDIO_SOUNDDATA.value
                 or virtual.casefold() not in enabled
             ):
@@ -283,6 +262,9 @@ def validate_dlc_cutscene_archive(
             path=content_name,
         )
         return report
+    from .audio import validate_dlc_sounddata_archive
+
+    report.extend(validate_dlc_sounddata_archive(pack, archive, content))
     content_files = {item.filename.casefold(): item for item in content.data_files}
     change_sets = {
         item.name: {path.casefold() for path in item.files_to_enable}
@@ -308,10 +290,7 @@ def validate_dlc_cutscene_archive(
                         source_entry.read_standalone(),
                     )
                 )
-        for payload_path in (
-            *registration.sounddata_paths,
-            *registration.awc_paths,
-        ):
+        for payload_path in (*registration.awc_paths,):
             value = pack.files.get(payload_path)
             if isinstance(value, (bytes, bytearray, memoryview)):
                 expected_payloads.append((payload_path, bytes(value)))
@@ -322,13 +301,13 @@ def validate_dlc_cutscene_archive(
                     f"Generated DLC payload did not survive its RPF round-trip: {payload_path}",
                     path=path,
                 )
-        for audio, sounds_path, awc_path in zip(
+        for audio, sounddata, awc_path in zip(
             registration.assets.audio,
-            registration.sounddata_paths,
+            registration.sounddata,
             registration.awc_paths,
             strict=True,
         ):
-            sounds_data = _entry_bytes(archive, sounds_path)
+            sounds_data = _entry_bytes(archive, sounddata.release_path)
             awc_data = _entry_bytes(archive, awc_path)
             if sounds_data is None or awc_data is None:
                 continue
@@ -358,8 +337,8 @@ def validate_dlc_cutscene_archive(
         for virtual, expected_type in (
             ((pack.path(registration.archive_path), DlcDataFileType.RPF),)
             + tuple(
-                (name, DlcDataFileType.AUDIO_SOUNDDATA)
-                for name in registration.sounddata_registrations
+                (item.logical_registration, DlcDataFileType.AUDIO_SOUNDDATA)
+                for item in registration.sounddata
             )
             + tuple(
                 (name, DlcDataFileType.AUDIO_WAVEPACK)
