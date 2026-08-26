@@ -30,7 +30,7 @@ from .shared import (
     _coerce_name,
     _is_scene_entity,
     _parse_hex_hash,
-    _runtime_animation_section_index,
+    _runtime_animation_section_starts,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -185,6 +185,40 @@ def _animation_sections(scene: CutScene) -> tuple[Any, ...]:
     return tuple(dictionary.sections) if dictionary else ()
 
 
+def _animation_section_ranges(scene: CutScene) -> tuple[tuple[int, float, float], ...]:
+    starts = _runtime_animation_section_starts(scene)
+    ends = (*starts[1:], float(scene.duration or 0.0))
+    return tuple(
+        (index, start, end)
+        for index, (start, end) in enumerate(zip(starts, ends, strict=True))
+    )
+
+
+def _animation_clear_time(scene: CutScene, object_id: int, start: float) -> float:
+    return min(
+        (
+            float(event.start)
+            for event in _events_by_name(scene, "clear_anim")
+            if _event_object_payload_id(event) == object_id
+            and float(event.start) > start
+        ),
+        default=float(scene.duration or 0.0),
+    )
+
+
+def _active_animation_section_indices(
+    scene: CutScene,
+    *,
+    start: float,
+    end: float,
+) -> tuple[int, ...]:
+    return tuple(
+        index
+        for index, section_start, section_end in _animation_section_ranges(scene)
+        if section_end > start and section_start < end
+    )
+
+
 def _binding_text_field(binding: CutBinding, field_name: str) -> str | None:
     value = binding.fields.get(field_name)
     return _name(value)
@@ -197,7 +231,11 @@ def _binding_int_field(binding: CutBinding, field_name: str) -> int:
 
 def _has_segmented_clip(scene: CutScene, clip_base: str, cut_index: int) -> bool:
     expected_name = f"{clip_base}-{cut_index}"
-    return scene.get_clip(expected_name) is not None
+    return any(
+        str(clip.short_name or clip.name or "") == expected_name
+        for ycd in _animation_sections(scene)
+        for clip in ycd.clips
+    )
 
 
 def _camera_clip_bases_by_section(scene: CutScene) -> dict[int, set[str]]:
@@ -785,7 +823,7 @@ def _validate_cameras(
             )
 
         if animated and _animation_sections(scene):
-            section_count = len(scene.camera_cut_list or ()) + 1
+            section_count = len(_runtime_animation_section_starts(scene))
             for section_index in range(section_count):
                 if clip_base not in clip_bases_by_section.get(section_index, set()):
                     _issue(
@@ -946,9 +984,115 @@ def _validate_cameras(
             used_hours |= hour_flags
 
 
+def _validate_animation_lifecycle(
+    scene: CutScene,
+    issues: ValidationReport,
+    *,
+    strict: bool,
+) -> None:
+    dictionary = scene.animation_dictionary
+    if dictionary is None:
+        return
+    sections = tuple(dictionary.sections)
+    expected_sections = len(_runtime_animation_section_starts(scene))
+    if sections and len(sections) != expected_sections:
+        _issue(
+            issues,
+            "error",
+            "animation_dictionary.section_count.mismatch",
+            f"Animation dictionary has {len(sections)} technical YCD sections; the CUT requires {expected_sections}",
+        )
+
+    section_stems = {ycd.stem.casefold() for ycd in sections if ycd.stem}
+    loads = _events_by_name(scene, "load_anim_dict")
+    logical_loads: list[CutTimelineEvent] = []
+    for event in loads:
+        label = event.label or _name(event.payload.get("cName"))
+        if not label:
+            continue
+        if _dictionary_reference_matches(dictionary.reference, label):
+            logical_loads.append(event)
+        elif any(_dictionary_reference_matches(stem, label) for stem in section_stems):
+            _issue(
+                issues,
+                "error",
+                "load_anim_dict.physical_section",
+                f"LOAD_ANIM_DICT references technical YCD section '{label}' instead of the logical dictionary",
+            )
+    if strict and sections and len(logical_loads) != 1:
+        _issue(
+            issues,
+            "error",
+            "load_anim_dict.logical_count.invalid",
+            f"Sectioned CUT requires exactly one logical LOAD_ANIM_DICT; found {len(logical_loads)}",
+        )
+    if len(loads) > 1:
+        _issue(
+            issues,
+            "error",
+            "load_anim_dict.redundant",
+            f"CUT has {len(loads)} animation dictionary loads for one logical YCD family",
+        )
+
+    logical_unloads = [
+        event
+        for event in _events_by_name(scene, "unload_anim_dict")
+        if (label := event.label or _name(event.payload.get("cName")))
+        and _dictionary_reference_matches(dictionary.reference, label)
+    ]
+    if len(logical_unloads) > 1:
+        _issue(
+            issues,
+            "error",
+            "unload_anim_dict.redundant",
+            f"CUT has {len(logical_unloads)} unloads for one logical animation dictionary",
+        )
+
+    boundary_times = set(_runtime_animation_section_starts(scene)[1:])
+    clear_events = _events_by_name(scene, "clear_anim")
+    sets_by_object: dict[int, list[CutTimelineEvent]] = {}
+    for event in _events_by_name(scene, "set_anim"):
+        object_id = _event_object_payload_id(event)
+        if object_id is not None:
+            sets_by_object.setdefault(object_id, []).append(event)
+    for object_id, events in sets_by_object.items():
+        ordered = sorted(
+            events, key=lambda event: (float(event.start), event.order or 0)
+        )
+        for previous, current in itertools.pairwise(ordered):
+            current_time = float(current.start)
+            if current_time not in boundary_times:
+                continue
+            has_clear = any(
+                _event_object_payload_id(event) == object_id
+                and float(previous.start) < float(event.start) <= current_time
+                for event in clear_events
+            )
+            if not has_clear:
+                _issue(
+                    issues,
+                    "error",
+                    "set_anim.section_rebind.redundant",
+                    f"Object {object_id} is rebound at technical YCD boundary {current_time:g} without a semantic CLEAR_ANIM",
+                )
+        matching_clears = [
+            event
+            for event in clear_events
+            if _event_object_payload_id(event) == object_id
+        ]
+        if strict and len(matching_clears) < len(events):
+            _issue(
+                issues,
+                "error",
+                "clear_anim.lifecycle.unbalanced",
+                f"Object {object_id} has {len(events)} SET_ANIM events but only {len(matching_clears)} CLEAR_ANIM events",
+            )
+
+
 def _validate_animations(
     scene: CutScene, issues: ValidationReport, *, strict: bool
 ) -> None:
+    _validate_animation_lifecycle(scene, issues, strict=strict)
     load_anim_events = _events_by_name(scene, "load_anim_dict")
     set_anim_events = _events_by_name(scene, "set_anim")
     sections = _animation_sections(scene)
@@ -1016,6 +1160,12 @@ def _validate_animations(
             binding, "runtime_animation_clip_base", authored_clip_base
         )
         anim_streaming_base = _binding_int_field(binding, "AnimStreamingBase")
+        event_start = float(event.start)
+        active_sections = _active_animation_section_indices(
+            scene,
+            start=event_start,
+            end=_animation_clear_time(scene, binding.object_id, event_start),
+        )
         if (
             _is_streamed_model(binding)
             and not animation_clip_base
@@ -1036,8 +1186,7 @@ def _validate_animations(
                     "set_anim.streaming_base.mismatch",
                     f"{_binding_name(binding)} AnimStreamingBase=0x{anim_streaming_base:08X}, expected 0x{expected_base:08X}",
                 )
-            if sections:
-                cut_index = _runtime_animation_section_index(scene, float(event.start))
+            for cut_index in active_sections if sections else ():
                 expected_clip_name = f"{animation_clip_base}-{cut_index}"
                 if not _has_segmented_clip(scene, animation_clip_base, cut_index):
                     _issue(
@@ -1048,16 +1197,14 @@ def _validate_animations(
                         hint=f"Expected the exact segmented clip '{expected_clip_name}'.",
                     )
         elif anim_streaming_base and sections:
-            active_cut_index = _runtime_animation_section_index(
-                scene, float(event.start)
-            )
-            if scene.clip_for_binding(binding, cut_index=active_cut_index) is None:
-                _issue(
-                    issues,
-                    "error",
-                    "set_anim.clip_hash.missing",
-                    f"{_binding_name(binding)} has no clip matching AnimStreamingBase in technical YCD segment {active_cut_index}",
-                )
+            for active_cut_index in active_sections:
+                if scene.clip_for_binding(binding, cut_index=active_cut_index) is None:
+                    _issue(
+                        issues,
+                        "error",
+                        "set_anim.clip_hash.missing",
+                        f"{_binding_name(binding)} has no clip matching AnimStreamingBase in technical YCD segment {active_cut_index}",
+                    )
         explicit_clip = _name(event.payload.get("cName"))
         explicit_clip_key = _parse_hex_hash(explicit_clip) or explicit_clip
         if explicit_clip and sections and scene.get_clip(explicit_clip_key) is None:

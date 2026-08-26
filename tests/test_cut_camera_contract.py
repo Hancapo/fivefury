@@ -429,3 +429,30 @@ def test_retail_prologue_cuts_follow_runtime_camera_contract(
             for issue in bundle.scene.validate(strict=True)
             if issue.severity == "error" and issue.code.startswith("camera")
         ]
+
+    sectioned = bundles[1]
+    assert sectioned.scene.animation_dictionary is not None
+    assert len(sectioned.scene.animation_dictionary.sections) > 1
+    assert (
+        len(
+            [
+                event
+                for event in sectioned.scene.timeline
+                if event.event_name == "load_anim_dict"
+            ]
+        )
+        == 1
+    )
+    assert not [
+        issue
+        for issue in sectioned.scene.validate(strict=True).errors
+        if issue.code.startswith(
+            (
+                "animation_dictionary",
+                "load_anim_dict",
+                "set_anim",
+                "clear_anim",
+                "unload_anim_dict",
+            )
+        )
+    ]

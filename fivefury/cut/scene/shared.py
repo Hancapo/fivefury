@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from ...common import hash_value
@@ -219,39 +219,42 @@ def _is_scene_entity(role: str | None) -> bool:
     return role in {"ped", "prop", "vehicle", "weapon", "hidden_object", "overlay", "particle_fx", "rayfire"}
 
 
-def _technical_cut_index(
-    camera_cut_list: Sequence[float] | None,
-    time: float,
-    *,
-    default: int = 0,
-) -> int:
-    if not camera_cut_list:
-        return int(default)
-    return bisect_right(camera_cut_list, float(time))
-
-
 def _runtime_animation_section_index(
     scene: Any,
     time: float,
     *,
     default: int = 0,
 ) -> int:
-    concat_data = (
-        scene.raw.root.fields.get("concatDataList") or ()
-        if scene.raw is not None
-        else ()
-    )
-    starts = [
-        float(item.fields.get("fStartTime", 0.0))
-        for item in concat_data
-        if item.fields.get("bValidForPlayBack", True)
-    ]
-    if starts:
-        return max(bisect_right(starts, float(time)) - 1, 0)
-    return _technical_cut_index(
-        scene.camera_cut_list,
-        time,
-        default=default,
+    starts = _runtime_animation_section_starts(scene)
+    if len(starts) == 1 and starts[0] == 0.0:
+        return int(default)
+    return max(bisect_right(starts, float(time)) - 1, 0)
+
+
+def _runtime_animation_section_starts(scene: Any) -> tuple[float, ...]:
+    from .settings import CutSectioningMode, _resolved_sectioning
+
+    if not scene.settings.sectioned:
+        return (0.0,)
+    duration = float(scene.duration or 0.0)
+    mode = _resolved_sectioning(scene)
+    values: Iterable[float]
+    if mode & CutSectioningMode.CAMERA_CUTS:
+        values = scene.camera_cut_list or ()
+    elif mode & CutSectioningMode.SPLIT:
+        values = scene.section_split_list or ()
+    elif mode & CutSectioningMode.DURATION:
+        interval = float(scene.section_by_time_slice_duration or 0.0)
+        values = (
+            (index * interval for index in range(1, int(duration // interval) + 1))
+            if interval > 0.0
+            else ()
+        )
+    else:
+        values = ()
+    return (
+        0.0,
+        *sorted({float(value) for value in values if 0.0 < float(value) < duration}),
     )
 
 

@@ -37,6 +37,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - CUT audio DLCs now use the retail sound-metadata layout in Legacy and Enhanced.
 - Enhanced retail CUT masters now use the runtime MP3 layout instead of preview-only PCM.
 - Sectioned CUT animations now load and bind once while the runtime streams their technical YCD sections.
+- CUT validation and asset resolution now follow the authored technical section schedule across attached, loose, and cached YCDs.
 
 ### Performance
 
