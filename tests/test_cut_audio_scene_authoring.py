@@ -69,7 +69,9 @@ def test_cutscene_assets_build_cut_rel_and_awc_together() -> None:
 
     assert set(files) == {
         "example.cut",
-        "example_seq_sounds.dat",
+        "example_seq_sounds.dat54",
+        "example_seq_sounds.dat54.rel",
+        "example_seq_sounds.dat54.nametable",
         "example_seq_mastered_only.awc",
     }
 
@@ -120,9 +122,7 @@ def test_assets_report_duplicate_audio_output_names() -> None:
 
     assets = project.build()
     assets.audio = (*assets.audio, second)
-    assert "cut.audio.name.duplicate" in {
-        issue.code for issue in assets.validate()
-    }
+    assert "cut.audio.name.duplicate" in {issue.code for issue in assets.validate()}
 
 
 def test_cutscene_without_audio_keeps_the_existing_file_set() -> None:

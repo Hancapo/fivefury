@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from .audio import (
+    DlcSounddataRegistration,
+    mount_dlc_sounddata,
+    validate_dlc_sounddata,
+    validate_dlc_sounddata_archive,
+)
 from .cutscene import DlcCutsceneRegistration
 from .enums import (
     DlcContentGroup,
@@ -85,6 +91,7 @@ __all__ = [
     "DlcPatchMount",
     "DlcResourceReference",
     "DlcSetupData",
+    "DlcSounddataRegistration",
     "build_dlc_content_xml",
     "build_dlc_extra_title_update_data_xml",
     "build_dlc_list_xml",
@@ -96,6 +103,7 @@ __all__ = [
     "dlc_platform_registration_path",
     "infer_dlc_content_from_folder",
     "iter_dlc_content_candidates",
+    "mount_dlc_sounddata",
     "read_dlc_content",
     "read_dlc_extra_title_update_data",
     "read_dlc_list",
@@ -107,5 +115,7 @@ __all__ = [
     "validate_dlc_folder_assets",
     "validate_dlc_pack",
     "validate_dlc_setup",
+    "validate_dlc_sounddata",
+    "validate_dlc_sounddata_archive",
     "write_dlc_folder_metadata",
 ]

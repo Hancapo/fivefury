@@ -12,6 +12,7 @@ from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
 from ..cut.scene import CutsceneAssets
 from ..game_target import GameTarget, coerce_game_target
+from ..rel import RelMetadataChunk
 from ..rpf import RpfArchive, RpfEncryption, RpfFileSource
 from ..xml import (
     append_items,
@@ -23,6 +24,7 @@ from ..xml import (
     parse_xml_root,
     xml_bytes,
 )
+from .audio import DlcSounddataRegistration
 from .content import (
     DlcChangeSetData,
     DlcContentChangeSet,
@@ -48,13 +50,7 @@ class _BuildBytes(Protocol):
 
 
 DlcFilePayload: TypeAlias = (
-    bytes
-    | bytearray
-    | memoryview
-    | RpfArchive
-    | RpfFileSource
-    | _ToBytes
-    | _BuildBytes
+    bytes | bytearray | memoryview | RpfArchive | RpfFileSource | _ToBytes | _BuildBytes
 )
 
 
@@ -159,6 +155,7 @@ class DlcPack:
     setup: DlcSetupData | None = None
     content: DlcContentXml = field(default_factory=DlcContentXml)
     files: dict[str, DlcFilePayload] = field(default_factory=dict)
+    sounddata: list[DlcSounddataRegistration] = field(default_factory=list)
     cutscenes: list[DlcCutsceneRegistration] = field(default_factory=list)
     game: GameTarget | None = None
     rpf_encryption: RpfEncryption = RpfEncryption.OPEN
@@ -230,6 +227,14 @@ class DlcPack:
 
         return register_dlc_cutscene(self, assets)
 
+    def mount_sounddata(
+        self,
+        metadata: RelMetadataChunk,
+    ) -> DlcSounddataRegistration:
+        from .audio import mount_dlc_sounddata
+
+        return mount_dlc_sounddata(self, metadata)
+
     def change_set(
         self,
         name: str,
@@ -295,19 +300,26 @@ class DlcPack:
             encryption=encryption,
             validate=validate,
         ).to_bytes()
-        if self.cutscenes:
-            from .cutscene import validate_dlc_cutscene_archive
-
+        if self.sounddata or self.cutscenes:
             rebuilt = RpfArchive.from_bytes(
                 data,
                 name="dlc.rpf",
                 load_nested=True,
             )
             try:
-                validate_dlc_cutscene_archive(self, rebuilt).raise_for_errors()
+                self._validate_archive(rebuilt).raise_for_errors()
             finally:
                 rebuilt.close()
         return data
+
+    def _validate_archive(self, archive: RpfArchive) -> ValidationReport:
+        if self.cutscenes:
+            from .cutscene import validate_dlc_cutscene_archive
+
+            return validate_dlc_cutscene_archive(self, archive)
+        from .audio import validate_dlc_sounddata_archive
+
+        return validate_dlc_sounddata_archive(self, archive)
 
     def save_dlc_rpf(
         self,
@@ -326,11 +338,9 @@ class DlcPack:
             encryption=encryption,
             validate=validate,
         )
-        if not self.cutscenes:
+        if not self.sounddata and not self.cutscenes:
             archive.save(target)
             return target
-
-        from .cutscene import validate_dlc_cutscene_archive
 
         temporary_path: Path | None = None
         try:
@@ -344,7 +354,7 @@ class DlcPack:
             archive.save(temporary_path)
             rebuilt = RpfArchive.from_path(temporary_path, load_nested=True)
             try:
-                validate_dlc_cutscene_archive(self, rebuilt).raise_for_errors()
+                self._validate_archive(rebuilt).raise_for_errors()
             finally:
                 rebuilt.close()
             os.replace(temporary_path, target)

@@ -45,9 +45,7 @@ def _root(assets) -> Dat54StreamingSound:
 
 
 def _children(assets) -> list[Dat54SimpleSound]:
-    return [
-        item for item in assets.sounds.items if isinstance(item, Dat54SimpleSound)
-    ]
+    return [item for item in assets.sounds.items if isinstance(item, Dat54SimpleSound)]
 
 
 def test_cut_audio_streaming_root_uses_retail_header() -> None:
@@ -103,11 +101,12 @@ def test_cut_audio_binary_round_trip_preserves_graph_and_pcm() -> None:
     original_pcm = assets.awc.pcm_bytes()
     files = assets.build_files()
     rebuilt_awc = read_awc(files[assets.awc_name])
-    rebuilt_rel = read_rel(files[assets.sounds_name])
+    sounddata = assets.build_sounddata()
+    rebuilt_rel = read_rel(files[sounddata.release_name])
 
     assert rebuilt_awc.flags == assets.awc.flags
     assert rebuilt_awc.pcm_bytes() == original_pcm
-    assert rebuilt_rel.to_bytes() == files[assets.sounds_name]
+    assert rebuilt_rel.to_bytes() == files[sounddata.release_name]
 
 
 def test_cut_audio_validation_rejects_generic_headers() -> None:
@@ -134,9 +133,9 @@ def test_enhanced_pcm_is_reported_as_uncompressed(channel_count: int) -> None:
 def test_awc_channel_codecs_cover_single_and_multichannel_audio(
     channel_count: int,
 ) -> None:
-    assert awc_channel_codecs(_awc(channel_count)) == (
-        AwcCodecType.PCM,
-    ) * channel_count
+    assert (
+        awc_channel_codecs(_awc(channel_count)) == (AwcCodecType.PCM,) * channel_count
+    )
 
 
 def test_awc_validation_rejects_incompatible_encryption_flags() -> None:
@@ -249,6 +248,4 @@ def test_direct_audio_assets_report_missing_awc_streams() -> None:
         game=valid.game,
     )
 
-    assert "cut.audio.stream.unresolved" in {
-        issue.code for issue in broken.validate()
-    }
+    assert "cut.audio.stream.unresolved" in {issue.code for issue in broken.validate()}

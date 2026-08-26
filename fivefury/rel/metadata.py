@@ -186,7 +186,9 @@ class RelMetadataChunk:
                 path="name_table.names",
             )
             return report
-        for index, (item, name) in enumerate(zip(ordered, self.name_table.names, strict=True)):
+        for index, (item, name) in enumerate(
+            zip(ordered, self.name_table.names, strict=True)
+        ):
             if rel_hash(name) != item.name_hash:
                 report.issue(
                     "rel.metadata.names.hash_mismatch",
@@ -194,11 +196,19 @@ class RelMetadataChunk:
                     path=f"name_table.names[{index}]",
                 )
         if self.schema == int(RelDatFileType.DAT54_DATA_ENTRIES):
-            expected = _build_dat54_runtime_payload(
-                rel,
-                self.release_payload,
-                self.name_table,
-            )
+            try:
+                expected = _build_dat54_runtime_payload(
+                    rel,
+                    self.release_payload,
+                    self.name_table,
+                )
+            except (ValueError, struct.error) as exc:
+                report.issue(
+                    "rel.metadata.runtime.invalid",
+                    f"REL runtime payload cannot be derived: {exc}",
+                    path="runtime_payload",
+                )
+                return report
             if expected != self.runtime_payload:
                 report.issue(
                     "rel.metadata.runtime.invalid",
@@ -265,7 +275,9 @@ def _build_dat54_runtime_payload(
     new_offsets: dict[int, int] = {}
     cursor = 0
     for item, name_offset in zip(items, names.offsets, strict=True):
-        if item.data_offset < cursor or item.data_offset + item.data_length > len(data_block):
+        if item.data_offset < cursor or item.data_offset + item.data_length > len(
+            data_block
+        ):
             raise ValueError("REL object range is invalid")
         rebuilt_data += data_block[cursor : item.data_offset]
         raw = data_block[item.data_offset : item.data_offset + item.data_length]
@@ -289,15 +301,19 @@ def _build_dat54_runtime_payload(
     position += index_count * 12
     hash_count = struct.unpack_from("<I", release_payload, position)[0]
     position += 4
-    hash_offsets = list(
-        struct.unpack_from(f"<{hash_count}I", release_payload, position)
-    ) if hash_count else []
+    hash_offsets = (
+        list(struct.unpack_from(f"<{hash_count}I", release_payload, position))
+        if hash_count
+        else []
+    )
     position += hash_count * 4
     pack_count = struct.unpack_from("<I", release_payload, position)[0]
     position += 4
-    pack_offsets = list(
-        struct.unpack_from(f"<{pack_count}I", release_payload, position)
-    ) if pack_count else []
+    pack_offsets = (
+        list(struct.unpack_from(f"<{pack_count}I", release_payload, position))
+        if pack_count
+        else []
+    )
     position += pack_count * 4
     if position != len(release_payload):
         raise ValueError("REL release payload contains an unsupported trailing section")

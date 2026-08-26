@@ -12,10 +12,13 @@ from fivefury import (
     GameFileCache,
     GameTarget,
     Quaternion,
+    RelExternalNameTable,
     RpfArchive,
     Vector3,
     build_cutscene_audio_assets,
     read_dlc_content,
+    read_rel,
+    validate_dlc_sounddata_archive,
 )
 from fivefury.cut.audio_references import cut_audio_asset_container_hashes
 from fivefury.hashing import jenk_hash
@@ -56,7 +59,7 @@ def test_dlc_cutscene_preserves_target_and_registers_audio(game: GameTarget) -> 
 
     assert pack.game is game
     assert registration.archive_path == "x64/cutscenes/example.rpf"
-    assert types["dlc_example_audio:/x64/audio/config/example_seq_sounds.dat"] == (
+    assert types["dlc_example_audio:/%PLATFORM%/audio/example_seq_sounds.dat"] == (
         DlcDataFileType.AUDIO_SOUNDDATA.value
     )
     assert types["dlc_example_audio:/x64/audio/sfx/dlc_exam_audio"] == (
@@ -68,10 +71,57 @@ def test_dlc_cutscene_preserves_target_and_registers_audio(game: GameTarget) -> 
     )
     for path in (
         "x64/cutscenes/example.rpf/example.cut",
-        "x64/audio/config/example_seq_sounds.dat",
+        "x64/audio/example_seq_sounds.dat54",
+        "x64/audio/example_seq_sounds.dat54.rel",
+        "x64/audio/example_seq_sounds.dat54.nametable",
         "x64/audio/sfx/dlc_exam_audio/example_seq_mastered_only.awc",
     ):
         assert rebuilt.find_entry(path) is not None
+    assert not any(
+        entry.full_path.casefold().startswith("x64/audio/config/")
+        for entry in rebuilt.iter_entries()
+    )
+
+    sounddata = registration.sounddata[0]
+    release = rebuilt.read_entry_bytes(rebuilt.find_entry(sounddata.release_path))
+    names_data = rebuilt.read_entry_bytes(rebuilt.find_entry(sounddata.name_table_path))
+    assert read_rel(release).to_bytes() == release
+    names = RelExternalNameTable.from_bytes(names_data)
+    assert names.to_bytes() == names_data
+    assert names.names == sounddata.metadata.name_table.names
+
+    pack.files.clear()
+    assert validate_dlc_sounddata_archive(pack, rebuilt).valid
+    rebuilt.close()
+
+
+@pytest.mark.parametrize("payload_index", range(3))
+def test_dlc_sounddata_requires_every_physical_payload(payload_index: int) -> None:
+    pack = DlcPack("example_audio")
+    registration = pack.cutscene(_assets()).sounddata[0]
+    archive = pack.to_rpf()
+    missing_path = registration.payload_paths[payload_index]
+    missing = archive.find_entry(missing_path)
+    assert missing is not None and missing.parent is not None
+    missing.parent.remove_file(missing)
+    rebuilt = RpfArchive.from_bytes(archive.to_bytes(), load_nested=True)
+
+    assert "dlc.sounddata.payload.missing" in {
+        issue.code for issue in validate_dlc_sounddata_archive(pack, rebuilt)
+    }
+    rebuilt.close()
+
+
+def test_dlc_rejects_legacy_raw_sounddata_layout() -> None:
+    pack = DlcPack("bobei")
+    old_path = "x64/audio/config/bobei_sounds.dat"
+    pack.file(old_path, b"legacy raw payload")
+    pack.content.file(pack.path(old_path), DlcDataFileType.AUDIO_SOUNDDATA)
+
+    assert {
+        "dlc.sounddata.unresolved",
+        "dlc.sounddata.layout.legacy_raw",
+    }.issubset(issue.code for issue in pack.validate())
 
 
 def test_dlc_cutscene_validation_detects_missing_audio_mounts() -> None:
@@ -91,10 +141,7 @@ def test_dlc_cutscene_validation_detects_missing_audio_mounts() -> None:
 def test_audio_container_hash_uses_the_wavepack_relative_bank_path() -> None:
     class Asset:
         stem = "example_seq_mastered_only"
-        path = (
-            "dlc.rpf/x64/audio/sfx/dlc_exam_audio/"
-            "example_seq_mastered_only.awc"
-        )
+        path = "dlc.rpf/x64/audio/sfx/dlc_exam_audio/example_seq_mastered_only.awc"
 
     class RetailAsset:
         stem = "pro_mcs_5_seq_mastered_only"
@@ -132,6 +179,4 @@ def test_generated_dlc_resolves_cut_audio_through_rel_bank_path(
     resolved = bundle.audio["EXAMPLE_SEQ.WA"]
     assert resolved.sound_hashes
     assert resolved.stream_hashes
-    assert resolved.asset.path.endswith(
-        "example_seq_mastered_only.awc"
-    )
+    assert resolved.asset.path.endswith("example_seq_mastered_only.awc")

@@ -87,7 +87,10 @@ class CutsceneAssets:
                     reference=audio.reference,
                     awc=read_awc(audio_files[audio.awc_name], path=audio.awc_name),
                     sounds=read_rel(
-                        audio_files[audio.sounds_name], path=audio.sounds_name
+                        audio_files[
+                            f"{audio.sounds_name}{int(audio.sounds.rel_type)}.rel"
+                        ],
+                        path=audio.sounds_name,
                     ),
                     awc_name=audio.awc_name,
                     sounds_name=audio.sounds_name,
@@ -196,15 +199,11 @@ class CutsceneProject:
                 )
                 existing.add(key)
 
-    def _bind_animation_sections(
-        self, binding: CutBinding, *, start: float
-    ) -> None:
+    def _bind_animation_sections(self, binding: CutBinding, *, start: float) -> None:
         for section in self.animations.sections:
             event_time = max(float(start), section.start_time)
             if event_time <= section.end_time:
-                self.scene.set_anim(
-                    event_time, binding, target=self.animation_manager
-                )
+                self.scene.set_anim(event_time, binding, target=self.animation_manager)
 
     def animate(
         self,
@@ -279,9 +278,7 @@ class CutsceneProject:
         )
         camera = self.scene.camera(
             name,
-            animation_streaming_base=(
-                jenk_partial_hash(name) if animated else None
-            ),
+            animation_streaming_base=(jenk_partial_hash(name) if animated else None),
             near_draw_distance=near_clip,
             far_draw_distance=far_clip,
         )
@@ -370,9 +367,13 @@ class CutsceneProject:
             current.reference.casefold() == assets.reference.casefold()
             for current in self.audio_assets
         ):
-            raise ValueError(f"CUT audio reference {assets.reference!r} is already bound")
+            raise ValueError(
+                f"CUT audio reference {assets.reference!r} is already bound"
+            )
         if offset_time + stop_time > assets.duration + 1e-6:
-            raise ValueError("CUT audio offset and stop exceed the mastered AWC duration")
+            raise ValueError(
+                "CUT audio offset and stop exceed the mastered AWC duration"
+            )
 
         binding = self.scene.audio(
             assets.reference,
