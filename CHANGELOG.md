@@ -30,6 +30,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Retail-cached YCD quaternion tracks now preserve rotations whose component signs change within a sequence window.
 - Retail MP3 AWC streams now include and validate their block seek tables.
 - CUT audio round-trips now preserve the target edition and speaker layout, including mono codec diagnostics.
 - CUT concatenation flags no longer depend on whether the scene contains prop models.

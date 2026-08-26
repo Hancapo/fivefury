@@ -672,8 +672,14 @@ def test_cutscene_builder_preserves_rotations_across_overlapping_sequences() -> 
     )
     builder.prop("actor", mover_rotation=rotations)
 
-    animation = builder.build_ycds()[0].animations[0]
+    rebuilt = read_ycd(build_ycd_bytes(builder.build_ycds()[0]))
+    animation = rebuilt.animations[0]
     assert len(animation.sequences) == 2
+    assert (
+        sum(sequence.num_frames for sequence in animation.sequences)
+        - (len(animation.sequences) - 1)
+        == frame_count
+    )
     emitted: list[Quaternion] = []
     sequence_samples: list[list[Quaternion]] = []
     for sequence in animation.sequences:
@@ -685,15 +691,20 @@ def test_cutscene_builder_preserves_rotations_across_overlapping_sequences() -> 
         values = [
             rotation.evaluate_quaternion(frame) for frame in range(sequence.num_frames)
         ]
+        assert rotation.is_cached_quaternion
         sequence_samples.append(values)
         emitted.extend(values if not emitted else values[1:])
 
     assert len(emitted) == frame_count
-    assert abs(sequence_samples[0][-1].dot(sequence_samples[1][0])) > 1.0 - 1e-9
+    assert abs(sequence_samples[0][-1].dot(sequence_samples[1][0])) > 1.0 - 1e-6
     assert all(
         abs(expected.dot(actual)) > 1.0 - 1e-6
         for expected, actual in zip(rotations, emitted, strict=True)
     )
+    audit = audit_ycd_quaternion_layout([rebuilt])
+    assert audit.count(YcdQuaternionLayout.CACHED_QUATERNION1) == 2
+    assert audit.count(YcdQuaternionLayout.CACHED_QUATERNION2) == 0
+    assert audit.count(YcdQuaternionLayout.EXPLICIT) == 0
 
 
 @pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
@@ -950,18 +961,31 @@ def test_ycd_validation_rejects_invalid_cached_quaternion_index() -> None:
 
 
 @pytest.mark.parametrize(
-    "rotation",
+    ("rotation", "message"),
     [
-        Quaternion(0.0, 0.0, 0.0, 0.0),
-        Quaternion(float("nan"), 0.0, 0.0, 1.0),
-        Quaternion(float("inf"), 0.0, 0.0, 1.0),
+        (
+            Quaternion(0.0, 0.0, 0.0, 0.0),
+            "Quaternion length must be greater than zero",
+        ),
+        (
+            Quaternion(float("nan"), 0.0, 0.0, 1.0),
+            "Quaternion components must be finite",
+        ),
+        (
+            Quaternion(float("inf"), 0.0, 0.0, 1.0),
+            "Quaternion components must be finite",
+        ),
     ],
 )
-def test_cutscene_builder_rejects_invalid_quaternions(rotation) -> None:
+def test_cutscene_builder_rejects_invalid_quaternions(
+    rotation: Quaternion,
+    message: str,
+) -> None:
     builder = YcdCutsceneBuilder.create("invalid_rotation", duration=1.0)
 
-    with pytest.raises(ValueError, match="Quaternion"):
+    with pytest.raises(ValueError) as error:
         builder.prop("actor", rotation=rotation)
+    assert str(error.value) == message
 
 
 def test_cutscene_builder_from_cut_reads_camera_cuts() -> None:
