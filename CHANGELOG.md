@@ -12,6 +12,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - `CutScene.cutscene_flags` and its factory argument have been replaced by typed `CutSceneSettings`; direct flag packing is now owned by the writer.
 - The fixed `DEFAULT_PLAYABLE_CUTSCENE_FLAGS` constant has been removed.
 - `build_cutscene_audio_assets()` now requires `BuildContext` so edition policy is explicit.
+- `CutScene.clip_dicts`, `CutScene.clip_dictionary()`, and `CutsceneAssets.ycds` have been replaced by `CutsceneAnimationDictionary`.
 
 ### Added
 
@@ -25,6 +26,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Edition-aware CUT audio authoring from decoded PCM with explicit retail and analysis profiles.
 - Declarative CUT audio binding with explicit offsets, lifecycle events, owned REL/AWC assets, and playback-range validation.
 - CUT audio DLC packaging with typed wavepack registration, final RPF verification, and exact cache resolution by bank path.
+- Logical CUT animation dictionaries with explicit ownership of their technical YCD sections.
 
 ### Fixed
 
@@ -34,6 +36,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Authored CUT audio now uses retail DAT54 streaming headers, channel routing, and edition-specific multichannel AWC flags.
 - CUT audio DLCs now use the retail sound-metadata layout in Legacy and Enhanced.
 - Enhanced retail CUT masters now use the runtime MP3 layout instead of preview-only PCM.
+- Sectioned CUT animations now load and bind once while the runtime streams their technical YCD sections.
 
 ### Performance
 

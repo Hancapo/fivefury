@@ -11,6 +11,7 @@ from ...game_target import GameTarget
 from ...hashing import jenk_partial_hash
 from ...vector import Quaternion, Vector3
 from ..payloads import CutCameraCutPayload, CutLoadScenePayload
+from .animation_dictionary import CutsceneAnimationDictionary
 from .base import CutScene
 from .bindings import CutAudio, CutBinding, CutCamera
 from .io import read_cut_scene
@@ -32,7 +33,6 @@ def _file_name(value: str, suffix: str) -> str:
 @dataclass(slots=True)
 class CutsceneAssets:
     scene: CutScene
-    ycds: tuple[Ycd, ...] = ()
     audio: tuple[CutsceneAudioAssets, ...] = ()
     cut_name: str | None = None
 
@@ -46,9 +46,9 @@ class CutsceneAssets:
         return validate_cutscene_assets(self, context=context)
 
     def build(self) -> CutsceneAssets:
-        for ycd in self.ycds:
+        dictionary = self.scene.animation_dictionary
+        for ycd in dictionary.sections if dictionary else ():
             ycd.build()
-        self.scene.clip_dicts = list(self.ycds)
         self.scene.build()
         return self
 
@@ -66,7 +66,8 @@ class CutsceneAssets:
         files: dict[str, bytes] = {}
         rebuilt_ycds: list[Ycd] = []
         rebuilt_audio: list[CutsceneAudioAssets] = []
-        for ycd in self.ycds:
+        dictionary = self.scene.animation_dictionary
+        for ycd in dictionary.sections if dictionary else ():
             name = _file_name(ycd.path or "cutscene", ".ycd")
             data = build_ycd_bytes(ycd)
             rebuilt = read_ycd(data)
@@ -103,10 +104,13 @@ class CutsceneAssets:
 
         cut_data = self.scene.to_bytes(template=template)
         rebuilt_scene = read_cut_scene(cut_data)
-        rebuilt_scene.clip_dicts = rebuilt_ycds
+        if dictionary is not None:
+            rebuilt_scene.animation_dictionary = CutsceneAnimationDictionary(
+                reference=dictionary.reference,
+                sections=rebuilt_ycds,
+            )
         CutsceneAssets(
             scene=rebuilt_scene,
-            ycds=tuple(rebuilt_ycds),
             audio=tuple(rebuilt_audio),
             cut_name=self.output_name,
         ).validate().raise_for_errors()
@@ -131,6 +135,9 @@ class CutsceneProject:
         self.animations = animations
         self.asset_manager = scene.asset_manager("assets")
         self.animation_manager = scene.animation_manager("animations")
+        self.scene.animation_dictionary = CutsceneAnimationDictionary()
+        self._animated_binding_ids: set[int] = set()
+        self._animation_teardown_authored = False
         self.audio_assets: list[CutsceneAudioAssets] = []
         self.scene.load_scene(
             0.0,
@@ -184,27 +191,24 @@ class CutsceneProject:
         self._load_model(binding, start=load_at)
         return binding
 
-    def _load_animation_sections(self) -> None:
-        existing = {
-            (round(float(event.start), 6), str(event.label or "").lower())
-            for event in self.scene.timeline
-            if event.event_name == "load_anim_dict"
-        }
-        for section in self.animations.sections:
-            index = self.animations.section_index_start + section.index
-            dictionary = f"{self.animations.name}-{index}"
-            key = (round(section.start_time, 6), dictionary.lower())
-            if key not in existing:
-                self.scene.load_anim_dict(
-                    section.start_time, dictionary, target=self.animation_manager
-                )
-                existing.add(key)
-
-    def _bind_animation_sections(self, binding: CutBinding, *, start: float) -> None:
-        for section in self.animations.sections:
-            event_time = max(float(start), section.start_time)
-            if event_time <= section.end_time:
-                self.scene.set_anim(event_time, binding, target=self.animation_manager)
+    def _bind_animation(self, binding: CutBinding, *, start: float) -> None:
+        dictionary = self.scene.animation_dictionary
+        if dictionary is None:
+            raise RuntimeError("Cutscene project has no animation dictionary")
+        if not any(
+            event.event_name == "load_anim_dict" for event in self.scene.timeline
+        ):
+            self.scene.load_anim_dict(
+                0.0,
+                dictionary.reference,
+                target=self.animation_manager,
+            )
+        if binding.object_id in self._animated_binding_ids:
+            raise ValueError(
+                f"{binding.name or binding.object_id!r} is already animated"
+            )
+        self.scene.set_anim(float(start), binding, target=self.animation_manager)
+        self._animated_binding_ids.add(binding.object_id)
 
     def animate(
         self,
@@ -249,8 +253,7 @@ class CutsceneProject:
             bone_id=bone_id,
             bones=bones,
         )
-        self._load_animation_sections()
-        self._bind_animation_sections(binding, start=start)
+        self._bind_animation(binding, start=start)
         return binding
 
     def camera(
@@ -291,8 +294,7 @@ class CutsceneProject:
                 field_of_view=field_of_view,
                 **tracks,
             )
-            self._load_animation_sections()
-            self._bind_animation_sections(camera, start=start)
+            self._bind_animation(camera, start=start)
         self.camera_cut(
             camera,
             start=start,
@@ -387,9 +389,26 @@ class CutsceneProject:
         return binding
 
     def build(self, *, cut_name: str | None = None) -> CutsceneAssets:
+        dictionary = self.scene.animation_dictionary
+        if dictionary is not None:
+            dictionary.sections = list(self.animations.build_ycds())
+        if self._animated_binding_ids and not self._animation_teardown_authored:
+            end = float(self.scene.duration or 0.0)
+            for object_id in sorted(self._animated_binding_ids):
+                self.scene.clear_anim(
+                    end,
+                    object_id,
+                    target=self.animation_manager,
+                )
+            if dictionary is not None:
+                self.scene.unload_anim_dict(
+                    end,
+                    dictionary.reference,
+                    target=self.animation_manager,
+                )
+            self._animation_teardown_authored = True
         return CutsceneAssets(
             scene=self.scene,
-            ycds=tuple(self.animations.build_ycds()),
             audio=tuple(self.audio_assets),
             cut_name=cut_name,
         )

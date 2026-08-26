@@ -10,6 +10,7 @@ from fivefury import (
     YED_FACIAL_ROOT_BONE_ID,
     CutFacialAnimationMode,
     CutScene,
+    CutsceneAnimationDictionary,
     GameFileCache,
     Vector3,
     YcdAnimationTrack,
@@ -42,7 +43,9 @@ def test_cut_ped_merged_facial_mode_resolves_dual_clip() -> None:
         facial=YcdFacialTrackSet(controls={7: 0.5}),
     )
     scene = CutScene(scene_name="facial_scene", duration=1.0)
-    scene.clip_dicts.extend(animations.build_ycds())
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=list(animations.build_ycds())
+    )
     ped = scene.ped(
         "actor",
         animation_clip_base="actor",
@@ -96,9 +99,7 @@ def test_ped_expression_binding_requires_one_complete_source() -> None:
     with pytest.raises(ValueError, match="cannot be combined"):
         set_ped_expression_binding(fields, expression_set_name="default")
     with pytest.raises(ValueError, match="must be specified together"):
-        set_ped_expression_binding(
-            {}, expression_dictionary_name="facials@gen_male"
-        )
+        set_ped_expression_binding({}, expression_dictionary_name="facials@gen_male")
 
 
 def test_ymt_ped_metadata_exposes_expression_name() -> None:
@@ -260,8 +261,7 @@ def test_retail_facial_component_defaults_preserve_analog_bone_scales() -> None:
     assert len(analog_tags) == 16
     assert set(analog_scales) == analog_tags
     assert all(
-        value == pytest.approx((1.0, 1.0, 1.0, 1.0))
-        for value in analog_scales.values()
+        value == pytest.approx((1.0, 1.0, 1.0, 1.0)) for value in analog_scales.values()
     )
     assert analog_scales[20943] == pytest.approx((1.0, 1.0, 1.0, 1.0))
     assert player_result.output_tracks[(20943, scale_track)] == pytest.approx(

@@ -172,17 +172,17 @@ def _active_animation_dicts(scene: CutScene, time: float) -> set[str]:
     return active
 
 
-def _dictionary_matches_ycd(name: str, ycd_stem: str) -> bool:
-    if name == ycd_stem or ycd_stem.startswith(f"{name}-"):
-        return True
-    name_hash = _parse_hex_hash(name)
-    if name_hash is None:
-        return False
-    candidates = {ycd_stem}
-    base, separator, suffix = ycd_stem.rpartition("-")
-    if separator and suffix.isdigit():
-        candidates.add(base)
-    return any(jenk_hash(candidate) == name_hash for candidate in candidates)
+def _dictionary_reference_matches(reference: str, value: str) -> bool:
+    reference_hash = _parse_hex_hash(reference)
+    value_hash = _parse_hex_hash(value)
+    return (reference_hash if reference_hash is not None else jenk_hash(reference)) == (
+        value_hash if value_hash is not None else jenk_hash(value)
+    )
+
+
+def _animation_sections(scene: CutScene) -> tuple[Any, ...]:
+    dictionary = scene.animation_dictionary
+    return tuple(dictionary.sections) if dictionary else ()
 
 
 def _binding_text_field(binding: CutBinding, field_name: str) -> str | None:
@@ -202,7 +202,7 @@ def _has_segmented_clip(scene: CutScene, clip_base: str, cut_index: int) -> bool
 
 def _camera_clip_bases_by_section(scene: CutScene) -> dict[int, set[str]]:
     result: dict[int, set[str]] = {}
-    for ycd in scene.clip_dicts:
+    for ycd in _animation_sections(scene):
         for clip in ycd.clips:
             animations = [getattr(clip, "animation", None)]
             animations.extend(
@@ -784,7 +784,7 @@ def _validate_cameras(
                 f"{_binding_name(camera)} far draw distance must exceed its near draw distance",
             )
 
-        if animated and scene.clip_dicts:
+        if animated and _animation_sections(scene):
             section_count = len(scene.camera_cut_list or ()) + 1
             for section_index in range(section_count):
                 if clip_base not in clip_bases_by_section.get(section_index, set()):
@@ -816,38 +816,16 @@ def _validate_cameras(
                     and target.role == "animation_manager"
                 )
             ]
-            concat_data = (
-                scene.raw.root.fields.get("concatDataList") or ()
-                if scene.raw is not None
-                else ()
-            )
-            section_starts = [
-                float(item.fields.get("fStartTime", 0.0))
-                for item in concat_data
-                if item.fields.get("bValidForPlayBack", True)
-            ] or [0.0, *(float(value) for value in scene.camera_cut_list or ())]
-            section_ends = [
-                *section_starts[1:],
-                float(scene.duration or 0.0),
-            ]
-            for section_index, (section_start, section_end) in enumerate(
-                zip(section_starts, section_ends, strict=True)
+            if not any(
+                abs(event_time - active_from) <= (1.0 / CUT_FPS)
+                for event_time in binding_times
             ):
-                binding_time = max(active_from, section_start)
-                if (
-                    clip_base in clip_bases_by_section.get(section_index, set())
-                    and active_from < section_end
-                    and not any(
-                        abs(event_time - binding_time) <= (1.0 / CUT_FPS)
-                        for event_time in binding_times
-                    )
-                ):
-                    _issue(
-                        issues,
-                        "error",
-                        "camera.animation_binding.missing",
-                        f"{_binding_name(camera)} has no SET_ANIM binding in technical YCD section {section_index}",
-                    )
+                _issue(
+                    issues,
+                    "error",
+                    "camera.animation_binding.missing",
+                    f"{_binding_name(camera)} has no logical SET_ANIM binding",
+                )
 
     camera_events = _events_by_name(scene, "camera_cut")
     if strict and not camera_events:
@@ -973,7 +951,8 @@ def _validate_animations(
 ) -> None:
     load_anim_events = _events_by_name(scene, "load_anim_dict")
     set_anim_events = _events_by_name(scene, "set_anim")
-    if strict and set_anim_events and not scene.clip_dicts:
+    sections = _animation_sections(scene)
+    if strict and set_anim_events and not sections:
         _issue(
             issues,
             "error",
@@ -1010,23 +989,19 @@ def _validate_animations(
                 "set_anim.dict.not_loaded",
                 f"SET_ANIM for {_binding_name(binding)} has no active LOAD_ANIM_DICT",
             )
-        elif scene.clip_dicts:
-            known_stems = {ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem}
-            if (
-                known_stems
-                and all(_parse_hex_hash(name) is None for name in active_dicts)
-                and not any(
-                    _dictionary_matches_ycd(name, stem)
-                    for name in active_dicts
-                    for stem in known_stems
-                )
-            ):
-                _issue(
-                    issues,
-                    "error",
-                    "set_anim.dict.mismatch",
-                    f"SET_ANIM for {_binding_name(binding)} has no active dictionary matching the attached YCDs",
-                )
+        elif scene.animation_dictionary is not None and not any(
+            _dictionary_reference_matches(
+                scene.animation_dictionary.reference,
+                name,
+            )
+            for name in active_dicts
+        ):
+            _issue(
+                issues,
+                "error",
+                "set_anim.dict.mismatch",
+                f"SET_ANIM for {_binding_name(binding)} has no active dictionary matching the attached YCDs",
+            )
         if _is_streamed_model(binding) and not _has_loaded_model(
             scene, binding.object_id, float(event.start)
         ):
@@ -1061,7 +1036,7 @@ def _validate_animations(
                     "set_anim.streaming_base.mismatch",
                     f"{_binding_name(binding)} AnimStreamingBase=0x{anim_streaming_base:08X}, expected 0x{expected_base:08X}",
                 )
-            if scene.clip_dicts:
+            if sections:
                 cut_index = _runtime_animation_section_index(scene, float(event.start))
                 expected_clip_name = f"{animation_clip_base}-{cut_index}"
                 if not _has_segmented_clip(scene, animation_clip_base, cut_index):
@@ -1072,7 +1047,7 @@ def _validate_animations(
                         f"{_binding_name(binding)} has no matching clip in technical YCD segment {cut_index}",
                         hint=f"Expected the exact segmented clip '{expected_clip_name}'.",
                     )
-        elif anim_streaming_base and scene.clip_dicts:
+        elif anim_streaming_base and sections:
             active_cut_index = _runtime_animation_section_index(
                 scene, float(event.start)
             )
@@ -1085,11 +1060,7 @@ def _validate_animations(
                 )
         explicit_clip = _name(event.payload.get("cName"))
         explicit_clip_key = _parse_hex_hash(explicit_clip) or explicit_clip
-        if (
-            explicit_clip
-            and scene.clip_dicts
-            and scene.get_clip(explicit_clip_key) is None
-        ):
+        if explicit_clip and sections and scene.get_clip(explicit_clip_key) is None:
             _issue(
                 issues,
                 "error",
@@ -1105,17 +1076,20 @@ def _validate_animations(
                 "load_anim_dict.name.missing",
                 "LOAD_ANIM_DICT has no dictionary name",
             )
-        elif strict and scene.clip_dicts:
-            known_stems = {ycd.stem.lower() for ycd in scene.clip_dicts if ycd.stem}
-            if known_stems and not any(
-                _dictionary_matches_ycd(label.lower(), stem) for stem in known_stems
-            ):
-                _issue(
-                    issues,
-                    "error",
-                    "load_anim_dict.ycd.missing",
-                    f"LOAD_ANIM_DICT '{label}' does not match any attached YCD",
-                )
+        elif (
+            strict
+            and scene.animation_dictionary is not None
+            and not _dictionary_reference_matches(
+                scene.animation_dictionary.reference,
+                label.lower(),
+            )
+        ):
+            _issue(
+                issues,
+                "error",
+                "load_anim_dict.ycd.missing",
+                f"LOAD_ANIM_DICT '{label}' does not match the logical animation dictionary",
+            )
 
 
 def _validate_facial_animation(scene: CutScene, issues: ValidationReport) -> None:

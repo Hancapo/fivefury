@@ -10,6 +10,7 @@ from ..lights import (
     cut_light_type_from_ydr_light_type,
     ensure_ydr_embedded_lights,
 )
+from .animation_dictionary import CutsceneAnimationDictionary
 from .authoring import CutsceneAssets, CutsceneProject
 from .bindings import (
     CutAnimatedLight,
@@ -98,6 +99,7 @@ __all__ = [
     "CutTypeFileStrategy",
     "CutVehicle",
     "CutWeapon",
+    "CutsceneAnimationDictionary",
     "CutsceneAssets",
     "CutsceneProject",
     "build_subtitle_gxt2",

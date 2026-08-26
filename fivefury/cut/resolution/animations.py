@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from ...gamefile import GameFileType
-from ..scene import CutScene
+from ..scene import CutScene, CutsceneAnimationDictionary
 from .common import _load_file
 from .models import CutsceneResolveIssue
 from .runtime import (
@@ -29,6 +29,7 @@ def _resolve_ycds(
     section_count = max(1, len(scene.camera_cut_list or ()) + 1)
     ycds: dict[int, Ycd] = {}
     assets: dict[int, AssetRecord] = {}
+    scene.animation_dictionary = CutsceneAnimationDictionary()
 
     for section in range(section_count):
         check_cutscene_resolution_cancelled(cancellation)
@@ -72,5 +73,5 @@ def _resolve_ycds(
             continue
         ycds[section] = ycd
         assets[section] = asset
-        scene.clip_dictionary(ycd)
+        scene.animation_dictionary.sections.append(ycd)
     return ycds, assets

@@ -9,7 +9,7 @@ from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
 
 if TYPE_CHECKING:
     from ...ycd.cutscene import YcdCutsceneBuilder
-    from ...ycd.model import Ycd, YcdAnimation, YcdClip
+    from ...ycd.model import YcdAnimation, YcdClip
     from ..audio_authoring import CutsceneAudioAssets
     from .authoring import CutsceneAssets
 
@@ -20,6 +20,7 @@ from ..events import CutEventType, get_cut_event_spec
 from ..flags import CutSceneFlags
 from ..model import CutFile
 from ..payloads import CutEventPayload
+from .animation_dictionary import CutsceneAnimationDictionary
 from .bindings import (
     _BINDING_ADDERS,
     _BINDING_CLASS_BY_TYPE,
@@ -38,6 +39,7 @@ from .shared import (
     _ROLE_DEFAULT_OBJECT_TYPE,
     _is_scene_entity,
     _object_role,
+    _parse_hex_hash,
     _runtime_animation_section_index,
 )
 from .timeline import CutTimelineEvent, CutTrack
@@ -69,7 +71,7 @@ class CutScene:
     fade_out_color: int = 0xFF000000
     bindings: list[CutBinding] = field(default_factory=list)
     tracks: list[CutTrack] = field(default_factory=list)
-    clip_dicts: list[Ycd] = field(default_factory=list)
+    animation_dictionary: CutsceneAnimationDictionary | None = None
     raw: CutFile | None = None
 
     def __post_init__(self) -> None:
@@ -95,17 +97,11 @@ class CutScene:
     def bindings_for_role(self, role: str) -> list[CutBinding]:
         return [item for item in self.bindings if item.role == role]
 
-    def clip_dictionary(self, ycd: object) -> object:
-        from ...ycd.model import Ycd
-
-        if not isinstance(ycd, Ycd):
-            raise TypeError(f"expected Ycd, got {type(ycd).__name__}")
-        self.clip_dicts.append(ycd)
-        return ycd
-
     def get_clip(self, value: int | str) -> YcdClip | None:
         key = MetaHash(value).uint
-        for ycd in self.clip_dicts:
+        for ycd in (
+            self.animation_dictionary.sections if self.animation_dictionary else ()
+        ):
             clip = ycd.clip_map.get(key)
             if clip is not None:
                 return clip
@@ -113,7 +109,9 @@ class CutScene:
 
     def get_animation(self, value: int | str) -> YcdAnimation | None:
         key = MetaHash(value).uint
-        for ycd in self.clip_dicts:
+        for ycd in (
+            self.animation_dictionary.sections if self.animation_dictionary else ()
+        ):
             anim = ycd.animation_map.get(key)
             if anim is not None:
                 return anim
@@ -121,7 +119,9 @@ class CutScene:
 
     def available_clips(self, *, cut_index: int = 0) -> dict[int, YcdClip]:
         merged: dict[int, object] = {}
-        for ycd in self.clip_dicts:
+        for ycd in (
+            self.animation_dictionary.sections if self.animation_dictionary else ()
+        ):
             merged.update(ycd.build_cutscene_map(cut_index))
         return merged
 
@@ -133,7 +133,9 @@ class CutScene:
         combined_facial: bool = False,
     ) -> YcdClip | None:
         """Resolve an exact technical clip from a serialized partial hash."""
-        for ycd in self.clip_dicts:
+        for ycd in (
+            self.animation_dictionary.sections if self.animation_dictionary else ()
+        ):
             clip = ycd.get_cutscene_clip(
                 anim_streaming_base,
                 cut_index,
@@ -270,7 +272,7 @@ class CutScene:
 
         data = self.to_cut().to_bytes(template=template)
         rebuilt = read_cut_scene(data)
-        rebuilt.clip_dicts = list(self.clip_dicts)
+        rebuilt.animation_dictionary = self.animation_dictionary
         rebuilt.validate(strict=True).raise_for_errors()
         return data
 
@@ -282,13 +284,12 @@ class CutScene:
     ) -> None:
         from ...common import atomic_write_bytes
 
-        if self.clip_dicts:
+        if self.animation_dictionary is not None:
             from .authoring import CutsceneAssets
 
             target = Path(destination)
             CutsceneAssets(
                 scene=self,
-                ycds=tuple(self.clip_dicts),
                 cut_name=target.name,
             ).save(target.parent, template=template)
             return
@@ -310,19 +311,18 @@ class CutScene:
     ) -> CutsceneAssets:
         from .authoring import CutsceneAssets
 
-        if animations is None:
-            ycds = tuple(self.clip_dicts)
-        else:
+        if animations is not None:
             from ...ycd.cutscene import YcdCutsceneBuilder
 
             if not isinstance(animations, YcdCutsceneBuilder):
                 raise TypeError(
                     f"expected YcdCutsceneBuilder, got {type(animations).__name__}"
                 )
-            ycds = tuple(animations.build_ycds())
+            self.animation_dictionary = CutsceneAnimationDictionary(
+                sections=list(animations.build_ycds())
+            )
         return CutsceneAssets(
             scene=self,
-            ycds=ycds,
             audio=audio,
             cut_name=cut_name,
         )
@@ -567,13 +567,18 @@ class CutScene:
 
     def validate_animations(self, *, cut_index: int = 0) -> ValidationReport:
         report = ValidationReport()
-        if not self.clip_dicts:
+        if self.animation_dictionary is None:
             return report
-        known_stems = {ycd.stem.lower() for ycd in self.clip_dicts if ycd.stem}
+        sections = self.animation_dictionary.sections
         for event_index, event in enumerate(self.timeline):
             if event.event_name == "load_anim_dict" and event.label:
-                name = event.label.lower()
-                if not any(name in stem or stem in name for stem in known_stems):
+                label_hash = _parse_hex_hash(event.label)
+                if label_hash is None:
+                    label_hash = MetaHash(event.label).uint
+                reference_hash = _parse_hex_hash(self.animation_dictionary.reference)
+                if reference_hash is None:
+                    reference_hash = MetaHash(self.animation_dictionary.reference).uint
+                if label_hash != reference_hash:
                     report.issue(
                         "cut.animation.dictionary.unknown",
                         f"load_anim_dict references unknown dictionary '{event.label}'",
@@ -628,8 +633,7 @@ class CutScene:
                                 path=f"timeline[{event_index}]",
                             )
                     exact_clip_missing = animation_clip_base and not any(
-                        ycd.get_clip(expected_clip_name) is not None
-                        for ycd in self.clip_dicts
+                        ycd.get_clip(expected_clip_name) is not None for ycd in sections
                     )
                     clip_map = self.available_clips(cut_index=active_cut_index)
                     has_streaming_base = anim_streaming_base not in (None, "", 0)

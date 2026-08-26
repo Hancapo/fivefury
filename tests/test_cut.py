@@ -21,6 +21,7 @@ from fivefury import (
     CutLoadScenePayload,
     CutPropAnimationPreset,
     CutScene,
+    CutsceneAnimationDictionary,
     CutSceneFlags,
     CutSceneSettings,
     CutSectioningMode,
@@ -864,7 +865,9 @@ def test_cut_scene_validate_matches_set_anim_against_model_clip_base() -> None:
         mover_position=Vector3(),
         mover_rotation=Quaternion(),
     )
-    scene.clip_dictionary(builder.build_ycds()[0])
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=[builder.build_ycds()[0]]
+    )
     scene.set_anim(0.0, prop, target=manager)
 
     assert not scene.validate_animations()
@@ -884,7 +887,10 @@ def test_cut_scene_does_not_reject_unresolved_dictionary_hash() -> None:
         mover_position=Vector3(),
         mover_rotation=Quaternion(),
     )
-    scene.clip_dictionary(builder.build_ycds()[0])
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        reference="0xDEADBEEF",
+        sections=[builder.build_ycds()[0]],
+    )
     scene.load_anim_dict(0.0, "0xDEADBEEF", target=manager)
     scene.set_anim(0.0, prop, target=manager)
 
@@ -907,8 +913,9 @@ def test_cut_scene_validates_set_anim_against_active_technical_segment() -> None
     first.prop("decoy", mover_position=Vector3(), mover_rotation=Quaternion())
     second = YcdCutsceneBuilder.create("sample", duration=1.0, section_index_start=1)
     second.prop("target", mover_position=Vector3(), mover_rotation=Quaternion())
-    scene.clip_dictionary(first.build_ycds()[0])
-    scene.clip_dictionary(second.build_ycds()[0])
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=[first.build_ycds()[0], second.build_ycds()[0]]
+    )
     scene.set_anim(1.0, prop, target=manager)
 
     assert not scene.validate_animations()
@@ -936,7 +943,9 @@ def test_cut_scene_validate_warns_on_binding_name_clip_mismatch() -> None:
         mover_position=Vector3(),
         mover_rotation=Quaternion(),
     )
-    scene.clip_dictionary(builder.build_ycds()[0])
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=[builder.build_ycds()[0]]
+    )
     scene.set_anim(0.0, prop, target=manager)
 
     assert any(
