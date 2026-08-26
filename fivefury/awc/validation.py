@@ -3,10 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..authoring import DiagnosticSeverity, ValidationReport
-from .constants import AWC_STREAM_ID_MASK
+from .constants import AWC_STREAM_ID_MASK, AwcCodecType
 
 if TYPE_CHECKING:
-    from .constants import AwcCodecType
     from .structures import Awc, AwcStream
 
 
@@ -88,10 +87,10 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
                 "Multichannel block count and block size must be positive",
                 path=path,
             )
-        if len(layout.channels) < 2:
+        if not layout.channels:
             report.issue(
                 "awc.stream.channels.invalid",
-                "A multichannel stream must describe at least two channels",
+                "A multichannel stream must describe at least one channel",
                 path=path,
             )
         channel_ids = [channel.id & AWC_STREAM_ID_MASK for channel in layout.channels]
@@ -129,6 +128,35 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
                 "Multichannel streams must use equal sample rates and sample counts",
                 path=path,
             )
+        codecs = {channel.codec for channel in layout.channels}
+        if codecs == {AwcCodecType.MP3} and stream.data_chunk is not None:
+            from .streaming import inspect_mp3_streaming_data
+
+            try:
+                blocks = inspect_mp3_streaming_data(
+                    stream.data_chunk.data,
+                    block_count=layout.block_count,
+                    block_size=layout.block_size,
+                    channel_count=len(layout.channels),
+                    sample_rate=next(iter(sample_rates), 0),
+                )
+            except ValueError as exc:
+                report.issue(
+                    "awc.stream.mp3.layout.invalid",
+                    str(exc),
+                    path=f"{path}.data",
+                )
+            else:
+                for channel_index, channel in enumerate(layout.channels):
+                    authored_samples = sum(
+                        block.channels[channel_index].sample_count for block in blocks
+                    )
+                    if authored_samples != int(channel.samples):
+                        report.issue(
+                            "awc.stream.mp3.samples.invalid",
+                            "MP3 block sample counts do not match the stream format",
+                            path=f"{path}.channels[{channel_index}].samples",
+                        )
         return
 
     if stream.codec is None:

@@ -691,6 +691,44 @@ class Awc:
         awc.multi_channel_encrypt_flag = False
         return awc
 
+    @classmethod
+    def from_channel_mp3(
+        cls,
+        name: HashLike | str,
+        channels: list[bytes],
+        *,
+        sample_rate: int = 48_000,
+        bit_rate: int = 128_000,
+    ) -> Awc:
+        from .mp3 import encode_mp3_channel
+
+        if not channels:
+            raise ValueError("from_channel_mp3 requires at least one PCM channel")
+        sample_counts = {len(channel) // 2 for channel in channels}
+        if any(len(channel) % 2 for channel in channels):
+            raise ValueError("PCM16 channel byte length must be even")
+        if len(sample_counts) != 1:
+            raise ValueError("all PCM channels must have the same sample count")
+        encoded = tuple(
+            encode_mp3_channel(
+                channel,
+                sample_rate=sample_rate,
+                bit_rate=bit_rate,
+            )
+            for channel in channels
+        )
+        channel_streams = [
+            _awc_channel_stream_from_mp3(_channel_name(name, index), channel)
+            for index, channel in enumerate(encoded)
+        ]
+        source_stream = _awc_mp3_source_stream(channel_streams, encoded)
+        awc = cls([source_stream, *channel_streams])
+        awc.chunk_indices_flag = False
+        awc.single_channel_encrypt_flag = False
+        awc.multi_channel_flag = True
+        awc.multi_channel_encrypt_flag = False
+        return awc
+
     @property
     def stream_count(self) -> int:
         return len(self.streams)
@@ -848,6 +886,59 @@ def _awc_channel_stream_from_pcm(
     )
     stream.channel_pcm = bytes(pcm)
     return stream
+
+
+def _awc_channel_stream_from_mp3(
+    name: HashLike | str, channel: object
+) -> AwcStream:
+    from .mp3 import EncodedMp3Channel
+
+    if not isinstance(channel, EncodedMp3Channel):
+        raise TypeError(f"expected EncodedMp3Channel, got {type(channel).__name__}")
+    stream = AwcStream(
+        name if not isinstance(name, str) else None,
+        [],
+        name=str(name) if isinstance(name, str) else None,
+    )
+    stream.stream_format = AwcStreamFormat(
+        id=stream.hash,
+        samples=channel.sample_count,
+        headroom=0,
+        sample_rate=channel.sample_rate,
+        codec=AwcCodecType.MP3,
+        unused1=16,
+        unused2=0,
+    )
+    return stream
+
+
+def _awc_mp3_source_stream(
+    channel_streams: list[AwcStream], channels: tuple[object, ...]
+) -> AwcStream:
+    from .mp3 import EncodedMp3Channel
+    from .streaming import build_mp3_streaming_data
+
+    encoded = tuple(channel for channel in channels if isinstance(channel, EncodedMp3Channel))
+    if len(encoded) != len(channels):
+        raise TypeError("MP3 source stream requires encoded MP3 channels")
+    block_size = 524_288
+    data, block_count = build_mp3_streaming_data(encoded, block_size=block_size)
+    stream_format = AwcStreamFormatChunk(
+        block_count=block_count,
+        block_size=block_size,
+        channels=[
+            stream.stream_format
+            for stream in channel_streams
+            if stream.stream_format is not None
+        ],
+    )
+    return AwcStream(
+        0,
+        [
+            AwcChunk(AwcChunkType.STREAM_FORMAT, stream_format=stream_format),
+            AwcChunk(AwcChunkType.DATA, data=data),
+        ],
+    )
 
 
 def _awc_multichannel_source_stream(channel_streams: list[AwcStream]) -> AwcStream:
