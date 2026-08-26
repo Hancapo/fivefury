@@ -28,6 +28,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Retail MP3 AWC streams now include and validate their block seek tables.
 - CUT audio round-trips now preserve the target edition and speaker layout, including mono codec diagnostics.
 - CUT concatenation flags no longer depend on whether the scene contains prop models.
 - Authored CUT audio now uses retail DAT54 streaming headers, channel routing, and edition-specific multichannel AWC flags.

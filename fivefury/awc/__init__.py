@@ -37,6 +37,7 @@ from .streaming import (
     Mp3StreamingBlock,
     Mp3StreamingChannel,
     Mp3StreamingData,
+    derive_mp3_streaming_seek_table,
     inspect_mp3_streaming_data,
 )
 from .structures import (
@@ -96,6 +97,7 @@ __all__ = [
     "decode_awc_adpcm",
     "decrypt_awc_rsxxtea",
     "default_awc_speakers",
+    "derive_mp3_streaming_seek_table",
     "encode_mp3_channel",
     "encrypt_awc_rsxxtea",
     "inspect_mp3_streaming_data",
