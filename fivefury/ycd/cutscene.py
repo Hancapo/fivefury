@@ -223,21 +223,26 @@ def _make_component_channels(
     return channels
 
 
-def _select_cached_quaternion_component(
+def _orient_cached_quaternion_window(
     samples: list[Quaternion],
-) -> int | None:
+) -> tuple[int, list[Quaternion]]:
     candidates: list[tuple[float, float, float, int]] = []
     for component_index in range(4):
-        values = [sample.components[component_index] for sample in samples]
-        if min(values) < -1e-8:
-            continue
-        minimum_magnitude = min(abs(value) for value in values)
-        mean_square = sum(value * value for value in values) / len(values)
-        peak = max(abs(value) for value in values)
+        magnitudes = [
+            abs(sample.components[component_index]) for sample in samples
+        ]
+        minimum_magnitude = min(magnitudes)
+        mean_square = sum(value * value for value in magnitudes) / len(magnitudes)
+        peak = max(magnitudes)
         candidates.append((minimum_magnitude, mean_square, peak, -component_index))
-    if not candidates:
-        return None
-    return -max(candidates)[3]
+    omitted_component = -max(candidates)[3]
+    oriented = [
+        sample
+        if sample.components[omitted_component] >= 0.0
+        else -sample
+        for sample in samples
+    ]
+    return omitted_component, oriented
 
 
 def _make_cached_quaternion_channels(
@@ -251,12 +256,7 @@ def _make_cached_quaternion_channels(
     | YcdRawFloatChannel
     | YcdCachedQuaternionChannel
 ]:
-    omitted_component = _select_cached_quaternion_component(samples)
-    if omitted_component is None:
-        raise ValueError(
-            "Quaternion sequence cannot use retail cached encoding without a sign discontinuity; "
-            "use YcdQuaternionEncoding.EXPLICIT"
-        )
+    omitted_component, samples = _orient_cached_quaternion_window(samples)
     explicit_samples = [
         Vector3.from_iterable(
             component
@@ -389,28 +389,6 @@ def _iter_sequence_sample_windows(
             break
         start += max_step
     return windows
-
-
-def _orient_cached_quaternion_samples(
-    samples: list[Quaternion],
-    *,
-    frame_limit: int,
-) -> list[Quaternion]:
-    orientations = (
-        samples,
-        [-sample for sample in samples],
-    )
-
-    def score(candidate: list[Quaternion]) -> int:
-        return sum(
-            _select_cached_quaternion_component(window) is not None
-            for _, window in _iter_sequence_sample_windows(
-                candidate,
-                frame_limit=frame_limit,
-            )
-        )
-
-    return max(orientations, key=score)
 
 
 def _is_camera_track_id(track: int) -> bool:
@@ -986,15 +964,6 @@ class YcdCutsceneBuilder:
                 ]
                 if not frame_samples:
                     continue
-                if (
-                    self.quaternion_encoding is YcdQuaternionEncoding.RETAIL_CACHED
-                    and track_spec.format is YcdTrackFormat.QUATERNION
-                    and any(sample != frame_samples[0] for sample in frame_samples[1:])
-                ):
-                    frame_samples = _orient_cached_quaternion_samples(
-                        frame_samples,  # type: ignore[arg-type]
-                        frame_limit=sample_frame_limit,
-                    )
                 bone = YcdAnimationBoneId(
                     bone_id=track_spec.bone_id,
                     track=track_spec.track,

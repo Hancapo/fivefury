@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import itertools
 import math
 import struct
 
@@ -655,7 +654,7 @@ def test_cutscene_builder_raw_float_meets_roman_roundtrip_precision(
     assert angular_error < 0.002
 
 
-def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> None:
+def test_cutscene_builder_preserves_rotations_across_overlapping_sequences() -> None:
     frame_count = 361
     rotations = [
         Quaternion(
@@ -674,7 +673,9 @@ def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> 
     builder.prop("actor", mover_rotation=rotations)
 
     animation = builder.build_ycds()[0].animations[0]
+    assert len(animation.sequences) == 2
     emitted: list[Quaternion] = []
+    sequence_samples: list[list[Quaternion]] = []
     for sequence in animation.sequences:
         rotation = next(
             item
@@ -684,13 +685,14 @@ def test_cutscene_builder_preserves_quaternion_continuity_across_sequences() -> 
         values = [
             rotation.evaluate_quaternion(frame) for frame in range(sequence.num_frames)
         ]
+        sequence_samples.append(values)
         emitted.extend(values if not emitted else values[1:])
 
     assert len(emitted) == frame_count
-    assert emitted[-1].w < 0.0
+    assert abs(sequence_samples[0][-1].dot(sequence_samples[1][0])) > 1.0 - 1e-9
     assert all(
-        left.dot(right) >= 0.0
-        for left, right in itertools.pairwise(emitted)
+        abs(expected.dot(actual)) > 1.0 - 1e-6
+        for expected, actual in zip(rotations, emitted, strict=True)
     )
 
 
@@ -780,7 +782,7 @@ def test_cutscene_builder_can_emit_explicit_quaternion_components() -> None:
     }
 
 
-def test_cached_quaternion_rejects_series_without_stable_omitted_component() -> None:
+def test_cached_quaternion_orients_each_sample_for_the_omitted_component() -> None:
     axis_length = math.sqrt(14.0)
     rotations = [
         Quaternion(
@@ -794,17 +796,20 @@ def test_cached_quaternion_rejects_series_without_stable_omitted_component() -> 
     cached = YcdCutsceneBuilder.create("cached_unrepresentable", duration=1.0)
     cached.prop("actor", mover_rotation=rotations)
 
-    with pytest.raises(ValueError, match="YcdQuaternionEncoding.EXPLICIT"):
-        cached.build_ycds()
+    ycd = cached.build_ycds()[0]
+    rotation = ycd.animations[0].find_sequences(
+        track=YcdAnimationTrack.MOVER_ROTATION
+    )[0]
 
-    explicit = YcdCutsceneBuilder.create(
-        "explicit_unrepresentable",
-        duration=1.0,
-        quaternion_encoding=YcdQuaternionEncoding.EXPLICIT,
+    assert all(
+        any(rotation.components[index] < 0.0 for rotation in rotations)
+        for index in range(4)
     )
-    explicit.prop("actor", mover_rotation=rotations)
-
-    assert explicit.build_ycds()[0].validate().valid
+    assert rotation.is_cached_quaternion
+    assert all(
+        abs(expected.dot(rotation.evaluate_quaternion(frame))) > 1.0 - 1e-6
+        for frame, expected in enumerate(rotations)
+    )
 
 
 def test_cached_quaternion_roundtrip_preserves_rotation_accuracy() -> None:
