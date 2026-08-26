@@ -1,5 +1,6 @@
 from fivefury import (
     CutScene,
+    CutsceneAnimationDictionary,
     CutsceneProject,
     Quaternion,
     Vector3,
@@ -51,13 +52,15 @@ def _duplicate_prop_project(
 def _roundtrip_project(project: CutsceneProject) -> CutScene:
     files = project.build(cut_name="duplicate_props.cut").build_files()
     scene = read_cut_scene(files["duplicate_props.cut"])
+    sections = []
     for name, data in files.items():
         if not name.endswith(".ycd"):
             continue
         ycd = read_ycd(data)
         ycd.path = name
         ycd.build()
-        scene.clip_dictionary(ycd)
+        sections.append(ycd)
+    scene.animation_dictionary = CutsceneAnimationDictionary(sections=sections)
     return scene
 
 
@@ -77,8 +80,9 @@ def test_clip_for_binding_distinguishes_shared_model_animation_bases() -> None:
         name="shared_model",
         fields={"AnimStreamingBase": jenk_partial_hash("actor_b")},
     )
-    for ycd in builder.build_ycds():
-        scene.clip_dictionary(ycd)
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=list(builder.build_ycds())
+    )
 
     clip_a = scene.clip_for_binding(actor_a)
     clip_b = scene.clip_for_binding(actor_b)
@@ -97,7 +101,9 @@ def test_cutscene_assets_accept_template_with_attached_ycds() -> None:
 
     files = project.build(cut_name="templated.cut").build_files(template=template)
     rebuilt = read_cut_scene(files["templated.cut"])
-    rebuilt_ycds = [read_ycd(data) for name, data in files.items() if name.endswith(".ycd")]
+    rebuilt_ycds = [
+        read_ycd(data) for name, data in files.items() if name.endswith(".ycd")
+    ]
 
     assert rebuilt.duration == 1.0
     assert rebuilt.timeline
@@ -114,8 +120,9 @@ def test_clip_for_binding_does_not_fall_back_from_unresolved_stream_base() -> No
         name="shared_model",
         fields={"AnimStreamingBase": jenk_partial_hash("missing_actor")},
     )
-    for ycd in builder.build_ycds():
-        scene.clip_dictionary(ycd)
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=list(builder.build_ycds())
+    )
 
     assert scene.clip_for_binding(actor) is None
 
@@ -133,8 +140,9 @@ def test_clip_for_binding_reads_animation_base_from_generic_camera_fields() -> N
         name="0x39662FB2",
         fields={"AnimStreamingBase": jenk_partial_hash("exportcamera")},
     )
-    for ycd in builder.build_ycds():
-        scene.clip_dictionary(ycd)
+    scene.animation_dictionary = CutsceneAnimationDictionary(
+        sections=list(builder.build_ycds())
+    )
 
     clip = scene.clip_for_binding(camera)
 

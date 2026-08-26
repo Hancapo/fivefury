@@ -33,6 +33,7 @@ from ..audio_references import (
     resolve_cut_audio_sound_graph,
 )
 from ..reference_values import field_reference
+from .animation_dictionary import CutsceneAnimationDictionary
 from .asset_context import CutAssetContext, CutContextAsset, cut_asset_reference_hash
 from .bindings import CutBinding, CutPed
 from .shared import _runtime_animation_section_index
@@ -66,7 +67,6 @@ def _field_hash(value: object) -> int:
 
 def _scene_copy(assets: CutsceneAssets) -> CutScene:
     scene = deepcopy(assets.scene)
-    scene.clip_dicts = list(assets.ycds)
     return scene
 
 
@@ -82,7 +82,8 @@ def _extend_scene_report(
 
 def _validate_ycd_paths(assets: CutsceneAssets, report: ValidationReport) -> None:
     names: set[str] = set()
-    for index, ycd in enumerate(assets.ycds):
+    dictionary = assets.scene.animation_dictionary
+    for index, ycd in enumerate(dictionary.sections if dictionary else ()):
         if not ycd.path:
             report.issue(
                 "cut.ycd.path.missing",
@@ -127,7 +128,13 @@ def _validate_authored_audio(
                 )
             output_names.add(output_key)
     for name in (
-        Path(ycd.path).name.casefold() for ycd in assets.ycds if ycd.path
+        Path(ycd.path).name.casefold()
+        for ycd in (
+            assets.scene.animation_dictionary.sections
+            if assets.scene.animation_dictionary
+            else ()
+        )
+        if ycd.path
     ):
         if name in output_names:
             report.issue(
@@ -221,11 +228,12 @@ class _CutsceneContextValidator:
         self._validate_audio()
 
     def resolve_ycds(self) -> None:
-        known_hashes = {
-            cut_asset_reference_hash(ycd.stem)
-            for ycd in self.scene.clip_dicts
-            if ycd.stem
-        }
+        if (
+            self.scene.animation_dictionary is not None
+            and self.scene.animation_dictionary.sections
+        ):
+            return
+        known_hashes: set[int] = set()
         for reference in cut_event_references(
             self.scene,
             {"load_anim_dict"},
@@ -258,7 +266,11 @@ class _CutsceneContextValidator:
                         path="timeline.animation",
                     )
                 continue
-            self.scene.clip_dicts.append(ycd)
+            if self.scene.animation_dictionary is None:
+                self.scene.animation_dictionary = CutsceneAnimationDictionary(
+                    reference=str(reference)
+                )
+            self.scene.animation_dictionary.sections.append(ycd)
             known_hashes.add(reference_hash)
 
     def _load(
@@ -402,9 +414,7 @@ class _CutsceneContextValidator:
             binding = self.scene.get_binding(object_id)
             if binding is None:
                 continue
-            cut_index = _runtime_animation_section_index(
-                self.scene, float(event.start)
-            )
+            cut_index = _runtime_animation_section_index(self.scene, float(event.start))
             clip = self.scene.clip_for_binding(binding, cut_index=cut_index)
             if clip is None:
                 continue

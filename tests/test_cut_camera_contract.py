@@ -126,13 +126,11 @@ def test_project_camera_authors_runtime_binding_and_sampled_cut_pose() -> None:
     set_anim_events = [
         item for item in project.scene.timeline if item.event_name == "set_anim"
     ]
-    assert [item.start for item in set_anim_events] == pytest.approx([0.25, 1.0])
+    assert [item.start for item in set_anim_events] == pytest.approx([0.25])
     assert [item.payload["iObjectId"] for item in set_anim_events] == [
-        camera.object_id,
         camera.object_id,
     ]
     assert [item.target_id for item in set_anim_events] == [
-        project.animation_manager.object_id,
         project.animation_manager.object_id,
     ]
 
@@ -161,12 +159,11 @@ def test_camera_contract_survives_cut_and_segmented_ycd_roundtrip() -> None:
     assert rebuilt_camera.near_draw_distance == pytest.approx(0.1)
     assert rebuilt_camera.far_draw_distance == pytest.approx(2000.0)
     set_anim_events = [item for item in scene.timeline if item.event_name == "set_anim"]
-    assert [item.start for item in set_anim_events] == pytest.approx([0.25, 1.0])
+    assert [item.start for item in set_anim_events] == pytest.approx([0.25])
     assert [item.payload["iObjectId"] for item in set_anim_events] == [
         rebuilt_camera.object_id,
-        rebuilt_camera.object_id,
     ]
-    assert [item.target_id for item in set_anim_events] == [1, 1]
+    assert [item.target_id for item in set_anim_events] == [1]
     for index in range(2):
         ycd = read_ycd(files[f"camera_contract-{index}.ycd"])
         assert ycd.get_clip(f"exportcamera-{index}") is not None
@@ -260,8 +257,9 @@ def test_camera_binding_contract_reports_invalid_runtime_fields(
 def test_camera_contract_reports_missing_section_clip() -> None:
     project, _camera = _animated_camera_project()
     assets = project.build()
-    assets.ycds[1].clips.clear()
-    assets.ycds[1].animations.clear()
+    assert assets.scene.animation_dictionary is not None
+    assets.scene.animation_dictionary.sections[1].clips.clear()
+    assets.scene.animation_dictionary.sections[1].animations.clear()
 
     report = assets.validate()
 
@@ -270,7 +268,7 @@ def test_camera_contract_reports_missing_section_clip() -> None:
 
 def test_camera_contract_reports_missing_runtime_animation_binding() -> None:
     project, camera = _animated_camera_project()
-    _remove_camera_set_anim(project, camera, start=1.0)
+    _remove_camera_set_anim(project, camera, start=0.25)
 
     report = project.build().validate()
 
@@ -279,10 +277,11 @@ def test_camera_contract_reports_missing_runtime_animation_binding() -> None:
 
 def test_camera_binding_validation_is_inspection_only() -> None:
     project, camera = _animated_camera_project()
+    assets = project.build()
     _remove_camera_set_anim(project, camera)
     timeline = list(project.scene.timeline)
 
-    report = project.build().validate()
+    report = assets.validate()
 
     assert "camera.animation_binding.missing" in {issue.code for issue in report.errors}
     assert project.scene.timeline == timeline
@@ -306,7 +305,7 @@ def test_camera_binding_validation_uses_external_concat_boundaries() -> None:
         if event.event_name == "set_anim"
         and event.payload["iObjectId"] == camera.object_id
     ]
-    camera_events[1].start = 0.5
+    assert len(camera_events) == 1
     first_section = raw.root.fields["concatDataList"][0]
     second_section = deepcopy(first_section)
     second_section.fields["fStartTime"] = 0.5

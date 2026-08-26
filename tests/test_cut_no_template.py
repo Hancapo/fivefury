@@ -24,6 +24,7 @@ from fivefury import (
     CutProp,
     CutPropAnimationPreset,
     CutScene,
+    CutsceneAnimationDictionary,
     CutsceneAssets,
     CutsceneProject,
     CutSceneSettings,
@@ -501,8 +502,7 @@ def test_cut_validation_rejects_conflicting_concat_modes() -> None:
     )
 
     assert any(
-        issue.code == "cut.concat.mode.multiple"
-        for issue in validate_cut_scene(scene)
+        issue.code == "cut.concat.mode.multiple" for issue in validate_cut_scene(scene)
     )
 
 
@@ -563,7 +563,7 @@ def test_cutscene_project_builds_valid_cut_and_segmented_ycds() -> None:
         ycd.path = name
         rebuilt_ycds.append(ycd)
     rebuilt = read_cut_scene(files["demo_scene.cut"])
-    rebuilt.clip_dicts = rebuilt_ycds
+    rebuilt.animation_dictionary = CutsceneAnimationDictionary(sections=rebuilt_ycds)
     rebuilt.validate(strict=True).raise_for_errors()
 
 
@@ -701,7 +701,8 @@ def test_cutscene_asset_validation_is_non_mutating() -> None:
     report = assets.validate(context=_cutscene_prop_context())
 
     assert report.valid
-    assert assets.scene.clip_dicts == []
+    assert assets.scene.animation_dictionary is not None
+    assert assets.scene.animation_dictionary.sections
 
 
 def test_cutscene_asset_validation_reports_missing_context_dependencies() -> None:
@@ -753,7 +754,8 @@ def test_cutscene_asset_validation_resolves_serialized_loose_assets(tmp_path) ->
 def test_cutscene_asset_validation_resolves_loose_ycd() -> None:
     authored = _cutscene_prop_project().build()
     context = _cutscene_prop_context()
-    for ycd in authored.ycds:
+    assert authored.scene.animation_dictionary is not None
+    for ycd in authored.scene.animation_dictionary.sections:
         context.assets[f"stream/{ycd.path}"] = ycd
 
     report = CutsceneAssets(authored.scene).validate(context=context)
