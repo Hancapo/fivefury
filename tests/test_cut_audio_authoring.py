@@ -8,10 +8,12 @@ from fivefury import (
     AwcSpeaker,
     AwcStream,
     BuildContext,
+    CutAudioCodec,
     CutsceneAudioAssets,
     CutsceneProject,
     Dat54SimpleSound,
     Dat54StreamingSound,
+    DecodedAudio,
     DlcPack,
     GameTarget,
     RelSoundIndex,
@@ -92,8 +94,13 @@ def test_cut_audio_channel_routing(channel_count: int, expected) -> None:
 
 
 def test_enhanced_and_legacy_awc_profiles_remain_distinct() -> None:
-    assert _assets(2, GameTarget.GTA5_ENHANCED).awc.flags == 0xFF0C
-    assert _assets(2, GameTarget.GTA5).awc.flags == 0xFF05
+    enhanced = _assets(2, GameTarget.GTA5_ENHANCED)
+    legacy = _assets(2, GameTarget.GTA5)
+
+    assert enhanced.awc.flags == 0xFF0C
+    assert legacy.awc.flags == 0xFF05
+    assert awc_channel_codecs(enhanced.awc) == (AwcCodecType.MP3,) * 2
+    assert awc_channel_codecs(legacy.awc) == (AwcCodecType.PCM,) * 2
 
 
 def test_cut_audio_binary_round_trip_preserves_graph_and_pcm() -> None:
@@ -120,13 +127,56 @@ def test_cut_audio_validation_rejects_generic_headers() -> None:
     assert "cut.audio.routing.invalid" in codes
 
 
-@pytest.mark.parametrize("channel_count", (1, 2))
-def test_enhanced_pcm_is_reported_as_uncompressed(channel_count: int) -> None:
-    report = _assets(channel_count).validate()
+@pytest.mark.parametrize("channel_count", (1, 2, 3, 5))
+def test_enhanced_retail_audio_is_authored_as_mp3(channel_count: int) -> None:
+    assets = _assets(channel_count)
 
-    assert {warning.code for warning in report.warnings} == {
-        "cut.audio.codec.uncompressed"
-    }
+    assert awc_channel_codecs(assets.awc) == (AwcCodecType.MP3,) * channel_count
+    assert not assets.validate().errors
+
+
+def test_enhanced_retail_validation_rejects_analysis_pcm() -> None:
+    assets = build_cutscene_audio_assets(
+        "SCENE.WA",
+        _awc(2),
+        wavepack_name="scene_audio",
+        context=BuildContext(game=GameTarget.GTA5_ENHANCED),
+        codec=CutAudioCodec.ANALYSIS_PCM,
+    )
+    assert awc_channel_codecs(assets.awc) == (AwcCodecType.PCM,) * 2
+    assert not assets.validate().errors
+
+    assets.codec = CutAudioCodec.RETAIL
+    issue = next(
+        issue
+        for issue in assets.validate().errors
+        if issue.code == "cut.audio.codec.uncompressed"
+    )
+
+    assert "preview decoding can work" in issue.message
+
+
+def test_enhanced_retail_accepts_decoded_pcm_and_resamples_to_48000_hz() -> None:
+    source = DecodedAudio(
+        pcm=b"\x00\x00\x01\x00" * 1_000,
+        sample_rate=1_000,
+        channels=2,
+    )
+
+    assets = build_cutscene_audio_assets(
+        "SCENE.WA",
+        source,
+        wavepack_name="scene_audio",
+        context=BuildContext(game=GameTarget.GTA5_ENHANCED),
+    )
+    layout = assets.awc.streams[0].stream_format_chunk
+
+    assert layout is not None
+    assert [channel.sample_rate for channel in layout.channels] == [48_000, 48_000]
+    assert [channel.codec for channel in layout.channels] == [
+        AwcCodecType.MP3,
+        AwcCodecType.MP3,
+    ]
 
 
 @pytest.mark.parametrize("channel_count", (1, 3))

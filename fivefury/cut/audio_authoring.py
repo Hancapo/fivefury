@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass
 from math import ceil
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from ..authoring import DiagnosticSeverity, ValidationReport
+from ..authoring import ValidationReport
 from ..awc.layout import AwcSpeaker, default_awc_speakers
 from ..game_target import GameTarget, coerce_game_target
+from .audio_codecs import _author_cut_awc
 from .audio_profiles import (
+    CutAudioCodec,
     CutAudioProfile,
 )
 
 if TYPE_CHECKING:
     from ..authoring import BuildContext
-    from ..awc import Awc
+    from ..awc import Awc, DecodedAudio
     from ..rel import RelFile, RelMetadataChunk
 
 
@@ -96,9 +97,11 @@ class CutsceneAudioAssets:
     wavepack_name: str
     game: GameTarget = GameTarget.GTA5
     channels: tuple[AwcSpeaker, ...] = ()
+    codec: CutAudioCodec = CutAudioCodec.RETAIL
 
     def __post_init__(self) -> None:
         self.game = coerce_game_target(self.game)
+        self.codec = CutAudioCodec(self.codec)
         channel_count = len(_stream_durations(self.awc))
         if not self.channels and channel_count:
             self.channels = default_awc_speakers(channel_count)
@@ -129,7 +132,12 @@ class CutsceneAudioAssets:
         *,
         context: BuildContext | None = None,
     ) -> ValidationReport:
-        from ..awc import awc_channel_codecs, validate_awc
+        from ..awc import (
+            AwcCodecType,
+            awc_channel_codecs,
+            awc_playback_streams,
+            validate_awc,
+        )
         from ..rel import (
             Dat54SimpleSound,
             Dat54StreamingSound,
@@ -284,15 +292,43 @@ class CutsceneAudioAssets:
         codecs = awc_channel_codecs(self.awc)
         if (
             self.game is GameTarget.GTA5_ENHANCED
-            and codecs
-            and any(int(codec) == 0 for codec in codecs)
+            and self.codec is CutAudioCodec.RETAIL
+            and (not codecs or any(value is not AwcCodecType.MP3 for value in codecs))
         ):
             report.issue(
                 "cut.audio.codec.uncompressed",
-                "Enhanced CUT audio is authored as uncompressed PCM",
-                severity=DiagnosticSeverity.WARNING,
+                "PCM preview decoding can work, but Enhanced retail CUT playback requires MP3 channels",
                 path="awc.streams",
             )
+        if self.game is GameTarget.GTA5_ENHANCED and self.codec is CutAudioCodec.RETAIL:
+            playback = awc_playback_streams(self.awc)
+            sample_rates = {
+                int(channel.sample_rate)
+                for stream in playback
+                for channel in (
+                    stream.stream_format_chunk.channels
+                    if stream.stream_format_chunk is not None
+                    else ([stream.format_chunk] if stream.format_chunk is not None else [])
+                )
+            }
+            if sample_rates != {48_000}:
+                report.issue(
+                    "cut.audio.sample_rate.retail_required",
+                    "Enhanced retail CUT audio requires 48000 Hz channels",
+                    path="awc.streams",
+                )
+            if not self.awc.multi_channel_flag or len(playback) != 1:
+                report.issue(
+                    "cut.audio.layout.retail_required",
+                    "Enhanced retail CUT audio requires one compact multichannel AWC owner",
+                    path="awc.streams",
+                )
+            if self.awc.whole_file_encrypted:
+                report.issue(
+                    "cut.audio.encryption.retail_required",
+                    "Enhanced retail CUT audio requires block encryption rather than whole-file encryption",
+                    path="awc.whole_file_encrypted",
+                )
         required_duration = _duration_ms(streams)
         if int(root.duration) < required_duration:
             report.issue(
@@ -324,6 +360,7 @@ class CutsceneAudioAssets:
             wavepack_name=self.wavepack_name,
             game=self.game,
             channels=self.channels,
+            codec=self.codec,
         )
         from ..authoring import BuildContext
 
@@ -344,13 +381,15 @@ class CutsceneAudioAssets:
 
 def build_cutscene_audio_assets(
     reference: str,
-    awc: Awc,
+    source: Awc | DecodedAudio,
     *,
     wavepack_name: str,
     awc_name: str | None = None,
     context: BuildContext,
     channels: tuple[AwcSpeaker, ...] | None = None,
+    codec: CutAudioCodec = CutAudioCodec.RETAIL,
 ) -> CutsceneAudioAssets:
+    from ..awc import Awc, DecodedAudio
     from ..rel import (
         Dat54SimpleSound,
         Dat54StreamingSound,
@@ -368,8 +407,16 @@ def build_cutscene_audio_assets(
         field="awc_name",
     )
     sounds_name = f"{base.casefold()}_sounds.dat"
-    authored_awc = deepcopy(awc)
+    selected_codec = CutAudioCodec(codec)
     profile = CutAudioProfile.retail(context.game)
+    if not isinstance(source, (Awc, DecodedAudio)):
+        raise TypeError(f"expected Awc or DecodedAudio, got {type(source).__name__}")
+    authored_awc = _author_cut_awc(
+        base,
+        source,
+        game=context.game,
+        codec=selected_codec,
+    )
     if authored_awc.multi_channel_flag:
         authored_awc.flags = profile.multichannel_flags
     streams = _stream_durations(authored_awc)
@@ -432,9 +479,10 @@ def build_cutscene_audio_assets(
         wavepack_name=pack_name,
         game=context.game,
         channels=channel_layout,
+        codec=selected_codec,
     )
     assets.validate(context=context).raise_for_errors()
     return assets
 
 
-__all__ = ["CutsceneAudioAssets", "build_cutscene_audio_assets"]
+__all__ = ["CutAudioCodec", "CutsceneAudioAssets", "build_cutscene_audio_assets"]

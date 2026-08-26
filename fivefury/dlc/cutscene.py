@@ -321,6 +321,7 @@ def validate_dlc_cutscene_archive(
                     wavepack_name=audio.wavepack_name,
                     game=audio.game,
                     channels=audio.channels,
+                    codec=audio.codec,
                 )
             except (TypeError, ValueError) as exc:
                 report.issue(

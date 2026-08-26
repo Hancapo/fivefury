@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from ..awc.layout import AwcSpeaker
 from ..game_target import GameTarget, coerce_game_target
 from ..rel import RelSoundHeader
+
+
+class CutAudioCodec(StrEnum):
+    RETAIL = "retail"
+    ANALYSIS_PCM = "analysis_pcm"
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +82,7 @@ def _stereo_route(channel: AwcSpeaker) -> CutAudioRoute:
 
 
 __all__ = [
+    "CutAudioCodec",
     "CutAudioProfile",
     "CutAudioRoute",
 ]

@@ -4,6 +4,7 @@ import pytest
 
 from fivefury import (
     Awc,
+    AwcCodecType,
     AwcStream,
     BuildContext,
     CutsceneProject,
@@ -15,7 +16,9 @@ from fivefury import (
     RelExternalNameTable,
     RpfArchive,
     Vector3,
+    awc_channel_codecs,
     build_cutscene_audio_assets,
+    read_awc,
     read_dlc_content,
     read_rel,
     validate_dlc_sounddata_archive,
@@ -77,6 +80,17 @@ def test_dlc_cutscene_preserves_target_and_registers_audio(game: GameTarget) -> 
         "x64/audio/sfx/dlc_exam_audio/example_seq_mastered_only.awc",
     ):
         assert rebuilt.find_entry(path) is not None
+    awc_entry = rebuilt.find_entry(
+        "x64/audio/sfx/dlc_exam_audio/example_seq_mastered_only.awc"
+    )
+    assert awc_entry is not None
+    rebuilt_awc = read_awc(rebuilt.read_entry_bytes(awc_entry))
+    expected_codec = (
+        AwcCodecType.MP3
+        if game is GameTarget.GTA5_ENHANCED
+        else AwcCodecType.PCM
+    )
+    assert awc_channel_codecs(rebuilt_awc) == (expected_codec,)
     assert not any(
         entry.full_path.casefold().startswith("x64/audio/config/")
         for entry in rebuilt.iter_entries()

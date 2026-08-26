@@ -1,6 +1,6 @@
 from .analysis import analyze_cut
 from .audio_authoring import CutsceneAudioAssets, build_cutscene_audio_assets
-from .audio_profiles import CutAudioProfile, CutAudioRoute
+from .audio_profiles import CutAudioCodec, CutAudioProfile, CutAudioRoute
 from .audit import (
     CutsceneAuditEntry,
     CutsceneAuditReport,
@@ -142,6 +142,7 @@ __all__ = [
     "CutAssetManager",
     "CutAttachmentPayload",
     "CutAudio",
+    "CutAudioCodec",
     "CutAudioProfile",
     "CutAudioRoute",
     "CutBinding",
