@@ -27,6 +27,14 @@ class DecodedAudio:
     def duration(self) -> float:
         return (self.frame_count / self.sample_rate) if self.sample_rate else 0.0
 
+    @property
+    def channel_pcm(self) -> tuple[bytes, ...]:
+        if self.bits_per_sample != 16:
+            raise ValueError("PCM channel splitting requires signed 16-bit samples")
+        from .audio import split_interleaved_pcm16
+
+        return tuple(split_interleaved_pcm16(self.pcm, self.channels))
+
 
 def _load_miniaudio() -> Any:
     try:

@@ -22,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Automatic CUT flag derivation from semantic authoring settings, audio bindings, section data, blend-out metadata, and concatenation mode.
 - Explicit typed preparation of the global indexes required by CUT dependency resolution, with cancellation, monotonic progress, diagnostics, and per-index timings.
 - Typed CUT audio authoring from mastered AWC streams, including DAT54 sound graphs, deterministic bank naming, duration derivation, and binary round-trip validation.
+- Edition-aware CUT audio authoring from decoded PCM with explicit retail and analysis profiles.
 - Declarative CUT audio binding with explicit offsets, lifecycle events, owned REL/AWC assets, and playback-range validation.
 - CUT audio DLC packaging with typed wavepack registration, final RPF verification, and exact cache resolution by bank path.
 
@@ -31,6 +32,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - CUT concatenation flags no longer depend on whether the scene contains prop models.
 - Authored CUT audio now uses retail DAT54 streaming headers, channel routing, and edition-specific multichannel AWC flags.
 - CUT audio DLCs now use the retail sound-metadata layout in Legacy and Enhanced.
+- Enhanced retail CUT masters now use the runtime MP3 layout instead of preview-only PCM.
 
 ### Performance
 
