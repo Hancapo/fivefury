@@ -24,6 +24,20 @@ from .crypto import decrypt_awc_rsxxtea, encrypt_awc_rsxxtea
 from .io import build_awc_bytes, read_awc, save_awc
 from .layout import AwcSpeaker, default_awc_speakers
 from .lipsync import require_valid_awc_lipsync, validate_awc_lipsync
+from .mp3 import (
+    MP3_RETAIL_SAMPLE_RATE,
+    MP3_SAMPLES_PER_FRAME,
+    MP3_STREAMING_PACKET_SIZE,
+    EncodedMp3Channel,
+    Mp3Frame,
+    encode_mp3_channel,
+    parse_mp3_frames,
+)
+from .streaming import (
+    Mp3StreamingBlock,
+    Mp3StreamingChannel,
+    inspect_mp3_streaming_data,
+)
 from .structures import (
     Awc,
     AwcChunk,
@@ -51,6 +65,9 @@ __all__ = [
     "AWC_RSXXTEA_CONSTANT",
     "AWC_RSXXTEA_DELTA",
     "AWC_STREAM_ID_MASK",
+    "MP3_RETAIL_SAMPLE_RATE",
+    "MP3_SAMPLES_PER_FRAME",
+    "MP3_STREAMING_PACKET_SIZE",
     "SUPPORTED_AUDIO_EXTENSIONS",
     "Awc",
     "AwcChunk",
@@ -63,6 +80,10 @@ __all__ = [
     "AwcStreamFormat",
     "AwcStreamFormatChunk",
     "DecodedAudio",
+    "EncodedMp3Channel",
+    "Mp3Frame",
+    "Mp3StreamingBlock",
+    "Mp3StreamingChannel",
     "awc_channel_codecs",
     "awc_chunk_name",
     "awc_playback_streams",
@@ -73,8 +94,11 @@ __all__ = [
     "decode_awc_adpcm",
     "decrypt_awc_rsxxtea",
     "default_awc_speakers",
+    "encode_mp3_channel",
     "encrypt_awc_rsxxtea",
+    "inspect_mp3_streaming_data",
     "is_lipsync_chunk_type",
+    "parse_mp3_frames",
     "parse_pcm_wav",
     "read_awc",
     "require_valid_awc_lipsync",

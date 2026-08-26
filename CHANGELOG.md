@@ -18,6 +18,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Typed compiled REL metadata families with runtime, release, and external-name-table payloads.
 - General DLC mounting for compiled REL sound metadata with typed logical and physical paths.
 - General AWC channel-codec inspection and validation of incompatible encryption flags.
+- Retail AWC MP3 authoring from PCM with independent frames, streaming blocks, packet indexes, and binary validation.
 - Automatic CUT flag derivation from semantic authoring settings, audio bindings, section data, blend-out metadata, and concatenation mode.
 - Explicit typed preparation of the global indexes required by CUT dependency resolution, with cancellation, monotonic progress, diagnostics, and per-index timings.
 - Typed CUT audio authoring from mastered AWC streams, including DAT54 sound graphs, deterministic bank naming, duration derivation, and binary round-trip validation.
