@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import pairwise
 from typing import TYPE_CHECKING
 
 from ..authoring import DiagnosticSeverity, ValidationReport
@@ -62,6 +63,61 @@ def resolve_awc_playback_stream(
         if stream_hash:
             return None
     return candidates[0] if len(candidates) == 1 else None
+
+
+def _validate_mp3_seek_table(
+    report: ValidationReport,
+    stream: AwcStream,
+    expected: tuple[int, ...] | None,
+    *,
+    block_count: int,
+    path: str,
+) -> None:
+    seek_chunk = stream.seek_table_chunk
+    if seek_chunk is None or seek_chunk.seek_table is None:
+        report.issue(
+            "awc.stream.mp3.seek_table.missing",
+            "Multichannel MP3 streams require a block seek table",
+            path=path,
+        )
+        return
+    seek_table = tuple(int(value) for value in seek_chunk.seek_table)
+    if seek_chunk.seek_table_entry_size != 4:
+        report.issue(
+            "awc.stream.mp3.seek_table.width.invalid",
+            "The MP3 block seek table must use uint32 entries",
+            path=f"{path}.entry_size",
+        )
+    if len(seek_table) != block_count:
+        report.issue(
+            "awc.stream.mp3.seek_table.count.invalid",
+            "The MP3 block seek table must contain one entry per block",
+            path=path,
+        )
+    if seek_table and seek_table[0] != 0:
+        report.issue(
+            "awc.stream.mp3.seek_table.origin.invalid",
+            "The MP3 block seek table must begin at sample zero",
+            path=f"{path}[0]",
+        )
+    if any(right < left for left, right in pairwise(seek_table)):
+        report.issue(
+            "awc.stream.mp3.seek_table.order.invalid",
+            "MP3 block seek offsets must be monotonic",
+            path=path,
+        )
+    if any(value < 0 or value > 0xFFFFFFFF for value in seek_table):
+        report.issue(
+            "awc.stream.mp3.seek_table.range.invalid",
+            "MP3 block seek offsets must fit uint32",
+            path=path,
+        )
+    if expected is not None and seek_table != expected:
+        report.issue(
+            "awc.stream.mp3.seek_table.values.invalid",
+            "MP3 block seek offsets do not match the streaming packet tables",
+            path=path,
+        )
 
 
 def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> None:
@@ -130,8 +186,21 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
             )
         codecs = {channel.codec for channel in layout.channels}
         if codecs == {AwcCodecType.MP3} and stream.data_chunk is not None:
-            from .streaming import inspect_mp3_streaming_data
+            from .streaming import (
+                derive_mp3_streaming_seek_table,
+                inspect_mp3_streaming_data,
+            )
 
+            try:
+                expected_seek_table = derive_mp3_streaming_seek_table(
+                    stream.data_chunk.data,
+                    block_count=layout.block_count,
+                    block_size=layout.block_size,
+                    channel_count=len(layout.channels),
+                )
+            except ValueError:
+                expected_seek_table = None
+            blocks = None
             try:
                 blocks = inspect_mp3_streaming_data(
                     stream.data_chunk.data,
@@ -157,6 +226,13 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
                             "MP3 block sample counts do not match the stream format",
                             path=f"{path}.channels[{channel_index}].samples",
                         )
+            _validate_mp3_seek_table(
+                report,
+                stream,
+                expected_seek_table,
+                block_count=layout.block_count,
+                path=f"{path}.seek_table",
+            )
         return
 
     if stream.codec is None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 import struct
 
@@ -78,17 +79,79 @@ def test_mp3_multichannel_authoring_round_trips(channel_count: int) -> None:
     assert source.chunks[2].seek_table_entry_size == 4
 
 
-def test_long_stereo_mp3_uses_retail_block_seek_offsets() -> None:
+@pytest.fixture(scope="module")
+def long_stereo_mp3() -> Awc:
     sample_count = 1_830_400
-    awc = Awc.from_channel_mp3(
+    return Awc.from_channel_mp3(
         "bobei_mastered_only",
         [bytes(sample_count * 2), bytes(sample_count * 2)],
     )
-    source = awc.streams[0]
+
+
+def test_long_stereo_mp3_uses_retail_block_seek_offsets(
+    long_stereo_mp3: Awc,
+) -> None:
+    source = long_stereo_mp3.streams[0]
 
     assert source.stream_format_chunk is not None
     assert source.stream_format_chunk.block_count == 3
     assert source.chunks[2].seek_table == [0, 783_360, 1_566_720]
+
+
+@pytest.mark.parametrize(
+    ("case", "code"),
+    (
+        ("missing", "awc.stream.mp3.seek_table.missing"),
+        ("short", "awc.stream.mp3.seek_table.count.invalid"),
+        ("long", "awc.stream.mp3.seek_table.count.invalid"),
+        ("nonmonotonic", "awc.stream.mp3.seek_table.order.invalid"),
+        ("nonzero_first", "awc.stream.mp3.seek_table.origin.invalid"),
+        ("inconsistent", "awc.stream.mp3.seek_table.values.invalid"),
+        ("wrong_width", "awc.stream.mp3.seek_table.width.invalid"),
+        ("out_of_range", "awc.stream.mp3.seek_table.range.invalid"),
+    ),
+)
+def test_mp3_block_seek_table_validation(
+    long_stereo_mp3: Awc,
+    case: str,
+    code: str,
+) -> None:
+    awc = copy.deepcopy(long_stereo_mp3)
+    source = awc.streams[0]
+    seek = source.seek_table_chunk
+    assert seek is not None and seek.seek_table is not None
+
+    match case:
+        case "missing":
+            source.chunks.remove(seek)
+        case "short":
+            seek.seek_table.pop()
+        case "long":
+            seek.seek_table.append(seek.seek_table[-1] + 1)
+        case "nonmonotonic":
+            seek.seek_table[1:] = reversed(seek.seek_table[1:])
+        case "nonzero_first":
+            seek.seek_table[0] = 1
+        case "inconsistent":
+            seek.seek_table[1] += 1_152
+        case "wrong_width":
+            seek.seek_table_entry_size = 2
+        case "out_of_range":
+            seek.seek_table[-1] = 0x1_0000_0000
+
+    assert code in {issue.code for issue in awc.validate().errors}
+
+
+def test_mp3_seek_table_writer_rejects_out_of_range_values(
+    long_stereo_mp3: Awc,
+) -> None:
+    awc = copy.deepcopy(long_stereo_mp3)
+    seek = awc.streams[0].seek_table_chunk
+    assert seek is not None and seek.seek_table is not None
+    seek.seek_table[-1] = 0x1_0000_0000
+
+    with pytest.raises(ValueError, match="uint32"):
+        awc.to_bytes()
 
 
 def test_mp3_frame_table_is_uint16_and_deterministic() -> None:

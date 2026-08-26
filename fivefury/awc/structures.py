@@ -363,10 +363,15 @@ class AwcChunk:
                 raise ValueError("AWC seektable entry size must be 2 or 4 bytes")
             value_format = "H" if self.seek_table_entry_size == 2 else "I"
             value_mask = 0xFFFF if self.seek_table_entry_size == 2 else 0xFFFFFFFF
+            values = [int(value) for value in self.seek_table]
+            if any(value < 0 or value > value_mask for value in values):
+                raise ValueError(
+                    f"AWC seektable entries must fit uint{self.seek_table_entry_size * 8}"
+                )
             return (
                 struct.pack(
                     f"{endian}{len(self.seek_table)}{value_format}",
-                    *[int(value) & value_mask for value in self.seek_table],
+                    *values,
                 )
                 if self.seek_table
                 else b""
@@ -450,6 +455,13 @@ class AwcStream:
     def data_chunk(self) -> AwcChunk | None:
         for chunk in self.chunks:
             if chunk.type_value == int(AwcChunkType.DATA):
+                return chunk
+        return None
+
+    @property
+    def seek_table_chunk(self) -> AwcChunk | None:
+        for chunk in self.chunks:
+            if chunk.type_value == int(AwcChunkType.SEEK_TABLE):
                 return chunk
         return None
 

@@ -21,6 +21,7 @@ from fivefury import (
     GameFileCache,
     GameFileType,
     build_awc_bytes,
+    derive_mp3_streaming_seek_table,
     read_awc,
 )
 
@@ -174,6 +175,55 @@ def test_retail_encrypted_cut_audio_loads_through_the_cache() -> None:
                 issue.code in {"audio.container_invalid", "audio.container_unresolved"}
                 for issue in bundle.issues
             )
+
+
+@pytest.mark.skipif(
+    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
+    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail AWC regression",
+)
+def test_retail_mp3_block_seek_tables_match_packet_tables() -> None:
+    assert _ENHANCED_ROOT is not None
+    names = (
+        "pro_ig_1_sync_mastered_only.awc",
+        "pro_mcs_1_mastered_only.awc",
+        "pro_mcs_2_mastered_only.awc",
+        "pro_mcs_3_pt1_mastered_only.awc",
+        "pro_mcs_5_seq_mastered_only.awc",
+        "pro_mcs_6_seq_mastered_only.awc",
+        "td_loading_music.awc",
+    )
+    with GameFileCache(
+        _ENHANCED_ROOT,
+        load_audio=True,
+        load_peds=False,
+        load_vehicles=False,
+        use_index_cache=True,
+    ) as cache:
+        cache.scan_game(gen9=True)
+        for name in names:
+            asset = cache.find_path(
+                f"x64/audio/sfx/prologue.rpf/{name}",
+                kind=GameFileType.AWC,
+            )
+            assert asset is not None
+            awc = cache.load_asset(asset).parsed
+            assert isinstance(awc, Awc)
+            source = next(
+                stream for stream in awc.streams if stream.stream_format_chunk is not None
+            )
+            layout = source.stream_format_chunk
+            seek = source.seek_table_chunk
+            assert layout is not None and source.data_chunk is not None
+            assert seek is not None and seek.seek_table is not None
+
+            expected = derive_mp3_streaming_seek_table(
+                source.data_chunk.data,
+                block_count=layout.block_count,
+                block_size=layout.block_size,
+                channel_count=len(layout.channels),
+            )
+            assert seek.seek_table_entry_size == 4
+            assert seek.seek_table == list(expected)
 
 
 def test_enhanced_mp3_seek_table_preserves_uint16_entries() -> None:

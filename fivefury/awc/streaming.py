@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -49,6 +50,79 @@ def _first_packet_sample_offset(
     if value < 0 or value > 0xFFFFFFFF:
         raise ValueError("MP3 block seek offset exceeds uint32")
     return value
+
+
+def _iter_streaming_blocks(
+    data: bytes | bytearray | memoryview,
+    *,
+    block_count: int,
+    block_size: int,
+) -> Iterator[memoryview]:
+    source = memoryview(data).cast("B")
+    if block_count <= 0 or block_size <= 0:
+        raise ValueError("Invalid AWC MP3 streaming dimensions")
+    minimum_size = (block_count - 1) * block_size + 1
+    if len(source) < minimum_size or len(source) > block_count * block_size:
+        raise ValueError("AWC MP3 streaming data does not match its block table")
+    for index in range(block_count):
+        yield source[index * block_size : (index + 1) * block_size]
+
+
+def _read_block_tables(
+    block: bytes | bytearray | memoryview,
+    channel_count: int,
+) -> tuple[
+    list[tuple[int, int, int, int, int, int]],
+    list[tuple[int, ...]],
+    int,
+]:
+    if channel_count <= 0 or len(block) < channel_count * 24:
+        raise ValueError("AWC MP3 channel block header is truncated")
+    headers: list[tuple[int, int, int, int, int, int]] = []
+    for channel_index in range(channel_count):
+        header = struct.unpack_from("<6i", block, channel_index * 24)
+        if header[0] != -1 or any(value < 0 for value in header[1:]):
+            raise ValueError("AWC MP3 channel block header is invalid")
+        headers.append(header)
+
+    cursor = channel_count * 24
+    offsets_by_channel: list[tuple[int, ...]] = []
+    for header in headers:
+        packet_count = header[1]
+        table_size = packet_count * 4
+        if cursor + table_size > len(block):
+            raise ValueError("AWC MP3 packet table is truncated")
+        offsets = (
+            struct.unpack_from(f"<{packet_count}i", block, cursor)
+            if packet_count
+            else ()
+        )
+        if any(value < 0 for value in offsets) or any(
+            right <= left for left, right in pairwise(offsets)
+        ):
+            raise ValueError("AWC MP3 packet offsets must be monotonic")
+        offsets_by_channel.append(tuple(offsets))
+        cursor += table_size
+    return headers, offsets_by_channel, _align(cursor, MP3_STREAMING_PACKET_SIZE)
+
+
+def derive_mp3_streaming_seek_table(
+    data: bytes | bytearray | memoryview,
+    *,
+    block_count: int,
+    block_size: int,
+    channel_count: int,
+) -> tuple[int, ...]:
+    return tuple(
+        _first_packet_sample_offset(
+            tuple(_read_block_tables(block, channel_count)[1])
+        )
+        for block in _iter_streaming_blocks(
+            data,
+            block_count=block_count,
+            block_size=block_size,
+        )
+    )
 
 
 def _align(value: int, alignment: int) -> int:
@@ -205,43 +279,20 @@ def inspect_mp3_streaming_data(
     channel_count: int,
     sample_rate: int,
 ) -> tuple[Mp3StreamingBlock, ...]:
-    source = bytes(data)
-    if block_count <= 0 or block_size <= 0 or channel_count <= 0:
-        raise ValueError("Invalid AWC MP3 streaming dimensions")
-    if len(source) != block_count * block_size:
-        raise ValueError("AWC MP3 streaming data does not match its block table")
     result: list[Mp3StreamingBlock] = []
-    for block_index in range(block_count):
-        block = source[block_index * block_size : (block_index + 1) * block_size]
-        cursor = channel_count * 24
-        headers: list[tuple[int, int, int, int, int, int]] = []
-        offsets_by_channel: list[tuple[int, ...]] = []
-        for channel_index in range(channel_count):
-            header = struct.unpack_from("<6i", block, channel_index * 24)
-            if header[0] != -1 or any(value < 0 for value in header[1:]):
-                raise ValueError("AWC MP3 channel block header is invalid")
-            headers.append(header)
-        for header in headers:
-            packet_count = header[1]
-            table_size = packet_count * 4
-            if cursor + table_size > block_size:
-                raise ValueError("AWC MP3 packet table is truncated")
-            offsets = (
-                struct.unpack_from(f"<{packet_count}i", block, cursor)
-                if packet_count
-                else ()
-            )
-            if any(value < 0 for value in offsets) or any(
-                right <= left for left, right in pairwise(offsets)
-            ):
-                raise ValueError("AWC MP3 packet offsets must be monotonic")
-            offsets_by_channel.append(tuple(offsets))
-            cursor += table_size
-        cursor = _align(cursor, MP3_STREAMING_PACKET_SIZE)
+    for block in _iter_streaming_blocks(
+        data,
+        block_count=block_count,
+        block_size=block_size,
+    ):
+        headers, offsets_by_channel, cursor = _read_block_tables(
+            block,
+            channel_count,
+        )
         parsed_channels: list[Mp3StreamingChannel] = []
         for header, packet_offsets in zip(headers, offsets_by_channel, strict=True):
             encoded_size = header[5]
-            if cursor + encoded_size > block_size:
+            if cursor + encoded_size > len(block):
                 raise ValueError("AWC MP3 channel payload is truncated")
             payload = block[cursor : cursor + encoded_size]
             frames = parse_mp3_frames(
@@ -278,5 +329,6 @@ __all__ = [
     "Mp3StreamingChannel",
     "Mp3StreamingData",
     "build_mp3_streaming_data",
+    "derive_mp3_streaming_seek_table",
     "inspect_mp3_streaming_data",
 ]
