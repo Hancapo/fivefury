@@ -19,6 +19,7 @@ ext_modules = [
             "native/py_awc.cpp",
             "native/py_yed.cpp",
             "native/py_ycd.cpp",
+            "native/py_ycd_sampling.cpp",
             "native/py_vector.cpp",
             "native/yed_vm.cpp",
             "native/py_bounds.cpp",

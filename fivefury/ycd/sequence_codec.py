@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 import struct
+from array import array
+from collections.abc import Sequence
 
 from .. import _native as _native_backend
 from ..binary import f32 as _f32
@@ -179,7 +181,7 @@ class _ChannelDataWriter:
             return 0
         return value.bit_length()
 
-    def bit_count_values(self, values: list[int]) -> int:
+    def bit_count_values(self, values: Sequence[int]) -> int:
         max_value = 0
         for value in values:
             max_value = max(max_value, int(value))
@@ -353,10 +355,17 @@ def _write_channel(channel: YcdAnimChannel, writer: _ChannelDataWriter, track: i
     if isinstance(channel, YcdRawFloatChannel):
         return
     if isinstance(channel, YcdQuantizeFloatChannel):
-        values = [
-            _quantize_to_bits(_sample_channel_value(channel.values, index, channel.offset), channel.quantum, channel.offset)
-            for index in range(writer.num_frames)
-        ]
+        values = array(
+            "q",
+            (
+                _quantize_to_bits(
+                    _sample_channel_value(channel.values, index, channel.offset),
+                    channel.quantum,
+                    channel.offset,
+                )
+                for index in range(writer.num_frames)
+            ),
+        )
         channel.value_list = values
         computed_value_bits = max(writer.bit_count_values(values), 1)
         if track is not None and is_ycd_object_track(int(track)) and int(channel.value_bits) > computed_value_bits:
@@ -545,7 +554,9 @@ def build_sequence_data(sequence: object) -> bytes:
         writer.align_channel_item_data(len(channels), len(anim_sequences))
 
     frame_bit_offset = 0
-    frame_descriptors: list[tuple[int, int, list[float] | list[int]]] = []
+    frame_descriptors: list[
+        tuple[int, int, Sequence[float] | Sequence[int]]
+    ] = []
     for channel_list in channel_lists:
         for channel in channel_list or []:
             channel.frame_offset = frame_bit_offset

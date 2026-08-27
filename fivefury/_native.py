@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from array import array
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -261,6 +263,52 @@ class NativeYedProgram:
         )
 
 
+class NativeYcdTrackSampler:
+    __slots__ = ("_capsule",)
+
+    def __init__(
+        self,
+        values: object,
+        frames: list[int] | None,
+        track_format: int,
+        frame_count: int,
+        vector3_type: type,
+        quaternion_type: type,
+    ) -> None:
+        self._capsule = _ffi.ycd_track_sampler_new(
+            values,
+            frames,
+            int(track_format),
+            int(frame_count),
+            vector3_type,
+            quaternion_type,
+        )
+
+    @property
+    def retained_count(self) -> int:
+        return int(_ffi.ycd_track_sampler_retained_count(self._capsule))
+
+    def window(
+        self,
+        start: int,
+        count: int,
+        *,
+        orient_cached: bool = False,
+    ) -> tuple[tuple[array[float], ...], bool, int]:
+        components, dynamic, omitted = _ffi.ycd_track_sampler_window(
+            self._capsule,
+            int(start),
+            int(count),
+            bool(orient_cached),
+        )
+        compact = []
+        for component in components:
+            values = array("d")
+            values.frombytes(component)
+            compact.append(values)
+        return tuple(compact), bool(dynamic), int(omitted)
+
+
 def _ycd_decode_frame_channels(
     data: bytes,
     num_frames: int,
@@ -279,7 +327,7 @@ def _ycd_decode_frame_channels(
 
 def _ycd_encode_frame_channels(
     num_frames: int,
-    descriptors: list[tuple[int, int, list[float] | list[int]]],
+    descriptors: list[tuple[int, int, Sequence[float] | Sequence[int]]],
 ) -> tuple[bytes, int]:
     data, frame_length = _ffi.ycd_encode_frame_channels(
         int(num_frames), descriptors

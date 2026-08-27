@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 
@@ -75,7 +76,7 @@ class YcdSequenceRootChannelRef:
         return int(self.raw_bytes[4] | (self.raw_bytes[5] << 8))
 
 
-def _cycled_float(values: list[float], frame: int, default: float = 0.0) -> float:
+def _cycled_float(values: Sequence[float], frame: int, default: float = 0.0) -> float:
     if not values:
         return float(default)
     return float(values[int(frame) % len(values)])
@@ -134,7 +135,7 @@ class YcdStaticQuaternionChannel(YcdAnimChannel):
 
 @dataclass(slots=True)
 class YcdRawFloatChannel(YcdAnimChannel):
-    values: list[float] = field(default_factory=list)
+    values: Sequence[float] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
         return _cycled_float(self.values, frame)
@@ -145,8 +146,8 @@ class YcdQuantizeFloatChannel(YcdAnimChannel):
     value_bits: int = 0
     quantum: float = 0.0
     offset: float = 0.0
-    values: list[float] = field(default_factory=list)
-    value_list: list[int] = field(default_factory=list)
+    values: Sequence[float] = field(default_factory=list)
+    value_list: Sequence[int] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
         return _cycled_float(self.values, frame, self.offset)
@@ -159,8 +160,8 @@ class YcdIndirectQuantizeFloatChannel(YcdAnimChannel):
     num_ints: int = 0
     quantum: float = 0.0
     offset: float = 0.0
-    values: list[float] = field(default_factory=list)
-    value_list: list[int] = field(default_factory=list)
+    values: Sequence[float] = field(default_factory=list)
+    value_list: Sequence[int] = field(default_factory=list)
     frames: list[int] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
@@ -178,8 +179,8 @@ class YcdLinearFloatChannel(YcdAnimChannel):
     counts: int = 0
     quantum: float = 0.0
     offset: float = 0.0
-    values: list[float] = field(default_factory=list)
-    value_list: list[int] = field(default_factory=list)
+    values: Sequence[float] = field(default_factory=list)
+    value_list: Sequence[int] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
         return _cycled_float(self.values, frame, self.offset)

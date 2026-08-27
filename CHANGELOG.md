@@ -13,6 +13,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - The fixed `DEFAULT_PLAYABLE_CUTSCENE_FLAGS` constant has been removed.
 - `build_cutscene_audio_assets()` now requires `BuildContext` so edition policy is explicit.
 - `CutScene.clip_dicts`, `CutScene.clip_dictionary()`, and `CutsceneAssets.ycds` have been replaced by `CutsceneAnimationDictionary`.
+- `YcdCutsceneTrack.samples` now uses indexed `YcdTrackSamples` instead of a materialized list.
 
 ### Added
 
@@ -42,6 +43,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
+- Dense CUT/YCD authoring is about 43.5 times faster in the 2,800-track benchmark, a 97.7% reduction in total processing time.
+- Dense CUT/YCD authoring retains 99.18% fewer samples and remains near 202 MiB of incremental memory in the benchmark workload.
 - Concurrent CUT preparation and resolution now share one coordinated index build instead of repeating full-corpus work.
 - Vehicle appearance and REL sound indexes now persist in compact validated sidecars and load without reparsing their META or REL sources.
 - Selective native YTYP relationship extraction makes cold Enhanced asset-to-texture indexing about 10.8 times faster on the tested game corpus.

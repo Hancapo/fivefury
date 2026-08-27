@@ -90,6 +90,9 @@ PyMethodDef module_methods[] = {
     {"ycd_encode_frame_channels", mod_ycd_encode_frame_channels, METH_VARARGS, nullptr},
     {"ycd_decode_quantized_values", mod_ycd_decode_quantized_values, METH_VARARGS, nullptr},
     {"ycd_decode_linear_values", mod_ycd_decode_linear_values, METH_VARARGS, nullptr},
+    {"ycd_track_sampler_new", mod_ycd_track_sampler_new, METH_VARARGS, nullptr},
+    {"ycd_track_sampler_window", mod_ycd_track_sampler_window, METH_VARARGS, nullptr},
+    {"ycd_track_sampler_retained_count", mod_ycd_track_sampler_retained_count, METH_VARARGS, nullptr},
     {"vector_interpolate_many", mod_vector_interpolate_many, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
