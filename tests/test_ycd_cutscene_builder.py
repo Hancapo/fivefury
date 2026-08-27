@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import struct
 
@@ -32,6 +33,7 @@ from fivefury import (
     YcdQuaternionEncoding,
     YcdQuaternionLayout,
     YcdTrackFormat,
+    YcdTrackSamples,
     audit_ycd_quaternion_layout,
     build_cutscene_sections,
     build_ycd_bytes,
@@ -39,6 +41,116 @@ from fivefury import (
     scene_to_cut,
 )
 from fivefury.resource import split_rsc7_sections, virtual_to_offset
+
+
+def test_cutscene_track_samples_preserve_mapping_semantics() -> None:
+    samples = YcdTrackSamples(
+        {
+            -1.0: Vector3(-1.0, -1.0, -1.0),
+            0.1: Vector3(0.0, 2.0, 4.0),
+            1.0: Vector3(2.0, 4.0, 6.0),
+            9.0: Vector3(4.0, 6.0, 8.0),
+        },
+        track_format=YcdTrackFormat.VECTOR3,
+        frame_count=5,
+        fps=2.0,
+    )
+
+    assert samples.retained_count == 3
+    assert [sample.components for sample in samples] == pytest.approx(
+        [
+            (0.0, 2.0, 4.0),
+            (1.0, 3.0, 5.0),
+            (2.0, 4.0, 6.0),
+            (3.0, 5.0, 7.0),
+            (4.0, 6.0, 8.0),
+        ]
+    )
+
+
+def test_cutscene_track_samples_compact_inactive_dense_ranges() -> None:
+    samples = YcdTrackSamples(
+        [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0],
+        track_format=YcdTrackFormat.FLOAT,
+        frame_count=8,
+        fps=30.0,
+    )
+
+    assert samples.retained_count == 4
+    assert list(samples) == pytest.approx([0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0])
+
+
+def test_cutscene_track_samples_keep_quaternion_shortest_path() -> None:
+    rotation = Quaternion(0.1, -0.2, 0.3, 0.9).normalized_strict()
+    samples = YcdTrackSamples(
+        {0.0: rotation, 1.0: -rotation},
+        track_format=YcdTrackFormat.QUATERNION,
+        frame_count=31,
+        fps=30.0,
+    )
+
+    for sample in samples:
+        assert sample.components == pytest.approx(rotation.components)
+
+
+@pytest.mark.parametrize(
+    ("game", "expected"),
+    [
+        (
+            GameTarget.GTA5,
+            [
+                "138d2055fa83f287f6d656bb598678f7b8bd8118eb4638a585f52cc0a78f6f76",
+                "062deeced044b75ee617f0d942943f1502eadb1cc60cc33bc46bb42e9318760e",
+                "688c5b5b431c6d7b4cfaa9b577cb70277290252c3f5e103563ed000181208436",
+            ],
+        ),
+        (
+            GameTarget.GTA5_ENHANCED,
+            [
+                "b52d6d513afbbdff1f47b6dd73b762427fec6350316bcd62065568e179fcca65",
+                "ae4bc56c1222b7f8f651a70b4bc7a6fd679ca2ee0d5c3e9b31d7f026017c148b",
+                "77bfb58cff78672d67ea7694a8f8368ba91d5b8e6da4de922c02a8e1cbab7d41",
+            ],
+        ),
+    ],
+)
+def test_dense_track_authoring_preserves_retail_bytes(
+    game: GameTarget,
+    expected: list[str],
+) -> None:
+    builder = YcdCutsceneBuilder.create(
+        "dense_fixture",
+        duration=10.0,
+        camera_cuts=[3.3, 7.0],
+        fps=30.0,
+        game=game,
+    )
+    builder.camera(
+        position={
+            -1.0: Vector3(-2.0, 1.0, 0.5),
+            2.0: Vector3(4.0, 8.0, 12.0),
+            12.0: Vector3(20.0, 2.0, -1.0),
+        },
+        rotation={
+            0.0: Quaternion(0.0, 0.0, 0.0, 1.0),
+            5.0: Quaternion(0.1, -0.2, 0.3, -0.9),
+            10.0: Quaternion(0.2, 0.1, -0.4, 0.85),
+        },
+        field_of_view={0.0: 35.0, 10.0: 72.0},
+    )
+    builder.prop(
+        "prop_fixture",
+        position={
+            0.0: Vector3(1.0, 2.0, 3.0),
+            10.0: Vector3(-5.0, 7.0, 4.0),
+        },
+        rotation=Quaternion(0.0, 0.0, 0.0, 1.0),
+    )
+
+    assert [
+        hashlib.sha256(build_ycd_bytes(asset)).hexdigest()
+        for asset in builder.build_ycds()
+    ] == expected
 
 
 def test_build_cutscene_sections_uses_camera_cuts() -> None:

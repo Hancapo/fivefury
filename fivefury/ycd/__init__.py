@@ -60,6 +60,7 @@ from .runtime_headers import (
     YcdRuntimeProfile,
     get_ycd_runtime_profile,
 )
+from .sampling import YcdSampleWindow, YcdTrackSample, YcdTrackSamples
 from .write import build_ycd_bytes, build_ycd_embedded_resource, save_ycd
 
 __all__ = [
@@ -100,9 +101,12 @@ __all__ = [
     "YcdQuaternionLayout",
     "YcdQuaternionLayoutAudit",
     "YcdRuntimeProfile",
+    "YcdSampleWindow",
     "YcdSequence",
     "YcdSequenceRootChannelRef",
     "YcdTrackFormat",
+    "YcdTrackSample",
+    "YcdTrackSamples",
     "YcdTransformSample",
     "YcdUvAnimationSample",
     "YcdUvClipBinding",

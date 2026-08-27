@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..authoring import ValidationReport
-from ..vector import Quaternion, Vector3
+from ..vector import Quaternion
 from .reader import read_ycd
 from .sequence_tracks import YcdTrackFormat
 from .write import build_ycd_bytes
@@ -31,7 +31,10 @@ def validate_cutscene_section_precision(
             (
                 track,
                 track.channel_policy or builder.channel_policy,
-                track.samples[section.start_frame : section.end_frame + 1],
+                track.samples.window(
+                    section.start_frame,
+                    section.frame_count,
+                ).components,
             )
             for track in clip_spec.tracks
             if (track.channel_policy or builder.channel_policy).requires_validation
@@ -45,35 +48,31 @@ def validate_cutscene_section_precision(
         maximum_angular_errors = [0.0] * len(constrained)
         for frame in range(section.frame_count):
             values = clip.animation.evaluate_tracks(frame, interpolate=False)
-            for track_index, (track_spec, _policy, source) in enumerate(constrained):
-                if frame >= len(source):
+            for track_index, (track_spec, _policy, components) in enumerate(constrained):
+                if not components or frame >= len(components[0]):
                     continue
-                expected = source[frame]
                 key = (int(track_spec.bone_id), int(track_spec.track))
                 actual = values.get(key)
                 if actual is None:
                     continue
-                expected_components = (
-                    expected.components
-                    if isinstance(expected, (Vector3, Quaternion))
-                    else (float(expected),)
+                expected_components = tuple(
+                    component[frame] for component in components
                 )
-                components = actual.components[: len(expected_components)]
+                actual_components = actual.components[: len(expected_components)]
                 if track_spec.format is YcdTrackFormat.QUATERNION:
-                    if not isinstance(expected, Quaternion) or not isinstance(
-                        actual, Quaternion
-                    ):
+                    if not isinstance(actual, Quaternion):
                         raise TypeError("Quaternion precision validation requires Quaternion samples")
+                    expected = Quaternion.from_iterable(expected_components)
                     direct = max(
                         abs(left - right)
                         for left, right in zip(
-                            expected_components, components, strict=True
+                            expected_components, actual_components, strict=True
                         )
                     )
                     negated = max(
                         abs(left + right)
                         for left, right in zip(
-                            expected_components, components, strict=True
+                            expected_components, actual_components, strict=True
                         )
                     )
                     maximum_errors[track_index] = max(
@@ -89,12 +88,12 @@ def validate_cutscene_section_precision(
                         max(
                             abs(left - right)
                             for left, right in zip(
-                                expected_components, components, strict=True
+                                expected_components, actual_components, strict=True
                             )
                         ),
                     )
 
-        for track_index, (track_spec, policy, _source) in enumerate(constrained):
+        for track_index, (track_spec, policy, _components) in enumerate(constrained):
             key = (int(track_spec.bone_id), int(track_spec.track))
             path = f"clips[{clip_spec.name}].tracks[{key[0]},{key[1]}]"
             maximum_error = maximum_errors[track_index]

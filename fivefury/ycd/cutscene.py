@@ -28,6 +28,7 @@ from .model import (
     YcdClipType,
     YcdSequence,
 )
+from .sampling import YcdSampleWindow, YcdTrackSample, YcdTrackSamples
 from .sequence_channels import (
     YcdAnimSequence,
     YcdCachedQuaternionChannel,
@@ -56,9 +57,6 @@ class YcdQuaternionEncoding(StrEnum):
     EXPLICIT = "explicit"
 
 
-YcdTrackSample = float | Vector3 | Quaternion
-
-
 def _track_component_count(
     track: int | YcdAnimationTrack, format: int | YcdTrackFormat | None = None
 ) -> int:
@@ -72,24 +70,6 @@ def _track_component_count(
         YcdTrackFormat.VECTOR3: 3,
         YcdTrackFormat.QUATERNION: 4,
     }[resolved]
-
-
-def _coerce_sample(value: object, track_format: YcdTrackFormat) -> YcdTrackSample:
-    if track_format is YcdTrackFormat.FLOAT:
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-            raise TypeError("Float tracks require float samples, not sequences")
-        return float(value)
-    if track_format is YcdTrackFormat.VECTOR3:
-        if not isinstance(value, Vector3):
-            raise TypeError(
-                f"Vector3 tracks require Vector3 samples, got {type(value).__name__}"
-            )
-        return value
-    if not isinstance(value, Quaternion):
-        raise TypeError(
-            f"Quaternion tracks require Quaternion samples, got {type(value).__name__}"
-        )
-    return value.normalized_strict()
 
 
 def _interpolate_values(
@@ -106,75 +86,8 @@ def _interpolate_values(
     return lerp(float(start), float(end), alpha)
 
 
-def _is_per_frame_sequence(value: object) -> bool:
-    return isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, Vector3, Quaternion)
-    )
-
-
-def _sample_track_values(
-    source: object,
-    *,
-    track_format: YcdTrackFormat,
-    frame_count: int,
-    fps: float,
-) -> list[YcdTrackSample]:
-    if frame_count <= 0:
-        return []
-
-    if isinstance(source, Mapping):
-        if not source:
-            raise ValueError("Keyframe mapping cannot be empty")
-        keyed = []
-        for key, value in source.items():
-            frame = round(float(key) * fps)
-            frame = min(max(frame, 0), frame_count - 1)
-            keyed.append((frame, _coerce_sample(value, track_format)))
-        keyed.sort(key=lambda item: item[0])
-        deduped: list[tuple[int, YcdTrackSample]] = []
-        for frame, value in keyed:
-            if deduped and deduped[-1][0] == frame:
-                deduped[-1] = (frame, value)
-            else:
-                deduped.append((frame, value))
-        result = [deduped[0][1]] * frame_count
-        if len(deduped) == 1:
-            return list(result)
-        for (start_frame, start_value), (end_frame, end_value) in itertools.pairwise(
-            deduped
-        ):
-            span = max(end_frame - start_frame, 1)
-            for frame in range(start_frame, min(end_frame, frame_count - 1) + 1):
-                alpha = float(frame - start_frame) / float(span)
-                result[frame] = _interpolate_values(
-                    start_value, end_value, alpha
-                )
-        last_frame, last_value = deduped[-1]
-        for frame in range(last_frame, frame_count):
-            result[frame] = last_value
-        return Quaternion.make_continuous(result) if track_format is YcdTrackFormat.QUATERNION else result  # type: ignore[arg-type]
-
-    if _is_per_frame_sequence(source):
-        if len(source) != frame_count:  # type: ignore[arg-type]
-            raise ValueError(
-                f"Expected {frame_count} per-frame samples, got {len(source)}"
-            )  # type: ignore[arg-type]
-        result = [_coerce_sample(item, track_format) for item in source]  # type: ignore[arg-type]
-        return Quaternion.make_continuous(result) if track_format is YcdTrackFormat.QUATERNION else result  # type: ignore[arg-type]
-
-    constant = _coerce_sample(source, track_format)
-    result = [constant for _ in range(frame_count)]
-    return Quaternion.make_continuous(result) if track_format is YcdTrackFormat.QUATERNION else result  # type: ignore[arg-type]
-
-
-def _sample_components(sample: YcdTrackSample) -> tuple[float, ...]:
-    if isinstance(sample, (Vector3, Quaternion)):
-        return sample.components
-    return (float(sample),)
-
-
 def _make_quantize_channel(
-    component_index: int, values: list[float]
+    component_index: int, values: Sequence[float]
 ) -> YcdQuantizeFloatChannel:
     minimum = min(values)
     maximum = max(values)
@@ -191,7 +104,7 @@ def _make_quantize_channel(
 
 
 def _make_component_channels(
-    samples: list[YcdTrackSample],
+    components: tuple[Sequence[float], ...],
     *,
     encoding: YcdChannelEncoding,
     retail_quantized: bool,
@@ -199,9 +112,7 @@ def _make_component_channels(
     channels: list[
         YcdStaticFloatChannel | YcdQuantizeFloatChannel | YcdRawFloatChannel
     ] = []
-    component_count = len(_sample_components(samples[0]))
-    for component_index in range(component_count):
-        values = [float(_sample_components(sample)[component_index]) for sample in samples]
+    for component_index, values in enumerate(components):
         if all(abs(value - values[0]) <= 1e-9 for value in values[1:]):
             channels.append(
                 YcdStaticFloatChannel(
@@ -223,30 +134,9 @@ def _make_component_channels(
     return channels
 
 
-def _orient_cached_quaternion_window(
-    samples: list[Quaternion],
-) -> tuple[int, list[Quaternion]]:
-    candidates: list[tuple[float, float, float, int]] = []
-    for component_index in range(4):
-        magnitudes = [
-            abs(sample.components[component_index]) for sample in samples
-        ]
-        minimum_magnitude = min(magnitudes)
-        mean_square = sum(value * value for value in magnitudes) / len(magnitudes)
-        peak = max(magnitudes)
-        candidates.append((minimum_magnitude, mean_square, peak, -component_index))
-    omitted_component = -max(candidates)[3]
-    oriented = [
-        sample
-        if sample.components[omitted_component] >= 0.0
-        else -sample
-        for sample in samples
-    ]
-    return omitted_component, oriented
-
-
 def _make_cached_quaternion_channels(
-    samples: list[Quaternion],
+    components: tuple[Sequence[float], ...],
+    omitted_component: int,
     *,
     encoding: YcdChannelEncoding,
     retail_quantized: bool,
@@ -256,17 +146,13 @@ def _make_cached_quaternion_channels(
     | YcdRawFloatChannel
     | YcdCachedQuaternionChannel
 ]:
-    omitted_component, samples = _orient_cached_quaternion_window(samples)
-    explicit_samples = [
-        Vector3.from_iterable(
-            component
-            for component_index, component in enumerate(sample.components)
-            if component_index != omitted_component
-        )
-        for sample in samples
-    ]
+    explicit_components = tuple(
+        values
+        for component_index, values in enumerate(components)
+        if component_index != omitted_component
+    )
     channels = _make_component_channels(
-        explicit_samples,
+        explicit_components,
         encoding=encoding,
         retail_quantized=retail_quantized,
     )
@@ -281,8 +167,9 @@ def _make_cached_quaternion_channels(
 
 
 def _make_channels(
-    samples: list[YcdTrackSample],
+    window: YcdSampleWindow,
     *,
+    track_format: YcdTrackFormat,
     track: int | YcdAnimationTrack | None = None,
     quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
     channel_encoding: YcdChannelEncoding = YcdChannelEncoding.RETAIL,
@@ -294,9 +181,16 @@ def _make_channels(
     | YcdRawFloatChannel
     | YcdCachedQuaternionChannel
 ]:
-    if not samples:
+    components = window.components
+    if not components or not components[0]:
         return []
-    component_count = len(_sample_components(samples[0]))
+    component_count = len(components)
+    if component_count != {
+        YcdTrackFormat.FLOAT: 1,
+        YcdTrackFormat.VECTOR3: 3,
+        YcdTrackFormat.QUATERNION: 4,
+    }[track_format]:
+        raise ValueError("YCD sample component count does not match its track format")
     track_value = None if track is None else int(track)
     retail_quantized = track_value in {
         int(YcdAnimationTrack.BONE_TRANSLATION),
@@ -304,34 +198,30 @@ def _make_channels(
         int(YcdAnimationTrack.MOVER_TRANSLATION),
         int(YcdAnimationTrack.MOVER_ROTATION),
     }
-    if all(sample == samples[0] for sample in samples[1:]):
-        value = samples[0]
+    if not window.dynamic:
         if component_count == 3:
-            if not isinstance(value, Vector3):
-                raise TypeError("Vector3 channel received a non-Vector3 sample")
             return [
                 YcdStaticVector3Channel(
                     channel_type=YcdChannelType.STATIC_VECTOR3,
                     channel_index=0,
-                    value=value,
+                    value=Vector3(*(values[0] for values in components)),
                 )
             ]
         if component_count == 4:
-            if not isinstance(value, Quaternion):
-                raise TypeError("Quaternion channel received a non-Quaternion sample")
-            value = value.canonicalized()
             return [
                 YcdStaticQuaternionChannel(
                     channel_type=YcdChannelType.STATIC_QUATERNION,
                     channel_index=0,
-                    value=value,
+                    value=Quaternion(
+                        *(values[0] for values in components)
+                    ).canonicalized(),
                 )
             ]
         return [
             YcdStaticFloatChannel(
                 channel_type=YcdChannelType.STATIC_FLOAT,
                 channel_index=0,
-                value=float(value),
+                value=float(components[0][0]),
             )
         ]
 
@@ -342,12 +232,13 @@ def _make_channels(
         and quaternion_encoding is YcdQuaternionEncoding.RETAIL_CACHED
     ):
         return _make_cached_quaternion_channels(
-            samples,  # type: ignore[arg-type]
+            components,
+            window.omitted_component,
             encoding=channel_encoding,
             retail_quantized=retail_quantized,
         )
     return _make_component_channels(
-        samples,
+        components,
         encoding=channel_encoding,
         retail_quantized=retail_quantized,
     )
@@ -367,25 +258,23 @@ def _cutscene_track_sort_key(track_spec: YcdCutsceneTrack) -> tuple[int, int, in
     )
 
 
-def _iter_sequence_sample_windows(
-    samples: list[YcdTrackSample],
+def _sequence_window_ranges(
+    frame_count: int,
     *,
     frame_limit: int = YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
-) -> list[tuple[int, list[YcdTrackSample]]]:
-    if not samples:
+) -> list[tuple[int, int]]:
+    if frame_count <= 0:
         return []
     max_step = max(int(frame_limit), 1)
     max_count = max_step + 1
-    if len(samples) <= max_count:
-        return [(0, samples)]
-    windows: list[tuple[int, list[YcdTrackSample]]] = []
+    if frame_count <= max_count:
+        return [(0, frame_count)]
+    windows: list[tuple[int, int]] = []
     start = 0
-    while start < len(samples):
-        chunk = samples[start : min(start + max_count, len(samples))]
-        if not chunk:
-            break
-        windows.append((start, chunk))
-        if start + len(chunk) >= len(samples):
+    while start < frame_count:
+        count = min(max_count, frame_count - start)
+        windows.append((start, count))
+        if start + count >= frame_count:
             break
         start += max_step
     return windows
@@ -431,7 +320,7 @@ class YcdCutsceneTrack:
     track: int
     bone_id: int
     format: YcdTrackFormat
-    samples: list[YcdTrackSample]
+    samples: YcdTrackSamples
     channel_policy: YcdChannelEncodingPolicy | None = None
 
 
@@ -741,7 +630,7 @@ class YcdCutsceneBuilder:
                 track=track_value,
                 bone_id=int(bone_id),
                 format=track_format,
-                samples=_sample_track_values(
+                samples=YcdTrackSamples(
                     samples,
                     track_format=track_format,
                     frame_count=self.total_frames,
@@ -942,14 +831,10 @@ class YcdCutsceneBuilder:
             short_name = f"{clip_spec.name}-{output_index}"
             animation_hash = MetaHash(short_name)
             bone_ids: list[YcdAnimationBoneId] = []
-            track_windows: list[
-                tuple[YcdCutsceneTrack, list[tuple[int, list[YcdTrackSample]]]]
-            ] = []
             sequence_limit = min(
                 YCD_CUTSCENE_SEQUENCE_FRAME_LIMIT,
                 max(section.frame_count, 1),
             )
-            sample_frame_limit = sequence_limit
             uses_camera_tracks = any(
                 _is_camera_track_id(track_spec.track) for track_spec in clip_spec.tracks
             )
@@ -958,62 +843,56 @@ class YcdCutsceneBuilder:
                 # GTA cutscene YCDs group object tracks by semantic track id,
                 # then by bone id. The runtime is stricter than the parser here.
                 sorted_tracks.sort(key=_cutscene_track_sort_key)
-            for track_spec in sorted_tracks:
-                frame_samples = track_spec.samples[
-                    section.start_frame : section.end_frame + 1
-                ]
-                if not frame_samples:
-                    continue
-                bone = YcdAnimationBoneId(
+            bone_ids = [
+                YcdAnimationBoneId(
                     bone_id=track_spec.bone_id,
                     track=track_spec.track,
                     format=track_spec.format,
                 )
-                bone_ids.append(bone)
-                track_windows.append(
-                    (
-                        track_spec,
-                        _iter_sequence_sample_windows(
-                            frame_samples, frame_limit=sample_frame_limit
-                        ),
-                    )
-                )
-            if not track_windows:
-                continue
-            sequence_count = max(
-                (len(windows) for _, windows in track_windows), default=0
+                for track_spec in sorted_tracks
+            ]
+            window_ranges = _sequence_window_ranges(
+                section.frame_count,
+                frame_limit=sequence_limit,
             )
             sequences: list[YcdSequence] = []
-            for sequence_index in range(sequence_count):
+            for sequence_index, (frame_offset, frame_count) in enumerate(
+                window_ranges
+            ):
                 anim_sequences: list[YcdAnimSequence] = []
-                sequence_frame_count = 0
-                for track_index, (_track_spec, windows) in enumerate(track_windows):
-                    if sequence_index >= len(windows):
-                        continue
-                    _start_frame, frame_samples = windows[sequence_index]
-                    sequence_frame_count = max(sequence_frame_count, len(frame_samples))
+                for track_index, track_spec in enumerate(sorted_tracks):
+                    orient_cached = (
+                        self.quaternion_encoding
+                        is YcdQuaternionEncoding.RETAIL_CACHED
+                        and track_spec.format is YcdTrackFormat.QUATERNION
+                        and is_ycd_rotation_track(track_spec.track)
+                    )
+                    window = track_spec.samples.window(
+                        section.start_frame + frame_offset,
+                        frame_count,
+                        orient_cached=orient_cached,
+                    )
                     anim_sequences.append(
                         YcdAnimSequence(
                             bone_id=bone_ids[track_index],
                             channels=_make_channels(
-                                frame_samples,
-                                track=_track_spec.track,
+                                window,
+                                track=track_spec.track,
+                                track_format=track_spec.format,
                                 quaternion_encoding=self.quaternion_encoding,
                                 channel_encoding=(
-                                    _track_spec.channel_policy or self.channel_policy
+                                    track_spec.channel_policy or self.channel_policy
                                 ).encoding,
                             ),
                         )
                     )
-                if not anim_sequences:
-                    continue
                 sequences.append(
                     YcdSequence(
                         hash=MetaHash(f"{short_name}_seq{sequence_index}"),
                         data_length=0,
                         frame_offset=0,
                         root_motion_refs_offset=0,
-                        num_frames=sequence_frame_count,
+                        num_frames=frame_count,
                         frame_length=0,
                         indirect_quantize_float_num_ints=0,
                         quantize_float_value_bits=0,
