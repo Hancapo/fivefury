@@ -43,8 +43,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- Dense CUT/YCD authoring is about 43.5x faster.
-- Dense CUT/YCD authoring retains 99.18% fewer samples.
+- Dense CUT/YCD track authoring is about 43.5x faster by sampling only the sequence windows being serialized.
+- Indexed source tracks and compact numeric channel buffers retain 99.18% fewer samples instead of expanding complete timelines into Python objects.
 - Concurrent CUT preparation and resolution now share one coordinated index build instead of repeating full-corpus work.
 - Vehicle appearance and REL sound indexes now persist in compact validated sidecars and load without reparsing their META or REL sources.
 - Selective native YTYP relationship extraction makes cold Enhanced asset-to-texture indexing about 10.8 times faster on the tested game corpus.
