@@ -1008,6 +1008,68 @@ def test_cut_prop_runtime_source_can_disable_type_file_inference() -> None:
     assert prop.type_file is None
 
 
+def test_cut_vehicle_runtime_source_can_explicitly_use_mounted_metadata() -> None:
+    scene = CutScene.create(duration=1.0)
+    scene.vehicle(
+        "rancherxl_actor",
+        streaming_name="rancherxl",
+        type_file_strategy=CutTypeFileStrategy.NONE,
+    )
+
+    assert not [
+        issue for issue in scene.validate(strict=True)
+        if issue.code == "object.type_file.missing"
+    ]
+
+    rebuilt = read_cut(build_cut_bytes(scene_to_cut(scene)))
+    rebuilt_node = rebuilt.objects[0]
+    roundtrip_vehicle = read_cut_scene(rebuilt).vehicles[0]
+
+    assert rebuilt_node.fields["StreamingName"].hash == jenk_hash("rancherxl")
+    assert rebuilt_node.fields["typeFile"].hash == 0
+    assert roundtrip_vehicle.type_file is None
+    assert roundtrip_vehicle.type_file_strategy is CutTypeFileStrategy.NONE
+
+
+def test_cut_vehicle_auto_runtime_source_remains_conservative() -> None:
+    scene = CutScene.create(duration=1.0)
+    scene.vehicle("rancherxl_actor", streaming_name="rancherxl")
+
+    assert any(
+        issue.code == "object.type_file.missing"
+        for issue in scene.validate(strict=True)
+    )
+
+
+def test_cut_vehicle_preserves_explicit_type_file() -> None:
+    scene = CutScene.create(duration=1.0)
+    vehicle = scene.vehicle(
+        "rancherxl_actor",
+        streaming_name="rancherxl",
+        type_file="vehicle_archetypes",
+    )
+
+    rebuilt = read_cut_scene(scene_to_cut(scene)).vehicles[0]
+
+    assert vehicle.type_file == "vehicle_archetypes"
+    assert rebuilt.fields["typeFile"].hash == jenk_hash("vehicle_archetypes")
+    assert rebuilt.type_file_strategy is CutTypeFileStrategy.AUTO
+
+
+def test_cut_prop_still_requires_a_type_source() -> None:
+    scene = CutScene.create(duration=1.0)
+    scene.prop(
+        "prop_actor",
+        streaming_name="prop_box",
+        type_file_strategy=CutTypeFileStrategy.NONE,
+    )
+
+    assert any(
+        issue.code == "object.type_file.missing"
+        for issue in scene.validate(strict=True)
+    )
+
+
 def test_cut_all_event_ids_have_serializable_specs() -> None:
     scene = CutScene.create(scene_name="all_events_smoke", duration=1.0)
     scene.asset_manager()
