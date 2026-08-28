@@ -24,6 +24,8 @@ from .bindings import (
     CutBinding,
     CutCamera,
     CutPed,
+    CutTypeFileStrategy,
+    CutVehicle,
 )
 from .settings import derive_cutscene_flags
 from .shared import (
@@ -561,10 +563,14 @@ def _validate_bindings(scene: CutScene, issues: ValidationReport) -> None:
                     "object.streaming_name.missing",
                     f"{_binding_name(binding)} has no StreamingName",
                 )
-            # Retail cutscene peds commonly leave typeFile at zero and resolve
-            # their model through StreamingName plus the mounted PEDSTREAM_FILE.
-            # Props and vehicles still require a YTYP/container reference.
-            if not type_file and binding.role in {"prop", "vehicle"}:
+            missing_runtime_source = not type_file and binding.role == "prop"
+            if binding.role == "vehicle" and not type_file:
+                missing_runtime_source = (
+                    binding.type_file_strategy
+                    if isinstance(binding, CutVehicle)
+                    else CutTypeFileStrategy.AUTO
+                ) is not CutTypeFileStrategy.NONE
+            if missing_runtime_source:
                 _issue(
                     issues,
                     "error",

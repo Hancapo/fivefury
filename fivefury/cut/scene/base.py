@@ -32,6 +32,7 @@ from .bindings import (
     CutProp,
     CutPropAnimationPreset,
     CutTypeFileStrategy,
+    CutVehicle,
     _TypedCutBinding,
 )
 from .settings import CutSceneSettings, derive_cutscene_flags
@@ -851,3 +852,47 @@ def prop(
 
 
 CutScene.prop = prop
+
+
+def vehicle(
+    self: CutScene,
+    name: str | None = None,
+    *,
+    object_id: int | None = None,
+    cutscene_name: str | None = None,
+    streaming_name: str | None = None,
+    animation_clip_base: str | None = None,
+    anim_streaming_base: int | None = None,
+    type_file: str | None = None,
+    model: Any | None = None,
+    archetype: Any | None = None,
+    ytyp: Any | None = None,
+    type_source: Any | None = None,
+    type_file_strategy: CutTypeFileStrategy | str | None = None,
+    fields: dict[str, Any] | None = None,
+) -> CutVehicle:
+    vehicle = self._typed_binding(
+        CutVehicle,
+        name,
+        object_id=object_id,
+        fields=fields,
+    )
+    assert isinstance(vehicle, CutVehicle)
+    vehicle.configure_runtime_source(
+        model=model,
+        archetype=archetype,
+        ytyp=ytyp,
+        type_source=type_source,
+        type_file_strategy=type_file_strategy,
+    )
+    vehicle.configure_model_asset(
+        cutscene_name=cutscene_name,
+        streaming_name=streaming_name,
+        animation_clip_base=animation_clip_base,
+        anim_streaming_base=anim_streaming_base,
+        type_file=type_file,
+    )
+    return vehicle
+
+
+CutScene.vehicle = vehicle

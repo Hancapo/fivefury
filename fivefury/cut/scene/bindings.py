@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from ...common import hash_value
 from ...hashing import jenk_partial_hash
@@ -320,6 +320,15 @@ class _CutNamedAnimatedStreamedBinding(_CutNamedStreamedBinding):
 
 class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
     @property
+    def type_file_strategy(self) -> CutTypeFileStrategy:
+        value = self.metadata.get("type_file_strategy", CutTypeFileStrategy.AUTO)
+        return _coerce_cut_type_file_strategy(value)
+
+    @type_file_strategy.setter
+    def type_file_strategy(self, value: CutTypeFileStrategy | str) -> None:
+        self.metadata["type_file_strategy"] = _coerce_cut_type_file_strategy(value)
+
+    @property
     def anim_export_ctrl_spec_file(self) -> str | None:
         return self._get_hashed_text_field("cAnimExportCtrlSpecFile")
 
@@ -353,11 +362,42 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
 
     @property
     def type_file(self) -> str | None:
-        return self._get_hashed_text_field("typeFile")
+        value = self.fields.get("typeFile")
+        if isinstance(value, CutHashedString) and value.hash == 0:
+            return None
+        return _coerce_name(value)
 
     @type_file.setter
     def type_file(self, value: str | None) -> None:
         self._set_hashed_text_field("typeFile", value)
+        if (
+            value is not None
+            and self.type_file_strategy is CutTypeFileStrategy.NONE
+        ):
+            self.type_file_strategy = CutTypeFileStrategy.AUTO
+
+    @classmethod
+    def from_runtime_asset(
+        cls,
+        *,
+        name: str | None = None,
+        object_id: int = -1,
+        fields: dict[str, Any] | None = None,
+        model: Any | None = None,
+        archetype: Any | None = None,
+        ytyp: Any | None = None,
+        type_source: Any | None = None,
+        type_file_strategy: CutTypeFileStrategy | str | None = None,
+    ) -> Self:
+        binding = cls(name=name, object_id=object_id, fields=fields)
+        binding.configure_runtime_source(
+            model=model,
+            archetype=archetype,
+            ytyp=ytyp,
+            type_source=type_source,
+            type_file_strategy=type_file_strategy,
+        )
+        return binding
 
     def configure_model_asset(
         self,
@@ -402,6 +442,7 @@ class _CutStreamedModelBinding(_CutNamedAnimatedStreamedBinding):
         type_file_strategy: CutTypeFileStrategy | str | None = None,
     ) -> _CutStreamedModelBinding:
         strategy = _coerce_cut_type_file_strategy(type_file_strategy)
+        self.type_file_strategy = strategy
         resolved_model = model if model not in (None, "", 0) else archetype
         model_name = _extract_model_name(resolved_model)
         if model_name is not None:
@@ -689,29 +730,6 @@ class CutProp(_CutStreamedModelBinding):
     TYPE_NAME = "rage__cutfPropModelObject"
     ROLE = "prop"
 
-    @classmethod
-    def from_runtime_asset(
-        cls,
-        *,
-        name: str | None = None,
-        object_id: int = -1,
-        fields: dict[str, Any] | None = None,
-        model: Any | None = None,
-        archetype: Any | None = None,
-        ytyp: Any | None = None,
-        type_source: Any | None = None,
-        type_file_strategy: CutTypeFileStrategy | str | None = None,
-    ) -> CutProp:
-        binding = cls(name=name, object_id=object_id, fields=fields)
-        binding.configure_runtime_source(
-            model=model,
-            archetype=archetype,
-            ytyp=ytyp,
-            type_source=type_source,
-            type_file_strategy=type_file_strategy,
-        )
-        return binding
-
 
 class CutVehicle(_CutStreamedModelBinding):
     TYPE_NAME = "rage__cutfVehicleModelObject"
@@ -958,12 +976,15 @@ def _binding_from_node(node: CutNode) -> CutBinding:
         )
     binding_class = _BINDING_CLASS_BY_TYPE.get(node.type_name)
     if binding_class is not None:
-        return binding_class(
+        binding = binding_class(
             name=name,
             object_id=int(node.fields.get("iObjectId", -1)),
             fields=fields,
             raw=raw,
         )
+        if isinstance(binding, CutVehicle) and binding.type_file is None:
+            binding.type_file_strategy = CutTypeFileStrategy.NONE
+        return binding
     return CutBinding(
         object_id=int(node.fields.get("iObjectId", -1)),
         type_name=node.type_name,
