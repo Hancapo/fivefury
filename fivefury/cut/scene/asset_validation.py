@@ -16,6 +16,7 @@ from ...awc.validation import resolve_awc_playback_stream, validate_awc_stream
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
 from ...rel import RelFile, RelSoundGraph, RelSoundIndex
+from ...vehiclemeta import VehicleInitDataList, VehicleMeta
 from ...ycd import Ycd, YcdAnimationTrack
 from ...yed import (
     PedExpressionSetMetadata,
@@ -34,7 +35,7 @@ from ..audio_references import (
 from ..reference_values import field_reference
 from .animation_dictionary import CutsceneAnimationDictionary
 from .asset_context import CutAssetContext, CutContextAsset, cut_asset_reference_hash
-from .bindings import CutBinding, CutPed
+from .bindings import CutBinding, CutPed, CutTypeFileStrategy, CutVehicle
 from .shared import (
     _runtime_animation_section_index,
     _runtime_animation_section_starts,
@@ -222,6 +223,7 @@ class _CutsceneContextValidator:
         self.owned_audio_references = owned_audio_references
         self.assets = CutAssetContext(context)
         self.models: dict[int, tuple[object, str | int]] = {}
+        self._vehicle_model_hashes: frozenset[int] | None = None
 
     def validate(self) -> None:
         self._validate_models()
@@ -325,6 +327,7 @@ class _CutsceneContextValidator:
             reference = self._binding_reference(binding, "StreamingName")
             if reference is None:
                 continue
+            self._validate_vehicle_runtime_source(binding, reference)
             self._validate_ytyp(binding, reference)
             asset = self.assets.find(reference, kinds)
             if asset is None:
@@ -353,6 +356,60 @@ class _CutsceneContextValidator:
                 )
                 continue
             self.models[binding.object_id] = (model, reference)
+
+    def _validate_vehicle_runtime_source(
+        self,
+        binding: CutBinding,
+        model_reference: str | int,
+    ) -> None:
+        if (
+            not isinstance(binding, CutVehicle)
+            or binding.type_file_strategy is not CutTypeFileStrategy.NONE
+        ):
+            return
+        if cut_asset_reference_hash(model_reference) in self._vehicle_models():
+            return
+        self.report.issue(
+            "cut.binding.vehicle_metadata.unresolved",
+            f"No mounted vehicles.meta entry matches {binding.display_name}",
+            severity=_severity(self.context),
+            asset=self.scene.scene_name,
+            path=f"bindings[{binding.object_id}].StreamingName",
+        )
+
+    def _vehicle_models(self) -> frozenset[int]:
+        if self._vehicle_model_hashes is not None:
+            return self._vehicle_model_hashes
+        result: set[int] = set()
+        for asset in self.assets.iter_kind(GameFileType.VEHICLES):
+            metadata = self._load(
+                asset,
+                code="cut.binding.vehicle_metadata.load_failed",
+                path="vehicle_metadata",
+            )
+            if isinstance(metadata, VehicleMeta):
+                document = metadata.vehicles
+            elif isinstance(metadata, VehicleInitDataList):
+                document = metadata
+            else:
+                document = None
+            if document is None:
+                if metadata is not None:
+                    self.report.issue(
+                        "cut.binding.vehicle_metadata.invalid",
+                        f"Asset is not decoded vehicles.meta metadata: {asset.path}",
+                        severity=_severity(self.context),
+                        asset=asset.path,
+                        path="vehicle_metadata",
+                    )
+                continue
+            result.update(
+                cut_asset_reference_hash(vehicle.model_name)
+                for vehicle in document.vehicles
+                if vehicle.model_name
+            )
+        self._vehicle_model_hashes = frozenset(result)
+        return self._vehicle_model_hashes
 
     def _validate_ytyp(self, binding: CutBinding, model_reference: str | int) -> None:
         type_reference = self._binding_reference(binding, "typeFile")

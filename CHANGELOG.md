@@ -31,6 +31,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- CUT vehicle bindings now support mounted vehicle metadata as an explicit runtime source while preserving a zero `typeFile`.
 - Retail-cached YCD quaternion tracks now preserve rotations whose component signs change within a sequence window.
 - Retail MP3 AWC streams now include and validate their block seek tables.
 - CUT audio round-trips now preserve the target edition and speaker layout, including mono codec diagnostics.
