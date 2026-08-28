@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from fivefury import (
+    AssetSet,
+    BuildContext,
     CutCameraCutPayload,
     CutCascadeShadowPayload,
     CutConcatMode,
@@ -22,15 +24,21 @@ from fivefury import (
     CutPropAnimationPreset,
     CutScene,
     CutsceneAnimationDictionary,
+    CutsceneAssets,
     CutSceneFlags,
     CutSceneSettings,
     CutSectioningMode,
     CutTypeFileStrategy,
+    GameFileCache,
     GameFileType,
     Quaternion,
     Vector3,
+    VehicleInitData,
+    VehicleInitDataList,
     YcdCutsceneBuilder,
+    Ydr,
     YdrLight,
+    Yft,
     analyze_cut,
     build_cut_bytes,
     derive_cutscene_flags,
@@ -1068,6 +1076,75 @@ def test_cut_prop_still_requires_a_type_source() -> None:
         issue.code == "object.type_file.missing"
         for issue in scene.validate(strict=True)
     )
+
+
+def _vehicle_cutscene_assets(model_name: str = "rancherxl") -> CutsceneAssets:
+    scene = CutScene.create(scene_name="vehicle_scene", duration=2.0)
+    manager = scene.asset_manager()
+    camera = scene.camera("camera")
+    vehicle = scene.vehicle(
+        "vehicle_actor",
+        streaming_name=model_name,
+        type_file_strategy=CutTypeFileStrategy.NONE,
+    )
+    scene.load_scene(0.0, CutLoadScenePayload("vehicle_scene"), target=manager)
+    scene.load_models(0.0, [vehicle.object_id], target=manager)
+    scene.camera_cut(0.0, camera, CutCameraCutPayload("camera"))
+    return CutsceneAssets(scene)
+
+
+def _vehicle_context(
+    model_name: str = "rancherxl",
+    *,
+    metadata: bool = True,
+    cache: GameFileCache | None = None,
+) -> BuildContext:
+    assets = AssetSet()
+    assets[f"stream/{model_name}.yft"] = Yft(
+        main_drawable=Ydr(version=165)
+    )
+    if metadata:
+        assets["data/vehicles.meta"] = VehicleInitDataList(
+            vehicles=[VehicleInitData(model_name=model_name)]
+        )
+    return BuildContext(assets=assets, cache=cache)
+
+
+def test_cut_vehicle_runtime_metadata_validates_after_binary_roundtrip() -> None:
+    assets = _vehicle_cutscene_assets()
+    context = _vehicle_context()
+
+    files = assets.build_files(context=context)
+    rebuilt = read_cut_scene(files[assets.output_name])
+    report = CutsceneAssets(rebuilt).validate(context=context)
+
+    assert report.valid
+    assert rebuilt.vehicles[0].type_file is None
+    assert rebuilt.vehicles[0].type_file_strategy is CutTypeFileStrategy.NONE
+
+
+def test_cut_vehicle_runtime_metadata_is_required_by_context() -> None:
+    report = _vehicle_cutscene_assets().validate(
+        context=_vehicle_context(metadata=False)
+    )
+
+    assert any(
+        issue.code == "cut.binding.vehicle_metadata.unresolved"
+        for issue in report.errors
+    )
+
+
+def test_cut_vehicle_runtime_metadata_resolves_from_loose_cache(tmp_path) -> None:
+    VehicleInitDataList(
+        vehicles=[VehicleInitData(model_name="rancherxl")]
+    ).save(tmp_path / "vehicles.meta", validate=False)
+    with GameFileCache(tmp_path, use_index_cache=False) as cache:
+        cache.scan()
+        report = _vehicle_cutscene_assets().validate(
+            context=_vehicle_context(metadata=False, cache=cache)
+        )
+
+    assert report.valid
 
 
 def test_cut_all_event_ids_have_serializable_specs() -> None:

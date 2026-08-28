@@ -7,7 +7,7 @@ import pytest
 
 from fivefury.authoring import AssetSet, BuildContext
 from fivefury.cache import GameFileCache
-from fivefury.cut import CutVehicleVariationPayload
+from fivefury.cut import CutTypeFileStrategy, CutVehicleVariationPayload
 from fivefury.game_target import GameTarget
 from fivefury.gamefile import GameFileType, guess_game_file_type
 from fivefury.hashing import jenk_hash
@@ -425,6 +425,15 @@ def test_enhanced_pro_mcs_5_resolves_vehicle_appearances() -> None:
     source = cache.find_assets("pro_mcs_5", kind=GameFileType.CUT)[0]
 
     bundle = cache.resolve_cutscene(source)
+    assert bundle.scene.vehicles
+    assert all(
+        vehicle.type_file is None
+        and vehicle.type_file_strategy is CutTypeFileStrategy.NONE
+        for vehicle in bundle.scene.vehicles
+    )
+    assert {
+        vehicle.fields["StreamingName"].hash for vehicle in bundle.scene.vehicles
+    } == {jenk_hash("rancherxl"), jenk_hash("policeold2")}
     vehicles = {
         binding.vehicle_appearance.model_name.casefold(): binding.vehicle_appearance
         for binding in bundle.bindings.values()
