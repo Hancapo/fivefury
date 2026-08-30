@@ -306,7 +306,16 @@ def _write_awc_tables(
 
 def build_awc_bytes(awc: Awc) -> bytes:
     endian = "<"
-    streams = list(awc.streams)
+    # Retail multichannel AWC files keep the stream-info table ordered by the
+    # 29-bit stream hash, independently from the physical channel order stored
+    # in the stream-format chunk.  RAGE looks these entries up as a sorted
+    # table; emitting them in speaker/channel order can leave otherwise valid
+    # five-channel mastered banks silent in GTA V Enhanced.
+    streams = (
+        sorted(awc.streams, key=lambda stream: stream.hash)
+        if awc.multi_channel_flag
+        else list(awc.streams)
+    )
     stream_count = len(streams)
     chunk_indices_flag = bool(awc.flags & 1)
     info_start = 16 + (stream_count * 2 if chunk_indices_flag else 0)

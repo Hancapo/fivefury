@@ -31,6 +31,13 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Multichannel AWC authoring now preserves speaker order while sorting the
+  stream-info lookup table by hash, and writes the compact final MP3 streaming
+  block required by the GTA V Enhanced runtime.
+- Retail AWC MP3 authoring now accepts every MPEG-1 Layer III sample rate.
+- Rewriting one entry in an encrypted RPF now preserves untouched compressed
+  binaries and resource layouts without double encryption; renamed NG entries
+  are re-encrypted for their new name.
 - CUT vehicle bindings now support mounted vehicle metadata as an explicit runtime source while preserving a zero `typeFile`.
 - Retail-cached YCD quaternion tracks now preserve rotations whose component signs change within a sequence window.
 - Retail MP3 AWC streams now include and validate their block seek tables.

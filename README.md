@@ -231,3 +231,7 @@ FiveFury aims for runtime-compatible binary output, but GTA V formats contain ed
 FiveFury is released under [The Unlicense](LICENSE).
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and compatibility notes.
+
+## Credits
+
+Thomas Vanini — GTA V Enhanced PT-BR dubbing project creator, workflow coordinator, and in-game runtime validation — https://linktr.ee/ThomasVanini
