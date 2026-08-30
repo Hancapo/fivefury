@@ -113,12 +113,60 @@ class RpfEncryptionTests(unittest.TestCase):
         )
         self.assertEqual(reread.to_bytes(), original)
 
-        entry = reread.find_entry("payload.bin")
+        original_entry = reread.find_entry("payload.bin")
+        self.assertIsNotNone(original_entry)
+        assert original_entry is not None
+        original_stored = original_entry.read_raw()
+
+        reread.file("added.bin", b"added")
+        changed = reread.to_bytes()
+        self.assertNotEqual(changed, original)
+
+        changed_reread = RpfArchive.from_bytes(
+            changed,
+            name="preserved.rpf",
+            crypto=crypto,
+        )
+        preserved = changed_reread.find_entry("payload.bin")
+        self.assertIsNotNone(preserved)
+        assert preserved is not None
+        self.assertEqual(preserved.read(), b"unchanged" * 100)
+        self.assertEqual(preserved.read_raw(), original_stored)
+        added = changed_reread.find_entry("added.bin")
+        self.assertIsNotNone(added)
+        assert added is not None
+        self.assertEqual(added.read(), b"added")
+
+    def test_renamed_encrypted_entry_is_reencrypted_for_its_new_name(self) -> None:
+        crypto = _crypto()
+        payload = b"rename me" * 100
+        archive = RpfArchive.empty(
+            "renamed.rpf",
+            encryption=RpfEncryption.NG,
+            crypto=crypto,
+        )
+        archive.file("original.bin", payload, compress_binary=True)
+
+        reread = RpfArchive.from_bytes(
+            archive.to_bytes(),
+            name="renamed.rpf",
+            crypto=crypto,
+        )
+        entry = reread.find_entry("original.bin")
         self.assertIsNotNone(entry)
         assert entry is not None
         entry.name = "renamed.bin"
-        changed = reread.to_bytes()
-        self.assertNotEqual(changed, original)
+        entry.path = "renamed.bin"
+
+        changed = RpfArchive.from_bytes(
+            reread.to_bytes(),
+            name="renamed.rpf",
+            crypto=crypto,
+        )
+        renamed = changed.find_entry("renamed.bin")
+        self.assertIsNotNone(renamed)
+        assert renamed is not None
+        self.assertEqual(renamed.read(), payload)
 
 
 if __name__ == "__main__":

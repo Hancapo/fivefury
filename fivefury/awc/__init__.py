@@ -26,6 +26,7 @@ from .layout import AwcSpeaker, default_awc_speakers
 from .lipsync import require_valid_awc_lipsync, validate_awc_lipsync
 from .mp3 import (
     MP3_RETAIL_SAMPLE_RATE,
+    MP3_RETAIL_SAMPLE_RATES,
     MP3_SAMPLES_PER_FRAME,
     MP3_STREAMING_PACKET_SIZE,
     EncodedMp3Channel,
@@ -68,6 +69,7 @@ __all__ = [
     "AWC_RSXXTEA_DELTA",
     "AWC_STREAM_ID_MASK",
     "MP3_RETAIL_SAMPLE_RATE",
+    "MP3_RETAIL_SAMPLE_RATES",
     "MP3_SAMPLES_PER_FRAME",
     "MP3_STREAMING_PACKET_SIZE",
     "SUPPORTED_AUDIO_EXTENSIONS",

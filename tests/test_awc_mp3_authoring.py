@@ -10,6 +10,7 @@ from fivefury import (
     Awc,
     AwcChunkType,
     AwcCodecType,
+    MP3_RETAIL_SAMPLE_RATES,
     encode_mp3_channel,
     inspect_mp3_streaming_data,
     parse_mp3_frames,
@@ -79,6 +80,34 @@ def test_mp3_multichannel_authoring_round_trips(channel_count: int) -> None:
     assert source.chunks[2].seek_table_entry_size == 4
 
 
+def test_multichannel_stream_table_is_sorted_without_changing_channel_order() -> None:
+    channel_ids = (0x1F19C6C3, 0x030F5BA4, 0x0E2E26D9, 0x059FA63E, 0x1AF6A7D9)
+    authored = Awc.from_channel_mp3(
+        "pro_mcs_5_seq_mastered_only",
+        [_sine_pcm(4_800, frequency=220.0 + index * 55.0) for index in range(5)],
+    )
+    source = authored.streams[0]
+    layout = source.stream_format_chunk
+    assert layout is not None
+
+    for stream, channel, stream_id in zip(
+        authored.channel_streams,
+        layout.channels,
+        channel_ids,
+        strict=True,
+    ):
+        stream.id = stream_id
+        channel.id = stream_id
+
+    rebuilt = read_awc(authored.to_bytes())
+
+    assert [stream.hash for stream in rebuilt.streams] == sorted((0, *channel_ids))
+    assert [channel.id for channel in rebuilt.streams[0].stream_format_chunk.channels] == list(
+        channel_ids
+    )
+    assert [stream.hash for stream in rebuilt.channel_streams] == list(channel_ids)
+
+
 @pytest.fixture(scope="module")
 def long_stereo_mp3() -> Awc:
     sample_count = 1_830_400
@@ -96,6 +125,9 @@ def test_long_stereo_mp3_uses_retail_block_seek_offsets(
     assert source.stream_format_chunk is not None
     assert source.stream_format_chunk.block_count == 3
     assert source.chunks[2].seek_table == [0, 783_360, 1_566_720]
+    assert source.data_chunk is not None
+    assert len(source.data_chunk.data) < 3 * source.stream_format_chunk.block_size
+    assert len(source.data_chunk.data) > 2 * source.stream_format_chunk.block_size
 
 
 @pytest.mark.parametrize(
@@ -165,6 +197,23 @@ def test_mp3_frame_table_is_uint16_and_deterministic() -> None:
     assert len(first.seek_table_bytes) == first.frame_count * 2
     assert sum(first.frame_sizes) == len(first.data)
     assert all(0 < size <= 0xFFFF for size in first.frame_sizes)
+
+
+@pytest.mark.parametrize("sample_rate", MP3_RETAIL_SAMPLE_RATES)
+def test_mp3_encoder_supports_every_mpeg1_sample_rate(sample_rate: int) -> None:
+    pcm = _sine_pcm(sample_rate // 10)
+
+    encoded = encode_mp3_channel(pcm, sample_rate=sample_rate)
+
+    assert encoded.sample_rate == sample_rate
+    assert {frame.sample_rate for frame in parse_mp3_frames(encoded.data)} == {
+        sample_rate
+    }
+
+
+def test_mp3_encoder_rejects_non_mpeg1_sample_rate() -> None:
+    with pytest.raises(ValueError, match="MPEG-1 sample rate"):
+        encode_mp3_channel(_sine_pcm(4_800), sample_rate=24_000)
 
 
 def test_mp3_streaming_packet_offsets_are_global_and_in_range() -> None:

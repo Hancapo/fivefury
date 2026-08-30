@@ -285,6 +285,7 @@ class RpfArchive:
             )
             entry.name_offset = low & 0xFFFF
             entry.is_encrypted = bool(entry.encryption_type & 0x1)
+            entry._source_name = entry.name
             return entry
 
         name_offset = struct.unpack_from("<H", blob, 0)[0]
@@ -300,6 +301,7 @@ class RpfArchive:
             graphics_flags=RpfResourcePageFlags(gfx_flags),
         )
         entry.name_offset = name_offset
+        entry._source_name = entry.name
         return entry
 
     def _parse_entry(self, blob: bytes, names: dict[int, str]) -> RpfEntry:
@@ -653,7 +655,13 @@ class RpfArchive:
                 return raw
         return raw
 
-    def _decrypt_entry_raw(self, entry: RpfFileEntry, raw: bytes) -> bytes:
+    def _decrypt_entry_raw(
+        self,
+        entry: RpfFileEntry,
+        raw: bytes,
+        *,
+        entry_name: str | None = None,
+    ) -> bytes:
         if self.encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
             return raw
         if self.crypto is None:
@@ -667,7 +675,7 @@ class RpfArchive:
             payload = self.crypto.decrypt_entry_payload(
                 raw[16:],
                 self.encryption,
-                entry_name=entry.name,
+                entry_name=entry_name or entry.name,
                 entry_length=entry.file_size,
             )
             return header + payload
@@ -675,7 +683,7 @@ class RpfArchive:
             return self.crypto.decrypt_entry_payload(
                 raw,
                 self.encryption,
-                entry_name=entry.name,
+                entry_name=entry_name or entry.name,
                 entry_length=entry.file_uncompressed_size,
             )
         return raw
@@ -936,7 +944,21 @@ class RpfArchive:
         ):
             return entry.child_archive.to_bytes()
         if entry._archive is not None:
-            return entry.read_raw()
+            stored = entry.read_raw()
+            # Payloads read from an existing encrypted RPF are still encrypted.
+            # The streaming writer encrypts every entry marked ``is_encrypted``
+            # immediately before writing it, so returning the ciphertext here
+            # would encrypt unchanged source entries a second time whenever a
+            # sibling entry changes.  Normalize the preserved payload back to
+            # its stored-but-decrypted form first.  Compressed binary data stays
+            # compressed; resource headers stay intact.
+            if entry.is_encrypted:
+                stored = self._decrypt_entry_raw(
+                    entry,
+                    stored,
+                    entry_name=entry._source_name,
+                )
+            return stored
         raise ValueError(f"Missing payload for {entry.full_path}")
 
     def _encode_binary_entry(
