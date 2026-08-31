@@ -7,8 +7,10 @@ from ..binary import align
 from ..hashing import jenk_hash
 from ..resource import (
     RSC7_MAGIC,
+    ResourceBlockSpan,
     ResourceHeader,
     build_rsc7,
+    layout_resource_sections,
     physical_to_offset,
     split_rsc7_sections,
     virtual_to_offset,
@@ -319,7 +321,44 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
 
     vbuf[pagemap_offset] = 1
     vbuf[pagemap_offset + 1] = 1
-    return build_rsc7(bytes(vbuf), version=_YTD_RSC7_VERSION_GEN9, graphics_data=bytes(pbuf))
+    pointer_offsets = [0x08, 0x20, 0x30]
+    pointer_offsets.extend(ptrs_offset + (index * 8) for index in range(count))
+    for index in range(count):
+        texture_offset = textures_offset + (_ENHANCED_TEX_SIZE * index)
+        pointer_offsets.extend(
+            (
+                texture_offset + 0x28,
+                texture_offset + 0x30,
+                texture_offset + 0x38,
+            )
+        )
+    system_data, graphics_data, system_flags, graphics_flags = layout_resource_sections(
+        bytes(vbuf),
+        [
+            ResourceBlockSpan(
+                0,
+                len(vbuf),
+                pointer_offsets=tuple(pointer_offsets),
+            )
+        ],
+        bytes(pbuf),
+        [
+            ResourceBlockSpan(
+                offset,
+                len(data),
+                relocate_pointers=False,
+            )
+            for offset, data in zip(physical_offsets, physical_blocks, strict=True)
+        ],
+        version=_YTD_RSC7_VERSION_GEN9,
+    )
+    return build_rsc7(
+        system_data,
+        version=_YTD_RSC7_VERSION_GEN9,
+        graphics_data=graphics_data,
+        system_flags=system_flags,
+        graphics_flags=graphics_flags,
+    )
 
 
 def read_embedded_texture_dictionary(

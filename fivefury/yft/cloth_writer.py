@@ -31,8 +31,8 @@ def _template(raw: bytes, size: int, *, vft: int = 0) -> bytearray:
     result = bytearray(raw or bytes(size))
     if vft:
         struct.pack_into("<I", result, 0, vft)
-    if size >= 8 and not struct.unpack_from("<I", result, 4)[0]:
-        struct.pack_into("<I", result, 4, 1)
+        if size >= 8 and not struct.unpack_from("<I", result, 4)[0]:
+            struct.pack_into("<I", result, 4, 1)
     return result
 
 

@@ -14,8 +14,13 @@ from fivefury import (
     read_ytd_catalog,
 )
 from fivefury._native import NativeTextureIndex
-from fivefury.resource import split_rsc7_sections
+from fivefury.resource import (
+    get_resource_chunks,
+    get_resource_total_page_count,
+    split_rsc7_sections,
+)
 from fivefury.texture import total_mip_data_size
+from fivefury.ytd.catalog import _read_texture_descriptors
 from fivefury.ytd.defs import DAT_VIRTUAL_BASE
 
 
@@ -87,6 +92,50 @@ def test_enhanced_single_level_authoring_still_round_trips() -> None:
 
     assert rebuilt.data == texture.data
     assert rebuilt.mip_count == 1
+
+
+def test_enhanced_large_dictionary_packs_texture_blocks_within_page_limit() -> None:
+    width = 256
+    height = 256
+    mip_count = 7
+    texture_data = bytes(
+        total_mip_data_size(width, height, TextureFormat.BC1, mip_count)
+    )
+    textures = [
+        Texture.from_raw(
+            texture_data,
+            width,
+            height,
+            TextureFormat.BC1,
+            mip_count,
+            name=f"texture_{index:03d}",
+        )
+        for index in range(129)
+    ]
+
+    payload = Ytd(textures, game="gta5_enhanced").to_bytes()
+    header, system_data, _ = split_rsc7_sections(payload)
+    assert (
+        get_resource_total_page_count(header.system_flags)
+        + get_resource_total_page_count(header.graphics_flags)
+        <= 128
+    )
+
+    graphics_chunks = [
+        chunk for chunk in get_resource_chunks(header) if chunk.section == "graphics"
+    ]
+    descriptors = _read_texture_descriptors(system_data, version=header.version)
+    for descriptor in descriptors:
+        address = 0x60000000 + descriptor.data_offset
+        assert any(
+            chunk.contains(address, descriptor.descriptor.data_size)
+            for chunk in graphics_chunks
+        )
+
+    rebuilt = Ytd.from_bytes(payload)
+    assert {texture.name: texture.data for texture in rebuilt.textures} == {
+        texture.name: texture.data for texture in textures
+    }
 
 
 def test_ytd_catalog_reads_legacy_and_enhanced_metadata_without_pixel_payloads() -> None:

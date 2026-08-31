@@ -68,6 +68,7 @@ from fivefury.yft import (
     YftClothBridge,
     YftClothController,
     YftClothMorphController,
+    YftClothMorphMap,
     YftClothTuning,
     YftDrawable,
     YftEnvironmentCloth,
@@ -478,7 +479,9 @@ def test_yft_environment_cloth_roundtrip(version, runtime_headers, controller_na
                 vertex_weights=([1.0, 1.0, 1.0], [], [], []),
                 display_maps=([0, 1, 2], [], [], []),
             ),
-            morph=YftClothMorphController(),
+            morph=YftClothMorphController(
+                maps=(YftClothMorphMap(), None, None),
+            ),
             verlet_lods=(
                 YftVerletCloth(
                     bounds_min=Vector3(),
@@ -499,7 +502,22 @@ def test_yft_environment_cloth_roundtrip(version, runtime_headers, controller_na
     source = create_yft(drawable, name="cloth_fragment", version=version)
     source.environment_cloths.append(cloth)
 
-    parsed = read_yft(build_yft_bytes(source), resolve_physics_entities=False)
+    built = build_yft_bytes(source)
+    _, system_data, _ = split_rsc7_sections(built)
+    cloth_array = virtual_to_offset(struct.unpack_from("<Q", system_data, 0x60)[0])
+    cloth_offset = virtual_to_offset(struct.unpack_from("<Q", system_data, cloth_array)[0])
+    controller_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, cloth_offset + 0x28)[0]
+    )
+    morph_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, controller_offset + 0x18)[0]
+    )
+    morph_map_offset = virtual_to_offset(
+        struct.unpack_from("<Q", system_data, morph_offset + 0x18)[0]
+    )
+    assert system_data[morph_map_offset : morph_map_offset + 0x50] == bytes(0x50)
+
+    parsed = read_yft(built, resolve_physics_entities=False)
 
     assert len(parsed.environment_cloths) == 1
     parsed_cloth = parsed.environment_cloths[0]
