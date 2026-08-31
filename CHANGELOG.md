@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.21] - 2026-08-31
+
 ### Breaking Changes
 
 - `CutScene.cutscene_flags` and its factory argument have been replaced by typed `CutSceneSettings`; direct flag packing is now owned by the writer.
