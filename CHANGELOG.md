@@ -31,6 +31,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Enhanced YTD writers now place texture graphics data within representable RSC7 pages while preserving exact texture bytes.
+- YFT cloth writers now leave empty morph-map payloads zeroed instead of writing template reference-count data into them.
 - CUT vehicle bindings now support mounted vehicle metadata as an explicit runtime source while preserving a zero `typeFile`.
 - Retail-cached YCD quaternion tracks now preserve rotations whose component signs change within a sequence window.
 - Retail MP3 AWC streams now include and validate their block seek tables.
