@@ -109,19 +109,18 @@ PyObject* make_relationship(
 }  // namespace
 
 PyObject* mod_meta_extract_ytyp_texture_relationships(PyObject*, PyObject* args) {
-    const char* raw = nullptr;
-    Py_ssize_t raw_size = 0;
+    BytesView source;
     if (!PyArg_ParseTuple(
             args,
-            "y#:meta_extract_ytyp_texture_relationships",
-            &raw,
-            &raw_size
+            "O&:meta_extract_ytyp_texture_relationships",
+            parse_bytes_view,
+            &source
         )) {
         return nullptr;
     }
     try {
-        const auto* data = reinterpret_cast<const unsigned char*>(raw);
-        const auto size = static_cast<std::size_t>(raw_size);
+        const auto* data = reinterpret_cast<const unsigned char*>(source.data);
+        const auto size = static_cast<std::size_t>(source.size);
         require_range(0U, 80U, size);
 
         constexpr std::size_t meta_root = 16U;

@@ -21,6 +21,13 @@ class TextureIndex;
 
 namespace fivefury_py {
 
+struct BytesView {
+    char* data = nullptr;
+    Py_ssize_t size = 0;
+};
+
+int parse_bytes_view(PyObject* object, void* destination);
+
 inline constexpr const char* INDEX_CAPSULE_NAME = "fivefury.CompactIndex";
 inline constexpr const char* CRYPTO_CAPSULE_NAME = "fivefury.NativeCryptoContext";
 inline constexpr const char* YED_PROGRAM_CAPSULE_NAME = "fivefury.YedProgram";

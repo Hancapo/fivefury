@@ -18,6 +18,11 @@ using namespace fivefury_native;
 
 namespace fivefury_py {
 
+int parse_bytes_view(PyObject* object, void* destination) {
+    auto& view = *static_cast<BytesView*>(destination);
+    return PyBytes_AsStringAndSize(object, &view.data, &view.size) == 0;
+}
+
 constexpr std::uint32_t STATE_MAGIC = 0x31464646U;  // FFF1
 constexpr std::uint32_t STATE_VERSION = 1U;
 
