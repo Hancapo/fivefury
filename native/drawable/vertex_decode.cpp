@@ -279,75 +279,75 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
     const auto data_size = static_cast<std::size_t>(buffer.len);
     DecodedVertices decoded;
     {
-        GilRelease gil_release;
-        for (Py_ssize_t vertex = 0; vertex < count; ++vertex) {
-            const auto base = static_cast<std::size_t>(vertex) * static_cast<std::size_t>(stride);
-            for (int semantic = 0; semantic < 16; ++semantic) {
-                if (((flags >> semantic) & 1UL) == 0UL) {
-                    continue;
-                }
-                const auto type = static_cast<int>((types >> (semantic * 4)) & 0xFULL);
-                const auto size = component_size(type);
-                const auto source = base + static_cast<std::size_t>(offsets[semantic]);
-                if (size <= 0 || source + static_cast<std::size_t>(size) > data_size) {
-                    continue;
-                }
-                if (semantic == SEMANTIC_BLEND_INDICES && size == 4) {
-                    decoded.blend_indices.push_back({
-                        data[source + 2], data[source + 1], data[source], data[source + 3]
-                    });
-                    continue;
-                }
-                if (semantic == SEMANTIC_BLEND_WEIGHTS && type == COMPONENT_COLOUR) {
-                    decoded.blend_weights.push_back({
-                        static_cast<double>(data[source + 2]) / 255.0,
-                        static_cast<double>(data[source + 1]) / 255.0,
-                        static_cast<double>(data[source]) / 255.0,
-                        static_cast<double>(data[source + 3]) / 255.0,
-                    });
-                    continue;
-                }
-                const auto value = decode_component(data + source, type);
-                if (value.count == 0) {
-                    continue;
-                }
-                if (semantic == SEMANTIC_POSITION && value.count >= 3) {
-                    decoded.positions.push_back({value.values[0], value.values[1], value.values[2]});
-                } else if (semantic == SEMANTIC_NORMAL && value.count >= 3) {
-                    decoded.normals.push_back({value.values[0], value.values[1], value.values[2]});
-                } else if (semantic == SEMANTIC_TANGENT && value.count >= 4) {
-                    decoded.tangents.push_back(value.values);
-                } else if (semantic == SEMANTIC_COLOUR0 && value.count >= 4) {
-                    decoded.colours0.push_back(value.values);
-                } else if (semantic == SEMANTIC_COLOUR1 && value.count >= 4) {
-                    decoded.colours1.push_back(value.values);
-                } else if (semantic == SEMANTIC_BLEND_INDICES && value.count >= 4) {
-                    decoded.blend_indices.push_back({
-                        static_cast<std::uint32_t>(value.values[0]),
-                        static_cast<std::uint32_t>(value.values[1]),
-                        static_cast<std::uint32_t>(value.values[2]),
-                        static_cast<std::uint32_t>(value.values[3]),
-                    });
-                } else if (semantic == SEMANTIC_BLEND_WEIGHTS && value.count >= 4) {
-                    auto weights = value.values;
-                    if (value.integral) {
-                        for (auto& component : weights) {
-                            component /= 255.0;
-                        }
+    GilRelease gil_release;
+    for (Py_ssize_t vertex = 0; vertex < count; ++vertex) {
+        const auto base = static_cast<std::size_t>(vertex) * static_cast<std::size_t>(stride);
+        for (int semantic = 0; semantic < 16; ++semantic) {
+            if (((flags >> semantic) & 1UL) == 0UL) {
+                continue;
+            }
+            const auto type = static_cast<int>((types >> (semantic * 4)) & 0xFULL);
+            const auto size = component_size(type);
+            const auto source = base + static_cast<std::size_t>(offsets[semantic]);
+            if (size <= 0 || source + static_cast<std::size_t>(size) > data_size) {
+                continue;
+            }
+            if (semantic == SEMANTIC_BLEND_INDICES && size == 4) {
+                decoded.blend_indices.push_back({
+                    data[source + 2], data[source + 1], data[source], data[source + 3]
+                });
+                continue;
+            }
+            if (semantic == SEMANTIC_BLEND_WEIGHTS && type == COMPONENT_COLOUR) {
+                decoded.blend_weights.push_back({
+                    static_cast<double>(data[source + 2]) / 255.0,
+                    static_cast<double>(data[source + 1]) / 255.0,
+                    static_cast<double>(data[source]) / 255.0,
+                    static_cast<double>(data[source + 3]) / 255.0,
+                });
+                continue;
+            }
+            const auto value = decode_component(data + source, type);
+            if (value.count == 0) {
+                continue;
+            }
+            if (semantic == SEMANTIC_POSITION && value.count >= 3) {
+                decoded.positions.push_back({value.values[0], value.values[1], value.values[2]});
+            } else if (semantic == SEMANTIC_NORMAL && value.count >= 3) {
+                decoded.normals.push_back({value.values[0], value.values[1], value.values[2]});
+            } else if (semantic == SEMANTIC_TANGENT && value.count >= 4) {
+                decoded.tangents.push_back(value.values);
+            } else if (semantic == SEMANTIC_COLOUR0 && value.count >= 4) {
+                decoded.colours0.push_back(value.values);
+            } else if (semantic == SEMANTIC_COLOUR1 && value.count >= 4) {
+                decoded.colours1.push_back(value.values);
+            } else if (semantic == SEMANTIC_BLEND_INDICES && value.count >= 4) {
+                decoded.blend_indices.push_back({
+                    static_cast<std::uint32_t>(value.values[0]),
+                    static_cast<std::uint32_t>(value.values[1]),
+                    static_cast<std::uint32_t>(value.values[2]),
+                    static_cast<std::uint32_t>(value.values[3]),
+                });
+            } else if (semantic == SEMANTIC_BLEND_WEIGHTS && value.count >= 4) {
+                auto weights = value.values;
+                if (value.integral) {
+                    for (auto& component : weights) {
+                        component /= 255.0;
                     }
-                    decoded.blend_weights.push_back(weights);
-                } else if (
-                    semantic >= SEMANTIC_TEXCOORD0 && semantic <= SEMANTIC_TEXCOORD7 &&
-                    value.count >= 2
-                ) {
-                    const auto index = semantic - SEMANTIC_TEXCOORD0;
-                    decoded.max_texcoord = std::max(decoded.max_texcoord, index);
-                    decoded.texcoords[static_cast<std::size_t>(index)].push_back({
-                        value.values[0], value.values[1]
-                    });
                 }
+                decoded.blend_weights.push_back(weights);
+            } else if (
+                semantic >= SEMANTIC_TEXCOORD0 && semantic <= SEMANTIC_TEXCOORD7 &&
+                value.count >= 2
+            ) {
+                const auto index = semantic - SEMANTIC_TEXCOORD0;
+                decoded.max_texcoord = std::max(decoded.max_texcoord, index);
+                decoded.texcoords[static_cast<std::size_t>(index)].push_back({
+                    value.values[0], value.values[1]
+                });
             }
         }
+    }
     }
     buffer.release();
 
@@ -397,57 +397,59 @@ PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "YDR writer currently requires triangle list indices");
         return nullptr;
     }
+    std::uint32_t maximum = 0;
+    {
+        GilRelease gil_release;
+        if (!indices.empty()) maximum = *std::max_element(indices.begin(), indices.end());
+    }
+    if (!indices.empty() && static_cast<std::size_t>(maximum) >= static_cast<std::size_t>(vertex_count)) {
+        PyErr_SetString(PyExc_ValueError, "Mesh indices reference a vertex outside positions");
+        return nullptr;
+    }
+    if (indices.empty() || (maximum <= 0xFFFFU && static_cast<std::size_t>(maximum) < static_cast<std::size_t>(max_vertices))) {
+        Py_RETURN_NONE;
+    }
     std::vector<MeshChunk> chunks;
     bool needs_split = false;
     {
-        GilRelease gil_release;
-        std::unordered_map<std::uint32_t, std::uint32_t> lookup;
-        MeshChunk current;
-        for (std::size_t base = 0; base < indices.size(); base += 3U) {
-            std::size_t new_vertices = 0;
-            for (std::size_t offset = 0; offset < 3U; ++offset) {
-                const auto index = indices[base + offset];
-                if (index >= static_cast<std::uint32_t>(vertex_count)) {
-                    needs_split = true;
-                    continue;
-                }
-                if (!lookup.contains(index)) {
-                    ++new_vertices;
-                }
-            }
-            if (!current.indices.empty() && current.vertices.size() + new_vertices > static_cast<std::size_t>(max_vertices)) {
-                chunks.push_back(std::move(current));
-                current = MeshChunk{};
-                lookup.clear();
-                needs_split = true;
-            }
-            for (std::size_t offset = 0; offset < 3U; ++offset) {
-                const auto index = indices[base + offset];
-                auto [iterator, inserted] = lookup.try_emplace(
-                    index,
-                    static_cast<std::uint32_t>(current.vertices.size())
-                );
-                if (inserted) {
-                    current.vertices.push_back(index);
-                }
-                current.indices.push_back(iterator->second);
-                if (index > 0xFFFFU) {
-                    needs_split = true;
-                }
+    GilRelease gil_release;
+    std::unordered_map<std::uint32_t, std::uint32_t> lookup;
+    MeshChunk current;
+    for (std::size_t base = 0; base < indices.size(); base += 3U) {
+        std::size_t new_vertices = 0;
+        for (std::size_t offset = 0; offset < 3U; ++offset) {
+            const auto index = indices[base + offset];
+            if (!lookup.contains(index)) {
+                ++new_vertices;
             }
         }
-        if (!current.indices.empty()) {
+        if (!current.indices.empty() && current.vertices.size() + new_vertices > static_cast<std::size_t>(max_vertices)) {
             chunks.push_back(std::move(current));
-        }
-        if (chunks.size() > 1U) {
+            current = MeshChunk{};
+            lookup.clear();
             needs_split = true;
         }
+        for (std::size_t offset = 0; offset < 3U; ++offset) {
+            const auto index = indices[base + offset];
+            auto [iterator, inserted] = lookup.try_emplace(
+                index,
+                static_cast<std::uint32_t>(current.vertices.size())
+            );
+            if (inserted) {
+                current.vertices.push_back(index);
+            }
+            current.indices.push_back(iterator->second);
+            if (index > 0xFFFFU) {
+                needs_split = true;
+            }
+        }
     }
-    if (std::any_of(indices.begin(), indices.end(), [vertex_count](auto value) {
-            return value >= static_cast<std::uint32_t>(vertex_count);
-        })) {
-        PyErr_SetString(PyExc_ValueError, "Mesh indices reference a vertex outside positions");
-        return nullptr;
+    if (!current.indices.empty()) {
+        chunks.push_back(std::move(current));
+    }
+    if (chunks.size() > 1U) {
+        needs_split = true;
+    }
     }
     if (!needs_split) {
         Py_RETURN_NONE;
