@@ -96,13 +96,10 @@ PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
     GilRelease gil_release;
     for (std::size_t block = 0; block < block_count; ++block) {
         const auto start = static_cast<Py_ssize_t>(block) * block_size;
-        const auto end = std::min(start + block_size, sample_count);
+        const auto end = start + std::min(block_size, sample_count - start);
         std::uint16_t peak = 0;
-        for (Py_ssize_t sample = start; sample < end; ++sample) {
+        for (Py_ssize_t sample = start; sample < std::min(end, source_size / 2); ++sample) {
             const auto offset = sample * 2;
-            if (offset + 2 > source_size) {
-                continue;
-            }
             const auto value = static_cast<std::int32_t>(binary::load<std::int16_t>(source + offset));
             const auto absolute = value < 0 ? -value : value;
             peak = std::max<std::uint16_t>(
@@ -218,7 +215,8 @@ PyObject* mod_awc_interleave_pcm16(PyObject*, PyObject* args) {
         frame_count = std::min(frame_count, requested_samples);
     }
     std::string output(
-        static_cast<std::size_t>(frame_count * channel_count * 2),
+        static_cast<std::size_t>(checked_buffer_size(
+            binary::checked_product(static_cast<std::size_t>(frame_count), static_cast<std::size_t>(channel_count)), 2U)),
         '\0'
     );
     {
@@ -246,9 +244,14 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
     const auto* source = source_view.data;
     const auto source_size = source_view.size;
     sample_count = std::max<Py_ssize_t>(sample_count, 0);
-    std::string output(static_cast<std::size_t>(sample_count) * 2U, '\0');
+    const auto output_size = checked_buffer_size(static_cast<std::size_t>(sample_count), 2U);
+    PyHandle output(PyBytes_FromStringAndSize(nullptr, output_size));
+    if (!output) return nullptr;
+    char* destination = PyBytes_AsString(output.get());
+    if (destination == nullptr) return nullptr;
     {
     GilRelease gil_release;
+    std::memset(destination, 0, static_cast<std::size_t>(output_size));
     int predictor = 0;
     int step_index = 0;
     Py_ssize_t reading_offset = 0;
@@ -266,7 +269,7 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
             0,
             88
         );
-        binary::store<std::int16_t>(output.data() + written * 2, static_cast<std::int16_t>(predictor));
+        binary::store<std::int16_t>(destination + written * 2, static_cast<std::int16_t>(predictor));
         ++written;
     };
     while (reading_offset < source_size && written < sample_count) {
@@ -289,7 +292,7 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
         ++reading_offset;
     }
     }
-    return PyBytes_FromStringAndSize(output.data(), static_cast<Py_ssize_t>(output.size()));
+    return output.release();
 }
 
 PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {

@@ -8,6 +8,7 @@
 #endif
 #include <Python.h>
 #include "python/ownership.h"
+#include "binary/primitives.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,14 @@ struct BytesView {
 };
 
 int parse_bytes_view(PyObject* object, void* destination);
+
+inline Py_ssize_t checked_buffer_size(std::size_t count, std::size_t width) {
+    const auto size = fivefury_native::binary::checked_product(count, width);
+    if (size > static_cast<std::size_t>(PY_SSIZE_T_MAX)) {
+        throw std::overflow_error("binary buffer exceeds Python size limits");
+    }
+    return static_cast<Py_ssize_t>(size);
+}
 
 inline constexpr const char* INDEX_CAPSULE_NAME = "fivefury.CompactIndex";
 inline constexpr const char* CRYPTO_CAPSULE_NAME = "fivefury.NativeCryptoContext";
