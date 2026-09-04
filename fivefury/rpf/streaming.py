@@ -240,7 +240,7 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             )
         ):
             entry.is_encrypted = True
-        if entry._source is not None:
+        if entry._source is not None and entry.child_archive is None:
             encoded_entries[index] = _write_file_payload(
                 archive, entry, stream, current_offset
             )
@@ -251,6 +251,8 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
 
         payload = archive._entry_payload(entry)
         if isinstance(entry, RpfBinaryFileEntry):
+            if entry.child_archive is not None:
+                entry.file_size = 0
             if current_offset > 0xFFFFFF:
                 raise ValueError(
                     "RPF7 binary entry exceeds the 24-bit block offset limit: "

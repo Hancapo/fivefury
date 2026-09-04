@@ -941,15 +941,12 @@ class RpfArchive:
         return _pad(bytes(buf), 16), offsets
 
     def _entry_payload(self, entry: RpfFileEntry) -> bytes:
+        if entry.child_archive is not None:
+            return entry.child_archive.to_bytes()
         if getattr(entry, "_data", None) is not None:
             return bytes(entry._data)  # type: ignore[attr-defined]
         if entry._source is not None:
             return self.read_entry_raw(entry)
-        if (
-            isinstance(entry, (RpfBinaryFileEntry, RpfResourceFileEntry))
-            and entry.child_archive is not None
-        ):
-            return entry.child_archive.to_bytes()
         if entry._archive is not None:
             stored = entry.read_raw()
             # Payloads read from an existing encrypted RPF are still encrypted.
