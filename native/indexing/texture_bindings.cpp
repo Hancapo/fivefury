@@ -23,8 +23,8 @@ TextureIndex* require_texture_index(PyObject* object) {
 
 PyObject* mod_texture_index_new(PyObject*, PyObject*) {
     try {
-        return PyCapsule_New(
-            new TextureIndex(),
+        return owned_capsule(
+            std::make_unique<TextureIndex>(),
             TEXTURE_INDEX_CAPSULE_NAME,
             texture_index_capsule_destructor
         );
