@@ -11,14 +11,16 @@ def test_small_mesh_does_not_need_remapping():
 
 
 def test_small_mesh_still_validates_indices():
-    with pytest.raises(ValueError, match='outside positions'):
+    with pytest.raises(ValueError, match="outside positions"):
         native.ydr_split_mesh_indices([0, 1, 3], 3, 65535)
-    with pytest.raises(ValueError, match='triangle list'):
+    with pytest.raises(ValueError, match="triangle list"):
         native.ydr_split_mesh_indices([0, 1], 3, 65535)
 
 
 def test_high_indices_are_remapped_even_with_few_referenced_vertices():
-    assert native.ydr_split_mesh_indices([65536, 70000, 80000], 80001, 65535) == [([65536, 70000, 80000], [0, 1, 2])]
+    assert native.ydr_split_mesh_indices([65536, 70000, 80000], 80001, 65535) == [
+        ([65536, 70000, 80000], [0, 1, 2])
+    ]
 
 
 def test_split_partition_and_vertex_order_match_reference():
@@ -27,7 +29,7 @@ def test_split_partition_and_vertex_order_match_reference():
     expected = []
     vertices, remapped, lookup = [], [], {}
     for start in range(0, len(indices), 3):
-        triangle = indices[start:start + 3]
+        triangle = indices[start : start + 3]
         if remapped and len(vertices) + sum(v not in lookup for v in triangle) > 17:
             expected.append((vertices, remapped))
             vertices, remapped, lookup = [], [], {}
