@@ -9,8 +9,7 @@ namespace fivefury_py {
 
 PyObject* mod_index_new(PyObject*, PyObject*) {
     try {
-        auto* index = new CompactIndex();
-        return PyCapsule_New(index, INDEX_CAPSULE_NAME, index_capsule_destructor);
+        return owned_capsule(std::make_unique<CompactIndex>(), INDEX_CAPSULE_NAME, index_capsule_destructor);
     } catch (...) {
         return translate_cpp_exception();
     }
@@ -552,16 +551,16 @@ PyObject* mod_index_import_state(PyObject*, PyObject* args) {
     if (index == nullptr) {
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(payload_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     try {
         deserialize_index_state(*index, static_cast<const char*>(buffer.buf), buffer.len);
-        PyBuffer_Release(&buffer);
+        buffer.release();
         Py_RETURN_NONE;
     } catch (...) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         return translate_cpp_exception();
     }
 }
@@ -576,12 +575,12 @@ PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args) {
     if (!unicode_to_utf8(value_object, value, "value")) {
         return nullptr;
     }
-    Py_buffer lut_buffer{};
+    Buffer lut_buffer{};
     if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (lut_buffer.len < 256) {
-        PyBuffer_Release(&lut_buffer);
+        lut_buffer.release();
         PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
         return nullptr;
     }
@@ -589,7 +588,7 @@ PyObject* mod_jenk_partial_hash(PyObject*, PyObject* args) {
         value,
         std::string_view(static_cast<const char*>(lut_buffer.buf), 256)
     );
-    PyBuffer_Release(&lut_buffer);
+    lut_buffer.release();
     return PyLong_FromUnsignedLong(result);
 }
 
@@ -610,12 +609,12 @@ PyObject* mod_jenk_continue_hash(PyObject*, PyObject* args) {
     if (!unicode_to_utf8(value_object, value, "value")) {
         return nullptr;
     }
-    Py_buffer lut_buffer{};
+    Buffer lut_buffer{};
     if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (lut_buffer.len < 256) {
-        PyBuffer_Release(&lut_buffer);
+        lut_buffer.release();
         PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
         return nullptr;
     }
@@ -624,7 +623,7 @@ PyObject* mod_jenk_continue_hash(PyObject*, PyObject* args) {
         value,
         std::string_view(static_cast<const char*>(lut_buffer.buf), 256)
     );
-    PyBuffer_Release(&lut_buffer);
+    lut_buffer.release();
     return PyLong_FromUnsignedLong(result);
 }
 
@@ -646,12 +645,12 @@ PyObject* mod_jenk_hash(PyObject*, PyObject* args) {
     if (!unicode_to_utf8(value_object, value, "value")) {
         return nullptr;
     }
-    Py_buffer lut_buffer{};
+    Buffer lut_buffer{};
     if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (lut_buffer.len < 256) {
-        PyBuffer_Release(&lut_buffer);
+        lut_buffer.release();
         PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
         return nullptr;
     }
@@ -659,7 +658,7 @@ PyObject* mod_jenk_hash(PyObject*, PyObject* args) {
         value,
         std::string_view(static_cast<const char*>(lut_buffer.buf), 256)
     );
-    PyBuffer_Release(&lut_buffer);
+    lut_buffer.release();
     return PyLong_FromUnsignedLong(result);
 }
 
@@ -669,18 +668,17 @@ PyObject* mod_jenk_hash_many(PyObject*, PyObject* args) {
     if (!PyArg_ParseTuple(args, "OO:jenk_hash_many", &values_object, &lut_object)) {
         return nullptr;
     }
-    PyObject* sequence = PySequence_Fast(values_object, "values must be a sequence of strings");
+    PyHandle sequence_owner(PySequence_Fast(values_object, "values must be a sequence of strings"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return nullptr;
     }
-    Py_buffer lut_buffer{};
+    Buffer lut_buffer{};
     if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
-        Py_DECREF(sequence);
         return nullptr;
     }
     if (lut_buffer.len < 256) {
-        PyBuffer_Release(&lut_buffer);
-        Py_DECREF(sequence);
+        lut_buffer.release();
         PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
         return nullptr;
     }
@@ -690,28 +688,25 @@ PyObject* mod_jenk_hash_many(PyObject*, PyObject* args) {
     for (Py_ssize_t item_index = 0; item_index < count; ++item_index) {
         PyObject* item = PySequence_GetItem(sequence, item_index);
         if (item == nullptr) {
-            PyBuffer_Release(&lut_buffer);
-            Py_DECREF(sequence);
+            lut_buffer.release();
             return nullptr;
         }
         std::string value;
         const auto converted = unicode_to_utf8(item, value, "value");
         Py_DECREF(item);
         if (!converted) {
-            PyBuffer_Release(&lut_buffer);
-            Py_DECREF(sequence);
+            lut_buffer.release();
             return nullptr;
         }
         values.push_back(std::move(value));
     }
-    Py_DECREF(sequence);
     const std::string_view lut(static_cast<const char*>(lut_buffer.buf), 256);
     std::vector<std::uint32_t> hashes;
     hashes.reserve(values.size());
     for (const auto& value : values) {
         hashes.push_back(jenk_hash(value, lut));
     }
-    PyBuffer_Release(&lut_buffer);
+    lut_buffer.release();
     return make_id_list(hashes);
 }
 

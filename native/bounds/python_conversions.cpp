@@ -7,12 +7,12 @@
 namespace fivefury_py {
 
 bool parse_vector3(PyObject* object, fivefury_native::bounds::Vec3& out, const char* argument_name) {
-    PyObject* sequence = PySequence_Fast(object, argument_name);
+    PyHandle sequence_owner(PySequence_Fast(object, argument_name));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
     if (PySequence_Size(sequence) != 3) {
-        Py_DECREF(sequence);
         PyErr_Format(PyExc_ValueError, "%s must contain exactly 3 values", argument_name);
         return false;
     }
@@ -23,30 +23,30 @@ bool parse_vector3(PyObject* object, fivefury_native::bounds::Vec3& out, const c
         Py_XDECREF(x_item);
         Py_XDECREF(y_item);
         Py_XDECREF(z_item);
-        Py_DECREF(sequence);
         return false;
     }
     out.x = fivefury_native::bounds::canonical_zero(PyFloat_AsDouble(x_item));
     if (PyErr_Occurred() != nullptr) {
-        Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item); Py_DECREF(sequence);
+        Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item);
         return false;
     }
     out.y = fivefury_native::bounds::canonical_zero(PyFloat_AsDouble(y_item));
     if (PyErr_Occurred() != nullptr) {
-        Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item); Py_DECREF(sequence);
+        Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item);
         return false;
     }
     out.z = fivefury_native::bounds::canonical_zero(PyFloat_AsDouble(z_item));
     if (PyErr_Occurred() != nullptr) {
-        Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item); Py_DECREF(sequence);
+        Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item);
         return false;
     }
-    Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item); Py_DECREF(sequence);
+    Py_DECREF(x_item); Py_DECREF(y_item); Py_DECREF(z_item);
     return true;
 }
 
 bool parse_vertices(PyObject* object, std::vector<fivefury_native::bounds::Vec3>& out, const char* argument_name) {
-    PyObject* sequence = PySequence_Fast(object, argument_name);
+    PyHandle sequence_owner(PySequence_Fast(object, argument_name));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -56,24 +56,22 @@ bool parse_vertices(PyObject* object, std::vector<fivefury_native::bounds::Vec3>
     for (std::size_t index = 0; index < count; ++index) {
         PyObject* item = PySequence_GetItem(sequence, static_cast<Py_ssize_t>(index));
         if (item == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         fivefury_native::bounds::Vec3 vertex;
         const bool ok = parse_vector3(item, vertex, "vertex");
         Py_DECREF(item);
         if (!ok) {
-            Py_DECREF(sequence);
             return false;
         }
         out.push_back(vertex);
     }
-    Py_DECREF(sequence);
     return true;
 }
 
 bool parse_triangles(PyObject* object, std::vector<fivefury_native::bounds::Triangle>& out) {
-    PyObject* sequence = PySequence_Fast(object, "triangles must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "triangles must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -83,18 +81,15 @@ bool parse_triangles(PyObject* object, std::vector<fivefury_native::bounds::Tria
     for (std::size_t index = 0; index < count; ++index) {
         PyObject* triangle_object = PySequence_GetItem(sequence, static_cast<Py_ssize_t>(index));
         if (triangle_object == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
-        PyObject* triangle_sequence = PySequence_Fast(triangle_object, "triangle must be a sequence of 3 vertices");
+        PyHandle triangle_sequence_owner(PySequence_Fast(triangle_object, "triangle must be a sequence of 3 vertices"));
+        PyObject* triangle_sequence = triangle_sequence_owner.get();
         Py_DECREF(triangle_object);
         if (triangle_sequence == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         if (PySequence_Size(triangle_sequence) != 3) {
-            Py_DECREF(triangle_sequence);
-            Py_DECREF(sequence);
             PyErr_SetString(PyExc_ValueError, "triangle must contain exactly 3 vertices");
             return false;
         }
@@ -103,26 +98,24 @@ bool parse_triangles(PyObject* object, std::vector<fivefury_native::bounds::Tria
         PyObject* vertex2 = PySequence_GetItem(triangle_sequence, 2);
         if (vertex0 == nullptr || vertex1 == nullptr || vertex2 == nullptr) {
             Py_XDECREF(vertex0); Py_XDECREF(vertex1); Py_XDECREF(vertex2);
-            Py_DECREF(triangle_sequence); Py_DECREF(sequence);
             return false;
         }
         fivefury_native::bounds::Triangle triangle;
         const bool ok = parse_vector3(vertex0, triangle.vertex0, "triangle vertex 0")
             && parse_vector3(vertex1, triangle.vertex1, "triangle vertex 1")
             && parse_vector3(vertex2, triangle.vertex2, "triangle vertex 2");
-        Py_DECREF(vertex0); Py_DECREF(vertex1); Py_DECREF(vertex2); Py_DECREF(triangle_sequence);
+        Py_DECREF(vertex0); Py_DECREF(vertex1); Py_DECREF(vertex2);
         if (!ok) {
-            Py_DECREF(sequence);
             return false;
         }
         out.push_back(triangle);
     }
-    Py_DECREF(sequence);
     return true;
 }
 
 bool parse_bvh_items(PyObject* object, std::vector<fivefury_native::bounds::BvhItem>& out) {
-    PyObject* sequence = PySequence_Fast(object, "items must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "items must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -132,17 +125,16 @@ bool parse_bvh_items(PyObject* object, std::vector<fivefury_native::bounds::BvhI
     for (std::size_t index = 0; index < count; ++index) {
         PyObject* item_object = PySequence_GetItem(sequence, static_cast<Py_ssize_t>(index));
         if (item_object == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
-        PyObject* item_sequence = PySequence_Fast(item_object, "item must be a sequence of (minimum, maximum, index)");
+        PyHandle item_sequence_owner(PySequence_Fast(item_object, "item must be a sequence of (minimum, maximum, index)"));
+        PyObject* item_sequence = item_sequence_owner.get();
         Py_DECREF(item_object);
         if (item_sequence == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         if (PySequence_Size(item_sequence) != 3) {
-            Py_DECREF(item_sequence); Py_DECREF(sequence);
+
             PyErr_SetString(PyExc_ValueError, "item must contain minimum, maximum and index");
             return false;
         }
@@ -151,7 +143,6 @@ bool parse_bvh_items(PyObject* object, std::vector<fivefury_native::bounds::BvhI
         PyObject* index_object = PySequence_GetItem(item_sequence, 2);
         if (minimum_object == nullptr || maximum_object == nullptr || index_object == nullptr) {
             Py_XDECREF(minimum_object); Py_XDECREF(maximum_object); Py_XDECREF(index_object);
-            Py_DECREF(item_sequence); Py_DECREF(sequence);
             return false;
         }
         fivefury_native::bounds::BvhItem item;
@@ -159,19 +150,17 @@ bool parse_bvh_items(PyObject* object, std::vector<fivefury_native::bounds::BvhI
             && parse_vector3(maximum_object, item.maximum, "item maximum");
         Py_DECREF(minimum_object); Py_DECREF(maximum_object);
         if (!ok) {
-            Py_DECREF(index_object); Py_DECREF(item_sequence); Py_DECREF(sequence);
+            Py_DECREF(index_object);
             return false;
         }
         const auto parsed_index = PyLong_AsUnsignedLong(index_object);
-        Py_DECREF(index_object); Py_DECREF(item_sequence);
+        Py_DECREF(index_object);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         item.index = static_cast<std::uint32_t>(parsed_index);
         out.push_back(item);
     }
-    Py_DECREF(sequence);
     return true;
 }
 

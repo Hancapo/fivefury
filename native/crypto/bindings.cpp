@@ -41,13 +41,13 @@ PyObject* transform_crypto(PyObject* args, const CryptoTransform transform) {
     if (crypto == nullptr) {
         return nullptr;
     }
-    Py_buffer data_buffer{};
+    Buffer data_buffer{};
     if (PyObject_GetBuffer(data_object, &data_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
-    Py_buffer lut_buffer{};
+    Buffer lut_buffer{};
     if (PyObject_GetBuffer(lut_object, &lut_buffer, PyBUF_SIMPLE) < 0) {
-        PyBuffer_Release(&data_buffer);
+        data_buffer.release();
         return nullptr;
     }
     try {
@@ -60,15 +60,15 @@ PyObject* transform_crypto(PyObject* args, const CryptoTransform transform) {
             std::min(static_cast<std::size_t>(lut_buffer.len), std::size_t{256})
         );
         auto result = (crypto->*transform)(data, encryption, name, length, lut);
-        PyBuffer_Release(&lut_buffer);
-        PyBuffer_Release(&data_buffer);
+        lut_buffer.release();
+        data_buffer.release();
         return PyBytes_FromStringAndSize(
             reinterpret_cast<const char*>(result.data()),
             static_cast<Py_ssize_t>(result.size())
         );
     } catch (...) {
-        PyBuffer_Release(&lut_buffer);
-        PyBuffer_Release(&data_buffer);
+        lut_buffer.release();
+        data_buffer.release();
         return translate_cpp_exception();
     }
 }
@@ -81,13 +81,13 @@ PyObject* mod_crypto_new(PyObject*, PyObject* args) {
     if (!PyArg_ParseTuple(args, "OO:crypto_new", &aes_object, &ng_object)) {
         return nullptr;
     }
-    Py_buffer aes_buffer{};
-    Py_buffer ng_buffer{};
+    Buffer aes_buffer{};
+    Buffer ng_buffer{};
     if (PyObject_GetBuffer(aes_object, &aes_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (PyObject_GetBuffer(ng_object, &ng_buffer, PyBUF_SIMPLE) < 0) {
-        PyBuffer_Release(&aes_buffer);
+        aes_buffer.release();
         return nullptr;
     }
     try {
@@ -99,13 +99,13 @@ PyObject* mod_crypto_new(PyObject*, PyObject* args) {
             static_cast<const std::uint8_t*>(ng_buffer.buf),
             static_cast<const std::uint8_t*>(ng_buffer.buf) + ng_buffer.len
         );
-        auto* crypto = new NativeCryptoContext(std::move(aes), std::move(ng));
-        PyBuffer_Release(&ng_buffer);
-        PyBuffer_Release(&aes_buffer);
-        return PyCapsule_New(crypto, CRYPTO_CAPSULE_NAME, crypto_capsule_destructor);
+        auto crypto = std::make_unique<NativeCryptoContext>(std::move(aes), std::move(ng));
+        ng_buffer.release();
+        aes_buffer.release();
+        return owned_capsule(std::move(crypto), CRYPTO_CAPSULE_NAME, crypto_capsule_destructor);
     } catch (...) {
-        PyBuffer_Release(&ng_buffer);
-        PyBuffer_Release(&aes_buffer);
+        ng_buffer.release();
+        aes_buffer.release();
         return translate_cpp_exception();
     }
 }
@@ -139,7 +139,7 @@ PyObject* mod_crypto_enable_encryption(PyObject*, PyObject* args) {
     if (crypto == nullptr) {
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(blob_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -149,10 +149,10 @@ PyObject* mod_crypto_enable_encryption(PyObject*, PyObject* args) {
             static_cast<const std::uint8_t*>(buffer.buf) + buffer.len
         );
         crypto->enable_encryption(std::move(blob));
-        PyBuffer_Release(&buffer);
+        buffer.release();
         Py_RETURN_NONE;
     } catch (...) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         return translate_cpp_exception();
     }
 }

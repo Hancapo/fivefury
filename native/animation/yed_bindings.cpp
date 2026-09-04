@@ -12,39 +12,6 @@ using namespace fivefury_native;
 namespace fivefury_py {
 namespace {
 
-class PyHandle {
-public:
-    explicit PyHandle(PyObject* object = nullptr) : object_(object) {}
-    ~PyHandle() { Py_XDECREF(object_); }
-    PyHandle(const PyHandle&) = delete;
-    PyHandle& operator=(const PyHandle&) = delete;
-    PyHandle(PyHandle&& other) noexcept : object_(other.object_) { other.object_ = nullptr; }
-    PyObject* get() const { return object_; }
-    PyObject* release() { auto* result = object_; object_ = nullptr; return result; }
-    explicit operator bool() const { return object_ != nullptr; }
-
-private:
-    PyObject* object_;
-};
-
-bool tuple_take(PyObject* tuple, Py_ssize_t index, PyObject* value) {
-    if (value == nullptr) return false;
-    if (PyTuple_SetItem(tuple, index, value) < 0) {
-        Py_DECREF(value);
-        return false;
-    }
-    return true;
-}
-
-bool list_take(PyObject* list, Py_ssize_t index, PyObject* value) {
-    if (value == nullptr) return false;
-    if (PyList_SetItem(list, index, value) < 0) {
-        Py_DECREF(value);
-        return false;
-    }
-    return true;
-}
-
 PyHandle item(PyObject* sequence, Py_ssize_t index) {
     return PyHandle(PySequence_GetItem(sequence, index));
 }
@@ -447,7 +414,7 @@ PyObject* mod_yed_compile(PyObject*, PyObject* args) {
     if (!PyArg_ParseTuple(args, "OO", &expressions, &defaults)) return nullptr;
     try {
         auto program = parse_program(expressions, defaults);
-        return PyCapsule_New(program.release(), YED_PROGRAM_CAPSULE_NAME, yed_program_destructor);
+        return owned_capsule(std::move(program), YED_PROGRAM_CAPSULE_NAME, yed_program_destructor);
     } catch (...) {
         return translate_cpp_exception();
     }
@@ -466,15 +433,10 @@ PyObject* mod_yed_evaluate(PyObject*, PyObject* args) {
         YedFrameData frame;
         parse_track_mapping(tracks, frame.tracks);
         parse_variable_mapping(variables, frame.variables);
-        std::exception_ptr execution_error;
-        PyThreadState* thread_state = PyEval_SaveThread();
-        try {
+        {
+            GilRelease gil_release;
             evaluate_yed_program(*program, frame, time, delta_time);
-        } catch (...) {
-            execution_error = std::current_exception();
         }
-        PyEval_RestoreThread(thread_state);
-        if (execution_error) std::rethrow_exception(execution_error);
 
         PyHandle result_tracks(make_mapping(frame.tracks));
         PyHandle result_outputs(make_mapping(frame.outputs));

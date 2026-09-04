@@ -152,7 +152,8 @@ bool parse_values(
     PyObject* quaternion_type,
     std::vector<fivefury_native::Vec4>& values
 ) {
-    PyObject* sequence = PySequence_Fast(source, "samples must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(source, "samples must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -170,7 +171,6 @@ bool parse_values(
         );
         Py_XDECREF(item);
         if (!valid) {
-            Py_DECREF(sequence);
             return false;
         }
         if (format == TrackFormat::Quaternion && !values.empty() &&
@@ -179,12 +179,12 @@ bool parse_values(
         }
         values.push_back(value);
     }
-    Py_DECREF(sequence);
     return true;
 }
 
 bool parse_frames(PyObject* source, std::vector<int>& frames) {
-    PyObject* sequence = PySequence_Fast(source, "frames must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(source, "frames must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -195,12 +195,10 @@ bool parse_frames(PyObject* source, std::vector<int>& frames) {
         const long value = item == nullptr ? -1 : PyLong_AsLong(item);
         Py_XDECREF(item);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         frames.push_back(static_cast<int>(value));
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -419,7 +417,7 @@ PyObject* mod_ycd_track_sampler_new(PyObject*, PyObject* args) {
             return nullptr;
         }
     }
-    return PyCapsule_New(sampler.release(), CAPSULE_NAME, destroy_sampler);
+    return owned_capsule(std::move(sampler), CAPSULE_NAME, destroy_sampler);
 }
 
 PyObject* mod_ycd_track_sampler_window(PyObject*, PyObject* args) {

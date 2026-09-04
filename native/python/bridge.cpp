@@ -88,9 +88,8 @@ void python_scan_log(void*, const char* message, std::size_t length) {
     const auto safe_length = static_cast<int>(
         std::min<std::size_t>(length, static_cast<std::size_t>(std::numeric_limits<int>::max()))
     );
-    PyGILState_STATE gil_state = PyGILState_Ensure();
+    GilAcquire gil_acquire;
     PySys_WriteStdout("%.*s\n", safe_length, message);
-    PyGILState_Release(gil_state);
 }
 
 void python_scan_log_line(const std::string& message) {
@@ -267,6 +266,8 @@ PyObject* translate_cpp_exception() {
     } catch (const std::out_of_range& exc) {
         PyErr_SetString(PyExc_IndexError, exc.what());
     } catch (const std::overflow_error& exc) {
+        PyErr_SetString(PyExc_OverflowError, exc.what());
+    } catch (const std::length_error& exc) {
         PyErr_SetString(PyExc_OverflowError, exc.what());
     } catch (const std::bad_alloc&) {
         PyErr_NoMemory();

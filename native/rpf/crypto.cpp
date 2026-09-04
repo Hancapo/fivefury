@@ -1,3 +1,4 @@
+#include "binary/primitives.h"
 #include "rpf/scan.h"
 
 #include "indexing/hash.h"
@@ -42,19 +43,7 @@ constexpr std::array<std::uint8_t, 32> GTA5_PS3_AES_KEY = {
     0xB3, 0x2A, 0x67, 0x30, 0x8C, 0xC1, 0xB8, 0x33,
 };
 
-std::uint32_t read_u32_le(const std::uint8_t* data) noexcept {
-    return static_cast<std::uint32_t>(data[0]) |
-           (static_cast<std::uint32_t>(data[1]) << 8U) |
-           (static_cast<std::uint32_t>(data[2]) << 16U) |
-           (static_cast<std::uint32_t>(data[3]) << 24U);
-}
 
-void write_u32_le(std::uint32_t value, std::uint8_t* out) noexcept {
-    out[0] = static_cast<std::uint8_t>(value & 0xFFU);
-    out[1] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
-    out[2] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
-    out[3] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
-}
 
 #ifdef _WIN32
 class AesEcbCipher {
@@ -196,7 +185,7 @@ struct NativeCryptoContext::Impl {
         ng_tables.resize(NG_TABLES_SIZE / sizeof(std::uint32_t));
         const auto* tables_data = ng_blob_bytes.data() + NG_KEYS_SIZE;
         for (std::size_t i = 0; i < ng_tables.size(); ++i) {
-            ng_tables[i] = read_u32_le(tables_data + (i * 4U));
+            ng_tables[i] = binary::load<std::uint32_t>(tables_data + (i * 4U));
         }
         ng_subkeys.resize(101U * 17U * 4U);
         for (std::size_t key_index = 0; key_index < 101U; ++key_index) {
@@ -204,10 +193,10 @@ struct NativeCryptoContext::Impl {
             for (std::size_t round_index = 0; round_index < 17U; ++round_index) {
                 const auto* round_base = key_base + (round_index * 16U);
                 const auto out_base = ((key_index * 17U) + round_index) * 4U;
-                ng_subkeys[out_base + 0U] = read_u32_le(round_base + 0U);
-                ng_subkeys[out_base + 1U] = read_u32_le(round_base + 4U);
-                ng_subkeys[out_base + 2U] = read_u32_le(round_base + 8U);
-                ng_subkeys[out_base + 3U] = read_u32_le(round_base + 12U);
+                ng_subkeys[out_base + 0U] = binary::load<std::uint32_t>(round_base + 0U);
+                ng_subkeys[out_base + 1U] = binary::load<std::uint32_t>(round_base + 4U);
+                ng_subkeys[out_base + 2U] = binary::load<std::uint32_t>(round_base + 8U);
+                ng_subkeys[out_base + 3U] = binary::load<std::uint32_t>(round_base + 12U);
             }
         }
     }
@@ -218,7 +207,7 @@ struct NativeCryptoContext::Impl {
         }
         ng_encrypt_tables.resize(NG_ENCRYPT_TABLES_SIZE / sizeof(std::uint32_t));
         for (std::size_t i = 0; i < ng_encrypt_tables.size(); ++i) {
-            ng_encrypt_tables[i] = read_u32_le(blob.data() + (i * 4U));
+            ng_encrypt_tables[i] = binary::load<std::uint32_t>(blob.data() + (i * 4U));
         }
         ng_encrypt_luts.assign(blob.begin() + NG_ENCRYPT_TABLES_SIZE, blob.end());
     }
@@ -342,7 +331,7 @@ struct NativeCryptoContext::Impl {
                                encrypt_table(tbase + (byte + 1U) * 256U, input[byte + 1U]) ^
                                encrypt_table(tbase + (byte + 2U) * 256U, input[byte + 2U]) ^
                                encrypt_table(tbase + (byte + 3U) * 256U, input[byte + 3U]);
-            write_u32_le(value, block + byte);
+            binary::store<std::uint32_t>(block + byte, value);
         }
     }
 
@@ -359,7 +348,7 @@ struct NativeCryptoContext::Impl {
         };
         for (std::size_t output_index = 0; output_index < 16U; ++output_index) {
             const auto source = source_words[output_index] * 4U;
-            const auto value = read_u32_le(input.data() + source);
+            const auto value = binary::load<std::uint32_t>(input.data() + source);
             block[output_index] = encrypt_lut(round_index, output_index, value);
         }
     }
@@ -419,10 +408,10 @@ struct NativeCryptoContext::Impl {
                         table(tbase + 10U * 256U, block[10]) ^ table(tbase + 11U * 256U, block[11]) ^ subkeys[2];
         const auto x4 = table(tbase + 12U * 256U, block[12]) ^ table(tbase + 13U * 256U, block[13]) ^
                         table(tbase + 14U * 256U, block[14]) ^ table(tbase + 15U * 256U, block[15]) ^ subkeys[3];
-        write_u32_le(x1, block + 0U);
-        write_u32_le(x2, block + 4U);
-        write_u32_le(x3, block + 8U);
-        write_u32_le(x4, block + 12U);
+        binary::store<std::uint32_t>(block + 0U, x1);
+        binary::store<std::uint32_t>(block + 4U, x2);
+        binary::store<std::uint32_t>(block + 8U, x3);
+        binary::store<std::uint32_t>(block + 12U, x4);
     }
 
     void round_b(std::uint8_t* block, const std::size_t subkey_offset, const std::size_t round_index) const {
@@ -436,10 +425,10 @@ struct NativeCryptoContext::Impl {
                         table(tbase + 8U * 256U, block[8]) ^ table(tbase + 15U * 256U, block[15]) ^ subkeys[2];
         const auto x4 = table(tbase + 3U * 256U, block[3]) ^ table(tbase + 6U * 256U, block[6]) ^
                         table(tbase + 9U * 256U, block[9]) ^ table(tbase + 12U * 256U, block[12]) ^ subkeys[3];
-        write_u32_le(x1, block + 0U);
-        write_u32_le(x2, block + 4U);
-        write_u32_le(x3, block + 8U);
-        write_u32_le(x4, block + 12U);
+        binary::store<std::uint32_t>(block + 0U, x1);
+        binary::store<std::uint32_t>(block + 4U, x2);
+        binary::store<std::uint32_t>(block + 8U, x3);
+        binary::store<std::uint32_t>(block + 12U, x4);
     }
 
     std::uint32_t table(const std::size_t base, const std::uint8_t index) const noexcept {

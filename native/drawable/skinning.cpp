@@ -21,7 +21,7 @@ bool checked_size(std::size_t count, std::size_t width, std::size_t& result) {
 
 bool acquire_buffer(
     PyObject* object,
-    Py_buffer& buffer,
+    Buffer& buffer,
     std::size_t expected_size,
     const char* name
 ) {
@@ -29,7 +29,7 @@ bool acquire_buffer(
         return false;
     }
     if (buffer.len < 0 || static_cast<std::size_t>(buffer.len) != expected_size) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         PyErr_Format(
             PyExc_ValueError,
             "%s buffer has %zd bytes; expected %zu",
@@ -91,7 +91,7 @@ bool resolve_skinning_dimensions(
 
 bool acquire_writable_buffer(
     PyObject* object,
-    Py_buffer& buffer,
+    Buffer& buffer,
     std::size_t expected_size,
     const char* name
 ) {
@@ -99,7 +99,7 @@ bool acquire_writable_buffer(
         return false;
     }
     if (buffer.len < 0 || static_cast<std::size_t>(buffer.len) != expected_size) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         PyErr_Format(
             PyExc_ValueError,
             "%s buffer has %zd bytes; expected %zu",
@@ -261,20 +261,20 @@ PyObject* mod_skin_compose_matrices(PyObject*, PyObject* args) {
         return nullptr;
     }
 
-    Py_buffer local_buffer{};
-    Py_buffer parent_buffer{};
+    Buffer local_buffer{};
+    Buffer parent_buffer{};
     if (!acquire_buffer(local_object, local_buffer, matrix_bytes, "local matrices")) {
         return nullptr;
     }
     if (!acquire_buffer(parents_object, parent_buffer, parent_bytes, "parent indices")) {
-        PyBuffer_Release(&local_buffer);
+        local_buffer.release();
         return nullptr;
     }
 
     PyObject* output_object = PyByteArray_FromStringAndSize(nullptr, static_cast<Py_ssize_t>(matrix_bytes));
     if (output_object == nullptr) {
-        PyBuffer_Release(&parent_buffer);
-        PyBuffer_Release(&local_buffer);
+        parent_buffer.release();
+        local_buffer.release();
         return nullptr;
     }
     const auto* local = static_cast<const float*>(local_buffer.buf);
@@ -285,49 +285,50 @@ PyObject* mod_skin_compose_matrices(PyObject*, PyObject* args) {
     path.reserve(count);
     bool cycle = false;
 
-    Py_BEGIN_ALLOW_THREADS
-    for (std::size_t start = 0; start < count && !cycle; ++start) {
-        if (states[start] == 2U) {
-            continue;
-        }
-        path.clear();
-        auto current = start;
-        while (states[current] == 0U) {
-            states[current] = 1U;
-            path.push_back(current);
-            const auto parent = parents[current];
-            if (parent < 0 || static_cast<std::size_t>(parent) >= count ||
-                static_cast<std::size_t>(parent) == current) {
+    {
+        GilRelease gil_release;
+        for (std::size_t start = 0; start < count && !cycle; ++start) {
+            if (states[start] == 2U) {
+                continue;
+            }
+            path.clear();
+            auto current = start;
+            while (states[current] == 0U) {
+                states[current] = 1U;
+                path.push_back(current);
+                const auto parent = parents[current];
+                if (parent < 0 || static_cast<std::size_t>(parent) >= count ||
+                    static_cast<std::size_t>(parent) == current) {
+                    break;
+                }
+                current = static_cast<std::size_t>(parent);
+            }
+            if (states[current] == 1U && (path.empty() || current != path.back())) {
+                cycle = true;
                 break;
             }
-            current = static_cast<std::size_t>(parent);
-        }
-        if (states[current] == 1U && (path.empty() || current != path.back())) {
-            cycle = true;
-            break;
-        }
-        while (!path.empty()) {
-            const auto index = path.back();
-            path.pop_back();
-            const auto parent = parents[index];
-            float* target = output + (index * 16U);
-            if (parent >= 0 && static_cast<std::size_t>(parent) < count &&
-                static_cast<std::size_t>(parent) != index) {
-                multiply_matrix4(
-                    local + (index * 16U),
-                    output + (static_cast<std::size_t>(parent) * 16U),
-                    target
-                );
-            } else {
-                std::memcpy(target, local + (index * 16U), 16U * sizeof(float));
+            while (!path.empty()) {
+                const auto index = path.back();
+                path.pop_back();
+                const auto parent = parents[index];
+                float* target = output + (index * 16U);
+                if (parent >= 0 && static_cast<std::size_t>(parent) < count &&
+                    static_cast<std::size_t>(parent) != index) {
+                    multiply_matrix4(
+                        local + (index * 16U),
+                        output + (static_cast<std::size_t>(parent) * 16U),
+                        target
+                    );
+                } else {
+                    std::memcpy(target, local + (index * 16U), 16U * sizeof(float));
+                }
+                states[index] = 2U;
             }
-            states[index] = 2U;
         }
     }
-    Py_END_ALLOW_THREADS
 
-    PyBuffer_Release(&parent_buffer);
-    PyBuffer_Release(&local_buffer);
+    parent_buffer.release();
+    local_buffer.release();
     if (cycle) {
         Py_DECREF(output_object);
         PyErr_SetString(PyExc_ValueError, "Skeleton bone hierarchy contains a cycle");
@@ -383,13 +384,13 @@ PyObject* mod_skin_vertices_into(PyObject*, PyObject* args) {
         return nullptr;
     }
 
-    Py_buffer positions_buffer{};
-    Py_buffer matrices_buffer{};
-    Py_buffer indices_buffer{};
-    Py_buffer weights_buffer{};
-    Py_buffer normals_buffer{};
-    Py_buffer positions_output_buffer{};
-    Py_buffer normals_output_buffer{};
+    Buffer positions_buffer{};
+    Buffer matrices_buffer{};
+    Buffer indices_buffer{};
+    Buffer weights_buffer{};
+    Buffer normals_buffer{};
+    Buffer positions_output_buffer{};
+    Buffer normals_output_buffer{};
     if (!acquire_buffer(
             positions_object,
             positions_buffer,
@@ -436,46 +437,47 @@ PyObject* mod_skin_vertices_into(PyObject*, PyObject* args) {
              dimensions.vector_bytes,
              "output normals"
          ))) {
-        if (normals_output_buffer.obj != nullptr) PyBuffer_Release(&normals_output_buffer);
-        if (positions_output_buffer.obj != nullptr) PyBuffer_Release(&positions_output_buffer);
-        if (normals_buffer.obj != nullptr) PyBuffer_Release(&normals_buffer);
-        if (weights_buffer.obj != nullptr) PyBuffer_Release(&weights_buffer);
-        if (indices_buffer.obj != nullptr) PyBuffer_Release(&indices_buffer);
-        if (matrices_buffer.obj != nullptr) PyBuffer_Release(&matrices_buffer);
-        PyBuffer_Release(&positions_buffer);
+        if (normals_output_buffer.obj != nullptr) normals_output_buffer.release();
+        if (positions_output_buffer.obj != nullptr) positions_output_buffer.release();
+        if (normals_buffer.obj != nullptr) normals_buffer.release();
+        if (weights_buffer.obj != nullptr) weights_buffer.release();
+        if (indices_buffer.obj != nullptr) indices_buffer.release();
+        if (matrices_buffer.obj != nullptr) matrices_buffer.release();
+        positions_buffer.release();
         return nullptr;
     }
 
     std::size_t invalid_index = 0;
     bool valid_indices = false;
-    Py_BEGIN_ALLOW_THREADS
-    valid_indices = skin_vertex_buffers(
-        static_cast<const float*>(positions_buffer.buf),
-        static_cast<const float*>(matrices_buffer.buf),
-        static_cast<const std::uint32_t*>(indices_buffer.buf),
-        static_cast<const float*>(weights_buffer.buf),
-        normals_object == Py_None
-            ? nullptr
-            : static_cast<const float*>(normals_buffer.buf),
-        static_cast<float*>(positions_output_buffer.buf),
-        normals_output_object == Py_None
-            ? nullptr
-            : static_cast<float*>(normals_output_buffer.buf),
-        dimensions.vertex_count,
-        dimensions.bone_count,
-        dimensions.influence_count,
-        normalize_weights != 0,
-        invalid_index
-    );
-    Py_END_ALLOW_THREADS
+    {
+        GilRelease gil_release;
+        valid_indices = skin_vertex_buffers(
+            static_cast<const float*>(positions_buffer.buf),
+            static_cast<const float*>(matrices_buffer.buf),
+            static_cast<const std::uint32_t*>(indices_buffer.buf),
+            static_cast<const float*>(weights_buffer.buf),
+            normals_object == Py_None
+                ? nullptr
+                : static_cast<const float*>(normals_buffer.buf),
+            static_cast<float*>(positions_output_buffer.buf),
+            normals_output_object == Py_None
+                ? nullptr
+                : static_cast<float*>(normals_output_buffer.buf),
+            dimensions.vertex_count,
+            dimensions.bone_count,
+            dimensions.influence_count,
+            normalize_weights != 0,
+            invalid_index
+        );
+    }
 
-    if (normals_output_buffer.obj != nullptr) PyBuffer_Release(&normals_output_buffer);
-    PyBuffer_Release(&positions_output_buffer);
-    if (normals_buffer.obj != nullptr) PyBuffer_Release(&normals_buffer);
-    PyBuffer_Release(&weights_buffer);
-    PyBuffer_Release(&indices_buffer);
-    PyBuffer_Release(&matrices_buffer);
-    PyBuffer_Release(&positions_buffer);
+    if (normals_output_buffer.obj != nullptr) normals_output_buffer.release();
+    positions_output_buffer.release();
+    if (normals_buffer.obj != nullptr) normals_buffer.release();
+    weights_buffer.release();
+    indices_buffer.release();
+    matrices_buffer.release();
+    positions_buffer.release();
     if (!valid_indices) {
         PyErr_Format(
             PyExc_ValueError,
@@ -519,8 +521,8 @@ PyObject* mod_skin_pack_palette_into(PyObject*, PyObject* args) {
         return nullptr;
     }
 
-    Py_buffer matrices_buffer{};
-    Py_buffer output_buffer{};
+    Buffer matrices_buffer{};
+    Buffer output_buffer{};
     if (!acquire_buffer(
             matrices_object,
             matrices_buffer,
@@ -535,33 +537,34 @@ PyObject* mod_skin_pack_palette_into(PyObject*, PyObject* args) {
             palette_bytes,
             "output palette"
         )) {
-        PyBuffer_Release(&matrices_buffer);
+        matrices_buffer.release();
         return nullptr;
     }
 
     const auto* matrices = static_cast<const float*>(matrices_buffer.buf);
     auto* palette = static_cast<float*>(output_buffer.buf);
-    Py_BEGIN_ALLOW_THREADS
-    for (std::size_t bone = 0; bone < bone_count; ++bone) {
-        const float* source = matrices + (bone * 16U);
-        float* target = palette + (bone * 12U);
-        target[0] = source[0];
-        target[1] = source[4];
-        target[2] = source[8];
-        target[3] = source[12];
-        target[4] = source[1];
-        target[5] = source[5];
-        target[6] = source[9];
-        target[7] = source[13];
-        target[8] = source[2];
-        target[9] = source[6];
-        target[10] = source[10];
-        target[11] = source[14];
+    {
+        GilRelease gil_release;
+        for (std::size_t bone = 0; bone < bone_count; ++bone) {
+            const float* source = matrices + (bone * 16U);
+            float* target = palette + (bone * 12U);
+            target[0] = source[0];
+            target[1] = source[4];
+            target[2] = source[8];
+            target[3] = source[12];
+            target[4] = source[1];
+            target[5] = source[5];
+            target[6] = source[9];
+            target[7] = source[13];
+            target[8] = source[2];
+            target[9] = source[6];
+            target[10] = source[10];
+            target[11] = source[14];
+        }
     }
-    Py_END_ALLOW_THREADS
 
-    PyBuffer_Release(&output_buffer);
-    PyBuffer_Release(&matrices_buffer);
+    output_buffer.release();
+    matrices_buffer.release();
     Py_RETURN_NONE;
 }
 

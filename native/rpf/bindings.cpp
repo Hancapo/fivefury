@@ -47,12 +47,12 @@ PyObject* mod_read_rpf_entry(PyObject*, PyObject* args) {
             return nullptr;
         }
     }
-    Py_buffer lut_buf{};
+    Buffer lut_buf{};
     if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (lut_buf.len < 256) {
-        PyBuffer_Release(&lut_buf);
+        lut_buf.release();
         PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
         return nullptr;
     }
@@ -64,13 +64,13 @@ PyObject* mod_read_rpf_entry(PyObject*, PyObject* args) {
             crypto,
             mode == 0 ? RpfReadMode::Stored : RpfReadMode::Standalone
         );
-        PyBuffer_Release(&lut_buf);
+        lut_buf.release();
         return PyBytes_FromStringAndSize(
             reinterpret_cast<const char*>(payload.data()),
             static_cast<Py_ssize_t>(payload.size())
         );
     } catch (const std::exception& exc) {
-        PyBuffer_Release(&lut_buf);
+        lut_buf.release();
         PyErr_SetString(PyExc_RuntimeError, exc.what());
         return nullptr;
     }
@@ -99,12 +99,12 @@ PyObject* mod_read_rpf_entry_variants(PyObject*, PyObject* args) {
             return nullptr;
         }
     }
-    Py_buffer lut_buf{};
+    Buffer lut_buf{};
     if (PyObject_GetBuffer(lut_object, &lut_buf, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (lut_buf.len < 256) {
-        PyBuffer_Release(&lut_buf);
+        lut_buf.release();
         PyErr_SetString(PyExc_ValueError, "LUT must be at least 256 bytes");
         return nullptr;
     }
@@ -115,7 +115,7 @@ PyObject* mod_read_rpf_entry_variants(PyObject*, PyObject* args) {
             std::string(static_cast<const char*>(lut_buf.buf), 256),
             crypto
         );
-        PyBuffer_Release(&lut_buf);
+        lut_buf.release();
         PyObject* tuple = PyTuple_New(2);
         if (tuple == nullptr) {
             return nullptr;
@@ -150,7 +150,7 @@ PyObject* mod_read_rpf_entry_variants(PyObject*, PyObject* args) {
         }
         return tuple;
     } catch (const std::exception& exc) {
-        PyBuffer_Release(&lut_buf);
+        lut_buf.release();
         PyErr_SetString(PyExc_RuntimeError, exc.what());
         return nullptr;
     }
@@ -226,12 +226,12 @@ PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args) {
         sources.push_back(std::move(source));
     }
 
-    Py_buffer hash_lut_buffer{};
+    Buffer hash_lut_buffer{};
     if (PyObject_GetBuffer(hash_lut_object, &hash_lut_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (hash_lut_buffer.len != 256) {
-        PyBuffer_Release(&hash_lut_buffer);
+        hash_lut_buffer.release();
         PyErr_SetString(PyExc_ValueError, "hash_lut must contain 256 bytes");
         return nullptr;
     }
@@ -300,30 +300,31 @@ PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args) {
         }
     };
 
-    PyThreadState* thread_state = PyEval_SaveThread();
-    try {
-        if (sources.empty()) {
-            // no-op
-        } else if (worker_count <= 1) {
-            worker_fn();
-        } else {
-            std::vector<std::thread> threads;
-            threads.reserve(worker_count - 1);
-            for (std::size_t index_value = 1; index_value < worker_count; ++index_value) {
-                threads.emplace_back(worker_fn);
+    {
+        GilRelease gil_release;
+        try {
+            if (sources.empty()) {
+                // no-op
+            } else if (worker_count <= 1) {
+                worker_fn();
+            } else {
+                std::vector<std::jthread> threads;
+                threads.reserve(worker_count - 1);
+                for (std::size_t index_value = 1; index_value < worker_count; ++index_value) {
+                    threads.emplace_back(worker_fn);
+                }
+                worker_fn();
+                for (auto& thread : threads) {
+                    thread.join();
+                }
             }
-            worker_fn();
-            for (auto& thread : threads) {
-                thread.join();
-            }
+        } catch (const std::exception& exc) {
+            failure = exc.what();
+        } catch (...) {
+            failure = "unknown native error";
         }
-    } catch (const std::exception& exc) {
-        failure = exc.what();
-    } catch (...) {
-        failure = "unknown native error";
     }
-    PyEval_RestoreThread(thread_state);
-    PyBuffer_Release(&hash_lut_buffer);
+    hash_lut_buffer.release();
     if (!failure.empty()) {
         PyErr_SetString(PyExc_RuntimeError, failure.c_str());
         return nullptr;
@@ -412,37 +413,38 @@ PyObject* mod_scan_rpf_into_index(PyObject*, PyObject* args) {
     if (!unicode_to_utf8(path_object, path, "path") || !unicode_to_utf8(source_prefix_object, source_prefix, "source_prefix")) {
         return nullptr;
     }
-    Py_buffer hash_lut_buffer{};
+    Buffer hash_lut_buffer{};
     if (PyObject_GetBuffer(hash_lut_object, &hash_lut_buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     if (hash_lut_buffer.len != 256) {
-        PyBuffer_Release(&hash_lut_buffer);
+        hash_lut_buffer.release();
         PyErr_SetString(PyExc_ValueError, "hash_lut must contain 256 bytes");
         return nullptr;
     }
 
     std::size_t result = 0;
     std::string failure;
-    PyThreadState* thread_state = PyEval_SaveThread();
-    try {
-        result = scan_rpf_into_index(
-            *index,
-            path,
-            source_prefix,
-            std::string(static_cast<const char*>(hash_lut_buffer.buf), static_cast<std::size_t>(hash_lut_buffer.len)),
-            crypto,
-            static_cast<std::uint32_t>(skip_mask),
-            verbose ? python_scan_log : nullptr,
-            nullptr
-        );
-    } catch (const std::exception& exc) {
-        failure = exc.what();
-    } catch (...) {
-        failure = "unknown native error";
+    {
+        GilRelease gil_release;
+        try {
+            result = scan_rpf_into_index(
+                *index,
+                path,
+                source_prefix,
+                std::string(static_cast<const char*>(hash_lut_buffer.buf), static_cast<std::size_t>(hash_lut_buffer.len)),
+                crypto,
+                static_cast<std::uint32_t>(skip_mask),
+                verbose ? python_scan_log : nullptr,
+                nullptr
+            );
+        } catch (const std::exception& exc) {
+            failure = exc.what();
+        } catch (...) {
+            failure = "unknown native error";
+        }
     }
-    PyEval_RestoreThread(thread_state);
-    PyBuffer_Release(&hash_lut_buffer);
+    hash_lut_buffer.release();
     if (!failure.empty()) {
         PyErr_SetString(PyExc_RuntimeError, failure.c_str());
         return nullptr;
