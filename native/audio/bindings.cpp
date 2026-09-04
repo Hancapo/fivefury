@@ -93,25 +93,22 @@ PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
     );
     std::vector<std::uint16_t> peaks(block_count, 0);
     {
-        GilRelease gil_release;
-        for (std::size_t block = 0; block < block_count; ++block) {
-            const auto start = static_cast<Py_ssize_t>(block) * block_size;
-            const auto end = std::min(start + block_size, sample_count);
-            std::uint16_t peak = 0;
-            for (Py_ssize_t sample = start; sample < end; ++sample) {
-                const auto offset = sample * 2;
-                if (offset + 2 > source_size) {
-                    continue;
-                }
-                const auto value = static_cast<std::int32_t>(binary::load<std::int16_t>(source + offset));
-                const auto absolute = value < 0 ? -value : value;
-                peak = std::max<std::uint16_t>(
-                    peak,
-                    static_cast<std::uint16_t>(std::min(absolute * 2, 65535))
-                );
-            }
-            peaks[block] = peak;
+    GilRelease gil_release;
+    for (std::size_t block = 0; block < block_count; ++block) {
+        const auto start = static_cast<Py_ssize_t>(block) * block_size;
+        const auto end = start + std::min(block_size, sample_count - start);
+        std::uint16_t peak = 0;
+        for (Py_ssize_t sample = start; sample < std::min(end, source_size / 2); ++sample) {
+            const auto offset = sample * 2;
+            const auto value = static_cast<std::int32_t>(binary::load<std::int16_t>(source + offset));
+            const auto absolute = value < 0 ? -value : value;
+            peak = std::max<std::uint16_t>(
+                peak,
+                static_cast<std::uint16_t>(std::min(absolute * 2, 65535))
+            );
         }
+        peaks[block] = peak;
+    }
     }
     PyObject* result = PyList_New(static_cast<Py_ssize_t>(peaks.size()));
     if (result == nullptr) {
@@ -151,15 +148,15 @@ PyObject* mod_awc_split_interleaved_pcm16(PyObject*, PyObject* args) {
         output.resize(static_cast<std::size_t>(frames) * 2U);
     }
     {
-        GilRelease gil_release;
-        for (Py_ssize_t frame = 0; frame < frames; ++frame) {
-            for (int channel = 0; channel < channels; ++channel) {
-                const auto source_offset = frame * frame_size + channel * 2;
-                const auto destination_offset = static_cast<std::size_t>(frame) * 2U;
-                outputs[static_cast<std::size_t>(channel)][destination_offset] = source[source_offset];
-                outputs[static_cast<std::size_t>(channel)][destination_offset + 1U] = source[source_offset + 1];
-            }
+    GilRelease gil_release;
+    for (Py_ssize_t frame = 0; frame < frames; ++frame) {
+        for (int channel = 0; channel < channels; ++channel) {
+            const auto source_offset = frame * frame_size + channel * 2;
+            const auto destination_offset = static_cast<std::size_t>(frame) * 2U;
+            outputs[static_cast<std::size_t>(channel)][destination_offset] = source[source_offset];
+            outputs[static_cast<std::size_t>(channel)][destination_offset + 1U] = source[source_offset + 1];
         }
+    }
     }
     PyObject* result = PyList_New(channels);
     if (result == nullptr) {
@@ -218,21 +215,22 @@ PyObject* mod_awc_interleave_pcm16(PyObject*, PyObject* args) {
         frame_count = std::min(frame_count, requested_samples);
     }
     std::string output(
-        static_cast<std::size_t>(frame_count * channel_count * 2),
+        static_cast<std::size_t>(checked_buffer_size(
+            binary::checked_product(static_cast<std::size_t>(frame_count), static_cast<std::size_t>(channel_count)), 2U)),
         '\0'
     );
     {
-        GilRelease gil_release;
-        for (Py_ssize_t frame = 0; frame < frame_count; ++frame) {
-            for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
-                const auto source_offset = static_cast<std::size_t>(frame) * 2U;
-                const auto destination_offset = static_cast<std::size_t>(
-                    (frame * channel_count + channel) * 2
-                );
-                output[destination_offset] = channels[static_cast<std::size_t>(channel)][source_offset];
-                output[destination_offset + 1U] = channels[static_cast<std::size_t>(channel)][source_offset + 1U];
-            }
+    GilRelease gil_release;
+    for (Py_ssize_t frame = 0; frame < frame_count; ++frame) {
+        for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
+            const auto source_offset = static_cast<std::size_t>(frame) * 2U;
+            const auto destination_offset = static_cast<std::size_t>(
+                (frame * channel_count + channel) * 2
+            );
+            output[destination_offset] = channels[static_cast<std::size_t>(channel)][source_offset];
+            output[destination_offset + 1U] = channels[static_cast<std::size_t>(channel)][source_offset + 1U];
         }
+    }
     }
     return PyBytes_FromStringAndSize(output.data(), static_cast<Py_ssize_t>(output.size()));
 }
@@ -246,50 +244,55 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
     const auto* source = source_view.data;
     const auto source_size = source_view.size;
     sample_count = std::max<Py_ssize_t>(sample_count, 0);
-    std::string output(static_cast<std::size_t>(sample_count) * 2U, '\0');
+    const auto output_size = checked_buffer_size(static_cast<std::size_t>(sample_count), 2U);
+    PyHandle output(PyBytes_FromStringAndSize(nullptr, output_size));
+    if (!output) return nullptr;
+    char* destination = PyBytes_AsString(output.get());
+    if (destination == nullptr) return nullptr;
     {
-        GilRelease gil_release;
-        int predictor = 0;
-        int step_index = 0;
-        Py_ssize_t reading_offset = 0;
-        int bytes_in_block = 0;
-        Py_ssize_t written = 0;
-        auto decode_nibble = [&](int nibble) {
-            const auto step = IMA_STEP_TABLE[static_cast<std::size_t>(step_index)];
-            auto difference = ((((nibble & 7) << 1) + 1) * step) >> 3;
-            if ((nibble & 8) != 0) {
-                difference = -difference;
-            }
-            predictor = std::clamp(predictor + difference, -32768, 32767);
-            step_index = std::clamp(
-                step_index + IMA_INDEX_TABLE[static_cast<std::size_t>(nibble & 0xF)],
-                0,
-                88
-            );
-            binary::store<std::int16_t>(output.data() + written * 2, static_cast<std::int16_t>(predictor));
-            ++written;
-        };
-        while (reading_offset < source_size && written < sample_count) {
-            if (bytes_in_block == 0) {
-                if (reading_offset + 4 > source_size) {
-                    break;
-                }
-                step_index = std::clamp(static_cast<int>(static_cast<unsigned char>(source[reading_offset])), 0, 88);
-                predictor = binary::load<std::int16_t>(source + reading_offset + 2);
-                bytes_in_block = 2044;
-                reading_offset += 4;
-                continue;
-            }
-            const auto value = static_cast<unsigned char>(source[reading_offset]);
-            decode_nibble(value & 0x0F);
-            if (written < sample_count) {
-                decode_nibble((value >> 4U) & 0x0F);
-            }
-            --bytes_in_block;
-            ++reading_offset;
+    GilRelease gil_release;
+    std::memset(destination, 0, static_cast<std::size_t>(output_size));
+    int predictor = 0;
+    int step_index = 0;
+    Py_ssize_t reading_offset = 0;
+    int bytes_in_block = 0;
+    Py_ssize_t written = 0;
+    auto decode_nibble = [&](int nibble) {
+        const auto step = IMA_STEP_TABLE[static_cast<std::size_t>(step_index)];
+        auto difference = ((((nibble & 7) << 1) + 1) * step) >> 3;
+        if ((nibble & 8) != 0) {
+            difference = -difference;
         }
+        predictor = std::clamp(predictor + difference, -32768, 32767);
+        step_index = std::clamp(
+            step_index + IMA_INDEX_TABLE[static_cast<std::size_t>(nibble & 0xF)],
+            0,
+            88
+        );
+        binary::store<std::int16_t>(destination + written * 2, static_cast<std::int16_t>(predictor));
+        ++written;
+    };
+    while (reading_offset < source_size && written < sample_count) {
+        if (bytes_in_block == 0) {
+            if (reading_offset + 4 > source_size) {
+                break;
+            }
+            step_index = std::clamp(static_cast<int>(static_cast<unsigned char>(source[reading_offset])), 0, 88);
+            predictor = binary::load<std::int16_t>(source + reading_offset + 2);
+            bytes_in_block = 2044;
+            reading_offset += 4;
+            continue;
+        }
+        const auto value = static_cast<unsigned char>(source[reading_offset]);
+        decode_nibble(value & 0x0F);
+        if (written < sample_count) {
+            decode_nibble((value >> 4U) & 0x0F);
+        }
+        --bytes_in_block;
+        ++reading_offset;
     }
-    return PyBytes_FromStringAndSize(output.data(), static_cast<Py_ssize_t>(output.size()));
+    }
+    return output.release();
 }
 
 PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
@@ -318,36 +321,36 @@ PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
         blocks[index] = binary::load<std::uint32_t>(source + index * 4U);
     }
     {
-        GilRelease gil_release;
-        if (decrypt != 0) {
-            auto total = RSXXTEA_DELTA * static_cast<std::uint32_t>(6U + (52U / block_count));
-            auto right = blocks[0];
-            while (total != 0U) {
-                for (std::size_t reverse = block_count; reverse-- > 0U;) {
-                    const auto left = blocks[reverse == 0U ? block_count - 1U : reverse - 1U];
-                    const auto key_index = (reverse & 3U) ^ ((total >> 2U) & 3U);
-                    const auto value = blocks[reverse] - rsxxtea_mix(left, right, total, key[key_index]);
-                    blocks[reverse] = value;
-                    right = value;
-                }
-                total -= RSXXTEA_DELTA;
+    GilRelease gil_release;
+    if (decrypt != 0) {
+        auto total = RSXXTEA_DELTA * static_cast<std::uint32_t>(6U + (52U / block_count));
+        auto right = blocks[0];
+        while (total != 0U) {
+            for (std::size_t reverse = block_count; reverse-- > 0U;) {
+                const auto left = blocks[reverse == 0U ? block_count - 1U : reverse - 1U];
+                const auto key_index = (reverse & 3U) ^ ((total >> 2U) & 3U);
+                const auto value = blocks[reverse] - rsxxtea_mix(left, right, total, key[key_index]);
+                blocks[reverse] = value;
+                right = value;
             }
-        } else {
-            auto rounds = 6U + (52U / static_cast<std::uint32_t>(block_count));
-            std::uint32_t total = 0;
-            auto left = blocks.back();
-            while (rounds-- != 0U) {
-                total += RSXXTEA_DELTA;
-                const auto e = (total >> 2U) & 3U;
-                for (std::size_t index = 0; index < block_count; ++index) {
-                    const auto right = blocks[(index + 1U) % block_count];
-                    const auto key_index = (index & 3U) ^ e;
-                    const auto value = blocks[index] + rsxxtea_mix(left, right, total, key[key_index]);
-                    blocks[index] = value;
-                    left = value;
-                }
+            total -= RSXXTEA_DELTA;
+        }
+    } else {
+        auto rounds = 6U + (52U / static_cast<std::uint32_t>(block_count));
+        std::uint32_t total = 0;
+        auto left = blocks.back();
+        while (rounds-- != 0U) {
+            total += RSXXTEA_DELTA;
+            const auto e = (total >> 2U) & 3U;
+            for (std::size_t index = 0; index < block_count; ++index) {
+                const auto right = blocks[(index + 1U) % block_count];
+                const auto key_index = (index & 3U) ^ e;
+                const auto value = blocks[index] + rsxxtea_mix(left, right, total, key[key_index]);
+                blocks[index] = value;
+                left = value;
             }
         }
+    }
     }
     std::string output(static_cast<std::size_t>(source_size), '\0');
     for (std::size_t index = 0; index < block_count; ++index) {

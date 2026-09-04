@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Native audio decoding rejects unrepresentable output sizes without terminating Python.
 - YCD frame channels reject invalid types, widths and truncated frame data.
 - Native bindings share exception-safe buffer ownership and GIL handling.
 - Native RPF, audio, and metadata readers remain compatible with Python 3.11 and 3.12 when the wheel is built on newer Python versions.
