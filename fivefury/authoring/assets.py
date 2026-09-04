@@ -81,6 +81,7 @@ class AssetRef(Generic[AssetT]):
 class AssetSet(MutableMapping[str, object]):
     def __init__(self) -> None:
         self._assets: dict[str, object] = {}
+        self._names: dict[str, dict[str, None]] = {}
 
     def __getitem__(self, key: str) -> object:
         return self._assets[canonical_asset_path(key)]
@@ -90,10 +91,15 @@ class AssetSet(MutableMapping[str, object]):
         current = self._assets.get(path)
         if current is not None and current is not value:
             raise KeyError(f"Asset path is already registered: {path}")
-        self._assets[path] = value
+        self.replace(path, value)
 
     def __delitem__(self, key: str) -> None:
-        del self._assets[canonical_asset_path(key)]
+        path = canonical_asset_path(key)
+        del self._assets[path]
+        name = asset_name(path)
+        del self._names[name][path]
+        if not self._names[name]:
+            del self._names[name]
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._assets)
@@ -102,7 +108,9 @@ class AssetSet(MutableMapping[str, object]):
         return len(self._assets)
 
     def replace(self, path: str | Path, asset: object) -> object:
-        self._assets[canonical_asset_path(path)] = asset
+        path = canonical_asset_path(path)
+        self._assets[path] = asset
+        self._names.setdefault(asset_name(path), {})[path] = None
         return asset
 
     @classmethod
@@ -143,10 +151,9 @@ class AssetSet(MutableMapping[str, object]):
 
         matches = [
             target
-            for path, candidate in self._assets.items()
-            if (target := self._target(candidate)) is not None
-            if asset_name(path) == reference.name
-            and (
+            for path in self._names.get(reference.name, ())
+            if (target := self._target(self._assets[path])) is not None
+            if (
                 reference.asset_type is None
                 or isinstance(target, reference.asset_type)
             )
