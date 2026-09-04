@@ -414,7 +414,7 @@ PyObject* mod_yed_compile(PyObject*, PyObject* args) {
     if (!PyArg_ParseTuple(args, "OO", &expressions, &defaults)) return nullptr;
     try {
         auto program = parse_program(expressions, defaults);
-        return PyCapsule_New(program.release(), YED_PROGRAM_CAPSULE_NAME, yed_program_destructor);
+        return owned_capsule(std::move(program), YED_PROGRAM_CAPSULE_NAME, yed_program_destructor);
     } catch (...) {
         return translate_cpp_exception();
     }
@@ -433,15 +433,10 @@ PyObject* mod_yed_evaluate(PyObject*, PyObject* args) {
         YedFrameData frame;
         parse_track_mapping(tracks, frame.tracks);
         parse_variable_mapping(variables, frame.variables);
-        std::exception_ptr execution_error;
-        PyThreadState* thread_state = PyEval_SaveThread();
-        try {
+        {
+            GilRelease gil_release;
             evaluate_yed_program(*program, frame, time, delta_time);
-        } catch (...) {
-            execution_error = std::current_exception();
         }
-        PyEval_RestoreThread(thread_state);
-        if (execution_error) std::rethrow_exception(execution_error);
 
         PyHandle result_tracks(make_mapping(frame.tracks));
         PyHandle result_outputs(make_mapping(frame.outputs));

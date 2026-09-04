@@ -264,31 +264,31 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args) {
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     const auto data_size = static_cast<std::size_t>(buffer.len);
     {
-    GilRelease gil_release;
-    for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
-        const auto frame_base = (
-            static_cast<std::size_t>(frame_offset) +
-            static_cast<std::size_t>(frame_length) * static_cast<std::size_t>(frame)
-        ) * 8U;
-        for (auto& channel : channels) {
-            const auto bits = read_bits(
-                data,
-                data_size,
-                frame_base + channel.bit_offset,
-                channel.bit_count
-            );
-            if (channel.kind == 3) {
-                float value = 0.0F;
-                std::memcpy(&value, &bits, sizeof(value));
-                channel.values[static_cast<std::size_t>(frame)] = value;
-            } else if (channel.kind == 4) {
-                channel.values[static_cast<std::size_t>(frame)] =
-                    static_cast<double>(bits) * channel.quantum + channel.offset;
-            } else {
-                channel.indices[static_cast<std::size_t>(frame)] = bits;
+        GilRelease gil_release;
+        for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
+            const auto frame_base = (
+                static_cast<std::size_t>(frame_offset) +
+                static_cast<std::size_t>(frame_length) * static_cast<std::size_t>(frame)
+            ) * 8U;
+            for (auto& channel : channels) {
+                const auto bits = read_bits(
+                    data,
+                    data_size,
+                    frame_base + channel.bit_offset,
+                    channel.bit_count
+                );
+                if (channel.kind == 3) {
+                    float value = 0.0F;
+                    std::memcpy(&value, &bits, sizeof(value));
+                    channel.values[static_cast<std::size_t>(frame)] = value;
+                } else if (channel.kind == 4) {
+                    channel.values[static_cast<std::size_t>(frame)] =
+                        static_cast<double>(bits) * channel.quantum + channel.offset;
+                } else {
+                    channel.indices[static_cast<std::size_t>(frame)] = bits;
+                }
             }
         }
-    }
     }
     buffer.release();
 
@@ -343,20 +343,20 @@ PyObject* mod_ycd_encode_frame_channels(PyObject*, PyObject* args) {
         0
     );
     {
-    GilRelease gil_release;
-    for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
-        auto bit_offset = static_cast<std::size_t>(frame) * frame_length * 8U;
-        for (const auto& channel : channels) {
-            write_bits(
-                output.data(),
-                output.size(),
-                bit_offset,
-                channel.values[static_cast<std::size_t>(frame)],
-                channel.bit_count
-            );
-            bit_offset += static_cast<std::size_t>(std::max(channel.bit_count, 0));
+        GilRelease gil_release;
+        for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
+            auto bit_offset = static_cast<std::size_t>(frame) * frame_length * 8U;
+            for (const auto& channel : channels) {
+                write_bits(
+                    output.data(),
+                    output.size(),
+                    bit_offset,
+                    channel.values[static_cast<std::size_t>(frame)],
+                    channel.bit_count
+                );
+                bit_offset += static_cast<std::size_t>(std::max(channel.bit_count, 0));
+            }
         }
-    }
     }
     PyObject* data = PyBytes_FromStringAndSize(
         reinterpret_cast<const char*>(output.data()),
@@ -407,15 +407,15 @@ PyObject* mod_ycd_decode_quantized_values(PyObject*, PyObject* args) {
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     const auto data_size = static_cast<std::size_t>(buffer.len);
     {
-    GilRelease gil_release;
-    auto cursor = static_cast<std::size_t>(bit_offset);
-    for (Py_ssize_t index = 0; index < count; ++index) {
-        const auto bits = read_bits(data, data_size, cursor, bit_count);
-        cursor += static_cast<std::size_t>(bit_count);
-        encoded[static_cast<std::size_t>(index)] = bits;
-        values[static_cast<std::size_t>(index)] =
-            static_cast<double>(bits) * quantum + offset;
-    }
+        GilRelease gil_release;
+        auto cursor = static_cast<std::size_t>(bit_offset);
+        for (Py_ssize_t index = 0; index < count; ++index) {
+            const auto bits = read_bits(data, data_size, cursor, bit_count);
+            cursor += static_cast<std::size_t>(bit_count);
+            encoded[static_cast<std::size_t>(index)] = bits;
+            values[static_cast<std::size_t>(index)] =
+                static_cast<double>(bits) * quantum + offset;
+        }
     }
     buffer.release();
     return build_value_pair(values, encoded);
@@ -470,63 +470,63 @@ PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args) {
     const auto data_size = static_cast<std::size_t>(buffer.len);
     const auto stream_length = data_size * 8U;
     {
-    GilRelease gil_release;
-    auto cursor = static_cast<std::size_t>(bit_offset);
-    for (std::size_t index = 0; index < num_chunks; ++index) {
-        chunk_offsets[index] = count1 > 0
-            ? read_bits(data, data_size, cursor, count1)
-            : 0U;
-        cursor += static_cast<std::size_t>(count1);
-    }
-    for (std::size_t index = 0; index < num_chunks; ++index) {
-        chunk_values[index] = count2 > 0
-            ? read_bits(data, data_size, cursor, count2)
-            : 0U;
-        cursor += static_cast<std::size_t>(count2);
-    }
-    const auto delta_offset = static_cast<std::size_t>(bit_offset) +
-        num_chunks * static_cast<std::size_t>(count1 + count2);
-    for (std::size_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-        auto delta_cursor = delta_offset + chunk_offsets[chunk_index];
-        std::int64_t value = chunk_values[chunk_index];
-        std::int64_t increment = 0;
-        const auto chunk_start = chunk_index * static_cast<std::size_t>(chunk_size);
-        for (int local_frame = 0; local_frame < chunk_size; ++local_frame) {
-            const auto frame_index = chunk_start + static_cast<std::size_t>(local_frame);
-            if (frame_index >= static_cast<std::size_t>(num_frames)) {
-                break;
-            }
-            encoded[frame_index] = static_cast<std::uint32_t>(value);
-            values[frame_index] = static_cast<double>(value) * quantum + offset;
-            if (local_frame + 1 >= chunk_size) {
-                break;
-            }
-            std::uint64_t delta = count3 > 0
-                ? read_bits(data, data_size, delta_cursor, count3)
+        GilRelease gil_release;
+        auto cursor = static_cast<std::size_t>(bit_offset);
+        for (std::size_t index = 0; index < num_chunks; ++index) {
+            chunk_offsets[index] = count1 > 0
+                ? read_bits(data, data_size, cursor, count1)
                 : 0U;
-            delta_cursor += static_cast<std::size_t>(count3);
-            const auto unary_start = delta_cursor;
-            bool bit_found = false;
-            while (!bit_found) {
-                bit_found = read_bits(data, data_size, delta_cursor, 1) != 0U;
-                ++delta_cursor;
-                if (delta_cursor >= stream_length) {
+            cursor += static_cast<std::size_t>(count1);
+        }
+        for (std::size_t index = 0; index < num_chunks; ++index) {
+            chunk_values[index] = count2 > 0
+                ? read_bits(data, data_size, cursor, count2)
+                : 0U;
+            cursor += static_cast<std::size_t>(count2);
+        }
+        const auto delta_offset = static_cast<std::size_t>(bit_offset) +
+            num_chunks * static_cast<std::size_t>(count1 + count2);
+        for (std::size_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
+            auto delta_cursor = delta_offset + chunk_offsets[chunk_index];
+            std::int64_t value = chunk_values[chunk_index];
+            std::int64_t increment = 0;
+            const auto chunk_start = chunk_index * static_cast<std::size_t>(chunk_size);
+            for (int local_frame = 0; local_frame < chunk_size; ++local_frame) {
+                const auto frame_index = chunk_start + static_cast<std::size_t>(local_frame);
+                if (frame_index >= static_cast<std::size_t>(num_frames)) {
                     break;
                 }
+                encoded[frame_index] = static_cast<std::uint32_t>(value);
+                values[frame_index] = static_cast<double>(value) * quantum + offset;
+                if (local_frame + 1 >= chunk_size) {
+                    break;
+                }
+                std::uint64_t delta = count3 > 0
+                    ? read_bits(data, data_size, delta_cursor, count3)
+                    : 0U;
+                delta_cursor += static_cast<std::size_t>(count3);
+                const auto unary_start = delta_cursor;
+                bool bit_found = false;
+                while (!bit_found) {
+                    bit_found = read_bits(data, data_size, delta_cursor, 1) != 0U;
+                    ++delta_cursor;
+                    if (delta_cursor >= stream_length) {
+                        break;
+                    }
+                }
+                delta |= (delta_cursor - unary_start - 1U) << count3;
+                bool negative = false;
+                if (delta != 0U) {
+                    negative = read_bits(data, data_size, delta_cursor, 1) != 0U;
+                    ++delta_cursor;
+                }
+                const auto signed_delta = negative
+                    ? -static_cast<std::int64_t>(delta)
+                    : static_cast<std::int64_t>(delta);
+                increment += signed_delta;
+                value += increment;
             }
-            delta |= (delta_cursor - unary_start - 1U) << count3;
-            bool negative = false;
-            if (delta != 0U) {
-                negative = read_bits(data, data_size, delta_cursor, 1) != 0U;
-                ++delta_cursor;
-            }
-            const auto signed_delta = negative
-                ? -static_cast<std::int64_t>(delta)
-                : static_cast<std::int64_t>(delta);
-            increment += signed_delta;
-            value += increment;
         }
-    }
     }
     buffer.release();
     return build_value_pair(values, encoded);
