@@ -38,6 +38,9 @@ from .kinds import coerce_game_file_kind
 from .paths import split_archive_asset_path as _split_archive_asset_path
 from .views import AssetRecord
 
+_STANDALONE_RESOURCE_EXTENSIONS = frozenset({
+    ".ydr", ".cdr", ".ydd", ".yft", ".ytd", ".ycd", ".yed", ".ybn", ".ynd", ".ynv",
+})
 try:
     from .._native import read_rpf_entry, read_rpf_entry_variants
 except ImportError as exc:
@@ -293,9 +296,10 @@ class GameFileCacheIOMixin:
         if native_variants is not None:
             stored_native, standalone_native = native_variants
             self._log(f"read file {asset.path}")
-            logical_native = self._logical_archive_bytes_from_standalone(asset, standalone_native)
-            ext = asset.extension
-            raw_source = standalone_native if ext in {".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv"} else stored_native
+            standalone_resource = asset.extension in _STANDALONE_RESOURCE_EXTENSIONS
+            logical_native = (standalone_native if standalone_resource else
+                              self._logical_archive_bytes_from_standalone(asset, standalone_native))
+            raw_source = standalone_native if standalone_resource else stored_native
             parsed, kind = decode_game_file_payload(
                 asset.path,
                 logical_native,
@@ -321,10 +325,12 @@ class GameFileCacheIOMixin:
                 raise ValueError(f"Entry is detached from archive: {asset.path}")
             self._log(f"read file {asset.path}")
             stored = entry.read(logical=False)
-            logical = entry.read(logical=True)
             raw_source = None
-            if asset.path.lower().endswith((".ytd", ".ydr", ".cdr", ".ydd", ".yft", ".ycd", ".yed", ".ybn", ".ynd", ".ynv")):
+            if asset.extension in _STANDALONE_RESOURCE_EXTENSIONS:
                 raw_source = entry._archive.read_entry_standalone(entry)
+                logical = raw_source
+            else:
+                logical = entry.read(logical=True)
             parsed, kind = decode_game_file_payload(
                 asset.path,
                 logical,

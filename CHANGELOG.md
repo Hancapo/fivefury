@@ -20,6 +20,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
+- Cached resource loading performs one decompression per asset instead of two, avoiding a redundant full-size allocation on native and Python archive reads.
 - Name-based AssetSet resolution is about 1,100x faster across 2,000 assets by indexing names instead of rescanning the collection for each reference.
 
 ## [0.4.21] - 2026-08-31
