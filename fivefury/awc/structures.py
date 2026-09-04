@@ -139,20 +139,23 @@ class AwcFormat:
         )
 
     def to_bytes(self, endian: str = "<") -> bytes:
+        from .validation import validate_awc_format
+
+        validate_awc_format(self).raise_for_errors()
         payload = struct.pack(
             f"{endian}IiHhHHHBB",
-            int(self.samples) & 0xFFFFFFFF,
+            int(self.samples),
             int(self.loop_point),
-            int(self.sample_rate) & 0xFFFF,
+            int(self.sample_rate),
             int(self.headroom),
-            int(self.loop_begin) & 0xFFFF,
-            int(self.loop_end) & 0xFFFF,
-            int(self.play_end) & 0xFFFF,
-            int(self.play_begin) & 0xFF,
-            int(self.codec) & 0xFF,
+            int(self.loop_begin),
+            int(self.loop_end),
+            int(self.play_end),
+            int(self.play_begin),
+            int(self.codec),
         )
         if self.peak is not None:
-            payload += struct.pack(f"{endian}I", int(self.peak) & 0xFFFFFFFF)
+            payload += struct.pack(f"{endian}I", int(self.peak))
         return payload
 
     @property
@@ -188,15 +191,18 @@ class AwcStreamFormat:
         )
 
     def to_bytes(self, endian: str = "<") -> bytes:
+        from .validation import validate_awc_format
+
+        validate_awc_format(self).raise_for_errors()
         return struct.pack(
             f"{endian}IIhHBBH",
-            int(self.id) & 0xFFFFFFFF,
-            int(self.samples) & 0xFFFFFFFF,
+            int(self.id),
+            int(self.samples),
             int(self.headroom),
-            int(self.sample_rate) & 0xFFFF,
-            int(self.codec) & 0xFF,
-            int(self.unused1) & 0xFF,
-            int(self.unused2) & 0xFFFF,
+            int(self.sample_rate),
+            int(self.codec),
+            int(self.unused1),
+            int(self.unused2),
         )
 
 

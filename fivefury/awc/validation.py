@@ -4,10 +4,58 @@ from itertools import pairwise
 from typing import TYPE_CHECKING
 
 from ..authoring import DiagnosticSeverity, ValidationReport
+from ..authoring.invariants import check_unsigned
 from .constants import AWC_STREAM_ID_MASK, AwcCodecType
 
 if TYPE_CHECKING:
     from .structures import Awc, AwcStream
+
+
+def validate_awc_format(value: object) -> ValidationReport:
+    from .structures import AwcFormat, AwcStreamFormat
+
+    report = ValidationReport()
+    if isinstance(value, AwcFormat):
+        fields = (("samples", 32), ("sample_rate", 16), ("loop_begin", 16),
+                  ("loop_end", 16), ("play_end", 16), ("play_begin", 8), ("codec", 8))
+        if value.peak is not None:
+            fields += (("peak", 32),)
+    elif isinstance(value, AwcStreamFormat):
+        fields = (("id", 32), ("samples", 32), ("sample_rate", 16),
+                  ("codec", 8), ("unused1", 8), ("unused2", 16))
+    else:
+        raise TypeError("Expected an AWC format")
+    for name, bits in fields:
+        check_unsigned(report, getattr(value, name), bits,
+                       code="awc.format.field.range", path=name)
+    return report
+
+
+def validate_awc_binary_fields(awc: Awc) -> ValidationReport:
+    report = ValidationReport()
+    for stream_index, stream in enumerate(awc.streams):
+        path = f"streams[{stream_index}]"
+        check_unsigned(report, len(stream.chunks), 3,
+                       code="awc.stream.chunk_count.range", path=f"{path}.chunks")
+        for chunk_index, chunk in enumerate(stream.chunks):
+            chunk_path = f"{path}.chunks[{chunk_index}]"
+            if chunk.format is not None:
+                report.extend(validate_awc_format(chunk.format), path=f"{chunk_path}.format")
+            if chunk.stream_format is not None:
+                layout = chunk.stream_format
+                for field in ("block_count", "block_size"):
+                    check_unsigned(report, getattr(layout, field), 32,
+                                   code="awc.layout.field.range", path=f"{chunk_path}.{field}")
+                for channel_index, channel in enumerate(layout.channels):
+                    report.extend(validate_awc_format(channel),
+                                  path=f"{chunk_path}.channels[{channel_index}]")
+    if awc.chunk_indices_flag:
+        start = 0
+        for stream_index, stream in enumerate(awc.streams):
+            check_unsigned(report, start, 16, code="awc.stream.chunk_index.range",
+                           path=f"streams[{stream_index}].chunk_index")
+            start += len(stream.chunks)
+    return report
 
 
 def awc_playback_streams(awc: Awc) -> tuple[AwcStream, ...]:
@@ -269,7 +317,7 @@ def validate_awc_stream(awc: Awc, stream: AwcStream) -> ValidationReport:
 
 
 def validate_awc(awc: Awc) -> ValidationReport:
-    report = ValidationReport()
+    report = validate_awc_binary_fields(awc)
     if awc.multi_channel_encrypt_flag and not awc.multi_channel_flag:
         report.issue(
             "awc.flags.multichannel_encryption.invalid",
