@@ -5,6 +5,8 @@ import struct
 from collections.abc import Iterable
 from enum import IntEnum
 
+import numpy as np
+
 from . import _native as _native_backend
 from .vector import Vector3, Vector4
 
@@ -67,6 +69,42 @@ class BinaryDocument:
             int(endian),
             stride,
             components,
+        )
+
+    def array(
+        self,
+        offset: int,
+        count: int,
+        scalar_type: BinaryScalarType,
+        *,
+        endian: BinaryEndian = BinaryEndian.LITTLE,
+        stride: int = 0,
+        components: int = 1,
+    ) -> np.ndarray:
+        """Return a read-only NumPy view retaining its backing data without copying.
+
+        Scalar arrays have shape (count,); vector arrays have shape
+        (count, components). Endian and byte strides are preserved. Use
+        read_array when Python lists and scalar objects are required instead.
+        """
+        buffer, format, offset, count, stride, components = (
+            _native_backend._binary_document_array_view(
+                self._native,
+                offset,
+                count,
+                scalar_type,
+                endian,
+                stride,
+                components,
+            )
+        )
+        dtype = np.dtype(format)
+        return np.ndarray(
+            shape=(count,) if components == 1 else (count, components),
+            dtype=dtype,
+            buffer=buffer,
+            offset=offset,
+            strides=(stride,) if components == 1 else (stride, dtype.itemsize),
         )
 
 
@@ -223,7 +261,9 @@ class ByteReader:
 
     def unpack(self, fmt: str) -> tuple[object, ...]:
         size = struct.calcsize("<" + fmt)
-        values = struct.unpack("<" + fmt, self._buffer[self._offset : self._offset + size])
+        values = struct.unpack(
+            "<" + fmt, self._buffer[self._offset : self._offset + size]
+        )
         self._offset += size
         return values
 

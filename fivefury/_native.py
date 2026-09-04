@@ -698,6 +698,21 @@ def _binary_document_read_array(
     )
 
 
+def _binary_document_array_view(
+    document: object,
+    offset: int,
+    count: int,
+    scalar_type: int,
+    endian: int,
+    stride: int,
+    components: int,
+) -> tuple[memoryview, str, int, int, int, int]:
+    return _ffi.binary_document_array_view(
+        document, int(offset), int(count), int(scalar_type), int(endian),
+        int(stride), int(components),
+    )
+
+
 def _bounds_build_bvh(
     items: list[tuple[tuple[float, float, float], tuple[float, float, float], int]],
     fallback_minimum: tuple[float, float, float],
