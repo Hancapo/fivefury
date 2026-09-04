@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Failed GameFile decoding now leaves parsed unset and loaded false, with typed diagnostics; requesting loaded content raises the recorded error instead of returning undecoded bytes.
+
 ### Fixed
 
 - AWC writers reject out-of-range frequencies, sample counts, playback fields, and chunk-table indices instead of truncating them.

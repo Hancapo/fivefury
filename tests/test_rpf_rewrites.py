@@ -2,10 +2,8 @@ import io
 
 import pytest
 
-from fivefury.rpf import RpfArchive
-from fivefury.rpf import RpfFileSource
-from fivefury.rpf import RpfEncryption
 from fivefury.crypto import GameCrypto
+from fivefury.rpf import RpfArchive, RpfEncryption, RpfFileSource
 
 
 def source_archive():

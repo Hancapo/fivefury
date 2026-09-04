@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
+    from .authoring.diagnostics import ValidationReport
     from .rpf import RpfArchive, RpfFileEntry
 
 
@@ -118,6 +119,12 @@ def guess_game_file_type(path: str | Path, default: GameFileType = GameFileType.
     return _FILE_TYPE_MAP.get(parsed.suffix.lower(), default)
 
 
+def _new_diagnostics() -> ValidationReport:
+    from .authoring.diagnostics import ValidationReport
+
+    return ValidationReport()
+
+
 @dataclass(slots=True)
 class GameFile:
     path: str
@@ -128,6 +135,19 @@ class GameFile:
     parsed: Any = None
     loaded: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    diagnostics: ValidationReport = field(default_factory=_new_diagnostics)
+
+    @classmethod
+    def from_bytes(cls, data: bytes, *, path: str) -> GameFile:
+        """Decode standalone bytes and retain failures in diagnostics."""
+        from .cache.io import decode_game_file_payload
+
+        result = cls(path=path, raw=data)
+        result.parsed, result.kind = decode_game_file_payload(
+            path, data, diagnostics=result.diagnostics
+        )
+        result.loaded = result.diagnostics.valid
+        return result
 
     @classmethod
     def from_path(
@@ -141,17 +161,9 @@ class GameFile:
             raise FileNotFoundError(source_path)
         logical_path = str(path or source_path.name).replace("\\", "/")
         data = source_path.read_bytes()
-        from .cache.io import decode_game_file_payload
-
-        parsed, kind = decode_game_file_payload(logical_path, data)
-        return cls(
-            path=logical_path,
-            kind=kind,
-            raw=data,
-            parsed=parsed,
-            loaded=True,
-            metadata={"source_path": str(source_path.resolve())},
-        )
+        result = cls.from_bytes(data, path=logical_path)
+        result.metadata["source_path"] = str(source_path.resolve())
+        return result
 
     @property
     def name(self) -> str:
@@ -180,6 +192,7 @@ class GameFile:
         return self.raw
 
     def ensure_loaded(self, loader: Callable[[bytes], Any] | None = None) -> Any:
+        self.diagnostics.raise_for_errors()
         if self.loaded:
             return self.parsed
         data = self.read_bytes(logical=True)

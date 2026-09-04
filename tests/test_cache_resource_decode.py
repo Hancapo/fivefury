@@ -2,8 +2,15 @@ from unittest.mock import patch
 
 import pytest
 
-import fivefury.resource as resource
-from fivefury import GameFileCache, RpfArchive, Vector2, Vector3, YdrMeshInput, create_ydr
+from fivefury import (
+    GameFileCache,
+    RpfArchive,
+    Vector2,
+    Vector3,
+    YdrMeshInput,
+    create_ydr,
+    resource,
+)
 
 
 @pytest.mark.parametrize("native", (False, True))
