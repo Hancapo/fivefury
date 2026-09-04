@@ -27,18 +27,17 @@ void destroy_reader(PyObject* capsule) {
 
 PyObject* mod_rpf_reader_new(PyObject*, PyObject* args) {
     const char* path = nullptr;
-    const char* lut = nullptr;
-    Py_ssize_t lut_size = 0;
+    BytesView lut;
     PyObject* crypto_owner = Py_None;
-    if (!PyArg_ParseTuple(args, "sy#O:rpf_reader_new", &path, &lut, &lut_size, &crypto_owner)) return nullptr;
-    if (lut_size != 256) {
+    if (!PyArg_ParseTuple(args, "sO&O:rpf_reader_new", &path, parse_bytes_view, &lut, &crypto_owner)) return nullptr;
+    if (lut.size != 256) {
         PyErr_SetString(PyExc_ValueError, "hash LUT must contain 256 bytes");
         return nullptr;
     }
     try {
         auto reader = std::make_unique<Reader>();
         reader->path = path;
-        reader->lut.assign(lut, 256);
+        reader->lut.assign(lut.data, static_cast<std::size_t>(lut.size));
         if (crypto_owner != Py_None) {
             reader->crypto = require_crypto(crypto_owner);
             if (reader->crypto == nullptr) return nullptr;
@@ -81,9 +80,15 @@ PyObject* mod_rpf_reader_read(PyObject*, PyObject* args) {
         PyEval_RestoreThread(state);
         if (error) std::rethrow_exception(error);
         if (mode == 2) {
-            return Py_BuildValue("(y#y#)",
-                variants.stored.data(), static_cast<Py_ssize_t>(variants.stored.size()),
-                variants.standalone.data(), static_cast<Py_ssize_t>(variants.standalone.size()));
+            auto* stored = PyBytes_FromStringAndSize(
+                reinterpret_cast<const char*>(variants.stored.data()),
+                static_cast<Py_ssize_t>(variants.stored.size()));
+            if (stored == nullptr) return nullptr;
+            auto* standalone = PyBytes_FromStringAndSize(
+                reinterpret_cast<const char*>(variants.standalone.data()),
+                static_cast<Py_ssize_t>(variants.standalone.size()));
+            if (standalone == nullptr) { Py_DECREF(stored); return nullptr; }
+            return Py_BuildValue("(NN)", stored, standalone);
         }
         return PyBytes_FromStringAndSize(reinterpret_cast<const char*>(bytes.data()),
             static_cast<Py_ssize_t>(bytes.size()));

@@ -1,6 +1,3 @@
-#ifndef PY_SSIZE_T_CLEAN
-#define PY_SSIZE_T_CLEAN
-#endif
 #include "audio/bindings.h"
 
 #include <algorithm>
@@ -108,13 +105,14 @@ bool parse_key(PyObject* object, std::array<std::uint32_t, 4>& key) {
 }  // namespace
 
 PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
-    const char* source = nullptr;
-    Py_ssize_t source_size = 0;
+    BytesView source_view;
     Py_ssize_t sample_count = 0;
     Py_ssize_t block_size = 4096;
-    if (!PyArg_ParseTuple(args, "y#n|n", &source, &source_size, &sample_count, &block_size)) {
+    if (!PyArg_ParseTuple(args, "O&n|n", parse_bytes_view, &source_view, &sample_count, &block_size)) {
         return nullptr;
     }
+    const auto* source = source_view.data;
+    const auto source_size = source_view.size;
     if (block_size <= 0) {
         PyErr_SetString(PyExc_ValueError, "block_size must be greater than zero");
         return nullptr;
@@ -162,12 +160,13 @@ PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_awc_split_interleaved_pcm16(PyObject*, PyObject* args) {
-    const char* source = nullptr;
-    Py_ssize_t source_size = 0;
+    BytesView source_view;
     int channels = 0;
-    if (!PyArg_ParseTuple(args, "y#i", &source, &source_size, &channels)) {
+    if (!PyArg_ParseTuple(args, "O&i", parse_bytes_view, &source_view, &channels)) {
         return nullptr;
     }
+    const auto* source = source_view.data;
+    const auto source_size = source_view.size;
     if (channels <= 0) {
         PyErr_SetString(PyExc_ValueError, "channels must be greater than zero");
         return nullptr;
@@ -268,12 +267,13 @@ PyObject* mod_awc_interleave_pcm16(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
-    const char* source = nullptr;
-    Py_ssize_t source_size = 0;
+    BytesView source_view;
     Py_ssize_t sample_count = 0;
-    if (!PyArg_ParseTuple(args, "y#n", &source, &source_size, &sample_count)) {
+    if (!PyArg_ParseTuple(args, "O&n", parse_bytes_view, &source_view, &sample_count)) {
         return nullptr;
     }
+    const auto* source = source_view.data;
+    const auto source_size = source_view.size;
     sample_count = std::max<Py_ssize_t>(sample_count, 0);
     std::string output(static_cast<std::size_t>(sample_count) * 2U, '\0');
     Py_BEGIN_ALLOW_THREADS
@@ -321,13 +321,14 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
-    const char* source = nullptr;
-    Py_ssize_t source_size = 0;
+    BytesView source_view;
     PyObject* key_object = nullptr;
     int decrypt = 0;
-    if (!PyArg_ParseTuple(args, "y#Op", &source, &source_size, &key_object, &decrypt)) {
+    if (!PyArg_ParseTuple(args, "O&Op", parse_bytes_view, &source_view, &key_object, &decrypt)) {
         return nullptr;
     }
+    const auto* source = source_view.data;
+    const auto source_size = source_view.size;
     if (source_size % 4 != 0) {
         PyErr_SetString(PyExc_ValueError, "AWC RSXXTEA data size must be divisible by 4");
         return nullptr;
@@ -383,11 +384,12 @@ PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args) {
-    const char* source = nullptr;
-    Py_ssize_t source_size = 0;
-    if (!PyArg_ParseTuple(args, "y#", &source, &source_size)) {
+    BytesView source_view;
+    if (!PyArg_ParseTuple(args, "O&", parse_bytes_view, &source_view)) {
         return nullptr;
     }
+    const auto* source = source_view.data;
+    const auto source_size = source_view.size;
     if (
         source_size < 12 || std::memcmp(source, "RIFF", 4) != 0 ||
         std::memcmp(source + 8, "WAVE", 4) != 0
@@ -447,10 +449,11 @@ PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "Only PCM WAV files are supported");
         return nullptr;
     }
+    auto* pcm_bytes = PyBytes_FromStringAndSize(pcm, pcm_size);
+    if (pcm_bytes == nullptr) return nullptr;
     return Py_BuildValue(
-        "(y#IHH)",
-        pcm,
-        pcm_size,
+        "(NIHH)",
+        pcm_bytes,
         sample_rate,
         channels,
         bits_per_sample
@@ -458,22 +461,23 @@ PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_awc_build_pcm_wav(PyObject*, PyObject* args) {
-    const char* pcm = nullptr;
-    Py_ssize_t pcm_size = 0;
+    BytesView pcm_view;
     unsigned int sample_rate = 0;
     unsigned int channels = 1;
     unsigned int bits_per_sample = 16;
     if (!PyArg_ParseTuple(
             args,
-            "y#I|II",
-            &pcm,
-            &pcm_size,
+            "O&I|II",
+            parse_bytes_view,
+            &pcm_view,
             &sample_rate,
             &channels,
             &bits_per_sample
         )) {
         return nullptr;
     }
+    const auto* pcm = pcm_view.data;
+    const auto pcm_size = pcm_view.size;
     if (channels == 0 || channels > 0xFFFFU) {
         PyErr_SetString(PyExc_ValueError, "channels must fit a non-zero uint16");
         return nullptr;
@@ -513,22 +517,23 @@ PyObject* mod_awc_build_pcm_wav(PyObject*, PyObject* args) {
 }
 
 PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
-    const char* source = nullptr;
-    Py_ssize_t source_size = 0;
+    BytesView source_view;
     Py_ssize_t block_count = 0;
     Py_ssize_t block_size = 0;
     Py_ssize_t channel_count = 0;
     if (!PyArg_ParseTuple(
             args,
-            "y#nnn",
-            &source,
-            &source_size,
+            "O&nnn",
+            parse_bytes_view,
+            &source_view,
             &block_count,
             &block_size,
             &channel_count
         )) {
         return nullptr;
     }
+    const auto* source = source_view.data;
+    const auto source_size = source_view.size;
     if (block_count < 0 || block_size <= 0 || channel_count <= 0) {
         PyErr_SetString(PyExc_ValueError, "invalid AWC multichannel block dimensions");
         return nullptr;
@@ -634,12 +639,9 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
             const auto stored_payload_size =
                 stored_payload_sizes[static_cast<std::size_t>(channel)];
-            PyObject* item = Py_BuildValue(
-                "(iy#)",
-                samples[static_cast<std::size_t>(channel)],
-                block + cursor,
-                stored_payload_size
-            );
+            auto* payload = PyBytes_FromStringAndSize(block + cursor, stored_payload_size);
+            if (payload == nullptr) { Py_DECREF(result); return nullptr; }
+            PyObject* item = Py_BuildValue("(iN)", samples[static_cast<std::size_t>(channel)], payload);
             if (item == nullptr || PyList_Append(PyList_GetItem(result, channel), item) != 0) {
                 Py_XDECREF(item);
                 Py_DECREF(result);

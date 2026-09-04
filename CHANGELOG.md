@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+
+- Native RPF, audio, and metadata readers remain compatible with Python 3.11 and 3.12 when the wheel is built on newer Python versions.
+
 ## [0.4.22] - 2026-09-04
 
 ### Breaking Changes
