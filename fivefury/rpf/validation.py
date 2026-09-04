@@ -127,10 +127,10 @@ def _validate_loaded_ranges(
 ) -> None:
     ranges: list[tuple[int, int, int]] = []
     for index, entry in enumerate(entries):
-        if not isinstance(entry, RpfFileEntry) or entry.file_offset <= 0:
+        if not isinstance(entry, RpfFileEntry) or entry._stored_source is None:
             continue
-        start = entry.file_offset * RPF_BLOCK_SIZE
-        end = start + entry.get_file_size()
+        start = entry._stored_source.offset
+        end = start + entry._stored_source.size
         ranges.append((start, end, index))
     ranges.sort()
     for previous, current in pairwise(ranges):

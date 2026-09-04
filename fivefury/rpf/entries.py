@@ -111,12 +111,19 @@ class RpfDirectoryEntry(RpfEntry):
 
 
 @dataclass(slots=True)
+class RpfStoredSource:
+    offset: int
+    size: int
+
+
+@dataclass(slots=True)
 class RpfFileEntry(RpfEntry):
     file_offset: int = 0
     file_size: int = 0
     is_encrypted: bool = False
     _source: RpfFileSource | None = field(default=None, repr=False, compare=False)
     _source_name: str | None = field(default=None, repr=False, compare=False)
+    _stored_source: RpfStoredSource | None = field(default=None, repr=False, compare=False)
 
     @property
     def is_file(self) -> bool:

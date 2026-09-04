@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+
+- Repeated RPF writes preserve source payload locations, including in-place saves and interrupted writes.
+
 ### Changed
 
 - Native extension sources and bindings are organized by domain behind a single shared Python ABI bridge.
