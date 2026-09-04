@@ -64,17 +64,9 @@ PyObject* mod_binary_document_new(PyObject*, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O:binary_document_new", &data_object)) {
         return nullptr;
     }
-    auto* document = new BinaryDocument{};
-    if (PyObject_GetBuffer(data_object, &document->buffer, PyBUF_SIMPLE) < 0) {
-        delete document;
-        return nullptr;
-    }
-    PyObject* capsule = PyCapsule_New(document, CAPSULE_NAME, destroy_document);
-    if (capsule == nullptr) {
-        document->buffer.release();
-        delete document;
-    }
-    return capsule;
+    auto document = std::make_unique<BinaryDocument>();
+    if (!document->buffer.acquire(data_object)) return nullptr;
+    return owned_capsule(std::move(document), CAPSULE_NAME, destroy_document);
 }
 
 PyObject* mod_binary_document_size(PyObject*, PyObject* args) {

@@ -300,29 +300,30 @@ PyObject* mod_scan_rpf_batch_into_index(PyObject*, PyObject* args) {
         }
     };
 
-    PyThreadState* thread_state = PyEval_SaveThread();
-    try {
-        if (sources.empty()) {
-            // no-op
-        } else if (worker_count <= 1) {
-            worker_fn();
-        } else {
-            std::vector<std::jthread> threads;
-            threads.reserve(worker_count - 1);
-            for (std::size_t index_value = 1; index_value < worker_count; ++index_value) {
-                threads.emplace_back(worker_fn);
+    {
+        GilRelease gil_release;
+        try {
+            if (sources.empty()) {
+                // no-op
+            } else if (worker_count <= 1) {
+                worker_fn();
+            } else {
+                std::vector<std::jthread> threads;
+                threads.reserve(worker_count - 1);
+                for (std::size_t index_value = 1; index_value < worker_count; ++index_value) {
+                    threads.emplace_back(worker_fn);
+                }
+                worker_fn();
+                for (auto& thread : threads) {
+                    thread.join();
+                }
             }
-            worker_fn();
-            for (auto& thread : threads) {
-                thread.join();
-            }
+        } catch (const std::exception& exc) {
+            failure = exc.what();
+        } catch (...) {
+            failure = "unknown native error";
         }
-    } catch (const std::exception& exc) {
-        failure = exc.what();
-    } catch (...) {
-        failure = "unknown native error";
     }
-    PyEval_RestoreThread(thread_state);
     hash_lut_buffer.release();
     if (!failure.empty()) {
         PyErr_SetString(PyExc_RuntimeError, failure.c_str());
@@ -424,24 +425,25 @@ PyObject* mod_scan_rpf_into_index(PyObject*, PyObject* args) {
 
     std::size_t result = 0;
     std::string failure;
-    PyThreadState* thread_state = PyEval_SaveThread();
-    try {
-        result = scan_rpf_into_index(
-            *index,
-            path,
-            source_prefix,
-            std::string(static_cast<const char*>(hash_lut_buffer.buf), static_cast<std::size_t>(hash_lut_buffer.len)),
-            crypto,
-            static_cast<std::uint32_t>(skip_mask),
-            verbose ? python_scan_log : nullptr,
-            nullptr
-        );
-    } catch (const std::exception& exc) {
-        failure = exc.what();
-    } catch (...) {
-        failure = "unknown native error";
+    {
+        GilRelease gil_release;
+        try {
+            result = scan_rpf_into_index(
+                *index,
+                path,
+                source_prefix,
+                std::string(static_cast<const char*>(hash_lut_buffer.buf), static_cast<std::size_t>(hash_lut_buffer.len)),
+                crypto,
+                static_cast<std::uint32_t>(skip_mask),
+                verbose ? python_scan_log : nullptr,
+                nullptr
+            );
+        } catch (const std::exception& exc) {
+            failure = exc.what();
+        } catch (...) {
+            failure = "unknown native error";
+        }
     }
-    PyEval_RestoreThread(thread_state);
     hash_lut_buffer.release();
     if (!failure.empty()) {
         PyErr_SetString(PyExc_RuntimeError, failure.c_str());

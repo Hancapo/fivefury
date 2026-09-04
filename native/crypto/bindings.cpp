@@ -99,10 +99,10 @@ PyObject* mod_crypto_new(PyObject*, PyObject* args) {
             static_cast<const std::uint8_t*>(ng_buffer.buf),
             static_cast<const std::uint8_t*>(ng_buffer.buf) + ng_buffer.len
         );
-        auto* crypto = new NativeCryptoContext(std::move(aes), std::move(ng));
+        auto crypto = std::make_unique<NativeCryptoContext>(std::move(aes), std::move(ng));
         ng_buffer.release();
         aes_buffer.release();
-        return PyCapsule_New(crypto, CRYPTO_CAPSULE_NAME, crypto_capsule_destructor);
+        return owned_capsule(std::move(crypto), CRYPTO_CAPSULE_NAME, crypto_capsule_destructor);
     } catch (...) {
         ng_buffer.release();
         aes_buffer.release();
