@@ -7,20 +7,29 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.22] - 2026-09-04
+
 ### Breaking Changes
 
-- Failed GameFile decoding now leaves parsed unset and loaded false, with typed diagnostics; requesting loaded content raises the recorded error instead of returning undecoded bytes.
+- Failed GameFile decoding now leaves `parsed` unset and `loaded` false; requesting loaded content raises the recorded error instead of returning undecoded bytes.
+
+### Added
+
+- Typed GameFile decoding diagnostics and loading from in-memory bytes.
+- Retail AWC MP3 authoring at 32,000 and 44,100 Hz alongside 48,000 Hz.
+
+### Changed
+
+- Native C++ sources and bindings are grouped by domain.
 
 ### Fixed
 
+- Multichannel AWC authoring preserves speaker order with correctly ordered stream lookups and compact final MP3 blocks.
+- Encrypted RPF rewrites preserve untouched compressed entries and resource layouts without double encryption.
 - AWC writers reject out-of-range frequencies, sample counts, playback fields, and chunk-table indices instead of truncating them.
 - RPF encryption changes preserve the original payload cipher, key context, and names while writing the requested output mode.
 - Nested RPF edits are preserved for archives inserted from bytes, loaded from files, or read from existing archives.
 - Repeated RPF writes preserve source payload locations, including in-place saves and interrupted writes.
-
-### Changed
-
-- Native extension sources and bindings are organized by domain behind a single shared Python ABI bridge.
 
 ### Performance
 
@@ -56,13 +65,6 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Enhanced YTD writers now place texture graphics data within representable RSC7 pages while preserving exact texture bytes.
 - YFT cloth writers now leave empty morph-map payloads zeroed instead of writing template reference-count data into them.
-- Multichannel AWC authoring now preserves speaker order while sorting the
-  stream-info lookup table by hash, and writes the compact final MP3 streaming
-  block required by the GTA V Enhanced runtime.
-- Retail AWC MP3 authoring now accepts every MPEG-1 Layer III sample rate.
-- Rewriting one entry in an encrypted RPF now preserves untouched compressed
-  binaries and resource layouts without double encryption; renamed NG entries
-  are re-encrypted for their new name.
 - CUT vehicle bindings now support mounted vehicle metadata as an explicit runtime source while preserving a zero `typeFile`.
 - Retail-cached YCD quaternion tracks now preserve rotations whose component signs change within a sequence window.
 - Retail MP3 AWC streams now include and validate their block seek tables.
