@@ -1,0 +1,74 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: Build the ABI3 wheel with current headers
+        run: |
+          python -m pip install build ruff
+          python -m ruff check tests tools/test_wheel.py
+          python -m build --wheel
+      - uses: actions/upload-artifact@v7
+        with:
+          name: test-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+
+  wheel:
+    needs: build
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: test-wheel
+          path: wheels
+      - name: Install the complete test dependencies
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem wheels/*.whl).FullName
+          python -m pip install "${wheel}[test]"
+      - name: Test the installed wheel, not the checkout
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem wheels/*.whl).FullName
+          python tools/test_wheel.py $wheel --suite unit -q --junitxml reports/unit.xml
+      - name: Verify the ABI floor explicitly
+        if: matrix.python == '3.11'
+        shell: pwsh
+        run: |
+          $env:FIVEFURY_ABI_TEST_PYTHON = python -c "import sys; print(sys.executable)"
+          $wheel = (Get-ChildItem wheels/*.whl).FullName
+          python tools/test_wheel.py $wheel --suite abi -q --junitxml reports/abi.xml
+      - name: Check that performance cases still exercise the current API
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem wheels/*.whl).FullName
+          python tools/test_wheel.py $wheel --suite performance --benchmark-disable -q --junitxml reports/performance.xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-${{ matrix.python }}
+          path: reports/*.xml
+          if-no-files-found: warn
