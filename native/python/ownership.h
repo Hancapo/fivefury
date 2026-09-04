@@ -1,6 +1,7 @@
 #pragma once
 
 #include <utility>
+#include <memory>
 
 namespace fivefury_py {
 
@@ -44,6 +45,24 @@ public:
 private:
     PyThreadState* state_;
 };
+
+class GilAcquire {
+public:
+    GilAcquire() : state_(PyGILState_Ensure()) {}
+    ~GilAcquire() { PyGILState_Release(state_); }
+    GilAcquire(const GilAcquire&) = delete;
+    GilAcquire& operator=(const GilAcquire&) = delete;
+
+private:
+    PyGILState_STATE state_;
+};
+
+template <typename T>
+PyObject* owned_capsule(std::unique_ptr<T> object, const char* name, PyCapsule_Destructor destructor) {
+    auto* capsule = PyCapsule_New(object.get(), name, destructor);
+    if (capsule != nullptr) object.release();
+    return capsule;
+}
 
 inline bool tuple_take(PyObject* tuple, Py_ssize_t index, PyObject* value) {
     return value != nullptr && PyTuple_SetItem(tuple, index, value) == 0;

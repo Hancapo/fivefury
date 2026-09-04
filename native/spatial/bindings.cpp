@@ -160,51 +160,51 @@ PyObject* mod_bounds_decode_polygons(PyObject*, PyObject* args) {
     std::vector<PolygonRecord> records(count);
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     {
-    GilRelease gil_release;
-    for (std::size_t index = 0; index < count; ++index) {
-        const auto* source = data + start + (index * POLYGON_SIZE);
-        auto& record = records[index];
-        std::copy_n(source, POLYGON_SIZE, record.raw.begin());
-        record.type = record.raw[0] & 0x07U;
-        if (record.type > 4U) {
-            record.type = 0;
+        GilRelease gil_release;
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto* source = data + start + (index * POLYGON_SIZE);
+            auto& record = records[index];
+            std::copy_n(source, POLYGON_SIZE, record.raw.begin());
+            record.type = record.raw[0] & 0x07U;
+            if (record.type > 4U) {
+                record.type = 0;
+            }
+            record.raw[0] &= 0xF8U;
+            const auto* decoded = record.raw.data();
+            switch (record.type) {
+                case 0:
+                    record.scalar = binary::load<float>(decoded);
+                    for (std::size_t field = 0; field < 6U; ++field) {
+                        record.values[field] = binary::load<std::uint16_t>(decoded + 4U + (field * 2U));
+                    }
+                    break;
+                case 1:
+                    record.values[0] = binary::load<std::uint16_t>(decoded);
+                    record.values[1] = binary::load<std::uint16_t>(decoded + 2U);
+                    record.scalar = binary::load<float>(decoded + 4U);
+                    record.values[2] = binary::load<std::uint32_t>(decoded + 8U);
+                    record.values[3] = binary::load<std::uint32_t>(decoded + 12U);
+                    break;
+                case 2:
+                case 4:
+                    record.values[0] = binary::load<std::uint16_t>(decoded);
+                    record.values[1] = binary::load<std::uint16_t>(decoded + 2U);
+                    record.scalar = binary::load<float>(decoded + 4U);
+                    record.values[2] = binary::load<std::uint16_t>(decoded + 8U);
+                    record.values[3] = binary::load<std::uint16_t>(decoded + 10U);
+                    record.values[4] = binary::load<std::uint32_t>(decoded + 12U);
+                    break;
+                case 3:
+                    record.values[0] = binary::load<std::uint32_t>(decoded);
+                    for (std::size_t field = 0; field < 4U; ++field) {
+                        record.values[field + 1U] = binary::load<std::int16_t>(decoded + 4U + (field * 2U));
+                    }
+                    record.values[5] = binary::load<std::uint32_t>(decoded + 12U);
+                    break;
+                default:
+                    break;
+            }
         }
-        record.raw[0] &= 0xF8U;
-        const auto* decoded = record.raw.data();
-        switch (record.type) {
-            case 0:
-                record.scalar = binary::load<float>(decoded);
-                for (std::size_t field = 0; field < 6U; ++field) {
-                    record.values[field] = binary::load<std::uint16_t>(decoded + 4U + (field * 2U));
-                }
-                break;
-            case 1:
-                record.values[0] = binary::load<std::uint16_t>(decoded);
-                record.values[1] = binary::load<std::uint16_t>(decoded + 2U);
-                record.scalar = binary::load<float>(decoded + 4U);
-                record.values[2] = binary::load<std::uint32_t>(decoded + 8U);
-                record.values[3] = binary::load<std::uint32_t>(decoded + 12U);
-                break;
-            case 2:
-            case 4:
-                record.values[0] = binary::load<std::uint16_t>(decoded);
-                record.values[1] = binary::load<std::uint16_t>(decoded + 2U);
-                record.scalar = binary::load<float>(decoded + 4U);
-                record.values[2] = binary::load<std::uint16_t>(decoded + 8U);
-                record.values[3] = binary::load<std::uint16_t>(decoded + 10U);
-                record.values[4] = binary::load<std::uint32_t>(decoded + 12U);
-                break;
-            case 3:
-                record.values[0] = binary::load<std::uint32_t>(decoded);
-                for (std::size_t field = 0; field < 4U; ++field) {
-                    record.values[field + 1U] = binary::load<std::int16_t>(decoded + 4U + (field * 2U));
-                }
-                record.values[5] = binary::load<std::uint32_t>(decoded + 12U);
-                break;
-            default:
-                break;
-        }
-    }
     }
     buffer.release();
 
@@ -280,17 +280,17 @@ PyObject* mod_bounds_decode_bvh_records(PyObject*, PyObject* args) {
     std::vector<BvhRecord> records(count);
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     {
-    GilRelease gil_release;
-    for (std::size_t index = 0; index < count; ++index) {
-        const auto* source = data + start + (index * BVH_RECORD_SIZE);
-        auto& record = records[index];
-        for (std::size_t axis = 0; axis < 3U; ++axis) {
-            record.minimum[axis] = center[axis] + (binary::load<std::int16_t>(source + (axis * 2U)) * quantum[axis]);
-            record.maximum[axis] = center[axis] + (binary::load<std::int16_t>(source + 6U + (axis * 2U)) * quantum[axis]);
+        GilRelease gil_release;
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto* source = data + start + (index * BVH_RECORD_SIZE);
+            auto& record = records[index];
+            for (std::size_t axis = 0; axis < 3U; ++axis) {
+                record.minimum[axis] = center[axis] + (binary::load<std::int16_t>(source + (axis * 2U)) * quantum[axis]);
+                record.maximum[axis] = center[axis] + (binary::load<std::int16_t>(source + 6U + (axis * 2U)) * quantum[axis]);
+            }
+            record.item_id = binary::load<std::uint16_t>(source + 12U);
+            record.item_count = binary::load<std::uint16_t>(source + 14U);
         }
-        record.item_id = binary::load<std::uint16_t>(source + 12U);
-        record.item_count = binary::load<std::uint16_t>(source + 14U);
-    }
     }
     buffer.release();
 
@@ -381,35 +381,35 @@ PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args) {
     bool valid = true;
     std::vector<YnvEdgeRecord> records;
     {
-    GilRelease gil_release;
-    for (std::size_t part_index = 0; part_index < parts_count; ++part_index) {
-        const auto* part = data + parts_offset + (part_index * YNV_LIST_PART_SIZE);
-        const auto items_pointer = binary::load<std::uint64_t>(part);
-        const auto item_count = static_cast<std::size_t>(binary::load<std::uint32_t>(part + 8U));
-        if (items_pointer == 0 || item_count == 0) {
-            continue;
-        }
-        std::size_t items_offset = 0;
-        if (!virtual_offset(items_pointer, size, items_offset) ||
-            !checked_span(items_offset, item_count, YNV_EDGE_SIZE, size)) {
-            valid = false;
-            break;
-        }
-        const auto original_size = records.size();
-        records.resize(original_size + item_count);
-        for (std::size_t item_index = 0; item_index < item_count; ++item_index) {
-            const auto* edge = data + items_offset + (item_index * YNV_EDGE_SIZE);
-            auto& output = records[original_size + item_index].values;
-            for (std::size_t half = 0; half < 2U; ++half) {
-                const auto value = binary::load<std::uint32_t>(edge + (half * 4U));
-                const auto area_index = value & 0x1FU;
-                output[half * 4U] = area_index < adjacent_ids.size() ? adjacent_ids[area_index] : 0x3FFFU;
-                output[(half * 4U) + 1U] = (value >> 5U) & 0x7FFFU;
-                output[(half * 4U) + 2U] = (value >> 20U) & 0x3U;
-                output[(half * 4U) + 3U] = (value >> 22U) & 0x3FFU;
+        GilRelease gil_release;
+        for (std::size_t part_index = 0; part_index < parts_count; ++part_index) {
+            const auto* part = data + parts_offset + (part_index * YNV_LIST_PART_SIZE);
+            const auto items_pointer = binary::load<std::uint64_t>(part);
+            const auto item_count = static_cast<std::size_t>(binary::load<std::uint32_t>(part + 8U));
+            if (items_pointer == 0 || item_count == 0) {
+                continue;
+            }
+            std::size_t items_offset = 0;
+            if (!virtual_offset(items_pointer, size, items_offset) ||
+                !checked_span(items_offset, item_count, YNV_EDGE_SIZE, size)) {
+                valid = false;
+                break;
+            }
+            const auto original_size = records.size();
+            records.resize(original_size + item_count);
+            for (std::size_t item_index = 0; item_index < item_count; ++item_index) {
+                const auto* edge = data + items_offset + (item_index * YNV_EDGE_SIZE);
+                auto& output = records[original_size + item_index].values;
+                for (std::size_t half = 0; half < 2U; ++half) {
+                    const auto value = binary::load<std::uint32_t>(edge + (half * 4U));
+                    const auto area_index = value & 0x1FU;
+                    output[half * 4U] = area_index < adjacent_ids.size() ? adjacent_ids[area_index] : 0x3FFFU;
+                    output[(half * 4U) + 1U] = (value >> 5U) & 0x7FFFU;
+                    output[(half * 4U) + 2U] = (value >> 20U) & 0x3U;
+                    output[(half * 4U) + 3U] = (value >> 22U) & 0x3FFU;
+                }
             }
         }
-    }
     }
     buffer.release();
     if (!valid) {

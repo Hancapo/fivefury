@@ -44,9 +44,7 @@ PyObject* mod_rpf_reader_new(PyObject*, PyObject* args) {
             Py_INCREF(crypto_owner);
             reader->crypto_owner = crypto_owner;
         }
-        auto* capsule = PyCapsule_New(reader.get(), READER_CAPSULE, destroy_reader);
-        if (capsule != nullptr) reader.release();
-        return capsule;
+        return owned_capsule(std::move(reader), READER_CAPSULE, destroy_reader);
     } catch (...) { return translate_cpp_exception(); }
 }
 
@@ -64,9 +62,8 @@ PyObject* mod_rpf_reader_read(PyObject*, PyObject* args) {
     try {
         std::vector<std::uint8_t> bytes;
         fivefury_native::RpfReadVariants variants;
-        std::exception_ptr error;
-        PyThreadState* state = PyEval_SaveThread();
-        try {
+        {
+            GilRelease gil_release;
             if (mode == 2) {
                 variants = fivefury_native::read_rpf_entry_variants(
                     reader->path, entry, reader->lut, reader->crypto, &reader->cache);
@@ -76,9 +73,7 @@ PyObject* mod_rpf_reader_read(PyObject*, PyObject* args) {
                     mode == 0 ? fivefury_native::RpfReadMode::Stored : fivefury_native::RpfReadMode::Standalone,
                     &reader->cache);
             }
-        } catch (...) { error = std::current_exception(); }
-        PyEval_RestoreThread(state);
-        if (error) std::rethrow_exception(error);
+        }
         if (mode == 2) {
             auto* stored = PyBytes_FromStringAndSize(
                 reinterpret_cast<const char*>(variants.stored.data()),
