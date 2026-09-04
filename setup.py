@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -11,41 +12,52 @@ class NativeBuildExt(build_ext):
         super().finalize_options()
         self.force = True
 
+
+NATIVE_SOURCE_GROUPS = {
+    "python": ("bridge.cpp", "module.cpp"),
+    "audio": ("bindings.cpp",),
+    "animation": (
+        "ycd_bindings.cpp",
+        "ycd_sampling.cpp",
+        "yed_bindings.cpp",
+        "yed_vm.cpp",
+    ),
+    "bounds": (
+        "algorithms.cpp",
+        "bindings.cpp",
+        "python_conversions.cpp",
+    ),
+    "crypto": ("bindings.cpp", "magic.cpp"),
+    "drawable": (
+        "skinning.cpp",
+        "vector_bindings.cpp",
+        "vertex_bindings.cpp",
+        "vertex_decode.cpp",
+    ),
+    "indexing": (
+        "compact_index.cpp",
+        "hash.cpp",
+        "index_bindings.cpp",
+        "meta_bindings.cpp",
+        "texture_bindings.cpp",
+        "texture_index.cpp",
+    ),
+    "resource": ("binary_document.cpp", "bindings.cpp", "layout.cpp"),
+    "rpf": ("archive.cpp", "bindings.cpp", "crypto.cpp", "read.cpp", "scan.cpp"),
+    "spatial": ("bindings.cpp",),
+}
+
+NATIVE_SOURCES = [
+    str(Path("native", domain, source))
+    for domain, sources in NATIVE_SOURCE_GROUPS.items()
+    for source in sources
+]
+
+
 ext_modules = [
     Extension(
         "fivefury._native_abi3",
-        [
-            "native/py_bindings.cpp",
-            "native/py_awc.cpp",
-            "native/py_yed.cpp",
-            "native/py_ycd.cpp",
-            "native/py_ycd_sampling.cpp",
-            "native/py_vector.cpp",
-            "native/yed_vm.cpp",
-            "native/py_bounds.cpp",
-            "native/py_resource.cpp",
-            "native/bounds_algorithms.cpp",
-            "native/bounds_python.cpp",
-            "native/crypto_magic.cpp",
-            "native/resource_layout.cpp",
-            "native/py_index.cpp",
-            "native/py_meta.cpp",
-            "native/py_texture_index.cpp",
-            "native/py_crypto.cpp",
-            "native/py_rpf.cpp",
-            "native/py_vertex.cpp",
-            "native/py_vertex_decode.cpp",
-            "native/py_skinning.cpp",
-            "native/py_spatial_decode.cpp",
-            "native/py_binary_document.cpp",
-            "native/py_module.cpp",
-            "native/rpf_archive.cpp",
-            "native/rpf_crypto.cpp",
-            "native/rpf_index.cpp",
-            "native/rpf_read.cpp",
-            "native/rpf_scan.cpp",
-            "native/texture_index.cpp",
-        ],
+        NATIVE_SOURCES,
         include_dirs=["native"],
         define_macros=[
             ("PY_SSIZE_T_CLEAN", None),

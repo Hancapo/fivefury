@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Changed
+
+- Native extension sources and bindings are organized by domain behind a single shared Python ABI bridge.
+
 ## [0.4.21] - 2026-08-31
 
 ### Breaking Changes

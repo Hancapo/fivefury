@@ -1,0 +1,98 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "indexing/compact_index.h"
+
+namespace fivefury_native {
+
+using ScanLogFn = void(*)(void* context, const char* message, std::size_t length);
+
+enum class RpfReadMode : std::uint8_t {
+    Stored = 0,
+    Standalone = 1,
+};
+
+struct RpfReadVariants {
+    std::vector<std::uint8_t> stored;
+    std::vector<std::uint8_t> standalone;
+};
+
+class NativeCryptoContext {
+public:
+    NativeCryptoContext(std::vector<std::uint8_t> aes_key, std::vector<std::uint8_t> ng_blob);
+    NativeCryptoContext(const NativeCryptoContext&) = delete;
+    NativeCryptoContext& operator=(const NativeCryptoContext&) = delete;
+    NativeCryptoContext(NativeCryptoContext&& other) noexcept;
+    NativeCryptoContext& operator=(NativeCryptoContext&& other) noexcept;
+    ~NativeCryptoContext();
+
+    bool can_decrypt() const noexcept;
+    bool can_encrypt() const noexcept;
+    void enable_encryption(std::vector<std::uint8_t> ng_encrypt_blob);
+    std::vector<std::uint8_t> decrypt_archive_table(
+        const std::vector<std::uint8_t>& data,
+        std::uint32_t encryption,
+        const std::string& archive_name,
+        std::uint32_t archive_size,
+        const std::string& hash_lut
+    ) const;
+    std::vector<std::uint8_t> decrypt_data(
+        const std::vector<std::uint8_t>& data,
+        std::uint32_t encryption,
+        const std::string& entry_name,
+        std::uint32_t entry_length,
+        const std::string& hash_lut
+    ) const;
+    std::vector<std::uint8_t> encrypt_archive_table(
+        const std::vector<std::uint8_t>& data,
+        std::uint32_t encryption,
+        const std::string& archive_name,
+        std::uint32_t archive_size,
+        const std::string& hash_lut
+    ) const;
+    std::vector<std::uint8_t> encrypt_data(
+        const std::vector<std::uint8_t>& data,
+        std::uint32_t encryption,
+        const std::string& entry_name,
+        std::uint32_t entry_length,
+        const std::string& hash_lut
+    ) const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+std::vector<std::uint8_t> read_rpf_entry(
+    const std::string& path,
+    const std::string& entry_path,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto,
+    RpfReadMode mode = RpfReadMode::Stored
+);
+
+RpfReadVariants read_rpf_entry_variants(
+    const std::string& path,
+    const std::string& entry_path,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto
+);
+
+std::size_t scan_rpf_into_index(
+    CompactIndex& index,
+    const std::string& path,
+    const std::string& source_prefix,
+    const std::string& hash_lut,
+    const NativeCryptoContext* crypto,
+    std::uint32_t skip_mask = 0,
+    ScanLogFn log_fn = nullptr,
+    void* log_context = nullptr
+);
+
+}  // namespace fivefury_native
