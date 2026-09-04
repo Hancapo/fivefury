@@ -286,7 +286,6 @@ class RpfArchive:
             )
             entry.name_offset = low & 0xFFFF
             entry.is_encrypted = bool(entry.encryption_type & 0x1)
-            entry._source_name = entry.name
             return entry
 
         name_offset = struct.unpack_from("<H", blob, 0)[0]
@@ -302,7 +301,6 @@ class RpfArchive:
             graphics_flags=RpfResourcePageFlags(gfx_flags),
         )
         entry.name_offset = name_offset
-        entry._source_name = entry.name
         return entry
 
     def _parse_entry(self, blob: bytes, names: dict[int, str]) -> RpfEntry:
@@ -370,7 +368,18 @@ class RpfArchive:
                     )
             if isinstance(entry, RpfFileEntry):
                 entry._stored_source = RpfStoredSource(
-                    entry.file_offset * RPF_BLOCK_SIZE, entry.get_file_size()
+                    offset=entry.file_offset * RPF_BLOCK_SIZE,
+                    size=entry.get_file_size(),
+                    name=entry.name,
+                    encryption=(
+                        self.encryption if entry.is_encrypted or entry.name_lower.endswith(".ysc")
+                        else RpfEncryption.OPEN
+                    ),
+                    crypto=self.crypto,
+                    key_length=(
+                        entry.file_uncompressed_size if isinstance(entry, RpfBinaryFileEntry)
+                        else entry.get_file_size()
+                    ),
                 )
             entries.append(entry)
 
@@ -437,6 +446,7 @@ class RpfArchive:
             self.name,
             self.version,
             self.encryption,
+            id(self.crypto),
             self.platform,
             self.name_shift,
             self.xcompressed,
@@ -612,8 +622,7 @@ class RpfArchive:
             return raw
         if isinstance(entry, RpfResourceFileEntry):
             return parse_rsc7(self.read_entry_standalone(entry))[1]
-        if entry.is_encrypted:
-            raw = self._decrypt_entry_raw(entry, raw)
+        raw = self._decrypt_entry_raw(entry, raw)
         if isinstance(entry, RpfBinaryFileEntry) and entry.file_size > 0:
             return _decompress_deflate(raw)
         return raw
@@ -624,22 +633,11 @@ class RpfArchive:
             and entry._source.kind is RpfSourceKind.DEFLATE
         ):
             return entry._source.path.read_bytes()
-        raw = self.read_entry_raw(entry)
+        raw = self._decrypt_entry_raw(entry, self.read_entry_raw(entry))
         if isinstance(entry, RpfResourceFileEntry):
             if _is_rsc7(raw):
                 return raw
             payload = raw[16:] if len(raw) > 16 else b""
-            if entry.is_encrypted:
-                if self.crypto is None:
-                    raise ValueError(
-                        f"Entry '{entry.full_path}' is encrypted and no game crypto is configured"
-                    )
-                payload = self.crypto.decrypt_entry_payload(
-                    payload,
-                    self.encryption,
-                    entry_name=entry.name,
-                    entry_length=entry.file_size,
-                )
             version = _resource_version_from_flags(
                 entry.system_flags.value, entry.graphics_flags.value
             )
@@ -653,8 +651,6 @@ class RpfArchive:
                 )
                 + payload
             )
-        if entry.is_encrypted:
-            raw = self._decrypt_entry_raw(entry, raw)
         if isinstance(entry, RpfBinaryFileEntry) and entry.file_size > 0:
             try:
                 return _decompress_deflate(raw)
@@ -666,12 +662,12 @@ class RpfArchive:
         self,
         entry: RpfFileEntry,
         raw: bytes,
-        *,
-        entry_name: str | None = None,
     ) -> bytes:
-        if self.encryption in (NONE_ENCRYPTION, OPEN_ENCRYPTION):
+        source = entry._stored_source
+        if (source is None or entry._data is not None or entry._source is not None
+                or source.encryption in (RpfEncryption.NONE, RpfEncryption.OPEN)):
             return raw
-        if self.crypto is None:
+        if source.crypto is None:
             raise ValueError(
                 f"Entry '{entry.full_path}' is encrypted and no game crypto is configured"
             )
@@ -679,19 +675,19 @@ class RpfArchive:
             if len(raw) <= 16:
                 return raw
             header = raw[:16]
-            payload = self.crypto.decrypt_entry_payload(
+            payload = source.crypto.decrypt_entry_payload(
                 raw[16:],
-                self.encryption,
-                entry_name=entry_name or entry.name,
-                entry_length=entry.file_size,
+                source.encryption,
+                entry_name=source.name,
+                entry_length=source.key_length,
             )
             return header + payload
         if isinstance(entry, RpfBinaryFileEntry):
-            return self.crypto.decrypt_entry_payload(
+            return source.crypto.decrypt_entry_payload(
                 raw,
-                self.encryption,
-                entry_name=entry_name or entry.name,
-                entry_length=entry.file_uncompressed_size,
+                source.encryption,
+                entry_name=source.name,
+                entry_length=source.key_length,
             )
         return raw
 
@@ -948,21 +944,7 @@ class RpfArchive:
         if entry._source is not None:
             return self.read_entry_raw(entry)
         if entry._archive is not None:
-            stored = entry.read_raw()
-            # Payloads read from an existing encrypted RPF are still encrypted.
-            # The streaming writer encrypts every entry marked ``is_encrypted``
-            # immediately before writing it, so returning the ciphertext here
-            # would encrypt unchanged source entries a second time whenever a
-            # sibling entry changes.  Normalize the preserved payload back to
-            # its stored-but-decrypted form first.  Compressed binary data stays
-            # compressed; resource headers stay intact.
-            if entry.is_encrypted:
-                stored = self._decrypt_entry_raw(
-                    entry,
-                    stored,
-                    entry_name=entry._source_name,
-                )
-            return stored
+            return self._decrypt_entry_raw(entry, entry.read_raw())
         raise ValueError(f"Missing payload for {entry.full_path}")
 
     def _encode_binary_entry(
@@ -988,7 +970,8 @@ class RpfArchive:
             | ((entry.file_offset & 0xFFFFFF) << 40)
         )
         return struct.pack(
-            "<QII", low, entry.file_uncompressed_size, 1 if entry.is_encrypted else 0
+            "<QII", low, entry.file_uncompressed_size,
+            int(entry.is_encrypted and self.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN))
         )
 
     def _encode_resource_entry(
@@ -1081,17 +1064,18 @@ class RpfArchive:
                 )
                 with written:
                     written._parse()
-                    stored_sources = {
-                        entry.path: entry._stored_source
-                        for entry in written.iter_entries()
+                    stored_sources = [
+                        (entry, saved._stored_source)
+                        for entry, saved in zip(
+                            self._collect_entries(), written._collect_entries(), strict=True
+                        )
                         if isinstance(entry, RpfFileEntry)
-                    }
+                    ]
                 self.close()
             os.replace(temporary_path, target)
             if replacing_source:
-                for entry in self.iter_entries():
-                    if isinstance(entry, RpfFileEntry):
-                        entry._stored_source = stored_sources[entry.path]
+                for entry, stored_source in stored_sources:
+                    entry._stored_source = stored_source
                 self._source_snapshot = None
         finally:
             if temporary_path is not None and temporary_path.exists():

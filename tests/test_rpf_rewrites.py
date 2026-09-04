@@ -4,6 +4,8 @@ import pytest
 
 from fivefury.rpf import RpfArchive
 from fivefury.rpf import RpfFileSource
+from fivefury.rpf import RpfEncryption
+from fivefury.crypto import GameCrypto
 
 
 def source_archive():
@@ -71,3 +73,28 @@ def test_nested_archive_edits_take_precedence_over_original_payload(tmp_path, ba
     for _ in range(2):
         reread = RpfArchive.from_bytes(parent.to_bytes(), load_nested=True)
         assert reread.children[0].root.files[0].read() == b"new" * 1024
+
+
+@pytest.mark.parametrize("source_mode", (RpfEncryption.OPEN, RpfEncryption.AES, RpfEncryption.NG))
+@pytest.mark.parametrize("target_mode", (RpfEncryption.NONE, RpfEncryption.OPEN, RpfEncryption.AES, RpfEncryption.NG))
+def test_encryption_transition_preserves_source_reads(tmp_path, source_mode, target_mode):
+    original_crypto = GameCrypto.from_aes_key(bytes(range(32)))
+    target_crypto = GameCrypto.from_aes_key(bytes(reversed(range(32))))
+    archive = RpfArchive.empty("transition.rpf", encryption=source_mode, crypto=original_crypto)
+    payload = b"compressed payload" * 1024
+    archive.file("payload.bin", payload, compress_binary=True)
+    path = tmp_path / "transition.rpf"
+    archive.save(path)
+    with RpfArchive.from_path(path, crypto=original_crypto) as parsed:
+        entry = parsed.find_entry("payload.bin")
+        parsed.encryption = target_mode
+        parsed.crypto = target_crypto
+        entry.name = "renamed.bin"
+        assert entry.read() == payload
+        for _ in range(2):
+            result = parsed.to_bytes()
+            assert entry.read() == payload
+            rebuilt = RpfArchive.from_bytes(result, name=parsed.name, crypto=target_crypto)
+            assert rebuilt.find_entry("renamed.bin").read() == payload
+        parsed.save(path)
+        assert entry.read() == payload

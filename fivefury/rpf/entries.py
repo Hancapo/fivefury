@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .modes import RpfEncryption
 from .utils import _resource_flags_from_size, _size_from_resource_flags
 
 if TYPE_CHECKING:  # pragma: no cover
+    from ..crypto import GameCrypto
     from .rpf import RpfArchive
     from .sources import RpfFileSource
 
@@ -110,10 +112,14 @@ class RpfDirectoryEntry(RpfEntry):
         self._files_by_name.pop(entry.name.lower(), None)
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class RpfStoredSource:
     offset: int
     size: int
+    name: str
+    encryption: RpfEncryption
+    crypto: GameCrypto | None
+    key_length: int
 
 
 @dataclass(slots=True)
@@ -122,7 +128,6 @@ class RpfFileEntry(RpfEntry):
     file_size: int = 0
     is_encrypted: bool = False
     _source: RpfFileSource | None = field(default=None, repr=False, compare=False)
-    _source_name: str | None = field(default=None, repr=False, compare=False)
     _stored_source: RpfStoredSource | None = field(default=None, repr=False, compare=False)
 
     @property

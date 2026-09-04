@@ -33,7 +33,7 @@ class _PayloadWriter:
         self.written = 0
 
     def write(self, chunk: bytes) -> None:
-        if not self.entry.is_encrypted:
+        if not self.entry.is_encrypted or self.archive.encryption in (RpfEncryption.NONE, RpfEncryption.OPEN):
             self.stream.write(chunk)
             self.written += len(chunk)
             return
@@ -68,7 +68,7 @@ def _encrypt_stored_payload(
     entry: RpfBinaryFileEntry | RpfResourceFileEntry,
     stored: bytes,
 ) -> bytes:
-    if not entry.is_encrypted:
+    if not entry.is_encrypted or archive.encryption in (RpfEncryption.NONE, RpfEncryption.OPEN):
         return stored
     assert archive.crypto is not None
     if isinstance(entry, RpfResourceFileEntry):
@@ -181,6 +181,12 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             continue
 
         current_offset = stream.tell() // RPF_BLOCK_SIZE
+        if (
+            isinstance(entry, RpfBinaryFileEntry)
+            and archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN)
+            and (entry.file_size > 0 or (entry._source is not None and entry._source.kind is RpfSourceKind.DEFLATE))
+        ):
+            entry.is_encrypted = True
         # Parsed source entries that were not replaced already contain their
         # exact stored representation.  Preserve that compression and resource
         # layout instead of normalizing unusual retail files (for example a YTD
@@ -195,14 +201,8 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             and (archive._source_bytes is not None or archive._source_file is not None)
         )
         if preservable_source_entry:
-            stored = archive.read_entry_raw(entry)
-            if entry.is_encrypted:
-                stored = archive._decrypt_entry_raw(
-                    entry,
-                    stored,
-                    entry_name=entry._source_name,
-                )
-                stored = _encrypt_stored_payload(archive, entry, stored)
+            stored = archive._decrypt_entry_raw(entry, archive.read_entry_raw(entry))
+            stored = _encrypt_stored_payload(archive, entry, stored)
             if isinstance(entry, RpfBinaryFileEntry):
                 encoded_entries[index] = archive._encode_binary_entry_header(
                     entry,
@@ -228,18 +228,6 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             if padding:
                 stream.write(b"\x00" * padding)
             continue
-        if (
-            isinstance(entry, RpfBinaryFileEntry)
-            and archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN)
-            and (
-                entry.file_size > 0
-                or (
-                    entry._source is not None
-                    and entry._source.kind is RpfSourceKind.DEFLATE
-                )
-            )
-        ):
-            entry.is_encrypted = True
         if entry._source is not None and entry.child_archive is None:
             encoded_entries[index] = _write_file_payload(
                 archive, entry, stream, current_offset
