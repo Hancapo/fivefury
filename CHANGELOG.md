@@ -18,6 +18,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Native extension sources and bindings are organized by domain behind a single shared Python ABI bridge.
 
+### Performance
+
+- Name-based AssetSet resolution is about 1,100x faster across 2,000 assets by indexing names instead of rescanning the collection for each reference.
+
 ## [0.4.21] - 2026-08-31
 
 ### Breaking Changes
