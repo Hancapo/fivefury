@@ -115,7 +115,9 @@ def _vehicle_fragment(game: GameTarget = GameTarget.GTA5_ENHANCED):
             )
         )
         indices.extend((base, base + 1, base + 2, base, base + 2, base + 3))
-        texcoords.extend((Vector2(), Vector2(1.0, 0.0), Vector2(1.0, 1.0), Vector2(0.0, 1.0)))
+        texcoords.extend(
+            (Vector2(), Vector2(1.0, 0.0), Vector2(1.0, 1.0), Vector2(0.0, 1.0))
+        )
         blend_indices.extend(((pane_index + 1, 0, 0, 0),) * 4)
     skeleton = YdrSkeleton(
         bones=[YdrBone(name="root", tag=0, index=0)]
@@ -254,10 +256,10 @@ def test_vehicle_glass_validation_uses_direct_geometry_polygon_materials() -> No
     ).report.raise_for_errors()
     geometry_bvh = build_geometry_bvh_from_chunk(
         BoundTriangleChunk(
-                vertices=[
-                    Vector3(),
-                    Vector3(1.0, 0.0, 0.0),
-                    Vector3(0.0, 0.0, 1.0),
+            vertices=[
+                Vector3(),
+                Vector3(1.0, 0.0, 0.0),
+                Vector3(0.0, 0.0, 1.0),
             ],
             triangles=[(0, 1, 2)],
             material_indices=[1],
@@ -311,10 +313,7 @@ def test_vehicle_glass_builder_resolves_sparse_palette_before_skeleton_index() -
     assert len(result.windows.windows) == 6
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail vehicle-glass regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_enhanced_jester_vehicle_glass_uses_polygon_materials() -> None:
     assert _ENHANCED_ROOT is not None
     with GameFileCache(

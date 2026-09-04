@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from copy import deepcopy
 from pathlib import Path
 
@@ -22,23 +21,12 @@ from fivefury import (
 )
 from fivefury.cut.scene.io import read_cut_scene
 from fivefury.hashing import jenk_partial_hash
+from tests.helpers import retail_games
+
+_RETAIL_GAME_PATHS = retail_games()
 
 
-def _configured_retail_game_paths() -> list[tuple[str, Path, GameTarget]]:
-    result = []
-    for edition, variable, game in (
-        ("legacy", "FIVEFURY_GTA5_LEGACY_PATH", GameTarget.GTA5),
-        ("enhanced", "FIVEFURY_GTA5_ENHANCED_PATH", GameTarget.GTA5_ENHANCED),
-    ):
-        value = os.environ.get(variable)
-        if value and Path(value).is_dir():
-            result.append((edition, Path(value), game))
-    return result
-
-
-_RETAIL_GAME_PATHS = _configured_retail_game_paths()
-
-
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("_edition", "game_path", "game"),
     _RETAIL_GAME_PATHS,
@@ -393,6 +381,7 @@ def test_project_camera_preserves_explicit_ycd_runtime_profile(
     assert {animation.vft for animation in ycd.animations} == {animation_vft}
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("_edition", "game_path", "game"),
     _RETAIL_GAME_PATHS,

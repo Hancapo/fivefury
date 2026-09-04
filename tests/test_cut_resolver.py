@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +12,6 @@ from fivefury import (
     CutsceneResolutionCancelled,
     CutTimelineEvent,
     GameFileCache,
-    GameTarget,
     MetaHash,
     ResolvedCutBinding,
     YmtPedInitData,
@@ -26,31 +24,24 @@ from fivefury.cut.resolution.bindings import (
 )
 from fivefury.cut.resolution.expressions import _resolve_ped_expression_resources
 from fivefury.gamefile import GameFile, GameFileType
-
-
-def _configured_game_paths() -> list[tuple[str, Path]]:
-    result: list[tuple[str, Path]] = []
-    for edition, variable in (
-        ("legacy", "FIVEFURY_GTA5_LEGACY_PATH"),
-        ("enhanced", "FIVEFURY_GTA5_ENHANCED_PATH"),
-    ):
-        value = os.environ.get(variable)
-        if value and Path(value).is_dir():
-            result.append((edition, Path(value)))
-    return result
+from tests.helpers import retail_games
 
 
 @pytest.fixture(
     scope="module",
-    params=_configured_game_paths(),
+    params=retail_games(),
     ids=lambda item: item[0],
 )
 def game_cache(request: pytest.FixtureRequest):
-    edition, game_path = request.param
-    enhanced = edition == "enhanced"
+    _edition, game_path, target = request.param
+    if game_path is None or not game_path.is_dir():
+        pytest.fail(
+            "Configure FIVEFURY_GTA5_LEGACY_PATH or FIVEFURY_GTA5_ENHANCED_PATH",
+            pytrace=False,
+        )
     with GameFileCache(
         game_path,
-        game=GameTarget.GTA5_ENHANCED if enhanced else GameTarget.GTA5,
+        game=target,
         use_index_cache=True,
     ) as cache:
         cache.scan()
@@ -252,6 +243,7 @@ def test_cut_binding_texture_resolution_honors_cancellation(tmp_path) -> None:
     cache.close()
 
 
+@pytest.mark.integration
 def test_resolve_cutscene_loads_only_direct_cut_dependencies(
     game_cache: GameFileCache,
 ) -> None:
@@ -304,8 +296,7 @@ def test_resolve_cutscene_loads_only_direct_cut_dependencies(
         item
         for item in bundle.bindings.values()
         if any(
-            asset.stem.lower() == "v_ilev_ss_door7"
-            for asset in item.assets.values()
+            asset.stem.lower() == "v_ilev_ss_door7" for asset in item.assets.values()
         )
     )
     assert any(
@@ -322,19 +313,27 @@ def test_resolve_cutscene_loads_only_direct_cut_dependencies(
     )
 
 
-def test_resolve_cutscene_uses_mod_precedence(game_cache: GameFileCache) -> None:
-    candidates = game_cache.find_assets("cutconv_intro.cut", kind=GameFileType.CUT)
-    if not candidates:
-        pytest.skip("cutconv_intro mod is not installed")
+@pytest.mark.parametrize("target", ["gta5", "gta5_enhanced"])
+def test_resolve_cutscene_uses_mod_precedence(tmp_path, target) -> None:
+    from fivefury import CutsceneProject, GameTarget, Quaternion, RpfArchive, Vector3
 
-    bundle = game_cache.resolve_cutscene("cutconv_intro.cut")
+    game = GameTarget(target)
+    for relative, height in (("base.rpf", 10), ("mods/base.rpf", 20)):
+        project = CutsceneProject.create("precedence", duration=1, game=game)
+        project.camera(position=Vector3(0, 0, height), rotation=Quaternion())
+        archive = RpfArchive.empty("base.rpf")
+        for name, payload in project.build().build_files().items():
+            archive.file(name, payload)
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        archive.save(destination)
+    with GameFileCache(game=game, use_index_cache=False) as cache:
+        cache.scan(tmp_path, load_keys=False)
+        bundle = cache.resolve_cutscene("precedence.cut")
+        assert bundle.source.path == "mods/base.rpf/precedence.cut"
 
-    if any(asset.path.startswith("mods/") for asset in candidates):
-        assert bundle.source.path.startswith("mods/")
-    else:
-        assert bundle.source.path in {asset.path for asset in candidates}
 
-
+@pytest.mark.integration
 def test_resolve_cutscene_resolves_reachable_american_subtitles(
     game_cache: GameFileCache,
 ) -> None:
@@ -351,6 +350,7 @@ def test_resolve_cutscene_resolves_reachable_american_subtitles(
     assert bundle.resolve_subtitle(0xD2B55F45) == "~z~Hands behind your back."
 
 
+@pytest.mark.integration
 def test_resolve_cutscene_accepts_script_registered_ped_snapshot(
     game_cache: GameFileCache,
 ) -> None:
@@ -372,6 +372,7 @@ def test_resolve_cutscene_accepts_script_registered_ped_snapshot(
     )
 
 
+@pytest.mark.integration
 def test_resolve_cutscene_uses_shared_ped_expression_sets(
     game_cache: GameFileCache,
 ) -> None:
@@ -385,7 +386,9 @@ def test_resolve_cutscene_uses_shared_ped_expression_sets(
 
     assert len(hosts) == 2
     assert all(binding.expression_file is not None for binding in hosts)
-    assert all(binding.expression_file.path.endswith("/ambient.yed") for binding in hosts)
+    assert all(
+        binding.expression_file.path.endswith("/ambient.yed") for binding in hosts
+    )
     assert all(binding.resolved_expression_set is not None for binding in hosts)
     assert all(
         "facial" in binding.resolved_expression_set.selected_expression_names
@@ -397,6 +400,7 @@ def test_resolve_cutscene_uses_shared_ped_expression_sets(
     )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("cut_name", "expected_dictionaries"),
     [
@@ -426,11 +430,10 @@ def test_resolve_cutscene_preserves_direct_ped_expression_dictionaries(
         expected_dictionaries
     )
     assert all(binding.resolved_expression_set is None for binding in direct_peds)
-    assert not any(
-        issue.code == "binding.yed_unresolved" for issue in bundle.issues
-    )
+    assert not any(issue.code == "binding.yed_unresolved" for issue in bundle.issues)
 
 
+@pytest.mark.integration
 def test_resolve_cutscene_rejects_non_cut_assets(game_cache: GameFileCache) -> None:
     with pytest.raises(FileNotFoundError):
         game_cache.resolve_cutscene("oracle.yft")
@@ -447,15 +450,11 @@ def test_ped_expression_dictionary_follows_the_exact_ymt_init_record(
     )
     ymt_asset = SimpleNamespace(path="x64/data/peds.ymt")
     ymt_file = SimpleNamespace(
-        parsed=SimpleNamespace(
-            ped_metadata=YmtPedMetadata(init_datas=[init_data])
-        )
+        parsed=SimpleNamespace(ped_metadata=YmtPedMetadata(init_datas=[init_data]))
     )
     yed_asset = SimpleNamespace(path="test_expression.yed")
     yed_file = SimpleNamespace(parsed=object())
-    binding = SimpleNamespace(
-        role="ped", display_name="test_ped", object_id=4
-    )
+    binding = SimpleNamespace(role="ped", display_name="test_ped", object_id=4)
     resolved = ResolvedCutBinding(
         binding=binding,
         reference_hash=model_hash,
@@ -471,9 +470,7 @@ def test_ped_expression_dictionary_follows_the_exact_ymt_init_record(
     monkeypatch.setattr(
         "fivefury.cut.resolution.expressions._preferred_asset",
         lambda _cache, value, kind: (
-            yed_asset
-            if value == expression_hash and kind is GameFileType.YED
-            else None
+            yed_asset if value == expression_hash and kind is GameFileType.YED else None
         ),
     )
     monkeypatch.setattr(
@@ -608,9 +605,7 @@ def test_ped_expression_resolution_keeps_identical_same_tier_duplicates(
         lambda _cache, asset, _issues, **_kwargs: (
             yed_file
             if asset is yed_asset
-            else _ped_metadata_file(
-                first_init if asset is first_asset else second_init
-            )
+            else _ped_metadata_file(first_init if asset is first_asset else second_init)
         ),
     )
     monkeypatch.setattr(

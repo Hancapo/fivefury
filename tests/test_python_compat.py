@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import fivefury
 from fivefury.hashing import jenk_hash, jenk_partial_hash
 
 
@@ -12,10 +13,11 @@ def test_native_hash_bindings_accept_unicode_on_supported_python_versions() -> N
 
 
 def test_slotted_dataclasses_do_not_use_zero_argument_super() -> None:
-    package_root = Path(__file__).parents[1] / "fivefury"
+    package_root = Path(fivefury.__file__).resolve().parent
     offenders: list[str] = []
-
-    for path in package_root.rglob("*.py"):
+    sources = list(package_root.rglob("*.py"))
+    assert sources, "The package under test must contain Python sources"
+    for path in sources:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef) or not _is_slotted_dataclass(node):

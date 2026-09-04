@@ -202,10 +202,7 @@ def test_yed_conditional_branches_match_rage_zero_semantics(
     assert result.issues == []
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail YED regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_facial_component_defaults_preserve_analog_bone_scales() -> None:
     assert _ENHANCED_ROOT is not None
     scale_track = int(YcdAnimationTrack.BONE_SCALE)

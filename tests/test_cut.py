@@ -58,11 +58,6 @@ LAMAR_CUT_PATH = CUT_REFERENCE_DIR / "lamar_1_int.cut"
 EF_CUT_PATH = CUT_REFERENCE_DIR / "ef_1_rcm.cut"
 
 
-requires_cut = pytest.mark.skipif(
-    not CUT_PATH.is_file(), reason="binary CUT sample not available"
-)
-
-
 def _counts(cut: CutFile) -> dict[str, int]:
     root = cut.root.fields
     return {
@@ -75,7 +70,7 @@ def _counts(cut: CutFile) -> dict[str, int]:
     }
 
 
-@requires_cut
+@pytest.mark.integration
 def test_read_cut_real_asset_shape() -> None:
     cut = read_cut(CUT_PATH)
 
@@ -104,7 +99,7 @@ def test_cut_game_file_type_mapping() -> None:
     assert guess_game_file_type("foo.cutxml") is GameFileType.UNKNOWN
 
 
-@requires_cut
+@pytest.mark.integration
 def test_cut_summary_and_resolution() -> None:
     cut = read_cut(CUT_PATH)
     summary = analyze_cut(cut)
@@ -120,7 +115,7 @@ def test_cut_summary_and_resolution() -> None:
     assert first_event.event_args.type_name == "rage__cutfObjectIdEventArgs"
 
 
-@requires_cut
+@pytest.mark.integration
 def test_cut_roundtrip_binary_writer() -> None:
     cut = read_cut(CUT_PATH)
     cut.root.fields["fTotalDuration"] = 12.5
@@ -139,10 +134,11 @@ def test_cut_roundtrip_binary_writer() -> None:
     )
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("path", [CUT_PATH, EF_CUT_PATH, LAMAR_CUT_PATH])
 def test_cut_roundtrip_preserves_complex_real_templates(path: Path) -> None:
     if not path.is_file():
-        pytest.skip(f"cut sample not available: {path.name}")
+        pytest.fail(f"cut sample not available: {path.name}")
     cut = read_cut(path)
 
     rebuilt = read_cut(build_cut_bytes(cut, template=cut))
@@ -154,7 +150,7 @@ def test_cut_roundtrip_preserves_complex_real_templates(path: Path) -> None:
     assert len(rebuilt.event_args) == len(cut.event_args)
 
 
-@requires_cut
+@pytest.mark.integration
 def test_cut_scene_abstraction_reads_like_timeline() -> None:
     scene = read_cut_scene(CUT_PATH)
 
@@ -175,7 +171,7 @@ def test_cut_scene_abstraction_reads_like_timeline() -> None:
     assert scene.timeline[0].start == pytest.approx(0.0)
 
 
-@requires_cut
+@pytest.mark.integration
 def test_cut_scene_roundtrip() -> None:
     scene = read_cut_scene(CUT_PATH)
     scene.duration = 33.0
@@ -542,9 +538,7 @@ def test_cut_scene_builder_supports_variation_events_with_real_template() -> Non
     assert args.fields["iTexture"] == 2
 
 
-@pytest.mark.skipif(
-    not LAMAR_CUT_PATH.is_file(), reason="blocking-bounds CUT template not available"
-)
+@pytest.mark.integration
 def test_cut_scene_builder_supports_camera_and_blocking_events_with_real_templates() -> (
     None
 ):
@@ -1025,7 +1019,8 @@ def test_cut_vehicle_runtime_source_can_explicitly_use_mounted_metadata() -> Non
     )
 
     assert not [
-        issue for issue in scene.validate(strict=True)
+        issue
+        for issue in scene.validate(strict=True)
         if issue.code == "object.type_file.missing"
     ]
 
@@ -1100,9 +1095,7 @@ def _vehicle_context(
     cache: GameFileCache | None = None,
 ) -> BuildContext:
     assets = AssetSet()
-    assets[f"stream/{model_name}.yft"] = Yft(
-        main_drawable=Ydr(version=165)
-    )
+    assets[f"stream/{model_name}.yft"] = Yft(main_drawable=Ydr(version=165))
     if metadata:
         assets["data/vehicles.meta"] = VehicleInitDataList(
             vehicles=[VehicleInitData(model_name=model_name)]
@@ -1135,9 +1128,9 @@ def test_cut_vehicle_runtime_metadata_is_required_by_context() -> None:
 
 
 def test_cut_vehicle_runtime_metadata_resolves_from_loose_cache(tmp_path) -> None:
-    VehicleInitDataList(
-        vehicles=[VehicleInitData(model_name="rancherxl")]
-    ).save(tmp_path / "vehicles.meta", validate=False)
+    VehicleInitDataList(vehicles=[VehicleInitData(model_name="rancherxl")]).save(
+        tmp_path / "vehicles.meta", validate=False
+    )
     with GameFileCache(tmp_path, use_index_cache=False) as cache:
         cache.scan()
         report = _vehicle_cutscene_assets().validate(

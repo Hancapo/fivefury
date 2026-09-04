@@ -25,6 +25,7 @@ from fivefury import (
 )
 from fivefury.resource import build_rsc7, split_rsc7_sections, virtual_to_offset
 from fivefury.ydd import GEN9_YDD_RUNTIME_PROFILE, YDD_VERSION_GEN9
+from fivefury.ydd.runtime_headers import get_ydd_runtime_profile
 from tests.helpers import reference_root
 
 
@@ -32,15 +33,16 @@ def _reference_ydd_paths() -> list[Path]:
     return sorted(reference_root().rglob("*.ydd"))
 
 
+@pytest.mark.integration
 def test_read_real_reference_ydd_drawable_dictionary() -> None:
     paths = _reference_ydd_paths()
     if not paths:
-        pytest.skip("real YDD reference directory not available")
+        pytest.fail("real YDD reference directory not available")
 
     ydd = read_ydd(paths[0])
 
     assert isinstance(ydd, Ydd)
-    assert ydd.version == 165
+    assert ydd.version == get_ydd_runtime_profile(ydd.game).version
     assert ydd.drawable_count > 0
     assert len(ydd.names) == ydd.drawable_count
     assert ydd.drawables[0].name_hash != 0
@@ -48,26 +50,26 @@ def test_read_real_reference_ydd_drawable_dictionary() -> None:
     assert ydd.drawables[0].drawable.materials
 
 
+@pytest.mark.integration
 def test_read_real_reference_ydd_directory() -> None:
     paths = _reference_ydd_paths()
     if not paths:
-        pytest.skip("real YDD reference directory not available")
+        pytest.fail("real YDD reference directory not available")
 
     for path in paths:
         ydd = read_ydd(path)
         assert ydd.drawable_count > 0, path.name
-        assert sum(
-            entry.drawable.model_count for entry in ydd.drawables
-        ) > 0, path.name
-        assert sum(
-            len(entry.drawable.materials) for entry in ydd.drawables
-        ) > 0, path.name
+        assert sum(entry.drawable.model_count for entry in ydd.drawables) > 0, path.name
+        assert sum(len(entry.drawable.materials) for entry in ydd.drawables) > 0, (
+            path.name
+        )
 
 
+@pytest.mark.integration
 def test_gamefilecache_parses_loose_ydd(tmp_path: Path) -> None:
     paths = _reference_ydd_paths()
     if not paths:
-        pytest.skip("real YDD reference directory not available")
+        pytest.fail("real YDD reference directory not available")
 
     stream_dir = tmp_path / "stream"
     stream_dir.mkdir()
@@ -107,10 +109,11 @@ def test_build_and_read_ydd_from_created_drawable(tmp_path: Path) -> None:
     assert len(rebuilt.drawables[0].drawable.materials) == 1
 
 
+@pytest.mark.integration
 def test_roundtrip_real_reference_ydd(tmp_path: Path) -> None:
     paths = _reference_ydd_paths()
     if not paths:
-        pytest.skip("real YDD reference directory not available")
+        pytest.fail("real YDD reference directory not available")
 
     source = read_ydd(paths[0])
     out_path = tmp_path / paths[0].name
@@ -121,12 +124,12 @@ def test_roundtrip_real_reference_ydd(tmp_path: Path) -> None:
     assert [entry.name_hash for entry in rebuilt.drawables] == [
         entry.name_hash for entry in source.drawables
     ]
-    assert sum(
-        entry.drawable.model_count for entry in rebuilt.drawables
-    ) == sum(entry.drawable.model_count for entry in source.drawables)
-    assert sum(
-        len(entry.drawable.materials) for entry in rebuilt.drawables
-    ) == sum(len(entry.drawable.materials) for entry in source.drawables)
+    assert sum(entry.drawable.model_count for entry in rebuilt.drawables) == sum(
+        entry.drawable.model_count for entry in source.drawables
+    )
+    assert sum(len(entry.drawable.materials) for entry in rebuilt.drawables) == sum(
+        len(entry.drawable.materials) for entry in source.drawables
+    )
 
 
 def test_build_enhanced_ydd_uses_gen9_runtime_headers(tmp_path: Path) -> None:
@@ -153,12 +156,8 @@ def test_build_enhanced_ydd_uses_gen9_runtime_headers(tmp_path: Path) -> None:
     )
 
     out_path = ydd.save(tmp_path / "test_enhanced.ydd")
-    header, system_data, _graphics_data = split_rsc7_sections(
-        out_path.read_bytes()
-    )
-    drawable_array = virtual_to_offset(
-        struct.unpack_from("<Q", system_data, 0x30)[0]
-    )
+    header, system_data, _graphics_data = split_rsc7_sections(out_path.read_bytes())
+    drawable_array = virtual_to_offset(struct.unpack_from("<Q", system_data, 0x30)[0])
     drawable_root = virtual_to_offset(
         struct.unpack_from("<Q", system_data, drawable_array)[0]
     )
@@ -237,9 +236,9 @@ def _texture_reference_vfts(raw: bytes) -> set[int]:
         "<Q", system_data, drawable_offset + 0x10
     )[0]
     shader_group_offset = virtual_to_offset(shader_group_pointer)
-    shaders_pointer = struct.unpack_from(
-        "<Q", system_data, shader_group_offset + 0x10
-    )[0]
+    shaders_pointer = struct.unpack_from("<Q", system_data, shader_group_offset + 0x10)[
+        0
+    ]
     shader_pointer = struct.unpack_from(
         "<Q", system_data, virtual_to_offset(shaders_pointer)
     )[0]
@@ -252,9 +251,7 @@ def _texture_reference_vfts(raw: bytes) -> set[int]:
         entry_offset = parameters_offset + index * 16
         if system_data[entry_offset] != 0:
             continue
-        texture_pointer = struct.unpack_from(
-            "<Q", system_data, entry_offset + 0x08
-        )[0]
+        texture_pointer = struct.unpack_from("<Q", system_data, entry_offset + 0x08)[0]
         if texture_pointer:
             result.add(
                 struct.unpack_from(
@@ -278,16 +275,12 @@ def test_cutscene_ped_profile_writes_and_roundtrips_root_classes() -> None:
         profile.dictionary_vft,
         {profile.drawable_headers.drawable},
     )
-    assert _texture_reference_vfts(raw) == {
-        profile.drawable_headers.texture_base
-    }
+    assert _texture_reference_vfts(raw) == {profile.drawable_headers.texture_base}
     rebuilt = read_ydd(raw)
     assert rebuilt.runtime_profile is not None
     assert rebuilt.runtime_profile == profile
     assert _root_vfts(rebuilt.to_bytes()) == _root_vfts(raw)
-    assert _texture_reference_vfts(rebuilt.to_bytes()) == (
-        _texture_reference_vfts(raw)
-    )
+    assert _texture_reference_vfts(rebuilt.to_bytes()) == (_texture_reference_vfts(raw))
 
 
 def test_full_ped_profile_writes_and_roundtrips_runtime_classes() -> None:
@@ -311,16 +304,12 @@ def test_full_ped_profile_writes_and_roundtrips_runtime_classes() -> None:
         profile.dictionary_vft,
         {profile.drawable_headers.drawable},
     )
-    assert _texture_reference_vfts(raw) == {
-        profile.drawable_headers.texture_base
-    }
+    assert _texture_reference_vfts(raw) == {profile.drawable_headers.texture_base}
     rebuilt = read_ydd(raw)
     assert rebuilt.runtime_profile is not None
     assert rebuilt.runtime_profile == profile
     assert _root_vfts(rebuilt.to_bytes()) == _root_vfts(raw)
-    assert _texture_reference_vfts(rebuilt.to_bytes()) == (
-        _texture_reference_vfts(raw)
-    )
+    assert _texture_reference_vfts(rebuilt.to_bytes()) == (_texture_reference_vfts(raw))
 
 
 def test_enhanced_ped_context_uses_gen9_runtime_profile() -> None:

@@ -72,7 +72,9 @@ def _assert_roundtrip_equivalent(original: Ynd, rebuilt: Ynd) -> None:
             original_node.position.components
         )
         assert len(rebuilt_node.links) == len(original_node.links)
-        for original_link, rebuilt_link in zip(original_node.links, rebuilt_node.links, strict=True):
+        for original_link, rebuilt_link in zip(
+            original_node.links, rebuilt_node.links, strict=True
+        ):
             assert rebuilt_link.area_id == original_link.area_id
             assert rebuilt_link.node_id == original_link.node_id
             assert rebuilt_link.travel_flags == original_link.travel_flags
@@ -81,7 +83,10 @@ def _assert_roundtrip_equivalent(original: Ynd, rebuilt: Ynd) -> None:
             assert rebuilt_link.tilt == original_link.tilt
             assert rebuilt_link.tilt_falloff == original_link.tilt_falloff
             assert rebuilt_link.width == original_link.width
-            assert rebuilt_link.lanes_from_other_node == original_link.lanes_from_other_node
+            assert (
+                rebuilt_link.lanes_from_other_node
+                == original_link.lanes_from_other_node
+            )
             assert rebuilt_link.lanes_to_other_node == original_link.lanes_to_other_node
             assert rebuilt_link.distance == original_link.distance
             assert rebuilt_link.flags0 == original_link.flags0
@@ -95,18 +100,32 @@ def _assert_roundtrip_equivalent(original: Ynd, rebuilt: Ynd) -> None:
             assert rebuilt_node.junction.position.components == pytest.approx(
                 original_node.junction.position.components
             )
-            assert rebuilt_node.junction.min_z == pytest.approx(original_node.junction.min_z)
-            assert rebuilt_node.junction.max_z == pytest.approx(original_node.junction.max_z)
-            assert rebuilt_node.junction.heightmap_dim_x == original_node.junction.heightmap_dim_x
-            assert rebuilt_node.junction.heightmap_dim_y == original_node.junction.heightmap_dim_y
+            assert rebuilt_node.junction.min_z == pytest.approx(
+                original_node.junction.min_z
+            )
+            assert rebuilt_node.junction.max_z == pytest.approx(
+                original_node.junction.max_z
+            )
+            assert (
+                rebuilt_node.junction.heightmap_dim_x
+                == original_node.junction.heightmap_dim_x
+            )
+            assert (
+                rebuilt_node.junction.heightmap_dim_y
+                == original_node.junction.heightmap_dim_y
+            )
             assert rebuilt_node.junction.heightmap == original_node.junction.heightmap
-            assert rebuilt_node.junction.junction_ref_unk0 == original_node.junction.junction_ref_unk0
+            assert (
+                rebuilt_node.junction.junction_ref_unk0
+                == original_node.junction.junction_ref_unk0
+            )
 
 
+@pytest.mark.integration
 def test_read_all_reference_ynd_samples() -> None:
     paths = _reference_ynd_paths()
     if not paths:
-        pytest.skip("real YND reference directory not available")
+        pytest.fail("real YND reference directory not available")
 
     for path in paths:
         ynd = read_ynd(path)
@@ -118,20 +137,22 @@ def test_read_all_reference_ynd_samples() -> None:
         assert ynd.link_count > 0
 
 
+@pytest.mark.integration
 def test_roundtrip_reference_ynd_sample() -> None:
     paths = _reference_ynd_paths()
     if not paths:
-        pytest.skip("real YND reference directory not available")
+        pytest.fail("real YND reference directory not available")
 
     original = read_ynd(paths[0])
     rebuilt = read_ynd(build_ynd_bytes(original))
     _assert_roundtrip_equivalent(original, rebuilt)
 
 
+@pytest.mark.integration
 def test_roundtrip_all_reference_ynd_samples() -> None:
     paths = _reference_ynd_paths()
     if not paths:
-        pytest.skip("real YND reference directory not available")
+        pytest.fail("real YND reference directory not available")
 
     for path in paths:
         original = read_ynd(path)
@@ -158,8 +179,16 @@ def test_gamefilecache_parses_loose_ynd(tmp_path: Path) -> None:
 def test_build_junction_heightmap_from_triangles() -> None:
     heightmap = build_junction_heightmap(
         triangles=[
-            (Vector3(-1.0, -1.0, 0.0), Vector3(1.0, -1.0, 10.0), Vector3(-1.0, 1.0, 10.0)),
-            (Vector3(1.0, -1.0, 10.0), Vector3(1.0, 1.0, 20.0), Vector3(-1.0, 1.0, 10.0)),
+            (
+                Vector3(-1.0, -1.0, 0.0),
+                Vector3(1.0, -1.0, 10.0),
+                Vector3(-1.0, 1.0, 10.0),
+            ),
+            (
+                Vector3(1.0, -1.0, 10.0),
+                Vector3(1.0, 1.0, 20.0),
+                Vector3(-1.0, 1.0, 10.0),
+            ),
         ],
         bounds=(Vector2(-1.0, -1.0), Vector2(1.0, 1.0)),
         dim_x=2,
@@ -170,9 +199,9 @@ def test_build_junction_heightmap_from_triangles() -> None:
     assert heightmap.min_z == pytest.approx(0.0)
     assert heightmap.max_z == pytest.approx(20.0)
     assert heightmap.data == bytes([0, 128, 128, 255])
-    assert decode_junction_heightmap(heightmap.data, heightmap.min_z, heightmap.max_z) == pytest.approx(
-        [0.0, 10.0, 10.0, 19.921875]
-    )
+    assert decode_junction_heightmap(
+        heightmap.data, heightmap.min_z, heightmap.max_z
+    ) == pytest.approx([0.0, 10.0, 10.0, 19.921875])
 
 
 def test_junction_heightmap_roundtrips_through_ynd_writer() -> None:

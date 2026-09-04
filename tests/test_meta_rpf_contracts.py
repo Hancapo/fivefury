@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import io
-import os
 import struct
 import tempfile
-import time
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -248,6 +246,7 @@ class MetaAndArchiveContractTests:
         assert builder.page_count > 1
         assert pages_info[2] == get_resource_total_page_count(builder.page_flags)
 
+    @pytest.mark.integration
     def test_good_ymap_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ymap
 
@@ -255,7 +254,7 @@ class MetaAndArchiveContractTests:
             "FIVEFURY_TEST_YMAP", reference_root() / "ymap/aliencity4.ymap"
         )
         if not source.exists():
-            pytest.skip("Representative working YMAP fixture is not available")
+            pytest.fail("Representative working YMAP fixture is not available")
         original = _parse_meta_layout(source.read_bytes())
         rebuilt = _parse_meta_layout(read_ymap(source.read_bytes()).to_bytes())
         assert rebuilt["header"].system_flags == original["header"].system_flags
@@ -267,6 +266,7 @@ class MetaAndArchiveContractTests:
         assert rebuilt["data_block_count"] == original["data_block_count"]
         assert rebuilt["data_blocks"] == original["data_blocks"]
 
+    @pytest.mark.integration
     def test_good_ytyp_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ytyp
 
@@ -274,7 +274,7 @@ class MetaAndArchiveContractTests:
             "FIVEFURY_TEST_YTYP", reference_root() / "ytyp/alien.ytyp"
         )
         if not source.exists():
-            pytest.skip("Representative working YTYP fixture is not available")
+            pytest.fail("Representative working YTYP fixture is not available")
         original = _parse_meta_layout(source.read_bytes())
         rebuilt = _parse_meta_layout(read_ytyp(source.read_bytes()).to_bytes())
         assert rebuilt["header"].system_flags == original["header"].system_flags
@@ -901,7 +901,7 @@ class MetaAndArchiveContractTests:
             )
             assert cache.has_archetype("prop_sign_road_01")
             assert sorted(
-                (int(archetype.name) for archetype in cache.iter_archetypes())
+                int(archetype.name) for archetype in cache.iter_archetypes()
             ) == sorted(
                 [jenk_hash("prop_tree_pine_01"), jenk_hash("prop_sign_road_01")]
             )
@@ -968,7 +968,7 @@ class MetaAndArchiveContractTests:
             assets = cache.list_ymap_entity_assets(
                 "example_map", include_supporting=True
             )
-            assert sorted((asset.path for asset in assets)) == sorted(
+            assert sorted(asset.path for asset in assets) == sorted(
                 [
                     "assets/prop_tree_pine_01.ybn",
                     "assets/prop_tree_pine_01.ydr",
@@ -982,7 +982,7 @@ class MetaAndArchiveContractTests:
                 "assets/prop_tree_pine_01.ydr"
             ]
             extracted = cache.extract_ymap_assets("example_map", root / "out")
-            assert sorted((path.name for path in extracted)) == [
+            assert sorted(path.name for path in extracted) == [
                 "prop_tree_pine_01.ybn",
                 "prop_tree_pine_01.ydr",
                 "prop_tree_pine_01.ytd",
@@ -1019,7 +1019,7 @@ class MetaAndArchiveContractTests:
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
             assets = cache.list_ymap_entity_assets(external_ymap)
-            assert sorted((asset.path for asset in assets)) == [
+            assert sorted(asset.path for asset in assets) == [
                 "assets/prop_tree_pine_01.ydr",
                 "assets/prop_tree_pine_01.ytd",
             ]
@@ -1140,7 +1140,6 @@ class MetaAndArchiveContractTests:
             ):
                 target = filtered_calls if skip_mask else baseline_calls
                 target.extend((str(source_prefix) for _, source_prefix in sources))
-                time.sleep(0.03 * len(sources))
                 return original(
                     sources, index, crypto, hash_lut, skip_mask, workers, verbose
                 )
@@ -1167,10 +1166,6 @@ class MetaAndArchiveContractTests:
             }
             assert filtered_calls == ["mods/world.rpf"]
             assert filtered.asset_count == 1
-            assert (
-                filtered.last_scan.elapsed_seconds
-                < baseline.last_scan.elapsed_seconds * 0.6
-            )
 
     def test_gamefilecache_supports_dlc_level_and_excluded_folders(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1244,7 +1239,6 @@ class MetaAndArchiveContractTests:
             def delayed_scan(
                 sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False
             ):
-                time.sleep(0.01 * len(sources))
                 return original(
                     sources, index, crypto, hash_lut, skip_mask, workers, verbose
                 )
@@ -1260,15 +1254,22 @@ class MetaAndArchiveContractTests:
             assert first.last_scan.saved_index_cache
             assert first.asset_count == 16 * 96
             second = GameFileCache(root, index_cache_path=index_path, scan_workers=1)
-            second.scan(use_index_cache=True)
+            with patch.object(
+                cache_module,
+                "_scan_archive_sources_batch",
+                side_effect=AssertionError(
+                    "Cached scans must not re-read archive tables"
+                ),
+            ):
+                second.scan(use_index_cache=True)
             assert second.last_scan is not None
             assert second.last_scan.used_index_cache
             assert not second.last_scan.saved_index_cache
             assert second.asset_count == first.asset_count
             assert second.read_bytes("pack_0.rpf/stream/item_0_0.ydr") == b"payload-0-0"
-            assert second.last_scan.elapsed_seconds < first.last_scan.elapsed_seconds
+            assert second.last_scan.elapsed_seconds >= 0
 
-    def test_gamefilecache_parallel_scan_reduces_elapsed_time_for_many_archives(
+    def test_gamefilecache_parallel_scan_dispatches_configured_workers(
         self,
     ) -> None:
         import fivefury.cache as cache_module
@@ -1286,16 +1287,18 @@ class MetaAndArchiveContractTests:
                 archive.save(root / f"pack_{archive_index}.rpf")
             original = cache_module._scan_archive_sources_batch
 
-            def delayed_scan(
+            worker_calls = []
+
+            def traced_scan(
                 sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False
             ):
-                time.sleep(0.03 * len(sources) / max(int(workers or 1), 1))
+                worker_calls.append(workers)
                 return original(
                     sources, index, crypto, hash_lut, skip_mask, workers, verbose
                 )
 
             with patch.object(
-                cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan
+                cache_module, "_scan_archive_sources_batch", side_effect=traced_scan
             ):
                 serial = GameFileCache(root, scan_workers=1)
                 serial.scan(use_index_cache=False)
@@ -1305,10 +1308,7 @@ class MetaAndArchiveContractTests:
             assert parallel.asset_count == serial.asset_count
             assert serial.last_scan.archive_workers == 1
             assert parallel.last_scan.archive_workers == 4
-            assert (
-                parallel.last_scan.elapsed_seconds
-                < serial.last_scan.elapsed_seconds * 0.8
-            )
+            assert worker_calls == [1, 4]
 
     def test_gamefilecache_scan_keeps_archive_handles_lazy_and_bounded(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1330,11 +1330,9 @@ class MetaAndArchiveContractTests:
             assert cache.archives == []
             assert cache.entries == {}
             assert all(
-                (
-                    record.entry is None and record.archive is None
-                    for record in cache.records
-                    if record.archive_rel
-                )
+                record.entry is None and record.archive is None
+                for record in cache.records
+                if record.archive_rel
             )
             assert cache.read_bytes("pack_0.rpf/stream/item_0.ydr") == b"payload-0"
             assert cache.read_bytes("pack_1.rpf/stream/item_1.ydr") == b"payload-1"
@@ -1801,7 +1799,7 @@ class MetaAndArchiveContractTests:
                 "child_dict",
                 "parent_dict",
             }
-            assert all((path.read_bytes()[:4] == b"DDS " for path in extracted))
+            assert all(path.read_bytes()[:4] == b"DDS " for path in extracted)
 
     def test_gtxd_roundtrip_and_parent_chain_helpers(self) -> None:
         from fivefury import create_gtxd, read_gtxd
