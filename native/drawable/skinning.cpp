@@ -1,6 +1,7 @@
 #include "drawable/bindings.h"
 
 #include <cmath>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -447,6 +448,20 @@ PyObject* mod_skin_vertices_into(PyObject*, PyObject* args) {
         return nullptr;
     }
 
+    const std::array<const Buffer*, 5> inputs{
+        &positions_buffer, &matrices_buffer, &indices_buffer, &weights_buffer, &normals_buffer,
+    };
+    for (const auto* input : inputs) {
+        if (positions_output_buffer.overlaps(*input) || normals_output_buffer.overlaps(*input)) {
+            PyErr_SetString(PyExc_ValueError, "skinning output must not overlap input buffers");
+            return nullptr;
+        }
+    }
+    if (positions_output_buffer.overlaps(normals_output_buffer)) {
+        PyErr_SetString(PyExc_ValueError, "skinning output buffers must not overlap each other");
+        return nullptr;
+    }
+
     std::size_t invalid_index = 0;
     bool valid_indices = false;
     {
@@ -541,6 +556,10 @@ PyObject* mod_skin_pack_palette_into(PyObject*, PyObject* args) {
         return nullptr;
     }
 
+    if (output_buffer.overlaps(matrices_buffer)) {
+        PyErr_SetString(PyExc_ValueError, "palette output must not overlap matrices");
+        return nullptr;
+    }
     const auto* matrices = static_cast<const float*>(matrices_buffer.buf);
     auto* palette = static_cast<float*>(output_buffer.buf);
     {

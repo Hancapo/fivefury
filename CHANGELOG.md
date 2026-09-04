@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- CPU skinning and GPU palette packing reject overlapping buffers before modifying outputs.
 - Native audio decoding rejects unrepresentable output sizes without terminating Python.
 - YCD frame channels reject invalid types, widths and truncated frame data.
 - Native bindings share exception-safe buffer ownership and GIL handling.

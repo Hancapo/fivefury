@@ -114,7 +114,7 @@ class SkinningBatch:
         *,
         output: SkinnedVertices | None = None,
     ) -> SkinnedVertices:
-        """Deform into a supplied reusable output set or a new allocation."""
+        """Deform into output buffers disjoint from the inputs and each other."""
         matrix_array = float32_array(matrices, (4, 4), name="matrices")
         target = self.buffers() if output is None else output
         return _skin_into(

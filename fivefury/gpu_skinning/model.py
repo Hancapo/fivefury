@@ -149,7 +149,7 @@ class GpuSkinning:
         *,
         output: object | None = None,
     ) -> Float32Array:
-        """Pack row-vector 4x4 matrices into a reusable GPU palette."""
+        """Pack row-vector 4x4 matrices into a GPU palette disjoint from the input."""
         matrix_array = float32_array(matrices, (4, 4), name="matrices")
         if len(matrix_array) < self.required_bone_count:
             raise ValueError(
