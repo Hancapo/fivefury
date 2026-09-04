@@ -1,4 +1,5 @@
 #include "animation/bindings.h"
+#include "binary/primitives.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -25,6 +26,18 @@ struct EncodeChannel {
     int bit_count = 0;
     std::vector<std::uint32_t> values;
 };
+
+bool valid_frame_channel(int kind, int bits) {
+    if (kind < 3 || kind > 5) {
+        PyErr_SetString(PyExc_ValueError, "YCD frame channel type must be 3, 4, or 5");
+        return false;
+    }
+    if (bits < 0 || bits > 32 || (kind == 3 && bits != 32)) {
+        PyErr_SetString(PyExc_ValueError, "YCD frame channel bit width is invalid");
+        return false;
+    }
+    return true;
+}
 
 PyObject* build_value_pair(
     const std::vector<double>& values,
@@ -145,6 +158,7 @@ bool parse_decode_channels(PyObject* object, std::vector<DecodeChannel>& out) {
         if (PyErr_Occurred() != nullptr) {
             return false;
         }
+        if (!valid_frame_channel(channel.kind, channel.bit_count)) return false;
         out.push_back(std::move(channel));
     }
     return true;
@@ -184,7 +198,7 @@ bool parse_encode_channels(
         channel.bit_count = static_cast<int>(PyLong_AsLong(bit_count));
         Py_XDECREF(kind);
         Py_XDECREF(bit_count);
-        if (PyErr_Occurred() != nullptr) {
+        if (PyErr_Occurred() != nullptr || !valid_frame_channel(channel.kind, channel.bit_count)) {
             Py_XDECREF(values_object);
             Py_DECREF(descriptor);
             return false;
@@ -252,6 +266,23 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args) {
     std::vector<DecodeChannel> channels;
     if (!parse_decode_channels(descriptors_object, channels)) {
         buffer.release();
+        return nullptr;
+    }
+    const auto frame_bits = fivefury_native::binary::checked_product(
+        static_cast<std::size_t>(frame_length), 8U);
+    for (const auto& channel : channels) {
+        if (!fivefury_native::binary::contains(
+                channel.bit_offset, static_cast<std::size_t>(channel.bit_count), frame_bits)) {
+            PyErr_SetString(PyExc_ValueError, "YCD channel extends beyond its frame");
+            return nullptr;
+        }
+    }
+    if (!channels.empty() && !fivefury_native::binary::contains(
+            static_cast<std::size_t>(frame_offset),
+            fivefury_native::binary::checked_product(
+                static_cast<std::size_t>(num_frames), static_cast<std::size_t>(frame_length)),
+            static_cast<std::size_t>(buffer.len))) {
+        PyErr_SetString(PyExc_ValueError, "YCD frame data is truncated");
         return nullptr;
     }
     for (auto& channel : channels) {
@@ -339,7 +370,7 @@ PyObject* mod_ycd_encode_frame_channels(PyObject*, PyObject* args) {
     }
     const auto frame_length = ((frame_bits + 31U) / 32U) * 4U;
     std::vector<std::uint8_t> output(
-        frame_length * static_cast<std::size_t>(num_frames),
+        fivefury_native::binary::checked_product(frame_length, static_cast<std::size_t>(num_frames)),
         0
     );
     {
