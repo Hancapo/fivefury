@@ -9,8 +9,7 @@ namespace fivefury_py {
 
 PyObject* mod_index_new(PyObject*, PyObject*) {
     try {
-        auto* index = new CompactIndex();
-        return PyCapsule_New(index, INDEX_CAPSULE_NAME, index_capsule_destructor);
+        return owned_capsule(std::make_unique<CompactIndex>(), INDEX_CAPSULE_NAME, index_capsule_destructor);
     } catch (...) {
         return translate_cpp_exception();
     }

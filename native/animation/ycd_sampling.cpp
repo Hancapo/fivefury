@@ -417,7 +417,7 @@ PyObject* mod_ycd_track_sampler_new(PyObject*, PyObject* args) {
             return nullptr;
         }
     }
-    return PyCapsule_New(sampler.release(), CAPSULE_NAME, destroy_sampler);
+    return owned_capsule(std::move(sampler), CAPSULE_NAME, destroy_sampler);
 }
 
 PyObject* mod_ycd_track_sampler_window(PyObject*, PyObject* args) {
