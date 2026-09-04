@@ -397,6 +397,18 @@ PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "YDR writer currently requires triangle list indices");
         return nullptr;
     }
+    std::uint32_t maximum = 0;
+    {
+        GilRelease gil_release;
+        if (!indices.empty()) maximum = *std::max_element(indices.begin(), indices.end());
+    }
+    if (!indices.empty() && static_cast<std::size_t>(maximum) >= static_cast<std::size_t>(vertex_count)) {
+        PyErr_SetString(PyExc_ValueError, "Mesh indices reference a vertex outside positions");
+        return nullptr;
+    }
+    if (indices.empty() || (maximum <= 0xFFFFU && static_cast<std::size_t>(maximum) < static_cast<std::size_t>(max_vertices))) {
+        Py_RETURN_NONE;
+    }
     std::vector<MeshChunk> chunks;
     bool needs_split = false;
     {
@@ -407,10 +419,6 @@ PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args) {
         std::size_t new_vertices = 0;
         for (std::size_t offset = 0; offset < 3U; ++offset) {
             const auto index = indices[base + offset];
-            if (index >= static_cast<std::uint32_t>(vertex_count)) {
-                needs_split = true;
-                continue;
-            }
             if (!lookup.contains(index)) {
                 ++new_vertices;
             }
@@ -442,12 +450,6 @@ PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args) {
     if (chunks.size() > 1U) {
         needs_split = true;
     }
-    }
-    if (std::any_of(indices.begin(), indices.end(), [vertex_count](auto value) {
-            return value >= static_cast<std::uint32_t>(vertex_count);
-        })) {
-        PyErr_SetString(PyExc_ValueError, "Mesh indices reference a vertex outside positions");
-        return nullptr;
     }
     if (!needs_split) {
         Py_RETURN_NONE;
