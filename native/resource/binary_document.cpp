@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <vector>
+#include <type_traits>
 
 namespace fivefury_py {
 
@@ -43,32 +43,6 @@ std::size_t scalar_size(ScalarKind kind) {
     return 0U;
 }
 
-std::uint64_t read_unsigned(const std::uint8_t* data, std::size_t size, bool big_endian) {
-    std::uint64_t value = 0;
-    if (big_endian) {
-        for (std::size_t index = 0; index < size; ++index) {
-            value = (value << 8U) | data[index];
-        }
-    } else {
-        for (std::size_t index = 0; index < size; ++index) {
-            value |= static_cast<std::uint64_t>(data[index]) << (index * 8U);
-        }
-    }
-    return value;
-}
-
-std::int64_t sign_extend(std::uint64_t value, std::size_t size) {
-    if (size == 8U) {
-        return static_cast<std::int64_t>(value);
-    }
-    const auto bits = size * 8U;
-    const auto sign_bit = std::uint64_t{1} << (bits - 1U);
-    if ((value & sign_bit) != 0U) {
-        value |= std::numeric_limits<std::uint64_t>::max() << bits;
-    }
-    return static_cast<std::int64_t>(value);
-}
-
 BinaryDocument* get_document(PyObject* capsule) {
     return static_cast<BinaryDocument*>(PyCapsule_GetPointer(capsule, CAPSULE_NAME));
 }
@@ -81,10 +55,6 @@ void destroy_document(PyObject* capsule) {
     }
     document->buffer.release();
     delete document;
-}
-
-bool checked_range(std::size_t offset, std::size_t length, std::size_t total) {
-    return offset <= total && length <= total - offset;
 }
 
 }  // namespace
@@ -123,7 +93,7 @@ PyObject* mod_binary_document_slice(PyObject*, PyObject* args) {
         return nullptr;
     }
     if (offset_value < 0 || length_value < 0 ||
-        !checked_range(
+        !fivefury_native::binary::contains(
             static_cast<std::size_t>(offset_value),
             static_cast<std::size_t>(length_value),
             static_cast<std::size_t>(document->buffer.len)
@@ -158,126 +128,124 @@ PyObject* mod_binary_document_c_string(PyObject*, PyObject* args) {
     return PyBytes_FromStringAndSize(start, length);
 }
 
-PyObject* mod_binary_document_read_array(PyObject*, PyObject* args) {
-    PyObject* capsule = nullptr;
-    Py_ssize_t offset_value = 0;
-    Py_ssize_t count_value = 0;
-    int kind_value = 0;
-    int endian_value = 0;
-    Py_ssize_t stride_value = 0;
+namespace {
+
+struct ArrayLayout {
+    BinaryDocument* document = nullptr;
+    std::size_t offset = 0;
+    std::size_t count = 0;
+    std::size_t stride = 0;
+    ScalarKind kind = ScalarKind::U8;
+    bool big_endian = false;
     int components = 1;
-    if (!PyArg_ParseTuple(
-            args,
-            "Onniini:binary_document_read_array",
-            &capsule,
-            &offset_value,
-            &count_value,
-            &kind_value,
-            &endian_value,
-            &stride_value,
-            &components
-        )) {
-        return nullptr;
-    }
-    auto* document = get_document(capsule);
-    if (document == nullptr) {
-        return nullptr;
-    }
-    if (kind_value < static_cast<int>(ScalarKind::U8) || kind_value > static_cast<int>(ScalarKind::F32)) {
+};
+
+bool parse_array_layout(PyObject* args, ArrayLayout& layout) {
+    PyObject* capsule = nullptr;
+    Py_ssize_t offset = 0, count = 0, stride = 0;
+    int kind = 0, endian = 0;
+    if (!PyArg_ParseTuple(args, "Onniini", &capsule, &offset, &count,
+                         &kind, &endian, &stride, &layout.components)) return false;
+    layout.document = get_document(capsule);
+    if (layout.document == nullptr) return false;
+    if (kind < 0 || kind > static_cast<int>(ScalarKind::F32)) {
         PyErr_SetString(PyExc_ValueError, "unknown binary scalar type");
-        return nullptr;
+        return false;
     }
-    if (offset_value < 0 || count_value < 0 || components <= 0 || components > 4) {
-        PyErr_SetString(PyExc_ValueError, "array offset, count, and component count are invalid");
-        return nullptr;
+    if (offset < 0 || count < 0 || stride < 0 ||
+        layout.components < 1 || layout.components > 4 || endian < 0 || endian > 1) {
+        PyErr_SetString(PyExc_ValueError, "invalid binary array dimensions or endian");
+        return false;
     }
-    const auto kind = static_cast<ScalarKind>(kind_value);
-    const auto item_size = scalar_size(kind);
-    const auto packed_size = item_size * static_cast<std::size_t>(components);
-    const auto stride = stride_value == 0 ? packed_size : static_cast<std::size_t>(stride_value);
-    if (stride < packed_size) {
+    layout.kind = static_cast<ScalarKind>(kind);
+    layout.big_endian = endian != 0;
+    layout.offset = static_cast<std::size_t>(offset);
+    layout.count = static_cast<std::size_t>(count);
+    const auto packed = scalar_size(layout.kind) * static_cast<std::size_t>(layout.components);
+    layout.stride = stride == 0 ? packed : static_cast<std::size_t>(stride);
+    if (layout.stride < packed) {
         PyErr_SetString(PyExc_ValueError, "array stride is smaller than one item");
-        return nullptr;
+        return false;
     }
-    const auto offset = static_cast<std::size_t>(offset_value);
-    const auto count = static_cast<std::size_t>(count_value);
-    const auto total = static_cast<std::size_t>(document->buffer.len);
-    if ((count > 1U && stride > (std::numeric_limits<std::size_t>::max() - packed_size) / (count - 1U)) ||
-        count > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(components)) {
-        PyErr_SetString(PyExc_OverflowError, "binary array dimensions overflow address space");
-        return nullptr;
-    }
-    const auto required = count == 0U ? 0U : ((count - 1U) * stride) + packed_size;
-    if (!checked_range(offset, required, total)) {
+    const auto total = static_cast<std::size_t>(layout.document->buffer.len);
+    if (layout.offset > total || (layout.count != 0 &&
+        (packed > total - layout.offset ||
+         layout.count - 1 > (total - layout.offset - packed) / layout.stride))) {
         PyErr_SetString(PyExc_ValueError, "binary array is truncated");
-        return nullptr;
+        return false;
     }
+    return true;
+}
 
-    const auto value_count = count * static_cast<std::size_t>(components);
-    std::vector<std::uint64_t> integers;
-    std::vector<double> floats;
-    if (kind == ScalarKind::F32) {
-        floats.resize(value_count);
-    } else {
-        integers.resize(value_count);
-    }
-    const auto* data = static_cast<const std::uint8_t*>(document->buffer.buf);
-    const bool big_endian = endian_value != 0;
-    {
-        GilRelease gil_release;
-        for (std::size_t row = 0; row < count; ++row) {
-            for (int component = 0; component < components; ++component) {
-                const auto source = data + offset + (row * stride) + (static_cast<std::size_t>(component) * item_size);
-                const auto raw = read_unsigned(source, item_size, big_endian);
-                const auto target = (row * static_cast<std::size_t>(components)) + static_cast<std::size_t>(component);
-                if (kind == ScalarKind::F32) {
-                    const auto bits = static_cast<std::uint32_t>(raw);
-                    float value = 0.0F;
-                    std::memcpy(&value, &bits, sizeof(value));
-                    floats[target] = value;
-                } else {
-                    integers[target] = raw;
-                }
-            }
-        }
-    }
-
-    const bool signed_kind = kind == ScalarKind::I8 || kind == ScalarKind::I16 ||
-        kind == ScalarKind::I32 || kind == ScalarKind::I64;
-    PyObject* result = PyList_New(count_value);
-    if (result == nullptr) {
-        return nullptr;
-    }
-    for (std::size_t row = 0; row < count; ++row) {
-        PyObject* item = components == 1 ? nullptr : PyTuple_New(components);
-        if (components != 1 && item == nullptr) {
-            Py_DECREF(result);
-            return nullptr;
-        }
-        for (int component = 0; component < components; ++component) {
-            const auto index = (row * static_cast<std::size_t>(components)) + static_cast<std::size_t>(component);
+template <typename T, std::endian Order>
+PyObject* read_rows(const ArrayLayout& layout) {
+    PyHandle result(PyList_New(static_cast<Py_ssize_t>(layout.count)));
+    if (!result) return nullptr;
+    const auto* data = static_cast<const std::uint8_t*>(layout.document->buffer.buf) + layout.offset;
+    for (std::size_t row = 0; row < layout.count; ++row) {
+        PyHandle tuple(layout.components == 1 ? nullptr : PyTuple_New(layout.components));
+        if (layout.components != 1 && !tuple) return nullptr;
+        for (int component = 0; component < layout.components; ++component) {
+            const T decoded = fivefury_native::binary::load<T, Order>(
+                data + row * layout.stride + static_cast<std::size_t>(component) * sizeof(T));
             PyObject* value = nullptr;
-            if (kind == ScalarKind::F32) {
-                value = PyFloat_FromDouble(floats[index]);
-            } else if (signed_kind) {
-                value = PyLong_FromLongLong(sign_extend(integers[index], item_size));
+            if constexpr (std::is_floating_point_v<T>) {
+                value = PyFloat_FromDouble(decoded);
+            } else if constexpr (std::is_signed_v<T>) {
+                value = PyLong_FromLongLong(decoded);
             } else {
-                value = PyLong_FromUnsignedLongLong(integers[index]);
+                value = PyLong_FromUnsignedLongLong(decoded);
             }
-            if (value == nullptr) {
-                Py_XDECREF(item);
-                Py_DECREF(result);
+            if (layout.components == 1) {
+                if (!list_take(result.get(), static_cast<Py_ssize_t>(row), value)) return nullptr;
+            } else if (!tuple_take(tuple.get(), component, value)) {
                 return nullptr;
             }
-            if (components == 1) {
-                item = value;
-            } else {
-                PyTuple_SetItem(item, component, value);
-            }
         }
-        PyList_SetItem(result, static_cast<Py_ssize_t>(row), item);
+        if (layout.components != 1 &&
+            !list_take(result.get(), static_cast<Py_ssize_t>(row), tuple.release())) return nullptr;
     }
-    return result;
+    return result.release();
+}
+
+template <std::endian Order>
+PyObject* read_typed_rows(const ArrayLayout& layout) {
+    switch (layout.kind) {
+        case ScalarKind::U8: return read_rows<std::uint8_t, Order>(layout);
+        case ScalarKind::I8: return read_rows<std::int8_t, Order>(layout);
+        case ScalarKind::U16: return read_rows<std::uint16_t, Order>(layout);
+        case ScalarKind::I16: return read_rows<std::int16_t, Order>(layout);
+        case ScalarKind::U32: return read_rows<std::uint32_t, Order>(layout);
+        case ScalarKind::I32: return read_rows<std::int32_t, Order>(layout);
+        case ScalarKind::U64: return read_rows<std::uint64_t, Order>(layout);
+        case ScalarKind::I64: return read_rows<std::int64_t, Order>(layout);
+        case ScalarKind::F32: return read_rows<float, Order>(layout);
+    }
+    PyErr_SetString(PyExc_ValueError, "unknown binary scalar type");
+    return nullptr;
+}
+
+}  // namespace
+
+PyObject* mod_binary_document_read_array(PyObject*, PyObject* args) {
+    ArrayLayout layout;
+    if (!parse_array_layout(args, layout)) return nullptr;
+    return layout.big_endian
+        ? read_typed_rows<std::endian::big>(layout)
+        : read_typed_rows<std::endian::little>(layout);
+}
+
+PyObject* mod_binary_document_array_view(PyObject*, PyObject* args) {
+    ArrayLayout layout;
+    if (!parse_array_layout(args, layout)) return nullptr;
+    const char* formats[] = {"u1", "i1", "u2", "i2", "u4", "i4", "u8", "i8", "f4"};
+    const auto format = std::string(layout.big_endian ? ">" : "<") +
+        formats[static_cast<int>(layout.kind)];
+    PyHandle view(PyMemoryView_FromObject(layout.document->buffer.obj));
+    if (!view) return nullptr;
+    return Py_BuildValue("(Nsnnni)", view.release(), format.c_str(),
+        static_cast<Py_ssize_t>(layout.offset), static_cast<Py_ssize_t>(layout.count),
+        static_cast<Py_ssize_t>(layout.stride), layout.components);
 }
 
 }  // namespace fivefury_py

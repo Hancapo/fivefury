@@ -85,6 +85,7 @@ PyMethodDef module_methods[] = {
     {"binary_document_slice", guarded_call<mod_binary_document_slice>, METH_VARARGS, nullptr},
     {"binary_document_c_string", guarded_call<mod_binary_document_c_string>, METH_VARARGS, nullptr},
     {"binary_document_read_array", guarded_call<mod_binary_document_read_array>, METH_VARARGS, nullptr},
+    {"binary_document_array_view", guarded_call<mod_binary_document_array_view>, METH_VARARGS, nullptr},
     {"resource_layout_sections", guarded_call<mod_resource_layout_sections>, METH_VARARGS, nullptr},
     {"resource_pack_block_sizes", guarded_call<mod_resource_pack_block_sizes>, METH_VARARGS, nullptr},
     {"awc_build_peak_values", guarded_call<mod_awc_build_peak_values>, METH_VARARGS, nullptr},

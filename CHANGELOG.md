@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Read-only NumPy views of binary arrays, preserving endian and byte strides without copying data.
+
 ### Fixed
 
 - Native RPF reading and scanning support Unicode filenames and directories on Windows.
@@ -18,6 +22,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
+- Binary array reads into Python lists are about 1.2x faster for large scalar arrays and no longer allocate intermediate 64-bit buffers.
 - Mesh splitting checks are about 3.6x faster for large meshes already within the vertex limit, avoiding unnecessary remapping tables and chunk allocations.
 
 ## [0.4.22] - 2026-09-04
