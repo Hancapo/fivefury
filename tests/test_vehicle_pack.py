@@ -487,9 +487,7 @@ def test_vehicle_pair_rejects_skeleton_and_physics_mismatches() -> None:
 def test_vehicle_pair_rejects_composite_bound_slot_mismatch() -> None:
     fragment = _fragment("testcar")
     high_fragment = _fragment("testcar_hi", high_detail=True)
-    box = BoundBox.from_bounds(
-        Vector3(-1.0, -1.0, -1.0), Vector3(1.0, 1.0, 1.0)
-    )
+    box = BoundBox.from_bounds(Vector3(-1.0, -1.0, -1.0), Vector3(1.0, 1.0, 1.0))
 
     def composite(child: BoundChild) -> BoundComposite:
         return BoundComposite(
@@ -540,10 +538,7 @@ def test_vehicle_pair_rejects_glass_window_ownership_in_high_detail() -> None:
     assert "vehicle.yft_pair.high_fragment.vehicle_glass_invalid" in codes
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail vehicle-pair regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_enhanced_jester_uses_paired_vehicle_fragments() -> None:
     assert _ENHANCED_ROOT is not None
     with GameFileCache(
@@ -591,10 +586,7 @@ def test_retail_enhanced_jester_uses_paired_vehicle_fragments() -> None:
     assert validate_vehicle_yft_pair("jester", fragment, high_fragment).valid
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail vertex-buffer regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_enhanced_comet5_reauthoring_preserves_vertex_buffer_flags() -> None:
     assert _ENHANCED_ROOT is not None
     rebuilt_fragments = []
@@ -651,10 +643,7 @@ def _fragment_build(drawable, *, name: str):
     )
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail fragment-tail regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_enhanced_comet5_reauthoring_preserves_fragment_drawable_tails() -> None:
     assert _ENHANCED_ROOT is not None
     rebuilt_fragments = []

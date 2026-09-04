@@ -97,10 +97,7 @@ def test_enhanced_multichannel_block_uses_encoded_size_and_sample_count(
     assert awc.pcm_bytes() == b"\x01\x00\x02\x00\x03\x00"
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail AWC regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_compact_multichannel_awc_decodes_to_aligned_pcm() -> None:
     assert _ENHANCED_ROOT is not None
     with GameFileCache(
@@ -135,10 +132,7 @@ def test_retail_compact_multichannel_awc_decodes_to_aligned_pcm() -> None:
     assert (len(wav) - 44) % (3 * 2) == 0
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail AWC regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_encrypted_cut_audio_loads_through_the_cache() -> None:
     assert _ENHANCED_ROOT is not None
     paths = (
@@ -177,10 +171,7 @@ def test_retail_encrypted_cut_audio_loads_through_the_cache() -> None:
             )
 
 
-@pytest.mark.skipif(
-    _ENHANCED_ROOT is None or not _ENHANCED_ROOT.is_dir(),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail AWC regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_mp3_block_seek_tables_match_packet_tables() -> None:
     assert _ENHANCED_ROOT is not None
     names = (
@@ -209,7 +200,9 @@ def test_retail_mp3_block_seek_tables_match_packet_tables() -> None:
             awc = cache.load_asset(asset).parsed
             assert isinstance(awc, Awc)
             source = next(
-                stream for stream in awc.streams if stream.stream_format_chunk is not None
+                stream
+                for stream in awc.streams
+                if stream.stream_format_chunk is not None
             )
             layout = source.stream_format_chunk
             seek = source.seek_table_chunk
@@ -265,6 +258,9 @@ def test_multichannel_encryption_is_applied_per_large_block() -> None:
     rebuilt = read_awc(encoded)
 
     assert rebuilt.multi_channel_encrypt_flag
-    assert rebuilt.pcm_bytes() == Awc.from_channel_pcm(
-        "encrypted_stereo", [left, right], sample_rate=32000
-    ).pcm_bytes()
+    assert (
+        rebuilt.pcm_bytes()
+        == Awc.from_channel_pcm(
+            "encrypted_stereo", [left, right], sample_rate=32000
+        ).pcm_bytes()
+    )

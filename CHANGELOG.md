@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
+- Unit, external integration, ABI and performance tests have explicit suites; selected tests fail rather than silently skipping missing requirements.
 - Test contracts target the current public API and no longer tolerate removed APIs through compatibility lookups or optional assertions.
 
 ### Added

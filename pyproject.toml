@@ -20,6 +20,15 @@ dependencies = [
   "trimesh>=5.0.0,<6",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest>=9.1,<10",
+  "pytest-benchmark>=5,<6",
+  "Pillow>=12,<13",
+  "texfury>=1.6.3,<2",
+  "build>=1.3,<2",
+]
+
 [tool.setuptools]
 include-package-data = true
 
@@ -31,9 +40,17 @@ fivefury = ["data/*.dat", "drawable/*.xml", "ydr/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["*Tests"]
+python_files = ["test_*.py", "bench_*.py"]
+python_classes = ["Test*", "*Tests"]
 python_functions = ["test_*"]
+addopts = "--strict-markers --strict-config"
+empty_parameter_set_mark = "fail_at_collect"
+markers = [
+  "integration(*environment_variables): external game files, reference corpus or custom mod required",
+  "abi: cross-interpreter checks of the built extension",
+  "performance: repeatable timing measurements, separate from functional tests",
+  "requires_platform(*os_names): platform-specific implementation contract",
+]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [

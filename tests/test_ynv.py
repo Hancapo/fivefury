@@ -207,16 +207,21 @@ def _generated_ynv() -> Ynv:
             aabb_max=Vector3(10.0, 10.0, 10.0),
             data=YnvSectorData(
                 poly_ids=[0],
-                points=[YnvPoint(position=Vector3(0.25, 0.25, 0.0), type=YnvPointType.TYPE_3)],
+                points=[
+                    YnvPoint(
+                        position=Vector3(0.25, 0.25, 0.0), type=YnvPointType.TYPE_3
+                    )
+                ],
             ),
         ),
     ).build()
 
 
+@pytest.mark.integration
 def test_read_all_reference_ynv_samples() -> None:
     paths = _reference_ynv_paths()
     if not paths:
-        pytest.skip("real YNV reference directory not available")
+        pytest.fail("real YNV reference directory not available")
     for path in paths:
         ynv = read_ynv(path)
         assert ynv.version == 2
@@ -227,28 +232,31 @@ def test_read_all_reference_ynv_samples() -> None:
         assert ynv.sector_tree is not None
 
 
+@pytest.mark.integration
 def test_reference_ynv_samples_validate_cleanly() -> None:
     paths = _reference_ynv_paths()
     if not paths:
-        pytest.skip("real YNV reference directory not available")
+        pytest.fail("real YNV reference directory not available")
     for path in paths:
         ynv = read_ynv(path)
         assert ynv.validate().valid
 
 
+@pytest.mark.integration
 def test_roundtrip_reference_ynv_sample() -> None:
     paths = _reference_ynv_paths()
     if not paths:
-        pytest.skip("real YNV reference directory not available")
+        pytest.fail("real YNV reference directory not available")
     original = read_ynv(paths[0])
     rebuilt = read_ynv(build_ynv_bytes(original))
     _assert_roundtrip_equivalent(original, rebuilt)
 
 
+@pytest.mark.integration
 def test_roundtrip_all_reference_ynv_samples() -> None:
     paths = _reference_ynv_paths()
     if not paths:
-        pytest.skip("real YNV reference directory not available")
+        pytest.fail("real YNV reference directory not available")
     for path in paths:
         original = read_ynv(path)
         rebuilt = read_ynv(build_ynv_bytes(original))
@@ -352,10 +360,7 @@ def test_point_and_portal_direction_helpers_roundtrip() -> None:
     portal = YnvPortal(type=YnvPortalType.TYPE_2, angle=32).build()
     assert portal.direction == pytest.approx((32.0 / 255.0) * math.tau)
     portal.direction = math.pi / 2.0
-    assert (
-        portal.angle
-        == round(((math.pi / 2.0) % math.tau) * 255.0 / math.tau) & 0xFF
-    )
+    assert portal.angle == round(((math.pi / 2.0) % math.tau) * 255.0 / math.tau) & 0xFF
 
 
 def test_build_recalculates_content_flags_from_payload_presence() -> None:
@@ -388,7 +393,8 @@ def test_build_reindexes_sector_points() -> None:
                 aabb_min=Vector3(),
                 aabb_max=Vector3(5.0, 5.0, 5.0),
                 data=YnvSectorData(
-                    points_start_id=77, points=[YnvPoint(position=Vector3(2.0, 2.0, 2.0))]
+                    points_start_id=77,
+                    points=[YnvPoint(position=Vector3(2.0, 2.0, 2.0))],
                 ),
             ),
         )
@@ -573,7 +579,9 @@ def test_writer_rejects_invalid_portal_link_span() -> None:
 
 
 def test_writer_builds_multipage_split_arrays_with_resource_metadata() -> None:
-    vertices = [Vector3(float(index % 150), float(index // 150), 0.0) for index in range(6000)]
+    vertices = [
+        Vector3(float(index % 150), float(index // 150), 0.0) for index in range(6000)
+    ]
     ynv = Ynv(
         aabb_size=Vector3(150.0, 150.0, 1.0),
         vertices=vertices,

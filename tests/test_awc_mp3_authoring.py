@@ -7,10 +7,10 @@ import struct
 import pytest
 
 from fivefury import (
+    MP3_RETAIL_SAMPLE_RATES,
     Awc,
     AwcChunkType,
     AwcCodecType,
-    MP3_RETAIL_SAMPLE_RATES,
     encode_mp3_channel,
     inspect_mp3_streaming_data,
     parse_mp3_frames,
@@ -102,9 +102,9 @@ def test_multichannel_stream_table_is_sorted_without_changing_channel_order() ->
     rebuilt = read_awc(authored.to_bytes())
 
     assert [stream.hash for stream in rebuilt.streams] == sorted((0, *channel_ids))
-    assert [channel.id for channel in rebuilt.streams[0].stream_format_chunk.channels] == list(
-        channel_ids
-    )
+    assert [
+        channel.id for channel in rebuilt.streams[0].stream_format_chunk.channels
+    ] == list(channel_ids)
     assert [stream.hash for stream in rebuilt.channel_streams] == list(channel_ids)
 
 

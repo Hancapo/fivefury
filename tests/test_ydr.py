@@ -102,18 +102,47 @@ def _align(value: int, alignment: int) -> int:
 
 def _read_first_mesh_buffer_pointers(raw: bytes) -> tuple[int, int, int, int]:
     _header, system_data, _graphics_data = split_rsc7_sections(raw)
-    high_header_off = int.from_bytes(system_data[_ROOT_OFFSET + 0x40 : _ROOT_OFFSET + 0x48], "little") - _DAT_VIRTUAL_BASE
-    high_ptrs_off = int.from_bytes(system_data[high_header_off : high_header_off + 8], "little") - _DAT_VIRTUAL_BASE
-    model_off = int.from_bytes(system_data[high_ptrs_off : high_ptrs_off + 8], "little") - _DAT_VIRTUAL_BASE
-    geometry_ptrs_off = int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little") - _DAT_VIRTUAL_BASE
-    geometry_off = int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 8], "little") - _DAT_VIRTUAL_BASE
-    vertex_buffer_off = int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little") - _DAT_VIRTUAL_BASE
-    index_buffer_off = int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little") - _DAT_VIRTUAL_BASE
+    high_header_off = (
+        int.from_bytes(system_data[_ROOT_OFFSET + 0x40 : _ROOT_OFFSET + 0x48], "little")
+        - _DAT_VIRTUAL_BASE
+    )
+    high_ptrs_off = (
+        int.from_bytes(system_data[high_header_off : high_header_off + 8], "little")
+        - _DAT_VIRTUAL_BASE
+    )
+    model_off = (
+        int.from_bytes(system_data[high_ptrs_off : high_ptrs_off + 8], "little")
+        - _DAT_VIRTUAL_BASE
+    )
+    geometry_ptrs_off = (
+        int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little")
+        - _DAT_VIRTUAL_BASE
+    )
+    geometry_off = (
+        int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 8], "little")
+        - _DAT_VIRTUAL_BASE
+    )
+    vertex_buffer_off = (
+        int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little")
+        - _DAT_VIRTUAL_BASE
+    )
+    index_buffer_off = (
+        int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little")
+        - _DAT_VIRTUAL_BASE
+    )
     return (
-        int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little"),
-        int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little"),
-        int.from_bytes(system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28], "little"),
-        int.from_bytes(system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little"),
+        int.from_bytes(
+            system_data[geometry_off + 0x78 : geometry_off + 0x80], "little"
+        ),
+        int.from_bytes(
+            system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little"
+        ),
+        int.from_bytes(
+            system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28], "little"
+        ),
+        int.from_bytes(
+            system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little"
+        ),
     )
 
 
@@ -182,13 +211,17 @@ def _build_test_ydr_bytes() -> bytes:
     struct.pack_into("<I", system_data, shader_fx_off + 0x08, int(jenk_hash("default")))
     system_data[shader_fx_off + 0x10] = 1
     system_data[shader_fx_off + 0x11] = 0
-    struct.pack_into("<I", system_data, shader_fx_off + 0x18, int(jenk_hash("default.sps")))
+    struct.pack_into(
+        "<I", system_data, shader_fx_off + 0x18, int(jenk_hash("default.sps"))
+    )
     system_data[shader_fx_off + 0x26] = 0
     system_data[shader_fx_off + 0x27] = 1
 
     system_data[params_block_off + 0x00] = 0
     struct.pack_into("<Q", system_data, params_block_off + 0x08, virt(texture_base_off))
-    struct.pack_into("<I", system_data, params_block_off + 0x10, int(jenk_hash("DiffuseSampler")))
+    struct.pack_into(
+        "<I", system_data, params_block_off + 0x10, int(jenk_hash("DiffuseSampler"))
+    )
 
     struct.pack_into("<Q", system_data, texture_base_off + 0x28, virt(texture_name_off))
     system_data[texture_name_off : texture_name_off + len(texture_name)] = texture_name
@@ -249,8 +282,12 @@ def _build_test_ydr_with_bound_bytes() -> bytes:
     struct.pack_into("<I", bound_block, 0x04, 1)
     struct.pack_into("<B", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x00, 0)
     struct.pack_into("<f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x04, 0.75)
-    struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x20, 1.25, 1.25, 0.75)
-    struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x30, -0.25, -0.25, -0.75)
+    struct.pack_into(
+        "<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x20, 1.25, 1.25, 0.75
+    )
+    struct.pack_into(
+        "<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x30, -0.25, -0.25, -0.75
+    )
     struct.pack_into("<I", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x3C, 1)
     struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x40, 0.5, 0.5, 0.0)
     struct.pack_into("<3f", bound_block, _RESOURCE_FILE_BASE_SIZE + 0x50, 0.5, 0.5, 0.0)
@@ -314,18 +351,31 @@ def test_read_ydr_parses_mesh_material_and_texture_names() -> None:
     assert mesh.indices == [0, 1, 2]
 
     assert material.slot_index == 0
-    assert material.ycd_uv_binding(object_name="triangle") == YcdUvClipBinding(object_name="triangle", slot_index=0)
+    assert material.ycd_uv_binding(object_name="triangle") == YcdUvClipBinding(
+        object_name="triangle", slot_index=0
+    )
     assert material.ycd_uv_clip_name(object_name="triangle") == "triangle_uv_0"
-    assert material.ycd_uv_clip_hash(object_name="triangle") == YcdUvClipBinding(object_name="triangle", slot_index=0).clip_hash.uint
+    assert (
+        material.ycd_uv_clip_hash(object_name="triangle")
+        == YcdUvClipBinding(object_name="triangle", slot_index=0).clip_hash.uint
+    )
 
     model = ydr.models[0]
     assert model.slot_indices == [0]
-    assert model.ycd_uv_binding(0, object_name="triangle") == YcdUvClipBinding(object_name="triangle", slot_index=0)
-    assert model.ycd_uv_bindings(object_name="triangle") == [YcdUvClipBinding(object_name="triangle", slot_index=0)]
+    assert model.ycd_uv_binding(0, object_name="triangle") == YcdUvClipBinding(
+        object_name="triangle", slot_index=0
+    )
+    assert model.ycd_uv_bindings(object_name="triangle") == [
+        YcdUvClipBinding(object_name="triangle", slot_index=0)
+    ]
 
     assert ydr.slot_indices == [0]
-    assert ydr.ycd_uv_binding(0) == YcdUvClipBinding(object_name="triangle", slot_index=0)
-    assert ydr.ycd_uv_bindings() == [YcdUvClipBinding(object_name="triangle", slot_index=0)]
+    assert ydr.ycd_uv_binding(0) == YcdUvClipBinding(
+        object_name="triangle", slot_index=0
+    )
+    assert ydr.ycd_uv_bindings() == [
+        YcdUvClipBinding(object_name="triangle", slot_index=0)
+    ]
     assert mesh.positions == [Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)]
     assert mesh.normals == [Vector3(0.0, 0.0, 1.0)] * 3
     assert len(mesh.texcoords) == 1
@@ -374,8 +424,12 @@ def test_ydr_vertex_decoder_preserves_second_colour_channel() -> None:
 
     decoded = _decode_vertices(vertex_bytes, 1, len(vertex_bytes), flags, types_value)
 
-    assert decoded["colours0"] == pytest.approx([(1.0, 128 / 255.0, 64 / 255.0, 32 / 255.0)])
-    assert decoded["colours1"] == pytest.approx([(7 / 255.0, 8 / 255.0, 9 / 255.0, 10 / 255.0)])
+    assert decoded["colours0"] == pytest.approx(
+        [(1.0, 128 / 255.0, 64 / 255.0, 32 / 255.0)]
+    )
+    assert decoded["colours1"] == pytest.approx(
+        [(7 / 255.0, 8 / 255.0, 9 / 255.0, 10 / 255.0)]
+    )
 
 
 def test_gamefilecache_parses_loose_ydr_as_renderable_model() -> None:
@@ -390,10 +444,17 @@ def test_gamefilecache_parses_loose_ydr_as_renderable_model() -> None:
         assert game_file is not None
         assert game_file.kind == GameFileType.YDR
         assert isinstance(game_file.parsed, Ydr)
-        assert game_file.parsed.meshes[0].material.primary_texture_name == "test_diffuse"
+        assert (
+            game_file.parsed.meshes[0].material.primary_texture_name == "test_diffuse"
+        )
         assert game_file.parsed.meshes[0].material.shader_definition is not None
         assert game_file.parsed.meshes[0].material.shader_definition.name == "default"
-        assert game_file.parsed.meshes[0].material.material_descriptor.get_texture("DiffuseSampler") is not None
+        assert (
+            game_file.parsed.meshes[0].material.material_descriptor.get_texture(
+                "DiffuseSampler"
+            )
+            is not None
+        )
         assert game_file.parsed.meshes[0].indices == [0, 1, 2]
 
 
@@ -432,25 +493,40 @@ def test_ydr_can_build_collision_bound_from_render_geometry() -> None:
     assert isinstance(ydr.bound, BoundComposite)
 
 
+@pytest.mark.integration
 def test_read_real_reference_ydr_embedded_bound() -> None:
     ydr = read_ydr(require_reference("prop_fire_hosereel.ydr"))
 
     assert ydr.bound is not None
-    assert ydr.bound.bound_type.name in {"GEOMETRY", "GEOMETRY_BVH", "COMPOSITE", "BOX", "SPHERE", "CAPSULE", "CYLINDER", "DISC"}
+    assert ydr.bound.bound_type.name in {
+        "GEOMETRY",
+        "GEOMETRY_BVH",
+        "COMPOSITE",
+        "BOX",
+        "SPHERE",
+        "CAPSULE",
+        "CYLINDER",
+        "DISC",
+    }
 
 
-def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_available() -> None:
+@pytest.mark.integration
+def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_available() -> (
+    None
+):
     path = configured_path(
         "FIVEFURY_TEST_YDR_BAD_CITY61MARKET",
         reference_root() / "ydr/bad/city61market.ydr",
     )
     if not path.exists():
-        pytest.skip(f"external YDR reference not available: {path}")
+        pytest.fail(f"external YDR reference not available: {path}")
 
     source = read_ydr(path)
     raw = build_ydr_bytes(source)
     header, system_data, _ = split_rsc7_sections(raw)
-    pages_info_offset = int.from_bytes(system_data[0x08:0x10], "little") - _DAT_VIRTUAL_BASE
+    pages_info_offset = (
+        int.from_bytes(system_data[0x08:0x10], "little") - _DAT_VIRTUAL_BASE
+    )
     system_page_count = get_resource_total_page_count(header.system_flags)
     graphics_page_count = get_resource_total_page_count(header.graphics_flags)
 
@@ -458,11 +534,14 @@ def test_roundtrip_real_debug_ydr_rebuilds_page_metadata_from_block_layout_if_av
     assert system_data[pages_info_offset + 0x09] == graphics_page_count
 
 
+@pytest.mark.integration
 def test_build_ydr_bytes_writes_legacy_mesh_buffers_to_system_pages() -> None:
     source = read_ydr(require_reference("prop_fire_hosereel.ydr"))
     raw = build_ydr_bytes(source)
     _header, _system_data, _graphics_data = split_rsc7_sections(raw)
-    geometry_vertex_data_ptr, vertex_data_ptr1, vertex_data_ptr2, index_data_ptr = _read_first_mesh_buffer_pointers(raw)
+    geometry_vertex_data_ptr, vertex_data_ptr1, vertex_data_ptr2, index_data_ptr = (
+        _read_first_mesh_buffer_pointers(raw)
+    )
 
     assert _DAT_VIRTUAL_BASE <= geometry_vertex_data_ptr < _DAT_PHYSICAL_BASE
     assert _DAT_VIRTUAL_BASE <= vertex_data_ptr1 < _DAT_PHYSICAL_BASE
@@ -470,6 +549,7 @@ def test_build_ydr_bytes_writes_legacy_mesh_buffers_to_system_pages() -> None:
     assert _DAT_VIRTUAL_BASE <= index_data_ptr < _DAT_PHYSICAL_BASE
 
 
+@pytest.mark.integration
 def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -> None:
     source = require_reference("prop_fire_hosereel.ydr")
     _header, system_data, _graphics_data = split_rsc7_sections(source.read_bytes())
@@ -481,6 +561,7 @@ def test_read_real_reference_ydr_does_not_confuse_models_pointer_with_joints() -
     assert ydr.joints is None
 
 
+@pytest.mark.integration
 def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
     ydr = read_ydr(require_reference("prop_fire_hosereel.ydr"))
 
@@ -502,6 +583,7 @@ def test_read_real_reference_ydr_decodes_embedded_geometry_polygons() -> None:
     assert geometry.octants.total_items == 32
 
 
+@pytest.mark.integration
 def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) -> None:
     source_path = require_reference("prop_fire_hosereel.ydr")
     source = read_ydr(source_path)
@@ -516,17 +598,26 @@ def test_real_reference_ydr_roundtrip_preserves_embedded_assets(tmp_path: Path) 
     assert isinstance(rebuilt.bound, BoundComposite)
     assert isinstance(source.bound, BoundComposite)
     assert rebuilt.bound.child_count == source.bound.child_count
-    assert rebuilt.bound.geometries[0].polygon_count == source.bound.geometries[0].polygon_count
+    assert (
+        rebuilt.bound.geometries[0].polygon_count
+        == source.bound.geometries[0].polygon_count
+    )
     assert rebuilt.bound.geometries[0].octants is not None
     assert source.bound.geometries[0].octants is not None
-    assert rebuilt.bound.geometries[0].octants.items == source.bound.geometries[0].octants.items
+    assert (
+        rebuilt.bound.geometries[0].octants.items
+        == source.bound.geometries[0].octants.items
+    )
 
 
-def test_real_reference_ydr_directory_roundtrips_preserving_declarations(tmp_path: Path) -> None:
+@pytest.mark.integration
+def test_real_reference_ydr_directory_roundtrips_preserving_declarations(
+    tmp_path: Path,
+) -> None:
     reference_dir = require_reference("ydrs")
     paths = sorted(reference_dir.glob("*.ydr"))
     if not paths:
-        pytest.skip("real YDR reference directory not available")
+        pytest.fail("real YDR reference directory not available")
 
     sparse_uv_files: set[str] = set()
 
@@ -537,20 +628,35 @@ def test_real_reference_ydr_directory_roundtrips_preserving_declarations(tmp_pat
         rebuilt = read_ydr(out_path)
 
         assert len(rebuilt.meshes) == len(source.meshes), source_path.name
-        for source_mesh, rebuilt_mesh in zip(source.meshes, rebuilt.meshes, strict=True):
-            assert rebuilt_mesh.declaration_flags == source_mesh.declaration_flags, source_path.name
-            assert rebuilt_mesh.declaration_types == source_mesh.declaration_types, source_path.name
-            assert rebuilt_mesh.vertex_buffer_flags == source_mesh.vertex_buffer_flags, source_path.name
-            assert rebuilt_mesh.vertex_stride == source_mesh.vertex_stride, source_path.name
+        for source_mesh, rebuilt_mesh in zip(
+            source.meshes, rebuilt.meshes, strict=True
+        ):
+            assert rebuilt_mesh.declaration_flags == source_mesh.declaration_flags, (
+                source_path.name
+            )
+            assert rebuilt_mesh.declaration_types == source_mesh.declaration_types, (
+                source_path.name
+            )
+            assert (
+                rebuilt_mesh.vertex_buffer_flags == source_mesh.vertex_buffer_flags
+            ), source_path.name
+            assert rebuilt_mesh.vertex_stride == source_mesh.vertex_stride, (
+                source_path.name
+            )
             assert rebuilt_mesh.bone_ids == source_mesh.bone_ids, source_path.name
-            assert rebuilt_mesh.blend_indices == source_mesh.blend_indices, source_path.name
-            assert len(rebuilt_mesh.texcoords) == len(source_mesh.texcoords), source_path.name
+            assert rebuilt_mesh.blend_indices == source_mesh.blend_indices, (
+                source_path.name
+            )
+            assert len(rebuilt_mesh.texcoords) == len(source_mesh.texcoords), (
+                source_path.name
+            )
             if any(not channel for channel in source_mesh.texcoords[:-1]):
                 sparse_uv_files.add(source_path.name)
 
     assert {"ch2_09_l2_a.ydr", "ch2_09_l4.ydr"} <= sparse_uv_files
 
 
+@pytest.mark.integration
 def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -> None:
     source_path = require_reference("ydrs", "lux_prop_lighter_luxe.ydr")
 
@@ -571,7 +677,10 @@ def test_real_reference_skinned_ydr_reads_packed_blend_indices(tmp_path: Path) -
     assert rebuilt.meshes[0].blend_indices == mesh.blend_indices
 
 
-def test_real_reference_rigid_bone_bound_ydr_preserves_model_bindings(tmp_path: Path) -> None:
+@pytest.mark.integration
+def test_real_reference_rigid_bone_bound_ydr_preserves_model_bindings(
+    tmp_path: Path,
+) -> None:
     source_path = require_reference("ydrs", "prop_windmill_01_l1.ydr")
 
     source = read_ydr(source_path)

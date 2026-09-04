@@ -6,6 +6,8 @@ import unittest
 import zlib
 from pathlib import Path
 
+import pytest
+
 from fivefury import (
     Cdr,
     CdrGeometryType,
@@ -85,7 +87,9 @@ def _build_minimal_cdr() -> bytes:
     struct.pack_into(">3H", graphics, 36, 0, 1, 2)
     payload = bytes(system + graphics)
     compressed = zlib.compress(payload, level=9, wbits=-15)
-    return struct.pack("<4I", RSC7_MAGIC, 164, system_flags, graphics_flags) + compressed
+    return (
+        struct.pack("<4I", RSC7_MAGIC, 164, system_flags, graphics_flags) + compressed
+    )
 
 
 class CdrTests(unittest.TestCase):
@@ -110,7 +114,7 @@ class CdrTests(unittest.TestCase):
         self.assertEqual(mesh.indices, [0, 1, 2])
 
     def test_decompress_edge_triangle_reuse_stream(self) -> None:
-        raw = struct.pack(">3HBB", 0, 0, 1, 0, 0) + b"\x00\xC0"
+        raw = struct.pack(">3HBB", 0, 0, 1, 0, 0) + b"\x00\xc0"
 
         self.assertEqual(decompress_edge_indices(raw, 6), [0, 1, 2, 0, 2, 3])
 
@@ -125,7 +129,9 @@ class CdrTests(unittest.TestCase):
         self.assertEqual(shader.name, "trees_lod2d")
         self.assertEqual(shader.pick_file_name(3), "trees_lod2d.sps")
         self.assertEqual(shader.get_parameter(0x744E7500).name, "treeLod2Params")
-        self.assertEqual(get_cdr_parameter_definition(0xD545098C).name, "RESERVE_VS_CONST_c255")
+        self.assertEqual(
+            get_cdr_parameter_definition(0xD545098C).name, "RESERVE_VS_CONST_c255"
+        )
 
     def test_gamefilecache_loads_loose_cdr(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -142,22 +148,31 @@ class CdrTests(unittest.TestCase):
             self.assertIsInstance(loaded.parsed, Cdr)
             self.assertEqual(len(cache.CdrDict), 1)
 
+    @pytest.mark.integration
     def test_real_edge_drawable_when_available(self) -> None:
         source = _PS3_REFERENCE / "dt1_00_3.cdr"
         if not source.exists():
-            self.skipTest("PS3 CDR fixture is not available")
+            pytest.fail("PS3 CDR fixture is not available")
 
         drawable = read_cdr(source)
 
         self.assertEqual(len(drawable.materials), 5)
         self.assertEqual(len(drawable.meshes), 5)
-        self.assertTrue(all(mesh.geometry_type is CdrGeometryType.EDGE for mesh in drawable.meshes))
-        self.assertTrue(all(mesh.indices and max(mesh.indices) < mesh.vertex_count for mesh in drawable.meshes))
+        self.assertTrue(
+            all(mesh.geometry_type is CdrGeometryType.EDGE for mesh in drawable.meshes)
+        )
+        self.assertTrue(
+            all(
+                mesh.indices and max(mesh.indices) < mesh.vertex_count
+                for mesh in drawable.meshes
+            )
+        )
 
+    @pytest.mark.integration
     def test_real_quick_buffer_drawable_when_available(self) -> None:
         source = _PS3_REFERENCE / "dt1_00_telegraph_cables_01.cdr"
         if not source.exists():
-            self.skipTest("PS3 CDR fixture is not available")
+            pytest.fail("PS3 CDR fixture is not available")
 
         drawable = read_cdr(source)
         mesh = drawable.meshes[0]
@@ -166,6 +181,7 @@ class CdrTests(unittest.TestCase):
         self.assertEqual(mesh.vertex_count, 112)
         self.assertEqual(mesh.index_count, 288)
 
+    @pytest.mark.integration
     def test_real_ps3_only_tree_shader_when_available(self) -> None:
         source = (
             _PS3_EXTRACTED_ROOT
@@ -175,10 +191,12 @@ class CdrTests(unittest.TestCase):
             / "prop_bush_med_01.cdr"
         )
         if not source.exists():
-            self.skipTest("PS3 vegetation CDR fixture is not available")
+            pytest.fail("PS3 vegetation CDR fixture is not available")
 
         drawable = read_cdr(source)
-        material = next(item for item in drawable.materials if item.shader_hash == 0xA1CF7B67)
+        material = next(
+            item for item in drawable.materials if item.shader_hash == 0xA1CF7B67
+        )
 
         self.assertEqual(material.shader_name, "trees_lod2d")
         self.assertEqual(material.shader_file_name, "trees_lod2d.sps")

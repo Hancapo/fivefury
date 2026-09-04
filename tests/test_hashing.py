@@ -22,9 +22,10 @@ from fivefury.ytyp import Archetype, Ytyp
 
 
 class HashingContractTests:
+    @pytest.mark.requires_platform("nt")
     def test_windows_aes_decryptor_reuses_handles_across_many_calls(self) -> None:
         if os.name != "nt":
-            pytest.skip("Windows CNG AES regression test is only relevant on Windows")
+            pytest.fail("Windows CNG AES regression test is only relevant on Windows")
         import fivefury.crypto as crypto_module
 
         decryptor = crypto_module._build_windows_aes_decryptor(
@@ -47,7 +48,7 @@ class HashingContractTests:
         from fivefury.hashing import jenk_hash, jenk_hash_many
 
         values = ["", "test", b"CMapData", "prop_tree_pine_01"]
-        assert jenk_hash_many((value for value in values)) == [
+        assert jenk_hash_many(value for value in values) == [
             jenk_hash(value) for value in values
         ]
 

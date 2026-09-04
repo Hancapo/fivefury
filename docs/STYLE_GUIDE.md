@@ -144,6 +144,25 @@ with newer headers. Run `tests/test_native_abi_buffers.py` against the built whe
 with `FIVEFURY_ABI_TEST_PYTHON` pointing to Python 3.11. Build-host tests alone do
 not verify the compatibility promised by the wheel tag.
 
+## Test contracts
+
+- Unit tests must run without a game installation or private asset corpus. Generate
+  synthetic inputs for general contracts; retain independent binary assertions
+  and real-file tests where format fidelity needs external evidence.
+- Import the current API directly. Do not search alternative symbol names, catch
+  missing API errors, or condition assertions on a method being present.
+- Mark external tests with `integration`, cross-interpreter checks with `abi`,
+  and timing measurements with `performance`. Selection is explicit through
+  `--suite`; a selected test must fail if its prerequisite is missing.
+- Do not use `skip`, `skipif`, `importorskip`, or empty parameter sets to hide a
+  missing requirement. Platform-specific tests use `requires_platform`.
+- Functional tests assert observable results and call counts, not relative wall
+  time or artificial sleeps. Performance measurements belong in benchmarks.
+- Source and wheel runs exercise the same test files. Subprocess tests must use
+  the same package installation as their parent, not an incidental editable copy.
+- Track all test sources and synthetic fixtures. Never commit private game assets
+  or local paths; configure external data through the documented environment.
+
 ## Compatibility policy
 
 FiveFury favors a coherent current API over compatibility with accidental historical APIs. Breaking refactors must:

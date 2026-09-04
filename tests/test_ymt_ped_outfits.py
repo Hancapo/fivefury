@@ -39,7 +39,9 @@ def test_iter_ped_props_enumerates_every_anchor_drawable_and_texture_count() -> 
 
     props = list(iter_ped_props(ymt))
 
-    assert [(item.anchor, item.drawable_index, item.texture_count) for item in props] == [
+    assert [
+        (item.anchor, item.drawable_index, item.texture_count) for item in props
+    ] == [
         (PedPropAnchor.HEAD, 0, 1),
         (PedPropAnchor.HEAD, 1, 3),
         (PedPropAnchor.HEAD, 2, 2),
@@ -207,7 +209,9 @@ def test_ped_outfit_catalog_supports_same_name_dictionaries(
 
     def load_asset(_cache, asset):
         loaded.append(asset.path)
-        parsed = _outfit_ymt(texture_count=1) if asset.kind is GameFileType.YMT else object()
+        parsed = (
+            _outfit_ymt(texture_count=1) if asset.kind is GameFileType.YMT else object()
+        )
         return GameFile(path=asset.path, kind=asset.kind, parsed=parsed, loaded=True)
 
     monkeypatch.setattr(GameFileCache, "load_asset", load_asset)
@@ -234,9 +238,7 @@ def test_ped_outfit_selection_reports_invalid_indices(
     bad_texture = cache.resolve_ped_outfit_variant(catalog, 0, 0, 2)
 
     assert [issue.code for issue in bad_slot.issues] == ["outfit.slot_invalid"]
-    assert [issue.code for issue in bad_drawable.issues] == [
-        "outfit.drawable_invalid"
-    ]
+    assert [issue.code for issue in bad_drawable.issues] == ["outfit.drawable_invalid"]
     assert [issue.code for issue in bad_texture.issues] == ["outfit.texture_invalid"]
     cache.close()
 
@@ -304,9 +306,7 @@ def test_ped_outfit_catalog_reports_missing_variation_metadata(tmp_path: Path) -
     catalog = cache.resolve_ped_outfit_catalog("missing_ped")
 
     assert not catalog.slots
-    assert [issue.code for issue in catalog.issues] == [
-        "outfit.variation_unresolved"
-    ]
+    assert [issue.code for issue in catalog.issues] == ["outfit.variation_unresolved"]
     cache.close()
 
 
@@ -335,10 +335,7 @@ def test_ped_outfit_catalog_reports_malformed_variation_metadata(
     cache.close()
 
 
-@pytest.mark.skipif(
-    not os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH"),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail ped outfit audit",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_retail_protagonist_catalog_exceeds_prologue_cut_dependencies() -> None:
     root = Path(os.environ["FIVEFURY_GTA5_ENHANCED_PATH"])
     with GameFileCache(root, use_index_cache=True) as cache:

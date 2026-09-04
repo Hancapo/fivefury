@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,19 +22,9 @@ def _cache(tmp_path: Path, *paths: str) -> GameFileCache:
     return cache
 
 
-def _configured_retail_game_paths() -> list[tuple[str, Path, GameTarget]]:
-    result = []
-    for edition, variable, game in (
-        ("legacy", "FIVEFURY_GTA5_LEGACY_PATH", GameTarget.GTA5),
-        ("enhanced", "FIVEFURY_GTA5_ENHANCED_PATH", GameTarget.GTA5_ENHANCED),
-    ):
-        value = os.environ.get(variable)
-        if value and Path(value).is_dir():
-            result.append((edition, Path(value), game))
-    return result
+from tests.helpers import retail_games
 
-
-_RETAIL_GAME_PATHS = _configured_retail_game_paths()
+_RETAIL_GAME_PATHS = retail_games()
 
 
 def _binding(
@@ -236,6 +225,7 @@ def test_vehicle_high_detail_and_base_models_are_texture_resolution_roots(
     assert not issues
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("_edition", "game_path", "game"),
     _RETAIL_GAME_PATHS,

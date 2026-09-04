@@ -60,11 +60,6 @@ REFERENCE_YCD_DIR = reference_root() / "ycd"
 YCD_PATH = REFERENCE_YCD_DIR / "maude_mcs_1-0.ycd"
 
 
-requires_ycd_sample = pytest.mark.skipif(
-    not YCD_PATH.is_file(), reason="YCD sample not available"
-)
-
-
 def _ycd_header() -> ResourceHeader:
     return ResourceHeader(version=46, system_flags=0, graphics_flags=0)
 
@@ -179,8 +174,7 @@ def test_ycd_writer_preserves_address_shaped_hash_map_keys(
 
     assert matching_entries
     assert all(
-        not span.relocate_pointers or span.pointer_offsets is not None
-        for span in spans
+        not span.relocate_pointers or span.pointer_offsets is not None for span in spans
     )
     assert all(span.pointer_offsets == (0x08, 0x10) for span in matching_entries)
 
@@ -221,7 +215,9 @@ def test_ycd_reader_resolves_sequence_from_graphics_pages() -> None:
     bucket_capacity = int.from_bytes(
         system[animations_map + 0x20 : animations_map + 0x22], "little"
     )
-    bucket_pointers = struct.unpack_from(f"<{bucket_capacity}Q", system, buckets_pointer)
+    bucket_pointers = struct.unpack_from(
+        f"<{bucket_capacity}Q", system, buckets_pointer
+    )
     map_entry = next(pointer for pointer in bucket_pointers if pointer) - 0x50000000
     animation_pointer = (
         int.from_bytes(system[map_entry + 0x08 : map_entry + 0x10], "little")
@@ -264,12 +260,10 @@ def test_ycd_reader_resolves_sequence_from_graphics_pages() -> None:
     )
     assert embedded_rebuilt.animations[0].evaluate_tracks(0.5)[
         track_key
-    ] == pytest.approx(
-        expected[track_key]
-    )
+    ] == pytest.approx(expected[track_key])
 
 
-@requires_ycd_sample
+@pytest.mark.integration
 def test_read_ycd_smoke() -> None:
     ycd = read_ycd(YCD_PATH)
 
@@ -282,7 +276,9 @@ def test_read_ycd_smoke() -> None:
     assert ycd.animation_entry_count == 5
     assert all(isinstance(clip, YcdClipAnimation) for clip in ycd.clips)
 
-    export_camera = next(clip for clip in ycd.clips if clip.short_name == "exportcamera-0")
+    export_camera = next(
+        clip for clip in ycd.clips if clip.short_name == "exportcamera-0"
+    )
     assert export_camera.animation is not None
     assert export_camera.animation.frames == 241
     assert export_camera.animation.duration == pytest.approx(8.0)
@@ -294,7 +290,10 @@ def test_read_ycd_smoke() -> None:
     assert export_camera.tags[0].end_phase == pytest.approx(0.8126250505447388)
     assert export_camera.tags[0].tags
     assert export_camera.properties[0].attributes
-    assert export_camera.properties[0].attributes[0].attribute_type is YcdClipPropertyAttributeType.INT
+    assert (
+        export_camera.properties[0].attributes[0].attribute_type
+        is YcdClipPropertyAttributeType.INT
+    )
     assert export_camera.properties[0].attributes[0].value == 0
 
     animation = export_camera.animation
@@ -315,7 +314,7 @@ def test_read_ycd_smoke() -> None:
     assert maude.animation.sequences[0].frame_length == 76
 
 
-@requires_ycd_sample
+@pytest.mark.integration
 def test_ycd_build_cutscene_map_strips_suffixes() -> None:
     ycd = read_ycd(YCD_PATH)
     cutscene_map = ycd.build_cutscene_map(0)
@@ -327,7 +326,7 @@ def test_ycd_build_cutscene_map_strips_suffixes() -> None:
     assert maude.short_name == "csb_maude_dual-0"
 
 
-@requires_ycd_sample
+@pytest.mark.integration
 def test_ycd_clip_and_animation_lookup() -> None:
     ycd = read_ycd(YCD_PATH)
 
@@ -341,7 +340,7 @@ def test_ycd_clip_and_animation_lookup() -> None:
     assert animation.find_bone(0, track=7) is not None
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_uv_animation_support() -> None:
     ycd = read_ycd(REFERENCE_YCD_DIR / "sm_21.ycd")
     clip = ycd.get_clip("sm_21_uvanim_uv_1")
@@ -371,7 +370,10 @@ def test_ycd_uv_animation_support() -> None:
         int(YcdAnimationTrack.SHADER_SLIDE_U),
         int(YcdAnimationTrack.SHADER_SLIDE_V),
     }
-    assert all(sequence.bone_id is not None and sequence.bone_id.bone_id == 0 for sequence in animation.uv_sequences)
+    assert all(
+        sequence.bone_id is not None and sequence.bone_id.bone_id == 0
+        for sequence in animation.uv_sequences
+    )
     assert animation.sequences[0].anim_sequences
     assert animation.sequences[0].anim_sequences[0].channels
     assert animation.sequences[0].anim_sequences[0].channels[0].channel_type in {
@@ -381,7 +383,7 @@ def test_ycd_uv_animation_support() -> None:
     }
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_object_animation_support() -> None:
     ycd = read_ycd(REFERENCE_YCD_DIR / "cs2_08.ycd")
     clip = ycd.get_clip("cs2_08_animboxmain")
@@ -403,12 +405,14 @@ def test_ycd_object_animation_support() -> None:
         int(YcdAnimationTrack.BONE_TRANSLATION),
         int(YcdAnimationTrack.BONE_ROTATION),
     }
-    rotation_sequence = animation.find_sequences(track=YcdAnimationTrack.BONE_ROTATION)[0]
+    rotation_sequence = animation.find_sequences(track=YcdAnimationTrack.BONE_ROTATION)[
+        0
+    ]
     assert rotation_sequence.is_rotation_track
     assert len(rotation_sequence.evaluate_quaternion(0)) == 4
 
 
-@requires_ycd_sample
+@pytest.mark.integration
 def test_ycd_root_motion_camera_and_bone_support() -> None:
     ycd = read_ycd(YCD_PATH)
 
@@ -427,7 +431,10 @@ def test_ycd_root_motion_camera_and_bone_support() -> None:
 
     facial_samples = actor.evaluate_facial_animation_at_time(actor.duration * 0.5)
     assert facial_samples
-    assert all(isinstance(sample, YcdFacialAnimationSample) for sample in facial_samples.values())
+    assert all(
+        isinstance(sample, YcdFacialAnimationSample)
+        for sample in facial_samples.values()
+    )
     assert any(sample.control is not None for sample in facial_samples.values())
     assert any(sample.translation is not None for sample in facial_samples.values())
     assert any(sample.rotation is not None for sample in facial_samples.values())
@@ -446,7 +453,7 @@ def test_ycd_root_motion_camera_and_bone_support() -> None:
     assert camera_sample.field_of_view is not None
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_time_based_uv_and_object_evaluation() -> None:
     uv_ycd = read_ycd(REFERENCE_YCD_DIR / "sm_21.ycd")
     uv_clip = uv_ycd.get_clip("sm_21_uvanim_uv_1")
@@ -480,7 +487,7 @@ def test_ycd_uv_binding_helpers() -> None:
     assert parse_ycd_uv_clip_binding("plain_clip_name") is None
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_read_all_reference_ycd_samples() -> None:
     sample_paths = sorted(REFERENCE_YCD_DIR.glob("*.ycd"))
 
@@ -531,7 +538,9 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_property.unknown_hash.uint == original_property.unknown_hash.uint
         assert rebuilt_property.unknown_3ch == original_property.unknown_3ch
         assert len(rebuilt_property.attributes) == len(original_property.attributes)
-        for original_attribute, rebuilt_attribute in zip(original_property.attributes, rebuilt_property.attributes, strict=True):
+        for original_attribute, rebuilt_attribute in zip(
+            original_property.attributes, rebuilt_property.attributes, strict=True
+        ):
             _assert_attribute_equivalent(original_attribute, rebuilt_attribute)
 
     def _assert_tag_equivalent(original_tag, rebuilt_tag) -> None:
@@ -544,7 +553,9 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_tag.tag_list_reserved_18h == original_tag.tag_list_reserved_18h
         assert rebuilt_tag.tag_list_reserved_1ch == original_tag.tag_list_reserved_1ch
         assert len(rebuilt_tag.tags) == len(original_tag.tags)
-        for original_nested_tag, rebuilt_nested_tag in zip(original_tag.tags, rebuilt_tag.tags, strict=True):
+        for original_nested_tag, rebuilt_nested_tag in zip(
+            original_tag.tags, rebuilt_tag.tags, strict=True
+        ):
             _assert_tag_equivalent(original_nested_tag, rebuilt_nested_tag)
 
     def _assert_channel_equivalent(original_channel, rebuilt_channel) -> None:
@@ -569,10 +580,17 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
             assert rebuilt_channel.quat_index == original_channel.quat_index
         for attribute_name in ("quantum", "offset"):
             if hasattr(original_channel, attribute_name):
-                assert getattr(rebuilt_channel, attribute_name) == pytest.approx(getattr(original_channel, attribute_name))
+                assert getattr(rebuilt_channel, attribute_name) == pytest.approx(
+                    getattr(original_channel, attribute_name)
+                )
 
-    def _assert_anim_sequence_equivalent(original_anim_sequence, rebuilt_anim_sequence) -> None:
-        assert rebuilt_anim_sequence.is_cached_quaternion == original_anim_sequence.is_cached_quaternion
+    def _assert_anim_sequence_equivalent(
+        original_anim_sequence, rebuilt_anim_sequence
+    ) -> None:
+        assert (
+            rebuilt_anim_sequence.is_cached_quaternion
+            == original_anim_sequence.is_cached_quaternion
+        )
         original_bone = original_anim_sequence.bone_id
         rebuilt_bone = rebuilt_anim_sequence.bone_id
         if original_bone is None:
@@ -582,7 +600,9 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
             assert rebuilt_bone.bone_id == original_bone.bone_id
             assert rebuilt_bone.track == original_bone.track
             assert int(rebuilt_bone.format) == int(original_bone.format)
-        assert len(rebuilt_anim_sequence.channels) == len(original_anim_sequence.channels)
+        assert len(rebuilt_anim_sequence.channels) == len(
+            original_anim_sequence.channels
+        )
         for original_channel, rebuilt_channel in zip(
             original_anim_sequence.channels,
             rebuilt_anim_sequence.channels,
@@ -595,46 +615,74 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_sequence.num_frames == original_sequence.num_frames
         assert rebuilt_sequence.frame_length == original_sequence.frame_length
         assert rebuilt_sequence.chunk_size == original_sequence.chunk_size
-        assert rebuilt_sequence.root_motion_ref_counts == original_sequence.root_motion_ref_counts
+        assert (
+            rebuilt_sequence.root_motion_ref_counts
+            == original_sequence.root_motion_ref_counts
+        )
         assert rebuilt_sequence.unused_08h == original_sequence.unused_08h
         assert rebuilt_sequence.unused_14h == original_sequence.unused_14h
-        assert [(item.channel_type, item.channel_index) for item in rebuilt_sequence.root_position_refs] == [
-            (item.channel_type, item.channel_index) for item in original_sequence.root_position_refs
+        assert [
+            (item.channel_type, item.channel_index)
+            for item in rebuilt_sequence.root_position_refs
+        ] == [
+            (item.channel_type, item.channel_index)
+            for item in original_sequence.root_position_refs
         ]
-        assert [(item.channel_type, item.channel_index) for item in rebuilt_sequence.root_rotation_refs] == [
-            (item.channel_type, item.channel_index) for item in original_sequence.root_rotation_refs
+        assert [
+            (item.channel_type, item.channel_index)
+            for item in rebuilt_sequence.root_rotation_refs
+        ] == [
+            (item.channel_type, item.channel_index)
+            for item in original_sequence.root_rotation_refs
         ]
-        assert len(rebuilt_sequence.anim_sequences) == len(original_sequence.anim_sequences)
+        assert len(rebuilt_sequence.anim_sequences) == len(
+            original_sequence.anim_sequences
+        )
         for original_anim_sequence, rebuilt_anim_sequence in zip(
             original_sequence.anim_sequences,
             rebuilt_sequence.anim_sequences,
             strict=True,
         ):
-            _assert_anim_sequence_equivalent(original_anim_sequence, rebuilt_anim_sequence)
+            _assert_anim_sequence_equivalent(
+                original_anim_sequence, rebuilt_anim_sequence
+            )
 
     def _assert_animation_equivalent(original_animation, rebuilt_animation) -> None:
         assert rebuilt_animation.hash.uint == original_animation.hash.uint
         assert rebuilt_animation.frames == original_animation.frames
-        assert rebuilt_animation.sequence_frame_limit == original_animation.sequence_frame_limit
+        assert (
+            rebuilt_animation.sequence_frame_limit
+            == original_animation.sequence_frame_limit
+        )
         assert rebuilt_animation.duration == pytest.approx(original_animation.duration)
         assert rebuilt_animation.usage_count == original_animation.usage_count
         assert rebuilt_animation.sequence_count == original_animation.sequence_count
         assert rebuilt_animation.bone_id_count == original_animation.bone_id_count
-        assert rebuilt_animation.vft == get_ycd_runtime_profile(original.game).animation_vft
+        assert (
+            rebuilt_animation.vft
+            == get_ycd_runtime_profile(original.game).animation_vft
+        )
         assert rebuilt_animation.flags == original_animation.flags
         expected_max_seq_block_length = max(
             (0x20 + len(sequence.raw_data) for sequence in rebuilt_animation.sequences),
             default=0,
         )
         assert rebuilt_animation.max_seq_block_length == expected_max_seq_block_length
-        assert rebuilt_animation.raw_unknown_hash.uint == original_animation.raw_unknown_hash.uint
+        assert (
+            rebuilt_animation.raw_unknown_hash.uint
+            == original_animation.raw_unknown_hash.uint
+        )
         assert len(rebuilt_animation.bone_ids) == len(original_animation.bone_ids)
-        for original_bone_id, rebuilt_bone_id in zip(original_animation.bone_ids, rebuilt_animation.bone_ids, strict=True):
+        for original_bone_id, rebuilt_bone_id in zip(
+            original_animation.bone_ids, rebuilt_animation.bone_ids, strict=True
+        ):
             assert rebuilt_bone_id.bone_id == original_bone_id.bone_id
             assert rebuilt_bone_id.track == original_bone_id.track
         assert int(rebuilt_bone_id.format) == int(original_bone_id.format)
         assert len(rebuilt_animation.sequences) == len(original_animation.sequences)
-        for original_sequence, rebuilt_sequence in zip(original_animation.sequences, rebuilt_animation.sequences, strict=True):
+        for original_sequence, rebuilt_sequence in zip(
+            original_animation.sequences, rebuilt_animation.sequences, strict=True
+        ):
             _assert_sequence_equivalent(original_sequence, rebuilt_sequence)
 
     assert rebuilt.header.version == original.header.version
@@ -645,7 +693,9 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
     assert rebuilt.clip_bucket_capacity >= rebuilt.clip_entry_count
     assert rebuilt.animation_bucket_capacity >= rebuilt.animation_entry_count
 
-    for original_animation, rebuilt_animation in zip(original.animations, rebuilt.animations, strict=True):
+    for original_animation, rebuilt_animation in zip(
+        original.animations, rebuilt.animations, strict=True
+    ):
         _assert_animation_equivalent(original_animation, rebuilt_animation)
 
     for original_clip, rebuilt_clip in zip(original.clips, rebuilt.clips, strict=True):
@@ -659,12 +709,19 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         assert rebuilt_clip.tag_list_reserved_14h == original_clip.tag_list_reserved_14h
         assert rebuilt_clip.tag_list_reserved_18h == original_clip.tag_list_reserved_18h
         assert rebuilt_clip.tag_list_reserved_1ch == original_clip.tag_list_reserved_1ch
-        assert rebuilt_clip.property_map_reserved_0ch == original_clip.property_map_reserved_0ch
+        assert (
+            rebuilt_clip.property_map_reserved_0ch
+            == original_clip.property_map_reserved_0ch
+        )
         assert len(rebuilt_clip.tags) == len(original_clip.tags)
         assert len(rebuilt_clip.properties) == len(original_clip.properties)
-        for original_tag, rebuilt_tag in zip(original_clip.tags, rebuilt_clip.tags, strict=True):
+        for original_tag, rebuilt_tag in zip(
+            original_clip.tags, rebuilt_clip.tags, strict=True
+        ):
             _assert_tag_equivalent(original_tag, rebuilt_tag)
-        for original_property, rebuilt_property in zip(original_clip.properties, rebuilt_clip.properties, strict=True):
+        for original_property, rebuilt_property in zip(
+            original_clip.properties, rebuilt_clip.properties, strict=True
+        ):
             _assert_property_equivalent(original_property, rebuilt_property)
         if isinstance(original_clip, YcdClipAnimation):
             assert isinstance(rebuilt_clip, YcdClipAnimation)
@@ -677,30 +734,72 @@ def _assert_ycd_roundtrip_equivalent(original, rebuilt) -> None:
         else:
             assert isinstance(rebuilt_clip, type(original_clip))
             if hasattr(original_clip, "total_duration"):
-                assert rebuilt_clip.total_duration == pytest.approx(original_clip.total_duration)
+                assert rebuilt_clip.total_duration == pytest.approx(
+                    original_clip.total_duration
+                )
                 assert rebuilt_clip.parallel == original_clip.parallel
                 assert rebuilt_clip.parallel_padding == original_clip.parallel_padding
                 assert rebuilt_clip.reserved_68h == original_clip.reserved_68h
                 assert rebuilt_clip.reserved_6ch == original_clip.reserved_6ch
                 assert len(rebuilt_clip.animations) == len(original_clip.animations)
-                for original_entry, rebuilt_entry in zip(original_clip.animations, rebuilt_clip.animations, strict=True):
-                    assert rebuilt_entry.start_time == pytest.approx(original_entry.start_time)
-                    assert rebuilt_entry.end_time == pytest.approx(original_entry.end_time)
+                for original_entry, rebuilt_entry in zip(
+                    original_clip.animations, rebuilt_clip.animations, strict=True
+                ):
+                    assert rebuilt_entry.start_time == pytest.approx(
+                        original_entry.start_time
+                    )
+                    assert rebuilt_entry.end_time == pytest.approx(
+                        original_entry.end_time
+                    )
                     assert rebuilt_entry.rate == pytest.approx(original_entry.rate)
-                    assert rebuilt_entry.alignment_padding_0ch == original_entry.alignment_padding_0ch
+                    assert (
+                        rebuilt_entry.alignment_padding_0ch
+                        == original_entry.alignment_padding_0ch
+                    )
 
 
-@requires_ycd_sample
-def test_ycd_roundtrip_smoke() -> None:
-    expected = read_ycd(YCD_PATH)
-    source = read_ycd(YCD_PATH)
+@pytest.fixture(
+    params=[
+        GameTarget.GTA5,
+        GameTarget.GTA5_ENHANCED,
+        pytest.param("retail", marks=pytest.mark.integration),
+    ]
+)
+def roundtrip_ycd_payload(request):
+    if request.param == "retail":
+        return YCD_PATH.read_bytes()
+    source = _minimal_ycd_with_hash(MetaHash("exportcamera-0").uint, request.param)
+    animation = _two_frame_animation(
+        YcdAnimationTrack.BONE_TRANSLATION,
+        (0, 0, 0, 0),
+        (1, 2, 3, 0),
+    )
+    animation.sequences[0].anim_sequences[0].channels = (
+        animation.sequences[0].anim_sequences[0].channels[:3]
+    )
+    source.animations = [animation]
+    clip = source.clips[0]
+    clip.name = "exportcamera-0.clip"
+    clip.short_name = "exportcamera-0"
+    clip.animation = animation
+    clip.animation_hash = animation.hash
+    return build_ycd_bytes(source)
+
+
+def test_ycd_roundtrip_smoke(roundtrip_ycd_payload) -> None:
+    expected = read_ycd(roundtrip_ycd_payload)
+    source = read_ycd(roundtrip_ycd_payload)
     raw = build_ycd_bytes(source)
     rebuilt = read_ycd(raw)
     header, system_data, _ = split_rsc7_sections(raw)
     pages_info_offset = int.from_bytes(system_data[0x08:0x10], "little") - 0x50000000
 
-    assert system_data[pages_info_offset + 0x08] == get_resource_total_page_count(header.system_flags)
-    assert system_data[pages_info_offset + 0x09] == get_resource_total_page_count(header.graphics_flags)
+    assert system_data[pages_info_offset + 0x08] == get_resource_total_page_count(
+        header.system_flags
+    )
+    assert system_data[pages_info_offset + 0x09] == get_resource_total_page_count(
+        header.graphics_flags
+    )
     _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
@@ -709,35 +808,63 @@ def _mutate_first_serializable_channel(animation) -> tuple[int, int, int, str, o
         for anim_sequence_index, anim_sequence in enumerate(sequence.anim_sequences):
             for channel_index, channel in enumerate(anim_sequence.channels):
                 if hasattr(channel, "frames") and hasattr(channel, "values"):
-                    target = float(getattr(channel, "offset", 0.0)) + (float(getattr(channel, "quantum", 0.0)) or 1.0)
+                    target = float(getattr(channel, "offset", 0.0)) + (
+                        float(getattr(channel, "quantum", 0.0)) or 1.0
+                    )
                     channel.values = [target]
                     channel.frames = [0] * max(sequence.num_frames, 1)
-                    return sequence_index, anim_sequence_index, channel_index, "values", target
+                    return (
+                        sequence_index,
+                        anim_sequence_index,
+                        channel_index,
+                        "values",
+                        target,
+                    )
                 if hasattr(channel, "values"):
                     values = channel.values
                     if values:
-                        target = float(getattr(channel, "offset", 0.0)) + (float(getattr(channel, "quantum", 0.0)) or 1.0)
+                        target = float(getattr(channel, "offset", 0.0)) + (
+                            float(getattr(channel, "quantum", 0.0)) or 1.0
+                        )
                         channel.values = [target] * len(values)
-                        return sequence_index, anim_sequence_index, channel_index, "values", target
+                        return (
+                            sequence_index,
+                            anim_sequence_index,
+                            channel_index,
+                            "values",
+                            target,
+                        )
                 if hasattr(channel, "value"):
                     current = channel.value
                     if isinstance(current, tuple) and len(current) == 4:
                         xyz = (0.1, 0.2, 0.3)
-                        w = math.sqrt(max(1.0 - sum(component * component for component in xyz), 0.0))
+                        w = math.sqrt(
+                            max(
+                                1.0 - sum(component * component for component in xyz),
+                                0.0,
+                            )
+                        )
                         target = (*xyz, w)
                     elif isinstance(current, tuple) and len(current) == 3:
                         target = (1.0, 2.0, 3.0)
                     else:
                         target = 1.25
                     channel.value = target
-                    return sequence_index, anim_sequence_index, channel_index, "value", target
+                    return (
+                        sequence_index,
+                        anim_sequence_index,
+                        channel_index,
+                        "value",
+                        target,
+                    )
     raise AssertionError("No serializable YCD channel was found")
 
 
-@requires_ycd_sample
-def test_ycd_roundtrip_rebuilds_sequences_without_raw_data() -> None:
-    expected = read_ycd(YCD_PATH)
-    source = read_ycd(YCD_PATH)
+def test_ycd_roundtrip_rebuilds_sequences_without_raw_data(
+    roundtrip_ycd_payload,
+) -> None:
+    expected = read_ycd(roundtrip_ycd_payload)
+    source = read_ycd(roundtrip_ycd_payload)
     for animation in source.animations:
         for sequence in animation.sequences:
             sequence.raw_data = b""
@@ -745,14 +872,15 @@ def test_ycd_roundtrip_rebuilds_sequences_without_raw_data() -> None:
     _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
-@requires_ycd_sample
-def test_ycd_roundtrip_persists_channel_edits() -> None:
-    ycd = read_ycd(YCD_PATH)
+def test_ycd_roundtrip_persists_channel_edits(roundtrip_ycd_payload) -> None:
+    ycd = read_ycd(roundtrip_ycd_payload)
     clip = ycd.get_clip("exportcamera-0")
     assert clip is not None
     assert clip.animation is not None
 
-    sequence_index, anim_sequence_index, channel_index, attribute_name, target = _mutate_first_serializable_channel(clip.animation)
+    sequence_index, anim_sequence_index, channel_index, attribute_name, target = (
+        _mutate_first_serializable_channel(clip.animation)
+    )
     for sequence in clip.animation.sequences:
         sequence.raw_data = b""
 
@@ -760,7 +888,11 @@ def test_ycd_roundtrip_persists_channel_edits() -> None:
     rebuilt_clip = rebuilt.get_clip("exportcamera-0")
     assert rebuilt_clip is not None
     assert rebuilt_clip.animation is not None
-    rebuilt_channel = rebuilt_clip.animation.sequences[sequence_index].anim_sequences[anim_sequence_index].channels[channel_index]
+    rebuilt_channel = (
+        rebuilt_clip.animation.sequences[sequence_index]
+        .anim_sequences[anim_sequence_index]
+        .channels[channel_index]
+    )
 
     if attribute_name == "values":
         rebuilt_values = rebuilt_channel.values
@@ -774,7 +906,7 @@ def test_ycd_roundtrip_persists_channel_edits() -> None:
             assert rebuilt_value == pytest.approx(target)
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_writer_rejects_uv_clip_hash_mismatch() -> None:
     ycd = read_ycd(REFERENCE_YCD_DIR / "sm_21.ycd")
     clip = ycd.get_clip("sm_21_uvanim_uv_1")
@@ -784,7 +916,7 @@ def test_ycd_writer_rejects_uv_clip_hash_mismatch() -> None:
         build_ycd_bytes(ycd)
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_writer_rejects_uv_clip_nonzero_bone_id() -> None:
     ycd = read_ycd(REFERENCE_YCD_DIR / "sm_21.ycd")
     clip = ycd.get_clip("sm_21_uvanim_uv_1")
@@ -797,7 +929,7 @@ def test_ycd_writer_rejects_uv_clip_nonzero_bone_id() -> None:
         build_ycd_bytes(ycd)
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_roundtrip_all_reference_samples() -> None:
     sample_paths = sorted(REFERENCE_YCD_DIR.glob("*.ycd"))
     assert sample_paths
@@ -808,15 +940,19 @@ def test_ycd_roundtrip_all_reference_samples() -> None:
         _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_roundtrip_preserves_linear_float_channels() -> None:
     path = REFERENCE_YCD_DIR / "cs2_08.ycd"
     expected = read_ycd(path)
     rebuilt = read_ycd(build_ycd_bytes(read_ycd(path)))
 
     matched = False
-    for original_animation, rebuilt_animation in zip(expected.animations, rebuilt.animations, strict=True):
-        for original_sequence, rebuilt_sequence in zip(original_animation.sequences, rebuilt_animation.sequences, strict=True):
+    for original_animation, rebuilt_animation in zip(
+        expected.animations, rebuilt.animations, strict=True
+    ):
+        for original_sequence, rebuilt_sequence in zip(
+            original_animation.sequences, rebuilt_animation.sequences, strict=True
+        ):
             for original_anim_sequence, rebuilt_anim_sequence in zip(
                 original_sequence.anim_sequences,
                 rebuilt_sequence.anim_sequences,
@@ -830,12 +966,14 @@ def test_ycd_roundtrip_preserves_linear_float_channels() -> None:
                     if original_channel.channel_type is not YcdChannelType.LINEAR_FLOAT:
                         continue
                     matched = True
-                    assert rebuilt_channel.values == pytest.approx(original_channel.values)
+                    assert rebuilt_channel.values == pytest.approx(
+                        original_channel.values
+                    )
                     assert rebuilt_channel.value_list == original_channel.value_list
     assert matched
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_writer_derives_skeletal_bone_ids_and_channel_indices() -> None:
     path = REFERENCE_YCD_DIR / "cs2_08.ycd"
     expected = read_ycd(path)
@@ -857,15 +995,24 @@ def test_ycd_writer_derives_skeletal_bone_ids_and_channel_indices() -> None:
         anim_sequence
         for sequence in prepared_animation.sequences
         for anim_sequence in sequence.anim_sequences
-        if any(channel.channel_type is YcdChannelType.CACHED_QUATERNION2 for channel in anim_sequence.channels)
+        if any(
+            channel.channel_type is YcdChannelType.CACHED_QUATERNION2
+            for channel in anim_sequence.channels
+        )
     )
-    assert [channel.channel_index for channel in cached_sequence.channels] == [0, 1, 2, 3, 4]
+    assert [channel.channel_index for channel in cached_sequence.channels] == [
+        0,
+        1,
+        2,
+        3,
+        4,
+    ]
 
     rebuilt = read_ycd(build_ycd_bytes(source))
     _assert_ycd_roundtrip_equivalent(expected, rebuilt)
 
 
-@pytest.mark.skipif(not REFERENCE_YCD_DIR.is_dir(), reason="reference ycd samples not available")
+@pytest.mark.integration
 def test_ycd_rotation_bone_ids_preserve_quaternion_format() -> None:
     source = read_ycd(REFERENCE_YCD_DIR / "cs2_08.ycd")
 
@@ -876,7 +1023,9 @@ def test_ycd_rotation_bone_ids_preserve_quaternion_format() -> None:
         if int(bone.track) == int(YcdAnimationTrack.BONE_ROTATION)
     ]
     assert rotation_bones
-    assert all(int(bone.format) == int(YcdTrackFormat.QUATERNION) for bone in rotation_bones)
+    assert all(
+        int(bone.format) == int(YcdTrackFormat.QUATERNION) for bone in rotation_bones
+    )
 
     rebuilt = read_ycd(build_ycd_bytes(source))
     rebuilt_rotation_bones = [
@@ -886,17 +1035,24 @@ def test_ycd_rotation_bone_ids_preserve_quaternion_format() -> None:
         if int(bone.track) == int(YcdAnimationTrack.BONE_ROTATION)
     ]
     assert rebuilt_rotation_bones
-    assert all(int(bone.format) == int(YcdTrackFormat.QUATERNION) for bone in rebuilt_rotation_bones)
+    assert all(
+        int(bone.format) == int(YcdTrackFormat.QUATERNION)
+        for bone in rebuilt_rotation_bones
+    )
 
 
 def test_ycd_bone_id_format_defaults_from_track() -> None:
     rotation_bone = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.BONE_ROTATION)
-    translation_bone = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.BONE_TRANSLATION)
+    translation_bone = YcdAnimationBoneId(
+        bone_id=0, track=YcdAnimationTrack.BONE_TRANSLATION
+    )
     uv_bone = YcdAnimationBoneId(bone_id=0, track=YcdAnimationTrack.SHADER_SLIDE_U)
 
     assert int(rotation_bone.format) == int(YcdTrackFormat.QUATERNION)
     assert int(translation_bone.format) == int(YcdTrackFormat.VECTOR3)
-    assert int(uv_bone.format) == int(get_ycd_track_format(YcdAnimationTrack.SHADER_SLIDE_U))
+    assert int(uv_bone.format) == int(
+        get_ycd_track_format(YcdAnimationTrack.SHADER_SLIDE_U)
+    )
     assert YcdAnimSequence(
         bone_id=YcdAnimationBoneId(
             bone_id=0,
@@ -941,7 +1097,9 @@ def test_ycd_non_rotation_track_interpolation_is_unchanged() -> None:
     key = (17, int(YcdAnimationTrack.BONE_TRANSLATION))
 
     assert animation.evaluate_tracks(0.5)[key] == Vector4(3.0, 4.0, 5.0, 6.0)
-    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == Vector4(1.0, 2.0, 3.0, 4.0)
+    assert animation.evaluate_tracks(0.5, interpolate=False)[key] == Vector4(
+        1.0, 2.0, 3.0, 4.0
+    )
 
 
 def test_ycd_rotation_track_restores_cached_quaternion_component() -> None:
@@ -1063,8 +1221,16 @@ def test_ycd_writer_sanitizes_non_uv_quantize_overflow() -> None:
                     YcdAnimSequence(
                         bone_id=bone,
                         channels=[
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=1,
+                                value=0.0,
+                            ),
                             YcdQuantizeFloatChannel(
                                 channel_type=YcdChannelType.QUANTIZE_FLOAT,
                                 channel_index=2,
@@ -1139,8 +1305,16 @@ def test_ycd_writer_preserves_object_quantize_metadata() -> None:
                     YcdAnimSequence(
                         bone_id=bone,
                         channels=[
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=1,
+                                value=0.0,
+                            ),
                             YcdQuantizeFloatChannel(
                                 channel_type=YcdChannelType.QUANTIZE_FLOAT,
                                 channel_index=2,
@@ -1212,10 +1386,26 @@ def test_ycd_build_derives_unknown1c_for_object_animation() -> None:
                     YcdAnimSequence(
                         bone_id=bone,
                         channels=[
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=2, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=3, value=1.0),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=1,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=2,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=3,
+                                value=1.0,
+                            ),
                         ],
                     )
                 ],
@@ -1223,11 +1413,18 @@ def test_ycd_build_derives_unknown1c_for_object_animation() -> None:
         ],
         bone_ids=[bone],
     )
-    ycd = Ycd(header=_ycd_header(), clips=[], animations=[animation], path="object_unknown1c.ycd")
+    ycd = Ycd(
+        header=_ycd_header(),
+        clips=[],
+        animations=[animation],
+        path="object_unknown1c.ycd",
+    )
 
     ycd.build()
 
-    assert ycd.animations[0].raw_unknown_hash.uint == ((ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF)
+    assert ycd.animations[0].raw_unknown_hash.uint == (
+        (ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF
+    )
 
 
 def test_ycd_build_derives_unknown1c_for_object_animation_with_mover_tracks() -> None:
@@ -1258,18 +1455,46 @@ def test_ycd_build_derives_unknown1c_for_object_animation_with_mover_tracks() ->
                     YcdAnimSequence(
                         bone_id=mover,
                         channels=[
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=2, value=0.0),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=1,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=2,
+                                value=0.0,
+                            ),
                         ],
                     ),
                     YcdAnimSequence(
                         bone_id=bone,
                         channels=[
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=1, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=2, value=0.0),
-                            YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=3, value=1.0),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=1,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=2,
+                                value=0.0,
+                            ),
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=3,
+                                value=1.0,
+                            ),
                         ],
                     ),
                 ],
@@ -1277,11 +1502,18 @@ def test_ycd_build_derives_unknown1c_for_object_animation_with_mover_tracks() ->
         ],
         bone_ids=[mover, bone],
     )
-    ycd = Ycd(header=_ycd_header(), clips=[], animations=[animation], path="object_mover_unknown1c.ycd")
+    ycd = Ycd(
+        header=_ycd_header(),
+        clips=[],
+        animations=[animation],
+        path="object_mover_unknown1c.ycd",
+    )
 
     ycd.build()
 
-    assert ycd.animations[0].raw_unknown_hash.uint == ((ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF)
+    assert ycd.animations[0].raw_unknown_hash.uint == (
+        (ycd.animations[0].hash.uint + 1) & 0xFFFFFFFF
+    )
 
 
 def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
@@ -1311,25 +1543,41 @@ def test_ycd_build_derives_unknown1c_for_uv_animation() -> None:
                 anim_sequences=[
                     YcdAnimSequence(
                         bone_id=uv_u,
-                        channels=[YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0)],
+                        channels=[
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            )
+                        ],
                     ),
                     YcdAnimSequence(
                         bone_id=uv_v,
-                        channels=[YcdStaticFloatChannel(channel_type=YcdChannelType.STATIC_FLOAT, channel_index=0, value=0.0)],
+                        channels=[
+                            YcdStaticFloatChannel(
+                                channel_type=YcdChannelType.STATIC_FLOAT,
+                                channel_index=0,
+                                value=0.0,
+                            )
+                        ],
                     ),
                 ],
             )
         ],
         bone_ids=[uv_u, uv_v],
     )
-    ycd = Ycd(header=_ycd_header(), clips=[], animations=[animation], path="uv_unknown1c.ycd")
+    ycd = Ycd(
+        header=_ycd_header(), clips=[], animations=[animation], path="uv_unknown1c.ycd"
+    )
 
     ycd.build()
 
     assert ycd.animations[0].raw_unknown_hash.uint == 0x6B002400
 
 
-def test_cutscene_builder_splits_long_skeletal_props_into_vanilla_sized_sequences() -> None:
+def test_cutscene_builder_splits_long_skeletal_props_into_vanilla_sized_sequences() -> (
+    None
+):
     builder = YcdCutsceneBuilder.create("sample", duration=24.4, fps=30.0)
     builder.prop(
         "miku_hatsune_metal",
@@ -1395,7 +1643,9 @@ def test_cutscene_builder_orders_object_tracks_like_game_ycds() -> None:
         (0, int(YcdAnimationTrack.MOVER_ROTATION)),
     ]
     mover_rotation = animation.sequences[0].anim_sequences[-1]
-    assert [int(channel.channel_type) for channel in mover_rotation.channels] == [int(YcdChannelType.STATIC_QUATERNION)]
+    assert [int(channel.channel_type) for channel in mover_rotation.channels] == [
+        int(YcdChannelType.STATIC_QUATERNION)
+    ]
 
 
 def test_cutscene_builder_preserves_camera_sequence_splitting() -> None:

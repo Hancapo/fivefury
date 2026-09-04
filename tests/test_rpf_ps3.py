@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from fivefury import GameFileCache
 from fivefury.crypto import GameCrypto
 from fivefury.rpf import (
@@ -21,12 +23,26 @@ def _to_ps3_entry_bytes(pc_entry: bytes) -> bytes:
     return pc_entry[:8][::-1] + pc_entry[8:12][::-1] + pc_entry[12:16][::-1]
 
 
-def _pack_ps3_directory(name_offset: int, entries_index: int, entries_count: int) -> bytes:
-    return _to_ps3_entry_bytes(struct.pack("<IIII", name_offset, 0x7FFFFF00, entries_index, entries_count))
+def _pack_ps3_directory(
+    name_offset: int, entries_index: int, entries_count: int
+) -> bytes:
+    return _to_ps3_entry_bytes(
+        struct.pack("<IIII", name_offset, 0x7FFFFF00, entries_index, entries_count)
+    )
 
 
-def _pack_ps3_binary(name_offset: int, file_size: int, file_offset: int, uncompressed_size: int, encryption: int) -> bytes:
-    low = (name_offset & 0xFFFF) | ((file_size & 0xFFFFFF) << 16) | ((file_offset & 0xFFFFFF) << 40)
+def _pack_ps3_binary(
+    name_offset: int,
+    file_size: int,
+    file_offset: int,
+    uncompressed_size: int,
+    encryption: int,
+) -> bytes:
+    low = (
+        (name_offset & 0xFFFF)
+        | ((file_size & 0xFFFFFF) << 16)
+        | ((file_offset & 0xFFFFFF) << 40)
+    )
     return _to_ps3_entry_bytes(struct.pack("<QII", low, uncompressed_size, encryption))
 
 
@@ -68,7 +84,9 @@ class RpfPs3Tests(unittest.TestCase):
         from fivefury import create_rpf
 
         archive = create_rpf("compressed_text.rpf")
-        archive.file("data/readable.meta", b"<Meta>readable</Meta>", compress_binary=True)
+        archive.file(
+            "data/readable.meta", b"<Meta>readable</Meta>", compress_binary=True
+        )
         packed = archive.to_bytes()
         reread = RpfArchive.from_bytes(packed, name="compressed_text.rpf")
         entry = reread.find_entry("data/readable.meta")
@@ -113,6 +131,7 @@ class RpfPs3Tests(unittest.TestCase):
                 self.assertEqual(reread.platform, RpfPlatform.PS3)
                 self.assertEqual(entry.read(), expected)
 
+    @pytest.mark.integration
     def test_rpf_reader_opens_real_ps3_archive_when_available(self) -> None:
         usrdir = configured_path(
             "FIVEFURY_TEST_PS3_USRDIR",
@@ -120,7 +139,7 @@ class RpfPs3Tests(unittest.TestCase):
         )
         source = usrdir / "audio_rel.rpf"
         if not source.exists():
-            self.skipTest("PS3 GTA V fixture is not available")
+            pytest.fail("PS3 GTA V fixture is not available")
 
         archive = RpfArchive.from_path(source)
 

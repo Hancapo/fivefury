@@ -202,9 +202,15 @@ def _make_bvh_geometry() -> BoundBVH:
     bounds = BoundAabb(geometry.box_min, geometry.box_max)
     center = (bounds.minimum + bounds.maximum) * 0.5
     quantum = Vector3(
-        max(abs(bounds.minimum.x - center.x), abs(bounds.maximum.x - center.x)) / 32767.0 or (1.0 / 32767.0),
-        max(abs(bounds.minimum.y - center.y), abs(bounds.maximum.y - center.y)) / 32767.0 or (1.0 / 32767.0),
-        max(abs(bounds.minimum.z - center.z), abs(bounds.maximum.z - center.z)) / 32767.0 or (1.0 / 32767.0),
+        max(abs(bounds.minimum.x - center.x), abs(bounds.maximum.x - center.x))
+        / 32767.0
+        or (1.0 / 32767.0),
+        max(abs(bounds.minimum.y - center.y), abs(bounds.maximum.y - center.y))
+        / 32767.0
+        or (1.0 / 32767.0),
+        max(abs(bounds.minimum.z - center.z), abs(bounds.maximum.z - center.z))
+        / 32767.0
+        or (1.0 / 32767.0),
     )
     quantum_inverse = Vector3(1.0 / quantum.x, 1.0 / quantum.y, 1.0 / quantum.z)
     return BoundBVH(
@@ -240,13 +246,29 @@ def _make_bvh_geometry() -> BoundBVH:
             center=center,
             quantum_inverse=quantum_inverse,
             quantum=quantum,
-            nodes=[BoundBvhNode(minimum=bounds.minimum, maximum=bounds.maximum, item_id=0, item_count=1)],
-            trees=[BoundBvhTree(minimum=bounds.minimum, maximum=bounds.maximum, node_index=0, node_index2=1)],
+            nodes=[
+                BoundBvhNode(
+                    minimum=bounds.minimum,
+                    maximum=bounds.maximum,
+                    item_id=0,
+                    item_count=1,
+                )
+            ],
+            trees=[
+                BoundBvhTree(
+                    minimum=bounds.minimum,
+                    maximum=bounds.maximum,
+                    node_index=0,
+                    node_index2=1,
+                )
+            ],
         ),
     )
 
 
-def _make_large_bvh_geometry(*, polygon_count: int = 12, with_trivial_bvh: bool = False) -> BoundBVH:
+def _make_large_bvh_geometry(
+    *, polygon_count: int = 12, with_trivial_bvh: bool = False
+) -> BoundBVH:
     vertices: list[Vector3] = []
     polygons: list[BoundPolygonTriangle] = []
     polygon_material_indices: list[int] = []
@@ -293,8 +315,19 @@ def _make_large_bvh_geometry(*, polygon_count: int = 12, with_trivial_bvh: bool 
             center=box_center,
             quantum_inverse=Vector3(32767.0, 32767.0, 32767.0),
             quantum=Vector3(1.0 / 32767.0, 1.0 / 32767.0, 1.0 / 32767.0),
-            nodes=[BoundBvhNode(minimum=box_min, maximum=box_max, item_id=0, item_count=polygon_count)],
-            trees=[BoundBvhTree(minimum=box_min, maximum=box_max, node_index=0, node_index2=1)],
+            nodes=[
+                BoundBvhNode(
+                    minimum=box_min,
+                    maximum=box_max,
+                    item_id=0,
+                    item_count=polygon_count,
+                )
+            ],
+            trees=[
+                BoundBvhTree(
+                    minimum=box_min, maximum=box_max, node_index=0, node_index2=1
+                )
+            ],
         )
     return BoundBVH(
         bound_type=8,
@@ -341,7 +374,10 @@ def test_build_ybn_bytes_roundtrips_sphere_bound() -> None:
     assert ybn.bound.material_index == source.material_index
     assert ybn.bound.file_vft != 0
     assert ybn.bound.file_pages_info is not None
-    assert ybn.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
+    assert (
+        ybn.bound.file_pages_info.system_pages_count
+        == get_resource_total_page_count(header.system_flags)
+    )
     assert int.from_bytes(system_data[8:16], "little") != 0
 
 
@@ -398,7 +434,9 @@ def test_default_bound_material_library_has_expected_names() -> None:
 
 
 def test_parse_bound_material_names_uses_simple_name_per_line_format() -> None:
-    library = parse_bound_material_names("# comment\nDEFAULT | #112233\nCONCRETE\nROCK | 10 20 30\n")
+    library = parse_bound_material_names(
+        "# comment\nDEFAULT | #112233\nCONCRETE\nROCK | 10 20 30\n"
+    )
 
     assert library.count == 3
     assert library.get_name(2) == "ROCK"
@@ -406,13 +444,14 @@ def test_parse_bound_material_names_uses_simple_name_per_line_format() -> None:
     assert library.get_color(2) == (10, 20, 30)
 
 
+@pytest.mark.integration
 def test_roundtrip_real_west02_ybn_if_available() -> None:
     source_path = configured_path(
         "FIVEFURY_TEST_YBN_WEST02",
         reference_root() / "ybn/west02_0.ybn",
     )
     if not source_path.exists():
-        pytest.skip(f"external YBN reference not available: {source_path}")
+        pytest.fail(f"external YBN reference not available: {source_path}")
 
     source = read_ybn(source_path)
     data = source.to_bytes()
@@ -421,45 +460,64 @@ def test_roundtrip_real_west02_ybn_if_available() -> None:
 
     assert roundtrip.bound.file_vft != 0
     assert roundtrip.bound.file_pages_info is not None
-    assert roundtrip.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
+    assert (
+        roundtrip.bound.file_pages_info.system_pages_count
+        == get_resource_total_page_count(header.system_flags)
+    )
     assert int.from_bytes(system_data[0:4], "little") != 0
     assert int.from_bytes(system_data[8:16], "little") != 0
     assert len(roundtrip.bound.geometries) == len(source.bound.geometries)
-    assert len(roundtrip.bound.geometries[0].polygons) == len(source.bound.geometries[0].polygons)
-    assert len(roundtrip.bound.geometries[0].bvh.nodes) == len(source.bound.geometries[0].bvh.nodes)
-    assert len(roundtrip.bound.geometries[0].bvh.trees) == len(source.bound.geometries[0].bvh.trees)
+    assert len(roundtrip.bound.geometries[0].polygons) == len(
+        source.bound.geometries[0].polygons
+    )
+    assert len(roundtrip.bound.geometries[0].bvh.nodes) == len(
+        source.bound.geometries[0].bvh.nodes
+    )
+    assert len(roundtrip.bound.geometries[0].bvh.trees) == len(
+        source.bound.geometries[0].bvh.trees
+    )
 
 
-def test_resource_page_flags_match_codewalker_assign_positions2_for_real_ybn_if_available() -> None:
+@pytest.mark.integration
+def test_resource_page_flags_match_codewalker_assign_positions2_for_real_ybn_if_available() -> (
+    None
+):
     source_path = configured_path(
         "FIVEFURY_TEST_YBN_BAD_ALIENCITY2",
         reference_root() / "ybn/bad/aliencity2.ybn",
     )
     if not source_path.exists():
-        pytest.skip(f"external YBN reference not available: {source_path}")
+        pytest.fail(f"external YBN reference not available: {source_path}")
 
     from fivefury.bounds import BoundResourcePagesInfo, build_bound_system_layout
 
     source = read_ybn(source_path)
     _, block_spans = build_bound_system_layout(
         source.bound,
-        root_pages_info=BoundResourcePagesInfo(system_pages_count=16, graphics_pages_count=0),
+        root_pages_info=BoundResourcePagesInfo(
+            system_pages_count=16, graphics_pages_count=0
+        ),
     )
 
     block_sizes = [span.size for span in block_spans]
-    flags = get_resource_flags_from_block_sizes(block_sizes, (source.version >> 4) & 0xF, is_system=True)
+    flags = get_resource_flags_from_block_sizes(
+        block_sizes, (source.version >> 4) & 0xF, is_system=True
+    )
 
     assert flags == 0x20101A82
     assert get_resource_total_page_count(flags) == 16
 
 
-def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_if_available() -> None:
+@pytest.mark.integration
+def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_if_available() -> (
+    None
+):
     source_path = configured_path(
         "FIVEFURY_TEST_YBN_BAD_ALIENCITY2",
         reference_root() / "ybn/bad/aliencity2.ybn",
     )
     if not source_path.exists():
-        pytest.skip(f"external YBN reference not available: {source_path}")
+        pytest.fail(f"external YBN reference not available: {source_path}")
 
     source = read_ybn(source_path.read_bytes(), path=source_path)
     data = source.to_bytes()
@@ -468,20 +526,23 @@ def test_roundtrip_ybn_rebuilds_mismatched_page_metadata_from_codewalker_layout_
 
     assert source.bound.file_pages_info is not None
     assert source.bound.file_pages_info.system_pages_count == 1
-    assert source.validate() == ["YBN ResourcePagesInfo system page count does not match the RSC7 header"]
+    assert source.validate() == [
+        "YBN ResourcePagesInfo system page count does not match the RSC7 header"
+    ]
     assert roundtrip.bound.file_pages_info is not None
     assert roundtrip.bound.file_pages_info.system_pages_count == 16
     assert get_resource_total_page_count(header.system_flags) == 16
     assert roundtrip.validate().valid
 
 
+@pytest.mark.integration
 def test_read_ybn_normalizes_real_bounds_from_codewalker_layout_if_available() -> None:
     source_path = configured_path(
         "FIVEFURY_TEST_YBN_GOOD_ALIENCITY2",
         reference_root() / "ybn/good/aliencity2.ybn",
     )
     if not source_path.exists():
-        pytest.skip(f"external YBN reference not available: {source_path}")
+        pytest.fail(f"external YBN reference not available: {source_path}")
 
     ybn = read_ybn(source_path)
 
@@ -508,7 +569,9 @@ def test_gamefilecache_parses_loose_ybn() -> None:
 
 def test_ybn_from_bound_and_save_roundtrip_composite() -> None:
     sphere = _make_sphere(center=(0.0, 0.0, 0.0), radius=1.0, material_index=7)
-    box = _make_box(minimum=(-0.5, -0.5, -0.5), maximum=(0.5, 0.5, 0.5), material_index=5)
+    box = _make_box(
+        minimum=(-0.5, -0.5, -0.5), maximum=(0.5, 0.5, 0.5), material_index=5
+    )
     root = BoundComposite(
         bound_type=10,
         sphere_radius=2.0,
@@ -716,6 +779,7 @@ def test_build_ybn_bytes_rebuilds_trivial_large_bvh() -> None:
     assert all(node.item_count <= 4 for node in ybn.bound.bvh.leaf_nodes)
 
 
+@pytest.mark.integration
 def test_read_real_reference_ybn() -> None:
     path = require_reference("apa_ch2_04_12.ybn")
 
@@ -727,6 +791,7 @@ def test_read_real_reference_ybn() -> None:
     assert ybn.bound.file_pages_info.system_pages_count == 8
 
 
+@pytest.mark.integration
 def test_roundtrip_real_reference_ybn_preserves_page_count_metadata() -> None:
     path = require_reference("apa_ch2_04_12.ybn")
 
@@ -737,10 +802,16 @@ def test_roundtrip_real_reference_ybn_preserves_page_count_metadata() -> None:
 
     assert source.bound.file_pages_info is not None
     assert roundtrip.bound.file_pages_info is not None
-    assert roundtrip.bound.file_pages_info.system_pages_count == get_resource_total_page_count(header.system_flags)
-    assert roundtrip.system_pages_count == get_resource_total_page_count(header.system_flags)
+    assert (
+        roundtrip.bound.file_pages_info.system_pages_count
+        == get_resource_total_page_count(header.system_flags)
+    )
+    assert roundtrip.system_pages_count == get_resource_total_page_count(
+        header.system_flags
+    )
 
 
+@pytest.mark.integration
 def test_read_real_reference_ybn_decodes_geometry_polygons_and_bvh() -> None:
     path = require_reference("apa_ch2_04_12.ybn")
 
@@ -778,7 +849,9 @@ def test_build_ybn_bytes_rejects_invalid_geometry_indices() -> None:
     except ValueError as exc:
         assert "invalid vertex index" in str(exc)
     else:
-        raise AssertionError("expected build_ybn_bytes to reject invalid geometry indices")
+        raise AssertionError(
+            "expected build_ybn_bytes to reject invalid geometry indices"
+        )
 
 
 def test_build_ybn_bytes_rejects_invalid_geometry_material_indices() -> None:
@@ -791,7 +864,9 @@ def test_build_ybn_bytes_rejects_invalid_geometry_material_indices() -> None:
     except ValueError as exc:
         assert "invalid material index" in str(exc)
     else:
-        raise AssertionError("expected build_ybn_bytes to reject invalid geometry material indices")
+        raise AssertionError(
+            "expected build_ybn_bytes to reject invalid geometry material indices"
+        )
 
 
 def test_build_ybn_bytes_normalizes_inverted_bound_boxes() -> None:
@@ -838,7 +913,9 @@ def test_bound_composite_flags_expose_enum_aliases() -> None:
     flags.type_flags = BoundCompositeFlag.MAP_DYNAMIC | BoundCompositeFlag.MAP_COVER
     flags.include_flags = BoundCompositeFlag.OBJECT | BoundCompositeFlag.GLASS
 
-    assert flags.flags1 == (BoundCompositeFlag.MAP_DYNAMIC | BoundCompositeFlag.MAP_COVER)
+    assert flags.flags1 == (
+        BoundCompositeFlag.MAP_DYNAMIC | BoundCompositeFlag.MAP_COVER
+    )
     assert flags.flags2 == (BoundCompositeFlag.OBJECT | BoundCompositeFlag.GLASS)
     assert flags.type_flags == flags.flags1
     assert flags.include_flags == flags.flags2
@@ -853,7 +930,9 @@ def test_build_ybn_bytes_rejects_invalid_triangle_edge_indices() -> None:
     except ValueError as exc:
         assert "invalid polygon index" in str(exc)
     else:
-        raise AssertionError("expected build_ybn_bytes to reject invalid triangle edge indices")
+        raise AssertionError(
+            "expected build_ybn_bytes to reject invalid triangle edge indices"
+        )
 
 
 def test_bounds_geometry_helpers_compute_expected_values() -> None:
@@ -871,7 +950,9 @@ def test_bounds_geometry_helpers_compute_expected_values() -> None:
         triangle_area(Vector3(), Vector3(2.0, 0.0, 0.0), Vector3(0.0, 3.0, 0.0)),
         3.0,
     )
-    assert math.isclose(sphere_radius_from_vertices(center, vertices), 6.860211367006122)
+    assert math.isclose(
+        sphere_radius_from_vertices(center, vertices), 6.860211367006122
+    )
 
 
 def test_bound_box_exposes_clear_dimension_aliases() -> None:
@@ -1042,7 +1123,9 @@ def test_bounds_material_fields_accept_bound_material_enum_consistently() -> Non
         Vector3(), Vector3(3.0, 0.25, 4.0), material_index=BoundMaterialType.CLOTH
     )
     material = BoundMaterial(type=BoundMaterialType.WOOD_SOLID_MEDIUM)
-    polygon = BoundPolygonTriangle(polygon_type=0, raw=b"", material_index=BoundMaterialType.CONCRETE)
+    polygon = BoundPolygonTriangle(
+        polygon_type=0, raw=b"", material_index=BoundMaterialType.CONCRETE
+    )
 
     assert box.material_index == int(BoundMaterialType.ROCK)
     assert box.material_type is BoundMaterialType.ROCK
@@ -1055,7 +1138,9 @@ def test_bounds_material_fields_accept_bound_material_enum_consistently() -> Non
     assert polygon.material_type is BoundMaterialType.CONCRETE
 
 
-def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits() -> None:
+def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits() -> (
+    None
+):
     triangles = [
         (Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)),
         (Vector3(1.0, 0.0, 0.0), Vector3(1.0, 1.0, 0.0), Vector3(0.0, 1.0, 0.0)),
@@ -1088,7 +1173,9 @@ def test_chunk_bound_triangles_deduplicates_vertices_and_respects_chunk_limits()
     )
 
 
-def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chunks() -> None:
+def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chunks() -> (
+    None
+):
     triangles = [
         (Vector3(), Vector3(1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0)),
         (Vector3(1.0, 0.0, 0.0), Vector3(1.0, 1.0, 0.0), Vector3(0.0, 1.0, 0.0)),
@@ -1114,10 +1201,10 @@ def test_build_bound_from_triangles_preserves_per_triangle_materials_across_chun
 
     assert [chunk.material_indices for chunk in chunks] == [[0, 1], [0]]
     assert len(bound.children) == 2
-    assert [
-        child.bound.polygon_material_indices
-        for child in bound.children
-    ] == [[0, 1], [0]]
+    assert [child.bound.polygon_material_indices for child in bound.children] == [
+        [0, 1],
+        [0],
+    ]
     assert all(child.bound.materials == materials for child in bound.children)
     assert roundtrip.validate().valid
     assert {

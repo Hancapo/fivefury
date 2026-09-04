@@ -71,7 +71,11 @@ _LEGACY_GEN9_ADAPTATION_CASES = (
     ("normal_reflect_alpha.sps", "normal_reflect.sps", 1),
     ("normal_spec_alpha.sps", "normal_spec.sps", 1),
     ("normal_spec_reflect_alpha.sps", "normal_spec_reflect.sps", 1),
-    ("normal_spec_reflect_emissivenight_alpha.sps", "normal_spec_reflect_emissivenight.sps", 1),
+    (
+        "normal_spec_reflect_emissivenight_alpha.sps",
+        "normal_spec_reflect_emissivenight.sps",
+        1,
+    ),
     ("ped_default_cutout.sps", "ped_default.sps", 3),
     ("reflect_alpha.sps", "reflect.sps", 1),
     ("spec_alpha.sps", "spec.sps", 1),
@@ -82,8 +86,8 @@ _LEGACY_GEN9_ADAPTATION_CASES = (
 
 def test_gen9_cbuffer_accepts_exact_flat_multi_vector_values() -> None:
     parameter = ShaderGen9ParameterDefinition(
-        name='bloodzoneadjust',
-        kind='CBuffer',
+        name="bloodzoneadjust",
+        kind="CBuffer",
         param_length=96,
     )
     values = tuple(float(index) for index in range(24))
@@ -91,7 +95,8 @@ def test_gen9_cbuffer_accepts_exact_flat_multi_vector_values() -> None:
     payload = _coerce_gen9_cbuffer_bytes(values, parameter=parameter)
 
     assert len(payload) == 96
-    assert payload == struct.pack('<24f', *values)
+    assert payload == struct.pack("<24f", *values)
+
 
 _GEN9_ENVIRONMENT_SHADER_FAMILIES = (
     "spec_reflect.sps",
@@ -154,29 +159,63 @@ def _virtual_to_offset(pointer: int) -> int:
 
 def _first_model_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
     _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
-    model_list_off = _virtual_to_offset(int.from_bytes(system_data[0xA0:0xA8], "little"))
-    model_off = _virtual_to_offset(int.from_bytes(system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"))
-    geometry_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little"))
-    geometry_off = _virtual_to_offset(int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 0x08], "little"))
+    model_list_off = _virtual_to_offset(
+        int.from_bytes(system_data[0xA0:0xA8], "little")
+    )
+    model_off = _virtual_to_offset(
+        int.from_bytes(
+            system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"
+        )
+    )
+    geometry_ptrs_off = _virtual_to_offset(
+        int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little")
+    )
+    geometry_off = _virtual_to_offset(
+        int.from_bytes(
+            system_data[geometry_ptrs_off : geometry_ptrs_off + 0x08], "little"
+        )
+    )
     return system_data, model_off, geometry_off
 
 
 def _first_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int]:
     _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
-    shader_group_off = _virtual_to_offset(int.from_bytes(system_data[0x10:0x18], "little"))
-    shader_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[shader_group_off + 0x10 : shader_group_off + 0x18], "little"))
-    shader_off = _virtual_to_offset(int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little"))
-    params_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x00 : shader_off + 0x08], "little"))
+    shader_group_off = _virtual_to_offset(
+        int.from_bytes(system_data[0x10:0x18], "little")
+    )
+    shader_ptrs_off = _virtual_to_offset(
+        int.from_bytes(
+            system_data[shader_group_off + 0x10 : shader_group_off + 0x18], "little"
+        )
+    )
+    shader_off = _virtual_to_offset(
+        int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little")
+    )
+    params_off = _virtual_to_offset(
+        int.from_bytes(system_data[shader_off + 0x00 : shader_off + 0x08], "little")
+    )
     return system_data, shader_off, params_off
 
 
 def _first_gen9_shader_offsets(resource_bytes: bytes) -> tuple[bytes, int, int, int]:
     _header, system_data, _graphics_data = split_rsc7_sections(resource_bytes)
-    shader_group_off = _virtual_to_offset(int.from_bytes(system_data[0x10:0x18], "little"))
-    shader_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[shader_group_off + 0x10 : shader_group_off + 0x18], "little"))
-    shader_off = _virtual_to_offset(int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little"))
-    params_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x08 : shader_off + 0x10], "little"))
-    infos_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x20 : shader_off + 0x28], "little"))
+    shader_group_off = _virtual_to_offset(
+        int.from_bytes(system_data[0x10:0x18], "little")
+    )
+    shader_ptrs_off = _virtual_to_offset(
+        int.from_bytes(
+            system_data[shader_group_off + 0x10 : shader_group_off + 0x18], "little"
+        )
+    )
+    shader_off = _virtual_to_offset(
+        int.from_bytes(system_data[shader_ptrs_off : shader_ptrs_off + 0x08], "little")
+    )
+    params_off = _virtual_to_offset(
+        int.from_bytes(system_data[shader_off + 0x08 : shader_off + 0x10], "little")
+    )
+    infos_off = _virtual_to_offset(
+        int.from_bytes(system_data[shader_off + 0x20 : shader_off + 0x28], "little")
+    )
     return system_data, shader_off, params_off, infos_off
 
 
@@ -210,12 +249,24 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert ydr.materials[0].shader_definition.name == "default"
     assert ydr.materials[0].resolved_shader_file_name == "default.sps"
     assert ydr.materials[0].texture_names == ["test_diffuse"]
-    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((1.0, 0.0, 0.0, 1.0))
-    assert ydr.materials[0].get_numeric_parameter("HardAlphaBlend") == pytest.approx(1.0)
-    assert ydr.materials[0].get_numeric_parameter("useTessellation") == pytest.approx(0.0)
-    assert ydr.materials[0].get_numeric_parameter("wetnessMultiplier") == pytest.approx(1.0)
-    assert ydr.materials[0].get_numeric_parameter("globalAnimUV0") == pytest.approx((1.0, 0.0, 0.0))
-    assert ydr.materials[0].get_numeric_parameter("globalAnimUV1") == pytest.approx((0.0, 1.0, 0.0))
+    assert ydr.materials[0].get_numeric_parameter(
+        "matMaterialColorScale"
+    ) == pytest.approx((1.0, 0.0, 0.0, 1.0))
+    assert ydr.materials[0].get_numeric_parameter("HardAlphaBlend") == pytest.approx(
+        1.0
+    )
+    assert ydr.materials[0].get_numeric_parameter("useTessellation") == pytest.approx(
+        0.0
+    )
+    assert ydr.materials[0].get_numeric_parameter("wetnessMultiplier") == pytest.approx(
+        1.0
+    )
+    assert ydr.materials[0].get_numeric_parameter("globalAnimUV0") == pytest.approx(
+        (1.0, 0.0, 0.0)
+    )
+    assert ydr.materials[0].get_numeric_parameter("globalAnimUV1") == pytest.approx(
+        (0.0, 1.0, 0.0)
+    )
     assert ydr.meshes[0].normals
     assert not ydr.meshes[0].tangents
     assert ydr.get_model(0).render_mask == int(YdrRenderMask.STATIC_PROP)
@@ -231,22 +282,78 @@ def test_create_ydr_builds_default_shader_resource(tmp_path: Path) -> None:
     assert graphics_data == b""
 
     model_list_off = int.from_bytes(system_data[0xA0:0xA8], "little") - 0x50000000
-    model_off = int.from_bytes(system_data[model_list_off + 0x10 : model_list_off + 0x18], "little") - 0x50000000
-    geometry_ptrs_off = int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little") - 0x50000000
-    geometry_off = int.from_bytes(system_data[geometry_ptrs_off : geometry_ptrs_off + 0x08], "little") - 0x50000000
-    vertex_buffer_off = int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little") - 0x50000000
-    index_buffer_off = int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little") - 0x50000000
+    model_off = (
+        int.from_bytes(
+            system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"
+        )
+        - 0x50000000
+    )
+    geometry_ptrs_off = (
+        int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little")
+        - 0x50000000
+    )
+    geometry_off = (
+        int.from_bytes(
+            system_data[geometry_ptrs_off : geometry_ptrs_off + 0x08], "little"
+        )
+        - 0x50000000
+    )
+    vertex_buffer_off = (
+        int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little")
+        - 0x50000000
+    )
+    index_buffer_off = (
+        int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little")
+        - 0x50000000
+    )
 
-    assert int.from_bytes(system_data[model_off + 0x00 : model_off + 0x04], "little") == 0x40610A98
-    assert int.from_bytes(system_data[model_off + 0x2C : model_off + 0x30], "little") == 0x000100E3
-    assert int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 1
-    assert int.from_bytes(system_data[geometry_off + 0x00 : geometry_off + 0x04], "little") == 0x40618798
-    assert int.from_bytes(system_data[vertex_buffer_off + 0x00 : vertex_buffer_off + 0x04], "little") == 0x4061D3F8
-    assert int.from_bytes(system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little") == 0x4061D158
-    assert system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18] == system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28]
-    assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
-    assert int.from_bytes(system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little") >= 0x50000000
-    assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
+    assert (
+        int.from_bytes(system_data[model_off + 0x00 : model_off + 0x04], "little")
+        == 0x40610A98
+    )
+    assert (
+        int.from_bytes(system_data[model_off + 0x2C : model_off + 0x30], "little")
+        == 0x000100E3
+    )
+    assert (
+        int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 1
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x00 : geometry_off + 0x04], "little")
+        == 0x40618798
+    )
+    assert (
+        int.from_bytes(
+            system_data[vertex_buffer_off + 0x00 : vertex_buffer_off + 0x04], "little"
+        )
+        == 0x4061D3F8
+    )
+    assert (
+        int.from_bytes(
+            system_data[index_buffer_off + 0x00 : index_buffer_off + 0x04], "little"
+        )
+        == 0x4061D158
+    )
+    assert (
+        system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18]
+        == system_data[vertex_buffer_off + 0x20 : vertex_buffer_off + 0x28]
+    )
+    assert (
+        int.from_bytes(
+            system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little"
+        )
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(
+            system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little"
+        )
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little")
+        >= 0x50000000
+    )
 
 
 def test_rigid_bone_binding_is_applied_to_drawable_bounds(tmp_path: Path) -> None:
@@ -279,12 +386,34 @@ def test_create_ydr_writes_legacy_texture_base_contract(tmp_path: Path) -> None:
     ydr_path = tmp_path / "texture_base_contract.ydr"
     build.save(ydr_path)
     system_data, _shader_off, params_off = _first_shader_offsets(ydr_path.read_bytes())
-    texture_base_off = _virtual_to_offset(int.from_bytes(system_data[params_off + 0x08 : params_off + 0x10], "little"))
+    texture_base_off = _virtual_to_offset(
+        int.from_bytes(system_data[params_off + 0x08 : params_off + 0x10], "little")
+    )
 
-    assert int.from_bytes(system_data[texture_base_off + 0x00 : texture_base_off + 0x04], "little") == _TEXTURE_BASE_VFT
-    assert int.from_bytes(system_data[texture_base_off + 0x04 : texture_base_off + 0x08], "little") == 1
-    assert int.from_bytes(system_data[texture_base_off + 0x30 : texture_base_off + 0x32], "little") == 1
-    assert int.from_bytes(system_data[texture_base_off + 0x32 : texture_base_off + 0x34], "little") == 2
+    assert (
+        int.from_bytes(
+            system_data[texture_base_off + 0x00 : texture_base_off + 0x04], "little"
+        )
+        == _TEXTURE_BASE_VFT
+    )
+    assert (
+        int.from_bytes(
+            system_data[texture_base_off + 0x04 : texture_base_off + 0x08], "little"
+        )
+        == 1
+    )
+    assert (
+        int.from_bytes(
+            system_data[texture_base_off + 0x30 : texture_base_off + 0x32], "little"
+        )
+        == 1
+    )
+    assert (
+        int.from_bytes(
+            system_data[texture_base_off + 0x32 : texture_base_off + 0x34], "little"
+        )
+        == 2
+    )
 
 
 def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
@@ -327,20 +456,31 @@ def test_create_ydr_writes_and_reads_joints(tmp_path: Path) -> None:
     assert ydr.joints.rotation_limits[0].unknown_ah == 7
     assert ydr.joints.rotation_limits[0].num_control_points == 2
     assert ydr.joints.rotation_limits[0].joint_dofs == 3
-    assert ydr.joints.rotation_limits[0].min.components == pytest.approx((-1.0, -0.5, -0.25))
-    assert ydr.joints.rotation_limits[0].max.components == pytest.approx((1.0, 0.5, 0.25))
+    assert ydr.joints.rotation_limits[0].min.components == pytest.approx(
+        (-1.0, -0.5, -0.25)
+    )
+    assert ydr.joints.rotation_limits[0].max.components == pytest.approx(
+        (1.0, 0.5, 0.25)
+    )
     assert ydr.joints.translation_limits[0].bone_id == root_bone.tag
-    assert ydr.joints.translation_limits[0].min.components == pytest.approx((-0.1, -0.2, -0.3))
-    assert ydr.joints.translation_limits[0].max.components == pytest.approx((0.1, 0.2, 0.3))
+    assert ydr.joints.translation_limits[0].min.components == pytest.approx(
+        (-0.1, -0.2, -0.3)
+    )
+    assert ydr.joints.translation_limits[0].max.components == pytest.approx(
+        (0.1, 0.2, 0.3)
+    )
 
 
-def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path: Path) -> None:
+@pytest.mark.integration
+def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(
+    tmp_path: Path,
+) -> None:
     source_path = configured_path(
         "FIVEFURY_TEST_YDR_SYSTEM_ONLY",
         reference_root() / "ydr/bigbugboard.ydr",
     )
     if not source_path.exists():
-        pytest.skip("real YDR sample not available")
+        pytest.fail("real YDR sample not available")
 
     ydr = read_ydr(source_path)
     output_path = tmp_path / source_path.name
@@ -350,12 +490,31 @@ def test_roundtrip_real_ydr_without_embedded_textures_stays_system_only(tmp_path
     assert graphics_data == b""
     assert int.from_bytes(system_data[0x04:0x08], "little") == 1
 
-    _system_data, _model_off, geometry_off = _first_model_offsets(output_path.read_bytes())
-    vertex_buffer_off = _virtual_to_offset(int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little"))
-    index_buffer_off = _virtual_to_offset(int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little"))
-    assert int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little") >= 0x50000000
-    assert int.from_bytes(system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little") >= 0x50000000
-    assert int.from_bytes(system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little") >= 0x50000000
+    _system_data, _model_off, geometry_off = _first_model_offsets(
+        output_path.read_bytes()
+    )
+    vertex_buffer_off = _virtual_to_offset(
+        int.from_bytes(system_data[geometry_off + 0x18 : geometry_off + 0x20], "little")
+    )
+    index_buffer_off = _virtual_to_offset(
+        int.from_bytes(system_data[geometry_off + 0x38 : geometry_off + 0x40], "little")
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x78 : geometry_off + 0x80], "little")
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(
+            system_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x18], "little"
+        )
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(
+            system_data[index_buffer_off + 0x10 : index_buffer_off + 0x18], "little"
+        )
+        >= 0x50000000
+    )
 
 
 def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
@@ -383,7 +542,9 @@ def test_create_ydr_supports_normal_spec_slots(tmp_path: Path) -> None:
     assert descriptor.get_texture("DiffuseSampler").texture_name == "wall_a"
     assert descriptor.get_texture("BumpSampler").texture_name == "wall_a_n"
     assert descriptor.get_texture("SpecSampler").texture_name == "wall_a_s"
-    assert descriptor.get_parameter("specMapIntMask").value == pytest.approx((1.0, 0.0, 0.0))
+    assert descriptor.get_parameter("specMapIntMask").value == pytest.approx(
+        (1.0, 0.0, 0.0)
+    )
     assert descriptor.get_parameter("specularIntensityMult").value == pytest.approx(1.0)
     assert descriptor.get_parameter("specularFalloffMult").value == pytest.approx(100.0)
     assert descriptor.get_parameter("specularFresnel").value == pytest.approx(0.75)
@@ -534,8 +695,12 @@ def test_read_ydr_preserves_numeric_material_parameters(tmp_path: Path) -> None:
 
     material = ydr.materials[0]
     assert material.get_numeric_parameter("bumpiness") == pytest.approx(1.5)
-    assert material.get_numeric_parameter("specMapIntMask") == pytest.approx((1.0, 0.25, 0.0))
-    assert material.material_descriptor.get_parameter("bumpiness").value == pytest.approx(1.5)
+    assert material.get_numeric_parameter("specMapIntMask") == pytest.approx(
+        (1.0, 0.25, 0.0)
+    )
+    assert material.material_descriptor.get_parameter(
+        "bumpiness"
+    ).value == pytest.approx(1.5)
 
 
 def test_edit_parsed_ydr_material_and_save_roundtrip(tmp_path: Path) -> None:
@@ -585,7 +750,9 @@ def test_edit_parsed_ydr_material_and_save_roundtrip(tmp_path: Path) -> None:
     assert edited_material.get_texture("DiffuseSampler").name == "wall_b"
     assert edited_material.get_texture("SpecSampler").name == "wall_b_s"
     assert edited_material.get_texture("BumpSampler") is None
-    assert edited_material.get_numeric_parameter("specularIntensityMult") == pytest.approx(2.5)
+    assert edited_material.get_numeric_parameter(
+        "specularIntensityMult"
+    ) == pytest.approx(2.5)
 
 
 def test_edit_parsed_ydr_material_declaratively(tmp_path: Path) -> None:
@@ -635,7 +802,9 @@ def test_edit_parsed_ydr_material_declaratively(tmp_path: Path) -> None:
     assert edited_material.get_texture("DiffuseSampler").name == "wall_c"
     assert edited_material.get_texture("SpecSampler").name == "wall_c_s"
     assert edited_material.get_texture("BumpSampler") is None
-    assert edited_material.get_numeric_parameter("specularIntensityMult") == pytest.approx(3.0)
+    assert edited_material.get_numeric_parameter(
+        "specularIntensityMult"
+    ) == pytest.approx(3.0)
 
 
 def test_create_ydr_accepts_shader_enum() -> None:
@@ -739,8 +908,6 @@ def test_read_trimesh_scene_converts_native_scene() -> None:
 
 
 def test_read_trimesh_scene_can_convert_material_colours_to_embedded_textures() -> None:
-    pytest.importorskip("PIL")
-    pytest.importorskip("texfury")
 
     imported = read_trimesh_scene(
         _make_trimesh_scene(diffuse=(64, 128, 191, 255), textures=False),
@@ -807,7 +974,9 @@ def test_read_trimesh_scene_preserves_instances() -> None:
     imported = read_trimesh_scene(scene, name="instances")
 
     assert len(imported.meshes) == 2
-    minimum_x = sorted(min(position.x for position in mesh.positions) for mesh in imported.meshes)
+    minimum_x = sorted(
+        min(position.x for position in mesh.positions) for mesh in imported.meshes
+    )
     assert minimum_x == pytest.approx([-0.5, 9.5])
 
 
@@ -894,8 +1063,6 @@ def test_trimesh_scene_to_ydr_accepts_enhanced_game() -> None:
 
 
 def test_trimesh_to_ydr_persists_embedded_colour_textures(tmp_path: Path) -> None:
-    pytest.importorskip("PIL")
-    pytest.importorskip("texfury")
     ydr_path = tmp_path / "flat_colour.ydr"
 
     build = trimesh_to_ydr(
@@ -960,9 +1127,7 @@ def test_gen9_mesh_splitting_preserves_explicit_vertex_buffer_flags(
 ) -> None:
     vertex_count = 66000
     mesh = YdrMeshInput(
-        positions=[
-            Vector3(float(index), 0.0, 0.0) for index in range(vertex_count)
-        ],
+        positions=[Vector3(float(index), 0.0, 0.0) for index in range(vertex_count)],
         indices=list(range(vertex_count)),
         material="default",
         texcoords=[[Vector2()] * vertex_count],
@@ -980,17 +1145,23 @@ def test_gen9_mesh_splitting_preserves_explicit_vertex_buffer_flags(
     parsed = read_ydr(output)
 
     assert len(parsed.meshes) >= 2
-    assert {
-        parsed_mesh.vertex_buffer_flags for parsed_mesh in parsed.meshes
-    } == {0x00580409}
+    assert {parsed_mesh.vertex_buffer_flags for parsed_mesh in parsed.meshes} == {
+        0x00580409
+    }
 
 
 def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [
-            YdrModelInput(meshes=[_offset_triangle_mesh(0.0, material="main")], render_mask=1),
-            YdrModelInput(meshes=[_offset_triangle_mesh(2.0, material="main")], render_mask=2),
-        ]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_offset_triangle_mesh(0.0, material="main")], render_mask=1
+                ),
+                YdrModelInput(
+                    meshes=[_offset_triangle_mesh(2.0, material="main")], render_mask=2
+                ),
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -1019,7 +1190,9 @@ def test_build_and_read_multi_model_ydr(tmp_path: Path) -> None:
     assert ydr.get_model(0).get_material(0) is ydr.materials[0]
 
 
-def test_writer_derives_root_lod_bucket_mask_from_used_materials(tmp_path: Path) -> None:
+def test_writer_derives_root_lod_bucket_mask_from_used_materials(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
         lods={
             YdrLod.HIGH: [
@@ -1060,8 +1233,18 @@ def test_writer_derives_root_lod_bucket_mask_from_used_materials(tmp_path: Path)
 def test_build_and_read_multi_lod_ydr(tmp_path: Path) -> None:
     build = YdrBuild(
         lods={
-            YdrLod.HIGH: [YdrModelInput(meshes=[_offset_triangle_mesh(0.0, material="main")], render_mask=0xFF)],
-            YdrLod.MEDIUM: [YdrModelInput(meshes=[_offset_triangle_mesh(3.0, material="main")], render_mask=0xAA)],
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_offset_triangle_mesh(0.0, material="main")],
+                    render_mask=0xFF,
+                )
+            ],
+            YdrLod.MEDIUM: [
+                YdrModelInput(
+                    meshes=[_offset_triangle_mesh(3.0, material="main")],
+                    render_mask=0xAA,
+                )
+            ],
         },
         materials=[
             YdrMaterialInput(
@@ -1161,19 +1344,25 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
         material_textures={"DiffuseSampler": "test_diffuse"},
         name="light_helpers",
     )
-    point = build.light(YdrLight.point(
-        position=Vector3(1.0, 2.0, 3.0),
-        color=(10, 20, 30),
-        intensity=4.0,
-        falloff=25.0,
-    ))
-    spot = build.light(YdrLight.spot(
-        position=Vector3(4.0, 5.0, 6.0),
-        direction=Vector3(0.0, 0.0, -1.0),
-        cone_inner_angle=0.2,
-        cone_outer_angle=0.6,
-    ))
-    capsule = build.light(YdrLight.capsule(position=Vector3(7.0, 8.0, 9.0), extent=Vector3(0.0, 0.0, 3.0)))
+    point = build.light(
+        YdrLight.point(
+            position=Vector3(1.0, 2.0, 3.0),
+            color=(10, 20, 30),
+            intensity=4.0,
+            falloff=25.0,
+        )
+    )
+    spot = build.light(
+        YdrLight.spot(
+            position=Vector3(4.0, 5.0, 6.0),
+            direction=Vector3(0.0, 0.0, -1.0),
+            cone_inner_angle=0.2,
+            cone_outer_angle=0.6,
+        )
+    )
+    capsule = build.light(
+        YdrLight.capsule(position=Vector3(7.0, 8.0, 9.0), extent=Vector3(0.0, 0.0, 3.0))
+    )
 
     assert point.light_type is YdrLightType.POINT
     assert spot.light_type is YdrLightType.SPOT
@@ -1183,7 +1372,11 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
     build.save(path)
     ydr = read_ydr(path)
 
-    assert [light.light_type for light in ydr.lights] == [YdrLightType.POINT, YdrLightType.SPOT, YdrLightType.CAPSULE]
+    assert [light.light_type for light in ydr.lights] == [
+        YdrLightType.POINT,
+        YdrLightType.SPOT,
+        YdrLightType.CAPSULE,
+    ]
     assert ydr.lights[0].position.components == pytest.approx((1.0, 2.0, 3.0))
     assert ydr.lights[0].color == (10, 20, 30)
     assert ydr.lights[0].intensity == pytest.approx(4.0)
@@ -1192,7 +1385,9 @@ def test_declarative_ydr_light_helpers_roundtrip(tmp_path: Path) -> None:
     assert ydr.lights[1].cone_outer_angle == pytest.approx(0.6)
     assert ydr.lights[2].extent.components == pytest.approx((0.0, 0.0, 3.0))
 
-    parsed_spot = ydr.light(YdrLight.spot(position=Vector3(10.0, 0.0, 0.0), cone_outer_angle=1.0))
+    parsed_spot = ydr.light(
+        YdrLight.spot(position=Vector3(10.0, 0.0, 0.0), cone_outer_angle=1.0)
+    )
     assert parsed_spot.light_type is YdrLightType.SPOT
     assert len(ydr.lights) == 4
     ydr.clear_lights()
@@ -1240,7 +1435,9 @@ def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
                 textures={"DiffuseSampler": "embedded_diffuse"},
             )
         ],
-        embedded_textures=Ytd(textures=list(_tiny_embedded_ytd().textures), game="gta5_enhanced"),
+        embedded_textures=Ytd(
+            textures=list(_tiny_embedded_ytd().textures), game="gta5_enhanced"
+        ),
         version=159,
         name="with_embedded_textures_enhanced",
     )
@@ -1260,7 +1457,9 @@ def test_build_and_read_ydr_embedded_textures_enhanced(tmp_path: Path) -> None:
     assert ydr.embedded_textures.game == "gta5_enhanced"
 
 
-def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_path: Path) -> None:
+def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
@@ -1281,32 +1480,83 @@ def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_pat
     header, system_data, _graphics_data = split_rsc7_sections(raw)
     shader_data, shader_off, params_off, infos_off = _first_gen9_shader_offsets(raw)
     model_data, _model_off, geometry_off = _first_model_offsets(raw)
-    vertex_buffer_off = _virtual_to_offset(int.from_bytes(model_data[geometry_off + 0x18 : geometry_off + 0x20], "little"))
-    index_buffer_off = _virtual_to_offset(int.from_bytes(model_data[geometry_off + 0x38 : geometry_off + 0x40], "little"))
-    declaration_off = _virtual_to_offset(int.from_bytes(model_data[vertex_buffer_off + 0x38 : vertex_buffer_off + 0x40], "little"))
+    vertex_buffer_off = _virtual_to_offset(
+        int.from_bytes(model_data[geometry_off + 0x18 : geometry_off + 0x20], "little")
+    )
+    index_buffer_off = _virtual_to_offset(
+        int.from_bytes(model_data[geometry_off + 0x38 : geometry_off + 0x40], "little")
+    )
+    declaration_off = _virtual_to_offset(
+        int.from_bytes(
+            model_data[vertex_buffer_off + 0x38 : vertex_buffer_off + 0x40], "little"
+        )
+    )
 
     assert header.version == 159
     assert int.from_bytes(system_data[0:4], "little") == GEN9_DRAWABLE_HEADERS.drawable
-    assert int.from_bytes(shader_data[shader_off + 0x04 : shader_off + 0x08], "little") == 0x6D657461
-    assert int.from_bytes(shader_data[shader_off + 0x08 : shader_off + 0x10], "little") >= 0x50000000
-    assert int.from_bytes(shader_data[shader_off + 0x10 : shader_off + 0x18], "little") >= 0x50000000
-    assert int.from_bytes(shader_data[shader_off + 0x20 : shader_off + 0x28], "little") >= 0x50000000
+    assert (
+        int.from_bytes(shader_data[shader_off + 0x04 : shader_off + 0x08], "little")
+        == 0x6D657461
+    )
+    assert (
+        int.from_bytes(shader_data[shader_off + 0x08 : shader_off + 0x10], "little")
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(shader_data[shader_off + 0x10 : shader_off + 0x18], "little")
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(shader_data[shader_off + 0x20 : shader_off + 0x28], "little")
+        >= 0x50000000
+    )
     assert shader_data[infos_off + 0x00] == 2
     assert shader_data[infos_off + 0x01] == 2
     assert shader_data[infos_off + 0x07] == 12
-    assert int.from_bytes(model_data[vertex_buffer_off + 0x08 : vertex_buffer_off + 0x0C], "little") == 3
-    assert int.from_bytes(model_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x14], "little") in {0x00580409, 0x00586409}
-    assert int.from_bytes(model_data[vertex_buffer_off + 0x30 : vertex_buffer_off + 0x38], "little") >= 0x50000000
-    assert int.from_bytes(model_data[index_buffer_off + 0x10 : index_buffer_off + 0x14], "little") == 0x0058020A
-    assert int.from_bytes(model_data[index_buffer_off + 0x30 : index_buffer_off + 0x38], "little") >= 0x50000000
+    assert (
+        int.from_bytes(
+            model_data[vertex_buffer_off + 0x08 : vertex_buffer_off + 0x0C], "little"
+        )
+        == 3
+    )
+    assert int.from_bytes(
+        model_data[vertex_buffer_off + 0x10 : vertex_buffer_off + 0x14], "little"
+    ) in {0x00580409, 0x00586409}
+    assert (
+        int.from_bytes(
+            model_data[vertex_buffer_off + 0x30 : vertex_buffer_off + 0x38], "little"
+        )
+        >= 0x50000000
+    )
+    assert (
+        int.from_bytes(
+            model_data[index_buffer_off + 0x10 : index_buffer_off + 0x14], "little"
+        )
+        == 0x0058020A
+    )
+    assert (
+        int.from_bytes(
+            model_data[index_buffer_off + 0x30 : index_buffer_off + 0x38], "little"
+        )
+        >= 0x50000000
+    )
 
     declaration_data = model_data[declaration_off : declaration_off + 320]
-    declaration_flags, declaration_types, declaration_stride, declaration_count = decode_gen9_vertex_declaration(declaration_data)
-    assert declaration_stride == int.from_bytes(model_data[vertex_buffer_off + 0x0C : vertex_buffer_off + 0x0E], "little")
+    declaration_flags, declaration_types, declaration_stride, declaration_count = (
+        decode_gen9_vertex_declaration(declaration_data)
+    )
+    assert declaration_stride == int.from_bytes(
+        model_data[vertex_buffer_off + 0x0C : vertex_buffer_off + 0x0E], "little"
+    )
     # Shipped Gen9 drawables leave the declaration's packed vertex count at zero; the real count
     # lives on the vertex buffer at +0x08.
     assert declaration_count == 0
-    assert int.from_bytes(model_data[vertex_buffer_off + 0x08 : vertex_buffer_off + 0x0C], "little") == 3
+    assert (
+        int.from_bytes(
+            model_data[vertex_buffer_off + 0x08 : vertex_buffer_off + 0x0C], "little"
+        )
+        == 3
+    )
     assert declaration_flags != 0
     assert declaration_types != 0
     assert params_off < len(system_data)
@@ -1317,11 +1567,15 @@ def test_build_and_read_ydr_gen9_writes_native_shader_and_buffer_layouts(tmp_pat
     assert ydr.materials[0].shader_definition.name == "default"
     assert ydr.materials[0].resolved_shader_file_name == "default.sps"
     assert ydr.materials[0].texture_names == ["embedded_diffuse"]
-    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.25, 0.5, 0.75, 1.0))
+    assert ydr.materials[0].get_numeric_parameter(
+        "matMaterialColorScale"
+    ) == pytest.approx((0.25, 0.5, 0.75, 1.0))
     assert len(ydr.meshes[0].positions) == 3
 
 
-def test_build_ydr_gen9_texture_reference_matches_shipped_layout(tmp_path: Path) -> None:
+def test_build_ydr_gen9_texture_reference_matches_shipped_layout(
+    tmp_path: Path,
+) -> None:
     """Gen9 shader texture references must match the layout used by shipped drawables.
 
     The values here were taken from the drawables shipped with GTA V Enhanced: every shader
@@ -1345,29 +1599,66 @@ def test_build_ydr_gen9_texture_reference_matches_shipped_layout(tmp_path: Path)
 
     ydr_path = tmp_path / "gen9_texture_layout.ydr"
     build.save(ydr_path)
-    system_data, shader_off, _params_off, _infos_off = _first_gen9_shader_offsets(ydr_path.read_bytes())
+    system_data, shader_off, _params_off, _infos_off = _first_gen9_shader_offsets(
+        ydr_path.read_bytes()
+    )
 
-    texture_refs_off = _virtual_to_offset(int.from_bytes(system_data[shader_off + 0x10 : shader_off + 0x18], "little"))
-    texture_off = _virtual_to_offset(int.from_bytes(system_data[texture_refs_off : texture_refs_off + 8], "little"))
+    texture_refs_off = _virtual_to_offset(
+        int.from_bytes(system_data[shader_off + 0x10 : shader_off + 0x18], "little")
+    )
+    texture_off = _virtual_to_offset(
+        int.from_bytes(system_data[texture_refs_off : texture_refs_off + 8], "little")
+    )
 
-    assert int.from_bytes(system_data[texture_off + 0x04 : texture_off + 0x08], "little") == 1
-    assert int.from_bytes(system_data[texture_off + 0x10 : texture_off + 0x14], "little") == 0x00260000
-    assert int.from_bytes(system_data[texture_off + 0x1C : texture_off + 0x1E], "little") == 1  # depth
+    assert (
+        int.from_bytes(system_data[texture_off + 0x04 : texture_off + 0x08], "little")
+        == 1
+    )
+    assert (
+        int.from_bytes(system_data[texture_off + 0x10 : texture_off + 0x14], "little")
+        == 0x00260000
+    )
+    assert (
+        int.from_bytes(system_data[texture_off + 0x1C : texture_off + 0x1E], "little")
+        == 1
+    )  # depth
     assert system_data[texture_off + 0x1E] == 1  # dimension: 2D
     assert system_data[texture_off + 0x20] == 255  # tile mode: auto
     assert system_data[texture_off + 0x22] == 1  # mip levels
-    assert int.from_bytes(system_data[texture_off + 0x26 : texture_off + 0x28], "little") == 1  # usage count
-    assert int.from_bytes(system_data[texture_off + 0x30 : texture_off + 0x38], "little") == 0  # no SRV
-    assert int.from_bytes(system_data[texture_off + 0x38 : texture_off + 0x40], "little") == 0  # no pixel data
+    assert (
+        int.from_bytes(system_data[texture_off + 0x26 : texture_off + 0x28], "little")
+        == 1
+    )  # usage count
+    assert (
+        int.from_bytes(system_data[texture_off + 0x30 : texture_off + 0x38], "little")
+        == 0
+    )  # no SRV
+    assert (
+        int.from_bytes(system_data[texture_off + 0x38 : texture_off + 0x40], "little")
+        == 0
+    )  # no pixel data
 
-    name_off = _virtual_to_offset(int.from_bytes(system_data[texture_off + 0x28 : texture_off + 0x30], "little"))
-    assert system_data[name_off : name_off + len(b"layout_diffuse")] == b"layout_diffuse"
+    name_off = _virtual_to_offset(
+        int.from_bytes(system_data[texture_off + 0x28 : texture_off + 0x30], "little")
+    )
+    assert (
+        system_data[name_off : name_off + len(b"layout_diffuse")] == b"layout_diffuse"
+    )
 
-    shader_group_off = _virtual_to_offset(int.from_bytes(system_data[0x10:0x18], "little"))
-    assert int.from_bytes(system_data[shader_group_off + 0x30 : shader_group_off + 0x34], "little") == 0
+    shader_group_off = _virtual_to_offset(
+        int.from_bytes(system_data[0x10:0x18], "little")
+    )
+    assert (
+        int.from_bytes(
+            system_data[shader_group_off + 0x30 : shader_group_off + 0x34], "little"
+        )
+        == 0
+    )
 
 
-def test_build_and_read_ydr_gen9_accepts_native_texture_slot_names(tmp_path: Path) -> None:
+def test_build_and_read_ydr_gen9_accepts_native_texture_slot_names(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
@@ -1387,10 +1678,14 @@ def test_build_and_read_ydr_gen9_accepts_native_texture_slot_names(tmp_path: Pat
     ydr = read_ydr(ydr_path)
 
     assert ydr.materials[0].texture_names == ["native_diffuse"]
-    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.1, 0.2, 0.3, 1.0))
+    assert ydr.materials[0].get_numeric_parameter(
+        "matMaterialColorScale"
+    ) == pytest.approx((0.1, 0.2, 0.3, 1.0))
 
 
-def test_read_ydr_gen9_keeps_sampler_state_distinct_from_texture_resource(tmp_path: Path) -> None:
+def test_read_ydr_gen9_keeps_sampler_state_distinct_from_texture_resource(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
@@ -1409,8 +1704,16 @@ def test_read_ydr_gen9_keeps_sampler_state_distinct_from_texture_resource(tmp_pa
     ydr = read_ydr(ydr_path)
     material = ydr.materials[0]
 
-    texture_resource = next(parameter for parameter in material.parameters if parameter.name == "DiffuseSampler")
-    sampler_state = next(parameter for parameter in material.parameters if parameter.name == "diffusesampler")
+    texture_resource = next(
+        parameter
+        for parameter in material.parameters
+        if parameter.name == "DiffuseSampler"
+    )
+    sampler_state = next(
+        parameter
+        for parameter in material.parameters
+        if parameter.name == "diffusesampler"
+    )
 
     assert texture_resource.is_texture
     assert texture_resource.texture is not None
@@ -1423,7 +1726,9 @@ def test_read_ydr_gen9_keeps_sampler_state_distinct_from_texture_resource(tmp_pa
     )
 
 
-def test_validate_ydr_gen9_treats_null_texture_resource_as_informational(tmp_path: Path) -> None:
+def test_validate_ydr_gen9_treats_null_texture_resource_as_informational(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[YdrMaterialInput(name="main", shader="default.sps")],
@@ -1435,7 +1740,9 @@ def test_validate_ydr_gen9_treats_null_texture_resource_as_informational(tmp_pat
     build.save(ydr_path)
     ydr = read_ydr(ydr_path)
 
-    issue = next(issue for issue in ydr.validate() if issue.code == "unbound_texture_slot")
+    issue = next(
+        issue for issue in ydr.validate() if issue.code == "unbound_texture_slot"
+    )
     assert issue.severity is DiagnosticSeverity.INFO
     assert "DiffuseSampler" in issue.message
 
@@ -1461,10 +1768,14 @@ def test_build_and_read_ydr_gen9_accepts_shader_enum(tmp_path: Path) -> None:
 
     assert ydr.materials[0].resolved_shader_file_name == YdrGen9Shader.DEFAULT.value
     assert ydr.materials[0].texture_names == ["enum_diffuse"]
-    assert ydr.materials[0].get_numeric_parameter("matMaterialColorScale") == pytest.approx((0.6, 0.4, 0.2, 1.0))
+    assert ydr.materials[0].get_numeric_parameter(
+        "matMaterialColorScale"
+    ) == pytest.approx((0.6, 0.4, 0.2, 1.0))
 
 
-@pytest.mark.parametrize(("legacy_shader", "gen9_shader", "render_bucket"), _LEGACY_GEN9_ADAPTATION_CASES)
+@pytest.mark.parametrize(
+    ("legacy_shader", "gen9_shader", "render_bucket"), _LEGACY_GEN9_ADAPTATION_CASES
+)
 def test_build_and_read_ydr_gen9_adapts_legacy_shader_variants(
     tmp_path: Path,
     legacy_shader: str,
@@ -1533,7 +1844,9 @@ def test_gen9_adaptation_rejects_unrepresented_legacy_override() -> None:
 
 
 @pytest.mark.parametrize("shader", _GEN9_ENVIRONMENT_SHADER_FAMILIES)
-def test_build_and_read_ydr_gen9_preserves_environment_sampler_binding(tmp_path: Path, shader: str) -> None:
+def test_build_and_read_ydr_gen9_preserves_environment_sampler_binding(
+    tmp_path: Path, shader: str
+) -> None:
     build = YdrBuild(
         lods={YdrLod.HIGH: [YdrModelInput(meshes=[_triangle_mesh(material="main")])]},
         materials=[
@@ -1826,10 +2139,18 @@ def test_skeleton_unknown_hash_helper_is_explicit_and_enum_backed() -> None:
         YdrBoneFlagName.TRANS_Y,
         YdrBoneFlagName.HAS_CHILD,
     )
-    assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (0, 0, 0)
+    assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (
+        0,
+        0,
+        0,
+    )
 
     skeleton.build()
-    assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (0, 0, 0)
+    assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (
+        0,
+        0,
+        0,
+    )
 
     assert skeleton.calculate_unknown_hashes() == hashes
     assert skeleton.recalculate_unknown_hashes() is skeleton
@@ -1838,10 +2159,14 @@ def test_skeleton_unknown_hash_helper_is_explicit_and_enum_backed() -> None:
 
 def test_skinned_mesh_builds_and_reads(tmp_path: Path) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -1912,12 +2237,18 @@ def test_gen9_skinned_mesh_uses_declared_component_offsets(tmp_path: Path) -> No
     )
 
 
-def test_skinned_default_layout_uses_canonical_default_vertex_data_type(tmp_path: Path) -> None:
+def test_skinned_default_layout_uses_canonical_default_vertex_data_type(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -1941,11 +2272,15 @@ def test_skinned_default_layout_uses_canonical_default_vertex_data_type(tmp_path
 
 def test_skinned_models_auto_enable_model_skin_flag(tmp_path: Path) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-            flags=0,
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                    flags=0,
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -1964,13 +2299,19 @@ def test_skinned_models_auto_enable_model_skin_flag(tmp_path: Path) -> None:
     assert ydr.get_model(0).flags == 1
 
 
-def test_skinned_models_preserve_other_model_flags_when_auto_enabling_skin(tmp_path: Path) -> None:
+def test_skinned_models_preserve_other_model_flags_when_auto_enabling_skin(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-            flags=0x24,
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                    flags=0x24,
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -1989,16 +2330,22 @@ def test_skinned_models_preserve_other_model_flags_when_auto_enabling_skin(tmp_p
     assert ydr.get_model(0).flags == 0x25
 
 
-def test_explicit_skinned_ubyte4_blend_indices_are_canonicalized(tmp_path: Path) -> None:
+def test_explicit_skinned_ubyte4_blend_indices_are_canonicalized(
+    tmp_path: Path,
+) -> None:
     mesh = _skinned_triangle_mesh(material="main")
     mesh.declaration_flags = 95
     mesh.declaration_types = 8598872888530528406
 
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[mesh],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[mesh],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2058,10 +2405,14 @@ def test_static_mesh_unaffected_by_skinned_support(tmp_path: Path) -> None:
 
 def test_skinned_mesh_roundtrip_via_to_build(tmp_path: Path) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2135,10 +2486,14 @@ def test_to_build_preserves_explicit_null_texture_parameters(tmp_path: Path) -> 
 
 def test_skinned_model_writes_formal_skeleton_binding_bytes(tmp_path: Path) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(unknown_1=0x11),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(unknown_1=0x11),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2154,23 +2509,30 @@ def test_skinned_model_writes_formal_skeleton_binding_bytes(tmp_path: Path) -> N
     build.save(ydr_path)
     system_data, model_off, _geometry_off = _first_model_offsets(ydr_path.read_bytes())
 
-    assert int.from_bytes(system_data[model_off + 0x28 : model_off + 0x2C], "little") == 0x00000102
-    assert system_data[model_off + 0x28 : model_off + 0x2C] == bytes((0x02, 0x01, 0x00, 0x00))
+    assert (
+        int.from_bytes(system_data[model_off + 0x28 : model_off + 0x2C], "little")
+        == 0x00000102
+    )
+    assert system_data[model_off + 0x28 : model_off + 0x2C] == bytes(
+        (0x02, 0x01, 0x00, 0x00)
+    )
 
 
 def test_rigid_model_bone_binding_roundtrip(tmp_path: Path) -> None:
     skeleton = _simple_skeleton()
     build = YdrBuild(
-        lods={YdrLod.HIGH: [
-            YdrModelInput(
-                meshes=[_triangle_mesh(material="main")],
-                skeleton_binding=YdrSkeletonBinding.rigid(bone_index=0),
-            ),
-            YdrModelInput(
-                meshes=[_triangle_mesh(material="main")],
-                skeleton_binding=YdrSkeletonBinding.rigid(bone_index=1),
-            ),
-        ]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.rigid(bone_index=0),
+                ),
+                YdrModelInput(
+                    meshes=[_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.rigid(bone_index=1),
+                ),
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2223,17 +2585,25 @@ def test_bind_model_to_bone_helper_roundtrip(tmp_path: Path) -> None:
 
     assert rebuilt.get_model(0).has_skin is False
     assert rebuilt.get_model(0).bone_index == 1
-    assert rebuilt.get_model(0).skeleton_binding == YdrSkeletonBinding.rigid(bone_index=1)
+    assert rebuilt.get_model(0).skeleton_binding == YdrSkeletonBinding.rigid(
+        bone_index=1
+    )
 
 
-def test_drawable_model_writes_outer_bounds_data_for_multi_geometry(tmp_path: Path) -> None:
+def test_drawable_model_writes_outer_bounds_data_for_multi_geometry(
+    tmp_path: Path,
+) -> None:
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[
-                _offset_triangle_mesh(0.0, material="main"),
-                _offset_triangle_mesh(10.0, material="main"),
-            ],
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[
+                        _offset_triangle_mesh(0.0, material="main"),
+                        _offset_triangle_mesh(10.0, material="main"),
+                    ],
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2247,12 +2617,22 @@ def test_drawable_model_writes_outer_bounds_data_for_multi_geometry(tmp_path: Pa
     ydr_path = tmp_path / "multi_geom_bounds.ydr"
     build.save(ydr_path)
     system_data, model_off, _geometry_off = _first_model_offsets(ydr_path.read_bytes())
-    bounds_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x18 : model_off + 0x20], "little"))
+    bounds_off = _virtual_to_offset(
+        int.from_bytes(system_data[model_off + 0x18 : model_off + 0x20], "little")
+    )
 
-    assert int.from_bytes(system_data[model_off + 0x10 : model_off + 0x12], "little") == 2
-    assert int.from_bytes(system_data[model_off + 0x12 : model_off + 0x14], "little") == 2
-    assert int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 2
-    assert int.from_bytes(system_data[model_off + 0x04 : model_off + 0x08], "little") == 1
+    assert (
+        int.from_bytes(system_data[model_off + 0x10 : model_off + 0x12], "little") == 2
+    )
+    assert (
+        int.from_bytes(system_data[model_off + 0x12 : model_off + 0x14], "little") == 2
+    )
+    assert (
+        int.from_bytes(system_data[model_off + 0x2E : model_off + 0x30], "little") == 2
+    )
+    assert (
+        int.from_bytes(system_data[model_off + 0x04 : model_off + 0x08], "little") == 1
+    )
 
     import struct
 
@@ -2281,14 +2661,18 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
         skeleton.bone(f"bone_{index}", parent=root, tag=index)
     skeleton.build()
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[
-                _triangle_mesh(material="main"),
-                _skinned_triangle_mesh(material="main"),
-                many_bones_mesh,
-            ],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[
+                        _triangle_mesh(material="main"),
+                        _skinned_triangle_mesh(material="main"),
+                        many_bones_mesh,
+                    ],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2303,28 +2687,85 @@ def test_geometry_bone_ids_tail_embedding_rules(tmp_path: Path) -> None:
     ydr_path = tmp_path / "bone_ids_tail.ydr"
     build.save(ydr_path)
     _header, system_data, _graphics_data = split_rsc7_sections(ydr_path.read_bytes())
-    model_list_off = _virtual_to_offset(int.from_bytes(system_data[0xA0:0xA8], "little"))
-    model_off = _virtual_to_offset(int.from_bytes(system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"))
-    geometry_ptrs_off = _virtual_to_offset(int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little"))
+    model_list_off = _virtual_to_offset(
+        int.from_bytes(system_data[0xA0:0xA8], "little")
+    )
+    model_off = _virtual_to_offset(
+        int.from_bytes(
+            system_data[model_list_off + 0x10 : model_list_off + 0x18], "little"
+        )
+    )
+    geometry_ptrs_off = _virtual_to_offset(
+        int.from_bytes(system_data[model_off + 0x08 : model_off + 0x10], "little")
+    )
     geometry_offsets = [
-        _virtual_to_offset(int.from_bytes(system_data[geometry_ptrs_off + (index * 8) : geometry_ptrs_off + (index * 8) + 8], "little"))
+        _virtual_to_offset(
+            int.from_bytes(
+                system_data[
+                    geometry_ptrs_off + (index * 8) : geometry_ptrs_off
+                    + (index * 8)
+                    + 8
+                ],
+                "little",
+            )
+        )
         for index in range(3)
     ]
 
-    assert int.from_bytes(system_data[geometry_offsets[0] + 0x68 : geometry_offsets[0] + 0x70], "little") == 0
-    assert int.from_bytes(system_data[geometry_offsets[0] + 0x72 : geometry_offsets[0] + 0x74], "little") == 0
+    assert (
+        int.from_bytes(
+            system_data[geometry_offsets[0] + 0x68 : geometry_offsets[0] + 0x70],
+            "little",
+        )
+        == 0
+    )
+    assert (
+        int.from_bytes(
+            system_data[geometry_offsets[0] + 0x72 : geometry_offsets[0] + 0x74],
+            "little",
+        )
+        == 0
+    )
 
-    normalized_palette_ptr = int.from_bytes(system_data[geometry_offsets[1] + 0x68 : geometry_offsets[1] + 0x70], "little")
+    normalized_palette_ptr = int.from_bytes(
+        system_data[geometry_offsets[1] + 0x68 : geometry_offsets[1] + 0x70], "little"
+    )
     assert _virtual_to_offset(normalized_palette_ptr) == geometry_offsets[1] + 0xA0
-    assert int.from_bytes(system_data[geometry_offsets[1] + 0x72 : geometry_offsets[1] + 0x74], "little") == 5
-    assert system_data[geometry_offsets[1] + 0x98 : geometry_offsets[1] + 0xA0] == b"\x00" * 8
-    assert system_data[geometry_offsets[1] + 0xA0 : geometry_offsets[1] + 0xAA] == b"\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00"
+    assert (
+        int.from_bytes(
+            system_data[geometry_offsets[1] + 0x72 : geometry_offsets[1] + 0x74],
+            "little",
+        )
+        == 5
+    )
+    assert (
+        system_data[geometry_offsets[1] + 0x98 : geometry_offsets[1] + 0xA0]
+        == b"\x00" * 8
+    )
+    assert (
+        system_data[geometry_offsets[1] + 0xA0 : geometry_offsets[1] + 0xAA]
+        == b"\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00"
+    )
 
-    five_bone_ptr = int.from_bytes(system_data[geometry_offsets[2] + 0x68 : geometry_offsets[2] + 0x70], "little")
+    five_bone_ptr = int.from_bytes(
+        system_data[geometry_offsets[2] + 0x68 : geometry_offsets[2] + 0x70], "little"
+    )
     assert _virtual_to_offset(five_bone_ptr) == geometry_offsets[2] + 0xA0
-    assert int.from_bytes(system_data[geometry_offsets[2] + 0x72 : geometry_offsets[2] + 0x74], "little") == 5
-    assert system_data[geometry_offsets[2] + 0x98 : geometry_offsets[2] + 0xA0] == b"\x00" * 8
-    assert system_data[geometry_offsets[2] + 0xA0 : geometry_offsets[2] + 0xAA] == b"\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00"
+    assert (
+        int.from_bytes(
+            system_data[geometry_offsets[2] + 0x72 : geometry_offsets[2] + 0x74],
+            "little",
+        )
+        == 5
+    )
+    assert (
+        system_data[geometry_offsets[2] + 0x98 : geometry_offsets[2] + 0xA0]
+        == b"\x00" * 8
+    )
+    assert (
+        system_data[geometry_offsets[2] + 0xA0 : geometry_offsets[2] + 0xAA]
+        == b"\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00"
+    )
 
 
 def test_geometry_fixed_fields_match_expected_defaults(tmp_path: Path) -> None:
@@ -2337,21 +2778,66 @@ def test_geometry_fixed_fields_match_expected_defaults(tmp_path: Path) -> None:
     build.save(ydr_path)
     system_data, _model_off, geometry_off = _first_model_offsets(ydr_path.read_bytes())
 
-    assert int.from_bytes(system_data[geometry_off + 0x04 : geometry_off + 0x08], "little") == 1
-    assert int.from_bytes(system_data[geometry_off + 0x08 : geometry_off + 0x10], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x10 : geometry_off + 0x18], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x20 : geometry_off + 0x28], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x28 : geometry_off + 0x30], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x30 : geometry_off + 0x38], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x40 : geometry_off + 0x48], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x48 : geometry_off + 0x50], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x50 : geometry_off + 0x58], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x62 : geometry_off + 0x64], "little") == 3
-    assert int.from_bytes(system_data[geometry_off + 0x64 : geometry_off + 0x68], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x74 : geometry_off + 0x78], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x80 : geometry_off + 0x88], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x88 : geometry_off + 0x90], "little") == 0
-    assert int.from_bytes(system_data[geometry_off + 0x90 : geometry_off + 0x98], "little") == 0
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x04 : geometry_off + 0x08], "little")
+        == 1
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x08 : geometry_off + 0x10], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x10 : geometry_off + 0x18], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x20 : geometry_off + 0x28], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x28 : geometry_off + 0x30], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x30 : geometry_off + 0x38], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x40 : geometry_off + 0x48], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x48 : geometry_off + 0x50], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x50 : geometry_off + 0x58], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x62 : geometry_off + 0x64], "little")
+        == 3
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x64 : geometry_off + 0x68], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x74 : geometry_off + 0x78], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x80 : geometry_off + 0x88], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x88 : geometry_off + 0x90], "little")
+        == 0
+    )
+    assert (
+        int.from_bytes(system_data[geometry_off + 0x90 : geometry_off + 0x98], "little")
+        == 0
+    )
 
 
 def test_to_build_preserves_embedded_assets(tmp_path: Path) -> None:
@@ -2423,7 +2909,9 @@ def test_declarative_embedded_texture_and_bound_helpers(tmp_path: Path) -> None:
         ),
         replace=True,
     )
-    assert ydr.get_embedded_texture("helper_embedded").data[:4] == bytes([0, 0, 255, 255])
+    assert ydr.get_embedded_texture("helper_embedded").data[:4] == bytes(
+        [0, 0, 255, 255]
+    )
     assert ydr.remove_embedded_texture("helper_embedded") is True
     assert ydr.get_embedded_texture("helper_embedded") is None
 
@@ -2481,10 +2969,14 @@ def test_declarative_skin_helpers_and_validation(tmp_path: Path) -> None:
 def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
     skeleton = _simple_skeleton().recalculate_unknown_hashes()
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2509,8 +3001,14 @@ def test_skeleton_roundtrip_preserves_bone_metadata(tmp_path: Path) -> None:
         | YdrBoneFlags.HAS_CHILD
     )
     assert ydr.skeleton.bones[1].parent_index == 0
-    assert ydr.skeleton.bones[1].translation.components == pytest.approx((0.0, 0.25, 0.0))
-    assert (ydr.skeleton.unknown_50h, ydr.skeleton.unknown_54h, ydr.skeleton.unknown_58h) == skeleton.calculate_unknown_hashes()
+    assert ydr.skeleton.bones[1].translation.components == pytest.approx(
+        (0.0, 0.25, 0.0)
+    )
+    assert (
+        ydr.skeleton.unknown_50h,
+        ydr.skeleton.unknown_54h,
+        ydr.skeleton.unknown_58h,
+    ) == skeleton.calculate_unknown_hashes()
 
 
 def test_ydr_writer_normalizes_root_bone_id(tmp_path: Path) -> None:
@@ -2521,10 +3019,14 @@ def test_ydr_writer_normalizes_root_bone_id(tmp_path: Path) -> None:
     joints = YdrJoints()
     joints.rotation_limit(bone_id=root.tag)
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2549,14 +3051,20 @@ def test_ydr_writer_normalizes_root_bone_id(tmp_path: Path) -> None:
     assert ydr.joints.rotation_limits[0].bone_id == 0
 
 
-def test_ydr_writer_recalculates_skeleton_unknown_hashes_by_default(tmp_path: Path) -> None:
+def test_ydr_writer_recalculates_skeleton_unknown_hashes_by_default(
+    tmp_path: Path,
+) -> None:
     skeleton = _hashable_skeleton()
     expected_hashes = skeleton.calculate_unknown_hashes()
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_skinned_triangle_mesh(material="main")],
-            skeleton_binding=YdrSkeletonBinding.skinned(),
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_skinned_triangle_mesh(material="main")],
+                    skeleton_binding=YdrSkeletonBinding.skinned(),
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2582,8 +3090,16 @@ def test_ydr_writer_recalculates_skeleton_unknown_hashes_by_default(tmp_path: Pa
     build.save(preserved_path, recalculate_skeleton_hashes=False)
     preserved = read_ydr(preserved_path)
     assert preserved.skeleton is not None
-    assert (preserved.skeleton.unknown_50h, preserved.skeleton.unknown_54h, preserved.skeleton.unknown_58h) == (0, 0, 0)
-    assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (0, 0, 0)
+    assert (
+        preserved.skeleton.unknown_50h,
+        preserved.skeleton.unknown_54h,
+        preserved.skeleton.unknown_58h,
+    ) == (0, 0, 0)
+    assert (skeleton.unknown_50h, skeleton.unknown_54h, skeleton.unknown_58h) == (
+        0,
+        0,
+        0,
+    )
 
 
 def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
@@ -2604,9 +3120,13 @@ def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
     )
 
     build = YdrBuild(
-        lods={YdrLod.HIGH: [YdrModelInput(
-            meshes=[_triangle_mesh(material="main")],
-        )]},
+        lods={
+            YdrLod.HIGH: [
+                YdrModelInput(
+                    meshes=[_triangle_mesh(material="main")],
+                )
+            ]
+        },
         materials=[
             YdrMaterialInput(
                 name="main",
@@ -2634,11 +3154,19 @@ def test_joints_roundtrip_preserves_limits(tmp_path: Path) -> None:
     assert ydr.joints.rotation_limits[0].unknown_ah == 7
     assert ydr.joints.rotation_limits[0].num_control_points == 2
     assert ydr.joints.rotation_limits[0].joint_dofs == 3
-    assert ydr.joints.rotation_limits[0].min.components == pytest.approx((-0.1, -0.2, -0.3))
-    assert ydr.joints.rotation_limits[0].max.components == pytest.approx((0.1, 0.2, 0.3))
+    assert ydr.joints.rotation_limits[0].min.components == pytest.approx(
+        (-0.1, -0.2, -0.3)
+    )
+    assert ydr.joints.rotation_limits[0].max.components == pytest.approx(
+        (0.1, 0.2, 0.3)
+    )
     assert ydr.joints.translation_limits[0].bone_id == 1
-    assert ydr.joints.translation_limits[0].min.components == pytest.approx((-1.0, -2.0, -3.0))
-    assert ydr.joints.translation_limits[0].max.components == pytest.approx((1.0, 2.0, 3.0))
+    assert ydr.joints.translation_limits[0].min.components == pytest.approx(
+        (-1.0, -2.0, -3.0)
+    )
+    assert ydr.joints.translation_limits[0].max.components == pytest.approx(
+        (1.0, 2.0, 3.0)
+    )
 
 
 def test_joints_validation_detects_unknown_bones() -> None:

@@ -414,10 +414,7 @@ def test_vehicle_appearance_reports_missing_and_invalid_references(tmp_path) -> 
     )
 
 
-@pytest.mark.skipif(
-    not os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH"),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail CUT regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_enhanced_pro_mcs_5_resolves_vehicle_appearances() -> None:
     root = Path(os.environ["FIVEFURY_GTA5_ENHANCED_PATH"])
     cache = GameFileCache(root, game=GameTarget.GTA5_ENHANCED, load_audio=False)
@@ -465,9 +462,7 @@ def _authored_vehicle_documents():
                 name=MetaHash("TESTCAR"),
                 mass=1600.0,
                 center_of_mass_offset=(0.0, 0.0, -0.1),
-                sub_handling=[
-                    CarHandlingData(values={"fCamberFront": -0.02})
-                ],
+                sub_handling=[CarHandlingData(values={"fCamberFront": -0.02})],
             )
         ]
     )
@@ -606,10 +601,7 @@ def test_handling_flag_xml_validation_reports_invalid_dialect_tokens() -> None:
     )
 
 
-@pytest.mark.skipif(
-    not os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH"),
-    reason="set FIVEFURY_GTA5_ENHANCED_PATH to run the retail handling regression",
-)
+@pytest.mark.integration("FIVEFURY_GTA5_ENHANCED_PATH")
 def test_enhanced_comet5_handling_flags_survive_typed_clone_roundtrip() -> None:
     root = Path(os.environ["FIVEFURY_GTA5_ENHANCED_PATH"])
     with GameFileCache(

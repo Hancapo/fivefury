@@ -30,10 +30,11 @@ def test_native_metadata_byte_input_reports_format_error() -> None:
         _native_abi3.meta_extract_ytyp_texture_relationships(bytes(80))
 
 
+@pytest.mark.abi
 def test_built_extension_on_abi_floor_interpreter(tmp_path: Path) -> None:
     interpreter = os.environ.get("FIVEFURY_ABI_TEST_PYTHON")
     if interpreter is None:
-        pytest.skip("Set FIVEFURY_ABI_TEST_PYTHON to the minimum supported Python")
+        pytest.fail("Set FIVEFURY_ABI_TEST_PYTHON to the minimum supported Python")
     archive = RpfArchive.empty("abi.rpf")
     archive.file("payload.bin", b"\x00binary\xff")
     path = tmp_path / "abi.rpf"
@@ -59,19 +60,29 @@ else:
 """
     subprocess.run(
         [interpreter, "-I", "-c", script, str(_native_abi3.__file__), str(path)],
-        check=True, capture_output=True, text=True, timeout=30,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
 
 
+@pytest.mark.integration
 def test_enhanced_native_reader_integration() -> None:
     root = os.environ.get("FIVEFURY_GTA5_ENHANCED_PATH")
     if root is None:
-        pytest.skip("Set FIVEFURY_GTA5_ENHANCED_PATH to run the retail integration test")
+        pytest.fail(
+            "Set FIVEFURY_GTA5_ENHANCED_PATH to run the retail integration test"
+        )
     with GameFileCache(root, game=GameTarget.GTA5_ENHANCED, load_audio=False) as cache:
         cache.scan(load_keys=True, gen9=True)
         record = cache.get_asset("prop_streetlight_01.yft")
         assert record is not None
-        with patch.object(GameFileCache, "_get_entry_for_asset", side_effect=AssertionError("native read fell back")):
+        with patch.object(
+            GameFileCache,
+            "_get_entry_for_asset",
+            side_effect=AssertionError("native read fell back"),
+        ):
             logical = cache.read_bytes(record, logical=True)
             assert logical
             file = cache.get_file(record)

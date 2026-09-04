@@ -1,17 +1,12 @@
-import subprocess
-import sys
-
 import pytest
 
 from fivefury import _native_abi3 as native
+from tests.helpers import run_python
 
 
 def test_native_allocation_failure_is_a_python_exception():
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            """
+    result = run_python(
+        """
 import sys
 from fivefury import _native_abi3 as native
 try:
@@ -22,11 +17,6 @@ else:
     raise AssertionError('unrepresentable allocation accepted')
 assert native.awc_decode_adpcm(b'', 0) == b''
 """,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=15,
     )
     assert result.returncode == 0, result.stderr
 
