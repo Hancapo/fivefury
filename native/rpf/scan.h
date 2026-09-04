@@ -11,6 +11,8 @@
 
 namespace fivefury_native {
 
+namespace rpf_internal { struct ReadCache; }
+
 using ScanLogFn = void(*)(void* context, const char* message, std::size_t length);
 
 enum class RpfReadMode : std::uint8_t {
@@ -74,14 +76,16 @@ std::vector<std::uint8_t> read_rpf_entry(
     const std::string& entry_path,
     const std::string& hash_lut,
     const NativeCryptoContext* crypto,
-    RpfReadMode mode = RpfReadMode::Stored
+    RpfReadMode mode = RpfReadMode::Stored,
+    rpf_internal::ReadCache* cache = nullptr
 );
 
 RpfReadVariants read_rpf_entry_variants(
     const std::string& path,
     const std::string& entry_path,
     const std::string& hash_lut,
-    const NativeCryptoContext* crypto
+    const NativeCryptoContext* crypto,
+    rpf_internal::ReadCache* cache = nullptr
 );
 
 std::size_t scan_rpf_into_index(

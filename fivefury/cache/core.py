@@ -108,6 +108,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
     _exclude_prefixes: tuple[str, ...] = field(default_factory=tuple, init=False, repr=False)
     _active_dlc_filter: set[str] | None = field(default=None, init=False, repr=False)
     _archive_lookup: OrderedDict[str, RpfArchive] = field(default_factory=OrderedDict, init=False, repr=False)
+    _native_readers: OrderedDict[str, tuple[object, Any]] = field(default_factory=OrderedDict, init=False, repr=False)
     _kind_dict_views: dict[int, _KindHashRecordMap] = field(default_factory=dict, init=False, repr=False)
     _archetype_view: _ArchetypeMap | None = field(default=None, init=False, repr=False)
     _texture_parent_view: _TextureParentMap | None = field(default=None, init=False, repr=False)
@@ -304,6 +305,7 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
 
     def _clear_payload_cache(self) -> None:
         with self._runtime_cache_lock:
+            self._native_readers.clear()
             self._payload_cache.clear()
             self._payload_cache_bytes = 0
 

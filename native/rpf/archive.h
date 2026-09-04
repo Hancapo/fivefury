@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <unordered_map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -68,6 +70,15 @@ struct ArchiveContext {
 struct ParsedArchive {
     std::vector<EntryDescriptor> entries;
     std::uint32_t encryption = OPEN_ENCRYPTION;
+    std::unordered_map<std::uint32_t, std::unordered_map<std::string, std::uint32_t>> children;
+};
+
+struct ReadCache {
+    std::mutex mutex;
+    std::unordered_map<std::uint64_t, ParsedArchive> tables;
+    std::filesystem::file_time_type modified{};
+    std::uint64_t size = 0;
+    std::unique_lock<std::mutex> prepare(const std::filesystem::path& path, std::uint64_t current_size);
 };
 
 struct ResolvedEntry {
@@ -95,7 +106,7 @@ std::string read_name(const std::vector<std::uint8_t>& names_data, std::uint32_t
 bool is_rsc7(const std::vector<std::uint8_t>& data) noexcept;
 std::vector<std::string> split_path(std::string_view value);
 const EntryDescriptor* find_child_entry(
-    const std::vector<EntryDescriptor>& entries,
+    ParsedArchive& archive,
     std::uint32_t dir_index,
     const std::string& name_lower,
     std::uint32_t& child_index_out
@@ -111,7 +122,8 @@ ResolvedEntry resolve_entry(
     const ArchiveContext& root_archive,
     const std::string& entry_path,
     const NativeCryptoContext* crypto,
-    const std::string& hash_lut
+    const std::string& hash_lut,
+    ReadCache* cache = nullptr
 );
 std::uint32_t resolve_resource_size(
     FileReader& reader,

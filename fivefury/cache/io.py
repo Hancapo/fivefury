@@ -42,7 +42,7 @@ _STANDALONE_RESOURCE_EXTENSIONS = frozenset({
     ".ydr", ".cdr", ".ydd", ".yft", ".ytd", ".ycd", ".yed", ".ybn", ".ynd", ".ynv",
 })
 try:
-    from .._native import read_rpf_entry, read_rpf_entry_variants
+    from .._native import RpfReader
 except ImportError as exc:
     raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
 
@@ -180,40 +180,36 @@ class GameFileCacheIOMixin:
         except Exception:
             return None
 
-    def _read_archive_asset_native(self, asset: AssetRecord, *, standalone: bool) -> bytes | None:
+    def _native_archive_reader(self, asset: AssetRecord) -> RpfReader | None:
         archive_rel = asset.archive_rel
-        entry_path = asset.entry_path
-        if archive_rel is None or entry_path is None or self.root is None:
+        if archive_rel is None or asset.entry_path is None or self.root is None:
             return None
         archive_path = Path(self.root) / archive_rel
         if not archive_path.is_file():
             return None
+        crypto = self._native_crypto_context()
+        with self._runtime_cache_lock:
+            previous = self._native_readers.pop(archive_rel, None)
+            reader = (previous[1] if previous is not None and previous[0] is crypto
+                      else RpfReader(archive_path, _get_lut(), crypto))
+            limit = max(0, int(self.max_open_archives))
+            if limit:
+                self._native_readers[archive_rel] = (crypto, reader)
+            while len(self._native_readers) > limit:
+                self._native_readers.popitem(last=False)
+            return reader
+
+    def _read_archive_asset_native(self, asset: AssetRecord, *, standalone: bool) -> bytes | None:
         try:
-            return read_rpf_entry(
-                archive_path,
-                entry_path,
-                _get_lut(),
-                self._native_crypto_context(),
-                standalone=standalone,
-            )
+            reader = self._native_archive_reader(asset)
+            return None if reader is None else reader.read(asset.entry_path, standalone=standalone)
         except Exception:
             return None
 
     def _read_archive_asset_native_variants(self, asset: AssetRecord) -> tuple[bytes, bytes] | None:
-        archive_rel = asset.archive_rel
-        entry_path = asset.entry_path
-        if archive_rel is None or entry_path is None or self.root is None:
-            return None
-        archive_path = Path(self.root) / archive_rel
-        if not archive_path.is_file():
-            return None
         try:
-            return read_rpf_entry_variants(
-                archive_path,
-                entry_path,
-                _get_lut(),
-                self._native_crypto_context(),
-            )
+            reader = self._native_archive_reader(asset)
+            return None if reader is None else reader.read_variants(asset.entry_path)
         except Exception:
             return None
 
