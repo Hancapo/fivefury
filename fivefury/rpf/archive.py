@@ -35,6 +35,7 @@ from .entries import (
     RpfFileEntry,
     RpfResourceFileEntry,
     RpfResourcePageFlags,
+    RpfStoredSource,
 )
 from .modes import (
     RpfEncryption,
@@ -367,6 +368,10 @@ class RpfArchive:
                         | (raw_header[5] << 16)
                         | (raw_header[2] << 24)
                     )
+            if isinstance(entry, RpfFileEntry):
+                entry._stored_source = RpfStoredSource(
+                    entry.file_offset * RPF_BLOCK_SIZE, entry.get_file_size()
+                )
             entries.append(entry)
 
         root = entries[0]
@@ -588,10 +593,12 @@ class RpfArchive:
             if entry._source.kind is RpfSourceKind.DEFLATE:
                 return _compress_deflate(data, entry._source.compression_level)
             return data
-        size = entry.get_file_size()
+        source = entry._stored_source
+        size = source.size if source is not None else entry.get_file_size()
         if size <= 0:
             return b""
-        return self._source_read(entry.file_offset * RPF_BLOCK_SIZE, size)
+        offset = source.offset if source is not None else entry.file_offset * RPF_BLOCK_SIZE
+        return self._source_read(offset, size)
 
     def read_entry_bytes(self, entry: RpfFileEntry, *, logical: bool = True) -> bytes:
         if (
@@ -1067,12 +1074,28 @@ class RpfArchive:
                 self.write_to(stream)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if (
+            replacing_source = (
                 self._source_file is not None
                 and self._source_file.resolve() == target.resolve()
-            ):
+            )
+            if replacing_source:
+                written = RpfArchive(
+                    name=self.name, crypto=self.crypto, _source_file=temporary_path
+                )
+                with written:
+                    written._parse()
+                    stored_sources = {
+                        entry.path: entry._stored_source
+                        for entry in written.iter_entries()
+                        if isinstance(entry, RpfFileEntry)
+                    }
                 self.close()
             os.replace(temporary_path, target)
+            if replacing_source:
+                for entry in self.iter_entries():
+                    if isinstance(entry, RpfFileEntry):
+                        entry._stored_source = stored_sources[entry.path]
+                self._source_snapshot = None
         finally:
             if temporary_path is not None and temporary_path.exists():
                 temporary_path.unlink()
