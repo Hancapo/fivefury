@@ -2,7 +2,6 @@
 #include "rpf/archive.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstring>
 #include <stdexcept>
 #include <unordered_map>
@@ -12,7 +11,7 @@ namespace fivefury_native::rpf_internal {
 
 std::string ascii_lower(std::string text) {
     for (char& ch : text) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch + ('a' - 'A'));
     }
     return text;
 }
@@ -27,12 +26,12 @@ std::string normalize_path(std::string value) {
         if (ch == '/' && (out.empty() || out.back() == '/')) {
             continue;
         }
-        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        out.push_back(ch);
     }
     if (!out.empty() && out.back() == '/') {
         out.pop_back();
     }
-    return out;
+    return ascii_lower(std::move(out));
 }
 
 std::string join_path(std::string_view lhs, std::string_view rhs) {

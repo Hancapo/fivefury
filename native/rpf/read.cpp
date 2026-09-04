@@ -1,4 +1,5 @@
 #include "rpf/archive.h"
+#include "filesystem/path.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -29,13 +30,13 @@ std::vector<std::uint8_t> read_rpf_entry(
     if (hash_lut.size() != 256U) {
         throw std::invalid_argument("hash LUT must contain 256 bytes");
     }
-    const auto fs_path = std::filesystem::path(path);
+    const auto fs_path = filesystem::from_utf8(path);
     rpf_internal::FileReader reader(fs_path);
     auto lock = cache == nullptr ? std::unique_lock<std::mutex>() : cache->prepare(fs_path, reader.size);
     const rpf_internal::ArchiveContext archive{
         0U,
         reader.size,
-        fs_path.filename().string(),
+        filesystem::to_utf8(fs_path.filename()),
         {},
     };
     const auto resolved = rpf_internal::resolve_entry(reader, archive, entry_path, crypto, hash_lut, cache);
@@ -56,13 +57,13 @@ RpfReadVariants read_rpf_entry_variants(
     if (hash_lut.size() != 256U) {
         throw std::invalid_argument("hash LUT must contain 256 bytes");
     }
-    const auto fs_path = std::filesystem::path(path);
+    const auto fs_path = filesystem::from_utf8(path);
     rpf_internal::FileReader reader(fs_path);
     auto lock = cache == nullptr ? std::unique_lock<std::mutex>() : cache->prepare(fs_path, reader.size);
     const rpf_internal::ArchiveContext archive{
         0U,
         reader.size,
-        fs_path.filename().string(),
+        filesystem::to_utf8(fs_path.filename()),
         {},
     };
     const auto resolved = rpf_internal::resolve_entry(reader, archive, entry_path, crypto, hash_lut, cache);

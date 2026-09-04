@@ -1,4 +1,5 @@
 #include "rpf/archive.h"
+#include "filesystem/path.h"
 
 #include "indexing/hash.h"
 
@@ -122,12 +123,12 @@ std::size_t scan_rpf_into_index(
     if (hash_lut.size() != 256U) {
         throw std::invalid_argument("hash LUT must contain 256 bytes");
     }
-    const auto fs_path = std::filesystem::path(path);
+    const auto fs_path = filesystem::from_utf8(path);
     rpf_internal::FileReader reader(fs_path);
     const rpf_internal::ArchiveContext archive{
         0U,
         reader.size,
-        fs_path.filename().string(),
+        filesystem::to_utf8(fs_path.filename()),
         rpf_internal::normalize_path(source_prefix),
     };
     std::vector<AssetRecordData> records;
