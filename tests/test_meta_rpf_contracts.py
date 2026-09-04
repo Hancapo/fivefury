@@ -5,7 +5,6 @@ import os
 import struct
 import tempfile
 import time
-import unittest
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -14,121 +13,20 @@ from unittest.mock import patch
 import pytest
 
 from fivefury import Quaternion, Vector3
-from fivefury.meta import RawStruct
-from fivefury.meta.defs import meta_name
-from tests.compat import PytestCompat
-from tests.helpers import (
-    configured_path,
-    reference_root,
-    resolve_symbol,
-    touch,
-    write_bytes,
-)
+from fivefury.rpf import rpf_to_zip, zip_to_rpf
+from fivefury.ymap import Entity
+from fivefury.ymap.surfaces import GrassBatch, InstancedData, LodLights
+from fivefury.ytyp import Archetype, Room
+from tests.helpers import configured_path, reference_root, touch, write_bytes
 
-_DAT_VIRTUAL_BASE = 0x50000000
-_DAT_PHYSICAL_BASE = 0x60000000
-_GTAV_TEX_SIZE = 0x98
-_ENHANCED_TEX_SIZE = 0xA0
-
-
-def _static_or_function(symbol, method_names, *args, **kwargs):
-    value = symbol.value
-    if callable(value) and not isinstance(value, type):
-        return value(*args, **kwargs)
-    for method_name in method_names:
-        method = getattr(value, method_name, None)
-        if callable(method):
-            return method(*args, **kwargs)
-    raise AssertionError(
-        f"Could not resolve a callable from {symbol.module_name}.{symbol.symbol_name}"
-    )
-
-
-def _make_ymap(name: str = "unit_test.ymap"):
-    ymap_symbol = resolve_symbol(
-        ["fivefury.ymap", "fivefury"],
-        ["Ymap"],
-    )
-    if ymap_symbol is None:
-        return None
-    value = ymap_symbol.value
-    if isinstance(value, type):
-        return value(name=name)
-    if callable(value):
-        return value(name)
-    return None
-
-
-def _make_entity(archetype_name: str = "prop_tree_pine_01", **kwargs):
-    entity_symbol = resolve_symbol(
-        ["fivefury.ymap", "fivefury"],
-        ["Entity", "EntityDef"],
-    )
-    if entity_symbol is None:
-        return None
-    value = entity_symbol.value
-    if isinstance(value, type):
-        return value(archetype_name=archetype_name, **kwargs)
-    if callable(value):
-        return value(archetype_name=archetype_name, **kwargs)
-    return None
-
-
-def _try_surface_constructor(module_names, symbol_names, kwargs, fallback):
-    symbol = resolve_symbol(module_names, symbol_names)
-    if symbol is None:
-        return fallback
-    value = symbol.value
-    if isinstance(value, type):
-        try:
-            return value(**kwargs)
-        except TypeError:
-            return fallback
-    if callable(value):
-        try:
-            return value(**kwargs)
-        except TypeError:
-            return fallback
-    return fallback
-
-
-def _raw_lod_light():
-    return RawStruct(meta_name("CLODLight"), bytes(136))
-
-
-def _raw_distant_lod_light():
-    return RawStruct(meta_name("CDistantLODLight"), bytes(48))
-
-
-def _raw_box_occluder():
-    return {
-        "iCenterX": 0,
-        "iCenterY": 0,
-        "iCenterZ": 0,
-        "iCosZ": 0,
-        "iLength": 0,
-        "iWidth": 0,
-        "iHeight": 0,
-        "iSinZ": 0,
-        "_meta_name_hash": meta_name("BoxOccluder"),
-    }
-
-
-def _raw_occlude_model():
-    return {
-        "bmin": (0.0, 0.0, 0.0),
-        "bmax": (0.0, 0.0, 0.0),
-        "dataSize": 0,
-        "verts": b"",
-        "numVertsInBytes": 0,
-        "numTris": 0,
-        "flags": 0,
-        "_meta_name_hash": meta_name("OccludeModel"),
-    }
+_DAT_VIRTUAL_BASE = 1342177280
+_DAT_PHYSICAL_BASE = 1610612736
+_GTAV_TEX_SIZE = 152
+_ENHANCED_TEX_SIZE = 160
 
 
 def _align(value: int, alignment: int) -> int:
-    return (value + alignment - 1) & ~(alignment - 1)
+    return value + alignment - 1 & ~(alignment - 1)
 
 
 def _parse_meta_layout(data: bytes) -> dict[str, object]:
@@ -136,13 +34,17 @@ def _parse_meta_layout(data: bytes) -> dict[str, object]:
 
     header, system_data, _ = split_rsc7_sections(data)
     root = struct.unpack_from("<ihbbiiqqqqqhhhh8I", system_data, 16)
-    pages_info = struct.unpack_from("<IIBBHI", system_data, 0x70)
+    pages_info = struct.unpack_from("<IIBBHI", system_data, 112)
     data_block_pointer = int(root[8])
     data_block_count = int(root[13])
-    data_block_offset = data_block_pointer - _DAT_VIRTUAL_BASE if data_block_pointer else 0
+    data_block_offset = (
+        data_block_pointer - _DAT_VIRTUAL_BASE if data_block_pointer else 0
+    )
     data_blocks: list[tuple[int, int, int]] = []
     for index in range(data_block_count):
-        name_hash, length, pointer = struct.unpack_from("<IIq", system_data, data_block_offset + (index * 16))
+        name_hash, length, pointer = struct.unpack_from(
+            "<IIq", system_data, data_block_offset + index * 16
+        )
         data_blocks.append((name_hash, length, pointer))
     return {
         "header": header,
@@ -160,140 +62,179 @@ def _build_test_ytd_bytes(*, enhanced: bool = False) -> bytes:
     from fivefury.texture import BC_TO_DX9, BC_TO_RSC8, BCFormat, row_pitch
 
     name = b"test_diffuse\x00"
-    pixel_data = b"\x11\x22\x33\x44\x55\x66\x77\x88"
+    pixel_data = b'\x11"3DUfw\x88'
     count = 1
-    dict_size = 0x40
+    dict_size = 64
     keys_offset = dict_size
     ptrs_offset = _align(keys_offset + 4 * count, 16)
     tex_size = _ENHANCED_TEX_SIZE if enhanced else _GTAV_TEX_SIZE
     textures_offset = _align(ptrs_offset + 8 * count, 16)
     name_offset = textures_offset + tex_size
     virtual_size = _align(name_offset + len(name), 16)
-
     vbuf = bytearray(virtual_size)
     pbuf = bytearray(pixel_data)
-
-    vbuf[0x28:0x2A] = count.to_bytes(2, "little")
-    vbuf[0x30:0x38] = (_DAT_VIRTUAL_BASE + ptrs_offset).to_bytes(8, "little")
-    vbuf[keys_offset:keys_offset + 4] = (0x12345678).to_bytes(4, "little")
-    vbuf[ptrs_offset:ptrs_offset + 8] = (_DAT_VIRTUAL_BASE + textures_offset).to_bytes(8, "little")
-    vbuf[name_offset:name_offset + len(name)] = name
-
+    vbuf[40:42] = count.to_bytes(2, "little")
+    vbuf[48:56] = (_DAT_VIRTUAL_BASE + ptrs_offset).to_bytes(8, "little")
+    vbuf[keys_offset : keys_offset + 4] = (305419896).to_bytes(4, "little")
+    vbuf[ptrs_offset : ptrs_offset + 8] = (
+        _DAT_VIRTUAL_BASE + textures_offset
+    ).to_bytes(8, "little")
+    vbuf[name_offset : name_offset + len(name)] = name
     tex_off = textures_offset
-    vbuf[tex_off + 0x28:tex_off + 0x30] = (_DAT_VIRTUAL_BASE + name_offset).to_bytes(8, "little")
+    vbuf[tex_off + 40 : tex_off + 48] = (_DAT_VIRTUAL_BASE + name_offset).to_bytes(
+        8, "little"
+    )
     if enhanced:
-        vbuf[tex_off + 0x18:tex_off + 0x1A] = (4).to_bytes(2, "little")
-        vbuf[tex_off + 0x1A:tex_off + 0x1C] = (4).to_bytes(2, "little")
-        vbuf[tex_off + 0x1F] = int(BC_TO_RSC8[BCFormat.BC1])
-        vbuf[tex_off + 0x22] = 1
-        vbuf[tex_off + 0x38:tex_off + 0x40] = (_DAT_PHYSICAL_BASE).to_bytes(8, "little")
+        vbuf[tex_off + 24 : tex_off + 26] = (4).to_bytes(2, "little")
+        vbuf[tex_off + 26 : tex_off + 28] = (4).to_bytes(2, "little")
+        vbuf[tex_off + 31] = int(BC_TO_RSC8[BCFormat.BC1])
+        vbuf[tex_off + 34] = 1
+        vbuf[tex_off + 56 : tex_off + 64] = _DAT_PHYSICAL_BASE.to_bytes(8, "little")
         version = 5
     else:
-        vbuf[tex_off + 0x50:tex_off + 0x52] = (4).to_bytes(2, "little", signed=True)
-        vbuf[tex_off + 0x52:tex_off + 0x54] = (4).to_bytes(2, "little", signed=True)
-        vbuf[tex_off + 0x56:tex_off + 0x58] = row_pitch(4, BCFormat.BC1).to_bytes(2, "little")
-        vbuf[tex_off + 0x58:tex_off + 0x5C] = int(BC_TO_DX9[BCFormat.BC1]).to_bytes(4, "little")
-        vbuf[tex_off + 0x5D] = 1
-        vbuf[tex_off + 0x70:tex_off + 0x78] = (_DAT_PHYSICAL_BASE).to_bytes(8, "little")
+        vbuf[tex_off + 80 : tex_off + 82] = (4).to_bytes(2, "little", signed=True)
+        vbuf[tex_off + 82 : tex_off + 84] = (4).to_bytes(2, "little", signed=True)
+        vbuf[tex_off + 86 : tex_off + 88] = row_pitch(4, BCFormat.BC1).to_bytes(
+            2, "little"
+        )
+        vbuf[tex_off + 88 : tex_off + 92] = int(BC_TO_DX9[BCFormat.BC1]).to_bytes(
+            4, "little"
+        )
+        vbuf[tex_off + 93] = 1
+        vbuf[tex_off + 112 : tex_off + 120] = _DAT_PHYSICAL_BASE.to_bytes(8, "little")
         version = 13
-
     return build_rsc7(bytes(vbuf), version=version, graphics_data=bytes(pbuf))
 
 
-def _relocate_embedded_texture_dictionary(virtual_data: bytes, *, dict_offset: int, enhanced: bool) -> bytes:
-    count = int.from_bytes(virtual_data[0x28:0x2A], "little")
-    ptrs_offset = int.from_bytes(virtual_data[0x30:0x38], "little") - _DAT_VIRTUAL_BASE
+def _relocate_embedded_texture_dictionary(
+    virtual_data: bytes, *, dict_offset: int, enhanced: bool
+) -> bytes:
+    count = int.from_bytes(virtual_data[40:42], "little")
+    ptrs_offset = int.from_bytes(virtual_data[48:56], "little") - _DAT_VIRTUAL_BASE
     output = bytearray(dict_offset + len(virtual_data))
     output[dict_offset : dict_offset + len(virtual_data)] = virtual_data
     delta = dict_offset
 
     def add_virtual_ptr(offset: int) -> None:
-        value = int.from_bytes(output[dict_offset + offset : dict_offset + offset + 8], "little")
+        value = int.from_bytes(
+            output[dict_offset + offset : dict_offset + offset + 8], "little"
+        )
         if value:
-            output[dict_offset + offset : dict_offset + offset + 8] = (value + delta).to_bytes(8, "little")
+            output[dict_offset + offset : dict_offset + offset + 8] = (
+                value + delta
+            ).to_bytes(8, "little")
 
-    add_virtual_ptr(0x08)
-    add_virtual_ptr(0x20)
-    add_virtual_ptr(0x30)
-
+    add_virtual_ptr(8)
+    add_virtual_ptr(32)
+    add_virtual_ptr(48)
     for index in range(count):
-        ptr_pos = dict_offset + ptrs_offset + (index * 8)
+        ptr_pos = dict_offset + ptrs_offset + index * 8
         tex_ptr = int.from_bytes(output[ptr_pos : ptr_pos + 8], "little")
         output[ptr_pos : ptr_pos + 8] = (tex_ptr + delta).to_bytes(8, "little")
-        tex_off = int.from_bytes(
-            virtual_data[ptrs_offset + (index * 8) : ptrs_offset + (index * 8) + 8],
-            "little",
-        ) - _DAT_VIRTUAL_BASE
-        add_virtual_ptr(tex_off + 0x28)
+        tex_off = (
+            int.from_bytes(
+                virtual_data[ptrs_offset + index * 8 : ptrs_offset + index * 8 + 8],
+                "little",
+            )
+            - _DAT_VIRTUAL_BASE
+        )
+        add_virtual_ptr(tex_off + 40)
         if enhanced:
-            add_virtual_ptr(tex_off + 0x30)
+            add_virtual_ptr(tex_off + 48)
     return bytes(output)
 
 
 def _build_embedded_texture_resource(kind: str, *, enhanced: bool = False) -> bytes:
     from fivefury.resource import build_rsc7, split_rsc7_sections
 
-    _, virtual_src, graphics_src = split_rsc7_sections(_build_test_ytd_bytes(enhanced=enhanced))
+    _, virtual_src, graphics_src = split_rsc7_sections(
+        _build_test_ytd_bytes(enhanced=enhanced)
+    )
     kind_lower = kind.lower()
-
     if kind_lower == "ydr":
-        shader_group_offset = 0x100
-        dict_offset = 0x200
+        shader_group_offset = 256
+        dict_offset = 512
         system_size = dict_offset + len(virtual_src)
         system_data = bytearray(system_size)
-        system_data[0x10:0x18] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(8, "little")
-        system_data[shader_group_offset + 0x08 : shader_group_offset + 0x10] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
-        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        system_data[16:24] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(
+            8, "little"
+        )
+        system_data[shader_group_offset + 8 : shader_group_offset + 16] = (
+            _DAT_VIRTUAL_BASE + dict_offset
+        ).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(
+            virtual_src, dict_offset=dict_offset, enhanced=enhanced
+        )[dict_offset:]
         version = 159 if enhanced else 165
     elif kind_lower == "ydd":
-        drawables_offset = 0x100
-        drawable_offset = 0x120
-        shader_group_offset = 0x200
-        dict_offset = 0x280
+        drawables_offset = 256
+        drawable_offset = 288
+        shader_group_offset = 512
+        dict_offset = 640
         system_size = dict_offset + len(virtual_src)
         system_data = bytearray(system_size)
-        system_data[0x30:0x38] = (_DAT_VIRTUAL_BASE + drawables_offset).to_bytes(8, "little")
-        system_data[0x38:0x3A] = (1).to_bytes(2, "little")
-        system_data[drawables_offset : drawables_offset + 8] = (_DAT_VIRTUAL_BASE + drawable_offset).to_bytes(8, "little")
-        system_data[drawable_offset + 0x10 : drawable_offset + 0x18] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(8, "little")
-        system_data[shader_group_offset + 0x08 : shader_group_offset + 0x10] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
-        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        system_data[48:56] = (_DAT_VIRTUAL_BASE + drawables_offset).to_bytes(
+            8, "little"
+        )
+        system_data[56:58] = (1).to_bytes(2, "little")
+        system_data[drawables_offset : drawables_offset + 8] = (
+            _DAT_VIRTUAL_BASE + drawable_offset
+        ).to_bytes(8, "little")
+        system_data[drawable_offset + 16 : drawable_offset + 24] = (
+            _DAT_VIRTUAL_BASE + shader_group_offset
+        ).to_bytes(8, "little")
+        system_data[shader_group_offset + 8 : shader_group_offset + 16] = (
+            _DAT_VIRTUAL_BASE + dict_offset
+        ).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(
+            virtual_src, dict_offset=dict_offset, enhanced=enhanced
+        )[dict_offset:]
         version = 159 if enhanced else 165
     elif kind_lower == "yft":
-        drawable_offset = 0x120
-        shader_group_offset = 0x200
-        dict_offset = 0x280
+        drawable_offset = 288
+        shader_group_offset = 512
+        dict_offset = 640
         system_size = dict_offset + len(virtual_src)
         system_data = bytearray(system_size)
-        system_data[0x30:0x38] = (_DAT_VIRTUAL_BASE + drawable_offset).to_bytes(8, "little")
-        system_data[drawable_offset + 0x10 : drawable_offset + 0x18] = (_DAT_VIRTUAL_BASE + shader_group_offset).to_bytes(8, "little")
-        system_data[shader_group_offset + 0x08 : shader_group_offset + 0x10] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
-        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        system_data[48:56] = (_DAT_VIRTUAL_BASE + drawable_offset).to_bytes(8, "little")
+        system_data[drawable_offset + 16 : drawable_offset + 24] = (
+            _DAT_VIRTUAL_BASE + shader_group_offset
+        ).to_bytes(8, "little")
+        system_data[shader_group_offset + 8 : shader_group_offset + 16] = (
+            _DAT_VIRTUAL_BASE + dict_offset
+        ).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(
+            virtual_src, dict_offset=dict_offset, enhanced=enhanced
+        )[dict_offset:]
         version = 171 if enhanced else 162
     elif kind_lower == "ypt":
-        dict_offset = 0x100
+        dict_offset = 256
         system_size = dict_offset + len(virtual_src)
         system_data = bytearray(system_size)
-        system_data[0x20:0x28] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
-        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(virtual_src, dict_offset=dict_offset, enhanced=enhanced)[dict_offset:]
+        system_data[32:40] = (_DAT_VIRTUAL_BASE + dict_offset).to_bytes(8, "little")
+        system_data[dict_offset:] = _relocate_embedded_texture_dictionary(
+            virtual_src, dict_offset=dict_offset, enhanced=enhanced
+        )[dict_offset:]
         version = 71 if enhanced else 68
     else:
         raise ValueError(f"Unsupported embedded texture resource kind: {kind}")
+    return build_rsc7(
+        bytes(system_data), version=version, graphics_data=bytes(graphics_src)
+    )
 
-    return build_rsc7(bytes(system_data), version=version, graphics_data=bytes(graphics_src))
 
-
-class MetaAndArchiveContractTests(PytestCompat):
-    def test_meta_builder_reuses_blocks_until_the_existing_group_reaches_the_limit(self) -> None:
+class MetaAndArchiveContractTests:
+    def test_meta_builder_reuses_blocks_until_the_existing_group_reaches_the_limit(
+        self,
+    ) -> None:
         from fivefury.meta.builder import MetaBuilder
 
         builder = MetaBuilder()
-        first = builder._add_block(0x12345678, bytes(0x3FF0), group=True)
-        second = builder._add_block(0x12345678, bytes(0x30), group=True)
-
-        self.assertEqual(first.block_id, second.block_id)
-        self.assertEqual(len(builder.blocks), 1)
-        self.assertEqual(len(builder.blocks[0].data), 0x4020)
+        first = builder._add_block(305419896, bytes(16368), group=True)
+        second = builder._add_block(305419896, bytes(48), group=True)
+        assert first.block_id == second.block_id
+        assert len(builder.blocks) == 1
+        assert len(builder.blocks[0].data) == 16416
 
     def test_meta_builder_pages_info_uses_total_page_count(self) -> None:
         from fivefury.meta.builder import MetaBuilder
@@ -301,296 +242,138 @@ class MetaAndArchiveContractTests(PytestCompat):
 
         builder = MetaBuilder()
         for _ in range(3):
-            builder._add_block(0x12345678, bytes(0x3000), group=False)
-
+            builder._add_block(305419896, bytes(12288), group=False)
         system = builder._compose_system_stream(0)
-        pages_info = struct.unpack_from("<IIBBHI", system, 0x70)
-
-        self.assertGreater(builder.page_count, 1)
-        self.assertEqual(pages_info[2], get_resource_total_page_count(builder.page_flags))
+        pages_info = struct.unpack_from("<IIBBHI", system, 112)
+        assert builder.page_count > 1
+        assert pages_info[2] == get_resource_total_page_count(builder.page_flags)
 
     def test_good_ymap_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ymap
 
         source = configured_path(
-            "FIVEFURY_TEST_YMAP",
-            reference_root() / "ymap/aliencity4.ymap",
+            "FIVEFURY_TEST_YMAP", reference_root() / "ymap/aliencity4.ymap"
         )
         if not source.exists():
-            self.skipTest("Representative working YMAP fixture is not available")
-
+            pytest.skip("Representative working YMAP fixture is not available")
         original = _parse_meta_layout(source.read_bytes())
         rebuilt = _parse_meta_layout(read_ymap(source.read_bytes()).to_bytes())
-
-        self.assertEqual(rebuilt["header"].system_flags, original["header"].system_flags)
-        self.assertEqual(rebuilt["header"].system_size, original["header"].system_size)
-        self.assertEqual(rebuilt["pages_info"], original["pages_info"])
-        self.assertEqual(rebuilt["struct_ptr"], original["struct_ptr"])
-        self.assertEqual(rebuilt["enum_ptr"], original["enum_ptr"])
-        self.assertEqual(rebuilt["data_block_ptr"], original["data_block_ptr"])
-        self.assertEqual(rebuilt["data_block_count"], original["data_block_count"])
-        self.assertEqual(rebuilt["data_blocks"], original["data_blocks"])
+        assert rebuilt["header"].system_flags == original["header"].system_flags
+        assert rebuilt["header"].system_size == original["header"].system_size
+        assert rebuilt["pages_info"] == original["pages_info"]
+        assert rebuilt["struct_ptr"] == original["struct_ptr"]
+        assert rebuilt["enum_ptr"] == original["enum_ptr"]
+        assert rebuilt["data_block_ptr"] == original["data_block_ptr"]
+        assert rebuilt["data_block_count"] == original["data_block_count"]
+        assert rebuilt["data_blocks"] == original["data_blocks"]
 
     def test_good_ytyp_roundtrip_preserves_meta_layout_contract(self) -> None:
         from fivefury import read_ytyp
 
         source = configured_path(
-            "FIVEFURY_TEST_YTYP",
-            reference_root() / "ytyp/alien.ytyp",
+            "FIVEFURY_TEST_YTYP", reference_root() / "ytyp/alien.ytyp"
         )
         if not source.exists():
-            self.skipTest("Representative working YTYP fixture is not available")
-
+            pytest.skip("Representative working YTYP fixture is not available")
         original = _parse_meta_layout(source.read_bytes())
         rebuilt = _parse_meta_layout(read_ytyp(source.read_bytes()).to_bytes())
+        assert rebuilt["header"].system_flags == original["header"].system_flags
+        assert rebuilt["header"].system_size == original["header"].system_size
+        assert rebuilt["pages_info"] == original["pages_info"]
+        assert rebuilt["struct_ptr"] == original["struct_ptr"]
+        assert rebuilt["enum_ptr"] == original["enum_ptr"]
+        assert rebuilt["data_block_ptr"] == original["data_block_ptr"]
+        assert rebuilt["data_block_count"] == original["data_block_count"]
+        assert rebuilt["data_blocks"] == original["data_blocks"]
 
-        self.assertEqual(rebuilt["header"].system_flags, original["header"].system_flags)
-        self.assertEqual(rebuilt["header"].system_size, original["header"].system_size)
-        self.assertEqual(rebuilt["pages_info"], original["pages_info"])
-        self.assertEqual(rebuilt["struct_ptr"], original["struct_ptr"])
-        self.assertEqual(rebuilt["enum_ptr"], original["enum_ptr"])
-        self.assertEqual(rebuilt["data_block_ptr"], original["data_block_ptr"])
-        self.assertEqual(rebuilt["data_block_count"], original["data_block_count"])
-        self.assertEqual(rebuilt["data_blocks"], original["data_blocks"])
+    def test_ymap_high_level_save(self, tmp_path):
+        from fivefury import Ymap, read_ymap
 
-    def test_ymap_high_level_save_helper_if_available(self) -> None:
-        ymap = _make_ymap("unit_test.ymap")
-        if ymap is None:
-            self.skipTest("Ymap API not available")
+        output = tmp_path / "unit_test.ymap"
+        Ymap(name="unit_test").save(output)
+        assert read_ymap(output.read_bytes()).name == "unit_test"
 
-        helper = None
-        for method_name in ("save", "save_ymap", "write", "write_ymap"):
-            method = getattr(ymap, method_name, None)
-            if callable(method):
-                helper = method
-                break
-        if helper is None:
-            self.skipTest("No save-like Ymap helper is implemented yet")
+    def test_ymap_and_ytyp_high_level_factories(self):
+        from fivefury import Ymap, Ytyp
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output = Path(tmpdir) / "unit_test.ymap"
-            result = helper(output)
-            if isinstance(result, (str, os.PathLike)):
-                output = Path(result)
-            elif isinstance(result, (bytes, bytearray)):
-                output.write_bytes(result)
-            self.assertTrue(output.exists(), "save helper did not create a YMAP file")
-            self.assertGreater(output.stat().st_size, 0, "saved YMAP file was empty")
-            from fivefury.resource import parse_rsc7
+        ymap, ytyp = (Ymap(name="unit_test"), Ytyp(name="unit_test"))
+        entity = ymap.entity(archetype_name="prop_tree_pine_01")
+        archetype = ytyp.archetype(name="prop_tree_pine_01")
+        assert ymap.entities == [entity]
+        assert ytyp.archetypes == [archetype]
 
-            header, _ = parse_rsc7(output.read_bytes())
-            self.assertEqual(header.version, 2)
+    def test_high_level_factories_default_to_empty_internal_resource_names(self):
+        from fivefury import Ymap, Ytyp
 
-    def test_ymap_and_ytyp_support_high_level_construction_helpers_if_available(self) -> None:
-        ymap = _make_ymap("unit_test.ymap")
-        ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury"],
-            ["Ytyp"],
-        )
-        if ymap is None or ytyp_symbol is None:
-            self.skipTest("High-level constructors not available")
+        for asset in (Ymap(name="unit_test.ymap"), Ytyp(name="unit_test.ytyp")):
+            assert asset.meta_name == ""
+            assert asset.resource_name == ""
 
-        ytyp_value = ytyp_symbol.value
-        if isinstance(ytyp_value, type):
-            ytyp = ytyp_value(name="unit_test.ytyp")
-        elif callable(ytyp_value):
-            ytyp = ytyp_value("unit_test.ytyp")
-        else:
-            ytyp = None
+    def test_models_expose_resource_name_property(self):
+        from fivefury import Ymap, Ytyp
 
-        if ymap is None and ytyp is None:
-            self.skipTest("No class constructors were exposed")
-
-        ymap_entity_helper = None
-        if ymap is not None:
-            for method_name in ("entity", "create_entity", "add_entity"):
-                method = getattr(ymap, method_name, None)
-                if callable(method):
-                    ymap_entity_helper = method
-                    break
-
-        ytyp_archetype_helper = None
-        if ytyp is not None:
-            for method_name in ("archetype", "create_archetype", "add_archetype"):
-                method = getattr(ytyp, method_name, None)
-                if callable(method):
-                    ytyp_archetype_helper = method
-                    break
-
-        if ymap_entity_helper is None and ytyp_archetype_helper is None:
-            self.skipTest("No high-level entity/archetype builders are implemented yet")
-
-        if ymap_entity_helper is not None:
-            try:
-                result = ymap_entity_helper(archetype_name="prop_tree_pine_01")
-            except TypeError:
-                if ymap_entity_helper.__name__ == "add_entity":
-                    self.skipTest("Ymap.add_entity does not build entities yet")
-                result = ymap_entity_helper()
-            self.assertIsNotNone(result)
-
-    def test_high_level_factories_default_to_empty_internal_resource_names(self) -> None:
-        ymap = _make_ymap("unit_test.ymap")
-        ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury"],
-            ["Ytyp"],
-        )
-        if ymap is None or ytyp_symbol is None:
-            self.skipTest("High-level constructors not available")
-
-        ytyp_value = ytyp_symbol.value
-        if isinstance(ytyp_value, type):
-            ytyp = ytyp_value(name="unit_test.ytyp")
-        elif callable(ytyp_value):
-            ytyp = ytyp_value("unit_test.ytyp")
-        else:
-            self.skipTest("Ytyp constructor is not callable")
-
-        self.assertEqual(getattr(ymap, "meta_name", ""), "")
-        self.assertEqual(getattr(ytyp, "meta_name", ""), "")
-        self.assertEqual(getattr(ymap, "resource_name", ""), "")
-        self.assertEqual(getattr(ytyp, "resource_name", ""), "")
-
-    def test_models_expose_resource_name_property(self) -> None:
-        ymap_symbol = resolve_symbol(
-            ["fivefury.ymap", "fivefury"],
-            ["Ymap"],
-        )
-        ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury"],
-            ["Ytyp"],
-        )
-        if ymap_symbol is None or ytyp_symbol is None:
-            self.skipTest("Model constructors not available")
-
-        ymap_type = ymap_symbol.value
-        ytyp_type = ytyp_symbol.value
-        if not isinstance(ymap_type, type) or not isinstance(ytyp_type, type):
-            self.skipTest("Model constructors are not exposed as classes")
-
-        ymap = ymap_type(name="unit_test.ymap")
-        ytyp = ytyp_type(name="unit_test.ytyp")
-        ymap.resource_name = "folder/unit_test.ymap"
-        ytyp.resource_name = "folder/unit_test.ytyp"
-
-        self.assertEqual(getattr(ymap, "meta_name", ""), "folder/unit_test.ymap")
-        self.assertEqual(getattr(ytyp, "meta_name", ""), "folder/unit_test.ytyp")
-        self.assertEqual(getattr(ymap, "resource_name", ""), "folder/unit_test.ymap")
-        self.assertEqual(getattr(ytyp, "resource_name", ""), "folder/unit_test.ytyp")
+        for asset, name in (
+            (Ymap(name="unit_test"), "folder/unit_test.ymap"),
+            (Ytyp(name="unit_test"), "folder/unit_test.ytyp"),
+        ):
+            asset.resource_name = name
+            assert asset.meta_name == name
+            assert asset.resource_name == name
 
     def test_declarative_aliases_are_exposed(self) -> None:
-        entity_symbol = resolve_symbol(["fivefury.ymap", "fivefury"], ["Entity"])
-        archetype_symbol = resolve_symbol(["fivefury.ytyp", "fivefury"], ["Archetype"])
-        room_symbol = resolve_symbol(["fivefury.ytyp", "fivefury"], ["Room"])
-        grass_batch_symbol = resolve_symbol(["fivefury.ymap.surfaces", "fivefury"], ["GrassBatch"])
-        instanced_data_symbol = resolve_symbol(["fivefury.ymap.surfaces", "fivefury"], ["InstancedData"])
-        lod_lights_symbol = resolve_symbol(["fivefury.ymap.surfaces", "fivefury"], ["LodLights"])
-        if None in (
-            entity_symbol,
-            archetype_symbol,
-            room_symbol,
-            grass_batch_symbol,
-            instanced_data_symbol,
-            lod_lights_symbol,
-        ):
-            self.skipTest("Declarative aliases are not fully exposed")
+        entity = Entity(archetype_name="prop_tree_pine_01", guid=7, lod_dist=25.0)
+        archetype = Archetype(name="prop_tree_pine_01", lod_dist=60.0)
+        room = Room(name="room_01")
+        grass_batch = GrassBatch(archetype_name="prop_bush_lrg_04", lod_dist=80)
+        instanced_data = InstancedData(grass_instance_list=[grass_batch])
+        lod_lights = LodLights(direction=[], falloff=[])
+        assert entity.archetype_name == "prop_tree_pine_01"
+        assert archetype.name == "prop_tree_pine_01"
+        assert archetype.asset_name == "prop_tree_pine_01"
+        assert room.name == "room_01"
+        assert len(instanced_data.grass_instance_list) == 1
+        assert lod_lights.direction == []
 
-        entity = entity_symbol.value(archetype_name="prop_tree_pine_01", guid=7, lod_dist=25.0)
-        archetype = archetype_symbol.value(name="prop_tree_pine_01", lod_dist=60.0)
-        room = room_symbol.value(name="room_01")
-        grass_batch = grass_batch_symbol.value(archetype_name="prop_bush_lrg_04", lod_dist=80)
-        instanced_data = instanced_data_symbol.value(grass_instance_list=[grass_batch])
-        lod_lights = lod_lights_symbol.value(direction=[], falloff=[])
-
-        self.assertEqual(getattr(entity, "archetype_name", None), "prop_tree_pine_01")
-        self.assertEqual(getattr(archetype, "name", None), "prop_tree_pine_01")
-        self.assertEqual(getattr(archetype, "asset_name", None), "prop_tree_pine_01")
-        self.assertEqual(getattr(room, "name", None), "room_01")
-        self.assertEqual(len(getattr(instanced_data, "grass_instance_list", [])), 1)
-        self.assertEqual(getattr(lod_lights, "direction", None), [])
-
-    def test_ymap_high_level_surfaces_roundtrip_if_available(self) -> None:
-        ymap = _make_ymap("unit_test.ymap")
-        if ymap is None:
-            self.skipTest("Ymap API not available")
-
-        entity = _make_entity("prop_tree_pine_01", position=Vector3(1.0, 2.0, 3.0), lod_dist=25.0)
-        if entity is None:
-            self.skipTest("Entity constructor not available")
-        ymap.entities.append(entity)
-
-        ymap.box_occluders = [
-            _try_surface_constructor(
-                ["fivefury.ymap", "fivefury"],
-                ["BoxOccluder", "YmapBoxOccluder"],
-                {
-                    "iCenterX": 0,
-                    "iCenterY": 0,
-                    "iCenterZ": 0,
-                    "iCosZ": 0,
-                    "iLength": 0,
-                    "iWidth": 0,
-                    "iHeight": 0,
-                    "iSinZ": 0,
-                },
-                _raw_box_occluder(),
-            )
-        ]
-        ymap.occlude_models = [
-            _try_surface_constructor(
-                ["fivefury.ymap", "fivefury"],
-                ["OccludeModel", "YmapOccludeModel"],
-                {
-                    "bmin": (0.0, 0.0, 0.0),
-                    "bmax": (0.0, 0.0, 0.0),
-                    "dataSize": 0,
-                    "verts": b"",
-                    "numVertsInBytes": 0,
-                    "numTris": 0,
-                    "flags": 0,
-                },
-                _raw_occlude_model(),
-            )
-        ]
-        ymap.lod_lights = _try_surface_constructor(
-            ["fivefury.ymap", "fivefury"],
-            ["LodLights", "LodLightsSoa", "YmapLODLight"],
-            {
-                "direction": [(0.0, 0.0, -1.0)],
-                "falloff": [1.0],
-                "falloffExponent": [1.0],
-                "timeAndStateFlags": [0],
-                "hash": [0],
-                "coneInnerAngle": [0],
-                "coneOuterAngleOrCapExt": [0],
-                "coronaIntensity": [0],
-            },
-            _raw_lod_light(),
-        )
-        ymap.distant_lod_lights = _try_surface_constructor(
-            ["fivefury.ymap", "fivefury"],
-            ["DistantLodLights", "DistantLodLightsSoa", "YmapDistantLODLight"],
-            {
-                "position": [(1.0, 2.0, 3.0)],
-                "RGBI": [0],
-                "numStreetLights": 0,
-                "category": 0,
-            },
-            _raw_distant_lod_light(),
+    def test_ymap_typed_surfaces_roundtrip(self, tmp_path):
+        from fivefury import (
+            BoxOccluder,
+            DistantLodLights,
+            Entity,
+            LodLights,
+            OccludeModel,
+            Ymap,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output = Path(tmpdir) / "surfaces.ymap"
-            saved = ymap.save(output, auto_extents=True)
-            if isinstance(saved, (str, os.PathLike)):
-                output = Path(saved)
-            self.assertTrue(output.exists(), "YMAP with surfaces was not saved")
-
-            parsed = type(ymap).from_bytes(output.read_bytes())
-            self.assertEqual(len(parsed.box_occluders), 1)
-            self.assertEqual(len(parsed.occlude_models), 1)
-            self.assertIsNotNone(parsed.lod_lights)
-            self.assertIsNotNone(parsed.distant_lod_lights)
+        ymap = Ymap(name="surfaces")
+        ymap.entities.append(
+            Entity(
+                archetype_name="prop_tree_pine_01",
+                position=Vector3(1, 2, 3),
+                lod_dist=25,
+            )
+        )
+        ymap.box_occluders = [BoxOccluder()]
+        ymap.occlude_models = [OccludeModel()]
+        ymap.lod_lights = LodLights(
+            direction=[Vector3(0, 0, -1)],
+            falloff=[1],
+            falloff_exponent=[1],
+            time_and_state_flags=[0],
+            hash=[0],
+            cone_inner_angle=[0],
+            cone_outer_angle_or_cap_ext=[0],
+            corona_intensity=[0],
+        )
+        ymap.distant_lod_lights = DistantLodLights(
+            position=[Vector3(1, 2, 3)], RGBI=[0]
+        )
+        output = tmp_path / "surfaces.ymap"
+        ymap.save(output, auto_extents=True)
+        parsed = Ymap.from_bytes(output.read_bytes())
+        assert isinstance(parsed.box_occluders[0], BoxOccluder)
+        assert isinstance(parsed.occlude_models[0], OccludeModel)
+        assert parsed.lod_lights.direction == ymap.lod_lights.direction
+        assert parsed.distant_lod_lights.position == ymap.distant_lod_lights.position
 
     def test_ymap_grass_and_extensions_roundtrip(self) -> None:
         from fivefury import (
@@ -603,7 +386,11 @@ class MetaAndArchiveContractTests(PytestCompat):
         )
 
         ymap = Ymap(name="typed_surfaces.ymap")
-        entity = Entity(archetype_name="prop_tree_pine_01", position=Vector3(10.0, 20.0, 30.0), lod_dist=45.0)
+        entity = Entity(
+            archetype_name="prop_tree_pine_01",
+            position=Vector3(10.0, 20.0, 30.0),
+            lod_dist=45.0,
+        )
         entity.extensions.append(
             ParticleEffectExtension(
                 name="fx_smoke",
@@ -615,11 +402,10 @@ class MetaAndArchiveContractTests(PytestCompat):
                 scale=1.25,
                 probability=75,
                 flags=3,
-                color=0x11223344,
+                color=287454020,
             )
         )
         ymap.entities.append(entity)
-
         batch = GrassBatch(
             batch_aabb=Aabb(minimum=Vector3(), maximum=Vector3(20.0, 20.0, 10.0)),
             scale_range=Vector3(0.8, 1.0, 1.2),
@@ -639,32 +425,29 @@ class MetaAndArchiveContractTests(PytestCompat):
             )
         )
         ymap.ensure_instanced_data().grass_instance_list.append(batch)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "typed_surfaces.ymap"
             ymap.save(output, auto_extents=True)
             parsed = type(ymap).from_bytes(output.read_bytes())
-
-        self.assertNotEqual(parsed.content_flags, 0)
-        self.assertEqual(len(parsed.entities), 1)
+        assert parsed.content_flags != 0
+        assert len(parsed.entities) == 1
         parsed_entity = parsed.entities[0]
-        self.assertEqual(len(parsed_entity.extensions), 1)
+        assert len(parsed_entity.extensions) == 1
         particle = parsed_entity.extensions[0]
-        self.assertEqual(getattr(particle, "fx_name", None), "scr_wheel_burnout")
-        self.assertEqual(getattr(particle, "fx_type", None), 2)
-        self.assertAlmostEqual(getattr(particle, "scale", 0.0), 1.25, places=3)
-
-        self.assertIsNotNone(parsed.instanced_data)
-        self.assertEqual(len(parsed.instanced_data.grass_instance_list), 1)
+        assert particle.fx_name == "scr_wheel_burnout"
+        assert particle.fx_type == 2
+        assert particle.scale == pytest.approx(1.25, abs=10 ** (-3), rel=0)
+        assert parsed.instanced_data is not None
+        assert len(parsed.instanced_data.grass_instance_list) == 1
         parsed_batch = parsed.instanced_data.grass_instance_list[0]
-        self.assertEqual(len(parsed_batch.instances), 1)
+        assert len(parsed_batch.instances) == 1
         parsed_instance = parsed_batch.instances[0]
-        self.assertAlmostEqual(parsed_instance.position.x, 5.0, places=2)
-        self.assertAlmostEqual(parsed_instance.position.y, 6.0, places=2)
-        self.assertAlmostEqual(parsed_instance.position.z, 2.0, places=2)
-        self.assertEqual(parsed_instance.color, (10, 20, 30))
-        self.assertEqual(parsed_instance.scale, 120)
-        self.assertEqual(parsed_instance.ao, 90)
+        assert parsed_instance.position.x == pytest.approx(5.0, abs=10 ** (-2), rel=0)
+        assert parsed_instance.position.y == pytest.approx(6.0, abs=10 ** (-2), rel=0)
+        assert parsed_instance.position.z == pytest.approx(2.0, abs=10 ** (-2), rel=0)
+        assert parsed_instance.color == (10, 20, 30)
+        assert parsed_instance.scale == 120
+        assert parsed_instance.ao == 90
 
     def test_ymap_known_extension_types_roundtrip_as_objects(self) -> None:
         from fivefury import (
@@ -681,7 +464,11 @@ class MetaAndArchiveContractTests(PytestCompat):
         )
 
         ymap = Ymap(name="complete_extensions.ymap")
-        entity = Entity(archetype_name="prop_extension_test", position=Vector3(1.0, 2.0, 3.0), lod_dist=50.0)
+        entity = Entity(
+            archetype_name="prop_extension_test",
+            position=Vector3(1.0, 2.0, 3.0),
+            lod_dist=50.0,
+        )
         entity.extensions.extend(
             [
                 DecalExtension(
@@ -695,8 +482,12 @@ class MetaAndArchiveContractTests(PytestCompat):
                     probability=80,
                     flags=7,
                 ),
-                LightExtension(name="light_marker", offset_position=Vector3(1.0, 0.0, 0.0)),
-                WalkDontWalkExtension(name="crossing_marker", offset_position=Vector3(2.0, 0.0, 0.0)),
+                LightExtension(
+                    name="light_marker", offset_position=Vector3(1.0, 0.0, 0.0)
+                ),
+                WalkDontWalkExtension(
+                    name="crossing_marker", offset_position=Vector3(2.0, 0.0, 0.0)
+                ),
                 ClimbHandHoldExtension(
                     name="climb_marker",
                     offset_position=Vector3(3.0, 0.0, 0.0),
@@ -724,16 +515,18 @@ class MetaAndArchiveContractTests(PytestCompat):
                     name="script_marker",
                     offset_position=Vector3(6.0, 0.0, 0.0),
                     script_name="example_script",
-                    children=[ScriptChildExtension(position=Vector3(7.0, 8.0, 9.0), rotation_z=1.25)],
+                    children=[
+                        ScriptChildExtension(
+                            position=Vector3(7.0, 8.0, 9.0), rotation_z=1.25
+                        )
+                    ],
                 ),
             ]
         )
         ymap.entities.append(entity)
-
         parsed = Ymap.from_bytes(ymap.build(auto_extents=True).to_bytes())
         parsed_extensions = parsed.entities[0].extensions
-
-        self.assertEqual([type(extension) for extension in parsed_extensions], [
+        assert [type(extension) for extension in parsed_extensions] == [
             DecalExtension,
             LightExtension,
             WalkDontWalkExtension,
@@ -741,14 +534,11 @@ class MetaAndArchiveContractTests(PytestCompat):
             ScrollbarsExtension,
             SwayableEffectExtension,
             ScriptExtension,
-        ])
-        self.assertEqual(parsed_extensions[0].decal_name, "blood_entry")
-        self.assertEqual(parsed_extensions[4].points, [Vector3(), Vector3(1.0, 2.0, 3.0)])
-        self.assertEqual(parsed_extensions[6].script_name, "example_script")
-        self.assertEqual(
-            parsed_extensions[6].children[0].position,
-            Vector3(7.0, 8.0, 9.0),
-        )
+        ]
+        assert parsed_extensions[0].decal_name == "blood_entry"
+        assert parsed_extensions[4].points == [Vector3(), Vector3(1.0, 2.0, 3.0)]
+        assert parsed_extensions[6].script_name == "example_script"
+        assert parsed_extensions[6].children[0].position == Vector3(7.0, 8.0, 9.0)
 
     def test_ytyp_archetype_extensions_roundtrip(self) -> None:
         from fivefury import Archetype, ParticleEffectExtension, Ytyp
@@ -773,261 +563,136 @@ class MetaAndArchiveContractTests(PytestCompat):
                 scale=0.75,
                 probability=55,
                 flags=1,
-                color=0x55667788,
+                color=1432778632,
             )
         )
         ytyp.archetypes.append(archetype)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "typed_archetypes.ytyp"
             ytyp.save(output)
             parsed = type(ytyp).from_bytes(output.read_bytes())
-
-        self.assertEqual(len(parsed.archetypes), 1)
+        assert len(parsed.archetypes) == 1
         parsed_archetype = parsed.archetypes[0]
-        self.assertEqual(len(parsed_archetype.extensions), 1)
+        assert len(parsed_archetype.extensions) == 1
         particle = parsed_archetype.extensions[0]
-        self.assertEqual(getattr(particle, "fx_name", None), "scr_rcbarry2_sparks")
-        self.assertEqual(getattr(particle, "fx_type", None), 7)
-        self.assertAlmostEqual(getattr(particle, "scale", 0.0), 0.75, places=3)
+        assert particle.fx_name == "scr_rcbarry2_sparks"
+        assert particle.fx_type == 7
+        assert particle.scale == pytest.approx(0.75, abs=10 ** (-3), rel=0)
 
-    def test_rpf_archive_accepts_high_level_asset_objects_if_available(self) -> None:
-        rpf_symbol = resolve_symbol(
-            ["fivefury.rpf", "fivefury.gta5.rpf", "fivefury"],
-            ["RpfArchive", "create_rpf"],
-        )
-        ymap_symbol = resolve_symbol(
-            ["fivefury.ymap", "fivefury"],
-            ["Ymap"],
-        )
-        ytyp_symbol = resolve_symbol(
-            ["fivefury.ytyp", "fivefury"],
-            ["Ytyp"],
-        )
-        if rpf_symbol is None:
-            self.skipTest("RpfArchive API not available")
+    def test_rpf_archive_accepts_high_level_asset_objects(self, tmp_path):
+        from fivefury import RpfArchive, Ymap, Ytyp, read_ymap, read_ytyp
 
-        rpf_cls = rpf_symbol.value if isinstance(rpf_symbol.value, type) else None
-        if rpf_cls is None:
-            self.skipTest("No RpfArchive class available")
+        archive = RpfArchive.empty("unit_test.rpf")
+        archive.file("maps/unit_test.ymap", Ymap(name="unit_test"))
+        ytyp = Ytyp(name="unit_test")
+        ytyp.archetype(name="prop_tree_pine_01", lod_dist=100)
+        archive.file("models/unit_test.ytyp", ytyp)
+        output = tmp_path / "unit_test.rpf"
+        archive.save(output)
+        from fivefury import GameFileCache
 
-        ymap = ymap_symbol.value(name="unit_test.ymap") if ymap_symbol and isinstance(ymap_symbol.value, type) else None
-        ytyp = ytyp_symbol.value(name="unit_test.ytyp") if ytyp_symbol and isinstance(ytyp_symbol.value, type) else None
-        if ymap is None and ytyp is None:
-            self.skipTest("No high-level YMAP/YTYP objects were available")
+        with GameFileCache(use_index_cache=False) as cache:
+            cache.scan(tmp_path, load_keys=False)
+            assert (
+                read_ymap(cache.read_bytes("unit_test.rpf/maps/unit_test.ymap")).name
+                == "unit_test"
+            )
+            assert (
+                read_ytyp(cache.read_bytes("unit_test.rpf/models/unit_test.ytyp")).name
+                == "unit_test"
+            )
 
-        archive = rpf_cls.empty("unit_test.rpf") if hasattr(rpf_cls, "empty") else rpf_cls()
+    def test_minimal_rsc7_meta_roundtrip(self):
+        from fivefury.meta import Meta
+        from fivefury.resource import build_rsc7, parse_rsc7
 
-        add_helper = None
-        for method_name in ("add_game_file", "add_asset", "add", "add_ymap", "add_ytyp"):
-            method = getattr(archive, method_name, None)
-            if callable(method):
-                add_helper = method
-                break
-        if add_helper is None:
-            self.skipTest("No archive add helper is implemented yet")
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            if ymap is not None:
-                try:
-                    result = add_helper("maps/unit_test.ymap", ymap)
-                except TypeError as exc:
-                    self.skipTest(f"Archive helper does not accept Ymap objects yet: {exc}")
-                self.assertIsNotNone(result)
-            if ytyp is not None:
-                try:
-                    result = add_helper("models/unit_test.ytyp", ytyp)
-                except TypeError as exc:
-                    self.skipTest(f"Archive helper does not accept Ytyp objects yet: {exc}")
-                self.assertIsNotNone(result)
-            output = root / "unit_test.rpf"
-            archive.save(output)
-            self.assertTrue(output.exists(), "archive save did not write a file")
-
-    def test_minimal_rsc7_meta_roundtrip(self) -> None:
-        meta_symbol = resolve_symbol(
-            ["fivefury.meta", "fivefury.gta5.meta", "fivefury"],
-            ["Meta", "meta"],
-        )
-        build_symbol = resolve_symbol(
-            ["fivefury.resource", "fivefury.gta5.resource", "fivefury.rsc7", "fivefury"],
-            ["build_rsc7", "Build", "build_resource", "build", "ResourceBuilder"],
-        )
-        parse_symbol = resolve_symbol(
-            ["fivefury.resource", "fivefury.gta5.resource", "fivefury.rsc7", "fivefury"],
-            ["read_rsc7", "parse_rsc7", "load_rsc7", "open_rsc7", "read_resource", "ResourceBuilder"],
-        )
-        if meta_symbol is None or build_symbol is None:
-            self.skipTest("META/RSC7 API not implemented yet")
-
-        meta_cls = meta_symbol.value
-        meta = meta_cls()
-
-        for attr_name in ("Name", "name"):
-            if hasattr(meta, attr_name):
-                setattr(meta, attr_name, "unit_test.ymap")
-                break
-
-        try:
-            payload = _static_or_function(build_symbol, ["Build", "build", "build_resource"], meta)
-        except TypeError:
-            payload = _static_or_function(build_symbol, ["Build", "build", "build_resource"], meta, 0)
-
-        self.assertIsInstance(payload, (bytes, bytearray))
-        self.assertGreaterEqual(len(payload), 16)
-        self.assertEqual(bytes(payload[:4]), b"RSC7")
-
-        if parse_symbol is not None:
-            try:
-                parsed = _static_or_function(parse_symbol, ["Read", "read", "parse_rsc7", "load_rsc7"], payload)
-            except TypeError:
-                parsed = _static_or_function(parse_symbol, ["Read", "read", "parse_rsc7", "load_rsc7"], payload, 0)
-
-            self.assertIsNotNone(parsed)
-            for attr_name in ("Name", "name"):
-                if hasattr(parsed, attr_name):
-                    self.assertEqual(getattr(parsed, attr_name), "unit_test.ymap")
-                    break
+        meta = Meta(Name="unit_test.ymap")
+        payload = build_rsc7(meta)
+        assert payload[:4] == b"RSC7"
+        header, system = parse_rsc7(payload)
+        assert header.version == meta.resource_version
+        assert system
 
     def test_rpf_zip_roundtrip_nested_rpf(self) -> None:
-        zip_to_rpf = resolve_symbol(
-            ["fivefury.rpf", "fivefury.gta5.rpf", "fivefury"],
-            ["zip_to_rpf", "zip2rpf", "create_rpf_from_zip", "RpfFile"],
-        )
-        rpf_to_zip = resolve_symbol(
-            ["fivefury.rpf", "fivefury.gta5.rpf", "fivefury"],
-            ["rpf_to_zip", "rpf2zip", "extract_rpf_to_zip", "RpfFile"],
-        )
-        if zip_to_rpf is None or rpf_to_zip is None:
-            self.skipTest("RPF<->ZIP API not implemented yet")
-
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             source = root / "source"
             archive = root / "out.rpf"
             roundtrip = root / "roundtrip.zip"
-
             write_bytes(source / "content.txt", b"hello world")
             write_bytes(source / "nested.rpf" / "inner.bin", b"\x01\x02\x03")
             touch(source / "nested.rpf" / "deeper.rpf" / "note.txt", "nested")
+            zip_payload = root / "source.zip"
+            with zipfile.ZipFile(
+                zip_payload, "w", compression=zipfile.ZIP_DEFLATED
+            ) as zf:
+                for file_path in source.rglob("*"):
+                    if file_path.is_file():
+                        zf.write(file_path, file_path.relative_to(source).as_posix())
+            produced = zip_to_rpf(zip_payload, archive)
+            assert produced == archive.read_bytes()
+            result = rpf_to_zip(archive, roundtrip)
+            assert result == roundtrip.read_bytes()
 
-            try:
-                zip_payload = root / "source.zip"
-                with zipfile.ZipFile(zip_payload, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    for file_path in source.rglob("*"):
-                        if file_path.is_file():
-                            zf.write(file_path, file_path.relative_to(source).as_posix())
-
-                produced = _static_or_function(zip_to_rpf, ["zip_to_rpf", "zip2rpf", "create_rpf_from_zip"], zip_payload, archive)
-            except TypeError:
-                produced = _static_or_function(zip_to_rpf, ["zip_to_rpf", "zip2rpf", "create_rpf_from_zip"], source, archive)
-
-            if isinstance(produced, (str, os.PathLike)):
-                archive = Path(produced)
-            elif isinstance(produced, (bytes, bytearray)):
-                archive.write_bytes(produced)
-
-            self.assertTrue(archive.exists(), "RPF output was not created")
-
-            try:
-                result = _static_or_function(rpf_to_zip, ["rpf_to_zip", "rpf2zip", "extract_rpf_to_zip"], archive, roundtrip)
-            except TypeError:
-                result = _static_or_function(rpf_to_zip, ["rpf_to_zip", "rpf2zip", "extract_rpf_to_zip"], archive)
-
-            if isinstance(result, (str, os.PathLike)):
-                roundtrip = Path(result)
-            elif isinstance(result, (bytes, bytearray)):
-                roundtrip.write_bytes(result)
-
-            self.assertTrue(roundtrip.exists(), "ZIP output was not created")
+            with zipfile.ZipFile(roundtrip) as restored:
+                assert restored.read("content.txt") == b"hello world"
+                assert restored.read("nested.rpf/inner.bin") == b"\x01\x02\x03"
+                assert restored.read("nested.rpf/deeper.rpf/note.txt") == b"nested"
 
     def test_ensure_game_crypto_provides_default_instance(self) -> None:
         from fivefury import clear_game_crypto, ensure_game_crypto, get_game_crypto
 
         clear_game_crypto()
         crypto = ensure_game_crypto()
-        self.assertIsNotNone(crypto)
-        self.assertTrue(crypto is get_game_crypto())
+        assert crypto is not None
+        assert crypto is get_game_crypto()
 
     def test_encrypted_rpf_can_auto_resolve_default_crypto(self) -> None:
         from fivefury import RpfArchive, RpfEncryption, clear_game_crypto, create_rpf
 
         class _FakeCrypto:
-            def decrypt_archive_table(self, data, encryption, *, archive_name, archive_size):
+            def decrypt_archive_table(
+                self, data, encryption, *, archive_name, archive_size
+            ):
                 return data
 
-            def decrypt_entry_payload(self, data, encryption, *, entry_name, entry_length):
+            def decrypt_entry_payload(
+                self, data, encryption, *, entry_name, entry_length
+            ):
                 return data
 
         archive = create_rpf("auto_crypto.rpf")
         archive.file("hello.txt", b"hello")
         encrypted = bytearray(archive.to_bytes())
         struct.pack_into("<I", encrypted, 12, RpfEncryption.NG)
-
         clear_game_crypto()
-        with patch("fivefury.rpf.archive.ensure_game_crypto", return_value=_FakeCrypto()) as mocked:
+        with patch(
+            "fivefury.rpf.archive.ensure_game_crypto", return_value=_FakeCrypto()
+        ) as mocked:
             parsed = RpfArchive.from_bytes(bytes(encrypted), name="auto_crypto.rpf")
-
         mocked.assert_called_once()
         entry = parsed.find_entry("hello.txt")
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry.read(), b"hello")
+        assert entry is not None
+        assert entry.read() == b"hello"
 
     def test_zip_to_rpf_accepts_directory_source(self) -> None:
-        zip_to_rpf = resolve_symbol(
-            ["fivefury.rpf", "fivefury.gta5.rpf", "fivefury"],
-            ["zip_to_rpf", "zip2rpf", "create_rpf_from_zip", "RpfFile"],
-        )
-        rpf_to_zip = resolve_symbol(
-            ["fivefury.rpf", "fivefury.gta5.rpf", "fivefury"],
-            ["rpf_to_zip", "rpf2zip", "extract_rpf_to_zip", "RpfFile"],
-        )
-        if zip_to_rpf is None or rpf_to_zip is None:
-            self.skipTest("RPF<->ZIP API not implemented yet")
-
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             source = root / "src"
             archive = root / "dir_source.rpf"
             roundtrip = root / "dir_source.zip"
-
             touch(source / "levels" / "pkg.rpf" / "nested.txt", "nested from dir")
-            write_bytes(source / "levels" / "pkg.rpf" / "data.bin", b"\x10\x20\x30")
+            write_bytes(source / "levels" / "pkg.rpf" / "data.bin", b"\x10 0")
             touch(source / "levels" / "readme.txt", "hello")
-
-            produced = _static_or_function(
-                zip_to_rpf,
-                ["zip_to_rpf", "zip2rpf", "create_rpf_from_zip"],
-                source,
-                archive,
-            )
-
-            if isinstance(produced, (str, os.PathLike)):
-                archive = Path(produced)
-            elif isinstance(produced, (bytes, bytearray)):
-                archive.write_bytes(produced)
-
-            self.assertTrue(archive.exists(), "RPF output from directory was not created")
-
-            result = _static_or_function(
-                rpf_to_zip,
-                ["rpf_to_zip", "rpf2zip", "extract_rpf_to_zip"],
-                archive,
-                roundtrip,
-            )
-
-            if isinstance(result, (str, os.PathLike)):
-                roundtrip = Path(result)
-            elif isinstance(result, (bytes, bytearray)):
-                roundtrip.write_bytes(result)
-
-            self.assertTrue(roundtrip.exists(), "ZIP output from directory source was not created")
+            produced = zip_to_rpf(source, archive)
+            assert produced == archive.read_bytes()
+            result = rpf_to_zip(archive, roundtrip)
+            assert result == roundtrip.read_bytes()
             with zipfile.ZipFile(roundtrip, "r") as zf:
                 names = set(zf.namelist())
-                self.assertIn("levels/readme.txt", names)
-                self.assertIn("levels/pkg.rpf/nested.txt", names)
-                self.assertIn("levels/pkg.rpf/data.bin", names)
+                assert "levels/readme.txt" in names
+                assert "levels/pkg.rpf/nested.txt" in names
+                assert "levels/pkg.rpf/data.bin" in names
 
     def test_rpf_to_folder_expands_nested_archives(self) -> None:
         from fivefury import RpfExportMode, create_rpf, rpf_to_folder
@@ -1040,16 +705,16 @@ class MetaAndArchiveContractTests(PytestCompat):
             nested.file("inner.bin", b"\x01\x02\x03")
             _, deeper = nested.nested_archive("deeper.rpf")
             deeper.file("note.txt", b"nested")
-
             out_dir = root / "out"
             written = rpf_to_folder(archive, out_dir, mode=RpfExportMode.STANDALONE)
-
-            self.assertIn(out_dir / "content.txt", written)
-            self.assertIn(out_dir / "nested.rpf" / "inner.bin", written)
-            self.assertIn(out_dir / "nested.rpf" / "deeper.rpf" / "note.txt", written)
-            self.assertTrue((out_dir / "nested.rpf").is_dir())
-            self.assertFalse((out_dir / "nested.rpf").is_file())
-            self.assertEqual((out_dir / "nested.rpf" / "deeper.rpf" / "note.txt").read_bytes(), b"nested")
+            assert out_dir / "content.txt" in written
+            assert out_dir / "nested.rpf" / "inner.bin" in written
+            assert out_dir / "nested.rpf" / "deeper.rpf" / "note.txt" in written
+            assert (out_dir / "nested.rpf").is_dir()
+            assert not (out_dir / "nested.rpf").is_file()
+            assert (
+                out_dir / "nested.rpf" / "deeper.rpf" / "note.txt"
+            ).read_bytes() == b"nested"
 
     def test_rpf_to_folder_supports_stored_standalone_and_logical_modes(self) -> None:
         from fivefury import RpfExportMode, create_rpf
@@ -1059,22 +724,22 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive = create_rpf("modes.rpf")
             archive.file("bin/data.bin", b"plain binary", compress_binary=True)
             archive.file("maps/example.ymap", b"logical payload")
-
             stored_dir = root / "stored"
             standalone_dir = root / "standalone"
             logical_dir = root / "logical"
-
             archive.to_folder(stored_dir, mode=RpfExportMode.STORED)
             archive.to_folder(standalone_dir, mode=RpfExportMode.STANDALONE)
             archive.to_folder(logical_dir, mode=RpfExportMode.LOGICAL)
-
-            self.assertEqual((logical_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
-            self.assertNotEqual((stored_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
-            self.assertEqual((standalone_dir / "bin" / "data.bin").read_bytes(), b"plain binary")
-
-            self.assertEqual((logical_dir / "maps" / "example.ymap").read_bytes(), b"logical payload")
-            self.assertEqual((standalone_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
-            self.assertEqual((stored_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
+            assert (logical_dir / "bin" / "data.bin").read_bytes() == b"plain binary"
+            assert (stored_dir / "bin" / "data.bin").read_bytes() != b"plain binary"
+            assert (standalone_dir / "bin" / "data.bin").read_bytes() == b"plain binary"
+            assert (
+                logical_dir / "maps" / "example.ymap"
+            ).read_bytes() == b"logical payload"
+            assert (standalone_dir / "maps" / "example.ymap").read_bytes()[
+                :4
+            ] == b"RSC7"
+            assert (stored_dir / "maps" / "example.ymap").read_bytes()[:4] == b"RSC7"
 
     def test_rpf_nested_archives_load_on_demand(self) -> None:
         from fivefury import RpfArchive, create_rpf
@@ -1082,16 +747,14 @@ class MetaAndArchiveContractTests(PytestCompat):
         archive = create_rpf("root.rpf")
         _, nested = archive.nested_archive("nested.rpf")
         nested.file("inner.txt", b"lazy")
-
         parsed = RpfArchive.from_bytes(archive.to_bytes(), name="root.rpf")
-        self.assertEqual(parsed.children, [])
-        self.assertEqual(parsed.find_entry("nested.rpf").name, "nested.rpf")
-        self.assertEqual(parsed.children, [])
-
+        assert parsed.children == []
+        assert parsed.find_entry("nested.rpf").name == "nested.rpf"
+        assert parsed.children == []
         inner = parsed.find_entry("nested.rpf/inner.txt")
-        self.assertIsNotNone(inner)
-        self.assertEqual(inner.read(), b"lazy")
-        self.assertEqual(len(parsed.children), 1)
+        assert inner is not None
+        assert inner.read() == b"lazy"
+        assert len(parsed.children) == 1
 
     def test_rpf_to_folder_handles_file_directory_collisions(self) -> None:
         from fivefury import RpfExtractionConflict, create_rpf
@@ -1100,15 +763,15 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive = create_rpf("collisions.rpf")
             archive.directory("shared")
             archive.file("shared", b"file payload")
-
             output = Path(tmpdir) / "suffix"
             written = archive.to_folder(output, conflict=RpfExtractionConflict.SUFFIX)
-            self.assertTrue((output / "shared").is_dir())
-            self.assertEqual((output / "shared.__file__").read_bytes(), b"file payload")
-            self.assertIn(output / "shared.__file__", written)
-
+            assert (output / "shared").is_dir()
+            assert (output / "shared.__file__").read_bytes() == b"file payload"
+            assert output / "shared.__file__" in written
             with pytest.raises(FileExistsError):
-                archive.to_folder(Path(tmpdir) / "error", conflict=RpfExtractionConflict.ERROR)
+                archive.to_folder(
+                    Path(tmpdir) / "error", conflict=RpfExtractionConflict.ERROR
+                )
 
     def test_rpf_can_stream_save_over_its_source_path(self) -> None:
         from fivefury import RpfArchive, create_rpf
@@ -1118,14 +781,12 @@ class MetaAndArchiveContractTests(PytestCompat):
             source = create_rpf("in_place.rpf")
             source.file("original.txt", b"original")
             source.save(path)
-
             with RpfArchive.from_path(path) as archive:
                 archive.file("added.txt", b"added")
                 archive.save(path)
-
             with RpfArchive.from_path(path) as reread:
-                self.assertEqual(reread.find_entry("original.txt").read(), b"original")
-                self.assertEqual(reread.find_entry("added.txt").read(), b"added")
+                assert reread.find_entry("original.txt").read() == b"original"
+                assert reread.find_entry("added.txt").read() == b"added"
 
     def test_rpf_to_folder_defaults_to_standalone_export(self) -> None:
         from fivefury import create_rpf
@@ -1134,68 +795,27 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
             archive = create_rpf("default_export.rpf")
             archive.file("maps/example.ymap", b"logical payload")
-
             out_dir = root / "out"
             archive.to_folder(out_dir)
-
-            self.assertEqual((out_dir / "maps" / "example.ymap").read_bytes()[:4], b"RSC7")
+            assert (out_dir / "maps" / "example.ymap").read_bytes()[:4] == b"RSC7"
 
     def test_rpf_export_mode_enum_exposes_descriptions(self) -> None:
         from fivefury import RpfExportMode
 
-        self.assertEqual(RpfExportMode.STORED.value, "stored")
-        self.assertIn("stored in the RPF", RpfExportMode.STORED.description)
-        self.assertIn("RSC7", RpfExportMode.STANDALONE.description)
-        self.assertIn("logical payload", RpfExportMode.LOGICAL.description)
+        assert RpfExportMode.STORED.value == "stored"
+        assert "stored in the RPF" in RpfExportMode.STORED.description
+        assert "RSC7" in RpfExportMode.STANDALONE.description
+        assert "logical payload" in RpfExportMode.LOGICAL.description
 
-    def test_gamefilecache_basic_indexing(self) -> None:
-        cache_symbol = resolve_symbol(
-            ["fivefury.cache", "fivefury.gta5.cache", "fivefury"],
-            ["GameFileCache", "game_file_cache"],
-        )
-        if cache_symbol is None:
-            self.skipTest("GameFileCache API not implemented yet")
+    def test_gamefilecache_basic_indexing(self, tmp_path):
+        from fivefury import GameFileCache
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            write_bytes(root / "maps" / "example.ytyp", b"dummy")
-            write_bytes(root / "maps" / "example.ymap", b"dummy")
-            write_bytes(root / "nested.rpf" / "inner.ymap", b"dummy")
-
-            cache_cls = cache_symbol.value
-            try:
-                cache = cache_cls(root)
-            except TypeError:
-                cache = cache_cls()
-                for method_name in ("set_root", "set_root_path", "attach_root"):
-                    method = getattr(cache, method_name, None)
-                    if callable(method):
-                        method(root)
-                        break
-
-            indexed = False
-            for method_name in ("scan", "build", "index", "refresh", "load"):
-                method = getattr(cache, method_name, None)
-                if callable(method):
-                    try:
-                        method(root)
-                    except TypeError:
-                        method()
-                    indexed = True
-                    break
-
-            self.assertTrue(indexed, "No cache indexing method was available")
-
-            found = None
-            for method_name in ("get", "find", "get_file", "get_entry", "lookup"):
-                method = getattr(cache, method_name, None)
-                if callable(method):
-                    try:
-                        found = method("maps/example.ytyp")
-                    except TypeError:
-                        found = method(root / "maps" / "example.ytyp")
-                    break
-            self.assertIsNotNone(found, "Cache did not resolve a known file path")
+        write_bytes(tmp_path / "maps/example.ytyp", b"dummy")
+        write_bytes(tmp_path / "maps/example.ymap", b"dummy")
+        with GameFileCache(use_index_cache=False) as cache:
+            cache.scan(tmp_path, load_keys=False)
+            assert cache.get_asset("maps/example.ytyp") is not None
+            assert cache.get_asset("maps/example.ymap") is not None
 
     def test_gamefilecache_exposes_type_dicts_by_short_name_hash(self) -> None:
         from fivefury import GameFileCache, create_rpf, jenk_hash
@@ -1208,24 +828,28 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/collision.ybn", b"collision")
             archive.file("stream/pack.ydd", b"pack")
             archive.save(root / "assets.rpf")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             ydr_dict = cache.YdrDict
-            self.assertEqual(ydr_dict[jenk_hash("alpha")].path, "assets.rpf/stream/alpha.ydr")
-            self.assertEqual(cache.YtdDict[jenk_hash("bravo")].path, "assets.rpf/stream/bravo.ytd")
-            self.assertEqual(cache.YbnDict[jenk_hash("collision")].path, "assets.rpf/stream/collision.ybn")
-            self.assertEqual(cache.get_kind_dict(".ydd")[jenk_hash("pack")].path, "assets.rpf/stream/pack.ydd")
-            self.assertTrue(cache.kind_dict(".ydr") is cache.YdrDict)
-            self.assertEqual(len(cache.YdrDict), 1)
-
+            assert ydr_dict[jenk_hash("alpha")].path == "assets.rpf/stream/alpha.ydr"
+            assert (
+                cache.YtdDict[jenk_hash("bravo")].path == "assets.rpf/stream/bravo.ytd"
+            )
+            assert (
+                cache.YbnDict[jenk_hash("collision")].path
+                == "assets.rpf/stream/collision.ybn"
+            )
+            assert (
+                cache.get_kind_dict(".ydd")[jenk_hash("pack")].path
+                == "assets.rpf/stream/pack.ydd"
+            )
+            assert cache.kind_dict(".ydr") is cache.YdrDict
+            assert len(cache.YdrDict) == 1
             write_bytes(root / "maps" / "delta.ydr", b"delta")
             cache.scan(use_index_cache=False)
-
-            self.assertIn(jenk_hash("delta"), ydr_dict)
-            self.assertEqual(ydr_dict[jenk_hash("delta")].path, "maps/delta.ydr")
-            self.assertEqual(ydr_dict[jenk_hash("alpha")].path, "assets.rpf/stream/alpha.ydr")
+            assert jenk_hash("delta") in ydr_dict
+            assert ydr_dict[jenk_hash("delta")].path == "maps/delta.ydr"
+            assert ydr_dict[jenk_hash("alpha")].path == "assets.rpf/stream/alpha.ydr"
 
     def test_gamefilecache_supports_simple_file_by_file_iteration_helpers(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1237,28 +861,21 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/bravo.ytd", b"bravo")
             archive.save(root / "assets.rpf")
             write_bytes(root / "maps" / "charlie.ymap", b"charlie")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
-            self.assertEqual(len(cache), 3)
-            self.assertEqual(
-                [asset.path for asset in cache],
-                [
-                    "assets.rpf/stream/alpha.ydr",
-                    "assets.rpf/stream/bravo.ytd",
-                    "maps/charlie.ymap",
-                ],
-            )
-            self.assertEqual(
-                [asset.path for asset in cache.iter_kind(".ydr")],
-                ["assets.rpf/stream/alpha.ydr"],
-            )
-            self.assertEqual(
-                [asset.path for asset in cache.list_kind(".ytd")],
-                ["assets.rpf/stream/bravo.ytd"],
-            )
-            self.assertEqual(cache.list_kind_paths(".ymap"), ["maps/charlie.ymap"])
+            assert len(cache) == 3
+            assert [asset.path for asset in cache] == [
+                "assets.rpf/stream/alpha.ydr",
+                "assets.rpf/stream/bravo.ytd",
+                "maps/charlie.ymap",
+            ]
+            assert [asset.path for asset in cache.iter_kind(".ydr")] == [
+                "assets.rpf/stream/alpha.ydr"
+            ]
+            assert [asset.path for asset in cache.list_kind(".ytd")] == [
+                "assets.rpf/stream/bravo.ytd"
+            ]
+            assert cache.list_kind_paths(".ymap") == ["maps/charlie.ymap"]
 
     def test_gamefilecache_builds_lazy_global_archetype_dict(self) -> None:
         from fivefury import Archetype, GameFileCache, Ytyp, jenk_hash
@@ -1270,38 +887,31 @@ class MetaAndArchiveContractTests(PytestCompat):
             ytyp.archetypes.append(Archetype(name="prop_tree_pine_01", lod_dist=100.0))
             ytyp.archetypes.append(Archetype(name="prop_sign_road_01", lod_dist=50.0))
             ytyp.save(root / "types" / "example_types.ytyp")
-
             cache = GameFileCache(root, use_index_cache=False, max_loaded_files=0)
             cache.scan(use_index_cache=False)
-
             archetype_dict = cache.archetype_dict
-            self.assertEqual(
-                int(archetype_dict[jenk_hash("prop_tree_pine_01")].name),
-                jenk_hash("prop_tree_pine_01"),
+            assert int(
+                archetype_dict[jenk_hash("prop_tree_pine_01")].name
+            ) == jenk_hash("prop_tree_pine_01")
+            assert int(
+                cache.ArchetypeDict[jenk_hash("prop_sign_road_01")].name
+            ) == jenk_hash("prop_sign_road_01")
+            assert int(cache.get_archetype("prop_tree_pine_01").name) == jenk_hash(
+                "prop_tree_pine_01"
             )
-            self.assertEqual(
-                int(cache.ArchetypeDict[jenk_hash("prop_sign_road_01")].name),
-                jenk_hash("prop_sign_road_01"),
+            assert cache.has_archetype("prop_sign_road_01")
+            assert sorted(
+                (int(archetype.name) for archetype in cache.iter_archetypes())
+            ) == sorted(
+                [jenk_hash("prop_tree_pine_01"), jenk_hash("prop_sign_road_01")]
             )
-            self.assertEqual(
-                int(cache.get_archetype("prop_tree_pine_01").name),
-                jenk_hash("prop_tree_pine_01"),
-            )
-            self.assertTrue(cache.has_archetype("prop_sign_road_01"))
-            self.assertEqual(
-                sorted(int(archetype.name) for archetype in cache.iter_archetypes()),
-                sorted([jenk_hash("prop_tree_pine_01"), jenk_hash("prop_sign_road_01")]),
-            )
-
             extra = Ytyp(name="more_types")
             extra.archetypes.append(Archetype(name="prop_bench_01", lod_dist=25.0))
             extra.save(root / "types" / "more_types.ytyp")
             cache.scan(use_index_cache=False)
-
-            self.assertIn(jenk_hash("prop_bench_01"), archetype_dict)
-            self.assertEqual(
-                int(cache.find_archetype("prop_bench_01").name),
-                jenk_hash("prop_bench_01"),
+            assert jenk_hash("prop_bench_01") in archetype_dict
+            assert int(cache.find_archetype("prop_bench_01").name) == jenk_hash(
+                "prop_bench_01"
             )
 
     def test_gamefilecache_exposes_kind_counts_and_stats(self) -> None:
@@ -1314,22 +924,18 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/bravo.ytd", b"bravo")
             archive.save(root / "assets.rpf")
             write_bytes(root / "maps" / "charlie.ymap", b"charlie")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             counts = cache.kind_counts
-            self.assertEqual(counts[GameFileType.YDR], 1)
-            self.assertEqual(counts[".ytd"], 1)
-            self.assertEqual(counts["ymap"], 1)
-            self.assertEqual(cache.stats_by_kind(), {"YDR": 1, "YMAP": 1, "YTD": 1})
-            self.assertEqual(cache.summary()["kind_counts"], {"YDR": 1, "YMAP": 1, "YTD": 1})
-
+            assert counts[GameFileType.YDR] == 1
+            assert counts[".ytd"] == 1
+            assert counts["ymap"] == 1
+            assert cache.stats_by_kind() == {"YDR": 1, "YMAP": 1, "YTD": 1}
+            assert cache.summary()["kind_counts"] == {"YDR": 1, "YMAP": 1, "YTD": 1}
             write_bytes(root / "maps" / "delta.ymap", b"delta")
             cache.scan(use_index_cache=False)
-
-            self.assertEqual(counts[GameFileType.YMAP], 2)
-            self.assertEqual(cache.stats_by_kind()["YMAP"], 2)
+            assert counts[GameFileType.YMAP] == 2
+            assert cache.stats_by_kind()["YMAP"] == 2
 
     def test_gamefilecache_can_extract_assets_referenced_by_a_ymap(self) -> None:
         from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
@@ -1343,7 +949,6 @@ class MetaAndArchiveContractTests(PytestCompat):
             ymap.recalculate_extents()
             ymap.recalculate_flags()
             ymap.save(root / "maps" / "example_map.ymap")
-
             ytyp = Ytyp(name="example_types")
             ytyp.archetypes.append(
                 Archetype(
@@ -1355,35 +960,34 @@ class MetaAndArchiveContractTests(PytestCompat):
                 )
             )
             ytyp.save(root / "types" / "example_types.ytyp")
-
             write_bytes(root / "assets" / "prop_tree_pine_01.ydr", b"ydr")
             write_bytes(root / "assets" / "prop_tree_pine_01.ytd", b"ytd")
             write_bytes(root / "assets" / "prop_tree_pine_01.ybn", b"ybn")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
-            assets = cache.list_ymap_entity_assets("example_map", include_supporting=True)
-            self.assertEqual(
-                sorted(asset.path for asset in assets),
-                sorted(
-                    [
-                        "assets/prop_tree_pine_01.ybn",
-                        "assets/prop_tree_pine_01.ydr",
-                        "assets/prop_tree_pine_01.ytd",
-                    ]
-                ),
+            assets = cache.list_ymap_entity_assets(
+                "example_map", include_supporting=True
             )
-
-            primary_only = cache.list_ymap_entity_assets("example_map", include_supporting=False)
-            self.assertEqual([asset.path for asset in primary_only], ["assets/prop_tree_pine_01.ydr"])
-
+            assert sorted((asset.path for asset in assets)) == sorted(
+                [
+                    "assets/prop_tree_pine_01.ybn",
+                    "assets/prop_tree_pine_01.ydr",
+                    "assets/prop_tree_pine_01.ytd",
+                ]
+            )
+            primary_only = cache.list_ymap_entity_assets(
+                "example_map", include_supporting=False
+            )
+            assert [asset.path for asset in primary_only] == [
+                "assets/prop_tree_pine_01.ydr"
+            ]
             extracted = cache.extract_ymap_assets("example_map", root / "out")
-            self.assertEqual(
-                sorted(path.name for path in extracted),
-                ["prop_tree_pine_01.ybn", "prop_tree_pine_01.ydr", "prop_tree_pine_01.ytd"],
-            )
-            self.assertEqual((root / "out" / "prop_tree_pine_01.ydr").read_bytes(), b"ydr")
+            assert sorted((path.name for path in extracted)) == [
+                "prop_tree_pine_01.ybn",
+                "prop_tree_pine_01.ydr",
+                "prop_tree_pine_01.ytd",
+            ]
+            assert (root / "out" / "prop_tree_pine_01.ydr").read_bytes() == b"ydr"
 
     def test_gamefilecache_can_resolve_assets_from_an_external_loose_ymap(self) -> None:
         from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
@@ -1394,14 +998,12 @@ class MetaAndArchiveContractTests(PytestCompat):
             external = tmp / "external"
             (root / "types").mkdir(parents=True, exist_ok=True)
             external.mkdir(parents=True, exist_ok=True)
-
             ymap = Ymap(name="external_map")
             ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", guid=1))
             ymap.recalculate_extents()
             ymap.recalculate_flags()
             external_ymap = external / "external_map.ymap"
             ymap.save(external_ymap)
-
             ytyp = Ytyp(name="example_types")
             ytyp.archetypes.append(
                 Archetype(
@@ -1412,18 +1014,15 @@ class MetaAndArchiveContractTests(PytestCompat):
                 )
             )
             ytyp.save(root / "types" / "example_types.ytyp")
-
             write_bytes(root / "assets" / "prop_tree_pine_01.ydr", b"ydr")
             write_bytes(root / "assets" / "prop_tree_pine_01.ytd", b"ytd")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             assets = cache.list_ymap_entity_assets(external_ymap)
-            self.assertEqual(
-                sorted(asset.path for asset in assets),
-                ["assets/prop_tree_pine_01.ydr", "assets/prop_tree_pine_01.ytd"],
-            )
+            assert sorted((asset.path for asset in assets)) == [
+                "assets/prop_tree_pine_01.ydr",
+                "assets/prop_tree_pine_01.ytd",
+            ]
 
     def test_gamefilecache_supports_name_hash_read_and_extract_workflows(self) -> None:
         from fivefury import GameFileCache, create_rpf, jenk_hash
@@ -1436,32 +1035,28 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/bravo.ytd", b"bravo-bytes")
             archive.save(archive_path)
             write_bytes(root / "maps" / "charlie.ymap", b"charlie-bytes")
-
             cache = GameFileCache(root)
             cache.scan()
-            self.assertEqual(cache.scan_errors, {})
-
+            assert cache.scan_errors == {}
             by_path = cache.find_path("assets.rpf/stream/alpha.ydr")
-            self.assertIsNotNone(by_path)
-            self.assertEqual(by_path.path, "assets.rpf/stream/alpha.ydr")
-
+            assert by_path is not None
+            assert by_path.path == "assets.rpf/stream/alpha.ydr"
             by_name = cache.find_name("alpha", kind=".ydr")
-            self.assertEqual(len(by_name), 1)
-            self.assertEqual(by_name[0].path, "assets.rpf/stream/alpha.ydr")
-
+            assert len(by_name) == 1
+            assert by_name[0].path == "assets.rpf/stream/alpha.ydr"
             by_hash = cache.find_hash(jenk_hash("alpha"), kind=".ydr")
-            self.assertEqual(len(by_hash), 1)
-            self.assertEqual(by_hash[0].path, "assets.rpf/stream/alpha.ydr")
-
+            assert len(by_hash) == 1
+            assert by_hash[0].path == "assets.rpf/stream/alpha.ydr"
             payload = cache.read_asset("assets.rpf/stream/alpha.ydr")
-            self.assertEqual(payload, b"alpha-bytes")
-            self.assertEqual(cache.read_bytes("alpha"), b"alpha-bytes")
-
+            assert payload == b"alpha-bytes"
+            assert cache.read_bytes("alpha") == b"alpha-bytes"
             extracted = cache.extract_asset("alpha", root / "out")
-            self.assertIsNotNone(extracted)
-            self.assertEqual(Path(extracted).read_bytes(), b"alpha-bytes")
+            assert extracted is not None
+            assert Path(extracted).read_bytes() == b"alpha-bytes"
 
-    def test_gamefilecache_extracts_resource_assets_as_stored_bytes_by_default(self) -> None:
+    def test_gamefilecache_extracts_resource_assets_as_stored_bytes_by_default(
+        self,
+    ) -> None:
         from fivefury import GameFileCache, create_rpf
         from fivefury.resource import RSC7_MAGIC, parse_rsc7
 
@@ -1471,54 +1066,48 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive = create_rpf("assets.rpf")
             archive.file("stream/example.ymap", b"payload-bytes")
             archive.save(archive_path)
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
-            extracted = cache.extract_asset("assets.rpf/stream/example.ymap", root / "out")
-            self.assertIsNotNone(extracted)
-
-            stored = Path(extracted).read_bytes()
-            self.assertEqual(stored[:4], struct.pack("<I", RSC7_MAGIC))
-            self.assertEqual(parse_rsc7(stored)[1], b"payload-bytes")
-
-            logical = cache.extract_asset(
-                "assets.rpf/stream/example.ymap",
-                root / "logical.ymap",
-                logical=True,
+            extracted = cache.extract_asset(
+                "assets.rpf/stream/example.ymap", root / "out"
             )
-            self.assertIsNotNone(logical)
-            self.assertEqual(Path(logical).read_bytes(), b"payload-bytes")
+            assert extracted is not None
+            stored = Path(extracted).read_bytes()
+            assert stored[:4] == struct.pack("<I", RSC7_MAGIC)
+            assert parse_rsc7(stored)[1] == b"payload-bytes"
+            logical = cache.extract_asset(
+                "assets.rpf/stream/example.ymap", root / "logical.ymap", logical=True
+            )
+            assert logical is not None
+            assert Path(logical).read_bytes() == b"payload-bytes"
 
-    def test_gamefilecache_can_skip_audio_vehicle_and_ped_assets_during_scan(self) -> None:
+    def test_gamefilecache_can_skip_audio_vehicle_and_ped_assets_during_scan(
+        self,
+    ) -> None:
         from fivefury import GameFileCache, create_rpf
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-
             audio = create_rpf("audio_pack.rpf")
             audio.file("x64/audio/sfx/test.awc", b"audio")
             audio.save(root / "audio_pack.rpf")
-
             vehicles = create_rpf("vehicle_pack.rpf")
             vehicles.file("stream/vehicles.meta", b"vehicles")
             vehicles.save(root / "vehicle_pack.rpf")
-
             peds = create_rpf("ped_pack.rpf")
             peds.file("stream/peds.ymt", b"peds")
             peds.save(root / "ped_pack.rpf")
-
             write_bytes(root / "maps" / "example.ymap", b"map")
-
-            cache = GameFileCache(root, load_audio=False, load_vehicles=False, load_peds=False)
+            cache = GameFileCache(
+                root, load_audio=False, load_vehicles=False, load_peds=False
+            )
             cache.scan(use_index_cache=False)
-
-            self.assertEqual(cache.scan_errors, {})
-            self.assertEqual(cache.asset_count, 1)
-            self.assertEqual(cache.find_name("test.awc"), [])
-            self.assertEqual(cache.find_name("vehicles.meta"), [])
-            self.assertEqual(cache.find_name("peds.ymt"), [])
-            self.assertIsNotNone(cache.find_path("maps/example.ymap"))
+            assert cache.scan_errors == {}
+            assert cache.asset_count == 1
+            assert cache.find_name("test.awc") == []
+            assert cache.find_name("vehicles.meta") == []
+            assert cache.find_name("peds.ymt") == []
+            assert cache.find_path("maps/example.ymap") is not None
 
     def test_gamefilecache_skips_matching_sources_before_scanning_them(self) -> None:
         import fivefury.cache as cache_module
@@ -1530,38 +1119,37 @@ class MetaAndArchiveContractTests(PytestCompat):
             (root / "x64" / "levels" / "gta5").mkdir(parents=True, exist_ok=True)
             (root / "x64" / "models" / "cdimages").mkdir(parents=True, exist_ok=True)
             (root / "mods").mkdir(parents=True, exist_ok=True)
-
             audio = create_rpf("audio_rel.rpf")
             audio.file("sfx/test.awc", b"audio")
             audio.save(root / "x64" / "audio" / "audio_rel.rpf")
-
             vehicles = create_rpf("vehicles.rpf")
             vehicles.file("stream/vehicles.meta", b"vehicles")
             vehicles.save(root / "x64" / "levels" / "gta5" / "vehicles.rpf")
-
             peds = create_rpf("pedprops.rpf")
             peds.file("stream/peds.ymt", b"peds")
             peds.save(root / "x64" / "models" / "cdimages" / "pedprops.rpf")
-
             world = create_rpf("world.rpf")
             world.file("stream/keep.ydr", b"keep")
             world.save(root / "mods" / "world.rpf")
-
             original = cache_module._scan_archive_sources_batch
-
             baseline_calls: list[str] = []
             filtered_calls: list[str] = []
 
-            def delayed_scan(sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False):
+            def delayed_scan(
+                sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False
+            ):
                 target = filtered_calls if skip_mask else baseline_calls
-                target.extend(str(source_prefix) for _, source_prefix in sources)
+                target.extend((str(source_prefix) for _, source_prefix in sources))
                 time.sleep(0.03 * len(sources))
-                return original(sources, index, crypto, hash_lut, skip_mask, workers, verbose)
+                return original(
+                    sources, index, crypto, hash_lut, skip_mask, workers, verbose
+                )
 
-            with patch.object(cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan):
+            with patch.object(
+                cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan
+            ):
                 baseline = GameFileCache(root, use_index_cache=False, scan_workers=1)
                 baseline.scan(use_index_cache=False)
-
                 filtered = GameFileCache(
                     root,
                     use_index_cache=False,
@@ -1571,16 +1159,18 @@ class MetaAndArchiveContractTests(PytestCompat):
                     load_peds=False,
                 )
                 filtered.scan(use_index_cache=False)
-
-            self.assertEqual(set(baseline_calls), {
+            assert set(baseline_calls) == {
                 "mods/world.rpf",
                 "x64/audio/audio_rel.rpf",
                 "x64/levels/gta5/vehicles.rpf",
                 "x64/models/cdimages/pedprops.rpf",
-            })
-            self.assertEqual(filtered_calls, ["mods/world.rpf"])
-            self.assertEqual(filtered.asset_count, 1)
-            self.assertLess(filtered.last_scan.elapsed_seconds, baseline.last_scan.elapsed_seconds * 0.6)
+            }
+            assert filtered_calls == ["mods/world.rpf"]
+            assert filtered.asset_count == 1
+            assert (
+                filtered.last_scan.elapsed_seconds
+                < baseline.last_scan.elapsed_seconds * 0.6
+            )
 
     def test_gamefilecache_supports_dlc_level_and_excluded_folders(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1588,58 +1178,59 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "update").mkdir(parents=True, exist_ok=True)
-            (root / "update" / "x64" / "dlcpacks" / "mpalpha").mkdir(parents=True, exist_ok=True)
-            (root / "update" / "x64" / "dlcpacks" / "mpbeta").mkdir(parents=True, exist_ok=True)
+            (root / "update" / "x64" / "dlcpacks" / "mpalpha").mkdir(
+                parents=True, exist_ok=True
+            )
+            (root / "update" / "x64" / "dlcpacks" / "mpbeta").mkdir(
+                parents=True, exist_ok=True
+            )
             (root / "scratch").mkdir(parents=True, exist_ok=True)
-
             update_archive = create_rpf("update.rpf")
             update_archive.file(
                 "common/data/dlclist.xml",
-                (
-                    b"<SMandatoryPacksData><Paths>"
-                    b"<Item>dlcpacks:/mpalpha/</Item>"
-                    b"<Item>dlcpacks:/mpbeta/</Item>"
-                    b"</Paths></SMandatoryPacksData>"
-                ),
+                b"<SMandatoryPacksData><Paths><Item>dlcpacks:/mpalpha/</Item><Item>dlcpacks:/mpbeta/</Item></Paths></SMandatoryPacksData>",
             )
             update_archive.save(root / "update" / "update.rpf")
-
             alpha = create_rpf("dlc.rpf")
             alpha.file("x64/data/alpha.bin", b"alpha")
             alpha.save(root / "update" / "x64" / "dlcpacks" / "mpalpha" / "dlc.rpf")
-
             beta = create_rpf("dlc.rpf")
             beta.file("x64/data/beta.bin", b"beta")
             beta.save(root / "update" / "x64" / "dlcpacks" / "mpbeta" / "dlc.rpf")
-
             misc = create_rpf("misc.rpf")
             misc.file("scratch/hidden.bin", b"hidden")
             misc.save(root / "scratch" / "misc.rpf")
-
             cache = GameFileCache(root, dlc_level="mpalpha", exclude_folders="scratch")
             cache.scan()
-
-            self.assertEqual(cache.dlc_names, ["mpalpha", "mpbeta"])
-            self.assertEqual(cache.active_dlc_names, ["mpalpha"])
-            self.assertEqual(cache.ignored_folders, ("scratch",))
-            self.assertIsNotNone(cache.find_path("update/x64/dlcpacks/mpalpha/dlc.rpf/x64/data/alpha.bin"))
-            self.assertIsNone(cache.find_path("update/x64/dlcpacks/mpbeta/dlc.rpf/x64/data/beta.bin"))
-            self.assertIsNone(cache.find_path("scratch/misc.rpf/scratch/hidden.bin"))
-
+            assert cache.dlc_names == ["mpalpha", "mpbeta"]
+            assert cache.active_dlc_names == ["mpalpha"]
+            assert cache.ignored_folders == ("scratch",)
+            assert (
+                cache.find_path(
+                    "update/x64/dlcpacks/mpalpha/dlc.rpf/x64/data/alpha.bin"
+                )
+                is not None
+            )
+            assert (
+                cache.find_path("update/x64/dlcpacks/mpbeta/dlc.rpf/x64/data/beta.bin")
+                is None
+            )
+            assert cache.find_path("scratch/misc.rpf/scratch/hidden.bin") is None
             cache = GameFileCache(root)
             cache.use_dlc("mpalpha")
             cache.ignore_folders("scratch", "mods")
-            self.assertEqual(cache.dlc_level, "mpalpha")
-            self.assertEqual(cache.ignored_folders, ("scratch", "mods"))
+            assert cache.dlc_level == "mpalpha"
+            assert cache.ignored_folders == ("scratch", "mods")
 
-    def test_gamefilecache_reuses_persistent_index_cache_and_reports_timings(self) -> None:
+    def test_gamefilecache_reuses_persistent_index_cache_and_reports_timings(
+        self,
+    ) -> None:
         import fivefury.cache as cache_module
         from fivefury import GameFileCache, create_rpf
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             index_path = root / "scan.ffindex"
-
             for archive_index in range(16):
                 archive = create_rpf(f"pack_{archive_index}.rpf")
                 for file_index in range(96):
@@ -1648,37 +1239,38 @@ class MetaAndArchiveContractTests(PytestCompat):
                         f"payload-{archive_index}-{file_index}".encode("ascii"),
                     )
                 archive.save(root / f"pack_{archive_index}.rpf")
-
             original = cache_module._scan_archive_sources_batch
 
-            def delayed_scan(sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False):
+            def delayed_scan(
+                sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False
+            ):
                 time.sleep(0.01 * len(sources))
-                return original(sources, index, crypto, hash_lut, skip_mask, workers, verbose)
+                return original(
+                    sources, index, crypto, hash_lut, skip_mask, workers, verbose
+                )
 
             first = GameFileCache(root, index_cache_path=index_path, scan_workers=1)
-            with patch.object(cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan):
+            with patch.object(
+                cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan
+            ):
                 first.scan(use_index_cache=True)
-
-            self.assertTrue(index_path.exists())
-            self.assertIsNotNone(first.last_scan)
-            self.assertFalse(first.last_scan.used_index_cache)
-            self.assertTrue(first.last_scan.saved_index_cache)
-            self.assertEqual(first.asset_count, 16 * 96)
-
+            assert index_path.exists()
+            assert first.last_scan is not None
+            assert not first.last_scan.used_index_cache
+            assert first.last_scan.saved_index_cache
+            assert first.asset_count == 16 * 96
             second = GameFileCache(root, index_cache_path=index_path, scan_workers=1)
             second.scan(use_index_cache=True)
+            assert second.last_scan is not None
+            assert second.last_scan.used_index_cache
+            assert not second.last_scan.saved_index_cache
+            assert second.asset_count == first.asset_count
+            assert second.read_bytes("pack_0.rpf/stream/item_0_0.ydr") == b"payload-0-0"
+            assert second.last_scan.elapsed_seconds < first.last_scan.elapsed_seconds
 
-            self.assertIsNotNone(second.last_scan)
-            self.assertTrue(second.last_scan.used_index_cache)
-            self.assertFalse(second.last_scan.saved_index_cache)
-            self.assertEqual(second.asset_count, first.asset_count)
-            self.assertEqual(
-                second.read_bytes("pack_0.rpf/stream/item_0_0.ydr"),
-                b"payload-0-0",
-            )
-            self.assertLess(second.last_scan.elapsed_seconds, first.last_scan.elapsed_seconds)
-
-    def test_gamefilecache_parallel_scan_reduces_elapsed_time_for_many_archives(self) -> None:
+    def test_gamefilecache_parallel_scan_reduces_elapsed_time_for_many_archives(
+        self,
+    ) -> None:
         import fivefury.cache as cache_module
         from fivefury import GameFileCache, create_rpf
 
@@ -1692,25 +1284,31 @@ class MetaAndArchiveContractTests(PytestCompat):
                         f"payload-{archive_index}-{file_index}".encode("ascii"),
                     )
                 archive.save(root / f"pack_{archive_index}.rpf")
-
             original = cache_module._scan_archive_sources_batch
 
-            def delayed_scan(sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False):
-                time.sleep((0.03 * len(sources)) / max(int(workers or 1), 1))
-                return original(sources, index, crypto, hash_lut, skip_mask, workers, verbose)
+            def delayed_scan(
+                sources, index, crypto, hash_lut, skip_mask=0, workers=0, verbose=False
+            ):
+                time.sleep(0.03 * len(sources) / max(int(workers or 1), 1))
+                return original(
+                    sources, index, crypto, hash_lut, skip_mask, workers, verbose
+                )
 
-            with patch.object(cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan):
+            with patch.object(
+                cache_module, "_scan_archive_sources_batch", side_effect=delayed_scan
+            ):
                 serial = GameFileCache(root, scan_workers=1)
                 serial.scan(use_index_cache=False)
-
                 parallel = GameFileCache(root, scan_workers=4)
                 parallel.scan(use_index_cache=False)
-
-            self.assertEqual(serial.asset_count, 12 * 24)
-            self.assertEqual(parallel.asset_count, serial.asset_count)
-            self.assertEqual(serial.last_scan.archive_workers, 1)
-            self.assertEqual(parallel.last_scan.archive_workers, 4)
-            self.assertLess(parallel.last_scan.elapsed_seconds, serial.last_scan.elapsed_seconds * 0.8)
+            assert serial.asset_count == 12 * 24
+            assert parallel.asset_count == serial.asset_count
+            assert serial.last_scan.archive_workers == 1
+            assert parallel.last_scan.archive_workers == 4
+            assert (
+                parallel.last_scan.elapsed_seconds
+                < serial.last_scan.elapsed_seconds * 0.8
+            )
 
     def test_gamefilecache_scan_keeps_archive_handles_lazy_and_bounded(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1719,23 +1317,29 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir)
             for archive_index in range(4):
                 archive = create_rpf(f"pack_{archive_index}.rpf")
-                archive.file(f"stream/item_{archive_index}.ydr", f"payload-{archive_index}".encode("ascii"))
+                archive.file(
+                    f"stream/item_{archive_index}.ydr",
+                    f"payload-{archive_index}".encode("ascii"),
+                )
                 archive.save(root / f"pack_{archive_index}.rpf")
-
-            cache = GameFileCache(root, use_index_cache=False, max_open_archives=2, scan_workers=2)
-            cache.scan(use_index_cache=False)
-
-            self.assertEqual(cache.open_archive_count, 0)
-            self.assertEqual(cache.archives, [])
-            self.assertEqual(cache.entries, {})
-            self.assertTrue(
-                all(record.entry is None and record.archive is None for record in cache.records if record.archive_rel),
+            cache = GameFileCache(
+                root, use_index_cache=False, max_open_archives=2, scan_workers=2
             )
-
-            self.assertEqual(cache.read_bytes("pack_0.rpf/stream/item_0.ydr"), b"payload-0")
-            self.assertEqual(cache.read_bytes("pack_1.rpf/stream/item_1.ydr"), b"payload-1")
-            self.assertEqual(cache.read_bytes("pack_2.rpf/stream/item_2.ydr"), b"payload-2")
-            self.assertLessEqual(cache.open_archive_count, 2)
+            cache.scan(use_index_cache=False)
+            assert cache.open_archive_count == 0
+            assert cache.archives == []
+            assert cache.entries == {}
+            assert all(
+                (
+                    record.entry is None and record.archive is None
+                    for record in cache.records
+                    if record.archive_rel
+                )
+            )
+            assert cache.read_bytes("pack_0.rpf/stream/item_0.ydr") == b"payload-0"
+            assert cache.read_bytes("pack_1.rpf/stream/item_1.ydr") == b"payload-1"
+            assert cache.read_bytes("pack_2.rpf/stream/item_2.ydr") == b"payload-2"
+            assert cache.open_archive_count <= 2
 
     def test_gamefilecache_exposes_simple_scan_state(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1745,25 +1349,22 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive = create_rpf("pack.rpf")
             archive.file("stream/a.ydr", b"a")
             archive.save(root / "pack.rpf")
-
             cache = GameFileCache(root, use_index_cache=False)
-            self.assertFalse(cache.scan_complete)
-            self.assertFalse(cache.scan_ok)
-            self.assertFalse(cache.has_assets)
-            self.assertFalse(cache.has_scan_errors)
-
+            assert not cache.scan_complete
+            assert not cache.scan_ok
+            assert not cache.has_assets
+            assert not cache.has_scan_errors
             cache.scan(use_index_cache=False)
             summary = cache.summary()
-
-            self.assertTrue(cache.scan_complete)
-            self.assertTrue(cache.scan_ok)
-            self.assertTrue(cache.has_assets)
-            self.assertFalse(cache.has_scan_errors)
-            self.assertEqual(summary["asset_count"], 1)
-            self.assertTrue(summary["scan_complete"])
-            self.assertTrue(summary["scan_ok"])
-            self.assertFalse(summary["has_scan_errors"])
-            self.assertEqual(summary["scan_error_count"], 0)
+            assert cache.scan_complete
+            assert cache.scan_ok
+            assert cache.has_assets
+            assert not cache.has_scan_errors
+            assert summary["asset_count"] == 1
+            assert summary["scan_complete"]
+            assert summary["scan_ok"]
+            assert not summary["has_scan_errors"]
+            assert summary["scan_error_count"] == 0
 
     def test_gamefilecache_verbose_prints_scan_and_read_activity(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1774,20 +1375,21 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/a.ydr", b"a")
             archive.save(root / "pack.rpf")
             write_bytes(root / "maps" / "example.ymap", b"map")
-
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 cache = GameFileCache(root, use_index_cache=False, verbose=True)
                 cache.scan(use_index_cache=False)
-                self.assertEqual(cache.read_bytes("pack.rpf/stream/a.ydr"), b"a")
-
+                assert cache.read_bytes("pack.rpf/stream/a.ydr") == b"a"
             output = buffer.getvalue()
-            self.assertIn("[GameFileCache] scan start", output)
-            self.assertIn("[GameFileCache] scan archive pack.rpf", output)
-            self.assertIn("[GameFileCache] scan asset pack.rpf/stream/a.ydr", output)
-            self.assertIn("[GameFileCache] scan file maps/example.ymap", output)
-            self.assertIn("[GameFileCache] scan done", output)
-            self.assertIn("[GameFileCache] read bytes pack.rpf/stream/a.ydr logical=True", output)
+            assert "[GameFileCache] scan start" in output
+            assert "[GameFileCache] scan archive pack.rpf" in output
+            assert "[GameFileCache] scan asset pack.rpf/stream/a.ydr" in output
+            assert "[GameFileCache] scan file maps/example.ymap" in output
+            assert "[GameFileCache] scan done" in output
+            assert (
+                "[GameFileCache] read bytes pack.rpf/stream/a.ydr logical=True"
+                in output
+            )
 
     def test_gamefilecache_uses_native_index_backend(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1798,14 +1400,12 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/a.ydr", b"a")
             archive.file("stream/b.ydr", b"b")
             archive.save(root / "pack.rpf")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
-            self.assertTrue(hasattr(cache, "_index"))
-            self.assertEqual(len(cache._index), 2)
-            self.assertEqual(cache._index.get_path(0), "pack.rpf/stream/a.ydr")
-            self.assertEqual(cache._index.get_path(1), "pack.rpf/stream/b.ydr")
+            assert hasattr(cache, "_index")
+            assert len(cache._index) == 2
+            assert cache._index.get_path(0) == "pack.rpf/stream/a.ydr"
+            assert cache._index.get_path(1) == "pack.rpf/stream/b.ydr"
 
     def test_gamefilecache_indexes_cut_and_ycd_from_rpf_as_explicit_kinds(self) -> None:
         from fivefury import GameFileCache, GameFileType, create_rpf
@@ -1816,23 +1416,20 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("cuts/sample.cut", b"cut")
             archive.file("cuts/sample-0.ycd", b"ycd")
             archive.save(root / "cuts.rpf")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             cut = cache.find_path("cuts.rpf/cuts/sample.cut")
             ycd = cache.find_path("cuts.rpf/cuts/sample-0.ycd")
-
-            self.assertIsNotNone(cut)
-            self.assertIsNotNone(ycd)
             assert cut is not None
             assert ycd is not None
-            self.assertEqual(cut.kind, GameFileType.CUT)
-            self.assertEqual(ycd.kind, GameFileType.YCD)
-            self.assertEqual(cache.kind_counts[GameFileType.CUT], 1)
-            self.assertEqual(cache.kind_counts[GameFileType.YCD], 1)
-            self.assertEqual([record.path for record in cache.CutDict.values()], [cut.path])
-            self.assertEqual([record.path for record in cache.YcdDict.values()], [ycd.path])
+            assert cut is not None
+            assert ycd is not None
+            assert cut.kind == GameFileType.CUT
+            assert ycd.kind == GameFileType.YCD
+            assert cache.kind_counts[GameFileType.CUT] == 1
+            assert cache.kind_counts[GameFileType.YCD] == 1
+            assert [record.path for record in cache.CutDict.values()] == [cut.path]
+            assert [record.path for record in cache.YcdDict.values()] == [ycd.path]
 
     def test_gamefilecache_indexes_ynd_and_ynv_from_rpf_as_explicit_kinds(self) -> None:
         from fivefury import GameFileCache, GameFileType, create_rpf
@@ -1843,23 +1440,20 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("nav/roads.YND", b"ynd")
             archive.file("nav/mesh.YNV", b"ynv")
             archive.save(root / "nav.rpf")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             ynd = cache.find_path("nav.rpf/nav/roads.ynd")
             ynv = cache.find_path("nav.rpf/nav/mesh.ynv")
-
-            self.assertIsNotNone(ynd)
-            self.assertIsNotNone(ynv)
             assert ynd is not None
             assert ynv is not None
-            self.assertEqual(ynd.kind, GameFileType.YND)
-            self.assertEqual(ynv.kind, GameFileType.YNV)
-            self.assertEqual(cache.kind_counts[GameFileType.YND], 1)
-            self.assertEqual(cache.kind_counts[GameFileType.YNV], 1)
-            self.assertEqual([record.path for record in cache.YndDict.values()], [ynd.path])
-            self.assertEqual([record.path for record in cache.YnvDict.values()], [ynv.path])
+            assert ynd is not None
+            assert ynv is not None
+            assert ynd.kind == GameFileType.YND
+            assert ynv.kind == GameFileType.YNV
+            assert cache.kind_counts[GameFileType.YND] == 1
+            assert cache.kind_counts[GameFileType.YNV] == 1
+            assert [record.path for record in cache.YndDict.values()] == [ynd.path]
+            assert [record.path for record in cache.YnvDict.values()] == [ynv.path]
 
     def test_gamefilecache_bounds_loaded_file_cache(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1871,21 +1465,18 @@ class MetaAndArchiveContractTests(PytestCompat):
             archive.file("stream/b.ydr", b"b")
             archive.file("stream/c.ydr", b"c")
             archive.save(root / "pack.rpf")
-
             cache = GameFileCache(root, use_index_cache=False, max_loaded_files=2)
             cache.scan(use_index_cache=False)
-
-            self.assertIsNotNone(cache.get_file("pack.rpf/stream/a.ydr"))
-            self.assertIsNotNone(cache.get_file("pack.rpf/stream/b.ydr"))
-            self.assertEqual(cache.open_file_count, 2)
-            self.assertIn("pack.rpf/stream/a.ydr", cache.files)
-            self.assertIn("pack.rpf/stream/b.ydr", cache.files)
-
-            self.assertIsNotNone(cache.get_file("pack.rpf/stream/c.ydr"))
-            self.assertEqual(cache.open_file_count, 2)
-            self.assertNotIn("pack.rpf/stream/a.ydr", cache.files)
-            self.assertIn("pack.rpf/stream/b.ydr", cache.files)
-            self.assertIn("pack.rpf/stream/c.ydr", cache.files)
+            assert cache.get_file("pack.rpf/stream/a.ydr") is not None
+            assert cache.get_file("pack.rpf/stream/b.ydr") is not None
+            assert cache.open_file_count == 2
+            assert "pack.rpf/stream/a.ydr" in cache.files
+            assert "pack.rpf/stream/b.ydr" in cache.files
+            assert cache.get_file("pack.rpf/stream/c.ydr") is not None
+            assert cache.open_file_count == 2
+            assert "pack.rpf/stream/a.ydr" not in cache.files
+            assert "pack.rpf/stream/b.ydr" in cache.files
+            assert "pack.rpf/stream/c.ydr" in cache.files
 
     def test_gamefilecache_reads_archive_assets_without_opening_archives(self) -> None:
         from fivefury import GameFileCache, create_rpf
@@ -1895,52 +1486,49 @@ class MetaAndArchiveContractTests(PytestCompat):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             archive = create_rpf("pack.rpf")
-            archive.file("stream/sample.bin", b"hello native cache", compress_binary=True)
+            archive.file(
+                "stream/sample.bin", b"hello native cache", compress_binary=True
+            )
             archive.file("stream/test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
             archive.save(root / "pack.rpf")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
-            self.assertEqual(cache.open_archive_count, 0)
+            assert cache.open_archive_count == 0
             stored_native, standalone_native = read_rpf_entry_variants(
-                root / "pack.rpf",
-                "stream/test_dict.ytd",
-                _get_lut(),
+                root / "pack.rpf", "stream/test_dict.ytd", _get_lut()
             )
-            self.assertTrue(stored_native)
-            self.assertTrue(standalone_native.startswith(b"RSC7"))
-            self.assertEqual(
-                cache.read_bytes("pack.rpf/stream/sample.bin", logical=True),
-                b"hello native cache",
+            assert stored_native
+            assert standalone_native.startswith(b"RSC7")
+            assert (
+                cache.read_bytes("pack.rpf/stream/sample.bin", logical=True)
+                == b"hello native cache"
             )
-            self.assertEqual(cache.open_archive_count, 0)
-
+            assert cache.open_archive_count == 0
             game_file = cache.get_file("pack.rpf/stream/test_dict.ytd")
-            self.assertIsNotNone(game_file)
-            self.assertEqual(type(game_file.parsed).__name__, "Ytd")
-            self.assertEqual(cache.open_archive_count, 0)
-
-            extracted = cache.extract_asset("pack.rpf/stream/test_dict.ytd", root / "out")
-            self.assertIsNotNone(extracted)
+            assert game_file is not None
+            assert type(game_file.parsed).__name__ == "Ytd"
+            assert cache.open_archive_count == 0
+            extracted = cache.extract_asset(
+                "pack.rpf/stream/test_dict.ytd", root / "out"
+            )
             assert extracted is not None
-            self.assertEqual(extracted.read_bytes()[:4], b"RSC7")
-            self.assertEqual(cache.open_archive_count, 0)
+            assert extracted is not None
+            assert extracted.read_bytes()[:4] == b"RSC7"
+            assert cache.open_archive_count == 0
 
     def test_ytd_reader_parses_legacy_and_enhanced_dictionaries(self) -> None:
         from fivefury import read_ytd
 
         legacy = read_ytd(_build_test_ytd_bytes(enhanced=False))
         enhanced = read_ytd(_build_test_ytd_bytes(enhanced=True))
-
-        self.assertEqual(len(legacy.textures), 1)
-        self.assertEqual(len(enhanced.textures), 1)
-        self.assertEqual(legacy.textures[0].name, "test_diffuse")
-        self.assertEqual(enhanced.textures[0].name, "test_diffuse")
-        self.assertEqual(legacy.textures[0].width, 4)
-        self.assertEqual(enhanced.textures[0].height, 4)
-        self.assertEqual(legacy.textures[0].mip_count, 1)
-        self.assertEqual(enhanced.textures[0].mip_count, 1)
+        assert len(legacy.textures) == 1
+        assert len(enhanced.textures) == 1
+        assert legacy.textures[0].name == "test_diffuse"
+        assert enhanced.textures[0].name == "test_diffuse"
+        assert legacy.textures[0].width == 4
+        assert enhanced.textures[0].height == 4
+        assert legacy.textures[0].mip_count == 1
+        assert enhanced.textures[0].mip_count == 1
 
     def test_ytd_texture_usage_survives_a_round_trip(self) -> None:
         from fivefury.texture import (
@@ -1963,16 +1551,14 @@ class MetaAndArchiveContractTests(PytestCompat):
                         1,
                         name="spec_map",
                         usage=TextureUsage.SPECULAR,
-                        usage_flags=0x1001580,
+                        usage_flags=16782720,
                     )
                 ],
                 game=game,
             )
-
             rebuilt = Ytd.from_bytes(ytd.to_bytes())
-
-            self.assertEqual(rebuilt.textures[0].usage, TextureUsage.SPECULAR)
-            self.assertEqual(rebuilt.textures[0].usage_flags, 0x1001580)
+            assert rebuilt.textures[0].usage == TextureUsage.SPECULAR
+            assert rebuilt.textures[0].usage_flags == 16782720
 
     def test_legacy_ytd_stores_usage_data_rather_than_a_byte_size(self) -> None:
         """The 0x40 word is UsageData, not a payload size.
@@ -2007,14 +1593,16 @@ class MetaAndArchiveContractTests(PytestCompat):
             ],
             game="gta5",
         )
-
         _header, virtual_data, _physical = split_rsc7_sections(ytd.to_bytes())
-        items_ptr = struct.unpack_from("<Q", virtual_data, 0x30)[0]
-        tex_ptr = struct.unpack_from("<Q", virtual_data, items_ptr - DAT_VIRTUAL_BASE)[0]
-        usage_data = struct.unpack_from("<I", virtual_data, (tex_ptr - DAT_VIRTUAL_BASE) + 0x40)[0]
-
-        self.assertEqual(usage_data & 0x1F, int(TextureUsage.DIFFUSE))
-        self.assertNotEqual(usage_data, len(data))
+        items_ptr = struct.unpack_from("<Q", virtual_data, 48)[0]
+        tex_ptr = struct.unpack_from("<Q", virtual_data, items_ptr - DAT_VIRTUAL_BASE)[
+            0
+        ]
+        usage_data = struct.unpack_from(
+            "<I", virtual_data, tex_ptr - DAT_VIRTUAL_BASE + 64
+        )[0]
+        assert usage_data & 31 == int(TextureUsage.DIFFUSE)
+        assert usage_data != len(data)
 
     def test_build_rsc7_adapts_page_size_for_large_graphics_sections(self) -> None:
         from fivefury.resource import (
@@ -2022,11 +1610,10 @@ class MetaAndArchiveContractTests(PytestCompat):
             get_resource_size_from_flags,
         )
 
-        size = 3_488_920
+        size = 3488920
         flags = get_resource_flags_from_size_adaptive(size, 13)
-
-        self.assertEqual(get_resource_size_from_flags(flags), _align(size, 1024))
-        self.assertGreater(flags & 0xF, 0)
+        assert get_resource_size_from_flags(flags) == _align(size, 1024)
+        assert flags & 15 > 0
 
     def test_legacy_ytd_save_supports_large_graphics_payloads(self) -> None:
         from fivefury import read_ytd
@@ -2041,97 +1628,84 @@ class MetaAndArchiveContractTests(PytestCompat):
         ytd = Ytd(
             textures=[
                 Texture.from_raw(
-                    data,
-                    width,
-                    height,
-                    BCFormat.BC1,
-                    mip_count,
-                    name="large_diffuse",
+                    data, width, height, BCFormat.BC1, mip_count, name="large_diffuse"
                 )
             ],
             game="gta5",
         )
-
         built = ytd.to_bytes()
         header, payload = parse_rsc7(built)
         reread = read_ytd(built)
-
-        self.assertEqual(len(reread.textures), 1)
-        self.assertEqual(reread.textures[0].name, "large_diffuse")
-        self.assertEqual(reread.textures[0].width, width)
-        self.assertEqual(reread.textures[0].height, height)
-        self.assertEqual(reread.textures[0].mip_count, mip_count)
-        self.assertGreater(header.graphics_flags & 0xF, 0)
-        self.assertLessEqual(len(payload), header.system_size + header.graphics_size)
-        self.assertGreaterEqual(header.graphics_size, len(data))
+        assert len(reread.textures) == 1
+        assert reread.textures[0].name == "large_diffuse"
+        assert reread.textures[0].width == width
+        assert reread.textures[0].height == height
+        assert reread.textures[0].mip_count == mip_count
+        assert header.graphics_flags & 15 > 0
+        assert len(payload) <= header.system_size + header.graphics_size
+        assert header.graphics_size >= len(data)
 
     def test_rpf_writer_supports_large_resource_entries(self) -> None:
         from fivefury.rpf import RpfArchive
         from fivefury.rpf.entries import RpfResourceFileEntry
         from fivefury.rpf.utils import RSC7_MAGIC
 
-        stored_size = 0x1000000
+        stored_size = 16777216
         resource = struct.pack("<IIII", RSC7_MAGIC, 0, 0, 0) + bytes(stored_size - 16)
         archive = RpfArchive.empty("large_resources.rpf")
-
         archive.file("stream/large.ytd", resource)
         packed = archive.to_bytes()
-
         reread = RpfArchive.from_bytes(packed, name="large_resources.rpf")
         entry = reread.find_entry("stream/large.ytd")
-
-        self.assertIsInstance(entry, RpfResourceFileEntry)
         assert isinstance(entry, RpfResourceFileEntry)
-        self.assertEqual(entry.file_size, stored_size)
-
+        assert isinstance(entry, RpfResourceFileEntry)
+        assert entry.file_size == stored_size
         raw = reread.read_entry_raw(entry)
-        self.assertEqual(len(raw), stored_size)
-        self.assertEqual(
-            (raw[7] << 0) | (raw[14] << 8) | (raw[5] << 16) | (raw[2] << 24),
-            stored_size,
-        )
-        self.assertEqual(reread.read_entry_standalone(entry)[:4], b"RSC7")
+        assert len(raw) == stored_size
+        assert raw[7] << 0 | raw[14] << 8 | raw[5] << 16 | raw[2] << 24 == stored_size
+        assert reread.read_entry_standalone(entry)[:4] == b"RSC7"
 
     def test_ytd_reader_can_export_dds(self) -> None:
         from fivefury import read_ytd
 
         ytd = read_ytd(_build_test_ytd_bytes(enhanced=False))
         texture = ytd.textures[0]
-
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "test_diffuse.dds"
             texture.save_dds(output)
-            self.assertTrue(output.exists())
-            self.assertEqual(output.read_bytes()[:4], b"DDS ")
+            assert output.exists()
+            assert output.read_bytes()[:4] == b"DDS "
 
     def test_gamefilecache_parses_ytd_and_extracts_ytd_textures(self) -> None:
         from fivefury import GameFileCache
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            write_bytes(root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
-
+            write_bytes(
+                root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False)
+            )
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             game_file = cache.get_file("stream/test_dict.ytd")
-            self.assertIsNotNone(game_file)
-            self.assertEqual(type(game_file.parsed).__name__, "Ytd")
-            self.assertEqual(len(cache.list_ytd_textures("test_dict")), 1)
-
+            assert game_file is not None
+            assert type(game_file.parsed).__name__ == "Ytd"
+            assert len(cache.list_ytd_textures("test_dict")) == 1
             extracted = cache.extract_ytd_textures("test_dict", root / "out")
-            self.assertEqual(len(extracted), 1)
-            self.assertEqual(extracted[0].suffix.lower(), ".dds")
-            self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
+            assert len(extracted) == 1
+            assert extracted[0].suffix.lower() == ".dds"
+            assert extracted[0].read_bytes()[:4] == b"DDS "
 
-    def test_gamefilecache_extracts_asset_textures_via_archetype_texture_dictionary(self) -> None:
+    def test_gamefilecache_extracts_asset_textures_via_archetype_texture_dictionary(
+        self,
+    ) -> None:
         from fivefury import Archetype, GameFileCache, Ytyp
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             write_bytes(root / "stream" / "prop_tree_pine_01.ydr", b"RSC7fake")
-            write_bytes(root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False))
-
+            write_bytes(
+                root / "stream" / "test_dict.ytd", _build_test_ytd_bytes(enhanced=False)
+            )
             ytyp = Ytyp(name="types.ytyp")
             ytyp.archetypes.append(
                 Archetype(
@@ -2142,17 +1716,19 @@ class MetaAndArchiveContractTests(PytestCompat):
                 )
             )
             ytyp.save(root / "stream" / "types.ytyp")
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
+            extracted = cache.extract_asset_textures(
+                "prop_tree_pine_01.ydr", root / "textures_out"
+            )
+            assert len(extracted) == 1
+            assert extracted[0].name == "test_diffuse.dds"
+            assert extracted[0].parent.name == "test_dict"
+            assert extracted[0].read_bytes()[:4] == b"DDS "
 
-            extracted = cache.extract_asset_textures("prop_tree_pine_01.ydr", root / "textures_out")
-            self.assertEqual(len(extracted), 1)
-            self.assertEqual(extracted[0].name, "test_diffuse.dds")
-            self.assertEqual(extracted[0].parent.name, "test_dict")
-            self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
-
-    def test_gamefilecache_extracts_asset_textures_from_external_ymap_and_parent_txd_chain(self) -> None:
+    def test_gamefilecache_extracts_asset_textures_from_external_ymap_and_parent_txd_chain(
+        self,
+    ) -> None:
         from fivefury import (
             Archetype,
             Entity,
@@ -2167,10 +1743,17 @@ class MetaAndArchiveContractTests(PytestCompat):
             root = Path(tmpdir) / "game"
             root.mkdir(parents=True, exist_ok=True)
             write_bytes(root / "stream" / "prop_tree_pine_01.ydr", b"RSC7fake")
-            write_bytes(root / "stream" / "child_dict.ytd", _build_test_ytd_bytes(enhanced=False))
-            write_bytes(root / "stream" / "parent_dict.ytd", _build_test_ytd_bytes(enhanced=True))
-            Gtxd.from_mapping({"child_dict": "parent_dict"}).save(root / "common" / "data" / "gtxd.meta")
-
+            write_bytes(
+                root / "stream" / "child_dict.ytd",
+                _build_test_ytd_bytes(enhanced=False),
+            )
+            write_bytes(
+                root / "stream" / "parent_dict.ytd",
+                _build_test_ytd_bytes(enhanced=True),
+            )
+            Gtxd.from_mapping({"child_dict": "parent_dict"}).save(
+                root / "common" / "data" / "gtxd.meta"
+            )
             ytyp = Ytyp(name="types.ytyp")
             ytyp.archetypes.append(
                 Archetype(
@@ -2181,58 +1764,91 @@ class MetaAndArchiveContractTests(PytestCompat):
                 )
             )
             ytyp.save(root / "stream" / "types.ytyp")
-
             external = Path(tmpdir) / "external"
             external.mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="external_map.ymap")
-            ymap.entities.append(Entity(archetype_name="prop_tree_pine_01", position=Vector3(), lod_dist=50.0))
+            ymap.entities.append(
+                Entity(
+                    archetype_name="prop_tree_pine_01",
+                    position=Vector3(),
+                    lod_dist=50.0,
+                )
+            )
             ymap.save(external / "external_map.ymap", auto_extents=True)
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             gtxd_file = cache.get_file("common/data/gtxd.meta")
-            self.assertEqual(gtxd_file.kind, GameFileType.GTXD)
-            self.assertIsInstance(gtxd_file.parsed, Gtxd)
-            self.assertEqual(gtxd_file.parsed.parent_of("child_dict"), "parent_dict")
-
-            dictionaries = cache.list_texture_dictionaries(external / "external_map.ymap")
-            self.assertEqual({asset.stem for asset in dictionaries}, {"child_dict", "parent_dict"})
-
+            assert gtxd_file.kind == GameFileType.GTXD
+            assert isinstance(gtxd_file.parsed, Gtxd)
+            assert gtxd_file.parsed.parent_of("child_dict") == "parent_dict"
+            dictionaries = cache.list_texture_dictionaries(
+                external / "external_map.ymap"
+            )
+            assert {asset.stem for asset in dictionaries} == {
+                "child_dict",
+                "parent_dict",
+            }
             texture_refs = cache.list_asset_textures(external / "external_map.ymap")
-            self.assertEqual({(ref.container_name, ref.parent_depth) for ref in texture_refs}, {("child_dict", 0), ("parent_dict", 1)})
-
-            extracted = cache.extract_asset_textures(external / "external_map.ymap", root / "textures_out")
-            self.assertEqual(len(extracted), 2)
-            self.assertEqual({path.parent.name for path in extracted}, {"child_dict", "parent_dict"})
-            self.assertTrue(all(path.read_bytes()[:4] == b"DDS " for path in extracted))
+            assert {(ref.container_name, ref.parent_depth) for ref in texture_refs} == {
+                ("child_dict", 0),
+                ("parent_dict", 1),
+            }
+            extracted = cache.extract_asset_textures(
+                external / "external_map.ymap", root / "textures_out"
+            )
+            assert len(extracted) == 2
+            assert {path.parent.name for path in extracted} == {
+                "child_dict",
+                "parent_dict",
+            }
+            assert all((path.read_bytes()[:4] == b"DDS " for path in extracted))
 
     def test_gtxd_roundtrip_and_parent_chain_helpers(self) -> None:
         from fivefury import create_gtxd, read_gtxd
 
-        gtxd = create_gtxd({"child_dict.ytd": "parent_dict.ytd"}, grandchild_dict="child_dict")
+        gtxd = create_gtxd(
+            {"child_dict.ytd": "parent_dict.ytd"}, grandchild_dict="child_dict"
+        )
         xml = gtxd.to_bytes()
         parsed = read_gtxd(xml)
+        assert parsed.parent_of("child_dict") == "parent_dict"
+        assert parsed.parent_of("grandchild_dict") == "child_dict"
+        assert list(parsed.iter_chain("grandchild_dict")) == [
+            "grandchild_dict",
+            "child_dict",
+            "parent_dict",
+        ]
+        assert b"<CMapParentTxds>" in xml
 
-        self.assertEqual(parsed.parent_of("child_dict"), "parent_dict")
-        self.assertEqual(parsed.parent_of("grandchild_dict"), "child_dict")
-        self.assertEqual(list(parsed.iter_chain("grandchild_dict")), ["grandchild_dict", "child_dict", "parent_dict"])
-        self.assertIn(b"<CMapParentTxds>", xml)
-
-    def test_gamefilecache_extracts_embedded_textures_from_supported_resource_assets(self) -> None:
+    def test_gamefilecache_extracts_embedded_textures_from_supported_resource_assets(
+        self,
+    ) -> None:
         from fivefury import GameFileCache
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            write_bytes(root / "stream" / "embedded.ydr", _build_embedded_texture_resource("ydr", enhanced=False))
-            write_bytes(root / "stream" / "embedded.ydd", _build_embedded_texture_resource("ydd", enhanced=False))
-            write_bytes(root / "stream" / "embedded.yft", _build_embedded_texture_resource("yft", enhanced=False))
-            write_bytes(root / "stream" / "embedded.ypt", _build_embedded_texture_resource("ypt", enhanced=False))
-            write_bytes(root / "stream" / "embedded_gen9.ypt", _build_embedded_texture_resource("ypt", enhanced=True))
-
+            write_bytes(
+                root / "stream" / "embedded.ydr",
+                _build_embedded_texture_resource("ydr", enhanced=False),
+            )
+            write_bytes(
+                root / "stream" / "embedded.ydd",
+                _build_embedded_texture_resource("ydd", enhanced=False),
+            )
+            write_bytes(
+                root / "stream" / "embedded.yft",
+                _build_embedded_texture_resource("yft", enhanced=False),
+            )
+            write_bytes(
+                root / "stream" / "embedded.ypt",
+                _build_embedded_texture_resource("ypt", enhanced=False),
+            )
+            write_bytes(
+                root / "stream" / "embedded_gen9.ypt",
+                _build_embedded_texture_resource("ypt", enhanced=True),
+            )
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             for relative_path in (
                 "stream/embedded.ydr",
                 "stream/embedded.ydd",
@@ -2241,48 +1857,54 @@ class MetaAndArchiveContractTests(PytestCompat):
                 "stream/embedded_gen9.ypt",
             ):
                 refs = cache.list_asset_textures(relative_path)
-                self.assertEqual(len(refs), 1, relative_path)
-                self.assertEqual(refs[0].origin, "embedded")
-                extracted = cache.extract_asset_textures(relative_path, root / "textures_out" / Path(relative_path).stem)
-                self.assertEqual(len(extracted), 1, relative_path)
-                self.assertEqual(extracted[0].name, "test_diffuse.dds")
-                self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
+                assert len(refs) == 1, relative_path
+                assert refs[0].origin == "embedded"
+                extracted = cache.extract_asset_textures(
+                    relative_path, root / "textures_out" / Path(relative_path).stem
+                )
+                assert len(extracted) == 1, relative_path
+                assert extracted[0].name == "test_diffuse.dds"
+                assert extracted[0].read_bytes()[:4] == b"DDS "
 
-    def test_gamefilecache_extracts_embedded_textures_from_external_ymap_primary_assets(self) -> None:
+    def test_gamefilecache_extracts_embedded_textures_from_external_ymap_primary_assets(
+        self,
+    ) -> None:
         from fivefury import Archetype, Entity, GameFileCache, Ymap, Ytyp
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "game"
             root.mkdir(parents=True, exist_ok=True)
-            write_bytes(root / "stream" / "embedded_tree.ydr", _build_embedded_texture_resource("ydr", enhanced=False))
-
+            write_bytes(
+                root / "stream" / "embedded_tree.ydr",
+                _build_embedded_texture_resource("ydr", enhanced=False),
+            )
             ytyp = Ytyp(name="types.ytyp")
             ytyp.archetypes.append(
                 Archetype(
-                    name="embedded_tree",
-                    asset_name="embedded_tree",
-                    asset_type=2,
+                    name="embedded_tree", asset_name="embedded_tree", asset_type=2
                 )
             )
             ytyp.save(root / "stream" / "types.ytyp")
-
             external = Path(tmpdir) / "external"
             external.mkdir(parents=True, exist_ok=True)
             ymap = Ymap(name="external_map.ymap")
-            ymap.entities.append(Entity(archetype_name="embedded_tree", position=Vector3(), lod_dist=50.0))
+            ymap.entities.append(
+                Entity(
+                    archetype_name="embedded_tree", position=Vector3(), lod_dist=50.0
+                )
+            )
             ymap.save(external / "external_map.ymap", auto_extents=True)
-
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             refs = cache.list_asset_textures(external / "external_map.ymap")
-            self.assertEqual(len(refs), 1)
-            self.assertEqual(refs[0].origin, "embedded")
-
-            extracted = cache.extract_asset_textures(external / "external_map.ymap", root / "textures_out")
-            self.assertEqual(len(extracted), 1)
-            self.assertEqual(extracted[0].name, "test_diffuse.dds")
-            self.assertEqual(extracted[0].read_bytes()[:4], b"DDS ")
+            assert len(refs) == 1
+            assert refs[0].origin == "embedded"
+            extracted = cache.extract_asset_textures(
+                external / "external_map.ymap", root / "textures_out"
+            )
+            assert len(extracted) == 1
+            assert extracted[0].name == "test_diffuse.dds"
+            assert extracted[0].read_bytes()[:4] == b"DDS "
 
     def test_open_resource_texture_asset_returns_typed_classes(self) -> None:
         from fivefury import (
@@ -2299,29 +1921,32 @@ class MetaAndArchiveContractTests(PytestCompat):
             ("yft", YftAsset),
             ("ypt", YptAsset),
         ):
-            asset = open_resource_texture_asset(_build_embedded_texture_resource(kind, enhanced=False), kind=f".{kind}")
-            self.assertIsNotNone(asset)
-            self.assertTrue(isinstance(asset, asset_type))
+            asset = open_resource_texture_asset(
+                _build_embedded_texture_resource(kind, enhanced=False), kind=f".{kind}"
+            )
+            assert asset is not None
+            assert isinstance(asset, asset_type)
             dictionaries = asset.list_embedded_texture_dictionaries()
-            self.assertEqual(len(dictionaries), 1)
-            self.assertEqual(dictionaries[0].ytd.textures[0].name, "test_diffuse")
+            assert len(dictionaries) == 1
+            assert dictionaries[0].ytd.textures[0].name == "test_diffuse"
 
     def test_gamefilecache_opens_typed_resource_texture_assets(self) -> None:
         from fivefury import GameFileCache, YftAsset
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            write_bytes(root / "stream" / "embedded.yft", _build_embedded_texture_resource("yft", enhanced=False))
-
+            write_bytes(
+                root / "stream" / "embedded.yft",
+                _build_embedded_texture_resource("yft", enhanced=False),
+            )
             cache = GameFileCache(root, use_index_cache=False)
             cache.scan(use_index_cache=False)
-
             asset = cache.get_resource_asset("stream/embedded.yft")
-            self.assertIsNotNone(asset)
-            self.assertTrue(isinstance(asset, YftAsset))
+            assert asset is not None
+            assert isinstance(asset, YftAsset)
             dictionaries = asset.list_embedded_texture_dictionaries()
-            self.assertEqual(len(dictionaries), 1)
-            self.assertEqual(dictionaries[0].ytd.textures[0].name, "test_diffuse")
+            assert len(dictionaries) == 1
+            assert dictionaries[0].ytd.textures[0].name == "test_diffuse"
 
     def test_resource_asset_modules_export_individual_format_classes(self) -> None:
         from fivefury.assets.ydd import YddAsset
@@ -2329,18 +1954,7 @@ class MetaAndArchiveContractTests(PytestCompat):
         from fivefury.assets.yft import YftAsset
         from fivefury.assets.ypt import YptAsset
 
-        self.assertEqual(YdrAsset.kind.name, "YDR")
-        self.assertEqual(YddAsset.kind.name, "YDD")
-        self.assertEqual(YftAsset.kind.name, "YFT")
-        self.assertEqual(YptAsset.kind.name, "YPT")
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-
-
-
-
-
+        assert YdrAsset.kind.name == "YDR"
+        assert YddAsset.kind.name == "YDD"
+        assert YftAsset.kind.name == "YFT"
+        assert YptAsset.kind.name == "YPT"
