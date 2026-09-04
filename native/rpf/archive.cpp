@@ -1,3 +1,4 @@
+#include "binary/primitives.h"
 #include "rpf/archive.h"
 
 #include <algorithm>
@@ -125,36 +126,10 @@ std::uint32_t asset_category_mask(std::string_view normalized_path) {
     return mask;
 }
 
-std::uint32_t read_u32_le(const std::uint8_t* data) noexcept {
-    return static_cast<std::uint32_t>(data[0]) |
-           (static_cast<std::uint32_t>(data[1]) << 8U) |
-           (static_cast<std::uint32_t>(data[2]) << 16U) |
-           (static_cast<std::uint32_t>(data[3]) << 24U);
-}
 
-std::uint64_t read_u64_le(const std::uint8_t* data) noexcept {
-    return static_cast<std::uint64_t>(read_u32_le(data)) |
-           (static_cast<std::uint64_t>(read_u32_le(data + 4U)) << 32U);
-}
 
-std::uint32_t read_u32_be(const std::uint8_t* data) noexcept {
-    return (static_cast<std::uint32_t>(data[0]) << 24U) |
-           (static_cast<std::uint32_t>(data[1]) << 16U) |
-           (static_cast<std::uint32_t>(data[2]) << 8U) |
-           static_cast<std::uint32_t>(data[3]);
-}
 
-std::uint64_t read_u64_be(const std::uint8_t* data) noexcept {
-    return (static_cast<std::uint64_t>(read_u32_be(data)) << 32U) |
-           static_cast<std::uint64_t>(read_u32_be(data + 4U));
-}
 
-void write_u32_le(std::uint32_t value, std::uint8_t* out) noexcept {
-    out[0] = static_cast<std::uint8_t>(value & 0xFFU);
-    out[1] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
-    out[2] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
-    out[3] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
-}
 
 std::uint32_t get_resource_size_from_flags(std::uint32_t flags) noexcept {
     const std::uint32_t s0 = ((flags >> 27U) & 0x1U) << 0U;
@@ -261,11 +236,11 @@ ParsedArchive parse_entries(
     const std::string& hash_lut
 ) {
     const auto header = reader.read(archive.base_offset, 16U);
-    const bool big_endian = read_u32_be(header.data()) == RPF_MAGIC;
-    if (!big_endian && read_u32_le(header.data()) != RPF_MAGIC) {
+    const bool big_endian = binary::load<std::uint32_t, std::endian::big>(header.data()) == RPF_MAGIC;
+    if (!big_endian && binary::load<std::uint32_t>(header.data()) != RPF_MAGIC) {
         throw std::runtime_error("invalid RPF7 magic");
     }
-    const auto read_u32 = big_endian ? read_u32_be : read_u32_le;
+    const auto read_u32 = big_endian ? binary::load<std::uint32_t, std::endian::big> : binary::load<std::uint32_t>;
     const auto entry_count = read_u32(header.data() + 4U);
     const auto encoded_names_length = read_u32(header.data() + 8U);
     const auto name_shift = (encoded_names_length >> 28U) & 7U;
@@ -309,28 +284,28 @@ ParsedArchive parse_entries(
     for (std::uint32_t i = 0; i < entry_count; ++i) {
         const auto* blob = entries_data.data() + (static_cast<std::size_t>(i) * 16U);
         auto& entry = entries[i];
-        const auto first = read_u32_le(blob);
-        const auto second = read_u32_le(blob + 4U);
+        const auto first = binary::load<std::uint32_t>(blob);
+        const auto second = binary::load<std::uint32_t>(blob + 4U);
         if (second == 0x7FFFFF00U) {
             entry.type = EntryType::Directory;
             entry.name_offset = first & 0xFFFFU;
-            entry.entries_index = read_u32_le(blob + 8U);
-            entry.entries_count = read_u32_le(blob + 12U);
+            entry.entries_index = binary::load<std::uint32_t>(blob + 8U);
+            entry.entries_count = binary::load<std::uint32_t>(blob + 12U);
         } else if ((second & 0x80000000U) == 0U) {
-            const auto low = read_u64_le(blob);
+            const auto low = binary::load<std::uint64_t>(blob);
             entry.type = EntryType::Binary;
             entry.name_offset = static_cast<std::uint32_t>(low & 0xFFFFU);
             entry.file_size = static_cast<std::uint32_t>((low >> 16U) & 0xFFFFFFU);
             entry.file_offset = static_cast<std::uint32_t>((low >> 40U) & 0xFFFFFFU);
-            entry.file_uncompressed_size = read_u32_le(blob + 8U);
-            entry.encryption_type = read_u32_le(blob + 12U);
+            entry.file_uncompressed_size = binary::load<std::uint32_t>(blob + 8U);
+            entry.encryption_type = binary::load<std::uint32_t>(blob + 12U);
         } else {
             entry.type = EntryType::Resource;
             entry.name_offset = static_cast<std::uint32_t>(blob[0] | (blob[1] << 8U));
             entry.file_size = static_cast<std::uint32_t>(blob[2] | (blob[3] << 8U) | (blob[4] << 16U));
             entry.file_offset = static_cast<std::uint32_t>(blob[5] | (blob[6] << 8U) | (blob[7] << 16U)) & 0x7FFFFFU;
-            entry.system_flags = read_u32_le(blob + 8U);
-            entry.graphics_flags = read_u32_le(blob + 12U);
+            entry.system_flags = binary::load<std::uint32_t>(blob + 8U);
+            entry.graphics_flags = binary::load<std::uint32_t>(blob + 12U);
         }
         entry.name = read_name(names_data, entry.name_offset << name_shift);
         entry.name_lower = ascii_lower(entry.name);
@@ -345,7 +320,7 @@ ParsedArchive parse_entries(
 }
 
 bool is_rsc7(const std::vector<std::uint8_t>& data) noexcept {
-    return data.size() >= 4U && read_u32_le(data.data()) == RSC7_MAGIC;
+    return data.size() >= 4U && binary::load<std::uint32_t>(data.data()) == RSC7_MAGIC;
 }
 
 std::vector<std::string> split_path(std::string_view value) {
@@ -516,10 +491,10 @@ std::vector<std::uint8_t> build_resolved_entry_standalone(
             );
         }
         std::vector<std::uint8_t> out(16U + payload.size());
-        write_u32_le(RSC7_MAGIC, out.data());
-        write_u32_le(resource_version_from_flags(entry.system_flags, entry.graphics_flags), out.data() + 4U);
-        write_u32_le(entry.system_flags, out.data() + 8U);
-        write_u32_le(entry.graphics_flags, out.data() + 12U);
+        binary::store<std::uint32_t>(out.data(), RSC7_MAGIC);
+        binary::store<std::uint32_t>(out.data() + 4U, resource_version_from_flags(entry.system_flags, entry.graphics_flags));
+        binary::store<std::uint32_t>(out.data() + 8U, entry.system_flags);
+        binary::store<std::uint32_t>(out.data() + 12U, entry.graphics_flags);
         std::copy(payload.begin(), payload.end(), out.begin() + 16U);
         return out;
     }

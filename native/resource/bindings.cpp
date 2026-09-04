@@ -26,13 +26,13 @@ bool bytes_to_string(PyObject* object, std::string& out, const char* argument_na
 }
 
 bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resource::ResourceBlockSpan>& out) {
-    PyObject* sequence = PySequence_Fast(object, "resource blocks must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "resource blocks must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
     const auto count = PySequence_Size(sequence);
     if (count < 0) {
-        Py_DECREF(sequence);
         return false;
     }
     out.clear();
@@ -40,19 +40,16 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
     for (Py_ssize_t index = 0; index < count; ++index) {
         PyObject* item = PySequence_GetItem(sequence, index);
         if (item == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
-        PyObject* block = PySequence_Fast(item, "resource block must contain offset, size, relocate flag and pointer offsets");
+        PyHandle block_owner(PySequence_Fast(item, "resource block must contain offset, size, relocate flag and pointer offsets"));
+        PyObject* block = block_owner.get();
         Py_DECREF(item);
         if (block == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         const auto block_size = PySequence_Size(block);
         if (block_size != 3 && block_size != 4) {
-            Py_DECREF(block);
-            Py_DECREF(sequence);
             PyErr_SetString(PyExc_ValueError, "resource block must contain 3 or 4 values");
             return false;
         }
@@ -68,8 +65,6 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
             Py_XDECREF(size_object);
             Py_XDECREF(relocate_object);
             Py_XDECREF(pointer_offsets_object);
-            Py_DECREF(block);
-            Py_DECREF(sequence);
             return false;
         }
         const auto offset = PyLong_AsUnsignedLongLong(offset_object);
@@ -78,10 +73,8 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
         Py_DECREF(offset_object);
         Py_DECREF(size_object);
         Py_DECREF(relocate_object);
-        Py_DECREF(block);
         if (PyErr_Occurred() != nullptr || relocate < 0) {
             Py_XDECREF(pointer_offsets_object);
-            Py_DECREF(sequence);
             return false;
         }
         fivefury_native::resource::ResourceBlockSpan parsed{
@@ -91,19 +84,17 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
         };
         if (block_size == 4) {
             if (pointer_offsets_object != Py_None) {
-                PyObject* pointer_offsets = PySequence_Fast(
+                PyHandle pointer_offsets_owner(PySequence_Fast(
                     pointer_offsets_object,
                     "resource pointer offsets must be a sequence or None"
-                );
+                ));
+    PyObject* pointer_offsets = pointer_offsets_owner.get();
                 Py_DECREF(pointer_offsets_object);
                 if (pointer_offsets == nullptr) {
-                    Py_DECREF(sequence);
                     return false;
                 }
                 const auto pointer_count = PySequence_Size(pointer_offsets);
                 if (pointer_count < 0) {
-                    Py_DECREF(pointer_offsets);
-                    Py_DECREF(sequence);
                     return false;
                 }
                 parsed.has_explicit_pointer_offsets = true;
@@ -111,27 +102,21 @@ bool parse_resource_blocks(PyObject* object, std::vector<fivefury_native::resour
                 for (Py_ssize_t pointer_index = 0; pointer_index < pointer_count; ++pointer_index) {
                     PyObject* pointer_offset_object = PySequence_GetItem(pointer_offsets, pointer_index);
                     if (pointer_offset_object == nullptr) {
-                        Py_DECREF(pointer_offsets);
-                        Py_DECREF(sequence);
                         return false;
                     }
                     const auto pointer_offset = PyLong_AsUnsignedLongLong(pointer_offset_object);
                     Py_DECREF(pointer_offset_object);
                     if (PyErr_Occurred() != nullptr) {
-                        Py_DECREF(pointer_offsets);
-                        Py_DECREF(sequence);
                         return false;
                     }
                     parsed.pointer_offsets.push_back(static_cast<std::uint64_t>(pointer_offset));
                 }
-                Py_DECREF(pointer_offsets);
             } else {
                 Py_DECREF(pointer_offsets_object);
             }
         }
         out.push_back(std::move(parsed));
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -169,13 +154,13 @@ PyObject* mod_resource_pack_block_sizes(PyObject*, PyObject* args) {
     if (!PyArg_ParseTuple(args, "OI|Ip:resource_pack_block_sizes", &sizes_object, &version, &max_page_count, &is_system)) {
         return nullptr;
     }
-    PyObject* sequence = PySequence_Fast(sizes_object, "block sizes must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(sizes_object, "block sizes must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return nullptr;
     }
     const auto count = PySequence_Size(sequence);
     if (count < 0) {
-        Py_DECREF(sequence);
         return nullptr;
     }
     std::vector<std::uint64_t> sizes;
@@ -183,18 +168,15 @@ PyObject* mod_resource_pack_block_sizes(PyObject*, PyObject* args) {
     for (Py_ssize_t index = 0; index < count; ++index) {
         PyObject* item = PySequence_GetItem(sequence, index);
         if (item == nullptr) {
-            Py_DECREF(sequence);
             return nullptr;
         }
         const auto size = PyLong_AsUnsignedLongLong(item);
         Py_DECREF(item);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return nullptr;
         }
         sizes.push_back(static_cast<std::uint64_t>(size));
     }
-    Py_DECREF(sequence);
 
     try {
         return PyLong_FromUnsignedLong(fivefury_native::resource::pack_block_sizes_impl(

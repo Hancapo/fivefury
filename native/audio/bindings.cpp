@@ -1,3 +1,4 @@
+#include "binary/primitives.h"
 #include "audio/bindings.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <vector>
 
 namespace fivefury_py {
+namespace binary = fivefury_native::binary;
 
 namespace {
 
@@ -30,45 +32,11 @@ constexpr std::array<int, 89> IMA_STEP_TABLE = {
 constexpr std::uint32_t RSXXTEA_CONSTANT = 0x7B3A207FU;
 constexpr std::uint32_t RSXXTEA_DELTA = 0x9E3779B9U;
 
-std::int16_t read_i16(const char* source) {
-    const auto* bytes = reinterpret_cast<const unsigned char*>(source);
-    return static_cast<std::int16_t>(
-        static_cast<std::uint16_t>(bytes[0]) |
-        (static_cast<std::uint16_t>(bytes[1]) << 8U)
-    );
-}
 
-std::uint16_t read_u16(const char* source) {
-    const auto* bytes = reinterpret_cast<const unsigned char*>(source);
-    return static_cast<std::uint16_t>(bytes[0]) |
-           (static_cast<std::uint16_t>(bytes[1]) << 8U);
-}
 
-void write_i16(char* destination, std::int16_t value) {
-    const auto bits = static_cast<std::uint16_t>(value);
-    destination[0] = static_cast<char>(bits & 0xFFU);
-    destination[1] = static_cast<char>((bits >> 8U) & 0xFFU);
-}
 
-std::uint32_t read_u32(const char* source) {
-    const auto* bytes = reinterpret_cast<const unsigned char*>(source);
-    return static_cast<std::uint32_t>(bytes[0]) |
-           (static_cast<std::uint32_t>(bytes[1]) << 8U) |
-           (static_cast<std::uint32_t>(bytes[2]) << 16U) |
-           (static_cast<std::uint32_t>(bytes[3]) << 24U);
-}
 
-void write_u32(char* destination, std::uint32_t value) {
-    destination[0] = static_cast<char>(value & 0xFFU);
-    destination[1] = static_cast<char>((value >> 8U) & 0xFFU);
-    destination[2] = static_cast<char>((value >> 16U) & 0xFFU);
-    destination[3] = static_cast<char>((value >> 24U) & 0xFFU);
-}
 
-void write_u16(char* destination, std::uint16_t value) {
-    destination[0] = static_cast<char>(value & 0xFFU);
-    destination[1] = static_cast<char>((value >> 8U) & 0xFFU);
-}
 
 std::uint32_t rsxxtea_mix(
     std::uint32_t left,
@@ -124,7 +92,8 @@ PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
         ((sample_count - 1) / block_size) + 1
     );
     std::vector<std::uint16_t> peaks(block_count, 0);
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (std::size_t block = 0; block < block_count; ++block) {
         const auto start = static_cast<Py_ssize_t>(block) * block_size;
         const auto end = std::min(start + block_size, sample_count);
@@ -134,7 +103,7 @@ PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
             if (offset + 2 > source_size) {
                 continue;
             }
-            const auto value = static_cast<std::int32_t>(read_i16(source + offset));
+            const auto value = static_cast<std::int32_t>(binary::load<std::int16_t>(source + offset));
             const auto absolute = value < 0 ? -value : value;
             peak = std::max<std::uint16_t>(
                 peak,
@@ -143,7 +112,7 @@ PyObject* mod_awc_build_peak_values(PyObject*, PyObject* args) {
         }
         peaks[block] = peak;
     }
-    Py_END_ALLOW_THREADS
+    }
     PyObject* result = PyList_New(static_cast<Py_ssize_t>(peaks.size()));
     if (result == nullptr) {
         return nullptr;
@@ -181,7 +150,8 @@ PyObject* mod_awc_split_interleaved_pcm16(PyObject*, PyObject* args) {
     for (auto& output : outputs) {
         output.resize(static_cast<std::size_t>(frames) * 2U);
     }
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (Py_ssize_t frame = 0; frame < frames; ++frame) {
         for (int channel = 0; channel < channels; ++channel) {
             const auto source_offset = frame * frame_size + channel * 2;
@@ -190,7 +160,7 @@ PyObject* mod_awc_split_interleaved_pcm16(PyObject*, PyObject* args) {
             outputs[static_cast<std::size_t>(channel)][destination_offset + 1U] = source[source_offset + 1];
         }
     }
-    Py_END_ALLOW_THREADS
+    }
     PyObject* result = PyList_New(channels);
     if (result == nullptr) {
         return nullptr;
@@ -251,7 +221,8 @@ PyObject* mod_awc_interleave_pcm16(PyObject*, PyObject* args) {
         static_cast<std::size_t>(frame_count * channel_count * 2),
         '\0'
     );
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (Py_ssize_t frame = 0; frame < frame_count; ++frame) {
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
             const auto source_offset = static_cast<std::size_t>(frame) * 2U;
@@ -262,7 +233,7 @@ PyObject* mod_awc_interleave_pcm16(PyObject*, PyObject* args) {
             output[destination_offset + 1U] = channels[static_cast<std::size_t>(channel)][source_offset + 1U];
         }
     }
-    Py_END_ALLOW_THREADS
+    }
     return PyBytes_FromStringAndSize(output.data(), static_cast<Py_ssize_t>(output.size()));
 }
 
@@ -276,7 +247,8 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
     const auto source_size = source_view.size;
     sample_count = std::max<Py_ssize_t>(sample_count, 0);
     std::string output(static_cast<std::size_t>(sample_count) * 2U, '\0');
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     int predictor = 0;
     int step_index = 0;
     Py_ssize_t reading_offset = 0;
@@ -294,7 +266,7 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
             0,
             88
         );
-        write_i16(output.data() + written * 2, static_cast<std::int16_t>(predictor));
+        binary::store<std::int16_t>(output.data() + written * 2, static_cast<std::int16_t>(predictor));
         ++written;
     };
     while (reading_offset < source_size && written < sample_count) {
@@ -303,7 +275,7 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
                 break;
             }
             step_index = std::clamp(static_cast<int>(static_cast<unsigned char>(source[reading_offset])), 0, 88);
-            predictor = read_i16(source + reading_offset + 2);
+            predictor = binary::load<std::int16_t>(source + reading_offset + 2);
             bytes_in_block = 2044;
             reading_offset += 4;
             continue;
@@ -316,7 +288,7 @@ PyObject* mod_awc_decode_adpcm(PyObject*, PyObject* args) {
         --bytes_in_block;
         ++reading_offset;
     }
-    Py_END_ALLOW_THREADS
+    }
     return PyBytes_FromStringAndSize(output.data(), static_cast<Py_ssize_t>(output.size()));
 }
 
@@ -343,9 +315,10 @@ PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
     const auto block_count = static_cast<std::size_t>(source_size / 4);
     std::vector<std::uint32_t> blocks(block_count);
     for (std::size_t index = 0; index < block_count; ++index) {
-        blocks[index] = read_u32(source + index * 4U);
+        blocks[index] = binary::load<std::uint32_t>(source + index * 4U);
     }
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     if (decrypt != 0) {
         auto total = RSXXTEA_DELTA * static_cast<std::uint32_t>(6U + (52U / block_count));
         auto right = blocks[0];
@@ -375,10 +348,10 @@ PyObject* mod_awc_rsxxtea(PyObject*, PyObject* args) {
             }
         }
     }
-    Py_END_ALLOW_THREADS
+    }
     std::string output(static_cast<std::size_t>(source_size), '\0');
     for (std::size_t index = 0; index < block_count; ++index) {
-        write_u32(output.data() + index * 4U, blocks[index]);
+        binary::store<std::uint32_t>(output.data() + index * 4U, blocks[index]);
     }
     return PyBytes_FromStringAndSize(output.data(), source_size);
 }
@@ -408,7 +381,7 @@ PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args) {
     Py_ssize_t pcm_size = 0;
     Py_ssize_t offset = 12;
     while (offset <= source_size - 8) {
-        const auto chunk_size = static_cast<Py_ssize_t>(read_u32(source + offset + 4));
+        const auto chunk_size = static_cast<Py_ssize_t>(binary::load<std::uint32_t>(source + offset + 4));
         const auto payload_start = offset + 8;
         if (chunk_size > source_size - payload_start) {
             PyErr_SetString(PyExc_ValueError, "WAV chunk points outside the file");
@@ -420,10 +393,10 @@ PyObject* mod_awc_parse_pcm_wav(PyObject*, PyObject* args) {
                 PyErr_SetString(PyExc_ValueError, "WAV fmt chunk is truncated");
                 return nullptr;
             }
-            audio_format = read_u16(source + payload_start);
-            channels = read_u16(source + payload_start + 2);
-            sample_rate = read_u32(source + payload_start + 4);
-            bits_per_sample = read_u16(source + payload_start + 14);
+            audio_format = binary::load<std::uint16_t>(source + payload_start);
+            channels = binary::load<std::uint16_t>(source + payload_start + 2);
+            sample_rate = binary::load<std::uint32_t>(source + payload_start + 4);
+            bits_per_sample = binary::load<std::uint16_t>(source + payload_start + 14);
             has_format = true;
         } else if (std::memcmp(chunk_id, "data", 4) == 0) {
             pcm = source + payload_start;
@@ -499,17 +472,17 @@ PyObject* mod_awc_build_pcm_wav(PyObject*, PyObject* args) {
     }
     std::string output(static_cast<std::size_t>(44 + padded_data_size), '\0');
     std::memcpy(output.data(), "RIFF", 4);
-    write_u32(output.data() + 4, static_cast<std::uint32_t>(36ULL + padded_data_size));
+    binary::store<std::uint32_t>(output.data() + 4, static_cast<std::uint32_t>(36ULL + padded_data_size));
     std::memcpy(output.data() + 8, "WAVEfmt ", 8);
-    write_u32(output.data() + 16, 16);
-    write_u16(output.data() + 20, 1);
-    write_u16(output.data() + 22, static_cast<std::uint16_t>(channels));
-    write_u32(output.data() + 24, sample_rate);
-    write_u32(output.data() + 28, static_cast<std::uint32_t>(byte_rate));
-    write_u16(output.data() + 32, static_cast<std::uint16_t>(block_align));
-    write_u16(output.data() + 34, static_cast<std::uint16_t>(bits_per_sample));
+    binary::store<std::uint32_t>(output.data() + 16, 16);
+    binary::store<std::uint16_t>(output.data() + 20, 1);
+    binary::store<std::uint16_t>(output.data() + 22, static_cast<std::uint16_t>(channels));
+    binary::store<std::uint32_t>(output.data() + 24, sample_rate);
+    binary::store<std::uint32_t>(output.data() + 28, static_cast<std::uint32_t>(byte_rate));
+    binary::store<std::uint16_t>(output.data() + 32, static_cast<std::uint16_t>(block_align));
+    binary::store<std::uint16_t>(output.data() + 34, static_cast<std::uint16_t>(bits_per_sample));
     std::memcpy(output.data() + 36, "data", 4);
-    write_u32(output.data() + 40, static_cast<std::uint32_t>(pcm_size));
+    binary::store<std::uint32_t>(output.data() + 40, static_cast<std::uint32_t>(pcm_size));
     if (pcm_size != 0) {
         std::memcpy(output.data() + 44, pcm, static_cast<std::size_t>(pcm_size));
     }
@@ -577,9 +550,9 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
         std::vector<std::int32_t> encoded_sizes(static_cast<std::size_t>(channel_count));
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
             const char* header = block + channel * 24;
-            counts[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 4));
-            samples[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 12));
-            encoded_sizes[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(read_u32(header + 20));
+            counts[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 4));
+            samples[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 12));
+            encoded_sizes[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 20));
             if (
                 counts[static_cast<std::size_t>(channel)] < 0
                 || samples[static_cast<std::size_t>(channel)] < 0

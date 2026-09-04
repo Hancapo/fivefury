@@ -9,7 +9,8 @@ namespace fivefury_py {
 namespace {
 
 bool parse_vec4_sequence(PyObject* object, std::vector<fivefury_native::Vec4>& out) {
-    PyObject* sequence = PySequence_Fast(object, "vectors must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "vectors must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -23,7 +24,6 @@ bool parse_vec4_sequence(PyObject* object, std::vector<fivefury_native::Vec4>& o
         Py_XDECREF(item);
         if (components == nullptr || PySequence_Size(components) != 4) {
             Py_XDECREF(components);
-            Py_DECREF(sequence);
             if (PyErr_Occurred() == nullptr) {
                 PyErr_SetString(PyExc_ValueError, "each vector must contain four components");
             }
@@ -36,14 +36,12 @@ bool parse_vec4_sequence(PyObject* object, std::vector<fivefury_native::Vec4>& o
             Py_XDECREF(number);
             if (PyErr_Occurred() != nullptr) {
                 Py_DECREF(components);
-                Py_DECREF(sequence);
                 return false;
             }
         }
         Py_DECREF(components);
         out.push_back(value);
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -89,13 +87,13 @@ PyObject* mod_vector_interpolate_many(PyObject*, PyObject* args) {
     if (!parse_vec4_sequence(starts_object, starts) || !parse_vec4_sequence(ends_object, ends)) {
         return nullptr;
     }
-    PyObject* rotations = PySequence_Fast(rotations_object, "rotations must be a sequence");
+    PyHandle rotations_owner(PySequence_Fast(rotations_object, "rotations must be a sequence"));
+    PyObject* rotations = rotations_owner.get();
     if (rotations == nullptr) {
         return nullptr;
     }
     const auto count = static_cast<Py_ssize_t>(starts.size());
     if (ends.size() != starts.size() || PySequence_Size(rotations) != count) {
-        Py_DECREF(rotations);
         PyErr_SetString(PyExc_ValueError, "starts, ends and rotations must have equal lengths");
         return nullptr;
     }
@@ -106,14 +104,12 @@ PyObject* mod_vector_interpolate_many(PyObject*, PyObject* args) {
         const auto is_rotation = PyObject_IsTrue(rotation_object);
         Py_XDECREF(rotation_object);
         if (is_rotation < 0) {
-            Py_DECREF(rotations);
             return nullptr;
         }
         result.push_back(is_rotation
             ? fivefury_native::quat_nlerp(starts[static_cast<std::size_t>(index)], ends[static_cast<std::size_t>(index)], amount)
             : fivefury_native::vec4_lerp(starts[static_cast<std::size_t>(index)], ends[static_cast<std::size_t>(index)], amount));
     }
-    Py_DECREF(rotations);
     return make_vec4_list(result);
 }
 

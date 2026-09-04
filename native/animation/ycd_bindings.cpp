@@ -104,7 +104,8 @@ void write_bits(
 }
 
 bool parse_decode_channels(PyObject* object, std::vector<DecodeChannel>& out) {
-    PyObject* sequence = PySequence_Fast(object, "YCD channel descriptors must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "YCD channel descriptors must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -117,12 +118,10 @@ bool parse_decode_channels(PyObject* object, std::vector<DecodeChannel>& out) {
             : PySequence_Fast(item, "YCD channel descriptor must be a sequence");
         Py_XDECREF(item);
         if (descriptor == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         if (PySequence_Size(descriptor) != 5) {
             Py_DECREF(descriptor);
-            Py_DECREF(sequence);
             PyErr_SetString(PyExc_ValueError, "YCD decode descriptor must contain five values");
             return false;
         }
@@ -144,12 +143,10 @@ bool parse_decode_channels(PyObject* object, std::vector<DecodeChannel>& out) {
         Py_XDECREF(offset);
         Py_DECREF(descriptor);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         out.push_back(std::move(channel));
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -158,7 +155,8 @@ bool parse_encode_channels(
     Py_ssize_t num_frames,
     std::vector<EncodeChannel>& out
 ) {
-    PyObject* sequence = PySequence_Fast(object, "YCD channel descriptors must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "YCD channel descriptors must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -171,12 +169,10 @@ bool parse_encode_channels(
             : PySequence_Fast(item, "YCD channel descriptor must be a sequence");
         Py_XDECREF(item);
         if (descriptor == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         if (PySequence_Size(descriptor) != 3) {
             Py_DECREF(descriptor);
-            Py_DECREF(sequence);
             PyErr_SetString(PyExc_ValueError, "YCD encode descriptor must contain three values");
             return false;
         }
@@ -191,14 +187,13 @@ bool parse_encode_channels(
         if (PyErr_Occurred() != nullptr) {
             Py_XDECREF(values_object);
             Py_DECREF(descriptor);
-            Py_DECREF(sequence);
             return false;
         }
-        PyObject* values = PySequence_Fast(values_object, "YCD channel values must be a sequence");
+        PyHandle values_owner(PySequence_Fast(values_object, "YCD channel values must be a sequence"));
+        PyObject* values = values_owner.get();
         Py_XDECREF(values_object);
         if (values == nullptr) {
             Py_DECREF(descriptor);
-            Py_DECREF(sequence);
             return false;
         }
         const auto value_count = PySequence_Size(values);
@@ -215,19 +210,15 @@ bool parse_encode_channels(
                 }
                 Py_XDECREF(value_object);
                 if (PyErr_Occurred() != nullptr) {
-                    Py_DECREF(values);
                     Py_DECREF(descriptor);
-                    Py_DECREF(sequence);
                     return false;
                 }
             }
             channel.values.push_back(value);
         }
-        Py_DECREF(values);
         Py_DECREF(descriptor);
         out.push_back(std::move(channel));
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -254,13 +245,13 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "YCD frame dimensions must be non-negative");
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
     std::vector<DecodeChannel> channels;
     if (!parse_decode_channels(descriptors_object, channels)) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         return nullptr;
     }
     for (auto& channel : channels) {
@@ -272,7 +263,8 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args) {
     }
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     const auto data_size = static_cast<std::size_t>(buffer.len);
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
         const auto frame_base = (
             static_cast<std::size_t>(frame_offset) +
@@ -297,8 +289,8 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args) {
             }
         }
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
 
     PyObject* result = PyList_New(static_cast<Py_ssize_t>(channels.size()));
     if (result == nullptr) {
@@ -350,7 +342,8 @@ PyObject* mod_ycd_encode_frame_channels(PyObject*, PyObject* args) {
         frame_length * static_cast<std::size_t>(num_frames),
         0
     );
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
         auto bit_offset = static_cast<std::size_t>(frame) * frame_length * 8U;
         for (const auto& channel : channels) {
@@ -364,7 +357,7 @@ PyObject* mod_ycd_encode_frame_channels(PyObject*, PyObject* args) {
             bit_offset += static_cast<std::size_t>(std::max(channel.bit_count, 0));
         }
     }
-    Py_END_ALLOW_THREADS
+    }
     PyObject* data = PyBytes_FromStringAndSize(
         reinterpret_cast<const char*>(output.data()),
         static_cast<Py_ssize_t>(output.size())
@@ -405,7 +398,7 @@ PyObject* mod_ycd_decode_quantized_values(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "Invalid YCD quantized channel dimensions");
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -413,7 +406,8 @@ PyObject* mod_ycd_decode_quantized_values(PyObject*, PyObject* args) {
     std::vector<std::uint32_t> encoded(static_cast<std::size_t>(count));
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     const auto data_size = static_cast<std::size_t>(buffer.len);
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     auto cursor = static_cast<std::size_t>(bit_offset);
     for (Py_ssize_t index = 0; index < count; ++index) {
         const auto bits = read_bits(data, data_size, cursor, bit_count);
@@ -422,8 +416,8 @@ PyObject* mod_ycd_decode_quantized_values(PyObject*, PyObject* args) {
         values[static_cast<std::size_t>(index)] =
             static_cast<double>(bits) * quantum + offset;
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
     return build_value_pair(values, encoded);
 }
 
@@ -452,7 +446,7 @@ PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "Invalid YCD linear channel dimensions");
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -460,7 +454,7 @@ PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args) {
     const int count2 = static_cast<int>((counts >> 8U) & 0xFFU);
     const int count3 = static_cast<int>((counts >> 16U) & 0xFFU);
     if (count1 > 32 || count2 > 32 || count3 > 32) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         PyErr_SetString(PyExc_ValueError, "YCD linear channel bit width exceeds 32");
         return nullptr;
     }
@@ -475,7 +469,8 @@ PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args) {
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     const auto data_size = static_cast<std::size_t>(buffer.len);
     const auto stream_length = data_size * 8U;
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     auto cursor = static_cast<std::size_t>(bit_offset);
     for (std::size_t index = 0; index < num_chunks; ++index) {
         chunk_offsets[index] = count1 > 0
@@ -532,8 +527,8 @@ PyObject* mod_ycd_decode_linear_values(PyObject*, PyObject* args) {
             value += increment;
         }
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
     return build_value_pair(values, encoded);
 }
 

@@ -1,3 +1,4 @@
+#include "binary/primitives.h"
 #include "spatial/bindings.h"
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <vector>
 
 namespace fivefury_py {
+namespace binary = fivefury_native::binary;
 
 namespace {
 
@@ -17,33 +19,10 @@ constexpr std::size_t BVH_RECORD_SIZE = 16U;
 constexpr std::size_t YNV_LIST_PART_SIZE = 16U;
 constexpr std::size_t YNV_EDGE_SIZE = 8U;
 
-std::uint16_t read_u16(const std::uint8_t* data) {
-    return static_cast<std::uint16_t>(data[0]) |
-        (static_cast<std::uint16_t>(data[1]) << 8U);
-}
 
-std::int16_t read_i16(const std::uint8_t* data) {
-    return static_cast<std::int16_t>(read_u16(data));
-}
 
-std::uint32_t read_u32(const std::uint8_t* data) {
-    return static_cast<std::uint32_t>(data[0]) |
-        (static_cast<std::uint32_t>(data[1]) << 8U) |
-        (static_cast<std::uint32_t>(data[2]) << 16U) |
-        (static_cast<std::uint32_t>(data[3]) << 24U);
-}
 
-std::uint64_t read_u64(const std::uint8_t* data) {
-    return static_cast<std::uint64_t>(read_u32(data)) |
-        (static_cast<std::uint64_t>(read_u32(data + 4U)) << 32U);
-}
 
-float read_f32(const std::uint8_t* data) {
-    const auto bits = read_u32(data);
-    float value = 0.0F;
-    std::memcpy(&value, &bits, sizeof(value));
-    return value;
-}
 
 bool checked_span(std::size_t start, std::size_t count, std::size_t item_size, std::size_t size) {
     return start <= size && count <= (size - start) / item_size;
@@ -62,12 +41,12 @@ bool virtual_offset(std::uint64_t pointer, std::size_t size, std::size_t& offset
 }
 
 bool parse_vector3(PyObject* object, std::array<double, 3>& result, const char* message) {
-    PyObject* sequence = PySequence_Fast(object, message);
+    PyHandle sequence_owner(PySequence_Fast(object, message));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
     if (PySequence_Size(sequence) < 3) {
-        Py_DECREF(sequence);
         PyErr_SetString(PyExc_ValueError, message);
         return false;
     }
@@ -76,11 +55,9 @@ bool parse_vector3(PyObject* object, std::array<double, 3>& result, const char* 
         result[index] = PyFloat_AsDouble(item);
         Py_XDECREF(item);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -167,7 +144,7 @@ PyObject* mod_bounds_decode_polygons(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "polygon offset and count must be non-negative");
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -175,14 +152,15 @@ PyObject* mod_bounds_decode_polygons(PyObject*, PyObject* args) {
     const auto count = static_cast<std::size_t>(count_value);
     const auto size = static_cast<std::size_t>(buffer.len);
     if (!checked_span(start, count, POLYGON_SIZE, size)) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         PyErr_SetString(PyExc_ValueError, "polygon array is truncated");
         return nullptr;
     }
 
     std::vector<PolygonRecord> records(count);
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (std::size_t index = 0; index < count; ++index) {
         const auto* source = data + start + (index * POLYGON_SIZE);
         auto& record = records[index];
@@ -195,40 +173,40 @@ PyObject* mod_bounds_decode_polygons(PyObject*, PyObject* args) {
         const auto* decoded = record.raw.data();
         switch (record.type) {
             case 0:
-                record.scalar = read_f32(decoded);
+                record.scalar = binary::load<float>(decoded);
                 for (std::size_t field = 0; field < 6U; ++field) {
-                    record.values[field] = read_u16(decoded + 4U + (field * 2U));
+                    record.values[field] = binary::load<std::uint16_t>(decoded + 4U + (field * 2U));
                 }
                 break;
             case 1:
-                record.values[0] = read_u16(decoded);
-                record.values[1] = read_u16(decoded + 2U);
-                record.scalar = read_f32(decoded + 4U);
-                record.values[2] = read_u32(decoded + 8U);
-                record.values[3] = read_u32(decoded + 12U);
+                record.values[0] = binary::load<std::uint16_t>(decoded);
+                record.values[1] = binary::load<std::uint16_t>(decoded + 2U);
+                record.scalar = binary::load<float>(decoded + 4U);
+                record.values[2] = binary::load<std::uint32_t>(decoded + 8U);
+                record.values[3] = binary::load<std::uint32_t>(decoded + 12U);
                 break;
             case 2:
             case 4:
-                record.values[0] = read_u16(decoded);
-                record.values[1] = read_u16(decoded + 2U);
-                record.scalar = read_f32(decoded + 4U);
-                record.values[2] = read_u16(decoded + 8U);
-                record.values[3] = read_u16(decoded + 10U);
-                record.values[4] = read_u32(decoded + 12U);
+                record.values[0] = binary::load<std::uint16_t>(decoded);
+                record.values[1] = binary::load<std::uint16_t>(decoded + 2U);
+                record.scalar = binary::load<float>(decoded + 4U);
+                record.values[2] = binary::load<std::uint16_t>(decoded + 8U);
+                record.values[3] = binary::load<std::uint16_t>(decoded + 10U);
+                record.values[4] = binary::load<std::uint32_t>(decoded + 12U);
                 break;
             case 3:
-                record.values[0] = read_u32(decoded);
+                record.values[0] = binary::load<std::uint32_t>(decoded);
                 for (std::size_t field = 0; field < 4U; ++field) {
-                    record.values[field + 1U] = read_i16(decoded + 4U + (field * 2U));
+                    record.values[field + 1U] = binary::load<std::int16_t>(decoded + 4U + (field * 2U));
                 }
-                record.values[5] = read_u32(decoded + 12U);
+                record.values[5] = binary::load<std::uint32_t>(decoded + 12U);
                 break;
             default:
                 break;
         }
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
 
     PyObject* result = PyList_New(count_value);
     if (result == nullptr) {
@@ -286,7 +264,7 @@ PyObject* mod_bounds_decode_bvh_records(PyObject*, PyObject* args) {
         !parse_vector3(quantum_object, quantum, "quantum must contain three numbers")) {
         return nullptr;
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -294,26 +272,27 @@ PyObject* mod_bounds_decode_bvh_records(PyObject*, PyObject* args) {
     const auto count = static_cast<std::size_t>(count_value);
     const auto size = static_cast<std::size_t>(buffer.len);
     if (!checked_span(start, count, BVH_RECORD_SIZE, size)) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         PyErr_SetString(PyExc_ValueError, "BVH record array is truncated");
         return nullptr;
     }
 
     std::vector<BvhRecord> records(count);
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (std::size_t index = 0; index < count; ++index) {
         const auto* source = data + start + (index * BVH_RECORD_SIZE);
         auto& record = records[index];
         for (std::size_t axis = 0; axis < 3U; ++axis) {
-            record.minimum[axis] = center[axis] + (read_i16(source + (axis * 2U)) * quantum[axis]);
-            record.maximum[axis] = center[axis] + (read_i16(source + 6U + (axis * 2U)) * quantum[axis]);
+            record.minimum[axis] = center[axis] + (binary::load<std::int16_t>(source + (axis * 2U)) * quantum[axis]);
+            record.maximum[axis] = center[axis] + (binary::load<std::int16_t>(source + 6U + (axis * 2U)) * quantum[axis]);
         }
-        record.item_id = read_u16(source + 12U);
-        record.item_count = read_u16(source + 14U);
+        record.item_id = binary::load<std::uint16_t>(source + 12U);
+        record.item_count = binary::load<std::uint16_t>(source + 14U);
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
 
     PyObject* result = PyList_New(count_value);
     if (result == nullptr) {
@@ -366,7 +345,8 @@ PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args) {
     if (parts_pointer == 0 || parts_count_value == 0) {
         return PyList_New(0);
     }
-    PyObject* adjacent_sequence = PySequence_Fast(adjacent_object, "adjacent area IDs must be a sequence");
+    PyHandle adjacent_sequence_owner(PySequence_Fast(adjacent_object, "adjacent area IDs must be a sequence"));
+    PyObject* adjacent_sequence = adjacent_sequence_owner.get();
     if (adjacent_sequence == nullptr) {
         return nullptr;
     }
@@ -378,14 +358,12 @@ PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args) {
         const auto value = PyLong_AsUnsignedLong(item);
         Py_XDECREF(item);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(adjacent_sequence);
             return nullptr;
         }
         adjacent_ids.push_back(static_cast<std::uint32_t>(value));
     }
-    Py_DECREF(adjacent_sequence);
 
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -395,18 +373,19 @@ PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args) {
     std::size_t parts_offset = 0;
     if (!virtual_offset(parts_pointer, size, parts_offset) ||
         !checked_span(parts_offset, parts_count, YNV_LIST_PART_SIZE, size)) {
-        PyBuffer_Release(&buffer);
+        buffer.release();
         PyErr_SetString(PyExc_ValueError, "YNV edge list parts are truncated");
         return nullptr;
     }
 
     bool valid = true;
     std::vector<YnvEdgeRecord> records;
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (std::size_t part_index = 0; part_index < parts_count; ++part_index) {
         const auto* part = data + parts_offset + (part_index * YNV_LIST_PART_SIZE);
-        const auto items_pointer = read_u64(part);
-        const auto item_count = static_cast<std::size_t>(read_u32(part + 8U));
+        const auto items_pointer = binary::load<std::uint64_t>(part);
+        const auto item_count = static_cast<std::size_t>(binary::load<std::uint32_t>(part + 8U));
         if (items_pointer == 0 || item_count == 0) {
             continue;
         }
@@ -422,7 +401,7 @@ PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args) {
             const auto* edge = data + items_offset + (item_index * YNV_EDGE_SIZE);
             auto& output = records[original_size + item_index].values;
             for (std::size_t half = 0; half < 2U; ++half) {
-                const auto value = read_u32(edge + (half * 4U));
+                const auto value = binary::load<std::uint32_t>(edge + (half * 4U));
                 const auto area_index = value & 0x1FU;
                 output[half * 4U] = area_index < adjacent_ids.size() ? adjacent_ids[area_index] : 0x3FFFU;
                 output[(half * 4U) + 1U] = (value >> 5U) & 0x7FFFU;
@@ -431,8 +410,8 @@ PyObject* mod_ynv_decode_edge_list(PyObject*, PyObject* args) {
             }
         }
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
     if (!valid) {
         PyErr_SetString(PyExc_ValueError, "YNV edge array is truncated");
         return nullptr;

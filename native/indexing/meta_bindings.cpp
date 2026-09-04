@@ -1,3 +1,4 @@
+#include "binary/primitives.h"
 #include "indexing/bindings.h"
 
 #include <array>
@@ -8,6 +9,7 @@
 #include <vector>
 
 namespace fivefury_py {
+namespace binary = fivefury_native::binary;
 namespace {
 
 constexpr std::uint32_t SYSTEM_BASE = 0x50000000U;
@@ -25,25 +27,8 @@ struct Block {
     std::size_t size = 0;
 };
 
-std::uint16_t read_u16(const unsigned char* data) {
-    return static_cast<std::uint16_t>(data[0]) |
-           (static_cast<std::uint16_t>(data[1]) << 8U);
-}
 
-std::uint32_t read_u32(const unsigned char* data) {
-    return static_cast<std::uint32_t>(data[0]) |
-           (static_cast<std::uint32_t>(data[1]) << 8U) |
-           (static_cast<std::uint32_t>(data[2]) << 16U) |
-           (static_cast<std::uint32_t>(data[3]) << 24U);
-}
 
-std::uint64_t read_u64(const unsigned char* data) {
-    std::uint64_t value = 0;
-    for (unsigned int index = 0; index < 8U; ++index) {
-        value |= static_cast<std::uint64_t>(data[index]) << (index * 8U);
-    }
-    return value;
-}
 
 std::size_t absolute_offset(std::uint64_t pointer) {
     if (pointer >= GRAPHICS_BASE) {
@@ -124,9 +109,9 @@ PyObject* mod_meta_extract_ytyp_texture_relationships(PyObject*, PyObject* args)
         require_range(0U, 80U, size);
 
         constexpr std::size_t meta_root = 16U;
-        const auto root_block_id = static_cast<std::size_t>(read_u32(data + meta_root + 12U));
-        const auto blocks_pointer = read_u64(data + meta_root + 32U);
-        const auto block_count = static_cast<std::size_t>(read_u16(data + meta_root + 60U));
+        const auto root_block_id = static_cast<std::size_t>(binary::load<std::uint32_t>(data + meta_root + 12U));
+        const auto blocks_pointer = binary::load<std::uint64_t>(data + meta_root + 32U);
+        const auto block_count = static_cast<std::size_t>(binary::load<std::uint16_t>(data + meta_root + 60U));
         if (root_block_id == 0U || root_block_id > block_count) {
             throw std::invalid_argument("META root block is invalid");
         }
@@ -141,10 +126,10 @@ PyObject* mod_meta_extract_ytyp_texture_relationships(PyObject*, PyObject* args)
         blocks.reserve(block_count);
         for (std::size_t index = 0; index < block_count; ++index) {
             const auto* descriptor = data + table_offset + index * 16U;
-            const auto block_size = static_cast<std::size_t>(read_u32(descriptor + 4U));
-            const auto block_offset = absolute_offset(read_u64(descriptor + 8U));
+            const auto block_size = static_cast<std::size_t>(binary::load<std::uint32_t>(descriptor + 4U));
+            const auto block_offset = absolute_offset(binary::load<std::uint64_t>(descriptor + 8U));
             require_range(block_offset, block_size, size);
-            blocks.push_back({read_u32(descriptor), data + block_offset, block_size});
+            blocks.push_back({binary::load<std::uint32_t>(descriptor), data + block_offset, block_size});
         }
 
         const auto& root = blocks[root_block_id - 1U];
@@ -152,9 +137,9 @@ PyObject* mod_meta_extract_ytyp_texture_relationships(PyObject*, PyObject* args)
             throw std::invalid_argument("META root is not CMapTypes");
         }
         require_range(24U, 16U, root.size);
-        const auto archetype_pointer = read_u64(root.data + 24U);
-        const auto archetype_count = static_cast<std::size_t>(read_u16(root.data + 32U));
-        const auto archetype_capacity = static_cast<std::size_t>(read_u16(root.data + 34U));
+        const auto archetype_pointer = binary::load<std::uint64_t>(root.data + 24U);
+        const auto archetype_count = static_cast<std::size_t>(binary::load<std::uint16_t>(root.data + 32U));
+        const auto archetype_capacity = static_cast<std::size_t>(binary::load<std::uint16_t>(root.data + 34U));
         if (archetype_count > archetype_capacity) {
             throw std::invalid_argument("CMapTypes archetype array count exceeds capacity");
         }
@@ -170,7 +155,7 @@ PyObject* mod_meta_extract_ytyp_texture_relationships(PyObject*, PyObject* args)
             return nullptr;
         }
         for (std::size_t index = 0; index < archetype_count; ++index) {
-            const auto pointer = read_u64(pointer_block.data + pointer_offset + index * 8U);
+            const auto pointer = binary::load<std::uint64_t>(pointer_block.data + pointer_offset + index * 8U);
             if ((pointer & 0xFFFU) == 0U) {
                 continue;
             }
@@ -181,9 +166,9 @@ PyObject* mod_meta_extract_ytyp_texture_relationships(PyObject*, PyObject* args)
             }
             require_range(archetype_offset, 116U, archetype.size);
             PyObject* item = make_relationship(
-                read_u32(archetype.data + archetype_offset + 88U),
-                read_u32(archetype.data + archetype_offset + 92U),
-                read_u32(archetype.data + archetype_offset + 112U)
+                binary::load<std::uint32_t>(archetype.data + archetype_offset + 88U),
+                binary::load<std::uint32_t>(archetype.data + archetype_offset + 92U),
+                binary::load<std::uint32_t>(archetype.data + archetype_offset + 112U)
             );
             if (item == nullptr || PyList_Append(result, item) < 0) {
                 Py_XDECREF(item);

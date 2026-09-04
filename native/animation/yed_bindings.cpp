@@ -12,39 +12,6 @@ using namespace fivefury_native;
 namespace fivefury_py {
 namespace {
 
-class PyHandle {
-public:
-    explicit PyHandle(PyObject* object = nullptr) : object_(object) {}
-    ~PyHandle() { Py_XDECREF(object_); }
-    PyHandle(const PyHandle&) = delete;
-    PyHandle& operator=(const PyHandle&) = delete;
-    PyHandle(PyHandle&& other) noexcept : object_(other.object_) { other.object_ = nullptr; }
-    PyObject* get() const { return object_; }
-    PyObject* release() { auto* result = object_; object_ = nullptr; return result; }
-    explicit operator bool() const { return object_ != nullptr; }
-
-private:
-    PyObject* object_;
-};
-
-bool tuple_take(PyObject* tuple, Py_ssize_t index, PyObject* value) {
-    if (value == nullptr) return false;
-    if (PyTuple_SetItem(tuple, index, value) < 0) {
-        Py_DECREF(value);
-        return false;
-    }
-    return true;
-}
-
-bool list_take(PyObject* list, Py_ssize_t index, PyObject* value) {
-    if (value == nullptr) return false;
-    if (PyList_SetItem(list, index, value) < 0) {
-        Py_DECREF(value);
-        return false;
-    }
-    return true;
-}
-
 PyHandle item(PyObject* sequence, Py_ssize_t index) {
     return PyHandle(PySequence_GetItem(sequence, index));
 }

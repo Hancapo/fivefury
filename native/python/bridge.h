@@ -7,6 +7,7 @@
 #define Py_LIMITED_API 0x030B0000
 #endif
 #include <Python.h>
+#include "python/ownership.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -49,6 +50,15 @@ void deserialize_index_state(
     Py_ssize_t size
 );
 PyObject* translate_cpp_exception();
+
+template <PyCFunction Function>
+PyObject* guarded_call(PyObject* self, PyObject* args) noexcept {
+    try {
+        return Function(self, args);
+    } catch (...) {
+        return translate_cpp_exception();
+    }
+}
 void python_scan_log(void*, const char* message, std::size_t length);
 void python_scan_log_line(const std::string& message);
 

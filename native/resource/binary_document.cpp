@@ -25,7 +25,7 @@ enum class ScalarKind : int {
 };
 
 struct BinaryDocument {
-    Py_buffer buffer{};
+    Buffer buffer{};
 };
 
 std::size_t scalar_size(ScalarKind kind) {
@@ -79,7 +79,7 @@ void destroy_document(PyObject* capsule) {
         PyErr_Clear();
         return;
     }
-    PyBuffer_Release(&document->buffer);
+    document->buffer.release();
     delete document;
 }
 
@@ -101,7 +101,7 @@ PyObject* mod_binary_document_new(PyObject*, PyObject* args) {
     }
     PyObject* capsule = PyCapsule_New(document, CAPSULE_NAME, destroy_document);
     if (capsule == nullptr) {
-        PyBuffer_Release(&document->buffer);
+        document->buffer.release();
         delete document;
     }
     return capsule;
@@ -231,7 +231,8 @@ PyObject* mod_binary_document_read_array(PyObject*, PyObject* args) {
     }
     const auto* data = static_cast<const std::uint8_t*>(document->buffer.buf);
     const bool big_endian = endian_value != 0;
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (std::size_t row = 0; row < count; ++row) {
         for (int component = 0; component < components; ++component) {
             const auto source = data + offset + (row * stride) + (static_cast<std::size_t>(component) * item_size);
@@ -247,7 +248,7 @@ PyObject* mod_binary_document_read_array(PyObject*, PyObject* args) {
             }
         }
     }
-    Py_END_ALLOW_THREADS
+    }
 
     const bool signed_kind = kind == ScalarKind::I8 || kind == ScalarKind::I16 ||
         kind == ScalarKind::I32 || kind == ScalarKind::I64;

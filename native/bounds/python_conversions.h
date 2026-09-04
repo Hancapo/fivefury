@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Python.h>
+#include "python/bridge.h"
 
 #include <vector>
 

@@ -197,7 +197,8 @@ bool dict_set_owned(PyObject* target, const char* name, PyObject* value) {
 }
 
 bool parse_indices(PyObject* object, std::vector<std::uint32_t>& out) {
-    PyObject* sequence = PySequence_Fast(object, "mesh indices must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "mesh indices must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
@@ -208,12 +209,10 @@ bool parse_indices(PyObject* object, std::vector<std::uint32_t>& out) {
         const auto value = PyLong_AsUnsignedLong(item);
         Py_XDECREF(item);
         if (PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         out.push_back(static_cast<std::uint32_t>(value));
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -244,12 +243,12 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
     }
     std::array<int, 16> offsets{};
     if (offsets_object != Py_None) {
-        PyObject* sequence = PySequence_Fast(offsets_object, "component offsets must be a sequence");
+        PyHandle sequence_owner(PySequence_Fast(offsets_object, "component offsets must be a sequence"));
+        PyObject* sequence = sequence_owner.get();
         if (sequence == nullptr) {
             return nullptr;
         }
         if (PySequence_Size(sequence) < 16) {
-            Py_DECREF(sequence);
             PyErr_SetString(PyExc_ValueError, "component offsets must contain 16 values");
             return nullptr;
         }
@@ -258,7 +257,6 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
             offsets[index] = static_cast<int>(PyLong_AsLong(item));
             Py_XDECREF(item);
         }
-        Py_DECREF(sequence);
         if (PyErr_Occurred() != nullptr) {
             return nullptr;
         }
@@ -271,7 +269,7 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
             }
         }
     }
-    Py_buffer buffer{};
+    Buffer buffer{};
     if (PyObject_GetBuffer(data_object, &buffer, PyBUF_SIMPLE) < 0) {
         return nullptr;
     }
@@ -280,7 +278,8 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
     const auto* data = static_cast<const std::uint8_t*>(buffer.buf);
     const auto data_size = static_cast<std::size_t>(buffer.len);
     DecodedVertices decoded;
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     for (Py_ssize_t vertex = 0; vertex < count; ++vertex) {
         const auto base = static_cast<std::size_t>(vertex) * static_cast<std::size_t>(stride);
         for (int semantic = 0; semantic < 16; ++semantic) {
@@ -349,8 +348,8 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
             }
         }
     }
-    Py_END_ALLOW_THREADS
-    PyBuffer_Release(&buffer);
+    }
+    buffer.release();
 
     PyObject* result = PyDict_New();
     if (result == nullptr ||
@@ -400,7 +399,8 @@ PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args) {
     }
     std::vector<MeshChunk> chunks;
     bool needs_split = false;
-    Py_BEGIN_ALLOW_THREADS
+    {
+    GilRelease gil_release;
     std::unordered_map<std::uint32_t, std::uint32_t> lookup;
     MeshChunk current;
     for (std::size_t base = 0; base < indices.size(); base += 3U) {
@@ -442,7 +442,7 @@ PyObject* mod_ydr_split_mesh_indices(PyObject*, PyObject* args) {
     if (chunks.size() > 1U) {
         needs_split = true;
     }
-    Py_END_ALLOW_THREADS
+    }
     if (std::any_of(indices.begin(), indices.end(), [vertex_count](auto value) {
             return value >= static_cast<std::uint32_t>(vertex_count);
         })) {

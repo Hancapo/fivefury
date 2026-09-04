@@ -268,6 +268,8 @@ PyObject* translate_cpp_exception() {
         PyErr_SetString(PyExc_IndexError, exc.what());
     } catch (const std::overflow_error& exc) {
         PyErr_SetString(PyExc_OverflowError, exc.what());
+    } catch (const std::length_error& exc) {
+        PyErr_SetString(PyExc_OverflowError, exc.what());
     } catch (const std::bad_alloc&) {
         PyErr_NoMemory();
     } catch (const std::exception& exc) {

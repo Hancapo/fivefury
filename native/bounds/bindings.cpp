@@ -107,13 +107,13 @@ PyObject* mod_bounds_sphere_radius_from_vertices(PyObject*, PyObject* args) {
 namespace {
 
 bool parse_index_triples(PyObject* object, std::vector<std::array<std::uint32_t, 3>>& out) {
-    PyObject* sequence = PySequence_Fast(object, "triangles must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "triangles must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
     const auto count = PySequence_Size(sequence);
     if (count < 0) {
-        Py_DECREF(sequence);
         return false;
     }
     out.clear();
@@ -121,18 +121,15 @@ bool parse_index_triples(PyObject* object, std::vector<std::array<std::uint32_t,
     for (Py_ssize_t index = 0; index < count; ++index) {
         PyObject* item = PySequence_GetItem(sequence, index);
         if (item == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
-        PyObject* triple = PySequence_Fast(item, "triangle must be a sequence of 3 indices");
+        PyHandle triple_owner(PySequence_Fast(item, "triangle must be a sequence of 3 indices"));
+        PyObject* triple = triple_owner.get();
         Py_DECREF(item);
         if (triple == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         if (PySequence_Size(triple) != 3) {
-            Py_DECREF(triple);
-            Py_DECREF(sequence);
             PyErr_SetString(PyExc_ValueError, "triangle must contain exactly 3 indices");
             return false;
         }
@@ -140,34 +137,28 @@ bool parse_index_triples(PyObject* object, std::vector<std::array<std::uint32_t,
         for (Py_ssize_t component = 0; component < 3; ++component) {
             PyObject* value = PySequence_GetItem(triple, component);
             if (value == nullptr) {
-                Py_DECREF(triple);
-                Py_DECREF(sequence);
                 return false;
             }
             const auto parsed = PyLong_AsUnsignedLong(value);
             Py_DECREF(value);
             if (PyErr_Occurred() != nullptr) {
-                Py_DECREF(triple);
-                Py_DECREF(sequence);
                 return false;
             }
             values[static_cast<std::size_t>(component)] = static_cast<std::uint32_t>(parsed);
         }
-        Py_DECREF(triple);
         out.push_back(values);
     }
-    Py_DECREF(sequence);
     return true;
 }
 
 bool parse_int64_list(PyObject* object, std::vector<std::int64_t>& out) {
-    PyObject* sequence = PySequence_Fast(object, "indices must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(object, "indices must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
     const auto count = PySequence_Size(sequence);
     if (count < 0) {
-        Py_DECREF(sequence);
         return false;
     }
     out.clear();
@@ -175,18 +166,15 @@ bool parse_int64_list(PyObject* object, std::vector<std::int64_t>& out) {
     for (Py_ssize_t index = 0; index < count; ++index) {
         PyObject* item = PySequence_GetItem(sequence, index);
         if (item == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         const auto value = PyLong_AsLongLong(item);
         Py_DECREF(item);
         if (value == -1 && PyErr_Occurred() != nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         out.push_back(static_cast<std::int64_t>(value));
     }
-    Py_DECREF(sequence);
     return true;
 }
 

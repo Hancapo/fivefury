@@ -227,12 +227,12 @@ bool flatten_channel(
     if (arity == 0) {
         return true;
     }
-    PyObject* sequence = PySequence_Fast(channel, "vertex channel must be a sequence");
+    PyHandle sequence_owner(PySequence_Fast(channel, "vertex channel must be a sequence"));
+    PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {
         return false;
     }
     if (static_cast<std::size_t>(PySequence_Size(sequence)) < vertex_count) {
-        Py_DECREF(sequence);
         PyErr_Format(PyExc_ValueError, "vertex channel '%s' is shorter than the vertex count", channel_name);
         return false;
     }
@@ -240,40 +240,31 @@ bool flatten_channel(
     for (std::size_t vertex_index = 0; vertex_index < vertex_count; ++vertex_index) {
         PyObject* item = PySequence_GetItem(sequence, static_cast<Py_ssize_t>(vertex_index));
         if (item == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
-        PyObject* value = PySequence_Fast(item, "vertex value must be a sequence");
+        PyHandle value_owner(PySequence_Fast(item, "vertex value must be a sequence"));
+        PyObject* value = value_owner.get();
         Py_DECREF(item);
         if (value == nullptr) {
-            Py_DECREF(sequence);
             return false;
         }
         if (static_cast<std::size_t>(PySequence_Size(value)) < arity) {
-            Py_DECREF(value);
-            Py_DECREF(sequence);
             PyErr_Format(PyExc_ValueError, "vertex value in channel '%s' has too few components", channel_name);
             return false;
         }
         for (std::size_t component = 0; component < arity; ++component) {
             PyObject* component_object = PySequence_GetItem(value, static_cast<Py_ssize_t>(component));
             if (component_object == nullptr) {
-                Py_DECREF(value);
-                Py_DECREF(sequence);
                 return false;
             }
             const double component_value = PyFloat_AsDouble(component_object);
             Py_DECREF(component_object);
             if (component_value == -1.0 && PyErr_Occurred() != nullptr) {
-                Py_DECREF(value);
-                Py_DECREF(sequence);
                 return false;
             }
             out[(vertex_index * arity) + component] = component_value;
         }
-        Py_DECREF(value);
     }
-    Py_DECREF(sequence);
     return true;
 }
 
@@ -389,13 +380,13 @@ PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args) {
     }
     const auto vertex_count = static_cast<std::size_t>(vertex_count_signed);
 
-    PyObject* semantics_sequence = PySequence_Fast(semantics_object, "semantics must be a sequence");
+    PyHandle semantics_sequence_owner(PySequence_Fast(semantics_object, "semantics must be a sequence"));
+    PyObject* semantics_sequence = semantics_sequence_owner.get();
     if (semantics_sequence == nullptr) {
         return nullptr;
     }
     const auto semantic_count = PySequence_Size(semantics_sequence);
     if (semantic_count < 0) {
-        Py_DECREF(semantics_sequence);
         return nullptr;
     }
 
@@ -408,21 +399,20 @@ PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args) {
             ok = false;
             break;
         }
-        PyObject* pair_sequence = PySequence_Fast(pair, "semantic entry must be a (semantic, component_type) pair");
+        PyHandle pair_sequence_owner(PySequence_Fast(pair, "semantic entry must be a (semantic, component_type) pair"));
+        PyObject* pair_sequence = pair_sequence_owner.get();
         Py_DECREF(pair);
         if (pair_sequence == nullptr) {
             ok = false;
             break;
         }
         if (PySequence_Size(pair_sequence) != 2) {
-            Py_DECREF(pair_sequence);
             PyErr_SetString(PyExc_ValueError, "semantic entry must contain exactly 2 values");
             ok = false;
             break;
         }
         PyObject* semantic_object = PySequence_GetItem(pair_sequence, 0);
         PyObject* component_object = PySequence_GetItem(pair_sequence, 1);
-        Py_DECREF(pair_sequence);
         if (semantic_object == nullptr || component_object == nullptr) {
             Py_XDECREF(semantic_object);
             Py_XDECREF(component_object);
@@ -443,7 +433,6 @@ PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args) {
         try {
             spec.encoding = resolve_encoding(semantic, component_type);
         } catch (...) {
-            Py_DECREF(semantics_sequence);
             return translate_cpp_exception();
         }
         spec.arity = encoding_arity(spec.encoding);
@@ -499,7 +488,6 @@ PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args) {
         }
         specs.push_back(std::move(spec));
     }
-    Py_DECREF(semantics_sequence);
     if (!ok) {
         return nullptr;
     }
