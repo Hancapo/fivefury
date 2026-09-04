@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- AWC writers reject out-of-range frequencies, sample counts, playback fields, and chunk-table indices instead of truncating them.
 - RPF encryption changes preserve the original payload cipher, key context, and names while writing the requested output mode.
 - Nested RPF edits are preserved for archives inserted from bytes, loaded from files, or read from existing archives.
 - Repeated RPF writes preserve source payload locations, including in-place saves and interrupted writes.

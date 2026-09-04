@@ -305,6 +305,9 @@ def _write_awc_tables(
 
 
 def build_awc_bytes(awc: Awc) -> bytes:
+    from .validation import validate_awc_binary_fields
+
+    validate_awc_binary_fields(awc).raise_for_errors()
     endian = "<"
     # Retail multichannel AWC files keep the stream-info table ordered by the
     # 29-bit stream hash, independently from the physical channel order stored
