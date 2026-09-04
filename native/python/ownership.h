@@ -1,6 +1,7 @@
 #pragma once
 
 #include <utility>
+#include <cstdint>
 #include <memory>
 
 namespace fivefury_py {
@@ -32,6 +33,14 @@ public:
     bool acquire(PyObject* object, int flags = PyBUF_SIMPLE) {
         release();
         return PyObject_GetBuffer(object, this, flags) == 0;
+    }
+    bool overlaps(const Buffer& other) const noexcept {
+        if (len <= 0 || other.len <= 0) return false;
+        const auto start = reinterpret_cast<std::uintptr_t>(buf);
+        const auto other_start = reinterpret_cast<std::uintptr_t>(other.buf);
+        return start <= other_start
+            ? other_start - start < static_cast<std::uintptr_t>(len)
+            : start - other_start < static_cast<std::uintptr_t>(other.len);
     }
 };
 

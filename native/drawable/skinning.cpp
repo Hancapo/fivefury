@@ -1,6 +1,7 @@
 #include "drawable/bindings.h"
 
 #include <cmath>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -286,45 +287,45 @@ PyObject* mod_skin_compose_matrices(PyObject*, PyObject* args) {
     bool cycle = false;
 
     {
-        GilRelease gil_release;
-        for (std::size_t start = 0; start < count && !cycle; ++start) {
-            if (states[start] == 2U) {
-                continue;
-            }
-            path.clear();
-            auto current = start;
-            while (states[current] == 0U) {
-                states[current] = 1U;
-                path.push_back(current);
-                const auto parent = parents[current];
-                if (parent < 0 || static_cast<std::size_t>(parent) >= count ||
-                    static_cast<std::size_t>(parent) == current) {
-                    break;
-                }
-                current = static_cast<std::size_t>(parent);
-            }
-            if (states[current] == 1U && (path.empty() || current != path.back())) {
-                cycle = true;
+    GilRelease gil_release;
+    for (std::size_t start = 0; start < count && !cycle; ++start) {
+        if (states[start] == 2U) {
+            continue;
+        }
+        path.clear();
+        auto current = start;
+        while (states[current] == 0U) {
+            states[current] = 1U;
+            path.push_back(current);
+            const auto parent = parents[current];
+            if (parent < 0 || static_cast<std::size_t>(parent) >= count ||
+                static_cast<std::size_t>(parent) == current) {
                 break;
             }
-            while (!path.empty()) {
-                const auto index = path.back();
-                path.pop_back();
-                const auto parent = parents[index];
-                float* target = output + (index * 16U);
-                if (parent >= 0 && static_cast<std::size_t>(parent) < count &&
-                    static_cast<std::size_t>(parent) != index) {
-                    multiply_matrix4(
-                        local + (index * 16U),
-                        output + (static_cast<std::size_t>(parent) * 16U),
-                        target
-                    );
-                } else {
-                    std::memcpy(target, local + (index * 16U), 16U * sizeof(float));
-                }
-                states[index] = 2U;
-            }
+            current = static_cast<std::size_t>(parent);
         }
+        if (states[current] == 1U && (path.empty() || current != path.back())) {
+            cycle = true;
+            break;
+        }
+        while (!path.empty()) {
+            const auto index = path.back();
+            path.pop_back();
+            const auto parent = parents[index];
+            float* target = output + (index * 16U);
+            if (parent >= 0 && static_cast<std::size_t>(parent) < count &&
+                static_cast<std::size_t>(parent) != index) {
+                multiply_matrix4(
+                    local + (index * 16U),
+                    output + (static_cast<std::size_t>(parent) * 16U),
+                    target
+                );
+            } else {
+                std::memcpy(target, local + (index * 16U), 16U * sizeof(float));
+            }
+            states[index] = 2U;
+        }
+    }
     }
 
     parent_buffer.release();
@@ -447,28 +448,42 @@ PyObject* mod_skin_vertices_into(PyObject*, PyObject* args) {
         return nullptr;
     }
 
+    const std::array<const Buffer*, 5> inputs{
+        &positions_buffer, &matrices_buffer, &indices_buffer, &weights_buffer, &normals_buffer,
+    };
+    for (const auto* input : inputs) {
+        if (positions_output_buffer.overlaps(*input) || normals_output_buffer.overlaps(*input)) {
+            PyErr_SetString(PyExc_ValueError, "skinning output must not overlap input buffers");
+            return nullptr;
+        }
+    }
+    if (positions_output_buffer.overlaps(normals_output_buffer)) {
+        PyErr_SetString(PyExc_ValueError, "skinning output buffers must not overlap each other");
+        return nullptr;
+    }
+
     std::size_t invalid_index = 0;
     bool valid_indices = false;
     {
-        GilRelease gil_release;
-        valid_indices = skin_vertex_buffers(
-            static_cast<const float*>(positions_buffer.buf),
-            static_cast<const float*>(matrices_buffer.buf),
-            static_cast<const std::uint32_t*>(indices_buffer.buf),
-            static_cast<const float*>(weights_buffer.buf),
-            normals_object == Py_None
-                ? nullptr
-                : static_cast<const float*>(normals_buffer.buf),
-            static_cast<float*>(positions_output_buffer.buf),
-            normals_output_object == Py_None
-                ? nullptr
-                : static_cast<float*>(normals_output_buffer.buf),
-            dimensions.vertex_count,
-            dimensions.bone_count,
-            dimensions.influence_count,
-            normalize_weights != 0,
-            invalid_index
-        );
+    GilRelease gil_release;
+    valid_indices = skin_vertex_buffers(
+        static_cast<const float*>(positions_buffer.buf),
+        static_cast<const float*>(matrices_buffer.buf),
+        static_cast<const std::uint32_t*>(indices_buffer.buf),
+        static_cast<const float*>(weights_buffer.buf),
+        normals_object == Py_None
+            ? nullptr
+            : static_cast<const float*>(normals_buffer.buf),
+        static_cast<float*>(positions_output_buffer.buf),
+        normals_output_object == Py_None
+            ? nullptr
+            : static_cast<float*>(normals_output_buffer.buf),
+        dimensions.vertex_count,
+        dimensions.bone_count,
+        dimensions.influence_count,
+        normalize_weights != 0,
+        invalid_index
+    );
     }
 
     if (normals_output_buffer.obj != nullptr) normals_output_buffer.release();
@@ -541,26 +556,30 @@ PyObject* mod_skin_pack_palette_into(PyObject*, PyObject* args) {
         return nullptr;
     }
 
+    if (output_buffer.overlaps(matrices_buffer)) {
+        PyErr_SetString(PyExc_ValueError, "palette output must not overlap matrices");
+        return nullptr;
+    }
     const auto* matrices = static_cast<const float*>(matrices_buffer.buf);
     auto* palette = static_cast<float*>(output_buffer.buf);
     {
-        GilRelease gil_release;
-        for (std::size_t bone = 0; bone < bone_count; ++bone) {
-            const float* source = matrices + (bone * 16U);
-            float* target = palette + (bone * 12U);
-            target[0] = source[0];
-            target[1] = source[4];
-            target[2] = source[8];
-            target[3] = source[12];
-            target[4] = source[1];
-            target[5] = source[5];
-            target[6] = source[9];
-            target[7] = source[13];
-            target[8] = source[2];
-            target[9] = source[6];
-            target[10] = source[10];
-            target[11] = source[14];
-        }
+    GilRelease gil_release;
+    for (std::size_t bone = 0; bone < bone_count; ++bone) {
+        const float* source = matrices + (bone * 16U);
+        float* target = palette + (bone * 12U);
+        target[0] = source[0];
+        target[1] = source[4];
+        target[2] = source[8];
+        target[3] = source[12];
+        target[4] = source[1];
+        target[5] = source[5];
+        target[6] = source[9];
+        target[7] = source[13];
+        target[8] = source[2];
+        target[9] = source[6];
+        target[10] = source[10];
+        target[11] = source[14];
+    }
     }
 
     output_buffer.release();
