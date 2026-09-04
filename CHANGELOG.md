@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Changed
+
+- Test contracts target the current public API and no longer tolerate removed APIs through compatibility lookups or optional assertions.
+
 ### Added
 
 - Read-only NumPy views of binary arrays, preserving endian and byte strides without copying data.
