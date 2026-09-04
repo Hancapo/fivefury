@@ -4,7 +4,7 @@ import struct
 import zlib
 from typing import TYPE_CHECKING, BinaryIO
 
-from ..resource import read_rsc7_header
+from ..resource import ResourceHeader, read_rsc7_header
 from .entries import RpfBinaryFileEntry, RpfDirectoryEntry, RpfResourceFileEntry
 from .modes import RpfEncryption, RpfPlatform
 from .ps3 import normalize_ps3_entries
@@ -181,6 +181,53 @@ def write_archive_stream(archive: RpfArchive, stream: BinaryIO) -> int:
             continue
 
         current_offset = stream.tell() // RPF_BLOCK_SIZE
+        # Parsed source entries that were not replaced already contain their
+        # exact stored representation.  Preserve that compression and resource
+        # layout instead of normalizing unusual retail files (for example a YTD
+        # stored without an inline RSC7 header).  Encrypted payloads are decoded
+        # with their original name and encoded with the current name so renamed
+        # NG entries remain readable.
+        preservable_source_entry = (
+            entry._source is None
+            and getattr(entry, "_data", None) is None
+            and getattr(entry, "child_archive", None) is None
+            and entry._archive is archive
+            and (archive._source_bytes is not None or archive._source_file is not None)
+        )
+        if preservable_source_entry:
+            stored = archive.read_entry_raw(entry)
+            if entry.is_encrypted:
+                stored = archive._decrypt_entry_raw(
+                    entry,
+                    stored,
+                    entry_name=entry._source_name,
+                )
+                stored = _encrypt_stored_payload(archive, entry, stored)
+            if isinstance(entry, RpfBinaryFileEntry):
+                encoded_entries[index] = archive._encode_binary_entry_header(
+                    entry,
+                    len(stored),
+                    current_offset,
+                )
+            elif isinstance(entry, RpfResourceFileEntry):
+                preserved_header = ResourceHeader(
+                    version=0,
+                    system_flags=entry.system_flags.value,
+                    graphics_flags=entry.graphics_flags.value,
+                )
+                encoded_entries[index] = archive._encode_resource_entry_header(
+                    entry,
+                    len(stored),
+                    current_offset,
+                    preserved_header,
+                )
+            else:  # pragma: no cover - entries are narrowed above.
+                raise TypeError("Unsupported preserved RPF entry type")
+            stream.write(stored)
+            padding = (-stream.tell()) % RPF_BLOCK_SIZE
+            if padding:
+                stream.write(b"\x00" * padding)
+            continue
         if (
             isinstance(entry, RpfBinaryFileEntry)
             and archive.encryption not in (RpfEncryption.NONE, RpfEncryption.OPEN)

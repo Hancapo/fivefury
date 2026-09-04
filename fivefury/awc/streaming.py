@@ -265,7 +265,12 @@ def build_mp3_streaming_data(
             block += payload
         if len(block) > block_size:
             raise RuntimeError("AWC MP3 block planner exceeded the selected block size")
-        block += bytes(block_size - len(block))
+        # Retail AWC files pad every intermediate streaming block to block_size,
+        # but keep the final block compact.  Padding the tail to a complete
+        # 512 KiB block produces a structurally readable file that the GTA V
+        # Enhanced audio runtime may reject as a silent mastered stream.
+        if end_frame < frame_count:
+            block += bytes(block_size - len(block))
         blocks.append(bytes(block))
         first_frame = end_frame
     return Mp3StreamingData(b"".join(blocks), len(blocks), tuple(seek_table))

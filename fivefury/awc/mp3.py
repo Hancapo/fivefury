@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from math import ceil
 
 MP3_RETAIL_SAMPLE_RATE = 48_000
+MP3_RETAIL_SAMPLE_RATES = (32_000, 44_100, 48_000)
 MP3_SAMPLES_PER_FRAME = 1_152
 MP3_STREAMING_PACKET_SIZE = 2_048
 
@@ -126,8 +127,11 @@ def encode_mp3_channel(
     source = bytes(pcm)
     if len(source) % 2:
         raise ValueError("PCM16 channel byte length must be even")
-    if int(sample_rate) != MP3_RETAIL_SAMPLE_RATE:
-        raise ValueError("Retail AWC MP3 authoring requires 48000 Hz PCM")
+    if int(sample_rate) not in MP3_RETAIL_SAMPLE_RATES:
+        raise ValueError(
+            "Retail AWC MP3 authoring requires MPEG-1 sample rate "
+            f"{MP3_RETAIL_SAMPLE_RATES}, got {int(sample_rate)}"
+        )
     if int(bit_rate) <= 0:
         raise ValueError("MP3 bit rate must be positive")
     sample_count = len(source) // 2
@@ -136,7 +140,7 @@ def encode_mp3_channel(
 
     av = _load_av()
     encoder = av.CodecContext.create("libmp3lame", "w")
-    encoder.sample_rate = MP3_RETAIL_SAMPLE_RATE
+    encoder.sample_rate = int(sample_rate)
     encoder.layout = "mono"
     encoder.format = "s16p"
     encoder.bit_rate = int(bit_rate)
@@ -157,7 +161,7 @@ def encode_mp3_channel(
             layout="mono",
             samples=MP3_SAMPLES_PER_FRAME,
         )
-        frame.sample_rate = MP3_RETAIL_SAMPLE_RATE
+        frame.sample_rate = int(sample_rate)
         frame.planes[0].update(payload)
         for packet in encoder.encode(frame):
             output.extend(bytes(packet))
@@ -168,7 +172,7 @@ def encode_mp3_channel(
     frames = parse_mp3_frames(
         encoded,
         require_independent=True,
-        sample_rate=MP3_RETAIL_SAMPLE_RATE,
+        sample_rate=int(sample_rate),
     )
     expected_frames = ceil(sample_count / MP3_SAMPLES_PER_FRAME)
     if len(frames) != expected_frames + 1:
@@ -179,20 +183,21 @@ def encode_mp3_channel(
     frames = parse_mp3_frames(
         encoded,
         require_independent=True,
-        sample_rate=MP3_RETAIL_SAMPLE_RATE,
+        sample_rate=int(sample_rate),
     )
     if len(frames) != expected_frames:
         raise RuntimeError("MP3 frame count does not cover the source PCM duration")
     return EncodedMp3Channel(
         data=encoded,
         frame_sizes=tuple(frame.size for frame in frames),
-        sample_rate=MP3_RETAIL_SAMPLE_RATE,
+        sample_rate=int(sample_rate),
         sample_count=sample_count,
     )
 
 
 __all__ = [
     "MP3_RETAIL_SAMPLE_RATE",
+    "MP3_RETAIL_SAMPLE_RATES",
     "MP3_SAMPLES_PER_FRAME",
     "MP3_STREAMING_PACKET_SIZE",
     "EncodedMp3Channel",

@@ -792,6 +792,19 @@ class Awc:
     def channel_streams(self) -> list[AwcStream]:
         if not self.multi_channel_flag:
             return []
+        source = _find_multichannel_source(self)
+        if source is not None and source.stream_format_chunk is not None:
+            streams_by_hash = {
+                stream.hash: stream
+                for stream in self.streams
+                if stream is not source and stream.stream_format is not None
+            }
+            ordered = [
+                streams_by_hash.get(int(channel.id) & AWC_STREAM_ID_MASK)
+                for channel in source.stream_format_chunk.channels
+            ]
+            if all(stream is not None for stream in ordered):
+                return [stream for stream in ordered if stream is not None]
         return [stream for stream in self.streams if stream.stream_format is not None]
 
     def pcm_bytes(self) -> bytes:

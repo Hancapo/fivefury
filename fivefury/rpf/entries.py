@@ -116,6 +116,7 @@ class RpfFileEntry(RpfEntry):
     file_size: int = 0
     is_encrypted: bool = False
     _source: RpfFileSource | None = field(default=None, repr=False, compare=False)
+    _source_name: str | None = field(default=None, repr=False, compare=False)
 
     @property
     def is_file(self) -> bool:
