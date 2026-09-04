@@ -4,6 +4,7 @@ import importlib
 from pathlib import Path
 from typing import Any
 
+from ..authoring.diagnostics import ValidationReport
 from ..awc.io import read_awc
 from ..cdr.reader import read_cdr
 from ..cut.pso import read_cut
@@ -47,29 +48,31 @@ except ImportError as exc:
     raise ImportError("fivefury native backend is required; rebuild/install the wheel with the bundled extension") from exc
 
 
-def _try_load_decoder(module_name: str, attribute: str) -> Any | None:
-    try:
-        module = importlib.import_module(module_name)
-    except Exception:
-        return None
-    return getattr(module, attribute, None)
-
-
-def _decode_or_fallback(kind: GameFileType, source: bytes, fallback: bytes, decoder: Any) -> tuple[Any, GameFileType]:
-    try:
-        return decoder(source), kind
-    except Exception:
-        return fallback, kind
-
-
 def _decode_dynamic(data: bytes, *, module_name: str, attribute: str, kind: GameFileType) -> tuple[Any, GameFileType]:
-    decoder = _try_load_decoder(module_name, attribute)
-    if decoder is None:
-        return data, kind
-    return _decode_or_fallback(kind, data, data, decoder)
+    decoder = getattr(importlib.import_module(module_name), attribute)
+    return decoder(data), kind
 
 
 def decode_game_file_payload(
+    path: str,
+    data: bytes,
+    *,
+    raw: bytes | None = None,
+    diagnostics: ValidationReport | None = None,
+) -> tuple[Any, GameFileType]:
+    try:
+        return _decode_game_file_payload(path, data, raw=raw)
+    except Exception as exc:  # noqa: BLE001 - decoder failures become structured diagnostics.
+        report = ValidationReport() if diagnostics is None else diagnostics
+        report.issue(
+            "asset.decode.failed", f"{type(exc).__name__}: {exc}", asset=path, path="parsed"
+        )
+        if diagnostics is None:
+            report.raise_for_errors()
+        return None, guess_game_file_type(path)
+
+
+def _decode_game_file_payload(
     path: str,
     data: bytes,
     *,
@@ -79,32 +82,18 @@ def decode_game_file_payload(
     name = Path(path).name.lower()
     match name:
         case "gta5_cache_y.dat":
-            return _decode_or_fallback(
-                GameFileType.GTA5_CACHE, data, data, read_gta5_cache_y
-            )
+            return read_gta5_cache_y(data), GameFileType.GTA5_CACHE
         case value if value.startswith("heightmap") and value.endswith(".dat"):
-            return _decode_or_fallback(
-                GameFileType.HEIGHTMAP, data, data, read_heightmap
-            )
+            return read_heightmap(data), GameFileType.HEIGHTMAP
         case "water.xml":
-            return _decode_or_fallback(GameFileType.WATER, data, data, read_water)
+            return read_water(data), GameFileType.WATER
         case "expression_sets.xml":
-            return _decode_or_fallback(
-                GameFileType.EXPRESSION_SETS,
-                data,
-                data,
-                lambda payload: read_ped_expression_sets(payload, source_path=path),
-            )
+            return read_ped_expression_sets(data, source_path=path), GameFileType.EXPRESSION_SETS
         case "gtxd.meta":
-            return _decode_or_fallback(GameFileType.GTXD, data, data, read_gtxd)
+            return read_gtxd(data), GameFileType.GTXD
     vehicle_meta_type = guess_game_file_type(path)
     if vehicle_meta_type is GameFileType.REL:
-        return _decode_or_fallback(
-            GameFileType.REL,
-            data,
-            data,
-            lambda payload: read_rel(payload, path=path),
-        )
+        return read_rel(data, path=path), GameFileType.REL
     if vehicle_meta_type in {
         GameFileType.VEHICLES,
         GameFileType.HANDLING,
@@ -112,12 +101,7 @@ def decode_game_file_payload(
         GameFileType.CAR_MOD_COLS,
         GameFileType.CAR_VARIATIONS,
     }:
-        return _decode_or_fallback(
-            vehicle_meta_type,
-            data,
-            data,
-            lambda payload: read_vehicle_meta(payload, source=path),
-        )
+        return read_vehicle_meta(data, source=path), vehicle_meta_type
     if ext == ".ymap":
         return _decode_dynamic(data, module_name="fivefury.ymap", attribute="read_ymap", kind=GameFileType.YMAP)
     if ext == ".ymf":
@@ -142,7 +126,7 @@ def decode_game_file_payload(
     }
     if ext in resource_decoders:
         kind, decoder = resource_decoders[ext]
-        return _decode_or_fallback(kind, source, source, decoder)
+        return decoder(source), kind
 
     direct_decoders = {
         ".gxt2": (GameFileType.GXT2, lambda payload: read_gxt2(payload, path=path)),
@@ -153,7 +137,7 @@ def decode_game_file_payload(
     }
     if ext in direct_decoders:
         kind, decoder = direct_decoders[ext]
-        return _decode_or_fallback(kind, data, data, decoder)
+        return decoder(data), kind
     return data, guess_game_file_type(path, GameFileType.UNKNOWN)
 
 
@@ -175,10 +159,7 @@ class GameFileCacheIOMixin:
     def _native_crypto_context(self) -> Any | None:
         if self.crypto is None:
             return None
-        try:
-            return self.crypto.native_context()
-        except Exception:
-            return None
+        return self.crypto.native_context()
 
     def _native_archive_reader(self, asset: AssetRecord) -> RpfReader | None:
         archive_rel = asset.archive_rel
@@ -203,26 +184,26 @@ class GameFileCacheIOMixin:
         try:
             reader = self._native_archive_reader(asset)
             return None if reader is None else reader.read(asset.entry_path, standalone=standalone)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return None
 
     def _read_archive_asset_native_variants(self, asset: AssetRecord) -> tuple[bytes, bytes] | None:
         try:
             reader = self._native_archive_reader(asset)
             return None if reader is None else reader.read_variants(asset.entry_path)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return None
 
     def _logical_archive_bytes_from_standalone(self, asset: AssetRecord, standalone: bytes) -> bytes:
         if asset.is_resource:
             try:
                 return parse_rsc7(standalone)[1]
-            except Exception:
+            except (ValueError, RuntimeError):
                 return standalone
         if asset.uncompressed_size != asset.stored_size:
             try:
                 return _decompress_deflate(standalone)
-            except Exception:
+            except ValueError:
                 return standalone
         return standalone
 
@@ -295,23 +276,12 @@ class GameFileCacheIOMixin:
             standalone_resource = asset.extension in _STANDALONE_RESOURCE_EXTENSIONS
             logical_native = (standalone_native if standalone_resource else
                               self._logical_archive_bytes_from_standalone(asset, standalone_native))
-            raw_source = standalone_native if standalone_resource else stored_native
-            parsed, kind = decode_game_file_payload(
-                asset.path,
-                logical_native,
-                raw=raw_source,
-            )
+            game_file = GameFile.from_bytes(logical_native, path=asset.path)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
-            game_file = GameFile(
-                path=asset.path,
-                kind=kind,
-                entry=entry,
-                archive=archive,
-                raw=stored_native,
-                parsed=parsed,
-                loaded=True,
-            )
+            game_file.entry = entry
+            game_file.archive = archive
+            game_file.raw = stored_native
             self._remember_file(asset.key, game_file)
             return game_file
 
@@ -321,26 +291,14 @@ class GameFileCacheIOMixin:
                 raise ValueError(f"Entry is detached from archive: {asset.path}")
             self._log(f"read file {asset.path}")
             stored = entry.read(logical=False)
-            raw_source = None
             if asset.extension in _STANDALONE_RESOURCE_EXTENSIONS:
-                raw_source = entry._archive.read_entry_standalone(entry)
-                logical = raw_source
+                logical = entry._archive.read_entry_standalone(entry)
             else:
                 logical = entry.read(logical=True)
-            parsed, kind = decode_game_file_payload(
-                asset.path,
-                logical,
-                raw=raw_source,
-            )
-            game_file = GameFile(
-                path=asset.path,
-                kind=kind,
-                entry=entry if isinstance(entry, RpfFileEntry) else None,
-                archive=entry._archive,
-                raw=stored,
-                parsed=parsed,
-                loaded=True,
-            )
+            game_file = GameFile.from_bytes(logical, path=asset.path)
+            game_file.entry = entry if isinstance(entry, RpfFileEntry) else None
+            game_file.archive = entry._archive
+            game_file.raw = stored
             self._remember_file(asset.key, game_file)
             return game_file
 
@@ -349,8 +307,7 @@ class GameFileCacheIOMixin:
             return None
         self._log(f"read file {asset.path}")
         data = loose.read_bytes()
-        parsed, kind = decode_game_file_payload(asset.path, data)
-        game_file = GameFile(path=asset.path, kind=kind, raw=data, parsed=parsed, loaded=True)
+        game_file = GameFile.from_bytes(data, path=asset.path)
         self._remember_file(asset.key, game_file)
         return game_file
 
@@ -424,8 +381,8 @@ class GameFileCacheIOMixin:
                 if nested_bytes is not None:
                     try:
                         return RpfArchive.from_bytes(nested_bytes, name=asset.name, crypto=self.crypto)
-                    except Exception:
-                        pass
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        self._log(f"cannot decode archive {asset.path}: {exc}")
             archive = self._open_archive_for_asset(asset)
             if archive is not None and asset.path.lower().endswith(".rpf"):
                 split = _split_archive_asset_path(asset.path)
@@ -435,8 +392,8 @@ class GameFileCacheIOMixin:
                         data = entry.read(logical=True)
                         try:
                             return RpfArchive.from_bytes(data, name=entry.name, crypto=self.crypto)
-                        except Exception:
-                            pass
+                        except (OSError, ValueError, RuntimeError) as exc:
+                            self._log(f"cannot decode nested archive {asset.path}: {exc}")
                 return archive
         gf = self.get_file(path)
         if gf is None:
