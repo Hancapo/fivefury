@@ -368,19 +368,26 @@ std::vector<std::string> split_path(std::string_view value) {
 }
 
 const EntryDescriptor* find_child_entry(
-    const std::vector<EntryDescriptor>& entries,
+    ParsedArchive& archive,
     const std::uint32_t dir_index,
     const std::string& name_lower,
     std::uint32_t& child_index_out
 ) {
+    const auto& entries = archive.entries;
     const auto& dir = entries.at(dir_index);
-    const auto start = dir.entries_index;
-    const auto end = std::min<std::uint32_t>(start + dir.entries_count, static_cast<std::uint32_t>(entries.size()));
-    for (std::uint32_t i = start; i < end; ++i) {
-        if (entries[i].name_lower == name_lower) {
-            child_index_out = i;
-            return &entries[i];
+    auto [lookup, inserted] = archive.children.try_emplace(dir_index);
+    if (inserted) {
+        const auto start = dir.entries_index;
+        const auto end = std::min<std::uint64_t>(
+            static_cast<std::uint64_t>(start) + dir.entries_count, entries.size());
+        for (std::uint64_t i = start; i < end; ++i) {
+            lookup->second.try_emplace(entries[i].name_lower, static_cast<std::uint32_t>(i));
         }
+    }
+    const auto found = lookup->second.find(name_lower);
+    if (found != lookup->second.end()) {
+        child_index_out = found->second;
+        return &entries[child_index_out];
     }
     return nullptr;
 }
@@ -390,7 +397,8 @@ ResolvedEntry resolve_entry(
     const ArchiveContext& root_archive,
     const std::string& entry_path,
     const NativeCryptoContext* crypto,
-    const std::string& hash_lut
+    const std::string& hash_lut,
+    ReadCache* cache
 ) {
     const auto normalized = normalize_path(entry_path);
     if (normalized.empty()) {
@@ -401,13 +409,24 @@ ResolvedEntry resolve_entry(
     std::size_t segment_index = 0;
 
     while (true) {
-        const auto parsed = parse_entries(reader, current_archive, crypto, hash_lut);
-        const auto& entries = parsed.entries;
+        ParsedArchive local;
+        ParsedArchive* table = &local;
+        if (cache != nullptr) {
+            auto found = cache->tables.find(current_archive.base_offset);
+            if (found == cache->tables.end()) {
+                found = cache->tables.emplace(current_archive.base_offset,
+                    parse_entries(reader, current_archive, crypto, hash_lut)).first;
+            }
+            table = &found->second;
+        } else {
+            local = parse_entries(reader, current_archive, crypto, hash_lut);
+        }
+        auto& parsed = *table;
         std::uint32_t dir_index = 0U;
 
         while (segment_index < segments.size()) {
             std::uint32_t child_index = 0U;
-            const auto* child = find_child_entry(entries, dir_index, segments[segment_index], child_index);
+            const auto* child = find_child_entry(parsed, dir_index, segments[segment_index], child_index);
             if (child == nullptr) {
                 throw std::runtime_error("entry not found");
             }

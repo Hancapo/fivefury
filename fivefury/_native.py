@@ -419,6 +419,27 @@ def _awc_extract_multichannel_blocks(
     )
 
 
+class RpfReader:
+    """Reuse archive tables until the source file size or modification time changes."""
+
+    __slots__ = ("_capsule",)
+
+    def __init__(self, path: str | Path, hash_lut: bytes, crypto: NativeCryptoContext | None = None) -> None:
+        self._capsule = _ffi.rpf_reader_new(
+            str(Path(path).resolve()), bytes(hash_lut), None if crypto is None else crypto._capsule
+        )
+
+    @property
+    def cached_table_count(self) -> int:
+        return _ffi.rpf_reader_table_count(self._capsule)
+
+    def read(self, entry_path: str | Path, *, standalone: bool = False) -> bytes:
+        return _ffi.rpf_reader_read(self._capsule, str(entry_path), int(standalone))
+
+    def read_variants(self, entry_path: str | Path) -> tuple[bytes, bytes]:
+        return _ffi.rpf_reader_read(self._capsule, str(entry_path), 2)
+
+
 def read_rpf_entry(
     path: str | Path,
     entry_path: str | Path,
