@@ -3,6 +3,7 @@ import io
 import pytest
 
 from fivefury.rpf import RpfArchive
+from fivefury.rpf import RpfFileSource
 
 
 def source_archive():
@@ -49,3 +50,24 @@ def test_interrupted_write_does_not_change_source_reads():
         archive.write_to(InterruptedOutput())
     assert archive.find_entry("b.bin").read() == b"B" * 512
     assert RpfArchive.from_bytes(archive.to_bytes()).find_entry("c.bin").read() == b"C" * 512
+
+
+@pytest.mark.parametrize("backing", ("bytes", "file", "parsed"))
+def test_nested_archive_edits_take_precedence_over_original_payload(tmp_path, backing):
+    child = RpfArchive.empty("child.rpf")
+    child.file("payload.bin", b"old")
+    path = tmp_path / "child.rpf"
+    child.save(path)
+    parent = RpfArchive.empty()
+    if backing == "file":
+        entry = parent.file_path("child.rpf", RpfFileSource.archive(path))
+        parent.load_nested_archive(entry, strict=True)
+    else:
+        entry = parent.file("child.rpf", path.read_bytes())
+        if backing == "parsed":
+            parent = RpfArchive.from_bytes(parent.to_bytes(), load_nested=True)
+            entry = parent.root.files[0]
+    entry.child_archive.file("payload.bin", b"new" * 1024)
+    for _ in range(2):
+        reread = RpfArchive.from_bytes(parent.to_bytes(), load_nested=True)
+        assert reread.children[0].root.files[0].read() == b"new" * 1024
