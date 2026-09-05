@@ -31,6 +31,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
+- Resolving clips for large CUT actor groups is about 170x faster with exact animation references, avoiding repeated reconstruction of complete clip-name maps.
 - Building dense, multi-actor YCD animation sections is about 170x faster, with each section constructed only once per build.
 - Binary YCD precision validation is about 190x faster while retaining integer, quarter-frame and sequence-boundary checks at the requested tolerances.
 - YCD serialization is about 1.5x faster by reusing encoded sequences during resource layout; saving validated sections also avoids a second serialization.
