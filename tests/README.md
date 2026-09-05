@@ -75,9 +75,12 @@ selected interpreter; `--python` selects a different interpreter.
 Use `--junitxml reports/unit.xml` to keep a report outside the temporary directory.
 External corpora must use an absolute configured path when testing a wheel.
 
-CI builds once with Python 3.14 headers and tests that wheel on Windows with
-Python 3.11, 3.12, 3.13 and 3.14. It includes the explicit ABI-floor test and
-performance-case smoke tests, without downloading game data or publishing a release.
+CI builds once with Python 3.14 headers. Ordinary PRs and pushes to `main` test
+that wheel on Python 3.11, including the explicit ABI-floor test and performance
+smoke cases. PRs from `release/` branches and `v*` tags run the complete Python
+3.11–3.14 matrix. A manual run can request the same matrix with `full_matrix`.
+Neither mode downloads game data or publishes packages. New runs supersede
+unfinished runs for the same PR or ref.
 
 ## Adding Tests
 
