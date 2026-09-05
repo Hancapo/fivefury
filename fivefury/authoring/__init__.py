@@ -7,8 +7,18 @@ from .diagnostics import (
     ValidationReport,
     validation_report,
 )
+from .operation import (
+    AuthoringCancelled,
+    AuthoringOperation,
+    AuthoringProgress,
+    AuthoringStage,
+)
 
 __all__ = [
+    "AuthoringCancelled",
+    "AuthoringOperation",
+    "AuthoringProgress",
+    "AuthoringStage",
     "AssetRef",
     "AssetSet",
     "BuildContext",

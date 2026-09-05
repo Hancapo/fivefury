@@ -19,6 +19,7 @@ NATIVE_SOURCE_GROUPS = {
     "animation": (
         "ycd_bindings.cpp",
         "ycd_sampling.cpp",
+        "ycd_precision.cpp",
         "yed_bindings.cpp",
         "yed_vm.cpp",
     ),

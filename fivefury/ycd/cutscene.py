@@ -6,7 +6,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from ..authoring import BuildContext, ValidationReport
+from ..authoring import (
+    AuthoringOperation,
+    AuthoringProgress,
+    AuthoringStage,
+    BuildContext,
+    ValidationReport,
+)
+from ..common import atomic_write_bytes
 from ..cut.model import CutFile
 from ..cut.pso import read_cut
 from ..cut.scene.base import CutScene
@@ -946,40 +953,69 @@ class YcdCutsceneBuilder:
         return ycd.build()
 
     def _validate_section_precision(
-        self, section: YcdCutsceneSection, report: ValidationReport
-    ) -> None:
+        self, section: YcdCutsceneSection, report: ValidationReport, *, asset: Ycd | None = None,
+        operation: AuthoringOperation | None = None,
+    ) -> bytes | None:
         from .channel_validation import validate_cutscene_section_precision
 
-        validate_cutscene_section_precision(self, section, report)
+        return validate_cutscene_section_precision(self, section, report, asset=asset, operation=operation)
 
-    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+    def validate(self, *, context: BuildContext | None = None,
+                 operation: AuthoringOperation | None = None) -> ValidationReport:
         del context
         report = ValidationReport()
         for section in self.sections:
-            self._validate_section_precision(section, report)
+            if operation is not None:
+                operation.checkpoint()
+            self._validate_section_precision(section, report, operation=operation)
         return report
 
-    def build_section(self, index: int) -> Ycd:
+    def build_section(self, index: int, *, operation: AuthoringOperation | None = None) -> Ycd:
         section = self.sections[int(index)]
+        if operation is not None:
+            operation.checkpoint(AuthoringProgress(AuthoringStage.BUILD, self.name, section.index, len(self.sections)))
+        asset = self._build_section(section.index)
         report = ValidationReport()
-        self._validate_section_precision(section, report)
+        self._validate_section_precision(section, report, asset=asset, operation=operation)
         report.raise_for_errors()
-        return self._build_section(section.index)
+        return asset
 
-    def build_ycds(self) -> list[Ycd]:
+    def build_ycds(self, *, operation: AuthoringOperation | None = None) -> list[Ycd]:
         if not self._clips:
             return []
-        self.validate().raise_for_errors()
-        return [self._build_section(section.index) for section in self.sections]
+        result = [self.build_section(section.index, operation=operation) for section in self.sections]
+        if operation is not None:
+            operation.checkpoint(AuthoringProgress(AuthoringStage.BUILD, self.name, len(result), len(result)))
+        return result
 
-    def save(self, directory: str | Path) -> list[Path]:
+    def save(self, directory: str | Path, *, operation: AuthoringOperation | None = None) -> list[Path]:
+        if operation is not None:
+            operation.checkpoint()
         target_dir = Path(directory)
         target_dir.mkdir(parents=True, exist_ok=True)
-        saved: list[Path] = []
-        for ycd in self.build_ycds():
-            path = target_dir / (ycd.path or f"{self.name}.ycd")
-            ycd.save(path)
-            saved.append(path)
+        if not self._clips:
+            return []
+        from .write import build_ycd_bytes
+
+        prepared: list[tuple[Path, bytes]] = []
+        report = ValidationReport()
+        for section in self.sections:
+            if operation is not None:
+                operation.checkpoint(AuthoringProgress(AuthoringStage.BUILD, self.name, section.index, len(self.sections)))
+            asset = self._build_section(section.index)
+            encoded = self._validate_section_precision(section, report, asset=asset, operation=operation)
+            prepared.append((
+                target_dir / (asset.path or f"{self.name}.ycd"),
+                encoded if encoded is not None else build_ycd_bytes(asset),
+            ))
+        report.raise_for_errors()
+        saved = []
+        for index, (path, data) in enumerate(prepared):
+            if operation is not None:
+                operation.checkpoint(AuthoringProgress(AuthoringStage.WRITE, str(path), index, len(prepared)))
+            saved.append(atomic_write_bytes(path, data))
+        if operation is not None:
+            operation.checkpoint(AuthoringProgress(AuthoringStage.WRITE, str(target_dir), len(saved), len(saved)))
         return saved
 
 

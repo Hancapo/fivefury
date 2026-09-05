@@ -34,11 +34,15 @@ def test_all_frame_channel_types_roundtrip():
     data, length = native.ycd_encode_frame_channels(
         2, [(3, 32, [1.25, -2.5]), (4, 8, [3, 7]), (5, 4, [2, 9])]
     )
-    assert native.ycd_decode_frame_channels(
+    decoded = native.ycd_decode_frame_channels(
         data,
         2,
         0,
         length,
         [(3, 0, 32, 0.0, 0.0), (4, 32, 8, 0.5, -1.0), (5, 40, 4, 0.0, 0.0)],
-    ) == [[1.25, -2.5], [0.5, 2.5], [2, 9]]
+    )
+    assert [
+        struct.unpack("=2I" if index == 2 else "=2d", values)
+        for index, values in enumerate(decoded)
+    ] == [(1.25, -2.5), (0.5, 2.5), (2, 9)]
     assert data[:4] == struct.pack("<f", 1.25)
