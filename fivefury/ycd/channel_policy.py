@@ -19,6 +19,8 @@ class YcdChannelEncodingPolicy:
     ``RETAIL`` preserves FiveFury's normal 16-bit body and mover channels.
     ``RAW_FLOAT`` writes varying components as retail-supported IEEE-754 floats.
     Error bounds are optional and are checked against a binary write/read cycle.
+    Angular limits apply independently to integer samples and runtime subframes
+    at 0.25, 0.5 and 0.75, including intervals across sequence boundaries.
     """
 
     encoding: YcdChannelEncoding = YcdChannelEncoding.RETAIL

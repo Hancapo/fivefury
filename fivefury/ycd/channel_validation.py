@@ -43,12 +43,45 @@ def validate_cutscene_section_precision(
             continue
         clip = decoded.get_clip(f"{clip_spec.name}-{output_index}")
         if clip is None or clip.animation is None:
+            report.issue(
+                "ycd.channel_precision.animation_missing",
+                "Binary read-back is missing the animation required for precision validation",
+                asset=builder.name,
+                path=f"clips[{clip_spec.name}]",
+            )
+            continue
+        available = {
+            (int(bone.bone_id), int(bone.track)) for bone in clip.animation.bone_ids
+        }
+        missing = [
+            track
+            for track, _, _ in constrained
+            if (int(track.bone_id), int(track.track)) not in available
+        ]
+        if missing:
+            for track in missing:
+                report.issue(
+                    "ycd.channel_precision.track_missing",
+                    "Binary read-back is missing a track required for precision validation",
+                    asset=builder.name,
+                    path=f"clips[{clip_spec.name}].tracks[{track.bone_id},{int(track.track)}]",
+                )
             continue
         maximum_errors = [0.0] * len(constrained)
         maximum_angular_errors = [0.0] * len(constrained)
+        maximum_subframe_errors = [0.0] * len(constrained)
+        maximum_subframe_positions = [0.0] * len(constrained)
+        rotation_constraints = [
+            (index, components)
+            for index, (track, policy, components) in enumerate(constrained)
+            if track.format is YcdTrackFormat.QUATERNION
+            and policy.maximum_angular_error_degrees is not None
+        ]
         for frame in range(section.frame_count):
             values = clip.animation.evaluate_tracks(frame, interpolate=False)
-            for track_index, (track_spec, _policy, components) in enumerate(constrained):
+            for track_index, (track_spec, _policy, components) in enumerate(
+                constrained
+            ):
                 if not components or frame >= len(components[0]):
                     continue
                 key = (int(track_spec.bone_id), int(track_spec.track))
@@ -61,7 +94,9 @@ def validate_cutscene_section_precision(
                 actual_components = actual.components[: len(expected_components)]
                 if track_spec.format is YcdTrackFormat.QUATERNION:
                     if not isinstance(actual, Quaternion):
-                        raise TypeError("Quaternion precision validation requires Quaternion samples")
+                        raise TypeError(
+                            "Quaternion precision validation requires Quaternion samples"
+                        )
                     expected = Quaternion.from_iterable(expected_components)
                     direct = max(
                         abs(left - right)
@@ -93,6 +128,26 @@ def validate_cutscene_section_precision(
                         ),
                     )
 
+            if frame + 1 < section.frame_count and rotation_constraints:
+                for alpha in (0.25, 0.5, 0.75):
+                    values = clip.animation.evaluate_tracks(frame + alpha)
+                    for track_index, components in rotation_constraints:
+                        track_spec = constrained[track_index][0]
+                        key = (int(track_spec.bone_id), int(track_spec.track))
+                        expected = Quaternion.from_iterable(
+                            component[frame] for component in components
+                        ).nlerp(
+                            Quaternion.from_iterable(
+                                component[frame + 1] for component in components
+                            ),
+                            alpha,
+                        )
+                        actual = values[key]
+                        error = expected.angular_error_degrees(actual)
+                        if error > maximum_subframe_errors[track_index]:
+                            maximum_subframe_errors[track_index] = error
+                            maximum_subframe_positions[track_index] = frame + alpha
+
         for track_index, (track_spec, policy, _components) in enumerate(constrained):
             key = (int(track_spec.bone_id), int(track_spec.track))
             path = f"clips[{clip_spec.name}].tracks[{key[0]},{key[1]}]"
@@ -120,6 +175,18 @@ def validate_cutscene_section_precision(
                     f"the requested {policy.maximum_angular_error_degrees:.9g}",
                     asset=builder.name,
                     path=path,
+                )
+            if (
+                policy.maximum_angular_error_degrees is not None
+                and maximum_subframe_errors[track_index]
+                > policy.maximum_angular_error_degrees
+            ):
+                report.issue(
+                    "ycd.channel_precision.subframe_angular_error_exceeded",
+                    f"Binary subframe angular error {maximum_subframe_errors[track_index]:.9g} degrees "
+                    f"exceeds the requested {policy.maximum_angular_error_degrees:.9g}",
+                    asset=builder.name,
+                    path=f"{path}.frames[{maximum_subframe_positions[track_index]:g}]",
                 )
 
 
