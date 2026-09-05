@@ -276,16 +276,49 @@ int component_count(TrackFormat format) {
 }
 
 int orient_cached_quaternions(std::vector<fivefury_native::Vec4>& values) {
+    using namespace fivefury_native;
+    for (std::size_t index = 1; index < values.size(); ++index) {
+        values[index] = quat_prepare(values[index - 1], values[index]);
+    }
+    // Reserve at most 0.01 degrees for three-component interpolation itself.
+    // Binary quantization is checked independently by the authoring policy.
+    const double minimum_dot = std::cos(0.01 * std::acos(-1.0) / 360.0);
     std::array<std::array<double, 4>, 4> scores{};
+    int omitted = -1;
     for (int component = 0; component < 4; ++component) {
         double minimum = std::numeric_limits<double>::infinity();
         double mean_square = 0.0;
         double peak = 0.0;
+        const double sign = values.front()[component] < 0.0 ? -1.0 : 1.0;
+        bool safe = true;
         for (const auto& value : values) {
-            const double magnitude = std::abs(value[static_cast<std::size_t>(component)]);
+            const double magnitude = sign * value[component];
+            if (magnitude <= 0.0) {
+                safe = false;
+                break;
+            }
             minimum = std::min(minimum, magnitude);
             mean_square += magnitude * magnitude;
             peak = std::max(peak, magnitude);
+        }
+        for (std::size_t index = 1; safe && index < values.size(); ++index) {
+            for (double alpha : {0.25, 0.5, 0.75}) {
+                const Vec4 interpolated = vec4_lerp(values[index - 1], values[index], alpha);
+                Vec4 packed;
+                for (int source = 0, target = 0; source < 4; ++source) {
+                    if (source != component) {
+                        packed[target++] = sign * interpolated[source];
+                    }
+                }
+                const Vec4 reconstructed = quat_reconstruct(packed, component);
+                if (std::abs(vec4_dot(reconstructed, quat_normalize(interpolated))) < minimum_dot) {
+                    safe = false;
+                    break;
+                }
+            }
+        }
+        if (!safe) {
+            continue;
         }
         scores[static_cast<std::size_t>(component)] = {
             minimum,
@@ -293,16 +326,13 @@ int orient_cached_quaternions(std::vector<fivefury_native::Vec4>& values) {
             peak,
             -static_cast<double>(component),
         };
-    }
-    int omitted = 0;
-    for (int component = 1; component < 4; ++component) {
-        if (scores[static_cast<std::size_t>(component)] >
+        if (omitted < 0 || scores[static_cast<std::size_t>(component)] >
             scores[static_cast<std::size_t>(omitted)]) {
             omitted = component;
         }
     }
-    for (auto& value : values) {
-        if (value[static_cast<std::size_t>(omitted)] < 0.0) {
+    if (omitted >= 0 && values.front()[omitted] < 0.0) {
+        for (auto& value : values) {
             value = {-value.x, -value.y, -value.z, -value.w};
         }
     }

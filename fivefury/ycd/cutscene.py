@@ -158,9 +158,13 @@ def _make_cached_quaternion_channels(
     )
     channels.append(
         YcdCachedQuaternionChannel(
-            channel_type=YcdChannelType.CACHED_QUATERNION1,
-            channel_index=3,
-            quat_index=omitted_component,
+            channel_type=(
+                YcdChannelType.CACHED_QUATERNION1
+                if omitted_component >= 0
+                else YcdChannelType.CACHED_QUATERNION2
+            ),
+            channel_index=len(explicit_components),
+            quat_index=max(omitted_component, 0),
         )
     )
     return channels
