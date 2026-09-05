@@ -990,12 +990,44 @@ def _validate_cameras(
             used_hours |= hour_flags
 
 
+def _validate_animation_references(scene: CutScene, issues: ValidationReport) -> None:
+    active: dict[int, int] = {}
+    for event in scene.timeline:
+        if event.event_name not in {"set_anim", "clear_anim"}:
+            continue
+        object_id = _event_object_payload_id(event)
+        if object_id is None:
+            continue
+        count = active.get(object_id, 0)
+        if event.event_name == "set_anim":
+            active[object_id] = count + 1
+        elif count:
+            active[object_id] = count - 1
+        else:
+            _issue(
+                issues,
+                "error",
+                "clear_anim.lifecycle.inactive",
+                f"CLEAR_ANIM for object {object_id} at {event.start:g} has no active SET_ANIM reference",
+            )
+    for object_id, count in active.items():
+        if count:
+            _issue(
+                issues,
+                "error",
+                "clear_anim.lifecycle.unbalanced",
+                f"Object {object_id} has {count} animation references without a subsequent CLEAR_ANIM",
+            )
+
+
 def _validate_animation_lifecycle(
     scene: CutScene,
     issues: ValidationReport,
     *,
     strict: bool,
 ) -> None:
+    if strict:
+        _validate_animation_references(scene, issues)
     dictionary = scene.animation_dictionary
     if dictionary is None:
         return
@@ -1081,18 +1113,6 @@ def _validate_animation_lifecycle(
                     "set_anim.section_rebind.redundant",
                     f"Object {object_id} is rebound at technical YCD boundary {current_time:g} without a semantic CLEAR_ANIM",
                 )
-        matching_clears = [
-            event
-            for event in clear_events
-            if _event_object_payload_id(event) == object_id
-        ]
-        if strict and len(matching_clears) < len(events):
-            _issue(
-                issues,
-                "error",
-                "clear_anim.lifecycle.unbalanced",
-                f"Object {object_id} has {len(events)} SET_ANIM events but only {len(matching_clears)} CLEAR_ANIM events",
-            )
 
 
 def _validate_animations(
