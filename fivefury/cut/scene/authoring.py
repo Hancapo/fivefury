@@ -60,13 +60,15 @@ class CutsceneAssets:
     ) -> dict[str, bytes]:
         from ...ycd.reader import read_ycd
         from ...ycd.write import build_ycd_bytes
+        from .asset_validation import _inspect_cutscene_assets
 
         self.build()
-        self.validate(context=context).raise_for_errors()
+        scene, report = _inspect_cutscene_assets(self, context=context)
+        report.raise_for_errors()
         files: dict[str, bytes] = {}
         rebuilt_ycds: list[Ycd] = []
         rebuilt_audio: list[CutsceneAudioAssets] = []
-        dictionary = self.scene.animation_dictionary
+        dictionary = scene.animation_dictionary
         for ycd in dictionary.sections if dictionary else ():
             name = _file_name(ycd.path or "cutscene", ".ycd")
             data = build_ycd_bytes(ycd)
@@ -102,7 +104,7 @@ class CutsceneAssets:
                 )
             )
 
-        cut_data = self.scene.to_bytes(template=template)
+        cut_data = scene.to_bytes(template=template)
         rebuilt_scene = read_cut_scene(cut_data)
         if dictionary is not None:
             rebuilt_scene.animation_dictionary = CutsceneAnimationDictionary(
@@ -113,7 +115,7 @@ class CutsceneAssets:
             scene=rebuilt_scene,
             audio=tuple(rebuilt_audio),
             cut_name=self.output_name,
-        ).validate().raise_for_errors()
+        ).validate(context=context).raise_for_errors()
         files[self.output_name] = cut_data
         return files
 
