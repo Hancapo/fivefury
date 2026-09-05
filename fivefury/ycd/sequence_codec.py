@@ -805,9 +805,9 @@ def parse_sequence_data(
     )
     for channel, values in zip(dynamic_channels, decoded_frames, strict=True):
         if isinstance(channel, YcdIndirectQuantizeFloatChannel):
-            channel.frames = [int(value) for value in values]
+            channel.frames = values
         else:
-            channel.values = [float(value) for value in values]
+            channel.values = values
 
     if channel_list:
         sequence_count = max(sequence_index for sequence_index, _, _ in channel_list) + 1

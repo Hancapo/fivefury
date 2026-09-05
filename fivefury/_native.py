@@ -315,14 +315,20 @@ def _ycd_decode_frame_channels(
     frame_offset: int,
     frame_length: int,
     descriptors: list[tuple[int, int, int, float, float]],
-) -> list[list[float] | list[int]]:
-    return _ffi.ycd_decode_frame_channels(
+) -> list[array]:
+    buffers = _ffi.ycd_decode_frame_channels(
         data,
         int(num_frames),
         int(frame_offset),
         int(frame_length),
         descriptors,
     )
+    result = []
+    for descriptor, buffer in zip(descriptors, buffers, strict=True):
+        values = array("I" if descriptor[0] == 5 else "d")
+        values.frombytes(buffer)
+        result.append(values)
+    return result
 
 
 def _ycd_encode_frame_channels(

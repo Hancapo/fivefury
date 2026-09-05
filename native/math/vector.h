@@ -23,6 +23,16 @@ inline Vec4 quat_prepare(const Vec4& start, const Vec4& end) {
     return vec4_dot(start, end) < 0.0 ? Vec4{-end.x, -end.y, -end.z, -end.w} : end;
 }
 
+inline double quat_angular_cosine(const Vec4& left, const Vec4& right) {
+    const double left_length = std::sqrt(vec4_dot(left, left));
+    const double right_length = std::sqrt(vec4_dot(right, right));
+    if (left_length <= 1e-12 || right_length <= 1e-12 ||
+        !std::isfinite(left_length) || !std::isfinite(right_length)) {
+        return -INFINITY;
+    }
+    return std::clamp(std::abs(vec4_dot(left, right)) / (left_length * right_length), 0.0, 1.0);
+}
+
 inline Vec4 quat_reconstruct(const Vec4& packed, std::size_t omitted) {
     const double missing = std::sqrt(std::max(
         1.0 - (packed.x * packed.x + packed.y * packed.y + packed.z * packed.z), 0.0

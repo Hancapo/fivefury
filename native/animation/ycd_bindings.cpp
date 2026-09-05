@@ -329,21 +329,14 @@ PyObject* mod_ycd_decode_frame_channels(PyObject*, PyObject* args) {
     }
     for (std::size_t channel_index = 0; channel_index < channels.size(); ++channel_index) {
         const auto& channel = channels[channel_index];
-        PyObject* values = PyList_New(num_frames);
+        const auto size = checked_buffer_size(static_cast<std::size_t>(num_frames),
+                                              channel.kind == 5 ? sizeof(std::uint32_t) : sizeof(double));
+        PyObject* values = PyBytes_FromStringAndSize(
+            channel.kind == 5 ? reinterpret_cast<const char*>(channel.indices.data())
+                              : reinterpret_cast<const char*>(channel.values.data()), size);
         if (values == nullptr) {
             Py_DECREF(result);
             return nullptr;
-        }
-        for (Py_ssize_t frame = 0; frame < num_frames; ++frame) {
-            PyObject* value = channel.kind == 5
-                ? PyLong_FromUnsignedLong(channel.indices[static_cast<std::size_t>(frame)])
-                : PyFloat_FromDouble(channel.values[static_cast<std::size_t>(frame)]);
-            if (value == nullptr) {
-                Py_DECREF(values);
-                Py_DECREF(result);
-                return nullptr;
-            }
-            PyList_SetItem(values, frame, value);
         }
         PyList_SetItem(result, static_cast<Py_ssize_t>(channel_index), values);
     }

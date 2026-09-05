@@ -81,6 +81,26 @@ performance-case smoke tests, without downloading game data or publishing a rele
 
 ## Adding Tests
 
+### Dense YCD Authoring
+
+```powershell
+python tools/benchmark_ycd.py --actors 8 --bones 64
+```
+
+This deterministic workload spans 262.833 seconds, 7,886 frames and six sections.
+Three quarters of the bone tracks are dynamic; the rest are constant. Actors share
+a source motion to bound fixture setup cost, but all their tracks are constructed,
+serialized and validated independently. The output reports encoding, binary
+read-back, precision validation, final serialization and peak working-set memory.
+Precision time includes the binary roundtrip; do not sum overlapping stage times.
+
+Use `--package-root` to compare an isolated installed version with the checkout,
+using the same interpreter and workload. This measures warm, in-memory authoring,
+not asset discovery, cold conversion or total application startup. Keep timing
+assertions out of correctness tests.
+
+### Test Contracts
+
 - Import the current API directly; missing APIs must fail.
 - Prefer `tmp_path`, typed objects and small deterministic inputs.
 - Keep independent binary assertions where a reader/writer roundtrip could share a bug.

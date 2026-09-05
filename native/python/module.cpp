@@ -105,6 +105,7 @@ PyMethodDef module_methods[] = {
     {"ycd_track_sampler_new", guarded_call<mod_ycd_track_sampler_new>, METH_VARARGS, nullptr},
     {"ycd_track_sampler_window", guarded_call<mod_ycd_track_sampler_window>, METH_VARARGS, nullptr},
     {"ycd_track_sampler_retained_count", guarded_call<mod_ycd_track_sampler_retained_count>, METH_VARARGS, nullptr},
+    {"ycd_compare_samples", guarded_call<mod_ycd_compare_samples>, METH_VARARGS, nullptr},
     {"vector_interpolate_many", guarded_call<mod_vector_interpolate_many>, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };

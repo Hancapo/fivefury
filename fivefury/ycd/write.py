@@ -63,7 +63,7 @@ def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
 
 
 class _YcdWriter:
-    def __init__(self, ycd: Ycd, profile: YcdRuntimeProfile) -> None:
+    def __init__(self, ycd: Ycd, profile: YcdRuntimeProfile, sequence_data: dict[int, bytes] | None = None) -> None:
         self.ycd = ycd
         self.profile = profile
         self.writer = ResourceWriter(
@@ -72,6 +72,7 @@ class _YcdWriter:
         )
         self.string_offsets: dict[str, int] = {}
         self.sequence_offsets: dict[int, int] = {}
+        self.sequence_data = {} if sequence_data is None else sequence_data
         self.animation_offsets: dict[int, int] = {}
         self.clip_offsets: dict[int, int] = {}
         self.property_offsets: dict[int, int] = {}
@@ -189,7 +190,10 @@ class _YcdWriter:
         cached = self.sequence_offsets.get(key)
         if cached is not None:
             return cached
-        raw_data = build_sequence_data(sequence)
+        raw_data = self.sequence_data.get(key)
+        if raw_data is None:
+            raw_data = build_sequence_data(sequence)
+            self.sequence_data[key] = raw_data
         sequence.raw_data = raw_data
         sequence.data_length = len(raw_data)
         offset = self.writer.alloc(0x20 + len(raw_data), 16, relocate_pointers=False)
@@ -714,8 +718,9 @@ def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
     system_data = b""
     system_flags = None
     graphics_flags = None
+    sequence_data: dict[int, bytes] = {}
     for _ in range(16):
-        raw_system_data, system_blocks = _YcdWriter(source, profile).build_system_data(page_counts)
+        raw_system_data, system_blocks = _YcdWriter(source, profile, sequence_data).build_system_data(page_counts)
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
             system_blocks,

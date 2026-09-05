@@ -162,7 +162,7 @@ class YcdIndirectQuantizeFloatChannel(YcdAnimChannel):
     offset: float = 0.0
     values: Sequence[float] = field(default_factory=list)
     value_list: Sequence[int] = field(default_factory=list)
-    frames: list[int] = field(default_factory=list)
+    frames: Sequence[int] = field(default_factory=list)
 
     def evaluate_float(self, frame: int) -> float:
         if not self.frames or not self.values:
