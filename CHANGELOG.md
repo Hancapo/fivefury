@@ -15,6 +15,11 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Typed progress and cooperative cancellation for YCD authoring, validation and saving.
 
+### Fixed
+
+- YMAP extents use decoded runtime placement transforms, including ordinary quaternion conjugation, simple-heading behavior, MLO orientation and fragment scaling rules.
+- LOD-light positions, directions and hash bounds use the same decoded placement as YMAP extents.
+
 ### Performance
 
 - Building dense, multi-actor YCD animation sections is about 170x faster, with each section constructed only once per build.

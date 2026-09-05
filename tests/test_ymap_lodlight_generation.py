@@ -92,7 +92,7 @@ def test_extract_lod_lights_transforms_and_packs_source_light() -> None:
 
     assert len(generated) == 1
     result = generated[0]
-    assert result.light.position.components == pytest.approx((10.0, 22.0, 30.0))
+    assert result.light.position.components == pytest.approx((10.0, 18.0, 30.0))
     assert result.light.light_type == YmapLodLightType.POINT
     assert result.light.time_flags == 0x123456
     assert result.light.is_street_light

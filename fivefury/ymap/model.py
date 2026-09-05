@@ -10,7 +10,7 @@ from ..meta import Meta, MetaBuilder, RawStruct, read_meta
 from ..meta.defs import meta_name
 from ..metahash import HashLike, MetaHash, MetaHashFieldsMixin
 from ..resource import build_rsc7
-from ..vector import Aabb3, Quaternion, Vector3
+from ..vector import Aabb3, Vector3
 from .base import BlockDesc, ContainerLodDef, PhysicsDictionary
 from .cargens import CarGen
 from .defs import (
@@ -338,16 +338,7 @@ class Ymap(MetaHashFieldsMixin):
                 and isinstance(minimum, Vector3)
                 and isinstance(maximum, Vector3)
             ):
-                scale_xy = float(getattr(entity, "scale_xy", 1.0))
-                scale_z = float(getattr(entity, "scale_z", 1.0))
-                rotation = getattr(entity, "rotation", Quaternion())
-                if not isinstance(position, Vector3) or not isinstance(rotation, Quaternion):
-                    raise TypeError("YMAP entity transforms must use Vector3 and Quaternion")
-                entity_bounds = Aabb3(minimum, maximum).transformed(
-                    translation=position,
-                    rotation=rotation,
-                    scale=Vector3(scale_xy, scale_xy, scale_z),
-                )
+                entity_bounds = entity.world_bounds(Aabb3(minimum, maximum), archetype)
             else:
                 entity_bounds = positions_bounds([position])
             bounds = merge_bounds(bounds, entity_bounds)
