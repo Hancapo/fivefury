@@ -23,7 +23,7 @@ from fivefury import (
 from fivefury._native import _ffi
 from fivefury.ycd import write
 from fivefury.ycd.sequence_channels import YcdAnimSequence
-from tests.test_ycd_cached_subframes import packed_channels
+from tests.test_ycd_cached_subframes import PAIRS, packed_channels
 
 
 @pytest.mark.parametrize("layout", [-2, -1, 0, 1, 2, 3])
@@ -234,3 +234,40 @@ def test_successful_progress_reaches_completion():
     assert progress[-1].completed == progress[-1].total == 2
     validation = [value for value in progress if value.stage is AuthoringStage.VALIDATE]
     assert validation[-1].completed == validation[-1].total
+
+
+@pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
+def test_validation_checks_corruption_in_physical_sequence_overlap(monkeypatch, game):
+    omitted, left, right = PAIRS[0]
+    samples = [Quaternion(*(left if frame < 287 else right)) for frame in range(301)]
+    asset = YcdCutsceneBuilder.create(
+        "overlap",
+        duration=10,
+        game=game,
+        channel_policy=YcdChannelEncodingPolicy(
+            encoding=YcdChannelEncoding.RAW_FLOAT,
+            maximum_error=1e-3,
+            maximum_angular_error_degrees=0.05,
+        ),
+    )
+    asset.prop("actor", mover_rotation=samples)
+    original = asset._build_section
+
+    def corrupted(index):
+        ycd = original(index)
+        sequence = ycd.animations[0].sequences[0].anim_sequences[0]
+        sequence.channels = packed_channels([left] * 287 + [right], omitted)
+        return ycd
+
+    monkeypatch.setattr(asset, "_build_section", corrupted)
+    report = asset.validate()
+    issue = next(
+        issue
+        for issue in report.issues
+        if issue.code == "ycd.channel_precision.subframe_angular_error_exceeded"
+    )
+    assert issue.path.endswith(".frames[286.5]")
+    assert not any(
+        issue.code == "ycd.channel_precision.angular_error_exceeded"
+        for issue in report.issues
+    )
