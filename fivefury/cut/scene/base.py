@@ -160,7 +160,7 @@ class CutScene:
         resolved = self.get_binding(binding) if isinstance(binding, int) else binding
         if resolved is None:
             return None
-        clips = self.available_clips(cut_index=cut_index)
+        clips = None
         animation_clip_base = getattr(
             resolved,
             "runtime_animation_clip_base",
@@ -169,6 +169,7 @@ class CutScene:
         if animation_clip_base:
             clip = self.get_clip(f"{animation_clip_base}-{int(cut_index)}")
             if clip is None:
+                clips = self.available_clips(cut_index=cut_index)
                 clip = clips.get(MetaHash(animation_clip_base).uint)
             if clip is not None:
                 return clip
@@ -189,6 +190,8 @@ class CutScene:
                 )
             except (TypeError, ValueError):
                 return None
+        if clips is None:
+            clips = self.available_clips(cut_index=cut_index)
         for candidate in (
             getattr(resolved, "cutscene_name", None),
             resolved.fields.get("cName"),
