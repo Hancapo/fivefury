@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from ...gamefile import GameFileType
 from ..scene import CutScene, CutsceneAnimationDictionary
+from ..scene.shared import _runtime_animation_section_starts
 from .common import _load_file
 from .models import CutsceneResolveIssue
 from .runtime import (
@@ -26,7 +27,7 @@ def _resolve_ycds(
     cancellation: CutsceneResolutionCancellation | None = None,
 ) -> tuple[dict[int, Ycd], dict[int, AssetRecord]]:
     path = PurePosixPath(source.path.replace("\\", "/"))
-    section_count = max(1, len(scene.camera_cut_list or ()) + 1)
+    section_count = len(_runtime_animation_section_starts(scene))
     ycds: dict[int, Ycd] = {}
     assets: dict[int, AssetRecord] = {}
     scene.animation_dictionary = CutsceneAnimationDictionary()
