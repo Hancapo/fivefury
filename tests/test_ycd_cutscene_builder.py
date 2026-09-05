@@ -814,8 +814,8 @@ def test_cutscene_builder_preserves_rotations_across_overlapping_sequences() -> 
         for expected, actual in zip(rotations, emitted, strict=True)
     )
     audit = audit_ycd_quaternion_layout([rebuilt])
-    assert audit.count(YcdQuaternionLayout.CACHED_QUATERNION1) == 2
-    assert audit.count(YcdQuaternionLayout.CACHED_QUATERNION2) == 0
+    assert audit.count(YcdQuaternionLayout.CACHED_QUATERNION1) == 1
+    assert audit.count(YcdQuaternionLayout.CACHED_QUATERNION2) == 1
     assert audit.count(YcdQuaternionLayout.EXPLICIT) == 0
 
 
@@ -851,16 +851,16 @@ def test_cutscene_builder_uses_retail_cached_quaternions_for_dynamic_tracks(
 
     assert len(sequences) == 3
     assert all(sequence.is_cached_quaternion for sequence in sequences)
-    assert all(len(sequence.channels) == 4 for sequence in sequences)
+    assert all(len(sequence.channels) == 5 for sequence in sequences)
     assert all(
         [channel.channel_type for channel in sequence.channels].count(
-            YcdChannelType.CACHED_QUATERNION1
+            YcdChannelType.CACHED_QUATERNION2
         )
         == 1
         for sequence in sequences
     )
     assert all(
-        YcdChannelType.CACHED_QUATERNION2
+        YcdChannelType.CACHED_QUATERNION1
         not in {channel.channel_type for channel in sequence.channels}
         for sequence in sequences
     )
@@ -905,7 +905,7 @@ def test_cutscene_builder_can_emit_explicit_quaternion_components() -> None:
     }
 
 
-def test_cached_quaternion_orients_each_sample_for_the_omitted_component() -> None:
+def test_cached_quaternion_preserves_continuous_signs_for_full_turns() -> None:
     axis_length = math.sqrt(14.0)
     rotations = [
         Quaternion(
@@ -959,9 +959,9 @@ def test_cached_quaternion_roundtrip_preserves_rotation_accuracy() -> None:
     sequence = animation.sequences[0]
 
     assert first_bytes == second_bytes
-    assert sequence.root_rotation_ref_count == 4
+    assert sequence.root_rotation_ref_count == 5
     assert any(
-        ref.channel_type == int(YcdChannelType.CACHED_QUATERNION1)
+        ref.channel_type == int(YcdChannelType.CACHED_QUATERNION2)
         for ref in sequence.root_rotation_refs
     )
     for frame, expected in enumerate(rotations):
@@ -988,7 +988,7 @@ def test_cached_quaternion_orients_omitted_component_positive() -> None:
             math.cos(angle / 2.0),
         )
         for angle in (
-            math.radians(100.0 + (160.0 * frame / 30.0)) for frame in range(31)
+            math.radians(100.0 + (20.0 * frame / 30.0)) for frame in range(31)
         )
     ]
     builder = YcdCutsceneBuilder.create("cached_sign", duration=1.0, fps=30.0)
@@ -1030,7 +1030,7 @@ def test_quaternion_layout_audit_reports_dynamic_encoding_by_track() -> None:
 
     assert (
         report.count(
-            YcdQuaternionLayout.CACHED_QUATERNION1,
+            YcdQuaternionLayout.CACHED_QUATERNION2,
             track=YcdAnimationTrack.CAMERA_ROTATION,
         )
         == 1
@@ -1042,7 +1042,7 @@ def test_quaternion_layout_audit_reports_dynamic_encoding_by_track() -> None:
         )
         == 1
     )
-    assert report.dominant_dynamic_layout is YcdQuaternionLayout.CACHED_QUATERNION1
+    assert report.dominant_dynamic_layout is YcdQuaternionLayout.CACHED_QUATERNION2
 
 
 def test_ycd_validation_rejects_invalid_cached_quaternion_index() -> None:
@@ -1061,7 +1061,7 @@ def test_ycd_validation_rejects_invalid_cached_quaternion_index() -> None:
     cached = next(
         channel
         for channel in rotation.channels
-        if channel.channel_type is YcdChannelType.CACHED_QUATERNION1
+        if channel.channel_type is YcdChannelType.CACHED_QUATERNION2
     )
     cached.quat_index = 4
 

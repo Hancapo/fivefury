@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from ..vector import Quaternion, Vector3, Vector4
+from ..vector import Quaternion, Vector3, Vector4, lerp
 from .sequence_tracks import (
     get_ycd_track_name,
     is_ycd_camera_track,
@@ -205,8 +205,7 @@ class YcdCachedQuaternionChannel(YcdAnimChannel):
                 break
         if len(xyz) < 3:
             return 0.0
-        x, y, z = xyz[:3]
-        return float(math.sqrt(max(1.0 - ((x * x) + (y * y) + (z * z)), 0.0)))
+        return Quaternion.reconstruct(Vector3.from_iterable(xyz[:3])).w
 
 
 @dataclass(slots=True)
@@ -271,39 +270,29 @@ class YcdAnimSequence:
         values = self.evaluate_components(frame)
         return Vector3.from_iterable(values[:3])
 
-    def evaluate_quaternion(self, frame: int) -> Quaternion:
+    def evaluate_quaternion(self, frame: float) -> Quaternion:
         if not self.is_cached_quaternion:
-            return Quaternion.from_iterable(self.evaluate_components(frame))
+            return Quaternion.from_iterable(self.evaluate_components(int(frame)))
 
         explicit: list[float] = []
-        normalized = 0.0
-        quat_index = 3
+        cache: YcdCachedQuaternionChannel | None = None
+        frame0 = math.floor(frame)
+        alpha = frame - frame0
         for channel in self.channels:
             if isinstance(channel, YcdCachedQuaternionChannel):
-                normalized = channel.evaluate_float(frame)
-                quat_index = int(channel.quat_index)
+                cache = channel
                 continue
             if len(explicit) < 4:
-                explicit.extend(
-                    float(value) for value in channel.evaluate_components(frame)
-                )
+                start = channel.evaluate_components(frame0)
+                end = channel.evaluate_components(frame0 + 1) if alpha else start
+                explicit.extend(lerp(a, b, alpha) for a, b in zip(start, end, strict=True))
                 explicit = explicit[:4]
-        # CachedQuaternion1 replaces one omitted quaternion component.  The
-        # CachedQuaternion2 layout follows four explicit components and stores
-        # auxiliary cache metadata; those explicit values are the quaternion.
-        if len(explicit) >= 4:
-            return Quaternion.from_iterable(explicit[:4])
-        xyz = explicit
-        while len(xyz) < 3:
-            xyz.append(0.0)
-        x, y, z = xyz[:3]
-        if quat_index == 0:
-            return Quaternion(normalized, x, y, z)
-        if quat_index == 1:
-            return Quaternion(x, normalized, y, z)
-        if quat_index == 2:
-            return Quaternion(x, y, normalized, z)
-        return Quaternion(x, y, z, normalized)
+        if cache is None:
+            raise ValueError("Cached quaternion sequence is missing its reconstruction channel")
+        # Stream opcodes 7 and 8 run after scalar interpolation, not before it.
+        if cache.channel_type is YcdChannelType.CACHED_QUATERNION2:
+            return Quaternion.from_iterable(explicit).normalized()
+        return Quaternion.reconstruct(Vector3.from_iterable(explicit), int(cache.quat_index))
 
 
 def channel_frame_bits(channel: YcdAnimChannel) -> int:

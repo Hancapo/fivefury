@@ -362,6 +362,15 @@ class Quaternion(_FloatValue):
             self.w * inverse,
         )
 
+    @classmethod
+    def reconstruct(cls, components: Vector3, omitted_component: int = 3) -> Quaternion:
+        """Insert the positive unit-quaternion component into packed XYZ values."""
+        if not 0 <= omitted_component <= 3:
+            raise ValueError("Omitted quaternion component must be in 0..3")
+        values = list(components)
+        values.insert(omitted_component, math.sqrt(max(1.0 - components.length_squared, 0.0)))
+        return cls.from_iterable(values)
+
     def inverse(self) -> Quaternion:
         normalized = self.normalized()
         return Quaternion(-normalized.x, -normalized.y, -normalized.z, normalized.w)

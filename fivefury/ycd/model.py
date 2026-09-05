@@ -570,7 +570,20 @@ class YcdAnimation:
             ends.append(v1)
             rotations.append(is_ycd_rotation_track(key[1]))
         values = interpolate_vector4_many(starts, ends, pos.alpha1, rotations)
-        return dict(zip(ordered_keys, values, strict=True))
+        result = dict(zip(ordered_keys, values, strict=True))
+        block = self.get_sequence_block(pos.frame0)
+        if block is not None:
+            local = self.get_local_frame(pos.frame0)
+            for sequence in block.anim_sequences:
+                bone = sequence.bone_id
+                if not sequence.is_cached_quaternion or bone is None:
+                    continue
+                key = (int(bone.bone_id), int(bone.track))
+                if key in result and is_ycd_rotation_track(key[1]):
+                    # The final overlapping sample belongs to this block even if
+                    # the next block uses a different omitted component.
+                    result[key] = sequence.evaluate_quaternion(local + pos.alpha1)
+        return result
 
     def _evaluate_integer_tracks(
         self, frame: int, *, track: int | YcdAnimationTrack | None = None
@@ -1177,16 +1190,22 @@ class Ycd:
                             asset=asset,
                             path=f"{sequence_path}.channels[{anim_sequence.channels.index(cached)}].quat_index",
                         )
-                    if cached.channel_type is YcdChannelType.CACHED_QUATERNION1:
+                    if cached.channel_type in (
+                        YcdChannelType.CACHED_QUATERNION1,
+                        YcdChannelType.CACHED_QUATERNION2,
+                    ):
+                        required_components = (
+                            3 if cached.channel_type is YcdChannelType.CACHED_QUATERNION1 else 4
+                        )
                         explicit_components = sum(
                             channel.component_count
                             for channel in anim_sequence.channels
                             if channel is not cached
                         )
-                        if explicit_components != 3:
+                        if explicit_components != required_components:
                             report.issue(
                                 "ycd.quaternion_cache.components_invalid",
-                                f"CachedQuaternion1 requires three explicit components, got {explicit_components}",
+                                f"{cached.channel_type.name} requires {required_components} explicit components, got {explicit_components}",
                                 asset=asset,
                                 path=f"{sequence_path}.channels",
                             )

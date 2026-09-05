@@ -15,6 +15,25 @@ struct Vec4 {
     const double& operator[](std::size_t index) const { return (&x)[index]; }
 };
 
+inline double vec4_dot(const Vec4& left, const Vec4& right) {
+    return left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w;
+}
+
+inline Vec4 quat_prepare(const Vec4& start, const Vec4& end) {
+    return vec4_dot(start, end) < 0.0 ? Vec4{-end.x, -end.y, -end.z, -end.w} : end;
+}
+
+inline Vec4 quat_reconstruct(const Vec4& packed, std::size_t omitted) {
+    const double missing = std::sqrt(std::max(
+        1.0 - (packed.x * packed.x + packed.y * packed.y + packed.z * packed.z), 0.0
+    ));
+    Vec4 result;
+    for (std::size_t component = 0, source = 0; component < 4; ++component) {
+        result[component] = component == omitted ? missing : packed[source++];
+    }
+    return result;
+}
+
 inline Vec4 vec4_add(const Vec4& left, const Vec4& right) {
     return {left.x + right.x, left.y + right.y, left.z + right.z, left.w + right.w};
 }
@@ -97,11 +116,7 @@ inline Vec4 quat_nlerp(const Vec4& start, Vec4 end, double amount) {
     const auto alpha = std::isfinite(amount) ? std::clamp(amount, 0.0, 1.0) : 0.0;
     const auto normalized_start = quat_normalize(start);
     end = quat_normalize(end);
-    const auto dot = normalized_start.x * end.x + normalized_start.y * end.y +
-                     normalized_start.z * end.z + normalized_start.w * end.w;
-    if (dot < 0.0) {
-        end = {-end.x, -end.y, -end.z, -end.w};
-    }
+    end = quat_prepare(normalized_start, end);
     return quat_normalize(vec4_lerp(normalized_start, end, alpha));
 }
 

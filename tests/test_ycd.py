@@ -1166,7 +1166,7 @@ def test_ycd_rotation_track_restores_cached_quaternion_component() -> None:
     assert value.components == pytest.approx((math.sqrt(0.71), 0.2, 0.3, 0.4))
 
 
-def test_ycd_rotation_track_preserves_four_explicit_cached_components() -> None:
+def test_ycd_rotation_track_normalizes_four_explicit_cached_components() -> None:
     sequence = YcdAnimSequence(
         is_cached_quaternion=True,
         channels=[
@@ -1188,7 +1188,7 @@ def test_ycd_rotation_track_preserves_four_explicit_cached_components() -> None:
     sequence.channels[-1].parent_sequence = sequence
 
     assert sequence.evaluate_quaternion(0).components == pytest.approx(
-        (-0.67, -0.37, -0.25, 0.58)
+        Quaternion(-0.67, -0.37, -0.25, 0.58).normalized().components
     )
 
 
