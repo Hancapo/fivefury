@@ -8,6 +8,8 @@ from fivefury import (
     GameTarget,
     Quaternion,
     YcdAnimationTrack,
+    YcdChannelEncoding,
+    YcdChannelEncodingPolicy,
     YcdChannelType,
     YcdCutsceneBuilder,
     build_ycd_bytes,
@@ -167,7 +169,12 @@ def test_full_turns_use_native_normalization_with_continuous_overlap(game):
         sample if frame % 2 else Quaternion(*(-v for v in sample))
         for frame, sample in enumerate(samples)
     ]
-    builder = YcdCutsceneBuilder.create("loops", duration=599 / 30, game=game)
+    builder = YcdCutsceneBuilder.create(
+        "loops",
+        duration=599 / 30,
+        game=game,
+        channel_policy=YcdChannelEncodingPolicy(maximum_angular_error_degrees=0.05),
+    )
     builder.prop("actor", mover_rotation=signed)
     data = build_ycd_bytes(builder.build_ycds()[0])
     decoded = read_ycd(data)
@@ -203,3 +210,40 @@ def test_small_finger_rotations_keep_compact_reconstruction(game):
                 )
                 < 0.001
             )
+
+
+@pytest.mark.parametrize("game", GAMES)
+@pytest.mark.parametrize("omitted,left,right", PAIRS)
+def test_precision_validation_rejects_subframe_only_corruption(
+    monkeypatch, game, omitted, left, right
+):
+    builder = YcdCutsceneBuilder.create(
+        "precision",
+        duration=1 / 30,
+        game=game,
+        channel_policy=YcdChannelEncodingPolicy(
+            encoding=YcdChannelEncoding.RAW_FLOAT,
+            maximum_error=1e-3,
+            maximum_angular_error_degrees=0.05,
+        ),
+    )
+    builder.prop("actor", mover_rotation=[Quaternion(*left), Quaternion(*right)])
+    assert builder.validate().valid
+    original = YcdCutsceneBuilder._build_section
+
+    def corrupted(self, index):
+        ycd = original(self, index)
+        sequence = ycd.animations[0].find_sequences(
+            track=YcdAnimationTrack.MOVER_ROTATION
+        )[0]
+        sequence.channels = packed_channels((left, right), omitted)
+        return ycd
+
+    monkeypatch.setattr(YcdCutsceneBuilder, "_build_section", corrupted)
+    report = builder.validate()
+    codes = {issue.code for issue in report.issues}
+    assert "ycd.channel_precision.subframe_angular_error_exceeded" in codes
+    assert "ycd.channel_precision.angular_error_exceeded" not in codes
+    assert "ycd.channel_precision.error_exceeded" not in codes
+    with pytest.raises(ValueError, match="subframe_angular_error_exceeded"):
+        builder.build_ycds()

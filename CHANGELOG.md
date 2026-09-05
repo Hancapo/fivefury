@@ -20,6 +20,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - Cached YCD rotations interpolate stored channels before reconstruction or normalization, matching fractional-frame playback.
+- YCD angular precision validation checks intermediate poses and sequence boundaries independently of integer samples, with separate diagnostics for subframe errors.
 - YCD quaternion export preserves hemisphere continuity and uses normalized four-component channels when three-component reconstruction would distort intermediate poses.
 - Native RPF reading and scanning support Unicode filenames and directories on Windows.
 - CPU skinning and GPU palette packing reject overlapping buffers before modifying outputs.
