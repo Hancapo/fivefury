@@ -141,6 +141,7 @@ class CutsceneProject:
         self._animated_binding_ids: set[int] = set()
         self._animation_teardown: list[CutTimelineEvent] = []
         self._animation_load: CutTimelineEvent | None = None
+        self._animation_load_reference: str | None = None
         self.audio_assets: list[CutsceneAudioAssets] = []
         self.scene.load_scene(
             0.0,
@@ -206,6 +207,7 @@ class CutsceneProject:
                 dictionary.reference,
                 target=self.animation_manager,
             )
+            self._animation_load_reference = dictionary.reference
         if binding.object_id in self._animated_binding_ids:
             raise ValueError(
                 f"{binding.name or binding.object_id!r} is already animated"
@@ -401,11 +403,16 @@ class CutsceneProject:
         dictionary = self.scene.animation_dictionary
         if dictionary is not None:
             dictionary.sections = list(self.animations.build_ycds())
-            if self._animation_load is not None:
+            if (
+                self._animation_load is not None
+                and self._animation_load.label == self._animation_load_reference
+                and self._animation_load.payload.get("cName") == self._animation_load_reference
+            ):
                 self._animation_load.label = dictionary.reference
                 self._animation_load.payload = CutAnimationDictPayload(
                     dictionary.reference
                 ).to_fields()
+                self._animation_load_reference = dictionary.reference
         generated = {id(event) for event in self._animation_teardown}
         for track in self.scene.tracks:
             track.events[:] = [
