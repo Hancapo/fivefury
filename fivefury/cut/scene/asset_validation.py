@@ -869,11 +869,11 @@ class _CutsceneContextValidator:
             )
 
 
-def validate_cutscene_assets(
+def _inspect_cutscene_assets(
     assets: CutsceneAssets,
     *,
     context: BuildContext | None = None,
-) -> ValidationReport:
+) -> tuple[CutScene, ValidationReport]:
     _validate_ycd_paths(assets, report := ValidationReport())
     scene = _scene_copy(assets)
     owned_audio_references = _validate_authored_audio(assets, scene, report)
@@ -889,7 +889,15 @@ def validate_cutscene_assets(
     _extend_scene_report(assets, scene, report)
     if validator is not None:
         validator.validate()
-    return report
+    return scene, report
+
+
+def validate_cutscene_assets(
+    assets: CutsceneAssets,
+    *,
+    context: BuildContext | None = None,
+) -> ValidationReport:
+    return _inspect_cutscene_assets(assets, context=context)[1]
 
 
 __all__ = ["validate_cutscene_assets"]
