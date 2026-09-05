@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- YMAP entity flag names use their correct bit positions. Existing numeric flags remain unchanged; runtime IPL light flags have separate explicit names.
+
 ### Added
 
 - Typed progress and cooperative cancellation for YCD authoring, validation and saving.
