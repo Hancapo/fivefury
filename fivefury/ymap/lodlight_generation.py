@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import math
 import struct
+from typing import TYPE_CHECKING
 
 from ..authoring.diagnostics import ValidationReport
 from ..hashing import jenkins_hash_words
@@ -26,6 +27,9 @@ from .lights import (
     LodLight,
 )
 from .packing import pack_lod_light_u8, pack_rgbi
+
+if TYPE_CHECKING:
+    from ..ytyp.base_archetype import BaseArchetypeDef
 
 _POINT_LIGHT_EXTENSION = 0.058
 _OTHER_LIGHT_EXTENSION = 0.029
@@ -51,6 +55,7 @@ class LodLightSourceInstance:
     entity: EntityDef
     archetype_bounds: Aabb3
     model_name: str = ""
+    archetype: BaseArchetypeDef | None = None
 
     def extract(self) -> list[GeneratedLodLight]:
         return extract_lod_lights(
@@ -58,6 +63,7 @@ class LodLightSourceInstance:
             self.entity,
             archetype_bounds=self.archetype_bounds,
             model_name=self.model_name,
+            archetype=self.archetype,
         )
 
 
@@ -191,15 +197,17 @@ def extract_lod_light(
     entity_bounds: Aabb3,
     light_index: int,
     model_name: str = "",
+    archetype: BaseArchetypeDef | None = None,
 ) -> GeneratedLodLight | None:
     if light.light_fade_distance > 0:
         return None
 
-    scale = Vector3(float(entity.scale_xy), float(entity.scale_xy), float(entity.scale_z))
+    scale = entity.world_scale(archetype)
+    rotation = entity.world_rotation(archetype)
     scaled_position = Vector3(light.position.x * scale.x, light.position.y * scale.y, light.position.z * scale.z)
-    world_position = entity.rotation.rotate(scaled_position) + entity.position
+    world_position = rotation.rotate(scaled_position) + entity.position
     scaled_direction = Vector3(light.direction.x * scale.x, light.direction.y * scale.y, light.direction.z * scale.z)
-    world_direction = entity.rotation.rotate(scaled_direction)
+    world_direction = rotation.rotate(scaled_direction)
 
     capsule_extent = light.extent.x
     effective_type = light.light_type
@@ -270,6 +278,7 @@ def extract_lod_lights(
     *,
     archetype_bounds: Aabb3,
     model_name: str = "",
+    archetype: BaseArchetypeDef | None = None,
 ) -> list[GeneratedLodLight]:
     if (
         not entity.flags & YmapEntityFlags.IS_FIXED
@@ -280,11 +289,7 @@ def extract_lod_lights(
         archetype_bounds,
         Aabb3(ydr.bounding_box_min, ydr.bounding_box_max),
     ).raise_for_errors()
-    entity_bounds = archetype_bounds.transformed(
-        translation=entity.position,
-        rotation=entity.rotation,
-        scale=Vector3(entity.scale_xy, entity.scale_xy, entity.scale_z),
-    )
+    entity_bounds = entity.world_bounds(archetype_bounds, archetype)
     extracted: list[GeneratedLodLight] = []
     for light_index, light in enumerate(ydr.lights):
         candidate = extract_lod_light(
@@ -293,6 +298,7 @@ def extract_lod_lights(
             entity_bounds=entity_bounds,
             light_index=light_index,
             model_name=model_name,
+            archetype=archetype,
         )
         if candidate is not None:
             extracted.append(candidate)

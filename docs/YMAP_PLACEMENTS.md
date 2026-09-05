@@ -27,3 +27,31 @@ flag causes or fixes rendering flicker.
 Code using incorrectly positioned symbolic constants from older releases must
 be reviewed when regenerating assets. Numeric values already stored in files
 remain untouched; FiveFury does not guess their original intent.
+
+## Stored And World Transforms
+
+`EntityDef.rotation` is the serialized placement quaternion, not automatically
+the world-space orientation. Use `world_rotation(archetype)`,
+`world_scale(archetype)` and `world_bounds(local_bounds, archetype)` when deriving
+world data; these methods do not mutate the stored values.
+
+- Ordinary entities conjugate the stored quaternion when using a full transform.
+- A small X/Y tilt uses the runtime's heading-only path unless `FULLMATRIX` or
+  an animated archetype with a clip dictionary requires a full transform.
+- The heading-only path uses W and the sign of Z, rather than an Euler yaw
+  extracted from a full quaternion. The full-transform threshold is the runtime
+  float32 value of 0.05, with a strict greater-than comparison.
+- Fragment placements ignore definition scaling. Drawable placements use XY/Z
+  scales independently.
+- MLO parents use the stored orientation directly and unit scale. MLO child
+  entities still use ordinary `EntityDef` decoding before their parent transform.
+
+Provide the archetype to account for animated and fragment-specific behavior.
+Without one, ordinary methods describe a static, non-fragment placement.
+`Ymap.recalculate_extents(context=...)` resolves loose archetypes from its context
+and uses these methods. LOD-light generation uses the same decoded placement;
+its optional `archetype=` argument supplies animation and fragment metadata.
+
+Extents cover the placed archetype AABB, not every possible future animated pose.
+These rules do not establish that unrelated streaming or rendering artifacts are
+caused by placement bounds.
