@@ -18,7 +18,6 @@ from fivefury.ycd.sequence_channels import (
     YcdRawFloatChannel,
 )
 
-
 PAIRS = (
     (
         3,
