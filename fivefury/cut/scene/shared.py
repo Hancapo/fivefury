@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...common import hash_value
 from ...vector import Quaternion, Vector2, Vector3, Vector4
+from ..limits import CUT_FPS
 from ..model import CutHashedString, CutNode, CutResolvedEvent
 from ..names import CUT_NAME_VALUES
 from ..payloads import CutEventPayload
@@ -239,10 +240,14 @@ def _runtime_animation_section_starts(scene: Any) -> tuple[float, ...]:
     duration = float(scene.duration or 0.0)
     mode = _resolved_sectioning(scene)
     values: Iterable[float]
-    if mode & CutSectioningMode.CAMERA_CUTS:
-        values = scene.camera_cut_list or ()
-    elif mode & CutSectioningMode.SPLIT:
-        values = scene.section_split_list or ()
+    if mode & (CutSectioningMode.CAMERA_CUTS | CutSectioningMode.SPLIT):
+        cuts = (
+            scene.camera_cut_list
+            if mode & CutSectioningMode.CAMERA_CUTS
+            else scene.section_split_list
+        )
+        origin = float(scene.range_start or 0) / CUT_FPS
+        values = (float(value) - origin for value in cuts or ())
     elif mode & CutSectioningMode.DURATION:
         interval = float(scene.section_by_time_slice_duration or 0.0)
         values = (
