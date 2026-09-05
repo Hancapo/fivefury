@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.23] - 2026-09-05
+
 ### Changed
 
 - Automated wheel validation covers Python 3.11 through 3.14 using the same test suite as source checkouts.
