@@ -15,6 +15,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Typed progress and cooperative cancellation for YCD authoring, validation and saving.
 
+### Changed
+
+- PR checks validate one wheel on Python 3.11; release candidates retain the complete Python 3.11–3.14 matrix.
+
 ### Fixed
 
 - YMAP extents use decoded runtime placement transforms, including ordinary quaternion conjugation, simple-heading behavior, MLO orientation and fragment scaling rules.

@@ -144,6 +144,11 @@ with newer headers. Run `tests/test_native_abi_buffers.py` against the built whe
 with `FIVEFURY_ABI_TEST_PYTHON` pointing to Python 3.11. Build-host tests alone do
 not verify the compatibility promised by the wheel tag.
 
+Ordinary PRs build one wheel and verify it on Python 3.11. Release candidates
+use the complete supported Python matrix before publication; use a `release/`
+branch or dispatch the test workflow with `full_matrix`. Building a wheel in
+CI is validation, not permission to publish it.
+
 ## Test contracts
 
 - Unit tests must run without a game installation or private asset corpus. Generate
