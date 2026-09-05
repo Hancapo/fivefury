@@ -21,6 +21,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- CUT animation builders and resolution share camera, explicit-split and duration-based sectioning, without treating shot changes as technical sections.
 - CUT technical sections account for nonzero source frame ranges when resolving animation timing.
 - YMAP extents use decoded runtime placement transforms, including ordinary quaternion conjugation, simple-heading behavior, MLO orientation and fragment scaling rules.
 - LOD-light positions, directions and hash bounds use the same decoded placement as YMAP extents.

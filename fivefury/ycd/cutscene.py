@@ -453,49 +453,26 @@ class YcdCutsceneBuilder:
         quaternion_encoding: YcdQuaternionEncoding = YcdQuaternionEncoding.RETAIL_CACHED,
         channel_policy: YcdChannelEncodingPolicy = _DEFAULT_CHANNEL_POLICY,
     ) -> YcdCutsceneBuilder:
+        from ..cut.scene.io import cut_to_scene
+        from ..cut.scene.shared import _runtime_animation_section_starts
+
         if isinstance(source, CutScene):
-            resolved_name = name or "cutscene"
-            camera_cuts = (
-                list(source.camera_cut_list)
-                if source.camera_cut_list is not None
-                else [
-                    event.start
-                    for event in source.timeline
-                    if event.event_name == "camera_cut" and event.start > 0.0
-                ]
-            )
-            return cls(
-                resolved_name,
-                duration=source.duration,
-                camera_cuts=camera_cuts,
-                fps=fps,
-                version=version,
-                game=game,
-                quaternion_encoding=quaternion_encoding,
-                channel_policy=channel_policy,
-            )
-
-        if isinstance(source, CutFile):
-            cut = source
-            source_name = (
-                name or Path(getattr(cut, "path", "") or "cutscene").stem or "cutscene"
-            )
+            scene = source
+            source_name = name or scene.scene_name or "cutscene"
         else:
-            source_path = Path(source)
-            source_name = name or source_path.stem
-            cut = read_cut(source_path)
+            if isinstance(source, CutFile):
+                cut = source
+                source_name = name or Path(getattr(cut, "path", "") or "cutscene").stem
+            else:
+                source_path = Path(source)
+                source_name = name or source_path.stem
+                cut = read_cut(source_path)
+            scene = cut_to_scene(cut)
 
-        root = cut.root
-        duration = float(root.fields.get("fTotalDuration", 0.0))
-        camera_cuts = [
-            float(value)
-            for value in root.fields.get("cameraCutList", [])
-            if float(value) > 0.0
-        ]
         return cls(
             source_name,
-            duration=duration,
-            camera_cuts=camera_cuts,
+            duration=scene.duration,
+            camera_cuts=_runtime_animation_section_starts(scene)[1:],
             fps=fps,
             version=version,
             game=game,
