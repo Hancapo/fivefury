@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- CUT project authoring accepts typed facial tracks for merged body-and-face and facial-only ped animations, with matching runtime bindings across technical sections.
 - Uncompressed YTD section preparation for embedding texture dictionaries in drawable resources.
 
 ### Changed

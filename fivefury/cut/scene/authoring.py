@@ -13,12 +13,16 @@ from ...vector import Quaternion, Vector3
 from ..payloads import CutAnimationDictPayload, CutCameraCutPayload, CutLoadScenePayload
 from .animation_dictionary import CutsceneAnimationDictionary
 from .base import CutScene
-from .bindings import CutAudio, CutBinding, CutCamera
+from .bindings import CutAudio, CutBinding, CutCamera, CutFacialAnimationMode, CutPed
 from .io import read_cut_scene
 
 if TYPE_CHECKING:
     from ...authoring import BuildContext, ValidationReport
-    from ...ycd.cutscene import YcdCutsceneBoneAnimation, YcdCutsceneBuilder
+    from ...ycd.cutscene import (
+        YcdCutsceneBoneAnimation,
+        YcdCutsceneBuilder,
+        YcdFacialTrackSet,
+    )
     from ...ycd.model import Ycd
     from ..audio_authoring import CutsceneAudioAssets
     from ..model import CutFile
@@ -228,18 +232,26 @@ class CutsceneProject:
         bone_id: int = 0,
         bones: Mapping[int, YcdCutsceneBoneAnimation | Mapping[str, object]]
         | None = None,
+        facial: YcdFacialTrackSet | None = None,
     ) -> CutBinding:
+        from ...ycd.cutscene import YcdFacialTrackSet
+
         self._require_binding(binding)
+        if facial is not None:
+            if not isinstance(facial, YcdFacialTrackSet):
+                raise TypeError("facial must be a YcdFacialTrackSet")
+            if not isinstance(binding, CutPed):
+                raise ValueError("Facial animation requires a ped binding")
         if binding.role not in {"ped", "prop", "vehicle"}:
             raise ValueError(
                 f"Cutscene role '{binding.role}' cannot use object animation tracks"
             )
         if all(
             value is None
-            for value in (position, rotation, mover_position, mover_rotation, bones)
+            for value in (position, rotation, mover_position, mover_rotation, bones, facial)
         ):
             raise ValueError(
-                "Object animation requires at least one transform or bone track"
+                "Object animation requires at least one transform, bone or facial track"
             )
         self._load_model(binding)
         clip_name = (
@@ -247,6 +259,8 @@ class CutsceneProject:
         )
         if not clip_name:
             raise ValueError("Animated cutscene objects require a clip name")
+        if facial is not None:
+            clip_name = clip_name.removesuffix("_dual")
         if hasattr(binding, "animation_clip_base"):
             binding.animation_clip_base = clip_name
         self.animations.object(
@@ -258,6 +272,9 @@ class CutsceneProject:
             bone_id=bone_id,
             bones=bones,
         )
+        if facial is not None:
+            self.animations.facial_animation(clip_name, facial)
+            binding.configure_facial_animation(CutFacialAnimationMode.MERGED)
         self._bind_animation(binding, start=start)
         return binding
 
