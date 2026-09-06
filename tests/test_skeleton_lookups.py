@@ -7,7 +7,7 @@ import pytest
 
 from fivefury import Vector3
 from fivefury.ydr import YdrBone, YdrSkeleton
-from fivefury.ydr.skeleton_lookups import _BoneList, _BoneLookups
+from fivefury.ydr.model.skeleton.lookups import _BoneList, _BoneLookups
 
 
 def assert_lookups(skeleton, known_bones):
