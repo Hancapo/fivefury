@@ -78,6 +78,11 @@ game binaries or private samples:
 | `FIVEFURY_GTA5_LEGACY_PATH` | Legacy installation root |
 | `FIVEFURY_GTA5_ENHANCED_PATH` | Enhanced installation root |
 | `FIVEFURY_ABI_TEST_PYTHON` | Python 3.11 executable |
+| `FIVEFURY_TEST_FACE_PROBE_ROOT` | External probe export with `probe-report.json` and `loose/` |
+
+The face-probe integration test also requires `FIVEFURY_TEST_FACE_PROBE_METADATA`,
+the exact metadata registration path relative to `loose/`. It compares resolved
+YCD/YED outputs at 0, 1, 3 and 5 seconds with the external report.
 
 Some historical regression cases expose a more specific `FIVEFURY_TEST_*`
 override beside their test. Their failure message identifies the missing file.

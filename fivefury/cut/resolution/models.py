@@ -117,9 +117,9 @@ class ResolvedCutBinding:
 
     @property
     def ped_metadata(self) -> Any | None:
-        result = self.ped_metadata_file
-        ymt = result.parsed if result is not None else None
-        return getattr(ymt, "ped_metadata", None)
+        from ...cache.ped_metadata import ped_metadata_from_file
+
+        return ped_metadata_from_file(self.ped_metadata_file)
 
     @property
     def ped_init_data_asset(self) -> AssetRecord | None:

@@ -104,10 +104,12 @@ def _index_signature(index_path: Path) -> tuple[int, int, bytes] | None:
 
 
 def load_sidecar_payload(
-    index_path: str | Path,
+    index_path: str | Path | None,
     suffix: str,
     magic_value: bytes,
 ) -> bytes | None:
+    if index_path is None:
+        return None
     source = Path(index_path)
     signature = _index_signature(source)
     if signature is None:
@@ -131,11 +133,13 @@ def load_sidecar_payload(
 
 
 def save_sidecar_payload(
-    index_path: str | Path,
+    index_path: str | Path | None,
     suffix: str,
     magic_value: bytes,
     payload: bytes,
 ) -> Path | None:
+    if index_path is None:
+        return None
     source = Path(index_path)
     signature = _index_signature(source)
     if signature is None:

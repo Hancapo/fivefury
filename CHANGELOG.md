@@ -10,6 +10,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Explicit ped metadata and expression-set registrations for custom file names, with typed XML and binary ped-init reading.
+- Scoped loose-asset overlays with installation fallback, explicit metadata registrations and atomic remounting.
 
 ### Changed
 
@@ -18,6 +19,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
+- Loose ped metadata takes precedence over installation records without sharing asset IDs or retaining outdated expression and outfit data across mounts.
 
 ## [0.4.25] - 2026-09-06
 
