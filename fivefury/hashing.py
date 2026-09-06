@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.resources
+import zlib
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -10,6 +11,11 @@ from . import _native_abi3 as _ffi
 
 _IDENTITY_LUT: Final[bytes] = bytes(range(256))
 _UINT32_MASK: Final[int] = 0xFFFFFFFF
+
+
+def crc32(value: bytes | bytearray | memoryview, seed: int = 0) -> int:
+    """Incremental IEEE CRC32; runs in zlib's native implementation."""
+    return zlib.crc32(value, int(seed)) & _UINT32_MASK
 
 
 def _read_lut_bytes() -> bytes:
