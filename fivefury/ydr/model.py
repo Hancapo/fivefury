@@ -8,7 +8,8 @@ import struct
 import zlib
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Union, cast
+from weakref import WeakSet
 
 from ..authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ..bounds import Bound
@@ -33,6 +34,7 @@ from .defs import (
 )
 from .shaders import ShaderDefinition
 from .skeleton_binding import normalize_root_bone_id
+from .skeleton_lookups import _BoneList, _BoneLookups
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
@@ -201,10 +203,35 @@ class YdrBone:
     unknown_2ch: float = 1.0
     unknown_34h: int = 0
     unknown_48h: int = 0
+    _lookup_owners: WeakSet[_BoneLookups] | None = dataclasses.field(
+        default=None, init=False, repr=False, compare=False,
+    )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        object.__setattr__(self, name, value)
+        if name in ("name", "tag", "parent_index"):
+            owners = getattr(self, "_lookup_owners", None)
+            if owners:
+                for lookups in owners:
+                    lookups.dirty = True
+
+    def __getstate__(self) -> dict[str, Any]:
+        return {field.name: getattr(self, field.name) for field in dataclasses.fields(self) if field.init}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        object.__setattr__(self, "_lookup_owners", None)
+        for name, value in state.items():
+            object.__setattr__(self, name, value)
 
 
 @dataclasses.dataclass(slots=True)
 class YdrSkeleton:
+    """Skeleton-owned bone list, with shared mutable bone objects.
+
+    Assigning bones copies the input collection. Edit skeleton.bones itself to
+    change membership or order; edits to shared bones affect every owner.
+    """
+
     bones: list[YdrBone] = dataclasses.field(default_factory=list)
     parent_indices: list[int] = dataclasses.field(default_factory=list)
     child_indices: list[int] = dataclasses.field(default_factory=list)
@@ -218,10 +245,11 @@ class YdrSkeleton:
     unknown_62h: int = 0
     unknown_64h: int = 0
     unknown_68h: int = 0
-    _bone_by_tag: dict[int, YdrBone] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _bone_by_name: dict[str, YdrBone] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _last_child_by_parent: dict[int, int] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _lookup_bone_count: int = dataclasses.field(default=-1, init=False, repr=False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "bones" and value is not getattr(self, "bones", None):
+            value = _BoneList(value)
+        object.__setattr__(self, name, value)
 
     @property
     def bone_count(self) -> int:
@@ -249,18 +277,18 @@ class YdrSkeleton:
         return self
 
     def _rebuild_bone_lookups(self) -> None:
-        self._bone_by_tag.clear()
-        self._bone_by_name.clear()
-        self._last_child_by_parent.clear()
+        lookups = cast(_BoneList, self.bones).lookups
+        lookups.dirty = True
+        lookups.clear()
         for index, bone in enumerate(self.bones):
-            self._bone_by_tag.setdefault(int(bone.tag), bone)
-            self._bone_by_name.setdefault(bone.name.lower(), bone)
-            self._last_child_by_parent[int(bone.parent_index)] = index
-        self._lookup_bone_count = len(self.bones)
+            lookups.record(index, bone)
+        lookups.dirty = False
 
-    def _ensure_bone_lookups(self) -> None:
-        if self._lookup_bone_count != len(self.bones):
+    def _ensure_bone_lookups(self) -> _BoneLookups:
+        lookups = cast(_BoneList, self.bones).lookups
+        if lookups.dirty:
             self._rebuild_bone_lookups()
+        return lookups
 
     def get_bone_by_index(self, index: int) -> YdrBone | None:
         if 0 <= int(index) < len(self.bones):
@@ -268,12 +296,10 @@ class YdrSkeleton:
         return None
 
     def get_bone_by_tag(self, tag: int) -> YdrBone | None:
-        self._ensure_bone_lookups()
-        return self._bone_by_tag.get(int(tag))
+        return self._ensure_bone_lookups().by_tag.get(int(tag))
 
     def get_bone_by_name(self, name: str) -> YdrBone | None:
-        self._ensure_bone_lookups()
-        return self._bone_by_name.get(str(name).lower())
+        return self._ensure_bone_lookups().by_name.get(str(name).lower())
 
     def require_bone(self, value: str | int) -> YdrBone:
         bone = self.get_bone_by_name(value) if isinstance(value, str) else self.get_bone_by_index(value)
@@ -300,7 +326,7 @@ class YdrSkeleton:
             raise TypeError("translation must be a Vector3")
         if not isinstance(scale, Vector3):
             raise TypeError("scale must be a Vector3")
-        self._ensure_bone_lookups()
+        lookups = self._ensure_bone_lookups()
         index = len(self.bones)
         parent_index = -1
         if parent is not None:
@@ -311,7 +337,7 @@ class YdrSkeleton:
             else:
                 parent_bone = self.require_bone(int(parent))
             parent_index = int(parent_bone.index)
-            previous_sibling = self._last_child_by_parent.get(parent_index)
+            previous_sibling = lookups.last_child_by_parent.get(parent_index)
             if previous_sibling is not None:
                 self.bones[previous_sibling].next_sibling_index = index
             parent_bone.flags = YdrBoneFlags(int(parent_bone.flags) | int(YdrBoneFlags.HAS_CHILD))
@@ -331,10 +357,6 @@ class YdrSkeleton:
         self.child_indices.clear()
         self.transformations.clear()
         self.transformations_inverted.clear()
-        self._bone_by_tag.setdefault(int(bone.tag), bone)
-        self._bone_by_name.setdefault(bone.name.lower(), bone)
-        self._last_child_by_parent[parent_index] = index
-        self._lookup_bone_count = len(self.bones)
         return bone
 
     def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
