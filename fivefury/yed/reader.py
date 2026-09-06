@@ -156,6 +156,9 @@ def _read_expression(data: bytes, pointer: int, name_hash: MetaHash) -> YedExpre
         variables=_read_hash_list(data, variables_info),
         _original_spring_bones=tuple(spring.bone_id for spring in springs),
     )
+    from .contract.state import expression_state
+
+    expression._original_contract_state = expression_state(expression)
     return expression
 
 
@@ -189,7 +192,7 @@ def read_yed(source: ByteSource, *, path: str | Path = "") -> Yed:
         raise ValueError("YED data must be a standalone RSC7 resource")
     header, system_data, graphics_data = split_rsc7_sections(data)
     dictionary = read_yed_dictionary(system_data)
-    return Yed(
+    result = Yed(
         dictionary=dictionary,
         version=int(header.version),
         game=infer_yed_game(dictionary.file_vft),
@@ -200,6 +203,10 @@ def read_yed(source: ByteSource, *, path: str | Path = "") -> Yed:
         graphics_data=graphics_data,
         _standalone_data=data,
     )
+    from .contract.state import yed_state
+
+    result._original_state = yed_state(result)
+    return result
 
 
 __all__ = [

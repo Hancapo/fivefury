@@ -133,6 +133,7 @@ def jenkins_hash_words(words: Iterable[int], *, initial_value: int = 0) -> int:
 
 
 __all__ = [
+    "crc32",
     "jenk_continue_hash",
     "jenk_finalize_hash",
     "jenk_hash",

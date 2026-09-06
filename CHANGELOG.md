@@ -10,11 +10,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Breaking Changes
 
 - YED track direction uses `is_input` instead of `remap` or `remap_flag`; input and output bindings remain distinct for the same channel.
+- Executable YED authoring requires an explicit runtime-contract recalculation before export; incomplete or stale contracts are rejected.
 
 ### Added
 
 - Explicit ped metadata and expression-set registrations for custom file names, with typed XML and binary ped-init reading.
 - Scoped loose-asset overlays with installation fallback, explicit metadata registrations and atomic remounting.
+- YED runtime-contract derivation for signatures, directional tracks, accelerated operands and stream sizes, with typed frame-DOF resolution.
+- Separate native-attachment diagnostics for CPU expression evaluation.
 
 ### Changed
 
@@ -25,6 +28,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
 - Loose ped metadata takes precedence over installation records without sharing asset IDs or retaining outdated expression and outfit data across mounts.
 - Rebuilding YED instruction buffers recalculates branch offsets across aligned data, parameter data and opcodes.
+- YED writing detects direct instruction edits instead of silently returning the original resource; unmodified unsupported imports retain a bounded lossless path.
 
 ## [0.4.25] - 2026-09-06
 

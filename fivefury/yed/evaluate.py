@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .._native import NativeYedProgram
+from ..authoring.diagnostics import Diagnostic
 from ..vector import Vector4
 from .enums import YedInstructionType
 
@@ -31,6 +32,7 @@ class YedEvaluationResult:
     variables: dict[VariableKey, Vector4] = field(default_factory=dict)
     evaluated_expressions: list[str] = field(default_factory=list)
     issues: list[YedEvaluationIssue] = field(default_factory=list)
+    native_diagnostics: tuple[Diagnostic, ...] = ()
 
 
 @dataclass(slots=True)
@@ -318,6 +320,7 @@ def evaluate_yed(
     variables: MutableMapping[VariableKey, Vector4] | None = None,
 ) -> YedEvaluationResult:
     """Evaluate selected serialized RAGE expression streams against typed DOFs."""
+    from .contract.validation import executable
 
     names = tuple(expression_names)
     expressions, resolution_issues = _resolve_expressions(yed, names)
@@ -349,6 +352,10 @@ def evaluate_yed(
         variables=typed_variables,
         evaluated_expressions=[expression.short_name for expression in expressions],
         issues=[*resolution_issues, *_native_issues(native_issues)],
+        native_diagnostics=tuple(
+            Diagnostic("yed.native.signature.zero", "Numerical evaluation does not establish native attachment: this expression has a zero signature", path=expression.name)
+            for expression in expressions if not expression.signature and executable(expression)
+        ),
     )
 
 

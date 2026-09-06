@@ -79,6 +79,7 @@ game binaries or private samples:
 | `FIVEFURY_GTA5_ENHANCED_PATH` | Enhanced installation root |
 | `FIVEFURY_ABI_TEST_PYTHON` | Python 3.11 executable |
 | `FIVEFURY_TEST_FACE_PROBE_ROOT` | External probe export with `probe-report.json` and `loose/` |
+| `FIVEFURY_TEST_YED_CONTRACT_CORPUS` | External `a_c_cat_01.yed`, `ambient.yed`, `player.yed` and `ig_natalia.yed` samples for the YED contract audit |
 
 The face-probe integration test also requires `FIVEFURY_TEST_FACE_PROBE_METADATA`,
 the exact metadata registration path relative to `loose/`. It compares resolved
