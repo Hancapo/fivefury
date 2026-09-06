@@ -5,8 +5,8 @@ from typing import TypeAlias
 
 import numpy as np
 
-from .numeric import Float64Array, float64_rows, normalized_rows, tuple_rows
-from .vector import Vector3
+from .numeric import Float64Array, float64_rows, normalized_rows
+from .vector import Vector3, Vector4
 
 Matrix4: TypeAlias = tuple[
     tuple[float, float, float, float],
@@ -56,7 +56,7 @@ def transform_positions(
     values: Iterable[Vector3] | np.ndarray,
     transform: object,
 ) -> list[Vector3]:
-    return tuple_rows(transform_position_array(values, transform), columns=3)
+    return [Vector3(*row) for row in transform_position_array(values, transform)]
 
 
 def transform_normal_array(
@@ -81,16 +81,35 @@ def transform_normal_array(
     )
 
 
+def transform_tangents(
+    values: Iterable[Vector4] | np.ndarray,
+    transform: object,
+) -> list[Vector4]:
+    """Transform tangent directions and preserve handedness through reflections."""
+    tangents = float64_rows(values, 4, name="tangents")
+    if not len(tangents):
+        return []
+    linear = matrix4(transform)[:3, :3]
+    directions = normalized_rows(
+        tangents[:, :3] @ linear.mT, fallback=(1.0, 0.0, 0.0), epsilon=1e-12
+    )
+    handedness = -1.0 if np.linalg.det(linear) < 0.0 else 1.0
+    return [
+        Vector4(*direction, tangent[3] * handedness)
+        for direction, tangent in zip(directions, tangents, strict=True)
+    ]
+
+
 def transform_normals(
     values: Iterable[Vector3] | np.ndarray,
     transform: object,
     *,
     epsilon: float = 1e-12,
 ) -> list[Vector3]:
-    return tuple_rows(
-        transform_normal_array(values, transform, epsilon=epsilon),
-        columns=3,
-    )
+    return [
+        Vector3(*row)
+        for row in transform_normal_array(values, transform, epsilon=epsilon)
+    ]
 
 
 __all__ = [
@@ -102,4 +121,5 @@ __all__ = [
     "transform_normals",
     "transform_position_array",
     "transform_positions",
+    "transform_tangents",
 ]
