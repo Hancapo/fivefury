@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import struct
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +22,7 @@ from .enums import YedInstructionType, YedTrackFormat
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
+    from .contract.frame import YedFrameDof
 
 
 def _coerce_track_format(value: YedTrackFormat | int) -> YedTrackFormat:
@@ -87,6 +88,8 @@ class YedTrack:
         *,
         is_input: bool = False,
     ) -> YedTrack:
+        if not 0 <= int(bone_id) <= 0xFFFF or not 0 <= int(track) <= 0xFF:
+            raise ValueError("YED bone/channel does not fit its binary field")
         return cls(
             bone_id=int(bone_id) & 0xFFFF,
             track=int(track) & 0xFF,
@@ -247,6 +250,35 @@ class YedExpression:
     variables: list[MetaHash] = dataclasses.field(default_factory=list)
     _original_spring_bones: tuple[int, ...] = dataclasses.field(default_factory=tuple, repr=False)
     _dirty_springs: bool = dataclasses.field(default=False, repr=False)
+    _original_contract_state: tuple | None = dataclasses.field(default=None, repr=False, compare=False)
+
+    def recalculate_runtime_contract(self) -> YedExpression:
+        """Derive directions, accelerator indices, CRC and coherent stream buffers."""
+        from .contract.derive import derive_contract
+        from .contract.state import expression_state
+        from .contract.validation import executable
+
+        prepared = derive_contract(self)
+        if executable(prepared) and not prepared.signature:
+            raise ValueError("Executable expression has no frame accesses and cannot attach natively")
+        if (self.signature and self._original_contract_state == expression_state(self)
+                and self.signature != prepared.signature):
+            raise ValueError("Original pre-packing traversal is not recoverable; preserve this expression unchanged")
+        for name in ("streams", "tracks", "springs", "variables", "signature", "max_stream_size",
+                     "streams_info", "tracks_info", "springs_info", "variables_info"):
+            setattr(self, name, getattr(prepared, name))
+        self._original_contract_state = None
+        return self
+
+    def validate_runtime_contract(self) -> ValidationReport:
+        from .contract.validation import validate_expression_contract
+
+        return validate_expression_contract(self)
+
+    def resolve_frame_indices(self, dofs: Sequence[YedFrameDof], *, read_only_offset: int, write_only_offset: int) -> tuple[int, ...]:
+        from .contract.frame import resolve_frame_indices
+
+        return resolve_frame_indices(self.tracks, dofs, read_only_offset=read_only_offset, write_only_offset=write_only_offset)
 
     @property
     def short_name(self) -> str:
@@ -364,6 +396,7 @@ class Yed:
     system_data: bytes = b""
     graphics_data: bytes = b""
     _standalone_data: bytes | None = dataclasses.field(default=None, repr=False)
+    _original_state: tuple | None = dataclasses.field(default=None, repr=False, compare=False)
 
     @property
     def name(self) -> str:
@@ -375,7 +408,27 @@ class Yed:
 
     @property
     def dirty(self) -> bool:
-        return self._standalone_data is None or any(expression.has_spring_changes for expression in self.expressions)
+        from .contract.state import yed_state
+
+        return self._standalone_data is None or self._original_state != yed_state(self)
+
+    def recalculate_runtime_contract(self) -> Yed:
+        import copy
+
+        prepared = copy.deepcopy(self.expressions)
+        for expression in prepared:
+            expression.recalculate_runtime_contract()
+        self.dictionary.expressions = prepared
+        self.dictionary.expression_name_hashes = ResourceListInfo()
+        self.dictionary.expressions_info = ResourceListInfo()
+        self._standalone_data = None
+        return self
+
+    def validate_runtime_contract(self) -> ValidationReport:
+        report = ValidationReport()
+        for index, expression in enumerate(self.expressions):
+            report.extend(expression.validate_runtime_contract(), path=f"expressions[{index}]", asset=self.path or None)
+        return report
 
     def expression_names(self) -> list[str]:
         return [expression.short_name for expression in self.expressions]
@@ -609,6 +662,8 @@ def validate_yed(
         ),
     )
     for label, info_path, info, actual_count in dictionary_lists:
+        if actual_count > 0xFFFF:
+            issue("list-count-overflow", "YED list exceeds 65535 entries", path=info_path)
         if info.pointer and info.capacity < info.count:
             issue(
                 "list-capacity-invalid",
@@ -650,6 +705,8 @@ def validate_yed(
             ("variables", expression.variables_info, len(expression.variables)),
         )
         for label, info, actual_count in expression_lists:
+            if actual_count > 0xFFFF:
+                issue("list-count-overflow", "YED list exceeds 65535 entries", path=f"{expression_path}.{label}")
             if info.pointer and info.capacity < info.count:
                 issue(
                     "list-capacity-invalid",
@@ -747,6 +804,7 @@ def validate_yed(
                                 ".track_index"
                             ),
                         )
+    report.extend(yed.validate_runtime_contract())
     return report
 
 

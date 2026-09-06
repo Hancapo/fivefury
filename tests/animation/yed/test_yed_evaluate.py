@@ -1003,9 +1003,11 @@ def test_yed_roundtrip_preserves_conditional_branch_opcodes() -> None:
     expression.streams = [
         _stream(
             _instruction(YedInstructionType.PUSH0),
-            _instruction(YedInstructionType.JUMP_IF_FALSE, instruction_offset=1),
+            _instruction(YedInstructionType.JUMP_IF_FALSE, instruction_offset=2),
+            _instruction(YedInstructionType.POP),
             _instruction(YedInstructionType.PUSH1),
-            _instruction(YedInstructionType.JUMP_IF_TRUE, instruction_offset=1),
+            _instruction(YedInstructionType.JUMP_IF_TRUE, instruction_offset=2),
+            _instruction(YedInstructionType.POP),
             _instruction(YedInstructionType.PUSH0),
             _instruction(
                 YedInstructionType.TRACK_SET,
@@ -1020,12 +1022,13 @@ def test_yed_roundtrip_preserves_conditional_branch_opcodes() -> None:
         )
     ]
 
+    expression.recalculate_runtime_contract()
     original = build_yed_bytes(create_yed(expression))
     rebuilt = read_yed(original)
     opcodes = rebuilt.expressions[0].streams[0].data3
 
     assert opcodes[1] == 0x2C
-    assert opcodes[3] == 0x2D
+    assert opcodes[4] == 0x2D
     assert build_yed_bytes(rebuilt) == original
 
 
