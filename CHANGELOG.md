@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Changed
+
+- Tests are grouped by domain, with shared helpers separated from test modules and binary fixtures replaced by deterministic synthetic inputs.
+
 ## [0.4.25] - 2026-09-06
 
 ### Breaking Changes

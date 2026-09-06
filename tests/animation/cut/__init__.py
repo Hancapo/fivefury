@@ -1,0 +1,1 @@
+"""animation cut tests."""

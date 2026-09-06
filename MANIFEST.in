@@ -1,3 +1,4 @@
 include LICENSE
 recursive-include native *.cpp *.h
 recursive-include fivefury/ydr *.xml
+recursive-include tests *.py *.md
