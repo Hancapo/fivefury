@@ -59,24 +59,24 @@ class YedTrack:
         self.flags = (_coerce_track_format(value).value & 0x7F) | (self.flags & 0x80)
 
     @property
-    def remap_flag(self) -> bool:
+    def is_input(self) -> bool:
         return bool(self.flags & 0x80)
 
-    @remap_flag.setter
-    def remap_flag(self, value: bool) -> None:
+    @is_input.setter
+    def is_input(self, value: bool) -> None:
         self.flags = (self.flags & 0x7F) | (0x80 if value else 0)
 
     @classmethod
-    def vector3(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> YedTrack:
-        return cls.from_parts(bone_id, track, YedTrackFormat.VECTOR3, remap=remap)
+    def vector3(cls, bone_id: int, track: int = 0, *, is_input: bool = False) -> YedTrack:
+        return cls.from_parts(bone_id, track, YedTrackFormat.VECTOR3, is_input=is_input)
 
     @classmethod
-    def quaternion(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> YedTrack:
-        return cls.from_parts(bone_id, track, YedTrackFormat.QUATERNION, remap=remap)
+    def quaternion(cls, bone_id: int, track: int = 0, *, is_input: bool = False) -> YedTrack:
+        return cls.from_parts(bone_id, track, YedTrackFormat.QUATERNION, is_input=is_input)
 
     @classmethod
-    def scalar(cls, bone_id: int, track: int = 0, *, remap: bool = False) -> YedTrack:
-        return cls.from_parts(bone_id, track, YedTrackFormat.FLOAT, remap=remap)
+    def scalar(cls, bone_id: int, track: int = 0, *, is_input: bool = False) -> YedTrack:
+        return cls.from_parts(bone_id, track, YedTrackFormat.FLOAT, is_input=is_input)
 
     @classmethod
     def from_parts(
@@ -85,12 +85,12 @@ class YedTrack:
         track: int,
         format: YedTrackFormat | int,
         *,
-        remap: bool = False,
+        is_input: bool = False,
     ) -> YedTrack:
         return cls(
             bone_id=int(bone_id) & 0xFFFF,
             track=int(track) & 0xFF,
-            flags=(_coerce_track_format(format).value & 0x7F) | (0x80 if remap else 0),
+            flags=(_coerce_track_format(format).value & 0x7F) | (0x80 if is_input else 0),
         )
 
 
@@ -308,13 +308,13 @@ class YedExpression:
         track: int = 0,
         format: YedTrackFormat | int = YedTrackFormat.VECTOR3,
         *,
-        remap: bool = False,
+        is_input: bool = False,
     ) -> YedTrack:
         target_format = _coerce_track_format(format)
         for item in self.tracks:
-            if item.bone_id == (int(bone_id) & 0xFFFF) and item.track == (int(track) & 0xFF) and item.format == target_format:
+            if item.bone_id == (int(bone_id) & 0xFFFF) and item.track == (int(track) & 0xFF) and item.format == target_format and item.is_input == is_input:
                 return item
-        item = YedTrack.from_parts(bone_id, track, target_format, remap=remap)
+        item = YedTrack.from_parts(bone_id, track, target_format, is_input=is_input)
         self.tracks.append(item)
         return item
 

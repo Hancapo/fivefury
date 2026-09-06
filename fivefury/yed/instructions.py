@@ -383,6 +383,18 @@ def build_instruction_buffers(
                 raise ValueError(
                     f"unsupported YED instruction opcode {instruction.opcode:#04x}"
                 )
+    for index, instruction in enumerate(instructions):
+        if instruction.type not in _JUMP_INSTRUCTIONS:
+            continue
+        target = index + 1 + int(instruction.operands["instruction_offset"])
+        if not index < target < len(instructions):
+            raise ValueError(f"YED branch {index} has invalid forward target {target}")
+        destination = instructions[target]
+        delta1 = destination.data1_offset - instruction.data1_offset
+        delta2 = destination.data2_offset - (instruction.data2_offset + 12)
+        instruction.operands["data1_offset"] = delta1
+        instruction.operands["data2_offset"] = delta2
+        struct.pack_into("<II", data2, instruction.data2_offset, delta1, delta2)
     return bytes(data1), bytes(data2), bytes(data3)
 
 

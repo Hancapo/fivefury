@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- YED track direction uses `is_input` instead of `remap` or `remap_flag`; input and output bindings remain distinct for the same channel.
+
 ### Added
 
 - Explicit ped metadata and expression-set registrations for custom file names, with typed XML and binary ped-init reading.
@@ -20,6 +24,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
 - Loose ped metadata takes precedence over installation records without sharing asset IDs or retaining outdated expression and outfit data across mounts.
+- Rebuilding YED instruction buffers recalculates branch offsets across aligned data, parameter data and opcodes.
 
 ## [0.4.25] - 2026-09-06
 

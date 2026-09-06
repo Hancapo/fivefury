@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import struct
-import zlib
 from collections.abc import Iterable, Sequence
 
 from ....buckets import at_hash_bucket_capacity
+from ....hashing import crc32
 from .bone import YdrBone
 from .flags import YdrBoneFlags
 from .hierarchy import YdrSkeleton
@@ -33,7 +33,7 @@ def calculate_skeleton_unknown_hashes(skeleton: YdrSkeleton) -> tuple[int, int, 
 
 def _crc32_u64(seed: int, value: int) -> int:
     return (
-        zlib.crc32(struct.pack("<Q", int(value) & 0xFFFFFFFFFFFFFFFF), int(seed))
+        crc32(struct.pack("<Q", int(value) & 0xFFFFFFFFFFFFFFFF), int(seed))
         & 0xFFFFFFFF
     )
 
@@ -41,7 +41,7 @@ def _crc32_u64(seed: int, value: int) -> int:
 def _crc32_floats(seed: int, values: Iterable[float]) -> int:
     components = tuple(float(value) for value in values)
     return (
-        zlib.crc32(
+        crc32(
             struct.pack(f"<{len(components)}f", *components),
             int(seed),
         )
