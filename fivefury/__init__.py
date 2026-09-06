@@ -146,6 +146,7 @@ from .bounds import (
 )
 from .cache import (
     AssetRecord,
+    AssetRegistration,
     CutsceneIndexPreparation,
     CutsceneIndexPreparationStatus,
     CutsceneResolutionIndex,
@@ -1188,6 +1189,7 @@ from .ymt import (
     YmtFormat,
     YmtPedInitData,
     YmtPedMetadata,
+    read_ped_metadata,
     YmtScenarioPointGroup,
     YmtScenarioPointManifest,
     YmtScenarioPointRegionDef,
@@ -1463,6 +1465,7 @@ __all__ = [
     "ArchetypeAssetType",
     "ArchetypeFlags",
     "AssetRecord",
+    "AssetRegistration",
     "AssetRef",
     "AssetSet",
     "AudioCollisionSettingsExtension",
@@ -2203,6 +2206,7 @@ __all__ = [
     "YmtFormat",
     "YmtPedInitData",
     "YmtPedMetadata",
+    "read_ped_metadata",
     "YmtScenarioPointGroup",
     "YmtScenarioPointManifest",
     "YmtScenarioPointRegionDef",

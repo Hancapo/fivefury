@@ -97,6 +97,10 @@ class _Cache:
         asset = self.yed_assets.get(int(value))
         return [asset] if asset is not None else []
 
+    def iter_assets(self, kind):
+        assert kind is GameFileType.PEDS
+        return iter(())
+
     def load_asset(self, asset):
         return self.files.get(id(asset))
 

@@ -138,13 +138,13 @@ class GameFile:
     diagnostics: ValidationReport = field(default_factory=_new_diagnostics)
 
     @classmethod
-    def from_bytes(cls, data: bytes, *, path: str) -> GameFile:
+    def from_bytes(cls, data: bytes, *, path: str, kind: GameFileType | None = None) -> GameFile:
         """Decode standalone bytes and retain failures in diagnostics."""
         from .cache.io import decode_game_file_payload
 
         result = cls(path=path, raw=data)
         result.parsed, result.kind = decode_game_file_payload(
-            path, data, diagnostics=result.diagnostics
+            path, data, kind=kind, diagnostics=result.diagnostics
         )
         result.loaded = result.diagnostics.valid
         return result

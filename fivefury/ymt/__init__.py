@@ -11,7 +11,7 @@ from ..meta.resource import MetaResource
 from ..pso import PsoDocument, PsoNode, PsoReader, is_pso
 from ..rbf import RbfStructure, is_rbf, read_rbf
 from . import schema as ymt_schema
-from .ped_metadata import YmtPedInitData, YmtPedMetadata
+from .ped_metadata import YmtPedInitData, YmtPedMetadata, read_ped_metadata
 from .scenario import (
     YmtAabb,
     YmtScenarioPointGroup,
@@ -334,6 +334,7 @@ __all__ = [
     "YmtFormat",
     "YmtPedInitData",
     "YmtPedMetadata",
+    "read_ped_metadata",
     "YmtScenarioPointGroup",
     "YmtScenarioPointManifest",
     "YmtScenarioPointRegionDef",

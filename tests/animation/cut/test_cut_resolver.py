@@ -27,6 +27,12 @@ from fivefury.gamefile import GameFile, GameFileType
 from tests.support import retail_games
 
 
+class _PedMetadataCache:
+    def iter_assets(self, kind):
+        assert kind is GameFileType.PEDS
+        return iter(())
+
+
 @pytest.fixture(
     scope="module",
     params=retail_games(),
@@ -460,7 +466,7 @@ def test_ped_expression_dictionary_follows_the_exact_ymt_init_record(
         reference_hash=model_hash,
     )
 
-    class Cache:
+    class Cache(_PedMetadataCache):
         @staticmethod
         def find_assets(query, *, kind):
             assert query == "peds.ymt"
@@ -537,7 +543,7 @@ def test_ped_expression_resolution_uses_highest_source_precedence(
     yed_file = SimpleNamespace(parsed=object())
     requested_hashes = []
 
-    class Cache:
+    class Cache(_PedMetadataCache):
         @staticmethod
         def find_assets(query, *, kind):
             assert (query, kind) == ("peds.ymt", GameFileType.YMT)
@@ -594,7 +600,7 @@ def test_ped_expression_resolution_keeps_identical_same_tier_duplicates(
     yed_asset = SimpleNamespace(path="x64c.rpf/anim/expressions/csb_abigail.yed")
     yed_file = SimpleNamespace(parsed=object())
 
-    class Cache:
+    class Cache(_PedMetadataCache):
         @staticmethod
         def find_assets(_query, *, kind):
             assert kind is GameFileType.YMT
@@ -646,7 +652,7 @@ def test_ped_expression_resolution_rejects_conflicting_same_tier_records(
         expression_dictionary_name=MetaHash("second_expression"),
     )
 
-    class Cache:
+    class Cache(_PedMetadataCache):
         @staticmethod
         def find_assets(_query, *, kind):
             assert kind is GameFileType.YMT
@@ -684,7 +690,7 @@ def test_ped_expression_resolution_reports_missing_init_and_yed(
         )
     )
 
-    class Cache:
+    class Cache(_PedMetadataCache):
         @staticmethod
         def find_assets(_query, *, kind):
             assert kind is GameFileType.YMT
@@ -724,7 +730,7 @@ def test_ped_expression_resolution_honors_cancellation_before_and_during_scan(
     second_asset = SimpleNamespace(path="mods/b/peds.ymt")
     cancellation = CutsceneResolutionCancellation()
 
-    class Cache:
+    class Cache(_PedMetadataCache):
         @staticmethod
         def find_assets(_query, *, kind):
             assert kind is GameFileType.YMT

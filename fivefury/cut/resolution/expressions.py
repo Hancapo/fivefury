@@ -5,6 +5,11 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from ...cache.ped_index import load_ped_init_index, save_ped_init_index
+from ...cache.ped_metadata import (
+    ped_metadata_assets,
+    ped_metadata_from_file,
+    ped_metadata_index_path,
+)
 from ...gamefile import GameFileType
 from ...metahash import MetaHash
 from ...yed import (
@@ -38,10 +43,11 @@ def _ped_init_data_by_model(
     cancellation: CutsceneResolutionCancellation | None,
     required_hashes: set[int],
 ) -> dict[int, tuple[int, list[PedInitMatch]]]:
+    check_cutscene_resolution_cancelled(cancellation)
     cached_index = getattr(cache, "_ped_init_asset_index", None)
     if cached_index is None:
         try:
-            cached_index = load_ped_init_index(cache.get_index_cache_path())
+            cached_index = load_ped_init_index(ped_metadata_index_path(cache))
         except (AttributeError, OSError):
             cached_index = None
         if cached_index is not None:
@@ -63,9 +69,7 @@ def _ped_init_data_by_model(
             for asset in sorted(assets, key=_source_rank):
                 check_cutscene_resolution_cancelled(cancellation)
                 game_file = _load_file(cache, asset, issues)
-                metadata = getattr(
-                    getattr(game_file, "parsed", None), "ped_metadata", None
-                )
+                metadata = ped_metadata_from_file(game_file)
                 if metadata is None:
                     continue
                 source_tier = _source_rank(asset)[0]
@@ -90,13 +94,14 @@ def _ped_init_data_by_model(
     asset_ids_by_model: dict[int, tuple[int, list[int]]] = {}
     indexable = True
     for asset in sorted(
-        cache.find_assets("peds.ymt", kind=GameFileType.YMT),
+        ped_metadata_assets(cache),
         key=_source_rank,
     ):
         check_cutscene_resolution_cancelled(cancellation)
         game_file = _load_file(cache, asset, issues)
-        metadata = getattr(getattr(game_file, "parsed", None), "ped_metadata", None)
+        metadata = ped_metadata_from_file(game_file)
         if metadata is None:
+            indexable = False
             continue
         source_tier = _source_rank(asset)[0]
         asset_id = getattr(asset, "id", None)
@@ -127,7 +132,7 @@ def _ped_init_data_by_model(
     }
     if indexable:
         try:
-            save_ped_init_index(cache.get_index_cache_path(), compact_index)
+            save_ped_init_index(ped_metadata_index_path(cache), compact_index)
             cache._ped_init_asset_index = compact_index
         except (AttributeError, OSError):
             pass
@@ -178,7 +183,7 @@ def _select_ped_init_data(
             code="binding.ymt_init_unresolved",
             message=(
                 f"{resolved.binding.display_name} matched {len(matches)} "
-                "conflicting ped init records; a single consistent YMT init "
+                "ped init records; a single consistent metadata "
                 "record is required"
             ),
             object_id=object_id,

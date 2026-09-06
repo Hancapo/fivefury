@@ -10,6 +10,7 @@ from ..pso_values import fields as _fields
 from ..pso_values import list_value as _list
 from ..pso_values import meta_hash as _meta_hash
 from ..pso_values import text as _string
+from ..xml import XmlSource, element_data, looks_like_xml, parse_xml_root
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -94,7 +95,32 @@ def _multi_txd_relationships(value: Any) -> dict[str, list[str]]:
     return relationships
 
 
+def read_ped_metadata(source: XmlSource) -> YmtPedMetadata:
+    """Read CPedModelInfo init metadata from XML or binary YMT, not components."""
+    from pathlib import Path
+
+    from . import read_ymt
+
+    if isinstance(source, Path) or (
+        isinstance(source, str) and not looks_like_xml(source)
+    ):
+        source = Path(source).read_bytes()
+    if looks_like_xml(source):
+        root = parse_xml_root(source)
+        if root.tag != "CPedModelInfo__InitDataList":
+            raise ValueError("Expected CPedModelInfo__InitDataList ped metadata")
+        metadata = YmtPedMetadata.from_value(element_data(root))
+    else:
+        metadata = read_ymt(bytes(source)).ped_metadata
+        if metadata is None:
+            raise ValueError("YMT does not contain ped init metadata")
+    if any(not item.name.uint for item in metadata.init_datas):
+        raise ValueError("Ped init records require a nonempty model name")
+    return metadata
+
+
 __all__ = [
     "YmtPedInitData",
     "YmtPedMetadata",
+    "read_ped_metadata",
 ]
