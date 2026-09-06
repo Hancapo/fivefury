@@ -140,7 +140,7 @@ Line count is not a target by itself, but repeated ceremony is a design defect. 
 ## Native ABI verification
 
 An `abi3` wheel must be tested on the minimum supported Python, even when built
-with newer headers. Run `tests/test_native_abi_buffers.py` against the built wheel
+with newer headers. Run `tests/runtime/test_native_abi_buffers.py` against the built wheel
 with `FIVEFURY_ABI_TEST_PYTHON` pointing to Python 3.11. Build-host tests alone do
 not verify the compatibility promised by the wheel tag.
 

@@ -38,6 +38,35 @@ A selected test cannot silently skip. Missing prerequisites fail, unknown marker
 are errors, and empty parameter sets fail collection. Platform contracts use
 `requires_platform`; they are selected only on the named OS.
 
+## Layout
+
+Tests are grouped by domain, not suite. Markers determine whether a case belongs
+to `unit`, `integration`, `abi` or `performance`, regardless of its directory.
+
+| Directory | Coverage |
+| --- | --- |
+| `animation/cut`, `animation/ycd`, `animation/yed` | Cutscenes, animation tracks and expression evaluation |
+| `audio/awc`, `audio/rel` | Audio containers, decoding and metadata |
+| `drawable/ydr`, `drawable/yft`, `drawable/` | Drawables, fragments, skeletons and skinning |
+| `world/ymap`, `world/navigation`, `world/` | Maps, paths, navmeshes, bounds, manifests and water |
+| `archive/`, `cache/` | RPF/DLC containers, discovery and asset resolution |
+| `authoring/`, `vehicles/` | Shared authoring contracts and vehicle metadata |
+| `core/math`, `core/serialization`, `core/` | Math, binary/XML infrastructure and hashes |
+| `runtime/` | Native boundaries, ABI and interpreter compatibility |
+| `performance/` | Performance workloads |
+| `support/` | Shared path, file, process and binary-inspection helpers |
+
+```powershell
+python -m pytest tests/animation/cut --suite unit -q
+python -m pytest tests/world/test_ymf.py -q
+python -m pytest tests/performance --suite performance --benchmark-disable -q
+```
+
+Keep `conftest.py` and suite-policy tests at the root. Use `tests.support` for
+shared infrastructure and a domain-local `samples.py` for reusable sample data.
+Tests must not import other test modules. Keep package `__init__.py` files so
+imports behave identically in the checkout and the isolated wheel runner.
+
 ## External Inputs
 
 Configure these variables outside the repository; never commit machine paths,
@@ -66,8 +95,8 @@ python -m build --wheel
 python tools/test_wheel.py dist/fivefury-VERSION-cp311-abi3-win_amd64.whl --suite unit -q
 ```
 
-The runner installs the wheel in a temporary target, copies only tests and their
-fixtures to a separate directory, runs outside the checkout with isolated Python,
+The runner installs the wheel in a temporary target, copies the test tree and its
+support modules to a separate directory, runs outside the checkout with isolated Python,
 and asserts where FiveFury was imported from. Child interpreters and source audits
 also inspect that installation. Test dependencies must already exist in the
 selected interpreter; `--python` selects a different interpreter.
@@ -112,7 +141,7 @@ assertions out of correctness tests.
 - Check observable behavior instead of artificial delays or relative wall-clock thresholds.
 - Compare timing results only on controlled hardware with matching inputs; do not impose
   fixed timing thresholds on shared CI runners.
-- Keep every test source and distributable synthetic fixture in Git.
+- Keep test source and deterministic sample constructors in Git; do not bundle binary fixtures.
 
 Passing these suites does not establish in-game behavior for every possible asset.
 External validation and runtime testing remain separate evidence.
