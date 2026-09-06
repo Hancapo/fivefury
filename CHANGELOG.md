@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Assigning `YdrSkeleton.bones` copies the collection while sharing bone objects; edit `skeleton.bones` rather than the original list to change membership or order.
+
 ### Added
 
 - Uncompressed YTD section preparation for embedding texture dictionaries in drawable resources.
@@ -22,6 +26,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Optional empty vertex and UV channels are treated as absent during splitting; nonempty channel length mismatches fail before generation or remapping.
 - Radial bone rigging uses composed object-space bind centers, resolves the pose once per operation, and preserves rigid-model placement when converting to skinning.
 - Radial palettes prefer skeleton indices over ambiguous tags; decoded static vertex declarations retain newly authored skin channels on write.
+- Skeleton lookups track direct bone edits and list mutations, including shared bones and duplicate keys, without rescanning unchanged collections or rebuilding after each append.
 
 ### Performance
 

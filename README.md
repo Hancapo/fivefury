@@ -128,6 +128,17 @@ ydr.save("example_drawable.ydr")
 
 `read_ydr(...)` returns an editable asset with material, texture, bound, light, skeleton, and skinning helpers. Render geometry can also be converted into an embedded collision bound with `ydr.ensure_bound_from_render_geometry()`.
 
+`YdrSkeleton` owns its `bones` list: construction and assignment copy the input
+collection, but share its bone objects. Edits through the original input list do
+not change the skeleton. Use `skeleton.bones.append(...)`, slice assignment,
+`reverse()`, `sort()`, or other ordinary list operations to edit membership and
+order. Direct bone `name`, `tag`, and `parent_index` assignments invalidate every
+owning collection's lookup indexes; duplicate names (case-insensitive) and tags
+resolve to the first bone in current list order. Appends update valid indexes
+incrementally. Other relevant mutations trigger one lazy rebuild, not a scan on
+every lookup. These lookup updates do not renumber bones or normalize bindings;
+`skeleton.build()` still finalizes hierarchy indices and sibling links.
+
 ### Skin vertices on the GPU
 
 ```python
