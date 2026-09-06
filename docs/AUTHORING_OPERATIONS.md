@@ -69,6 +69,7 @@ actor = project.scene.ped("speaker", model_name="cs_actor")
 project.camera(position=Vector3(0, -3, 1), rotation=Quaternion())
 project.animate(
     actor,
+    clip="speaker",
     mover_position=Vector3(),
     facial=YcdFacialTrackSet(controls={7: {0.0: 0.0, 1.0: 0.8, 2.0: 0.0}}),
 )
