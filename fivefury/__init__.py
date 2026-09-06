@@ -147,6 +147,7 @@ from .bounds import (
 from .cache import (
     AssetRecord,
     AssetRegistration,
+    GameFileOverlay,
     CutsceneIndexPreparation,
     CutsceneIndexPreparationStatus,
     CutsceneResolutionIndex,
@@ -1466,6 +1467,7 @@ __all__ = [
     "ArchetypeFlags",
     "AssetRecord",
     "AssetRegistration",
+    "GameFileOverlay",
     "AssetRef",
     "AssetSet",
     "AudioCollisionSettingsExtension",

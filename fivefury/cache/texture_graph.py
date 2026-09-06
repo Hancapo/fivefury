@@ -60,7 +60,7 @@ class TextureDictionaryGraph:
         seen: set[str] = set()
         candidates = [*self.cache.iter_assets(kind=GameFileType.GTXD)]
         candidates.extend(self.cache.find_assets("vehicles.meta"))
-        candidates.extend(self.cache.find_assets("peds.meta"))
+        candidates.extend(self.cache.iter_assets(GameFileType.PEDS))
         candidates.extend(
             asset
             for asset in self.cache.iter_assets(kind=GameFileType.YMT)

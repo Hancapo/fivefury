@@ -98,8 +98,14 @@ class _Cache:
         return [asset] if asset is not None else []
 
     def iter_assets(self, kind):
-        assert kind is GameFileType.PEDS
-        return iter(())
+        if kind is GameFileType.PEDS:
+            return iter(())
+        assert kind is GameFileType.EXPRESSION_SETS
+        return iter(
+            asset
+            for asset in self.metadata_assets
+            if asset.path.endswith("expression_sets.xml")
+        )
 
     def load_asset(self, asset):
         return self.files.get(id(asset))

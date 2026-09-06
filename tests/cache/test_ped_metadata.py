@@ -15,14 +15,7 @@ from fivefury import (
     read_ped_metadata,
 )
 from fivefury.cut.resolution.expressions import _ped_init_data_by_model
-
-
-def metadata_xml(model="actor", dictionary="face"):
-    return (
-        "<CPedModelInfo__InitDataList><InitDatas><Item>"
-        f"<Name>{model}</Name><ExpressionDictionaryName>{dictionary}</ExpressionDictionaryName>"
-        "<ExpressionName>face</ExpressionName></Item></InitDatas></CPedModelInfo__InitDataList>"
-    ).encode()
+from tests.cache.samples import ped_metadata_xml as metadata_xml
 
 
 def test_registered_ped_metadata_preserves_path_and_exact_model(tmp_path):

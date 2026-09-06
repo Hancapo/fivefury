@@ -30,11 +30,13 @@ _FLAG_RESOURCE = 2
 _FLAG_ENCRYPTED = 4
 
 class AssetRecord:
-    __slots__ = ("_cache", "id")
+    __slots__ = ("_cache", "id", "_storage_id", "source_priority")
 
     def __init__(self, cache: GameFileCache, asset_id: int) -> None:
         self._cache = cache
         self.id = int(asset_id)
+        self._storage_id = self.id
+        self.source_priority: int | None = None
 
     def __repr__(self) -> str:
         return (
@@ -49,15 +51,15 @@ class AssetRecord:
 
     @property
     def path(self) -> str:
-        return self._cache._index.get_path(self.id)
+        return self._cache._index.get_path(self._storage_id)
 
     @property
     def kind(self) -> GameFileType:
-        return GameFileType(int(self._cache._index.get_kind(self.id)))
+        return GameFileType(int(self._cache._index.get_kind(self._storage_id)))
 
     @property
     def size(self) -> int:
-        return int(self._cache._index.get_size(self.id))
+        return int(self._cache._index.get_size(self._storage_id))
 
     @property
     def stored_size(self) -> int:
@@ -65,39 +67,39 @@ class AssetRecord:
 
     @property
     def uncompressed_size(self) -> int:
-        return int(self._cache._index.get_uncompressed_size(self.id))
+        return int(self._cache._index.get_uncompressed_size(self._storage_id))
 
     @property
     def entry(self) -> RpfFileEntry | None:
-        return self._cache._live_entries.get(self.id)
+        return self._cache._live_entries.get(self._storage_id)
 
     @property
     def archive(self) -> RpfArchive | None:
-        return self._cache._live_archives.get(self.id)
+        return self._cache._live_archives.get(self._storage_id)
 
     @property
     def loose_path(self) -> Path | None:
-        return self._cache._loose_path_for_id(self.id)
+        return self._cache._loose_path_for_id(self._storage_id)
 
     @property
     def is_resource(self) -> bool:
-        return self._cache._flag_is_set(self.id, _FLAG_RESOURCE)
+        return self._cache._flag_is_set(self._storage_id, _FLAG_RESOURCE)
 
     @property
     def is_encrypted(self) -> bool:
-        return self._cache._flag_is_set(self.id, _FLAG_ENCRYPTED)
+        return self._cache._flag_is_set(self._storage_id, _FLAG_ENCRYPTED)
 
     @property
     def archive_encryption(self) -> int:
-        return int(self._cache._index.get_archive_encryption(self.id))
+        return int(self._cache._index.get_archive_encryption(self._storage_id))
 
     @property
     def name_hash(self) -> int:
-        return int(self._cache._index.get_name_hash(self.id))
+        return int(self._cache._index.get_name_hash(self._storage_id))
 
     @property
     def short_hash(self) -> int:
-        return int(self._cache._index.get_short_hash(self.id))
+        return int(self._cache._index.get_short_hash(self._storage_id))
 
     @property
     def short_name_hash(self) -> int:
@@ -123,7 +125,7 @@ class AssetRecord:
 
     @property
     def is_loose(self) -> bool:
-        return self._cache._flag_is_set(self.id, _FLAG_LOOSE)
+        return self._cache._flag_is_set(self._storage_id, _FLAG_LOOSE)
 
     @property
     def is_archive_entry(self) -> bool:

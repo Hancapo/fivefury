@@ -44,6 +44,21 @@ def _ped_init_data_by_model(
     required_hashes: set[int],
 ) -> dict[int, tuple[int, list[PedInitMatch]]]:
     check_cutscene_resolution_cancelled(cancellation)
+    from ...cache.overlay import GameFileOverlay
+
+    if isinstance(cache, GameFileOverlay):
+        matches = {}
+        remaining = set(required_hashes)
+        for source in cache.sources:
+            source_matches = _ped_init_data_by_model(source, issues, cancellation, remaining)
+            for reference_hash in remaining.intersection(source_matches):
+                _, candidates = source_matches[reference_hash]
+                candidates = [(cache._wrap(source, asset), file, item) for asset, file, item in candidates]
+                matches[reference_hash] = (_source_rank(candidates[0][0])[0], candidates)
+            remaining.difference_update(matches)
+            if not remaining:
+                break
+        return matches
     cached_index = getattr(cache, "_ped_init_asset_index", None)
     if cached_index is None:
         try:
@@ -198,10 +213,7 @@ def _expression_sets_by_hash(
     cancellation: CutsceneResolutionCancellation | None,
 ) -> tuple[dict[int, ExpressionSetMatch], bool]:
     assets = sorted(
-        cache.find_assets(
-            "expression_sets.xml",
-            kind=GameFileType.EXPRESSION_SETS,
-        ),
+        cache.iter_assets(GameFileType.EXPRESSION_SETS),
         key=_source_rank,
     )
     matches: dict[int, ExpressionSetMatch] = {}

@@ -470,7 +470,11 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
             entry=asset.entry,
             archive=asset.archive,
             loose_path=asset.loose_path,
-            flags=(int(asset.is_loose) | (int(asset.is_resource) << 1) | (int(asset.is_encrypted) << 2)),
+            flags=(
+                (_FLAG_LOOSE if asset.is_loose else 0)
+                | (_FLAG_RESOURCE if asset.is_resource else 0)
+                | (_FLAG_ENCRYPTED if asset.is_encrypted else 0)
+            ),
             archive_encryption=asset.archive_encryption,
         )
         self.files.pop(asset.key, None)

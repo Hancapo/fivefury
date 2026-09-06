@@ -10,6 +10,9 @@ if TYPE_CHECKING:
 
 def asset_source_rank(asset: AssetRecord) -> tuple[int, str]:
     path = asset.path.replace("\\", "/").lower()
+    priority = getattr(asset, "source_priority", None)
+    if priority is not None:
+        return priority, path
     if path.startswith("mods/"):
         tier = 0
     elif "/dlcpacks/" in path:
