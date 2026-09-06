@@ -6,6 +6,11 @@ from math import isfinite
 from typing import TYPE_CHECKING, Any, Literal
 
 from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
+from ...authoring.operation import (
+    AuthoringOperation,
+    AuthoringStage,
+    iter_authoring_units,
+)
 from ...hashing import jenk_hash, jenk_partial_hash
 from ...vector import Quaternion, Vector3
 from ...ycd.sequence_tracks import is_ycd_camera_track
@@ -1442,26 +1447,33 @@ def validate_cut_scene(
     *,
     strict: bool = False,
     context: BuildContext | None = None,
+    operation: AuthoringOperation | None = None,
 ) -> ValidationReport:
+    if operation is not None:
+        operation.checkpoint()
     if context is not None:
         strict = context.strict
     source_asset = scene.scene_name or None
     scene = deepcopy(scene)
     scene.build()
     issues = ValidationReport()
-    _validate_root(scene, issues, strict=strict)
-    _validate_binary_capacities(scene, issues)
-    _validate_sections(scene, issues)
-    _validate_bindings(scene, issues)
-    _validate_events(scene, issues)
-    _validate_attachments(scene, issues)
-    _validate_loading(scene, issues)
-    _validate_cameras(scene, issues, strict=strict)
-    _validate_facial_animation(scene, issues)
-    _validate_animations(scene, issues, strict=strict)
-    _validate_assets(scene, issues)
-    _validate_audio_timeline(scene, issues, strict=strict)
-    _validate_flags(scene, issues)
+    checks = (
+        lambda: _validate_root(scene, issues, strict=strict),
+        lambda: _validate_binary_capacities(scene, issues),
+        lambda: _validate_sections(scene, issues),
+        lambda: _validate_bindings(scene, issues),
+        lambda: _validate_events(scene, issues),
+        lambda: _validate_attachments(scene, issues),
+        lambda: _validate_loading(scene, issues),
+        lambda: _validate_cameras(scene, issues, strict=strict),
+        lambda: _validate_facial_animation(scene, issues),
+        lambda: _validate_animations(scene, issues, strict=strict),
+        lambda: _validate_assets(scene, issues),
+        lambda: _validate_audio_timeline(scene, issues, strict=strict),
+        lambda: _validate_flags(scene, issues),
+    )
+    for check in iter_authoring_units(checks, operation, AuthoringStage.VALIDATE, source_asset or "cutscene"):
+        check()
     if source_asset is not None:
         issues.issues = [issue.for_asset(source_asset) for issue in issues]
     return issues

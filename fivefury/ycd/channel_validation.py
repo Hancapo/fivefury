@@ -94,7 +94,8 @@ def validate_cutscene_section_precision(
             AuthoringProgress(AuthoringStage.VALIDATE, progress_asset, 0, total)
         )
     encoded = build_ycd_bytes(
-        asset if asset is not None else builder._build_section(section.index)
+        asset if asset is not None else builder._build_section(section.index, operation=operation),
+        operation=operation,
     )
     decoded = read_ycd(encoded)
     output_index = builder.section_index_start + section.index

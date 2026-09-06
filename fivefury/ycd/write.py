@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..authoring.operation import AuthoringOperation, AuthoringProgress, AuthoringStage
 from ..buckets import at_hash_bucket_capacity
 from ..common import atomic_write_bytes, clip_short_name
 from ..game_target import GameTarget, coerce_game_target
@@ -63,7 +64,8 @@ def _resolve_clip_hash(clip: YcdClip) -> MetaHash:
 
 
 class _YcdWriter:
-    def __init__(self, ycd: Ycd, profile: YcdRuntimeProfile, sequence_data: dict[int, bytes] | None = None) -> None:
+    def __init__(self, ycd: Ycd, profile: YcdRuntimeProfile, sequence_data: dict[int, bytes] | None = None, *, operation: AuthoringOperation | None = None) -> None:
+        self.operation = operation
         self.ycd = ycd
         self.profile = profile
         self.writer = ResourceWriter(
@@ -224,7 +226,14 @@ class _YcdWriter:
             return cached
 
         self._synchronize_animation_bone_ids(animation)
-        sequence_offsets = [self.write_sequence(sequence) for sequence in animation.sequences]
+        sequence_offsets = []
+        for index, sequence in enumerate(animation.sequences):
+            if self.operation is not None:
+                self.operation.checkpoint(AuthoringProgress(
+                    AuthoringStage.WRITE, animation.name or self.ycd.path or "ycd",
+                    index, len(animation.sequences),
+                ))
+            sequence_offsets.append(self.write_sequence(sequence))
         sequences_array_offset = self.write_pointer_array(sequence_offsets)
 
         bone_ids_offset = 0
@@ -708,8 +717,8 @@ class _YcdWriter:
         return self.writer.finish(), self.writer.block_spans
 
 
-def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
-    source = ycd.build()
+def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None, operation: AuthoringOperation | None = None) -> bytes:
+    source = ycd.build(operation=operation)
     if source.header.version != YCD_VERSION:
         raise ValueError(f"YCD resources require version {YCD_VERSION}, got {source.header.version}")
     target = coerce_game_target(source.game if game is None else game)
@@ -720,7 +729,9 @@ def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
     graphics_flags = None
     sequence_data: dict[int, bytes] = {}
     for _ in range(16):
-        raw_system_data, system_blocks = _YcdWriter(source, profile, sequence_data).build_system_data(page_counts)
+        if operation is not None:
+            operation.checkpoint()
+        raw_system_data, system_blocks = _YcdWriter(source, profile, sequence_data, operation=operation).build_system_data(page_counts)
         system_data, _, system_flags, graphics_flags = layout_resource_sections(
             raw_system_data,
             system_blocks,
@@ -734,11 +745,14 @@ def build_ycd_bytes(ycd: Ycd, *, game: str | GameTarget | None = None) -> bytes:
         raise RuntimeError("YCD writer page-info sizing did not converge")
     assert system_flags is not None
     assert graphics_flags is not None
-    return build_rsc7(system_data, version=ycd.header.version, system_flags=system_flags, graphics_flags=graphics_flags)
+    data = build_rsc7(system_data, version=ycd.header.version, system_flags=system_flags, graphics_flags=graphics_flags)
+    if operation is not None:
+        operation.checkpoint()
+    return data
 
 
-def save_ycd(ycd: Ycd, path: str | Path, *, game: str | GameTarget | None = None) -> Path:
-    return atomic_write_bytes(path, build_ycd_bytes(ycd, game=game))
+def save_ycd(ycd: Ycd, path: str | Path, *, game: str | GameTarget | None = None, operation: AuthoringOperation | None = None) -> Path:
+    return atomic_write_bytes(path, build_ycd_bytes(ycd, game=game, operation=operation))
 
 
 def build_ycd_embedded_resource(

@@ -135,10 +135,10 @@ def test_build_encodes_each_section_once_without_scalar_sampling(monkeypatch, ga
     count = 0
     original = asset._build_section
 
-    def counted(index):
+    def counted(index, *, operation=None):
         nonlocal count
         count += 1
-        return original(index)
+        return original(index, operation=operation)
 
     monkeypatch.setattr(asset, "_build_section", counted)
     monkeypatch.setattr(
@@ -253,8 +253,8 @@ def test_validation_checks_corruption_in_physical_sequence_overlap(monkeypatch, 
     asset.prop("actor", mover_rotation=samples)
     original = asset._build_section
 
-    def corrupted(index):
-        ycd = original(index)
+    def corrupted(index, *, operation=None):
+        ycd = original(index, operation=operation)
         sequence = ycd.animations[0].sequences[0].anim_sequences[0]
         sequence.channels = packed_channels([left] * 287 + [right], omitted)
         return ycd

@@ -6,7 +6,13 @@ from math import isfinite
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...common import atomic_write_bytes
+from ...authoring.operation import (
+    AuthoringOperation,
+    AuthoringProgress,
+    AuthoringStage,
+    iter_authoring_units,
+)
+from ...common import atomic_write_files
 from ...game_target import GameTarget
 from ...hashing import jenk_partial_hash
 from ...vector import Quaternion, Vector3
@@ -44,15 +50,25 @@ class CutsceneAssets:
     def output_name(self) -> str:
         return _file_name(self.cut_name or self.scene.scene_name or "cutscene", ".cut")
 
-    def validate(self, *, context: BuildContext | None = None) -> ValidationReport:
+    def validate(
+        self,
+        *,
+        context: BuildContext | None = None,
+        operation: AuthoringOperation | None = None,
+    ) -> ValidationReport:
         from .asset_validation import validate_cutscene_assets
 
-        return validate_cutscene_assets(self, context=context)
+        return validate_cutscene_assets(self, context=context, operation=operation)
 
-    def build(self) -> CutsceneAssets:
+    def build(self, *, operation: AuthoringOperation | None = None) -> CutsceneAssets:
         dictionary = self.scene.animation_dictionary
-        for ycd in dictionary.sections if dictionary else ():
-            ycd.build()
+        for ycd in iter_authoring_units(
+            dictionary.sections if dictionary else (),
+            operation,
+            AuthoringStage.BUILD,
+            self.output_name,
+        ):
+            ycd.build(operation=operation)
         self.scene.build()
         return self
 
@@ -61,24 +77,32 @@ class CutsceneAssets:
         *,
         context: BuildContext | None = None,
         template: CutFile | bytes | str | Path | None = None,
+        operation: AuthoringOperation | None = None,
     ) -> dict[str, bytes]:
         from ...ycd.reader import read_ycd
         from ...ycd.write import build_ycd_bytes
         from .asset_validation import _inspect_cutscene_assets
 
-        self.build()
-        scene, report = _inspect_cutscene_assets(self, context=context)
+        self.build(operation=operation)
+        scene, report = _inspect_cutscene_assets(
+            self, context=context, operation=operation
+        )
         report.raise_for_errors()
         files: dict[str, bytes] = {}
         rebuilt_ycds: list[Ycd] = []
         rebuilt_audio: list[CutsceneAudioAssets] = []
         dictionary = scene.animation_dictionary
-        for ycd in dictionary.sections if dictionary else ():
+        for ycd in iter_authoring_units(
+            dictionary.sections if dictionary else (),
+            operation,
+            AuthoringStage.WRITE,
+            self.output_name,
+        ):
             name = _file_name(ycd.path or "cutscene", ".ycd")
-            data = build_ycd_bytes(ycd)
+            data = build_ycd_bytes(ycd, operation=operation)
             rebuilt = read_ycd(data)
             rebuilt.path = name
-            rebuilt.build()
+            rebuilt.build(operation=operation)
             rebuilt_ycds.append(rebuilt)
             files[name] = data
 
@@ -86,7 +110,9 @@ class CutsceneAssets:
         from ...rel import read_rel
         from ..audio_authoring import CutsceneAudioAssets
 
-        for audio in self.audio:
+        for audio in iter_authoring_units(
+            self.audio, operation, AuthoringStage.WRITE, self.output_name
+        ):
             audio_files = audio.build_files()
             files.update(audio_files)
             rebuilt_audio.append(
@@ -108,7 +134,7 @@ class CutsceneAssets:
                 )
             )
 
-        cut_data = scene.to_bytes(template=template)
+        cut_data = scene.to_bytes(template=template, operation=operation)
         rebuilt_scene = read_cut_scene(cut_data)
         if dictionary is not None:
             rebuilt_scene.animation_dictionary = CutsceneAnimationDictionary(
@@ -119,7 +145,7 @@ class CutsceneAssets:
             scene=rebuilt_scene,
             audio=tuple(rebuilt_audio),
             cut_name=self.output_name,
-        ).validate(context=context).raise_for_errors()
+        ).validate(context=context, operation=operation).raise_for_errors()
         files[self.output_name] = cut_data
         return files
 
@@ -129,10 +155,22 @@ class CutsceneAssets:
         *,
         context: BuildContext | None = None,
         template: CutFile | bytes | str | Path | None = None,
+        operation: AuthoringOperation | None = None,
     ) -> list[Path]:
-        files = self.build_files(context=context, template=template)
+        files = self.build_files(
+            context=context, template=template, operation=operation
+        )
         target = Path(directory)
-        return [atomic_write_bytes(target / name, data) for name, data in files.items()]
+
+        def prepare(path: Path, index: int, total: int) -> None:
+            if operation is not None:
+                operation.checkpoint(
+                    AuthoringProgress(AuthoringStage.WRITE, str(path), index, total)
+                )
+
+        return atomic_write_files(
+            {target / name: data for name, data in files.items()}, prepare=prepare
+        )
 
 
 class CutsceneProject:
@@ -248,7 +286,14 @@ class CutsceneProject:
             )
         if all(
             value is None
-            for value in (position, rotation, mover_position, mover_rotation, bones, facial)
+            for value in (
+                position,
+                rotation,
+                mover_position,
+                mover_rotation,
+                bones,
+                facial,
+            )
         ):
             raise ValueError(
                 "Object animation requires at least one transform, bone or facial track"
@@ -410,20 +455,28 @@ class CutsceneProject:
         self.audio_assets.append(assets)
         return binding
 
-    def build(self, *, cut_name: str | None = None) -> CutsceneAssets:
+    def build(
+        self,
+        *,
+        cut_name: str | None = None,
+        operation: AuthoringOperation | None = None,
+    ) -> CutsceneAssets:
         from .shared import _runtime_animation_section_starts
 
+        if operation is not None:
+            operation.checkpoint()
         self.animations.duration = float(self.scene.duration or 0.0)
         self.animations.camera_cuts = list(
             _runtime_animation_section_starts(self.scene)[1:]
         )
         dictionary = self.scene.animation_dictionary
         if dictionary is not None:
-            dictionary.sections = list(self.animations.build_ycds())
+            dictionary.sections = list(self.animations.build_ycds(operation=operation))
             if (
                 self._animation_load is not None
                 and self._animation_load.label == self._animation_load_reference
-                and self._animation_load.payload.get("cName") == self._animation_load_reference
+                and self._animation_load.payload.get("cName")
+                == self._animation_load_reference
             ):
                 self._animation_load.label = dictionary.reference
                 self._animation_load.payload = CutAnimationDictPayload(

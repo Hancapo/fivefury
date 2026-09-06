@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...authoring.context import BuildContext
 from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
+from ...authoring.operation import AuthoringOperation
 
 if TYPE_CHECKING:
     from ...ycd.cutscene import YcdCutsceneBuilder
@@ -262,22 +263,25 @@ class CutScene:
     def bindings_by_id(self) -> dict[int, CutBinding]:
         return {item.object_id: item for item in self.bindings}
 
-    def to_cut(self) -> CutFile:
+    def to_cut(self, *, operation: AuthoringOperation | None = None) -> CutFile:
         from .io import scene_to_cut
 
         self.build()
-        self.validate(strict=True).raise_for_errors()
+        self.validate(strict=True, operation=operation).raise_for_errors()
         return scene_to_cut(self)
 
     def to_bytes(
-        self, *, template: CutFile | bytes | str | Path | None = None
+        self, *, template: CutFile | bytes | str | Path | None = None,
+        operation: AuthoringOperation | None = None,
     ) -> bytes:
         from .io import read_cut_scene
 
-        data = self.to_cut().to_bytes(template=template)
+        data = self.to_cut(operation=operation).to_bytes(template=template)
+        if operation is not None:
+            operation.checkpoint()
         rebuilt = read_cut_scene(data)
         rebuilt.animation_dictionary = self.animation_dictionary
-        rebuilt.validate(strict=True).raise_for_errors()
+        rebuilt.validate(strict=True, operation=operation).raise_for_errors()
         return data
 
     def save(
@@ -285,6 +289,7 @@ class CutScene:
         destination: str | Path,
         *,
         template: CutFile | bytes | str | Path | None = None,
+        operation: AuthoringOperation | None = None,
     ) -> None:
         from ...common import atomic_write_bytes
 
@@ -295,9 +300,9 @@ class CutScene:
             CutsceneAssets(
                 scene=self,
                 cut_name=target.name,
-            ).save(target.parent, template=template)
+            ).save(target.parent, template=template, operation=operation)
             return
-        atomic_write_bytes(destination, self.to_bytes(template=template))
+        atomic_write_bytes(destination, self.to_bytes(template=template, operation=operation))
 
     def animation_builder(
         self, *, name: str | None = None, **kwargs: Any
@@ -407,10 +412,11 @@ class CutScene:
         *,
         context: BuildContext | None = None,
         strict: bool = False,
+        operation: AuthoringOperation | None = None,
     ) -> ValidationReport:
         from .validation import validate_cut_scene
 
-        return validate_cut_scene(self, strict=strict, context=context)
+        return validate_cut_scene(self, strict=strict, context=context, operation=operation)
 
     def binding(self, binding: CutBinding) -> CutBinding:
         if binding.object_id < 0:

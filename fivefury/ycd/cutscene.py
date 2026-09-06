@@ -13,6 +13,7 @@ from ..authoring import (
     BuildContext,
     ValidationReport,
 )
+from ..authoring.operation import iter_authoring_units
 from ..common import atomic_write_bytes
 from ..cut.model import CutFile
 from ..cut.pso import read_cut
@@ -808,12 +809,12 @@ class YcdCutsceneBuilder:
             )
         return self
 
-    def _build_section(self, index: int) -> Ycd:
+    def _build_section(self, index: int, *, operation: AuthoringOperation | None = None) -> Ycd:
         section = self.sections[int(index)]
         output_index = self.section_index_start + section.index
         clips: list[YcdClipAnimation] = []
         animations: list[YcdAnimation] = []
-        for clip_spec in self._clips.values():
+        for clip_spec in iter_authoring_units(list(self._clips.values()), operation, AuthoringStage.BUILD, self.name):
             if not clip_spec.tracks:
                 continue
             short_name = f"{clip_spec.name}-{output_index}"
@@ -848,7 +849,9 @@ class YcdCutsceneBuilder:
                 window_ranges
             ):
                 anim_sequences: list[YcdAnimSequence] = []
-                for track_index, track_spec in enumerate(sorted_tracks):
+                for track_index, track_spec in enumerate(iter_authoring_units(
+                    sorted_tracks, operation, AuthoringStage.BUILD, short_name
+                )):
                     orient_cached = (
                         self.quaternion_encoding
                         is YcdQuaternionEncoding.RETAIL_CACHED
@@ -927,7 +930,7 @@ class YcdCutsceneBuilder:
             game=self.game,
             path=f"{self.name}-{output_index}.ycd",
         )
-        return ycd.build()
+        return ycd.build(operation=operation)
 
     def _validate_section_precision(
         self, section: YcdCutsceneSection, report: ValidationReport, *, asset: Ycd | None = None,
@@ -951,13 +954,15 @@ class YcdCutsceneBuilder:
         section = self.sections[int(index)]
         if operation is not None:
             operation.checkpoint(AuthoringProgress(AuthoringStage.BUILD, self.name, section.index, len(self.sections)))
-        asset = self._build_section(section.index)
+        asset = self._build_section(section.index, operation=operation)
         report = ValidationReport()
         self._validate_section_precision(section, report, asset=asset, operation=operation)
         report.raise_for_errors()
         return asset
 
     def build_ycds(self, *, operation: AuthoringOperation | None = None) -> list[Ycd]:
+        if operation is not None:
+            operation.checkpoint()
         if not self._clips:
             return []
         result = [self.build_section(section.index, operation=operation) for section in self.sections]
@@ -979,11 +984,11 @@ class YcdCutsceneBuilder:
         for section in self.sections:
             if operation is not None:
                 operation.checkpoint(AuthoringProgress(AuthoringStage.BUILD, self.name, section.index, len(self.sections)))
-            asset = self._build_section(section.index)
+            asset = self._build_section(section.index, operation=operation)
             encoded = self._validate_section_precision(section, report, asset=asset, operation=operation)
             prepared.append((
                 target_dir / (asset.path or f"{self.name}.ycd"),
-                encoded if encoded is not None else build_ycd_bytes(asset),
+                encoded if encoded is not None else build_ycd_bytes(asset, operation=operation),
             ))
         report.raise_for_errors()
         saved = []

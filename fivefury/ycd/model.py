@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..authoring.diagnostics import ValidationReport
+from ..authoring.operation import (
+    AuthoringOperation,
+    AuthoringStage,
+    iter_authoring_units,
+)
 from ..buckets import at_hash_bucket_capacity
 from ..game_target import GameTarget
 from ..hashing import jenk_continue_hash, jenk_finalize_hash
@@ -1148,11 +1153,14 @@ class Ycd:
         self,
         *,
         context: BuildContext | None = None,
+        operation: AuthoringOperation | None = None,
     ) -> ValidationReport:
         del context
         report = ValidationReport()
         asset = self.path or self.name
-        for animation_index, animation in enumerate(self.animations):
+        for animation_index, animation in enumerate(iter_authoring_units(
+            self.animations, operation, AuthoringStage.VALIDATE, asset
+        )):
             for sequence_index, sequence in enumerate(animation.sequences):
                 for track_index, anim_sequence in enumerate(sequence.anim_sequences):
                     sequence_path = (
@@ -1287,7 +1295,9 @@ class Ycd:
                     )
         return report
 
-    def build(self) -> Ycd:
+    def build(self, *, operation: AuthoringOperation | None = None) -> Ycd:
+        if operation is not None:
+            operation.checkpoint()
         self.animation_map = {}
         for animation in self.animations:
             if animation.hash.uint == 0 and animation.name:
@@ -1329,18 +1339,18 @@ class Ycd:
             int(self.animation_bucket_capacity),
             at_hash_bucket_capacity(self.animation_entry_count),
         )
-        self.validate().raise_for_errors()
+        self.validate(operation=operation).raise_for_errors()
         return self
 
-    def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
+    def to_bytes(self, *, game: str | GameTarget | None = None, operation: AuthoringOperation | None = None) -> bytes:
         from .write import build_ycd_bytes
 
-        return build_ycd_bytes(self, game=game)
+        return build_ycd_bytes(self, game=game, operation=operation)
 
-    def save(self, path: str | Path, *, game: str | GameTarget | None = None) -> Path:
+    def save(self, path: str | Path, *, game: str | GameTarget | None = None, operation: AuthoringOperation | None = None) -> Path:
         from .write import save_ycd
 
-        return save_ycd(self, path, game=game)
+        return save_ycd(self, path, game=game, operation=operation)
 
 
 __all__ = [

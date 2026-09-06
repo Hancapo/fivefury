@@ -231,8 +231,8 @@ def test_precision_validation_rejects_subframe_only_corruption(
     assert builder.validate().valid
     original = YcdCutsceneBuilder._build_section
 
-    def corrupted(self, index):
-        ycd = original(self, index)
+    def corrupted(self, index, *, operation=None):
+        ycd = original(self, index, operation=operation)
         sequence = ycd.animations[0].find_sequences(
             track=YcdAnimationTrack.MOVER_ROTATION
         )[0]
