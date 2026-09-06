@@ -40,6 +40,7 @@ from .resource_headers import (
     DrawableRuntimeHeaders,
 )
 from .shaders import ShaderLibrary, load_shader_library
+from .skeleton_binding import normalize_root_bone_id
 from .write_buffers import GraphicsWriter
 from .write_drawable import (
     pages_info_length,
@@ -336,27 +337,6 @@ def ydr_to_build(source: Ydr, *, lod: YdrLod | str | None = None, name: str | No
     return source.to_build(lod=lod, name=name)
 
 
-def _remap_root_bone_id_in_build(source: YdrBuild) -> None:
-    skeleton = source.skeleton
-    if skeleton is None or not skeleton.bones:
-        return
-    old_root_tag = int(skeleton.bones[0].tag)
-    if old_root_tag == 0:
-        return
-    skeleton.bones[0].tag = 0
-    for model in source.iter_models():
-        for mesh in model.meshes:
-            if mesh.bone_ids is not None:
-                mesh.bone_ids = [0 if int(bone_id) == old_root_tag else int(bone_id) for bone_id in mesh.bone_ids]
-    if source.joints is not None:
-        for limit in source.joints.rotation_limits:
-            if int(limit.bone_id) == old_root_tag:
-                limit.bone_id = 0
-        for limit in source.joints.translation_limits:
-            if int(limit.bone_id) == old_root_tag:
-                limit.bone_id = 0
-
-
 def build_ydr_bytes(
     source: YdrBuild | Ydr,
     *,
@@ -381,7 +361,11 @@ def build_ydr_bytes(
             )
             raise ValueError(f"YDR contains invalid shader references:\n{details}")
         source = source.to_build()
-    _remap_root_bone_id_in_build(source)
+    normalize_root_bone_id(
+        source.skeleton,
+        (mesh for model in source.iter_models() for mesh in model.meshes),
+        source.joints,
+    )
     if source.model_count == 0:
         raise ValueError('YDR builder requires at least one mesh')
 
