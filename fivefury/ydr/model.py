@@ -32,6 +32,7 @@ from .defs import (
     coerce_skeleton_binding,
 )
 from .shaders import ShaderDefinition
+from .skeleton_binding import normalize_root_bone_id
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
@@ -339,9 +340,9 @@ class YdrSkeleton:
     def resolve_bone_ids(self, bone_ids: Sequence[int]) -> list[YdrBone]:
         resolved: list[YdrBone] = []
         for bone_id in bone_ids:
-            bone = self.get_bone_by_tag(int(bone_id))
+            bone = self.get_bone_by_index(int(bone_id))
             if bone is None:
-                bone = self.get_bone_by_index(int(bone_id))
+                bone = self.get_bone_by_tag(int(bone_id))
             if bone is not None:
                 resolved.append(bone)
         return resolved
@@ -1016,11 +1017,11 @@ class YdrMesh(DrawableMesh[YdrMaterial]):
         resolved: list[int] = []
         for item in bone_ids:
             if isinstance(item, YdrBone):
-                resolved.append(int(item.tag))
+                resolved.append(int(item.index))
             elif isinstance(item, str):
                 if skeleton is None:
                     raise ValueError("skeleton= is required when binding bones by name")
-                resolved.append(int(skeleton.require_bone(item).tag))
+                resolved.append(int(skeleton.require_bone(item).index))
             else:
                 resolved.append(int(item))
         self.bone_ids = resolved
@@ -1210,23 +1211,7 @@ class Ydr(DrawableAsset[YdrMaterial, YdrModel, YdrMesh]):
         return read_ydr(data, path=path)
 
     def normalize_skeleton_bone_ids(self) -> Ydr:
-        if self.skeleton is None or not self.skeleton.bones:
-            return self
-        root = self.skeleton.bones[0]
-        old_root_tag = int(root.tag)
-        if old_root_tag == 0:
-            return self
-        root.tag = 0
-        for mesh in self.iter_meshes():
-            mesh.bone_ids = [0 if int(bone_id) == old_root_tag else int(bone_id) for bone_id in mesh.bone_ids]
-        if self.joints is not None:
-            for limit in self.joints.rotation_limits:
-                if int(limit.bone_id) == old_root_tag:
-                    limit.bone_id = 0
-            for limit in self.joints.translation_limits:
-                if int(limit.bone_id) == old_root_tag:
-                    limit.bone_id = 0
-        self.skeleton._rebuild_bone_lookups()
+        normalize_root_bone_id(self.skeleton, self.iter_meshes(), self.joints)
         return self
 
     def ycd_uv_binding(self, material: str | int, *, object_name: str | None = None) -> YcdUvClipBinding:

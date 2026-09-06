@@ -7,6 +7,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Changed
+
+- Drawable bone bindings made from bone objects or names store skeleton indices; numeric palettes resolve indices before tags.
+
+### Fixed
+
+- Normalizing drawable root bones preserves mesh weights when a bone tag overlaps a skeleton index.
+
 ## [0.4.24] - 2026-09-05
 
 ### Breaking Changes
