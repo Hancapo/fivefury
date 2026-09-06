@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.25] - 2026-09-06
+
 ### Breaking Changes
 
 - Redundant drawable preparation aliases were removed in favor of canonical operations.
