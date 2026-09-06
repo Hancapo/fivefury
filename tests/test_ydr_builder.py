@@ -2374,14 +2374,14 @@ def test_skinned_layout_selected() -> None:
     shader = lib.resolve_shader(shader_name="default")
     assert shader is not None
 
-    from fivefury.ydr.builder import _select_layout
+    from fivefury.ydr.prepare import select_layout
 
-    layout = _select_layout(shader, used_uv_indices={0}, skinned=True)
+    layout = select_layout(shader, used_uv_indices={0}, skinned=True)
     semantics = {s.lower() for s in layout.semantics}
     assert "blendweights" in semantics
     assert "blendindices" in semantics
 
-    static_layout = _select_layout(shader, used_uv_indices={0}, skinned=False)
+    static_layout = select_layout(shader, used_uv_indices={0}, skinned=False)
     static_semantics = {s.lower() for s in static_layout.semantics}
     assert "blendweights" not in static_semantics
 

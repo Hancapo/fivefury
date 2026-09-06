@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Self
 from weakref import WeakSet
 
 if TYPE_CHECKING:
-    from .model import YdrBone
+    from .bone import YdrBone
 
 
 class _BoneLookups:
@@ -123,7 +123,9 @@ class _BoneList(list["YdrBone"]):
         super().reverse()
         self.lookups.dirty = True
 
-    def sort(self, *, key: Callable[[YdrBone], Any] | None = None, reverse: bool = False) -> None:
+    def sort(
+        self, *, key: Callable[[YdrBone], Any] | None = None, reverse: bool = False
+    ) -> None:
         self.lookups.dirty = True
         try:
             super().sort(key=key, reverse=reverse)

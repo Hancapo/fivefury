@@ -30,9 +30,7 @@ from .prepare import (
     compute_model_collection_bounds,
     default_root_render_mask_flags,
     drawable_name,
-    normalize_materials,
     prepare_build,
-    select_layout,
 )
 from .resource_headers import (
     GEN9_DRAWABLE_HEADERS,
@@ -456,10 +454,6 @@ def save_ydr(
             recalculate_skeleton_hashes=recalculate_skeleton_hashes,
         ),
     )
-
-
-_normalize_materials = normalize_materials
-_select_layout = select_layout
 
 
 __all__ = [

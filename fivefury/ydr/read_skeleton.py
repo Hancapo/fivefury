@@ -4,8 +4,9 @@ import struct
 from collections.abc import Callable
 
 from ..binary import read_c_string
+from ..matrix import Matrix4
 from ..vector import Quaternion, Vector3, Vector4
-from .model import Matrix4, YdrBone, YdrBoneFlags, YdrSkeleton
+from .model.skeleton import YdrBone, YdrBoneFlags, YdrSkeleton
 
 
 def _read_matrix_array(pointer: int, count: int, system_data: bytes, *, virtual_offset: Callable[[int, bytes], int]) -> list[Matrix4]:

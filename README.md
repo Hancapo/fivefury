@@ -139,6 +139,11 @@ incrementally. Other relevant mutations trigger one lazy rebuild, not a scan on
 every lookup. These lookup updates do not renumber bones or normalize bindings;
 `skeleton.build()` still finalizes hierarchy indices and sibling links.
 
+For low-level preparation, use `fivefury.ydr.prepare.select_layout` and
+`fivefury.ydr.prepare.normalize_materials` instead of the private builder aliases
+`_select_layout` and `_normalize_materials`. Replace `fivefury.ydr.prepare.resolve_shader`
+with `fivefury.ydr.shaders.resolve_shader_reference`.
+
 ### Skin vertices on the GPU
 
 ```python

@@ -7,8 +7,13 @@ import pytest
 
 from fivefury import Vector2, Vector3, Vector4, YdrMeshInput, create_ydr, read_ydr
 from fivefury.mesh_math import generate_vertex_normals, generate_vertex_tangents
-from fivefury.ydr import prepare
 from fivefury.ydr.defs import VertexComponentType, VertexSemantic
+from fivefury.ydr.prepare import channels
+from fivefury.ydr.prepare import mesh as mesh_preparation
+from fivefury.ydr.prepare.splitting import (
+    _copy_vertex_channel,
+    _split_mesh_by_vertex_limit,
+)
 
 
 @pytest.fixture(params=[165, 159], ids=["legacy", "enhanced"])
@@ -46,10 +51,10 @@ def test_split_preserves_shared_normal_and_tangent_channels(
 
     with (
         patch.object(
-            prepare, "generate_vertex_normals", wraps=generate_vertex_normals
+            channels, "generate_vertex_normals", wraps=generate_vertex_normals
         ) as normals,
         patch.object(
-            prepare, "generate_vertex_tangents", wraps=generate_vertex_tangents
+            channels, "generate_vertex_tangents", wraps=generate_vertex_tangents
         ) as tangents,
     ):
         build.save(output)
@@ -145,7 +150,7 @@ def test_numpy_numeric_channels_match_lists(
     expected = build.to_bytes()
     for name, values in channels.items():
         setattr(mesh, name, values)
-        copied = prepare._copy_vertex_channel(values, [2, 0])
+        copied = _copy_vertex_channel(values, [2, 0])
         if empty:
             assert copied is None
         else:
@@ -173,7 +178,7 @@ def test_split_copy_preserves_uv_channel_slots() -> None:
     mesh.blend_weights = []
     mesh.blend_indices = []
 
-    chunks = prepare._split_mesh_by_vertex_limit(mesh)
+    chunks = _split_mesh_by_vertex_limit(mesh)
 
     assert len(chunks) == 2
     for chunk in chunks:
@@ -227,17 +232,17 @@ def test_channel_mismatches_fail_before_generation_or_splitting(
 
     with (
         patch.object(
-            prepare,
+            channels,
             "generate_vertex_normals",
             side_effect=AssertionError("generated normals"),
         ),
         patch.object(
-            prepare,
+            channels,
             "generate_vertex_tangents",
             side_effect=AssertionError("generated tangents"),
         ),
         patch.object(
-            prepare,
+            mesh_preparation,
             "_split_mesh_by_vertex_limit",
             side_effect=AssertionError("split mesh"),
         ),

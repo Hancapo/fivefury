@@ -3,9 +3,9 @@ from __future__ import annotations
 import struct
 
 from ..buckets import at_hash_bucket_capacity
+from ..matrix import Matrix4
 from ..resource import ResourceWriter
-from .model import (
-    Matrix4,
+from .model.skeleton import (
     YdrBone,
     YdrBoneFlags,
     YdrSkeleton,

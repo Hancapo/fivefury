@@ -5,10 +5,11 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ..matrix import Matrix4
 from ..numeric import Float32Array
 from ..skinning import compose_skeleton_matrices
 from ..vector import Quaternion, Vector3, Vector4
-from .model import Matrix4, YdrBone, YdrSkeleton
+from .model.skeleton import YdrBone, YdrSkeleton
 
 _PED_PROCEDURAL_SIBLING_COPIES = (
     ("SKEL_L_Thigh", "RB_L_ThighRoll"),

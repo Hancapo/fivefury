@@ -9,6 +9,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- Redundant drawable preparation aliases were removed in favor of canonical operations.
+- Drawable bone bindings made from bone objects or names store skeleton indices; numeric palettes resolve indices before tags.
 - Assigning `YdrSkeleton.bones` copies the collection while sharing bone objects; edit `skeleton.bones` rather than the original list to change membership or order.
 
 ### Added
@@ -17,7 +19,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Changed
 
-- Drawable bone bindings made from bone objects or names store skeleton indices; numeric palettes resolve indices before tags.
+- Drawable models and preparation are organized into focused modules for skeletons, materials, geometry, lights, painting and vertex data.
 
 ### Fixed
 
