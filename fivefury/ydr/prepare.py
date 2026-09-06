@@ -520,7 +520,7 @@ def _transform_position(
 def _copy_vertex_channel(
     channel: Sequence[T] | None, vertex_indices: Sequence[int]
 ) -> list[T] | None:
-    if channel is None:
+    if channel is None or len(channel) == 0:
         return None
     return [channel[index] for index in vertex_indices]
 
@@ -529,9 +529,9 @@ def _copy_texcoord_channels(
     channels: Sequence[Sequence[Vector2]] | None,
     vertex_indices: Sequence[int],
 ) -> list[list[Vector2]] | None:
-    if channels is None:
+    if channels is None or len(channels) == 0:
         return None
-    return [[channel[index] for index in vertex_indices] for channel in channels]
+    return [_copy_vertex_channel(channel, vertex_indices) or [] for channel in channels]
 
 
 def _build_split_mesh(
@@ -586,188 +586,210 @@ def _prepare_meshes(
     skeleton=None,
 ) -> list[PreparedMesh]:
     prepared: list[PreparedMesh] = []
-    for source_mesh in meshes:
-        for mesh in _split_mesh_by_vertex_limit(source_mesh):
-            material_key = mesh.material.lower()
-            if material_key not in material_lookup:
-                raise ValueError(f"Mesh references unknown material '{mesh.material}'")
-            material = prepared_materials[material_lookup[material_key]]
+    for mesh in meshes:
+        material_key = mesh.material.lower()
+        if material_key not in material_lookup:
+            raise ValueError(f"Mesh references unknown material '{mesh.material}'")
+        material = prepared_materials[material_lookup[material_key]]
 
-            positions = list(mesh.positions)
-            indices = [int(index) for index in mesh.indices]
-            normals = (
-                list(mesh.normals)
-                if mesh.normals is not None
-                else []
+        # Validate source channels before generation or remapping can hide mismatches.
+        channels = [
+            (name, getattr(mesh, name))
+            for name in (
+                "normals",
+                "tangents",
+                "colours0",
+                "colours1",
+                "blend_weights",
+                "blend_indices",
             )
-            texcoords = [
-                list(channel)
-                for channel in (mesh.texcoords or [])
-            ]
-            tangents = (
-                list(mesh.tangents)
-                if mesh.tangents is not None
-                else []
+        ]
+        channels.extend(
+            (f"UV channel {index}", channel)
+            for index, channel in enumerate(
+                mesh.texcoords if mesh.texcoords is not None else ()
             )
-            colours0 = (
-                [tuple(map(float, colour)) for colour in mesh.colours0]
-                if mesh.colours0 is not None
-                else []
-            )
-            colours1 = (
-                [tuple(map(float, colour)) for colour in mesh.colours1]
-                if mesh.colours1 is not None
-                else []
-            )
-            blend_weights = (
-                [tuple(map(float, w)) for w in mesh.blend_weights]
-                if mesh.blend_weights is not None
-                else []
-            )
-            blend_indices = (
-                [tuple(map(int, bi)) for bi in mesh.blend_indices]
-                if mesh.blend_indices is not None
-                else []
-            )
-            bone_ids = (
-                [int(b) for b in mesh.bone_ids] if mesh.bone_ids is not None else []
-            )
-            skinned = bool(blend_weights)
+        )
+        for name, channel in channels:
+            if channel is not None and len(channel) not in (0, len(mesh.positions)):
+                raise ValueError(f"Mesh {name} length must match positions length")
 
-            if skinned:
-                if not blend_indices:
-                    raise ValueError("Mesh has blend_weights but no blend_indices")
-                if len(blend_weights) != len(positions):
+        positions = list(mesh.positions)
+        indices = triangle_array(mesh.indices, len(positions)).reshape(-1).tolist()
+        normals = (
+            list(mesh.normals)
+            if mesh.normals is not None
+            else []
+        )
+        texcoords = [
+            list(channel)
+            for channel in (mesh.texcoords or [])
+        ]
+        tangents = (
+            list(mesh.tangents)
+            if mesh.tangents is not None
+            else []
+        )
+        colours0 = (
+            [tuple(map(float, colour)) for colour in mesh.colours0]
+            if mesh.colours0 is not None
+            else []
+        )
+        colours1 = (
+            [tuple(map(float, colour)) for colour in mesh.colours1]
+            if mesh.colours1 is not None
+            else []
+        )
+        blend_weights = (
+            [tuple(map(float, w)) for w in mesh.blend_weights]
+            if mesh.blend_weights is not None
+            else []
+        )
+        blend_indices = (
+            [tuple(map(int, bi)) for bi in mesh.blend_indices]
+            if mesh.blend_indices is not None
+            else []
+        )
+        bone_ids = (
+            [int(b) for b in mesh.bone_ids] if mesh.bone_ids is not None else []
+        )
+        skinned = bool(blend_weights)
+
+        if skinned:
+            if not blend_indices:
+                raise ValueError("Mesh has blend_weights but no blend_indices")
+            if skeleton is not None and getattr(skeleton, "bones", None):
+                bone_count = len(skeleton.bones)
+                if bone_count > 255:
                     raise ValueError(
-                        "Mesh blend_weights length must match positions length"
+                        "Skinned YDR models currently support at most 255 bones per skeleton"
                     )
-                if len(blend_indices) != len(positions):
-                    raise ValueError(
-                        "Mesh blend_indices length must match positions length"
-                    )
-                if skeleton is not None and getattr(skeleton, "bones", None):
-                    bone_count = len(skeleton.bones)
-                    if bone_count > 255:
-                        raise ValueError(
-                            "Skinned YDR models currently support at most 255 bones per skeleton"
-                        )
-                    source_palette = (
-                        list(bone_ids) if bone_ids else list(range(bone_count))
-                    )
-                    resolved_palette = [
-                        _resolve_palette_bone_index(bone_id, skeleton)
-                        for bone_id in source_palette
-                    ]
-                    remapped_indices: list[tuple[int, int, int, int]] = []
-                    for vertex_indices, vertex_weights in zip(
-                        blend_indices, blend_weights, strict=True
+                source_palette = (
+                    list(bone_ids) if bone_ids else list(range(bone_count))
+                )
+                resolved_palette = [
+                    _resolve_palette_bone_index(bone_id, skeleton)
+                    for bone_id in source_palette
+                ]
+                remapped_indices: list[tuple[int, int, int, int]] = []
+                for vertex_indices, vertex_weights in zip(
+                    blend_indices, blend_weights, strict=True
+                ):
+                    remapped: list[int] = []
+                    for palette_index, weight in zip(
+                        vertex_indices, vertex_weights, strict=True
                     ):
-                        remapped: list[int] = []
-                        for palette_index, weight in zip(
-                            vertex_indices, vertex_weights, strict=True
-                        ):
-                            index = int(palette_index)
-                            if float(weight) <= 0.0:
-                                remapped.append(0)
-                                continue
-                            if index < 0 or index >= len(resolved_palette):
-                                raise ValueError(
-                                    f"Vertex blend index {index} is outside the mesh bone palette"
-                                )
-                            remapped.append(int(resolved_palette[index]))
-                        remapped_indices.append(
-                            (remapped[0], remapped[1], remapped[2], remapped[3])
-                        )
-                    blend_indices = remapped_indices
-                    bone_ids = list(range(bone_count))
+                        index = int(palette_index)
+                        if float(weight) <= 0.0:
+                            remapped.append(0)
+                            continue
+                        if index < 0 or index >= len(resolved_palette):
+                            raise ValueError(
+                                f"Vertex blend index {index} is outside the mesh bone palette"
+                            )
+                        remapped.append(int(resolved_palette[index]))
+                    remapped_indices.append(
+                        (remapped[0], remapped[1], remapped[2], remapped[3])
+                    )
+                blend_indices = remapped_indices
+                bone_ids = list(range(bone_count))
 
-            if not normals:
-                normals = (
-                    generate_vertex_normals(positions, indices)
-                    if generate_normals
-                    else [Vector3(0.0, 0.0, 1.0)] * len(positions)
-                )
-            if len(normals) != len(positions):
-                raise ValueError("Mesh normals length must match positions length")
-
-            material_texture_slots = {
-                slot.lower()
-                for slot, texture in material.textures.items()
-                if texture is not None
-            }
-            used_uv_indices = {
-                int(parameter.uv_index or 0)
-                for parameter in material.shader_definition.texture_parameters
-                if parameter.name.lower() in material_texture_slots
-            }
-            layout = _select_layout(
-                material.shader_definition,
-                used_uv_indices=used_uv_indices,
-                skinned=skinned,
+        if not normals:
+            normals = (
+                generate_vertex_normals(positions, indices)
+                if generate_normals
+                else [Vector3(0.0, 0.0, 1.0)] * len(positions)
             )
-            expected_semantics = {semantic.lower() for semantic in layout.semantics}
-            if (
-                mesh.declaration_flags is not None
-                and mesh.declaration_types is not None
-            ):
-                expected_semantics.update(
-                    semantic.name.lower()
-                    for semantic, _component_type in _semantics_from_flags_types(
-                        int(mesh.declaration_flags), int(mesh.declaration_types)
-                    )
+
+        material_texture_slots = {
+            slot.lower()
+            for slot, texture in material.textures.items()
+            if texture is not None
+        }
+        used_uv_indices = {
+            int(parameter.uv_index or 0)
+            for parameter in material.shader_definition.texture_parameters
+            if parameter.name.lower() in material_texture_slots
+        }
+        layout = _select_layout(
+            material.shader_definition,
+            used_uv_indices=used_uv_indices,
+            skinned=skinned,
+        )
+        expected_semantics = {semantic.lower() for semantic in layout.semantics}
+        if (
+            mesh.declaration_flags is not None
+            and mesh.declaration_types is not None
+        ):
+            expected_semantics.update(
+                semantic.name.lower()
+                for semantic, _component_type in _semantics_from_flags_types(
+                    int(mesh.declaration_flags), int(mesh.declaration_types)
+                )
+            )
+
+        if fill_vertex_colours and not colours0 and "colour0" in expected_semantics:
+            colours0 = [(1.0, 1.0, 1.0, 1.0)] * len(positions)
+        if fill_vertex_colours and not colours1 and "colour1" in expected_semantics:
+            colours1 = [(1.0, 1.0, 1.0, 1.0)] * len(positions)
+
+        for parameter in material.shader_definition.texture_parameters:
+            if parameter.name.lower() not in material_texture_slots:
+                continue
+            uv_index = int(parameter.uv_index or 0)
+            semantic_name = f"texcoord{uv_index}"
+            if semantic_name not in expected_semantics:
+                raise ValueError(
+                    f"Shader layout for material '{material.name}' does not expose {semantic_name} required by slot '{parameter.name}'"
+                )
+            if uv_index >= len(texcoords) or not texcoords[uv_index]:
+                raise ValueError(
+                    f"Mesh for material '{material.name}' is missing UV channel {uv_index} required by slot '{parameter.name}'"
                 )
 
-            if fill_vertex_colours and not colours0 and "colour0" in expected_semantics:
-                colours0 = [(1.0, 1.0, 1.0, 1.0)] * len(positions)
-            if fill_vertex_colours and not colours1 and "colour1" in expected_semantics:
-                colours1 = [(1.0, 1.0, 1.0, 1.0)] * len(positions)
-            if colours0 and len(colours0) != len(positions):
-                raise ValueError("Mesh colours0 length must match positions length")
-            if colours1 and len(colours1) != len(positions):
-                raise ValueError("Mesh colours1 length must match positions length")
-
-            for parameter in material.shader_definition.texture_parameters:
-                if parameter.name.lower() not in material_texture_slots:
-                    continue
-                uv_index = int(parameter.uv_index or 0)
-                semantic_name = f"texcoord{uv_index}"
-                if semantic_name not in expected_semantics:
+        if "tangent" in expected_semantics:
+            if not tangents and generate_tangents:
+                if not texcoords or not texcoords[0]:
                     raise ValueError(
-                        f"Shader layout for material '{material.name}' does not expose {semantic_name} required by slot '{parameter.name}'"
+                        f"Material '{material.name}' requires tangents but mesh has no UV0 to generate them"
                     )
-                if uv_index >= len(texcoords) or not texcoords[uv_index]:
-                    raise ValueError(
-                        f"Mesh for material '{material.name}' is missing UV channel {uv_index} required by slot '{parameter.name}'"
-                    )
-                if len(texcoords[uv_index]) != len(positions):
-                    raise ValueError(
-                        f"Mesh UV channel {uv_index} length must match positions length"
-                    )
+                tangents = generate_vertex_tangents(
+                    positions, normals, texcoords[0], indices
+                )
+            if len(tangents) != len(positions):
+                raise ValueError("Mesh tangents length must match positions length")
+        else:
+            tangents = []
 
-            for channel_index, channel in enumerate(texcoords):
-                if channel and len(channel) != len(positions):
-                    raise ValueError(
-                        f"Mesh UV channel {channel_index} length must match positions length"
-                    )
+        if "colour0" not in expected_semantics:
+            colours0 = []
+        if "colour1" not in expected_semantics:
+            colours1 = []
 
-            if "tangent" in expected_semantics:
-                if not tangents and generate_tangents:
-                    if not texcoords or not texcoords[0]:
-                        raise ValueError(
-                            f"Material '{material.name}' requires tangents but mesh has no UV0 to generate them"
-                        )
-                    tangents = generate_vertex_tangents(
-                        positions, normals, texcoords[0], indices
-                    )
-                if len(tangents) != len(positions):
-                    raise ValueError("Mesh tangents length must match positions length")
-            else:
-                tangents = []
-
-            if "colour0" not in expected_semantics:
-                colours0 = []
-            if "colour1" not in expected_semantics:
-                colours1 = []
+        # Derive channels on the full topology so duplicated split vertices agree.
+        normalized = dataclasses.replace(
+            mesh,
+            positions=positions,
+            indices=indices,
+            normals=normals,
+            texcoords=texcoords,
+            tangents=tangents,
+            colours0=colours0,
+            colours1=colours1,
+            blend_weights=blend_weights,
+            blend_indices=blend_indices,
+            bone_ids=bone_ids,
+        )
+        for mesh in _split_mesh_by_vertex_limit(normalized):
+            positions = list(mesh.positions)
+            indices = list(mesh.indices)
+            normals = list(mesh.normals or ())
+            texcoords = [list(channel) for channel in (mesh.texcoords or ())]
+            tangents = list(mesh.tangents or ())
+            colours0 = list(mesh.colours0 or ())
+            colours1 = list(mesh.colours1 or ())
+            blend_weights = list(mesh.blend_weights or ())
+            blend_indices = list(mesh.blend_indices or ())
 
             if (
                 mesh.declaration_flags is not None
