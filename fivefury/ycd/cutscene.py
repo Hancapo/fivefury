@@ -961,6 +961,8 @@ class YcdCutsceneBuilder:
         return asset
 
     def build_ycds(self, *, operation: AuthoringOperation | None = None) -> list[Ycd]:
+        if operation is not None:
+            operation.checkpoint()
         if not self._clips:
             return []
         result = [self.build_section(section.index, operation=operation) for section in self.sections]
@@ -986,7 +988,7 @@ class YcdCutsceneBuilder:
             encoded = self._validate_section_precision(section, report, asset=asset, operation=operation)
             prepared.append((
                 target_dir / (asset.path or f"{self.name}.ycd"),
-                encoded if encoded is not None else build_ycd_bytes(asset),
+                encoded if encoded is not None else build_ycd_bytes(asset, operation=operation),
             ))
         report.raise_for_errors()
         saved = []
