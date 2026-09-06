@@ -103,7 +103,11 @@ class _Traversal:
         return target
 
     def parse(
-        self, start: int, end: int, stack: list[_Node]
+        self,
+        start: int,
+        end: int,
+        stack: list[_Node],
+        consumed_condition: _Node | None = None,
     ) -> tuple[list[_Node], list[_Node]]:
         roots: list[_Node] = []
         index = start
@@ -132,10 +136,10 @@ class _Traversal:
                 if join > end:
                     raise UnsupportedContract("Branch escapes its enclosing expression")
                 left_roots, left_stack = self.parse(
-                    index + 1, target - int(has_else), stack.copy()
+                    index + 1, target - int(has_else), stack.copy(), condition
                 )
                 right_roots, right_stack = (
-                    self.parse(target, join, stack.copy())
+                    self.parse(target, join, stack.copy(), condition)
                     if has_else
                     else ([], stack.copy())
                 )
@@ -177,7 +181,11 @@ class _Traversal:
             elif op == Op.POP:
                 if not stack:
                     raise ValueError("Expression stack underflow")
-                stack.pop()
+                discarded = stack.pop()
+                if discarded is not consumed_condition and (
+                    discarded.instruction is not None or discarded.children
+                ):
+                    roots.append(discarded)
             elif op in _PUSHES:
                 stack.append(_Node(instruction))
             elif op == Op.DEFINE_SPRING:

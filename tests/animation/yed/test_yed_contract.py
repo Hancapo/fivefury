@@ -227,6 +227,23 @@ def test_access_order_changes_crc_even_with_the_same_dof_set():
     assert item.signature != signature
 
 
+def test_discarded_read_still_contributes_to_the_runtime_contract():
+    item = expression(
+        access(Op.TRACK_GET, bone=1),
+        YedInstruction(Op.POP),
+        access(Op.TRACK_GET, bone=2),
+        access(Op.TRACK_SET, bone=3, track=0),
+    ).recalculate_runtime_contract()
+    words = [(25 << 16) | 1, 3, (25 << 16) | 2]
+    assert item.signature == zlib.crc32(struct.pack("<3I", *words))
+    assert [(t.bone_id, t.is_input) for t in item.tracks] == [
+        (1, True),
+        (3, False),
+        (2, True),
+    ]
+    assert read_yed(create_yed(item).to_bytes()).validate_runtime_contract().valid
+
+
 def test_value_only_edits_still_require_coherent_buffers():
     item = expression(
         YedInstruction(Op.PUSH_FLOAT, operands={"value": 1.0}), access(Op.TRACK_SET)
