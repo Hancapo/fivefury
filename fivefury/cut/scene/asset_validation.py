@@ -11,6 +11,12 @@ from ...authoring import (
     DiagnosticSeverity,
     ValidationReport,
 )
+from ...authoring.operation import (
+    AuthoringCancelled,
+    AuthoringOperation,
+    AuthoringStage,
+    iter_authoring_units,
+)
 from ...awc.structures import Awc, AwcStream
 from ...awc.validation import resolve_awc_playback_stream, validate_awc_stream
 from ...gamefile import GameFileType
@@ -77,9 +83,10 @@ def _extend_scene_report(
     assets: CutsceneAssets,
     scene: CutScene,
     report: ValidationReport,
+    operation: AuthoringOperation | None = None,
 ) -> None:
     report.extend(
-        [issue.for_asset(assets.output_name) for issue in scene.validate(strict=True)]
+        [issue.for_asset(assets.output_name) for issue in scene.validate(strict=True, operation=operation)]
     )
 
 
@@ -216,8 +223,10 @@ class _CutsceneContextValidator:
         report: ValidationReport,
         *,
         owned_audio_references: frozenset[str] = frozenset(),
+        operation: AuthoringOperation | None = None,
     ) -> None:
         self.scene = scene
+        self.operation = operation
         self.context = context
         self.report = report
         self.owned_audio_references = owned_audio_references
@@ -226,10 +235,12 @@ class _CutsceneContextValidator:
         self._vehicle_model_hashes: frozenset[int] | None = None
 
     def validate(self) -> None:
-        self._validate_models()
-        self._validate_animation_skeletons()
-        self._validate_expressions()
-        self._validate_audio()
+        for check in iter_authoring_units(
+            (self._validate_models, self._validate_animation_skeletons,
+             self._validate_expressions, self._validate_audio),
+            self.operation, AuthoringStage.VALIDATE, self.scene.scene_name or "cutscene",
+        ):
+            check()
 
     def resolve_ycds(self) -> None:
         if not any(
@@ -294,8 +305,12 @@ class _CutsceneContextValidator:
         code: str,
         path: str,
     ) -> object | None:
+        if self.operation is not None:
+            self.operation.checkpoint()
         try:
             value = asset.load()
+        except AuthoringCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001
             self.report.issue(
                 code,
@@ -305,6 +320,8 @@ class _CutsceneContextValidator:
                 path=path,
             )
             return None
+        if self.operation is not None:
+            self.operation.checkpoint()
         if value is None:
             self.report.issue(
                 code,
@@ -873,7 +890,10 @@ def _inspect_cutscene_assets(
     assets: CutsceneAssets,
     *,
     context: BuildContext | None = None,
+    operation: AuthoringOperation | None = None,
 ) -> tuple[CutScene, ValidationReport]:
+    if operation is not None:
+        operation.checkpoint()
     _validate_ycd_paths(assets, report := ValidationReport())
     scene = _scene_copy(assets)
     owned_audio_references = _validate_authored_audio(assets, scene, report)
@@ -884,9 +904,15 @@ def _inspect_cutscene_assets(
             context,
             report,
             owned_audio_references=owned_audio_references,
+            operation=operation,
         )
         validator.resolve_ycds()
-    _extend_scene_report(assets, scene, report)
+    for ycd in iter_authoring_units(
+        scene.animation_dictionary.sections if scene.animation_dictionary else (),
+        operation, AuthoringStage.VALIDATE, assets.output_name,
+    ):
+        report.extend(ycd.validate(operation=operation))
+    _extend_scene_report(assets, scene, report, operation)
     if validator is not None:
         validator.validate()
     return scene, report
@@ -896,8 +922,9 @@ def validate_cutscene_assets(
     assets: CutsceneAssets,
     *,
     context: BuildContext | None = None,
+    operation: AuthoringOperation | None = None,
 ) -> ValidationReport:
-    return _inspect_cutscene_assets(assets, context=context)[1]
+    return _inspect_cutscene_assets(assets, context=context, operation=operation)[1]
 
 
 __all__ = ["validate_cutscene_assets"]

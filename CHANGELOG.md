@@ -15,6 +15,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- CUT project builds, validation and exports accept a shared progress/cancellation operation, including YCD clip, track and sequence work.
 - CUT project authoring accepts typed facial tracks for merged body-and-face and facial-only ped animations, with matching runtime bindings across technical sections.
 - Uncompressed YTD section preparation for embedding texture dictionaries in drawable resources.
 
@@ -34,6 +35,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Performance
 
 - Up to 2.9x faster YDR, YDD, and YFT builds with embedded textures, eliminating intermediate texture compression and repeated preparation.
+
+### Fixed
+
+- Multi-file CUT saves prepare outputs before replacement, preserve existing files on cancellation and roll back replacements if a write fails.
 
 ## [0.4.24] - 2026-09-05
 
