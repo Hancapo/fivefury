@@ -435,12 +435,19 @@ def _encode_vertex_bytes_from_declaration(
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
 ) -> tuple[int, int, int, bytes]:
-    semantics = [
-        (semantic, _canonical_component_type(semantic, component_type))
+    component_types = {
+        semantic: _canonical_component_type(semantic, component_type)
         for semantic, component_type in _semantics_from_flags_types(flags, types_value)
-    ]
+    }
+    # Decoded static declarations must not discard subsequently authored skin.
+    for semantic, channel in (
+        (VertexSemantic.BLEND_WEIGHTS, blend_weights),
+        (VertexSemantic.BLEND_INDICES, blend_indices),
+    ):
+        if channel:
+            component_types.setdefault(semantic, _canonical_component_type(semantic))
     return _encode_vertex_bytes(
-        semantics,
+        sorted(component_types.items()),
         positions,
         normals,
         texcoords,

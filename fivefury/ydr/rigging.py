@@ -4,9 +4,17 @@ import dataclasses
 import enum
 from collections.abc import Iterable, Sequence
 
+from ..matrix import (
+    Matrix4,
+    matrix4,
+    transform_normals,
+    transform_positions,
+    transform_tangents,
+)
 from ..vector import Vector3
 from .defs import YdrLod, coerce_lod
 from .model import Ydr, YdrBone, YdrMesh, YdrModel, YdrSkeleton
+from .transforms import skeleton_absolute_transforms
 
 BlendWeights = tuple[float, float, float, float]
 Index4 = tuple[int, int, int, int]
@@ -20,6 +28,8 @@ class RadialRigFalloff(enum.StrEnum):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class RadialBoneRigRule:
+    """A sphere in mesh/object space; omitted centers use the absolute bind pose."""
+
     bone: str | int | YdrBone
     radius: float
     strength: float = 1.0
@@ -49,6 +59,7 @@ class RadialRigReport:
 class _ResolvedRule:
     bone_tag: int
     bone_index: int | None
+    bone_count: int
     center: Vector3
     radius: float
     strength: float
@@ -56,15 +67,19 @@ class _ResolvedRule:
     replace_existing: bool
 
 
-def _bone_center(bone: YdrBone, skeleton: YdrSkeleton | None) -> Vector3:
-    if skeleton is not None and 0 <= int(bone.index) < len(skeleton.transformations):
-        matrix = skeleton.transformations[int(bone.index)]
+def _bone_center(bone: YdrBone, absolute_transforms: Sequence[Matrix4]) -> Vector3:
+    if 0 <= int(bone.index) < len(absolute_transforms):
+        matrix = absolute_transforms[int(bone.index)]
         return Vector3(float(matrix[3][0]), float(matrix[3][1]), float(matrix[3][2]))
+    if bone.parent_index >= 0:
+        raise ValueError("skeleton= or center= is required for a parented radial bone")
     return bone.translation
 
 
 def _resolve_rule(
-    rule: RadialBoneRigRule, skeleton: YdrSkeleton | None
+    rule: RadialBoneRigRule,
+    skeleton: YdrSkeleton | None,
+    absolute_transforms: Sequence[Matrix4],
 ) -> _ResolvedRule:
     bone = rule.bone
     resolved_bone: YdrBone | None = None
@@ -79,19 +94,27 @@ def _resolve_rule(
     else:
         bone_tag = int(bone)
         if skeleton is not None:
-            resolved_bone = skeleton.get_bone_by_tag(
+            resolved_bone = skeleton.get_bone_by_index(
                 bone_tag
-            ) or skeleton.get_bone_by_index(bone_tag)
+            ) or skeleton.get_bone_by_tag(bone_tag)
+            if resolved_bone is None:
+                raise ValueError("radial bone does not exist in the skeleton")
+            bone_tag = int(resolved_bone.tag)
     if rule.center is None and resolved_bone is None:
         raise ValueError(
             "center= is required when radial rigging by numeric bone without a matching skeleton bone"
         )
-    center = rule.center if rule.center is not None else _bone_center(resolved_bone, skeleton)
+    center = (
+        rule.center
+        if rule.center is not None
+        else _bone_center(resolved_bone, absolute_transforms)
+    )
     if not isinstance(center, Vector3):
         raise TypeError("radial rig center must be a Vector3")
     return _ResolvedRule(
         bone_tag=bone_tag,
         bone_index=int(resolved_bone.index) if resolved_bone is not None else None,
+        bone_count=len(skeleton.bones) if skeleton is not None else 0,
         center=center,
         radius=float(rule.radius),
         strength=float(rule.strength),
@@ -149,14 +172,19 @@ def _normalise_influences(
 
 
 def _mesh_palette_index(mesh: YdrMesh, rule: _ResolvedRule) -> tuple[int, bool]:
-    for index, existing in enumerate(mesh.bone_ids):
-        if int(existing) == int(rule.bone_tag):
-            return (index, False)
     if rule.bone_index is not None:
         for index, existing in enumerate(mesh.bone_ids):
             if int(existing) == int(rule.bone_index):
                 return (index, False)
-    mesh.bone_ids.append(int(rule.bone_tag))
+    if rule.bone_index is None or rule.bone_tag >= rule.bone_count:
+        for index, existing in enumerate(mesh.bone_ids):
+            if int(existing) == int(rule.bone_tag):
+                if rule.bone_index is not None:
+                    mesh.bone_ids[index] = rule.bone_index
+                return (index, False)
+    mesh.bone_ids.append(
+        rule.bone_index if rule.bone_index is not None else rule.bone_tag
+    )
     return (len(mesh.bone_ids) - 1, True)
 
 
@@ -204,7 +232,21 @@ def rig_mesh_to_bones_radially(
         raise ValueError("max_influences must be between 1 and 4")
     if not mesh.positions or not rules:
         return RadialRigReport()
-    resolved_rules = [_resolve_rule(rule, skeleton) for rule in rules]
+    absolute_transforms = skeleton_absolute_transforms(skeleton)
+    resolved_rules = [
+        _resolve_rule(rule, skeleton, absolute_transforms) for rule in rules
+    ]
+    return _rig_mesh(mesh, resolved_rules, max_influences, min_weight)
+
+
+def _rig_mesh(
+    mesh: YdrMesh,
+    resolved_rules: Sequence[_ResolvedRule],
+    max_influences: int,
+    min_weight: float,
+) -> RadialRigReport:
+    if not mesh.positions or not resolved_rules:
+        return RadialRigReport()
     weights, indices = _default_skin(mesh)
     vertices_changed = 0
     bones_added = 0
@@ -259,27 +301,64 @@ def rig_ydr_to_bones_radially(
     max_influences: int = 4,
     min_weight: float = 0.0001,
 ) -> RadialRigReport:
+    """Rig in drawable object space, baking affected rigid models into that space."""
+    if max_influences < 1 or max_influences > 4:
+        raise ValueError("max_influences must be between 1 and 4")
+    if not rules:
+        return RadialRigReport()
     active_skeleton = skeleton if skeleton is not None else ydr.skeleton
+    absolute_transforms = skeleton_absolute_transforms(active_skeleton)
+    resolved_rules = [
+        _resolve_rule(rule, active_skeleton, absolute_transforms) for rule in rules
+    ]
     total_meshes = 0
     total_vertices = 0
     total_bones_added = 0
     for candidate in _iter_models(ydr, lod=lod):
         if model is not None and int(candidate.index) != int(model):
             continue
+        meshes = candidate.meshes
+        if not candidate.has_skin and active_skeleton is not None:
+            bone = active_skeleton.get_bone_by_index(candidate.bone_index)
+            if bone is None:
+                raise ValueError("rigid model bone index is outside the skeleton")
+            # Skeleton matrices use row vectors; shared geometry math uses columns.
+            transform = matrix4(absolute_transforms[bone.index]).mT
+            meshes = [
+                dataclasses.replace(
+                    mesh,
+                    positions=transform_positions(mesh.positions, transform),
+                    normals=transform_normals(mesh.normals, transform),
+                    tangents=transform_tangents(mesh.tangents, transform),
+                    bone_ids=[int(bone.index)],
+                    blend_weights=[(1.0, 0.0, 0.0, 0.0)] * len(mesh.positions),
+                    blend_indices=[(0, 0, 0, 0)] * len(mesh.positions),
+                )
+                for mesh in candidate.meshes
+            ]
         model_vertices = 0
-        for mesh in candidate.meshes:
-            report = rig_mesh_to_bones_radially(
+        model_bones_added = 0
+        for mesh in meshes:
+            report = _rig_mesh(
                 mesh,
-                rules,
-                skeleton=active_skeleton,
-                max_influences=max_influences,
-                min_weight=min_weight,
+                resolved_rules,
+                max_influences,
+                min_weight,
             )
             total_meshes += report.meshes
             total_vertices += report.vertices
-            total_bones_added += report.bones_added
+            model_bones_added += report.bones_added
             model_vertices += report.vertices
+        if model_vertices or meshes is candidate.meshes:
+            total_bones_added += model_bones_added
         if model_vertices and not candidate.has_skin:
+            for original, rigged in zip(candidate.meshes, meshes, strict=True):
+                original.positions = rigged.positions
+                original.normals = rigged.normals
+                original.tangents = rigged.tangents
+                original.bone_ids = rigged.bone_ids
+                original.blend_weights = rigged.blend_weights
+                original.blend_indices = rigged.blend_indices
             candidate.set_skin_binding()
     return RadialRigReport(
         meshes=total_meshes, vertices=total_vertices, bones_added=total_bones_added

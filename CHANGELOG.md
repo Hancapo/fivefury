@@ -16,6 +16,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Normalizing drawable root bones preserves mesh weights when a bone tag overlaps a skeleton index.
 - Drawable mesh splitting preserves generated normals and tangents at shared vertices in Legacy and Enhanced.
 - Optional empty vertex and UV channels are treated as absent during splitting; nonempty channel length mismatches fail before generation or remapping.
+- Radial bone rigging uses composed object-space bind centers, resolves the pose once per operation, and preserves rigid-model placement when converting to skinning.
+- Radial palettes prefer skeleton indices over ambiguous tags; decoded static vertex declarations retain newly authored skin channels on write.
 
 ## [0.4.24] - 2026-09-05
 
