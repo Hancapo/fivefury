@@ -13,8 +13,32 @@ from fivefury.resource import (
     get_resource_flags_from_size,
     layout_resource_sections,
     parse_rsc7,
+    prepare_rsc7_sections,
     read_rsc7_header,
 )
+
+
+@pytest.mark.parametrize("version", [5, 13, 165])
+def test_prepare_resource_sections_preserves_padding_and_explicit_flags(version):
+    sections = prepare_rsc7_sections(
+        b"system", version=version, graphics_data=b"graphics",
+        system_alignment=0x200, graphics_alignment=0x200,
+    )
+    assert sections.system_data == b"system".ljust(sections.header.system_size, b"\0")
+    assert sections.graphics_data == b"graphics".ljust(sections.header.graphics_size, b"\0")
+    assert prepare_rsc7_sections(
+        sections.system_data, version=version, graphics_data=sections.graphics_data,
+        system_flags=sections.header.system_flags, graphics_flags=sections.header.graphics_flags,
+    ) == sections
+    header, payload = parse_rsc7(sections.to_bytes())
+    assert header == sections.header
+    assert payload == sections.system_data + sections.graphics_data
+
+
+@pytest.mark.parametrize("section", ["system", "graphics"])
+def test_prepare_resource_sections_rejects_undersized_flags(section):
+    with pytest.raises(ValueError, match=f"{section}_data is larger"):
+        prepare_rsc7_sections(b"system", graphics_data=b"graphics", **{f"{section}_flags": 0})
 
 
 def _compress_with_zero_history(data: bytes) -> bytes:

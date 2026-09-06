@@ -14,6 +14,7 @@ from ..bounds import (
 from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
+    ResourceSections,
     ResourceWriter,
     build_rsc7,
     get_resource_total_page_count,
@@ -21,7 +22,7 @@ from ..resource import (
 )
 from ..vector import Vector4
 from ..ydr import Ydr, YdrBuild, YdrLight
-from ..ydr.builder import _write_drawable_payload
+from ..ydr.builder import _prepare_embedded_texture_dictionary, _write_drawable_payload
 from ..ydr.gen9 import load_gen9_shader_library
 from ..ydr.prepare import (
     PreparedLods,
@@ -88,6 +89,7 @@ class _PreparedFragmentDrawable:
     build: YdrBuild
     materials: list[PreparedMaterial]
     lods: PreparedLods
+    texture_sections: ResourceSections | None = None
     fragment: YftFragmentDrawable | YftFragmentDrawableBuild | None = None
     source_id: int = 0
     root_offset: int = 0
@@ -432,6 +434,10 @@ def _prepared_drawables(
         )
     if main is not None:
         _share_fragment_shader_group(main, [*extras, *physics])
+    # Shader sharing merges secondary textures into the main dictionary.
+    for item in [main, *extras, cloth, *physics]:
+        if item is not None:
+            item.texture_sections = _prepare_embedded_texture_dictionary(item.build, enhanced=enhanced)
     return main, extras, cloth, physics
 
 
@@ -718,6 +724,7 @@ def _build_yft_payload(
             item.lods,
             page_counts,
             root_off=item.root_offset,
+            texture_sections=item.texture_sections,
             runtime_headers=runtime_headers.drawable,
             enhanced=runtime_headers.enhanced,
             write_pages=False,

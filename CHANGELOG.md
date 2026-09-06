@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Uncompressed YTD section preparation for embedding texture dictionaries in drawable resources.
+
 ### Changed
 
 - Drawable bone bindings made from bone objects or names store skeleton indices; numeric palettes resolve indices before tags.
@@ -18,6 +22,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - Optional empty vertex and UV channels are treated as absent during splitting; nonempty channel length mismatches fail before generation or remapping.
 - Radial bone rigging uses composed object-space bind centers, resolves the pose once per operation, and preserves rigid-model placement when converting to skinning.
 - Radial palettes prefer skeleton indices over ambiguous tags; decoded static vertex declarations retain newly authored skin channels on write.
+
+### Performance
+
+- Up to 2.9x faster YDR, YDD, and YFT builds with embedded textures, eliminating intermediate texture compression and repeated preparation.
 
 ## [0.4.24] - 2026-09-05
 

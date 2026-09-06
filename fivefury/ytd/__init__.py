@@ -9,9 +9,10 @@ from ..resource import (
     RSC7_MAGIC,
     ResourceBlockSpan,
     ResourceHeader,
-    build_rsc7,
+    ResourceSections,
     layout_resource_sections,
     physical_to_offset,
+    prepare_rsc7_sections,
     split_rsc7_sections,
     virtual_to_offset,
 )
@@ -161,7 +162,7 @@ def _parse_gen9_ytd(data: bytes) -> Ytd:
     return _parse_gen9_texture_dictionary_at(virtual_data, physical_data, 0)
 
 
-def _build_legacy_ytd(textures: list[Texture]) -> bytes:
+def _prepare_legacy_ytd(textures: list[Texture]) -> ResourceSections:
     if not textures:
         raise ValueError("Cannot build a YTD with zero textures")
     entries = sorted(textures, key=lambda item: jenk_hash(item.name))
@@ -228,10 +229,10 @@ def _build_legacy_ytd(textures: list[Texture]) -> bytes:
 
     vbuf[pagemap_offset] = 1
     vbuf[pagemap_offset + 1] = 1
-    return build_rsc7(bytes(vbuf), version=_YTD_RSC7_VERSION_LEGACY, graphics_data=bytes(pbuf))
+    return prepare_rsc7_sections(bytes(vbuf), version=_YTD_RSC7_VERSION_LEGACY, graphics_data=bytes(pbuf))
 
 
-def _build_gen9_ytd(textures: list[Texture]) -> bytes:
+def _prepare_gen9_ytd(textures: list[Texture]) -> ResourceSections:
     if not textures:
         raise ValueError("Cannot build a YTD with zero textures")
     entries = sorted(textures, key=lambda item: jenk_hash(item.name))
@@ -352,7 +353,7 @@ def _build_gen9_ytd(textures: list[Texture]) -> bytes:
         ],
         version=_YTD_RSC7_VERSION_GEN9,
     )
-    return build_rsc7(
+    return prepare_rsc7_sections(
         system_data,
         version=_YTD_RSC7_VERSION_GEN9,
         graphics_data=graphics_data,

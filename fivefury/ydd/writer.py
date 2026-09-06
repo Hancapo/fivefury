@@ -10,13 +10,18 @@ from ..common import atomic_write_bytes
 from ..game_target import GameTarget
 from ..resource import (
     ResourceBlockSpan,
+    ResourceSections,
     ResourceWriter,
     build_rsc7,
     get_resource_total_page_count,
     layout_resource_sections,
 )
 from ..ydr import YdrBuild
-from ..ydr.builder import _ROOT_SIZE, _write_drawable_payload
+from ..ydr.builder import (
+    _ROOT_SIZE,
+    _prepare_embedded_texture_dictionary,
+    _write_drawable_payload,
+)
 from ..ydr.gen9 import ShaderGen9Library, load_gen9_shader_library
 from ..ydr.prepare import PreparedLods, PreparedMaterial, prepare_build
 from ..ydr.shaders import ShaderLibrary, load_shader_library
@@ -45,6 +50,7 @@ class _PreparedYddDrawable:
     build: YdrBuild
     materials: list[PreparedMaterial]
     lods: PreparedLods
+    texture_sections: ResourceSections | None
 
 
 def _drawable_build(entry: YddDrawable, *, version: int) -> YdrBuild:
@@ -96,6 +102,7 @@ def _prepare_ydd_drawables(
                 build=build,
                 materials=materials,
                 lods=lods,
+                texture_sections=_prepare_embedded_texture_dictionary(build, enhanced=enhanced),
             )
         )
     return prepared
@@ -157,6 +164,7 @@ def _build_ydd_payload(
             item.lods,
             page_counts,
             root_off=root_off,
+            texture_sections=item.texture_sections,
             drawable_file_vft=profile.drawable_headers.drawable,
             write_pages=False,
             runtime_headers=profile.drawable_headers,

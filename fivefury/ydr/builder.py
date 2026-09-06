@@ -8,11 +8,11 @@ from ..bounds import gen9_bound_file_vft, write_bound_resource
 from ..common import atomic_write_bytes
 from ..resource import (
     ResourceBlockSpan,
+    ResourceSections,
     ResourceWriter,
     build_rsc7,
     get_resource_total_page_count,
     layout_resource_sections,
-    split_rsc7_sections,
 )
 from .build_types import (
     YdrBuild,
@@ -127,26 +127,33 @@ def _embedded_texture_game(source: YdrBuild, *, enhanced: bool) -> str:
     return 'gta5_enhanced' if enhanced else 'gta5'
 
 
-def _write_embedded_texture_dictionary(
-    system: ResourceWriter,
-    graphics: GraphicsWriter,
+def _prepare_embedded_texture_dictionary(
     source: YdrBuild,
     *,
     enhanced: bool,
-) -> int:
+) -> ResourceSections | None:
     if source.embedded_textures is None or not source.embedded_textures.textures:
-        return 0
-    ytd_bytes = source.embedded_textures.to_bytes(
+        return None
+    return source.embedded_textures.prepare_sections(
         game=_embedded_texture_game(source, enhanced=enhanced)
     )
-    header, virtual_data, graphics_data = split_rsc7_sections(ytd_bytes)
+
+
+def _write_embedded_texture_dictionary(
+    system: ResourceWriter,
+    graphics: GraphicsWriter,
+    sections: ResourceSections | None,
+) -> int:
+    if sections is None:
+        return 0
+    virtual_data, graphics_data = sections.system_data, sections.graphics_data
     dict_offset = system.alloc(len(virtual_data), 16)
     graphics_offset = graphics.alloc(graphics_data, 16, relocate_pointers=False) if graphics_data else 0
     relocated = _relocate_embedded_texture_dictionary(
         virtual_data,
         dict_offset=dict_offset,
         graphics_offset=graphics_offset,
-        enhanced=int(header.version) == 5,
+        enhanced=int(sections.header.version) == 5,
     )
     system.write(dict_offset, relocated)
     return dict_offset
@@ -161,6 +168,7 @@ def _write_drawable_payload(
     page_counts: tuple[int, int],
     *,
     root_off: int,
+    texture_sections: ResourceSections | None,
     drawable_file_vft: int | None = None,
     write_pages: bool = True,
     write_extensions: bool = True,
@@ -214,8 +222,7 @@ def _write_drawable_payload(
     texture_dictionary_off = _write_embedded_texture_dictionary(
         system,
         graphics,
-        source,
-        enhanced=enhanced,
+        texture_sections,
     )
 
     prepared_model_blocks_by_lod: dict[YdrLod, list[PreparedModelBlock]] = {}
@@ -312,6 +319,7 @@ def _build_system_payload(
     prepared_lods,
     page_counts: tuple[int, int],
     *,
+    texture_sections: ResourceSections | None,
     recalculate_skeleton_hashes: bool = True,
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
     system = ResourceWriter(initial_size=align(_ROOT_SIZE, 16))
@@ -325,6 +333,7 @@ def _build_system_payload(
         prepared_lods,
         page_counts,
         root_off=0,
+        texture_sections=texture_sections,
         write_pages=True,
         recalculate_skeleton_hashes=recalculate_skeleton_hashes,
         runtime_headers=(GEN9_DRAWABLE_HEADERS if enhanced else LEGACY_DRAWABLE_HEADERS),
@@ -388,6 +397,7 @@ def build_ydr_bytes(
         fill_vertex_colours=fill_vertex_colours,
     )
 
+    texture_sections = _prepare_embedded_texture_dictionary(source, enhanced=enhanced)
     page_counts = (0, 0)
     system_data = b''
     graphics_data = b''
@@ -399,6 +409,7 @@ def build_ydr_bytes(
             prepared_materials,
             prepared_lods,
             page_counts,
+            texture_sections=texture_sections,
             recalculate_skeleton_hashes=recalculate_skeleton_hashes,
         )
         system_data, graphics_data, system_flags, graphics_flags = layout_resource_sections(

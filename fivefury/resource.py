@@ -427,6 +427,18 @@ class ResourceHeader:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class ResourceSections:
+    """Uncompressed, page-padded RSC7 sections with resource-relative pointers."""
+
+    header: ResourceHeader
+    system_data: bytes
+    graphics_data: bytes
+
+    def to_bytes(self) -> bytes:
+        return self.header.pack() + compress_resource_stream(self.system_data + self.graphics_data)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class ResourceChunk:
     address: int
     size: int
@@ -676,7 +688,7 @@ def write_resource_pages_info(writer: ResourceWriter, pages_info: ResourcePagesI
     return offset
 
 
-def build_rsc7(
+def prepare_rsc7_sections(
     system_data: bytes | object,
     *,
     version: int = 2,
@@ -685,7 +697,8 @@ def build_rsc7(
     graphics_alignment: int | None = None,
     system_flags: int | None = None,
     graphics_flags: int | None = None,
-) -> bytes:
+) -> ResourceSections:
+    """Apply RSC7 size flags and padding without serializing or compressing."""
     if not isinstance(system_data, (bytes, bytearray, memoryview)):
         if hasattr(system_data, "to_bytes"):
             system_data = system_data.to_bytes()  # type: ignore[assignment]
@@ -712,6 +725,26 @@ def build_rsc7(
         system_data = system_data + (b"\x00" * (system_target_size - len(system_data)))
     if len(graphics_data) < graphics_target_size:
         graphics_data = graphics_data + (b"\x00" * (graphics_target_size - len(graphics_data)))
-    payload = system_data + graphics_data
     header = ResourceHeader(version=version, system_flags=system_flags, graphics_flags=graphics_flags)
-    return header.pack() + compress_resource_stream(payload)
+    return ResourceSections(header, system_data, bytes(graphics_data))
+
+
+def build_rsc7(
+    system_data: bytes | object,
+    *,
+    version: int = 2,
+    graphics_data: bytes = b"",
+    system_alignment: int | None = None,
+    graphics_alignment: int | None = None,
+    system_flags: int | None = None,
+    graphics_flags: int | None = None,
+) -> bytes:
+    return prepare_rsc7_sections(
+        system_data,
+        version=version,
+        graphics_data=graphics_data,
+        system_alignment=system_alignment,
+        graphics_alignment=graphics_alignment,
+        system_flags=system_flags,
+        graphics_flags=graphics_flags,
+    ).to_bytes()

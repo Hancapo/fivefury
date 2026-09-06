@@ -7,6 +7,7 @@ from ..authoring.context import BuildContext
 from ..authoring.diagnostics import ValidationReport
 from ..common import atomic_write_bytes
 from ..game_target import GameTarget, coerce_game_target
+from ..resource import ResourceSections
 from .defs import (
     _FORMAT_TO_DX9,
     _FORMAT_TO_RSC8,
@@ -252,16 +253,20 @@ class Ytd:
             extracted.append(texture.save_dds(output_dir / f"{texture.name}.dds"))
         return extracted
 
-    def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
-        from . import _build_gen9_ytd, _build_legacy_ytd
+    def prepare_sections(self, *, game: str | GameTarget | None = None) -> ResourceSections:
+        """Validate and prepare relocatable YTD sections without an RSC7 stream."""
+        from . import _prepare_gen9_ytd, _prepare_legacy_ytd
 
         target_game = coerce_game_target(game or self.game)
         self._validate_for_target(target_game).raise_for_errors()
         if target_game is GameTarget.GTA5:
-            return _build_legacy_ytd(self.textures)
+            return _prepare_legacy_ytd(self.textures)
         if target_game is GameTarget.GTA5_ENHANCED:
-            return _build_gen9_ytd(self.textures)
+            return _prepare_gen9_ytd(self.textures)
         raise ValueError(f"Unsupported YTD target game: {target_game.value}")
+
+    def to_bytes(self, *, game: str | GameTarget | None = None) -> bytes:
+        return self.prepare_sections(game=game).to_bytes()
 
     def save(self, path: str | Path, *, game: str | GameTarget | None = None) -> Path:
         return atomic_write_bytes(path, self.to_bytes(game=game))
