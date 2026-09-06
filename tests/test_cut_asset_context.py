@@ -174,14 +174,30 @@ def test_cutscene_context_validates_ped_expression_assets() -> None:
     assert report.valid
 
 
+def test_project_facial_export_uses_expression_asset_context() -> None:
+    from fivefury import CutsceneProject, YcdFacialTrackSet
+
+    project = CutsceneProject.create("facial_context", duration=2)
+    ped = project.scene.ped("actor", model_name="ped_face", ytyp_name="ped_pack")
+    project.animate(ped, facial=YcdFacialTrackSet(controls={7: 0.5}))
+    project.camera()
+    assets = project.build()
+    assert assets.build_files(context=_facial_context())["facial_context.cut"]
+    assert "cut.binding.yed.expression_unresolved" in {
+        issue.code
+        for issue in assets.validate(
+            context=_facial_context(expression_name="missing")
+        ).errors
+    }
+
+
 def test_cutscene_context_reports_missing_yed_expression() -> None:
     report = _facial_cutscene().validate(
         context=_facial_context(expression_name="another_expression")
     )
 
     assert any(
-        issue.code == "cut.binding.yed.expression_unresolved"
-        for issue in report.errors
+        issue.code == "cut.binding.yed.expression_unresolved" for issue in report.errors
     )
 
 
