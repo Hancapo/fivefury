@@ -44,6 +44,7 @@ from .kinds import coerce_game_file_kind as _coerce_kind
 from .paths import path_name as _path_name
 from .paths import path_stem as _path_stem
 from .scan import GameFileCacheScanMixin, _coerce_folder_prefixes
+from .registrations import AssetRegistration
 from .texture_graph import TextureDictionaryGraph
 from .textures import TextureCatalog
 from .views import (
@@ -208,6 +209,8 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
 
     def _invalidate_views(self) -> None:
         self._view_generation += 1
+        self._ped_init_asset_index = None
+        self._ped_outfit_catalog_cache.clear()
         self._kind_dict_views.clear()
         self._archetype_view = None
         self._texture_parent_view = None
@@ -453,6 +456,28 @@ class GameFileCache(GameFileCacheScanMixin, GameFileCacheAssetMixin, GameFileCac
         if asset_id < 0 or asset_id >= self.asset_count:
             raise IndexError(asset_id)
         return AssetRecord.from_cache(self, asset_id)
+
+    def register_metadata(self, registration: AssetRegistration) -> AssetRecord:
+        """Apply an explicit content type to an already indexed file."""
+        asset = self.find_path(registration.path)
+        if asset is None:
+            raise FileNotFoundError(registration.path)
+        self._register_asset(
+            path=asset.path,
+            kind=registration.kind,
+            size=asset.size,
+            uncompressed_size=asset.uncompressed_size,
+            entry=asset.entry,
+            archive=asset.archive,
+            loose_path=asset.loose_path,
+            flags=(int(asset.is_loose) | (int(asset.is_resource) << 1) | (int(asset.is_encrypted) << 2)),
+            archive_encryption=asset.archive_encryption,
+        )
+        self.files.pop(asset.key, None)
+        self._clear_payload_cache()
+        self._invalidate_views()
+        self.last_scan = None
+        return self._record_from_id(asset.id)
 
     def register_archive(self, archive: RpfArchive, *, source_prefix: str | None = None) -> None:
         archive.load_nested_archives(recursive=True)

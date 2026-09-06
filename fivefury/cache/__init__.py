@@ -1,5 +1,6 @@
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .core import GameFileCache
+from .registrations import AssetRegistration
 from .cutscene_preparation import (
     CutsceneIndexPreparation,
     CutsceneIndexPreparationStatus,
@@ -35,6 +36,7 @@ from .views import AssetRecord, ScanStats
 
 __all__ = [
     "AssetRecord",
+    "AssetRegistration",
     "GameFileCache",
     "GameFileCacheAssetMixin",
     "GameFileCacheIOMixin",

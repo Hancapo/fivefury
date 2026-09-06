@@ -41,7 +41,7 @@ def _load_file(
             )
         )
         return None
-    if result is None:
+    if result is None or (isinstance(result, GameFile) and not result.diagnostics.valid):
         issues.append(
             CutsceneResolveIssue(
                 severity="warning",
@@ -51,4 +51,5 @@ def _load_file(
                 object_id=object_id,
             )
         )
+        return None
     return result

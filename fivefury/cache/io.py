@@ -59,9 +59,10 @@ def decode_game_file_payload(
     *,
     raw: bytes | None = None,
     diagnostics: ValidationReport | None = None,
+    kind: GameFileType | None = None,
 ) -> tuple[Any, GameFileType]:
     try:
-        return _decode_game_file_payload(path, data, raw=raw)
+        return _decode_game_file_payload(path, data, raw=raw, kind=kind)
     except Exception as exc:  # noqa: BLE001 - decoder failures become structured diagnostics.
         report = ValidationReport() if diagnostics is None else diagnostics
         report.issue(
@@ -69,7 +70,7 @@ def decode_game_file_payload(
         )
         if diagnostics is None:
             report.raise_for_errors()
-        return None, guess_game_file_type(path)
+        return None, guess_game_file_type(path) if kind is None else kind
 
 
 def _decode_game_file_payload(
@@ -77,7 +78,12 @@ def _decode_game_file_payload(
     data: bytes,
     *,
     raw: bytes | None = None,
+    kind: GameFileType | None = None,
 ) -> tuple[Any, GameFileType]:
+    if kind is GameFileType.PEDS:
+        return _decode_dynamic(data, module_name="fivefury.ymt", attribute="read_ped_metadata", kind=kind)
+    if kind is GameFileType.EXPRESSION_SETS:
+        return read_ped_expression_sets(data, source_path=path), kind
     ext = Path(path).suffix.lower()
     name = Path(path).name.lower()
     match name:
@@ -91,6 +97,8 @@ def _decode_game_file_payload(
             return read_ped_expression_sets(data, source_path=path), GameFileType.EXPRESSION_SETS
         case "gtxd.meta":
             return read_gtxd(data), GameFileType.GTXD
+        case "peds.meta":
+            return _decode_dynamic(data, module_name="fivefury.ymt", attribute="read_ped_metadata", kind=GameFileType.PEDS)
     vehicle_meta_type = guess_game_file_type(path)
     if vehicle_meta_type is GameFileType.REL:
         return read_rel(data, path=path), GameFileType.REL
@@ -276,7 +284,7 @@ class GameFileCacheIOMixin:
             standalone_resource = asset.extension in _STANDALONE_RESOURCE_EXTENSIONS
             logical_native = (standalone_native if standalone_resource else
                               self._logical_archive_bytes_from_standalone(asset, standalone_native))
-            game_file = GameFile.from_bytes(logical_native, path=asset.path)
+            game_file = GameFile.from_bytes(logical_native, path=asset.path, kind=asset.kind)
             entry = asset.entry if isinstance(asset.entry, RpfFileEntry) else None
             archive = asset.archive if isinstance(asset.archive, RpfArchive) else None
             game_file.entry = entry
@@ -295,7 +303,7 @@ class GameFileCacheIOMixin:
                 logical = entry._archive.read_entry_standalone(entry)
             else:
                 logical = entry.read(logical=True)
-            game_file = GameFile.from_bytes(logical, path=asset.path)
+            game_file = GameFile.from_bytes(logical, path=asset.path, kind=asset.kind)
             game_file.entry = entry if isinstance(entry, RpfFileEntry) else None
             game_file.archive = entry._archive
             game_file.raw = stored
@@ -307,7 +315,7 @@ class GameFileCacheIOMixin:
             return None
         self._log(f"read file {asset.path}")
         data = loose.read_bytes()
-        game_file = GameFile.from_bytes(data, path=asset.path)
+        game_file = GameFile.from_bytes(data, path=asset.path, kind=asset.kind)
         self._remember_file(asset.key, game_file)
         return game_file
 

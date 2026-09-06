@@ -10,21 +10,25 @@ from .sidecars import (
     sidecar_path,
 )
 
-_MAGIC = b"FFPED001"
+_MAGIC = b"FFPED002"
 
 
 def ped_init_index_path(index_path: str | Path) -> Path:
     return sidecar_path(index_path, "ped")
 
 
-def load_ped_init_index(index_path: str | Path) -> UInt32MultiMap | None:
+def load_ped_init_index(index_path: str | Path | None) -> UInt32MultiMap | None:
+    if index_path is None:
+        return None
     return load_uint32_multimap(index_path, "ped", _MAGIC)
 
 
 def save_ped_init_index(
-    index_path: str | Path,
+    index_path: str | Path | None,
     values: Mapping[int, tuple[int, ...]],
 ) -> Path | None:
+    if index_path is None:
+        return None
     return save_uint32_pairs(
         index_path,
         "ped",

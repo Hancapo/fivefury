@@ -178,11 +178,12 @@ def _prepare_ped_init(
 ) -> tuple[CutsceneIndexPreparationStatus, tuple[Diagnostic, ...]]:
     from ..cut.resolution.runtime import check_cutscene_resolution_cancelled
     from .ped_index import load_ped_init_index, save_ped_init_index
+    from .ped_metadata import ped_metadata_assets, ped_metadata_from_file, ped_metadata_index_path
     from .precedence import asset_source_rank
 
     if cache._ped_init_asset_index is not None:
         return CutsceneIndexPreparationStatus.READY, ()
-    cached = load_ped_init_index(cache.get_index_cache_path())
+    cached = load_ped_init_index(ped_metadata_index_path(cache))
     if cached is not None:
         cache._ped_init_asset_index = cached
         return CutsceneIndexPreparationStatus.LOADED, ()
@@ -190,7 +191,7 @@ def _prepare_ped_init(
     diagnostics: list[Diagnostic] = []
     indexed: dict[int, tuple[int, list[int]]] = {}
     for asset in sorted(
-        cache.find_assets("peds.ymt", kind=GameFileType.YMT),
+        ped_metadata_assets(cache),
         key=asset_source_rank,
     ):
         check_cutscene_resolution_cancelled(cancellation)
@@ -208,8 +209,14 @@ def _prepare_ped_init(
                 )
             )
             continue
-        metadata = getattr(getattr(game_file, "parsed", None), "ped_metadata", None)
+        metadata = ped_metadata_from_file(game_file)
         if metadata is None:
+            diagnostics.append(Diagnostic(
+                code="cut.preparation.ped.unreadable",
+                message="Unable to decode ped init metadata",
+                severity=DiagnosticSeverity.WARNING,
+                asset=asset.path,
+            ))
             continue
         tier = asset_source_rank(asset)[0]
         for item in metadata.init_datas:
@@ -225,8 +232,9 @@ def _prepare_ped_init(
         model_hash: tuple(asset_ids)
         for model_hash, (_tier, asset_ids) in indexed.items()
     }
-    save_ped_init_index(cache.get_index_cache_path(), values)
-    cache._ped_init_asset_index = values
+    if not diagnostics:
+        save_ped_init_index(ped_metadata_index_path(cache), values)
+        cache._ped_init_asset_index = values
     return CutsceneIndexPreparationStatus.REBUILT, tuple(diagnostics)
 
 
@@ -245,6 +253,8 @@ def _prepare_index(
 
 
 def _index_work(cache: GameFileCache) -> dict[CutsceneResolutionIndex, int]:
+    from .ped_metadata import ped_metadata_assets
+
     return {
         CutsceneResolutionIndex.ASSET_TEXTURES: sum(
             1 for _ in cache.iter_assets(GameFileType.YTYP)
@@ -258,9 +268,7 @@ def _index_work(cache: GameFileCache) -> dict[CutsceneResolutionIndex, int]:
         CutsceneResolutionIndex.REL_SOUNDS: sum(
             1 for _ in cache.iter_assets(GameFileType.REL)
         ),
-        CutsceneResolutionIndex.PED_INIT: len(
-            cache.find_assets("peds.ymt", kind=GameFileType.YMT)
-        ),
+        CutsceneResolutionIndex.PED_INIT: len(ped_metadata_assets(cache)),
     }
 
 

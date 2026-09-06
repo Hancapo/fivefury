@@ -7,9 +7,17 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Added
+
+- Explicit ped metadata and expression-set registrations for custom file names, with typed XML and binary ped-init reading.
+
 ### Changed
 
 - Tests are grouped by domain, with shared helpers separated from test modules and binary fixtures replaced by deterministic synthetic inputs.
+
+### Fixed
+
+- Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
 
 ## [0.4.25] - 2026-09-06
 
