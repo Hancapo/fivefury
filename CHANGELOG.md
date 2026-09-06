@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.4.24] - 2026-09-05
+
 ### Breaking Changes
 
 - YMAP entity flag names use their correct bit positions. Existing numeric flags remain unchanged; runtime IPL light flags have separate explicit names.
