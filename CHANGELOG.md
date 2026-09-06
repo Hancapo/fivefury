@@ -25,6 +25,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Multi-file CUT saves prepare outputs before replacement, preserve existing files on cancellation and roll back replacements if a write fails.
 - Normalizing drawable root bones preserves mesh weights when a bone tag overlaps a skeleton index.
 - Drawable mesh splitting preserves generated normals and tangents at shared vertices in Legacy and Enhanced.
 - Optional empty vertex and UV channels are treated as absent during splitting; nonempty channel length mismatches fail before generation or remapping.
@@ -35,10 +36,6 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Performance
 
 - Up to 2.9x faster YDR, YDD, and YFT builds with embedded textures, eliminating intermediate texture compression and repeated preparation.
-
-### Fixed
-
-- Multi-file CUT saves prepare outputs before replacement, preserve existing files on cancellation and roll back replacements if a write fails.
 
 ## [0.4.24] - 2026-09-05
 
