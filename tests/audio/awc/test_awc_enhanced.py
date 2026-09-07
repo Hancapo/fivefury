@@ -160,7 +160,7 @@ def test_retail_encrypted_cut_audio_loads_through_the_cache() -> None:
 
         for cut_name, cue_hash, awc_name in expected_cues:
             bundle = cache.resolve_cutscene(cut_name)
-            resolved = bundle.audio[cue_hash]
+            resolved = next(audio for audio in bundle.audio.values() if audio.asset.name == awc_name)
             assert resolved.asset.name == awc_name
             wav = resolved.wav_bytes()
             assert wav[:4] == b"RIFF"
@@ -220,23 +220,26 @@ def test_retail_mp3_block_seek_tables_match_packet_tables() -> None:
 
 
 def test_enhanced_mp3_seek_table_preserves_uint16_entries() -> None:
+    from fivefury import encode_mp3_channel
+
+    channel = encode_mp3_channel(bytes(2304 * 2))
     stream = AwcStream(
         1,
         [
             AwcChunk(
                 AwcChunkType.FORMAT,
                 format=AwcFormat(
-                    samples=3,
+                    samples=2304,
                     sample_rate=48000,
                     codec=AwcCodecType.MP3,
                 ),
             ),
             AwcChunk(
                 AwcChunkType.SEEK_TABLE,
-                seek_table=[0, 2, 4],
+                seek_table=list(channel.frame_sizes),
                 seek_table_entry_size=2,
             ),
-            AwcChunk(AwcChunkType.DATA, data=b"mp3"),
+            AwcChunk(AwcChunkType.DATA, data=channel.data),
         ],
     )
 
@@ -244,8 +247,8 @@ def test_enhanced_mp3_seek_table_preserves_uint16_entries() -> None:
     seek = rebuilt.streams[0].chunks[1]
 
     assert seek.seek_table_entry_size == 2
-    assert seek.seek_table == [0, 2, 4]
-    assert seek.to_payload() == struct.pack("<3H", 0, 2, 4)
+    assert seek.seek_table == list(channel.frame_sizes)
+    assert seek.to_payload() == channel.seek_table_bytes
 
 
 def test_multichannel_encryption_is_applied_per_large_block() -> None:

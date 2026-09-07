@@ -598,6 +598,8 @@ class Awc:
     path: str | None = None
     endian: str = "<"
     whole_file_encrypted: bool = False
+    _original_bytes: bytes | None = field(default=None, repr=False, compare=False)
+    _original_state: tuple | None = field(default=None, repr=False, compare=False)
 
     def __init__(
         self,
@@ -615,6 +617,8 @@ class Awc:
         self.path = str(path) if path is not None else None
         self.endian = endian
         self.whole_file_encrypted = bool(whole_file_encrypted)
+        self._original_bytes = None
+        self._original_state = None
 
     @classmethod
     def from_bytes(
@@ -982,7 +986,6 @@ def _awc_multichannel_source_stream(channel_streams: list[AwcStream]) -> AwcStre
     data, seek_table, block_count = _build_multichannel_data(
         [stream.channel_pcm or b"" for stream in channel_streams],
         block_size=block_size,
-        codec=AwcCodecType.PCM,
     )
     stream_format = AwcStreamFormatChunk(
         block_count=block_count,
@@ -1004,13 +1007,11 @@ def _awc_multichannel_source_stream(channel_streams: list[AwcStream]) -> AwcStre
 
 
 def _build_multichannel_data(
-    channel_data: list[bytes], *, block_size: int, codec: AwcCodecType
+    channel_data: list[bytes], *, block_size: int
 ) -> tuple[bytes, list[int], int]:
     channel_count = len(channel_data)
     small_block_size = 2048
-    samples_per_small_block = (
-        4088 if codec is AwcCodecType.ADPCM else small_block_size // 2
-    )
+    samples_per_small_block = small_block_size // 2
     header_size = (96 * channel_count) + (block_size // 512) + 1024
     header_size += (-header_size) % 0x800
     small_block_space = max(1, (block_size - header_size) // small_block_size)
@@ -1033,7 +1034,7 @@ def _build_multichannel_data(
         block = bytearray()
         channel_payloads: list[bytes] = []
         channel_offsets: list[list[int]] = []
-        for channel_index, data in enumerate(channel_data):
+        for data in channel_data:
             start_small_block = block_index * small_blocks_per_large_block
             start_byte = start_small_block * small_block_size
             data_size = small_blocks_per_large_block * small_block_size

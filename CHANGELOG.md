@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- AWC export rejects incomplete playback contracts and unsupported codec authoring; unsupported original codecs can only be preserved unchanged.
 - Vehicle appearance provenance uses the shared `AssetSourceTier` enum instead of `VehicleAppearanceSourceTier`.
 - YED track direction uses `is_input` instead of `remap` or `remap_flag`; input and output bindings remain distinct for the same channel.
 - Executable YED authoring requires an explicit runtime-contract recalculation before export; incomplete or stale contracts are rejected.
@@ -30,6 +31,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 - AWC MP3 channels retain 16-byte alignment during writing and native extraction; block decoding honors skipped overlap samples.
 - PCM streaming uses extended block headers, absolute packet sample offsets and compact final blocks without truncating payloads.
 - AWC playback validation checks decoded sample capacity, skipped overlap, packet continuity, fixed-codec payloads and seek tables instead of relying on matching metadata alone.
+- AWC exports enforce playback validation before replacing files, including incomplete streams and duplicate chunk types.
 - Vehicle appearance resolution separates source provenance from overlay sorting priority, preserving fallback variations and overriding color definitions correctly.
 - Vehicle appearance overlays refresh cached colors and variations after installation rescans without modifying the borrowed cache.
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
