@@ -7,6 +7,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-07
+
 ### Breaking Changes
 
 - Saving an imported YED with an unsafe resource layout is rejected; supported expressions must be regenerated before export.
