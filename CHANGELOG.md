@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- Saving an imported YED with an unsafe resource layout is rejected; supported expressions must be regenerated before export.
 - YED frame-index resolution requires a complete typed frame layout instead of independent offsets.
 - AWC export rejects incomplete playback contracts and unsupported codec authoring; unsupported original codecs can only be preserved unchanged.
 - Vehicle appearance provenance uses the shared `AssetSourceTier` enum instead of `VehicleAppearanceSourceTier`.
@@ -30,6 +31,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- YED serialization keeps complete track arrays, expression streams and other owned blocks inside individual resource chunks, with explicit pointer relocation.
+- YED page metadata reflects the final system and graphics allocations; validation catches cross-chunk blocks, misaligned streams and incomplete allocation metadata.
 - YED frame binding rejects misaligned, overlapping and out-of-range offsets before resolving accelerated tracks.
 - YED authoring rejects vector-width operations on scalar frame storage and component accesses outside their supported range.
 - Ordinary AWC sound banks sort stream hashes for runtime lookup without changing channel order.

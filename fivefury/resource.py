@@ -3,9 +3,14 @@ from __future__ import annotations
 import dataclasses
 import struct
 import zlib
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from . import _native as _native_backend
 from .binary import align
+
+if TYPE_CHECKING:
+    from .authoring.diagnostics import ValidationReport
 
 RSC7_MAGIC = 0x37435352
 RSC7_VIRTUAL_BASE = 0x50000000
@@ -223,6 +228,33 @@ class ResourceBlockSpan:
             object.__setattr__(self, "pointer_offsets", normalized)
         object.__setattr__(self, "offset", offset)
         object.__setattr__(self, "size", size)
+
+
+def validate_resource_block_layout(
+    blocks: Mapping[str, ResourceBlockSpan], flags: int
+) -> ValidationReport:
+    """Check indivisible allocations against the independently placed RSC chunks."""
+    from .authoring.diagnostics import ValidationReport
+
+    report = ValidationReport()
+    header = ResourceHeader(version=0, system_flags=flags, graphics_flags=0)
+    chunks = header.chunks
+    section_size = header.system_size
+    for path, block in blocks.items():
+        if not block.size:
+            continue
+        address = RSC7_VIRTUAL_BASE + block.offset
+        chunk = next((item for item in chunks if item.contains(address)), None)
+        end = block.offset + block.size
+        if chunk is None or end > section_size:
+            report.issue("resource.block.range", "Owned block exceeds its resource section", path=path)
+        elif not chunk.contains(address, block.size):
+            report.issue(
+                "resource.block.crosses_chunk",
+                f"Owned block [0x{block.offset:X}, 0x{end:X}) crosses allocation boundary 0x{chunk.section_offset + chunk.size:X}",
+                path=path,
+            )
+    return report
 
 
 def _coerce_resource_block_spans(

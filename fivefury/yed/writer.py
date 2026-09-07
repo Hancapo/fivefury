@@ -3,11 +3,19 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-from ..binary import align
 from ..common import atomic_write_bytes
 from ..game_target import GameTarget, coerce_game_target
-from ..resource import build_rsc7, get_resource_size_from_flags
+from ..resource import (
+    ResourceBlockSpan,
+    ResourcePagesInfo,
+    ResourceWriter,
+    build_rsc7,
+    get_resource_total_page_count,
+    layout_resource_sections,
+    write_resource_pages_info,
+)
 from .constants import EXPRESSION_BLOCK_SIZE, SPRING_BLOCK_SIZE
+from .layout import validate_yed_resource_layout
 from .model import ResourceListInfo, Yed, YedExpression, YedStream
 from .reader import as_virtual_pointer
 from .runtime_headers import YED_VERSION, YedRuntimeProfile, get_yed_runtime_profile
@@ -16,194 +24,212 @@ from .runtime_headers import YED_VERSION, YedRuntimeProfile, get_yed_runtime_pro
 def build_yed_bytes(source: Yed, *, game: str | GameTarget | None = None) -> bytes:
     target = coerce_game_target(source.game if game is None else game)
     if int(source.version) != YED_VERSION:
-        raise ValueError(f"YED resources require version {YED_VERSION}, got {source.version}")
-    if source._standalone_data is not None and not source.dirty and target is coerce_game_target(source.game):
+        raise ValueError(
+            f"YED resources require version {YED_VERSION}, got {source.version}"
+        )
+    if (
+        source._standalone_data is not None
+        and not source.dirty
+        and target is coerce_game_target(source.game)
+    ):
         source.validate_runtime_contract().raise_for_errors()
+        validate_yed_resource_layout(source).raise_for_errors()
         return source._standalone_data
     source.validate().raise_for_errors()
     profile = get_yed_runtime_profile(target)
-    if source.dirty:
-        return build_rsc7(
-            _build_yed_system(source, profile),
-            version=int(source.version),
-            graphics_data=source.graphics_data,
+    page_counts = (0, 0)
+    graphics = source.graphics_data
+    graphics_blocks = [ResourceBlockSpan(0, len(graphics), False)] if graphics else []
+    for _ in range(16):
+        writer = _build_yed_system(source, profile, page_counts)
+        system, physical, system_flags, graphics_flags = layout_resource_sections(
+            writer.finish(),
+            writer.block_spans,
+            graphics,
+            graphics_blocks,
+            version=source.version,
         )
+        next_counts = (
+            get_resource_total_page_count(system_flags),
+            get_resource_total_page_count(graphics_flags),
+        )
+        if next_counts == page_counts:
+            return build_rsc7(
+                system,
+                version=source.version,
+                graphics_data=physical,
+                system_flags=system_flags,
+                graphics_flags=graphics_flags,
+            )
+        page_counts = next_counts
+    raise RuntimeError("YED writer page-info sizing did not converge")
 
-    system = bytearray(source.system_data)
-    struct.pack_into("<I", system, 0x00, profile.dictionary_vft)
-    for expression in source.expressions:
-        struct.pack_into("<I", system, expression.offset, profile.expression_vft)
-        if not expression.has_spring_changes:
-            continue
-        spring_offset = align(len(system), 16)
-        if spring_offset > len(system):
-            system.extend(b"\x00" * (spring_offset - len(system)))
-        for spring in expression.springs:
-            if len(spring.raw) != SPRING_BLOCK_SIZE:
-                raise ValueError("YED spring data has an invalid size")
-            system.extend(spring.raw)
-        struct.pack_into("<QHHI", system, expression.offset + 0x40, as_virtual_pointer(spring_offset), len(expression.springs), len(expression.springs), 0)
 
-    graphics_data = source.graphics_data
-    system_flags = source.system_flags or None
-    graphics_flags = source.graphics_flags or None
-    if system_flags is not None and len(system) > get_resource_size_from_flags(system_flags):
-        system_flags = None
-    if graphics_flags is not None and len(graphics_data) > get_resource_size_from_flags(graphics_flags):
-        graphics_flags = None
-    return build_rsc7(
-        bytes(system),
-        version=int(source.version),
-        graphics_data=graphics_data,
-        system_flags=system_flags,
-        graphics_flags=graphics_flags,
+def _write_list_info(
+    writer: ResourceWriter, offset: int, info: ResourceListInfo
+) -> None:
+    writer.pack_into(
+        "QHHI", offset, info.pointer, info.count, info.capacity, info.unknown
     )
 
 
-def _alloc(system: bytearray, size: int, alignment: int = 16) -> int:
-    offset = align(len(system), alignment)
-    if offset > len(system):
-        system.extend(b"\x00" * (offset - len(system)))
-    system.extend(b"\x00" * size)
-    return offset
+def _write_array(
+    writer: ResourceWriter,
+    payload: bytes,
+    count: int,
+    *,
+    pointer_offsets: tuple[int, ...] = (),
+) -> ResourceListInfo:
+    if not count:
+        return ResourceListInfo()
+    offset = writer.alloc(len(payload), pointer_offsets=pointer_offsets)
+    writer.write(offset, payload)
+    return ResourceListInfo(as_virtual_pointer(offset), count, count)
 
 
-def _write_list_info(system: bytearray, offset: int, info: ResourceListInfo) -> None:
-    struct.pack_into(
-        "<QHHI",
-        system,
-        offset,
-        int(info.pointer),
-        int(info.count) & 0xFFFF,
-        int(info.capacity) & 0xFFFF,
-        int(info.unknown),
-    )
-
-
-def _write_stream(system: bytearray, stream: YedStream) -> int:
+def _write_stream(writer: ResourceWriter, stream: YedStream) -> int:
     if stream.instructions and stream.has_semantic_instructions:
         stream.rebuild_buffers_from_instructions()
-    data1 = bytes(stream.data1)
-    data2 = bytes(stream.data2)
-    data3 = bytes(stream.data3)
-    if len(data3) > 0xFFFF:
-        raise ValueError("YED stream instruction list cannot exceed 65535 bytes")
-    offset = _alloc(system, 0x10 + len(data1) + len(data2) + len(data3), 16)
-    struct.pack_into("<IIIHH", system, offset, int(stream.name_hash), len(data1), len(data2), len(data3), int(stream.depth) & 0xFFFF)
-    cursor = offset + 0x10
-    system[cursor : cursor + len(data1)] = data1
-    cursor += len(data1)
-    system[cursor : cursor + len(data2)] = data2
-    cursor += len(data2)
-    system[cursor : cursor + len(data3)] = data3
+    data1, data2, data3 = bytes(stream.data1), bytes(stream.data2), bytes(stream.data3)
+    if len(data3) > 0xFFFF or not 0 <= stream.depth <= 0xFFFF:
+        raise ValueError("YED stream opcode count and depth must fit uint16")
+    # The entire stream is one allocation, including all three parameter buffers.
+    payload = (
+        struct.pack(
+            "<IIIHH",
+            int(stream.name_hash),
+            len(data1),
+            len(data2),
+            len(data3),
+            stream.depth,
+        )
+        + data1
+        + data2
+        + data3
+    )
+    offset = writer.alloc(len(payload), relocate_pointers=False)
+    writer.write(offset, payload)
     return offset
 
 
-def _write_expression_payloads(system: bytearray, expression: YedExpression) -> tuple[ResourceListInfo, ResourceListInfo, ResourceListInfo, ResourceListInfo, int, int]:
-    stream_offsets = [_write_stream(system, stream) for stream in expression.streams]
-    stream_pointer_offset = 0
-    if stream_offsets:
-        stream_pointer_offset = _alloc(system, len(stream_offsets) * 8, 16)
-        for index, stream_offset in enumerate(stream_offsets):
-            struct.pack_into("<Q", system, stream_pointer_offset + index * 8, as_virtual_pointer(stream_offset))
-
-    track_offset = 0
-    if expression.tracks:
-        track_offset = _alloc(system, len(expression.tracks) * 4, 16)
-        for index, track in enumerate(expression.tracks):
-            struct.pack_into("<HBB", system, track_offset + index * 4, int(track.bone_id) & 0xFFFF, int(track.track) & 0xFF, int(track.flags) & 0xFF)
-
-    spring_offset = 0
-    if expression.springs:
-        spring_offset = _alloc(system, len(expression.springs) * SPRING_BLOCK_SIZE, 16)
-        for index, spring in enumerate(expression.springs):
-            if len(spring.raw) != SPRING_BLOCK_SIZE:
-                raise ValueError("YED spring data has an invalid size")
-            system[spring_offset + index * SPRING_BLOCK_SIZE : spring_offset + (index + 1) * SPRING_BLOCK_SIZE] = spring.raw
-
-    variable_offset = 0
-    if expression.variables:
-        variable_offset = _alloc(system, len(expression.variables) * 4, 16)
-        for index, variable in enumerate(expression.variables):
-            struct.pack_into("<I", system, variable_offset + index * 4, int(variable))
-
-    encoded_name = expression.name.encode("ascii", errors="ignore") + b"\x00"
-    name_offset = _alloc(system, len(encoded_name), 8)
-    system[name_offset : name_offset + len(encoded_name)] = encoded_name
-
-    max_stream_size = max((0x10 + len(stream.data1) + len(stream.data2) + len(stream.data3) for stream in expression.streams), default=0)
-    return (
-        ResourceListInfo(as_virtual_pointer(stream_pointer_offset), len(stream_offsets), len(stream_offsets)),
-        ResourceListInfo(as_virtual_pointer(track_offset), len(expression.tracks), len(expression.tracks)),
-        ResourceListInfo(as_virtual_pointer(spring_offset), len(expression.springs), len(expression.springs)),
-        ResourceListInfo(as_virtual_pointer(variable_offset), len(expression.variables), len(expression.variables)),
-        name_offset,
-        max_stream_size,
+def _write_expression(
+    writer: ResourceWriter,
+    offset: int,
+    expression: YedExpression,
+    profile: YedRuntimeProfile,
+) -> None:
+    stream_offsets = [_write_stream(writer, stream) for stream in expression.streams]
+    streams = _write_array(
+        writer,
+        b"".join(
+            struct.pack("<Q", as_virtual_pointer(value)) for value in stream_offsets
+        ),
+        len(stream_offsets),
+        pointer_offsets=tuple(range(0, len(stream_offsets) * 8, 8)),
+    )
+    tracks = _write_array(
+        writer,
+        b"".join(
+            struct.pack("<HBB", track.bone_id, track.track, track.flags)
+            for track in expression.tracks
+        ),
+        len(expression.tracks),
+    )
+    if any(len(spring.raw) != SPRING_BLOCK_SIZE for spring in expression.springs):
+        raise ValueError("YED spring data has an invalid size")
+    springs = _write_array(
+        writer,
+        b"".join(spring.raw for spring in expression.springs),
+        len(expression.springs),
+    )
+    variables = _write_array(
+        writer,
+        b"".join(struct.pack("<I", int(value)) for value in expression.variables),
+        len(expression.variables),
+    )
+    encoded_name = expression.name.encode("ascii") + b"\0"
+    name_offset = writer.alloc(len(encoded_name), alignment=8, relocate_pointers=False)
+    writer.write(name_offset, encoded_name)
+    max_stream_size = max(
+        (0x10 + len(s.data1) + len(s.data2) + len(s.data3) for s in expression.streams),
+        default=0,
+    )
+    writer.pack_into("II", offset, profile.expression_vft, expression.unknown_4h)
+    for relative, info in (
+        (0x20, streams),
+        (0x30, tracks),
+        (0x40, springs),
+        (0x50, variables),
+    ):
+        _write_list_info(writer, offset + relative, info)
+    writer.pack_into(
+        "QHHIIIII",
+        offset + 0x60,
+        as_virtual_pointer(name_offset),
+        len(encoded_name) - 1,
+        len(encoded_name),
+        0,
+        expression.unknown_70h,
+        expression.signature,
+        expression.max_stream_size or max_stream_size,
+        expression.expression_flags,
     )
 
 
-def _build_yed_system(source: Yed, profile: YedRuntimeProfile) -> bytes:
-    expressions = sorted(source.expressions, key=lambda expression: int(expression.name_hash))
-    system = bytearray(0x80)
-    struct.pack_into("<IIBBHI", system, 0x40, 0, 0, 1, 0, 0, 0)
-
-    hash_offset = _alloc(system, len(expressions) * 4, 16) if expressions else 0
-    pointer_offset = _alloc(system, len(expressions) * 8, 16) if expressions else 0
-    expression_offsets = [_alloc(system, EXPRESSION_BLOCK_SIZE, 16) for _ in expressions]
-
-    for index, expression in enumerate(expressions):
-        struct.pack_into("<I", system, hash_offset + index * 4, int(expression.name_hash))
-        struct.pack_into("<Q", system, pointer_offset + index * 8, as_virtual_pointer(expression_offsets[index]))
-
-    for expression, expression_offset in zip(expressions, expression_offsets, strict=True):
-        streams, tracks, springs, variables, name_offset, max_stream_size = _write_expression_payloads(system, expression)
-        struct.pack_into(
-            "<IIIIIIII",
-            system,
-            expression_offset,
-            profile.expression_vft,
-            int(expression.unknown_4h),
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
+def _build_yed_system(
+    source: Yed, profile: YedRuntimeProfile, page_counts: tuple[int, int]
+) -> ResourceWriter:
+    writer = ResourceWriter(0x40, initial_pointer_offsets=(0x08, 0x20, 0x30))
+    expressions = sorted(
+        source.expressions, key=lambda expression: int(expression.name_hash)
+    )
+    pages = write_resource_pages_info(
+        writer,
+        ResourcePagesInfo(
+            system_pages_count=page_counts[0], graphics_pages_count=page_counts[1]
+        ),
+    )
+    offsets = [
+        writer.alloc(
+            EXPRESSION_BLOCK_SIZE, pointer_offsets=(0x20, 0x30, 0x40, 0x50, 0x60)
         )
-        _write_list_info(system, expression_offset + 0x20, streams)
-        _write_list_info(system, expression_offset + 0x30, tracks)
-        _write_list_info(system, expression_offset + 0x40, springs)
-        _write_list_info(system, expression_offset + 0x50, variables)
-        struct.pack_into("<QHHIIIII", system, expression_offset + 0x60, as_virtual_pointer(name_offset), len(expression.name), len(expression.name) + 1, 0, int(expression.unknown_70h), int(expression.signature), int(expression.max_stream_size or max_stream_size), int(expression.expression_flags))
-        struct.pack_into("<III", system, expression_offset + 0x80, 0, 0, 0)
-
-    struct.pack_into(
-        "<IIQIIII",
-        system,
-        0x00,
-        profile.dictionary_vft,
-        int(source.dictionary.file_unknown),
-        as_virtual_pointer(0x40),
-        int(source.dictionary.unknown_10h),
-        int(source.dictionary.unknown_14h),
-        int(source.dictionary.unknown_18h),
-        int(source.dictionary.unknown_1ch),
+        for _ in expressions
+    ]
+    hashes = _write_array(
+        writer,
+        b"".join(struct.pack("<I", int(e.name_hash)) for e in expressions),
+        len(expressions),
     )
-    _write_list_info(system, 0x20, ResourceListInfo(as_virtual_pointer(hash_offset), len(expressions), len(expressions)))
-    _write_list_info(system, 0x30, ResourceListInfo(as_virtual_pointer(pointer_offset), len(expressions), len(expressions)))
-    return bytes(system)
+    pointers = _write_array(
+        writer,
+        b"".join(struct.pack("<Q", as_virtual_pointer(value)) for value in offsets),
+        len(offsets),
+        pointer_offsets=tuple(range(0, len(offsets) * 8, 8)),
+    )
+    for expression, offset in zip(expressions, offsets, strict=True):
+        _write_expression(writer, offset, expression, profile)
+    dictionary = source.dictionary
+    writer.pack_into(
+        "IIQIIII",
+        0,
+        profile.dictionary_vft,
+        dictionary.file_unknown,
+        as_virtual_pointer(pages),
+        dictionary.unknown_10h,
+        dictionary.unknown_14h,
+        dictionary.unknown_18h,
+        dictionary.unknown_1ch,
+    )
+    _write_list_info(writer, 0x20, hashes)
+    _write_list_info(writer, 0x30, pointers)
+    writer.require_explicit_pointer_fields()
+    return writer
 
 
 def save_yed(
-    source: Yed,
-    destination: str | Path,
-    *,
-    game: str | GameTarget | None = None,
+    source: Yed, destination: str | Path, *, game: str | GameTarget | None = None
 ) -> Path:
     return atomic_write_bytes(destination, build_yed_bytes(source, game=game))
 
 
-__all__ = [
-    "build_yed_bytes",
-    "save_yed",
-]
+__all__ = ["build_yed_bytes", "save_yed"]
