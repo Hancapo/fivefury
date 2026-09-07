@@ -22,6 +22,7 @@ class Mp3StreamingChannel:
     frame_count: int
     encoded_size: int
     frames: tuple[Mp3Frame, ...]
+    samples_to_skip: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +284,7 @@ def inspect_mp3_streaming_data(
     sample_rate: int,
 ) -> tuple[Mp3StreamingBlock, ...]:
     result: list[Mp3StreamingBlock] = []
+    sample_positions = [0] * channel_count
     for block in _iter_streaming_blocks(
         data,
         block_count=block_count,
@@ -293,7 +295,9 @@ def inspect_mp3_streaming_data(
             channel_count,
         )
         parsed_channels: list[Mp3StreamingChannel] = []
-        for header, packet_offsets in zip(headers, offsets_by_channel, strict=True):
+        for channel_index, (header, packet_offsets) in enumerate(
+            zip(headers, offsets_by_channel, strict=True)
+        ):
             encoded_size = header[5]
             if cursor + encoded_size > len(block):
                 raise ValueError("AWC MP3 channel payload is truncated")
@@ -303,8 +307,23 @@ def inspect_mp3_streaming_data(
                 require_independent=True,
                 sample_rate=sample_rate,
             )
-            if len(frames) != header[4]:
+            # Retail trimming shortens the final packet without reducing NumFrames.
+            max_trimmed_frames = MP3_STREAMING_PACKET_SIZE // (
+                144_000 * 32 // sample_rate
+            )
+            if not len(frames) <= header[4] < len(frames) + max_trimmed_frames:
                 raise ValueError("AWC MP3 frame count does not match its payload")
+            if not 0 <= header[2] < header[3] <= len(frames) * MP3_SAMPLES_PER_FRAME:
+                raise ValueError(
+                    "AWC MP3 sample counts or skipped samples exceed decoded frame capacity"
+                )
+            if not packet_offsets or packet_offsets[0] % MP3_SAMPLES_PER_FRAME:
+                raise ValueError("AWC MP3 packet origin must identify a frame boundary")
+            if packet_offsets[0] + header[2] != sample_positions[channel_index]:
+                raise ValueError(
+                    "AWC MP3 blocks have a gap or overlapping output samples"
+                )
+            sample_positions[channel_index] += header[3] - header[2]
             expected_offsets = _packet_offsets(
                 tuple(frame.size for frame in frames),
                 first_frame=(
@@ -320,6 +339,7 @@ def inspect_mp3_streaming_data(
                     header[4],
                     encoded_size,
                     frames,
+                    header[2],
                 )
             )
             cursor += align(encoded_size, 16)
