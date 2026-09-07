@@ -27,6 +27,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - Vehicle appearance resolution separates source provenance from overlay sorting priority, preserving fallback variations and overriding color definitions correctly.
+- Vehicle appearance overlays refresh cached colors and variations after installation rescans without modifying the borrowed cache.
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
 - Loose ped metadata takes precedence over installation records without sharing asset IDs or retaining outdated expression and outfit data across mounts.
 - Rebuilding YED instruction buffers recalculates branch offsets across aligned data, parameter data and opcodes.

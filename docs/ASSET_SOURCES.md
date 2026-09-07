@@ -39,3 +39,5 @@ Variations and color definitions resolve independently. An installation-only
 variation can therefore use colors overridden by the overlay, and both sources
 remain visible in the result. Closing the overlay does not close its borrowed
 installation cache. Remount after modifying export files.
+Rescanning the borrowed installation invalidates the overlay's appearance index
+before the next appearance query, including when the asset count is unchanged.

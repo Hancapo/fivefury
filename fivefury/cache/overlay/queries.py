@@ -4,8 +4,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ...gamefile import GameFile, GameFileType
 from ...asset_source import AssetSourceTier
+from ...gamefile import GameFile, GameFileType
 from ...metahash import MetaHash
 from ...rpf import RpfEntry
 from ..precedence import asset_source_rank
