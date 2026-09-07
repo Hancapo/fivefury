@@ -22,7 +22,7 @@ from .enums import YedInstructionType, YedTrackFormat
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
-    from .contract.frame import YedFrameDof
+    from .contract.frame import YedFrameLayout
 
 
 def _coerce_track_format(value: YedTrackFormat | int) -> YedTrackFormat:
@@ -275,10 +275,11 @@ class YedExpression:
 
         return validate_expression_contract(self)
 
-    def resolve_frame_indices(self, dofs: Sequence[YedFrameDof], *, read_only_offset: int, write_only_offset: int) -> tuple[int, ...]:
+    def resolve_frame_indices(self, frame: YedFrameLayout) -> tuple[int, ...]:
         from .contract.frame import resolve_frame_indices
 
-        return resolve_frame_indices(self.tracks, dofs, read_only_offset=read_only_offset, write_only_offset=write_only_offset)
+        self.validate_runtime_contract().raise_for_errors()
+        return resolve_frame_indices(self.tracks, frame)
 
     @property
     def short_name(self) -> str:

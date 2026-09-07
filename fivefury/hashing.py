@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.resources
+import struct
 import zlib
 from collections.abc import Iterable
 from functools import lru_cache
@@ -16,6 +17,22 @@ _UINT32_MASK: Final[int] = 0xFFFFFFFF
 def crc32(value: bytes | bytearray | memoryview, seed: int = 0) -> int:
     """Incremental IEEE CRC32; runs in zlib's native implementation."""
     return zlib.crc32(value, int(seed)) & _UINT32_MASK
+
+
+def fletcher32(value: bytes | bytearray | memoryview) -> int:
+    """Fletcher-32 over little-endian uint16 words, preserving the all-ones zero."""
+    if len(value) % 2:
+        raise ValueError("Fletcher-32 requires complete uint16 words")
+    sum1 = sum2 = 0xFFFF
+    for start in range(0, len(value), 720):
+        for (word,) in struct.iter_unpack("<H", value[start : start + 720]):
+            sum1 += word
+            sum2 += sum1
+        sum1 = (sum1 & 0xFFFF) + (sum1 >> 16)
+        sum2 = (sum2 & 0xFFFF) + (sum2 >> 16)
+    sum1 = (sum1 & 0xFFFF) + (sum1 >> 16)
+    sum2 = (sum2 & 0xFFFF) + (sum2 >> 16)
+    return (sum2 << 16) | sum1
 
 
 def _read_lut_bytes() -> bytes:
@@ -70,7 +87,9 @@ def jenk_hash_many(
     *,
     encoding: str = "utf-8",
 ) -> list[int]:
-    texts = [value if isinstance(value, str) else value.decode(encoding) for value in values]
+    texts = [
+        value if isinstance(value, str) else value.decode(encoding) for value in values
+    ]
     return _ffi.jenk_hash_many(texts, _get_lut())
 
 

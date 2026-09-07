@@ -10,10 +10,10 @@ from fivefury import (
     GameTarget,
     MetaHash,
     YedExpression,
-    YedFrameDof,
+    YedFrameLayout,
     YedInstruction,
     YedStream,
-    YedTrackFormat,
+    YedTrack,
     create_yed,
     evaluate_yed,
     read_yed,
@@ -132,18 +132,11 @@ def test_direction_selects_missing_or_mistyped_frame_sentinel_without_aliasing()
     item = expression(
         access(Op.TRACK_GET), access(Op.TRACK_SET)
     ).recalculate_runtime_contract()
-    assert item.resolve_frame_indices([], read_only_offset=8, write_only_offset=24) == (
-        24,
-        8,
-    )
-    wrong = [YedFrameDof(7, 25, YedTrackFormat.QUATERNION, 40)]
-    assert item.resolve_frame_indices(
-        wrong, read_only_offset=8, write_only_offset=24
-    ) == (24, 8)
-    matching = [YedFrameDof(7, 25, YedTrackFormat.VECTOR3, 40)]
-    assert item.resolve_frame_indices(
-        matching, read_only_offset=8, write_only_offset=24
-    ) == (40, 40)
+    assert item.resolve_frame_indices(YedFrameLayout.derive([])) == (16, 0)
+    wrong = YedFrameLayout.derive([YedTrack.quaternion(7, 25)])
+    assert item.resolve_frame_indices(wrong) == (80, 64)
+    matching = YedFrameLayout.derive([YedTrack.vector3(7, 25)])
+    assert item.resolve_frame_indices(matching) == (0, 0)
 
 
 def test_imported_instruction_edits_are_not_silently_discarded_by_writer():
