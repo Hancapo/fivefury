@@ -18,7 +18,7 @@ def test_large_enhanced_expression_sample_keeps_global_frame_bindings():
         assert any(
             len(e.tracks) >= 500 and len(e.streams) >= 5 for e in yed.expressions
         )
-        reread = read_yed(yed.to_bytes())
+        reread = read_yed(yed.recalculate_runtime_contract().to_bytes())
         for expression in yed.expressions:
             frame = YedFrameLayout.derive(expression.tracks)
             indices = expression.resolve_frame_indices(frame)

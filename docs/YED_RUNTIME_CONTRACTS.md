@@ -128,6 +128,14 @@ They are offsets of real storage, not `0xFFFF`. A missing channel does not by
 itself imply an invalid accelerator address. This API describes layout only;
 the runtime must initialize frame values and sentinel contents.
 
+Full `TRACK_GET`/`TRACK_SET` operations access 16 bytes; declaring their format as
+`FLOAT` does not change the native instruction's access width. Scalar channels
+must use `TRACK_GET_COMP`/`TRACK_SET_COMP` with component zero. Relative full-vector
+operations are likewise not scalar operations. Quaternion component operations
+use Euler XYZ components 0 through 2, not a fourth quaternion component.
+These invariants are checked during contract derivation, validation and export,
+including unchanged imports; preservation does not authorize an unsafe access.
+
 `frame.signature` is the runtime checksum of the sorted DOFs. Its value is not
 proof of identity: caches must retain the full layout and invalidate on changes.
 Do not pass an incomplete dump as a complete layout or infer absent DOF records.

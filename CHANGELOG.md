@@ -31,6 +31,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - YED frame binding rejects misaligned, overlapping and out-of-range offsets before resolving accelerated tracks.
+- YED authoring rejects vector-width operations on scalar frame storage and component accesses outside their supported range.
 - Ordinary AWC sound banks sort stream hashes for runtime lookup without changing channel order.
 - AWC MP3 channels retain 16-byte alignment during writing and native extraction; block decoding honors skipped overlap samples.
 - PCM streaming uses extended block headers, absolute packet sample offsets and compact final blocks without truncating payloads.
