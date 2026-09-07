@@ -96,6 +96,38 @@ original programs or provide supported authored instructions. Direct edits to a
 read YED invalidate its original-byte fast path; the writer cannot silently discard
 them anymore.
 
+## Resource placement
+
+Semantic validity is separate from memory placement. `yed.validate()` also checks
+the serialized resource layout of an unchanged import: owned blocks must fit in
+individual RSC chunks, pointers and capacities must be valid, streams must be
+aligned, and page metadata must reserve all system and graphics allocations.
+`validate_runtime_contract()` checks expression semantics, not resource placement.
+
+New exports use the shared block-aware resource packer. Complete streams
+(header and all parameter buffers), arrays, expressions and strings are moved as
+indivisible allocations. Only declared pointer fields are relocated; hashes,
+floating-point literals and other non-pointer data are not scanned for addresses.
+
+Reading an older unsafe resource remains possible for inspection. Saving it
+unchanged is rejected before replacing the destination. Regenerate supported,
+reproducible expression contracts with the existing API:
+
+```python
+from fivefury import read_yed
+
+yed = read_yed("original.yed")
+report = yed.validate()
+yed.recalculate_runtime_contract()
+yed.save("regenerated.yed")
+```
+
+This preserves track semantics while rebuilding resource placement. Unknown or
+unverifiable imported programs are not guessed: their original bytes may only be
+preserved when the resource layout is safe. A target-edition override does not
+bypass validation. No consumer should patch runtime indices or remove aliases to
+compensate for an unsafe serialized layout.
+
 ## Frame indices and CPU diagnostics
 
 `YedFrameLayout` describes the complete runtime frame, not a skeleton palette.

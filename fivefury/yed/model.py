@@ -811,6 +811,10 @@ def validate_yed(
                             ),
                         )
     report.extend(yed.validate_runtime_contract())
+    if not yed.dirty:
+        from .layout import validate_yed_resource_layout
+
+        report.extend(validate_yed_resource_layout(yed), asset=asset)
     return report
 
 

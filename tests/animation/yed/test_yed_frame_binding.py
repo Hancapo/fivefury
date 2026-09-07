@@ -17,41 +17,7 @@ from fivefury import (
 from fivefury import (
     YedInstructionType as Op,
 )
-
-
-def large_expression():
-    expression = YedExpression.create("calibrated")
-    for start in range(0, 147, 32):
-        instructions = []
-        for bone in range(56462 + start, 56462 + min(start + 32, 147)):
-            for source, target, format in ((25, 0, 0), (26, 1, 1)):
-                instructions.extend(
-                    [
-                        YedInstruction(
-                            Op.TRACK_GET,
-                            operands={
-                                "bone_id": bone,
-                                "track": source,
-                                "format": format,
-                            },
-                        ),
-                        YedInstruction(
-                            Op.TRACK_SET,
-                            operands={
-                                "bone_id": bone,
-                                "track": target,
-                                "format": format,
-                            },
-                        ),
-                    ]
-                )
-        instructions.append(YedInstruction(Op.END))
-        expression.streams.append(
-            YedStream(
-                MetaHash(f"part{start}"), 0, b"", b"", b"", instructions=instructions
-            )
-        )
-    return expression.recalculate_runtime_contract()
+from tests.support.yed import large_expression
 
 
 def complete_frame():
