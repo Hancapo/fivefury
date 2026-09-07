@@ -134,6 +134,34 @@ Do not pass an incomplete dump as a complete layout or infer absent DOF records.
 The previous `resolve_frame_indices(dofs, read_only_offset=..., write_only_offset=...)`
 form is removed; pass a validated `YedFrameLayout` instead.
 
+Inspect a previously cached or captured accelerator with
+`expression.validate_frame_binding(frame, indices)`. It checks the expression's
+global track contract, logical table length, alignment, bounds and every expected
+DOF/sentinel offset. Stream operands index this global table; do not restart or
+concatenate index numbering for each stream. Alias expressions with identical
+track contracts may use the same mapping; names alone are not cache identities.
+
+The runtime cache lookup combines the frame signature in the upper 32 bits and
+the expression signature in the lower 32 bits. Both are checksums, not unique
+identifiers. Retain the complete frame DOFs and directional expression tracks
+when caching in a consumer. Invalidate when either changes, even if the signature
+or table length happens to remain the same. This validator recomputes the
+expected mapping; an aligned, in-range offset is still wrong if it selects a
+different channel or the wrong sentinel.
+
+For captures, supply only the logical expression entries, not allocator padding.
+`None` marks unavailable captured entries and produces an explicit diagnostic;
+it does not substitute a sentinel. A valid report certifies only the supplied
+layout and table, not the lifetime of a pointer, contents of uncaptured memory,
+or the values initialized by the game. Offline YED validation cannot certify
+an accelerator which is allocated later by the runtime.
+
+The synthetic binding regressions cover both editions, large multi-stream
+expressions and alias names. To test an external Enhanced YED with at least
+500 tracks and five streams, set `FIVEFURY_TEST_YED_FRAME_CORPUS` to a directory of such YEDs
+and select `tests/animation/yed/test_yed_frame_integration.py --suite integration`.
+That test checks the expression-derived layout, not a captured creature frame.
+
 `evaluate_yed(...).issues` describes numerical/VM problems.
 `evaluate_yed(...).native_diagnostics` separately reports the zero-signature
 attachment gate. That fast check is not full contract validation: use

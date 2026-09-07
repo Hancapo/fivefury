@@ -18,6 +18,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Added
 
 - Typed YED frame layouts with packed DOFs, reserved sentinel storage and runtime signatures.
+- YED frame-binding diagnostics check complete accelerated track tables, including stale mappings, missing capture data and shared indices across multiple streams.
 - Explicit ped metadata and expression-set registrations for custom file names, with typed XML and binary ped-init reading.
 - Scoped loose-asset overlays with installation fallback, explicit metadata registrations and atomic remounting.
 - YED runtime-contract derivation for signatures, directional tracks, accelerated operands and stream sizes, with typed frame-DOF resolution.
