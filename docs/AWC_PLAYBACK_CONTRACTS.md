@@ -21,6 +21,9 @@ bank.save("dialogue.awc")
   padding, and the shared packet-table region is aligned to 2048 bytes.
 - PCM uses extended block headers and absolute packet sample positions. Only
   intermediate blocks are padded to the nominal streaming block size.
+- Legacy PCM/ADPCM fixed-block headers remain readable, including final packet
+  padding bounded by the codec's packet sample count. New authoring uses the
+  extended marker; validation does not mistake original legacy markers for MP3.
 - Skipped samples represent the repeated prefix of an overlapping packet. They
   are removed from decoded output and counted when checking block continuity.
 - Sample capacity comes from payloads, not matching declared durations alone.

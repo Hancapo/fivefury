@@ -51,7 +51,7 @@ def test_fixed_stream_rejects_incoherent_binary_contract(mutation):
             data = bytearray(b"x")
         else:
             offset, value = {
-                "marker": (0, 0),
+                "marker": (0, -2),
                 "packet": (48, 1),
                 "samples": (12, 999999),
             }[mutation]
@@ -80,4 +80,18 @@ def test_adpcm_capacity_and_step_index():
 def test_mono_pcm_cannot_claim_more_samples_than_data():
     awc = Awc([AwcStream.from_pcm("mono", bytes(200), sample_rate=48000)])
     awc.streams[0].format_chunk.samples = 101
+    assert not awc.validate().valid
+
+
+def test_legacy_fixed_headers_and_final_packet_padding_are_supported():
+    awc = Awc.from_channel_pcm("legacy", [bytes(3000)] * 2, sample_rate=48000)
+    owner = awc.streams[0]
+    data = bytearray(owner.data_chunk.data)
+    for index in range(2):
+        struct.pack_into("<i", data, index * 24, index * 3)
+        struct.pack_into("<i", data, index * 24 + 12, 2048)
+    owner.data_chunk.data = bytes(data)
+    assert awc.validate().valid
+    for channel in owner.stream_format_chunk.channels:
+        channel.samples = 1024
     assert not awc.validate().valid

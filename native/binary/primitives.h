@@ -39,4 +39,10 @@ inline bool contains(std::size_t offset, std::size_t length, std::size_t total) 
     return offset <= total && length <= total - offset;
 }
 
+inline std::size_t alignment_padding(std::size_t value, std::size_t alignment) {
+    if (alignment == 0) throw std::invalid_argument("alignment must be positive");
+    const auto remainder = value % alignment;
+    return remainder == 0 ? 0 : alignment - remainder;
+}
+
 }  // namespace fivefury_native::binary
