@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..common import hash_value
 from ..asset_source import AssetSourceTier, source_tier_from_path
+from ..common import hash_value
 from ..gamefile import GameFileType
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry
