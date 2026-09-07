@@ -281,6 +281,11 @@ class YedExpression:
         self.validate_runtime_contract().raise_for_errors()
         return resolve_frame_indices(self.tracks, frame)
 
+    def validate_frame_binding(self, frame: YedFrameLayout, indices: Sequence[int | None]) -> ValidationReport:
+        from .contract.binding import validate_frame_binding
+
+        return validate_frame_binding(self, frame, indices)
+
     @property
     def short_name(self) -> str:
         return Path(self.name).stem.lower()
