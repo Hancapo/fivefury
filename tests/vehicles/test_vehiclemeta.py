@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from fivefury import AssetSourceTier
 from fivefury.authoring import AssetSet, BuildContext
 from fivefury.cache import GameFileCache
 from fivefury.cut import CutTypeFileStrategy, CutVehicleVariationPayload
@@ -28,7 +29,6 @@ from fivefury.vehiclemeta import (
     HandlingData,
     HandlingDataManager,
     HandlingFlagValue,
-    VehicleAppearanceSourceTier,
     VehicleCarCols,
     VehicleClass,
     VehicleColorIndices,
@@ -353,7 +353,7 @@ def test_vehicle_appearance_merges_precedence_and_cut_override(tmp_path) -> None
     assert default.body_6_index == 0
     assert default.primary is not None
     assert default.primary.srgb == (5, 5, 5, 255)
-    assert default.sources[0].tier is VehicleAppearanceSourceTier.MODS
+    assert default.sources[0].tier is AssetSourceTier.MODS
 
     explicit = cache.resolve_vehicle_appearance(
         "testcar",
@@ -392,7 +392,7 @@ def test_vehicle_appearance_dlc_overrides_base(tmp_path) -> None:
     appearance = cache.resolve_vehicle_appearance("testcar")
 
     assert appearance.primary_index == 4
-    assert appearance.sources[0].tier is VehicleAppearanceSourceTier.DLC
+    assert appearance.sources[0].tier is AssetSourceTier.DLC
 
 
 def test_vehicle_appearance_reports_missing_and_invalid_references(tmp_path) -> None:

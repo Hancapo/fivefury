@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..asset_source import AssetSourceTier
 from ..authoring import Diagnostic, DiagnosticSeverity
 from ..gamefile import GameFileType
 from ..metahash import MetaHash
 from ..vehiclemeta.appearance import (
     VehicleAppearanceSource,
-    VehicleAppearanceSourceTier,
 )
 from ..vehiclemeta.carcols import VehicleModelColor
 from ..vehiclemeta.variations import (
@@ -57,7 +57,7 @@ def _read_source(reader: SidecarReader) -> VehicleAppearanceSource:
     return VehicleAppearanceSource(
         path=reader.text(),
         kind=GameFileType(reader.i32()),
-        tier=VehicleAppearanceSourceTier(reader.u8()),
+        tier=AssetSourceTier(reader.u8()),
     )
 
 

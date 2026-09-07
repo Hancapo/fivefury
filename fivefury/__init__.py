@@ -1,3 +1,4 @@
+from .asset_source import AssetSourceTier
 from .assets import (
     EmbeddedTextureDictionary,
     ResourceTextureAsset,
@@ -705,7 +706,6 @@ from .vehiclemeta import (
     ResolvedVehicleAppearance,
     ResolvedVehicleColor,
     VehicleAppearanceSource,
-    VehicleAppearanceSourceTier,
     VehicleCarCols,
     VehicleClass,
     VehicleDashboardType,
@@ -1347,6 +1347,7 @@ from .ytyp import (
 )
 
 __all__ = [
+    "AssetSourceTier",
     "ARCHETYPE_HD_TEXTURE_RADIUS_SCALE",
     "ARCHETYPE_LOD_RADIUS_SCALE",
     "AWC_CHUNK_FIELD_MASK",
@@ -1980,7 +1981,6 @@ __all__ = [
     "Vector3",
     "Vector4",
     "VehicleAppearanceSource",
-    "VehicleAppearanceSourceTier",
     "VehicleCarCols",
     "VehicleClass",
     "VehicleDashboardType",

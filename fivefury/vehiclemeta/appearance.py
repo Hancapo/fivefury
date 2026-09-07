@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntEnum
 
+from ..asset_source import AssetSourceTier
 from ..authoring import Diagnostic
 from ..colors import RGBA8, RGBAUnit
 from ..game_target import GameTarget
@@ -11,18 +11,11 @@ from .carcols import VehicleModelColor
 from .variations import VehicleVariation
 
 
-class VehicleAppearanceSourceTier(IntEnum):
-    MODS = 0
-    DLC = 1
-    UPDATE = 2
-    BASE = 3
-
-
 @dataclass(frozen=True, slots=True)
 class VehicleAppearanceSource:
     path: str
     kind: GameFileType
-    tier: VehicleAppearanceSourceTier
+    tier: AssetSourceTier
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,5 +59,4 @@ __all__ = [
     "ResolvedVehicleAppearance",
     "ResolvedVehicleColor",
     "VehicleAppearanceSource",
-    "VehicleAppearanceSourceTier",
 ]
