@@ -6,7 +6,7 @@ from enum import StrEnum
 
 
 class YcdChannelEncoding(StrEnum):
-    """Binary encoding used for varying CUT body and mover channel components."""
+    """Binary encoding used for varying CUT body, mover and facial components."""
 
     RETAIL = "retail"
     RAW_FLOAT = "raw_float"
@@ -16,7 +16,8 @@ class YcdChannelEncoding(StrEnum):
 class YcdChannelEncodingPolicy:
     """Encoding and read-back accuracy required from authored YCD channels.
 
-    ``RETAIL`` preserves FiveFury's normal 16-bit body and mover channels.
+    ``RETAIL`` uses 16-bit quantization for body/mover translation and rotation,
+    and facial translation, rotation and scale. Other tracks retain raw floats.
     ``RAW_FLOAT`` writes varying components as retail-supported IEEE-754 floats.
     Error bounds are optional and are checked against a binary write/read cycle.
     Angular limits apply independently to integer samples and runtime subframes

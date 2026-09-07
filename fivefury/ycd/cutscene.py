@@ -209,6 +209,9 @@ def _make_channels(
         int(YcdAnimationTrack.BONE_ROTATION),
         int(YcdAnimationTrack.MOVER_TRANSLATION),
         int(YcdAnimationTrack.MOVER_ROTATION),
+        int(YcdAnimationTrack.FACIAL_TRANSLATION),
+        int(YcdAnimationTrack.FACIAL_ROTATION),
+        int(YcdAnimationTrack.FACIAL_SCALE),
     }
     if not window.dynamic:
         if component_count == 3:

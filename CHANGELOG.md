@@ -7,6 +7,10 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+### Fixed
+
+- Facial translation, rotation and scale honor the RETAIL channel policy with 16-bit compression, preserving static channels and per-track RAW_FLOAT overrides.
+
 ## [0.5.0] - 2026-09-07
 
 ### Breaking Changes
