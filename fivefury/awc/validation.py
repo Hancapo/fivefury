@@ -266,7 +266,7 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
             else:
                 for channel_index, channel in enumerate(layout.channels):
                     authored_samples = sum(
-                        block.channels[channel_index].sample_count for block in blocks
+                        block.channels[channel_index].sample_count - block.channels[channel_index].samples_to_skip for block in blocks
                     )
                     if authored_samples != int(channel.samples):
                         report.issue(
@@ -281,6 +281,16 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
                 block_count=layout.block_count,
                 path=f"{path}.seek_table",
             )
+        elif stream.data_chunk is not None:
+            from .payload_validation import PCM_WIDTHS, validate_fixed_stream
+
+            if len(codecs) != 1 or not codecs <= set(PCM_WIDTHS) | {AwcCodecType.ADPCM}:
+                report.issue("awc.codec.unsupported", "Playback validation does not support this streaming codec layout", path=path)
+            else:
+                try:
+                    validate_fixed_stream(stream)
+                except ValueError as exc:
+                    report.issue("awc.stream.payload.invalid", str(exc), path=f"{path}.data")
         return
 
     if stream.codec is None:
@@ -301,6 +311,26 @@ def _validate_stream(report: ValidationReport, awc: Awc, stream: AwcStream) -> N
             "Audio stream must have a positive sample count",
             path=path,
         )
+    if stream.data_chunk is not None and stream.codec is not None:
+        from .payload_validation import PCM_WIDTHS, sample_capacity
+
+        try:
+            if stream.codec in PCM_WIDTHS or stream.codec is AwcCodecType.ADPCM:
+                if stream.sample_count > sample_capacity(stream.data_chunk.data, stream.codec):
+                    raise ValueError("Sample count exceeds the encoded payload capacity")
+            elif stream.codec is AwcCodecType.MP3:
+                from .mp3 import parse_mp3_frames
+
+                frames = parse_mp3_frames(stream.data_chunk.data, sample_rate=stream.sample_rate)
+                if stream.sample_count > sum(frame.samples for frame in frames):
+                    raise ValueError("MP3 sample count exceeds decoded capacity")
+                seek = stream.seek_table_chunk
+                if seek is None or seek.seek_table_entry_size != 2 or seek.seek_table != [frame.size for frame in frames]:
+                    raise ValueError("MP3 frame seek table does not match the payload")
+            else:
+                report.issue("awc.codec.unsupported", "Playback validation does not support this codec", path=path)
+        except ValueError as exc:
+            report.issue("awc.stream.payload.invalid", str(exc), path=f"{path}.data")
 
 
 def validate_awc_stream(awc: Awc, stream: AwcStream) -> ValidationReport:

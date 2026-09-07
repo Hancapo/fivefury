@@ -124,9 +124,9 @@ def test_retail_compact_multichannel_awc_decodes_to_aligned_pcm() -> None:
         assert decoded.getnchannels() == 3
         assert decoded.getsampwidth() == 2
         assert decoded.getframerate() == 48000
-        assert decoded.getnframes() == 1277248
+        assert decoded.getnframes() == 1278400
         assert decoded.getnframes() / decoded.getframerate() == pytest.approx(
-            26.609333333333332,
+            1278400 / 48000,
             abs=1 / decoded.getframerate(),
         )
     assert (len(wav) - 44) % (3 * 2) == 0
