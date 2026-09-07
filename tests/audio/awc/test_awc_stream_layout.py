@@ -50,7 +50,7 @@ def test_pcm_extended_headers_and_absolute_packet_offsets():
 
 def test_native_extraction_exposes_skipped_samples():
     payload = struct.pack("<4h", 100, 200, 300, 400)
-    block = struct.pack("<6iI", -1, 1, 2, 4, 0, len(payload))
+    block = struct.pack("<6iI", -1, 1, 2, 4, 0, len(payload), 0)
     block += bytes(2048 - len(block)) + payload
     assert _extract_multichannel_blocks(
         block, block_count=1, block_size=4096, channel_count=1
