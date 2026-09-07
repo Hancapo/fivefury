@@ -576,7 +576,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
             }
             cursor += static_cast<Py_ssize_t>(table_bytes);
         }
-        const auto alignment = (0x800 - (cursor % 0x800)) % 0x800;
+        const auto alignment = static_cast<Py_ssize_t>(binary::alignment_padding(cursor, 0x800));
         if (alignment > current_block_size - cursor) {
             Py_DECREF(result);
             PyErr_SetString(PyExc_ValueError, "AWC multichannel payload alignment is invalid");
@@ -587,6 +587,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
         std::vector<Py_ssize_t> stored_payload_sizes(
             static_cast<std::size_t>(channel_count)
         );
+        std::vector<Py_ssize_t> payload_offsets(static_cast<std::size_t>(channel_count));
         auto payload_cursor = cursor;
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
             const auto encoded_size = encoded_sizes[static_cast<std::size_t>(channel)];
@@ -612,16 +613,23 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
                 return nullptr;
             }
             stored_payload_sizes[static_cast<std::size_t>(channel)] = stride;
+            payload_offsets[static_cast<std::size_t>(channel)] = payload_cursor;
             payload_cursor += stride;
             if (channel + 1 < channel_count) {
-                payload_cursor += (16 - (payload_cursor % 16)) % 16;
+                const auto padding = static_cast<Py_ssize_t>(binary::alignment_padding(payload_cursor, 16));
+                if (padding > current_block_size - payload_cursor) {
+                    Py_DECREF(result);
+                    PyErr_SetString(PyExc_ValueError, "AWC multichannel payload is truncated");
+                    return nullptr;
+                }
+                payload_cursor += padding;
             }
         }
 
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
             const auto stored_payload_size =
                 stored_payload_sizes[static_cast<std::size_t>(channel)];
-            auto* payload = PyBytes_FromStringAndSize(block + cursor, stored_payload_size);
+            auto* payload = PyBytes_FromStringAndSize(block + payload_offsets[static_cast<std::size_t>(channel)], stored_payload_size);
             if (payload == nullptr) { Py_DECREF(result); return nullptr; }
             PyObject* item = Py_BuildValue("(iiN)", samples[static_cast<std::size_t>(channel)], skips[static_cast<std::size_t>(channel)], payload);
             if (item == nullptr || PyList_Append(PyList_GetItem(result, channel), item) != 0) {
@@ -630,10 +638,6 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
                 return nullptr;
             }
             Py_DECREF(item);
-            cursor += stored_payload_size;
-            if (channel + 1 < channel_count) {
-                cursor += (16 - (cursor % 16)) % 16;
-            }
         }
     }
     return result;

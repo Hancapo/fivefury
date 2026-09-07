@@ -181,6 +181,7 @@ def read_awc(
     awc_key: tuple[int, int, int, int] | bytes | bytearray | memoryview | None = None,
 ) -> Awc:
     data, path = _read_source(source, path)
+    original_data = data
     if len(data) < 16:
         raise ValueError("AWC data is too small")
     data, endian, whole_file_encrypted = _open_awc_container(data, decrypt=decrypt, awc_key=awc_key)
@@ -222,6 +223,10 @@ def read_awc(
         if chunk_indices != expected:
             # Preserve validity signal without rejecting files that differ from the common pattern.
             awc.chunk_indices_flag = True
+    from .state import serialized_state
+
+    awc._original_bytes = original_data
+    awc._original_state = serialized_state(awc)
     return awc
 
 
@@ -305,9 +310,16 @@ def _write_awc_tables(
 
 
 def build_awc_bytes(awc: Awc) -> bytes:
-    from .validation import validate_awc_binary_fields
+    from .state import serialized_state
+    from .validation import validate_awc
 
-    validate_awc_binary_fields(awc).raise_for_errors()
+    report = validate_awc(awc)
+    if report.errors:
+        if (all(issue.code == "awc.codec.unsupported" for issue in report.errors)
+                and awc._original_bytes is not None
+                and awc._original_state == serialized_state(awc)):
+            return awc._original_bytes
+        report.raise_for_errors()
     endian = "<"
     # Object lookup uses binary search; channel order lives in STREAM_FORMAT.
     streams = sorted(awc.streams, key=lambda stream: stream.hash)

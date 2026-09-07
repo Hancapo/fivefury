@@ -17,6 +17,10 @@ PCM_WIDTHS = {
 }
 
 
+def _packet_samples(codec: AwcCodecType) -> int:
+    return 4088 if codec is AwcCodecType.ADPCM else 2048 // PCM_WIDTHS[codec]
+
+
 def sample_capacity(data: bytes | memoryview, codec: AwcCodecType) -> int:
     if codec in PCM_WIDTHS:
         width = PCM_WIDTHS[codec]
@@ -40,7 +44,9 @@ def validate_fixed_stream(stream: AwcStream) -> None:
     for block in _iter_streaming_blocks(
         data, block_count=layout.block_count, block_size=layout.block_size
     ):
-        headers, offsets, cursor = _read_block_tables(block, len(layout.channels))
+        headers, offsets, cursor = _read_block_tables(
+            block, len(layout.channels), codec=layout.channels[0].codec
+        )
         starts = []
         for index, (channel, header, packets) in enumerate(
             zip(layout.channels, headers, offsets, strict=True)
@@ -54,11 +60,7 @@ def validate_fixed_stream(stream: AwcStream) -> None:
                 raise ValueError(
                     "Streaming samples or skipped prefix exceed payload capacity"
                 )
-            packet_samples = (
-                4088
-                if channel.codec is AwcCodecType.ADPCM
-                else 2048 // PCM_WIDTHS[channel.codec]
-            )
+            packet_samples = _packet_samples(channel.codec)
             if not packets or packets[0] + skip != positions[index]:
                 raise ValueError(
                     "Streaming packets do not match the absolute sample position"
@@ -75,8 +77,13 @@ def validate_fixed_stream(stream: AwcStream) -> None:
         if len(set(starts)) != 1:
             raise ValueError("Streaming channels do not share a block start")
         expected_seek.append(starts[0])
-    if positions != [channel.samples for channel in layout.channels]:
-        raise ValueError("Streaming samples do not match the format duration")
+    for total, channel in zip(positions, layout.channels, strict=True):
+        packet_samples = _packet_samples(channel.codec)
+        if (
+            channel.samples <= expected_seek[-1]
+            or not 0 <= total - channel.samples < packet_samples
+        ):
+            raise ValueError("Streaming samples do not match the format duration")
     seek = stream.seek_table_chunk
     if (
         seek is None

@@ -367,7 +367,9 @@ def validate_awc(awc: Awc) -> ValidationReport:
             "AWC stream IDs must be unique",
             path="streams",
         )
-    streams = awc_playback_streams(awc)
+    streams = [stream for stream in awc.streams
+               if stream.data_chunk is not None or stream.format_chunk is not None
+               or stream.stream_format_chunk is not None]
     if not streams:
         report.issue(
             "awc.stream.missing",
@@ -376,6 +378,9 @@ def validate_awc(awc: Awc) -> ValidationReport:
             path="streams",
         )
     for stream in streams:
+        types = [chunk.type_value for chunk in stream.chunks]
+        if len(types) != len(set(types)):
+            report.issue("awc.stream.chunk.duplicate", "Stream chunk types must be unique", path=f"streams[0x{stream.hash:08X}]")
         _validate_stream(report, awc, stream)
     if awc.multi_channel_flag and len(streams) != 1:
         report.issue(
