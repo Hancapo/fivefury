@@ -163,43 +163,14 @@ def test_audio_resolution_prefers_rel_sound_endpoint(
 def test_rel_bank_reference_does_not_have_to_match_awc_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from fivefury import AwcStreamFormat, AwcStreamFormatChunk
-
     reference = "scene_track"
     root_hash = cut_audio_sound_hashes(reference)[0]
     left_hash = MetaHash("scene_track_left").uint
     right_hash = MetaHash("scene_track_right").uint
     bank_reference = 0x91ECFC6A
     asset = _asset(1, "x64/audio/sfx/scene_track_mastered_only.awc")
-    source = AwcStream(
-        "scene_track",
-        [
-            AwcChunk(
-                AwcChunkType.STREAM_FORMAT,
-                stream_format=AwcStreamFormatChunk(
-                    1,
-                    2048,
-                    [
-                        AwcStreamFormat(
-                            id=left_hash,
-                            samples=16,
-                            sample_rate=48000,
-                        ),
-                        AwcStreamFormat(
-                            id=right_hash,
-                            samples=16,
-                            sample_rate=48000,
-                        ),
-                    ],
-                ),
-            ),
-            AwcChunk(AwcChunkType.DATA, data=b"audio"),
-        ],
-    )
-    parsed = Awc(
-        [source, AwcStream(left_hash), AwcStream(right_hash)],
-        flags=4,
-    )
+    parsed = Awc.from_channel_pcm(reference, [bytes(32)] * 2, sample_rate=48000)
+    source = parsed.streams[0]
     sound_index = RelSoundIndex(
         [
             RelFile(
