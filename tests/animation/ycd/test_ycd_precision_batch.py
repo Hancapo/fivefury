@@ -72,6 +72,13 @@ def test_native_precision_matches_scalar_runtime_at_all_samples(layout):
                 else sequence.evaluate_quaternion(frame + alpha)
             )
             error = target.angular_error_degrees(evaluated)
+            component_error = max(
+                component_error,
+                min(
+                    max(abs(a - b) for a, b in zip(target, evaluated, strict=True)),
+                    max(abs(a + b) for a, b in zip(target, evaluated, strict=True)),
+                ),
+            )
             if error > subframe_error:
                 subframe_error, worst = error, frame + alpha
     result = _ffi.ycd_compare_samples(expected, packed, 4, layout, 27, True)
@@ -90,6 +97,18 @@ def test_native_precision_scalar_vector_contract(dimensions):
         0,
         0,
         0,
+    )
+
+
+@pytest.mark.parametrize("dimensions", [1, 3])
+def test_native_component_precision_covers_physical_overlap_subframes(dimensions):
+    reference = np.zeros((2, 4))
+    packed = np.zeros_like(reference)
+    packed[1, dimensions - 1] = 1.0
+    packed[:, dimensions:] = np.nan
+    assert _ffi.ycd_compare_samples(reference, packed, dimensions, -1, 1, False)[0] == 0
+    assert (
+        _ffi.ycd_compare_samples(reference, packed, dimensions, -1, 1, True)[0] == 0.75
     )
 
 

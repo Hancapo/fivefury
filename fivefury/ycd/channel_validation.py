@@ -21,7 +21,6 @@ from .sequence_channels import (
     YcdQuantizeFloatChannel,
     YcdRawFloatChannel,
 )
-from .sequence_tracks import YcdTrackFormat
 from .write import build_ycd_bytes
 
 if TYPE_CHECKING:
@@ -172,8 +171,7 @@ def validate_cutscene_section_precision(
                     dimensions,
                     layout,
                     integer_count,
-                    track.format is YcdTrackFormat.QUATERNION
-                    and policy.maximum_angular_error_degrees is not None,
+                    policy.requires_validation,
                 )
                 covered += integer_count
                 if errors[2] > maximum[2]:

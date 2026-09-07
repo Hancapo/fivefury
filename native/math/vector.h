@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace fivefury_native {
 
@@ -17,6 +18,22 @@ struct Vec4 {
 
 inline double vec4_dot(const Vec4& left, const Vec4& right) {
     return left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w;
+}
+
+inline double vec_max_component_error(const Vec4& left, const Vec4& right, std::size_t dimensions) {
+    double result = 0.0;
+    for (std::size_t component = 0; component < dimensions; ++component) {
+        if (!std::isfinite(left[component]) || !std::isfinite(right[component])) {
+            return std::numeric_limits<double>::infinity();
+        }
+        result = std::max(result, std::abs(left[component] - right[component]));
+    }
+    return result;
+}
+
+inline double quat_component_error(const Vec4& left, const Vec4& right) {
+    return std::min(vec_max_component_error(left, right, 4),
+                    vec_max_component_error(left, {-right.x, -right.y, -right.z, -right.w}, 4));
 }
 
 inline Vec4 quat_prepare(const Vec4& start, const Vec4& end) {
