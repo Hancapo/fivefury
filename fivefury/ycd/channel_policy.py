@@ -20,8 +20,9 @@ class YcdChannelEncodingPolicy:
     and facial translation, rotation and scale. Other tracks retain raw floats.
     ``RAW_FLOAT`` writes varying components as retail-supported IEEE-754 floats.
     Error bounds are optional and are checked against a binary write/read cycle.
-    Angular limits apply independently to integer samples and runtime subframes
-    at 0.25, 0.5 and 0.75, including intervals across sequence boundaries.
+    Component and angular limits cover integer samples and runtime subframes at
+    0.25, 0.5 and 0.75, including intervals across sequence boundaries. Quaternion
+    component differences treat opposite signs as the same orientation.
     """
 
     encoding: YcdChannelEncoding = YcdChannelEncoding.RETAIL
