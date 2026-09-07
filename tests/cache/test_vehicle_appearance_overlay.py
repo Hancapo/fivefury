@@ -100,3 +100,56 @@ def test_explicit_rank_does_not_change_record_provenance(tmp_path):
             record.source_priority = priority
             assert asset_source_rank(record)[0] == priority
             assert record.source_tier is AssetSourceTier.UPDATE
+
+
+def test_overlay_rebuilds_appearance_after_fallback_rescan(tmp_path):
+    root, loose = tmp_path / "game", tmp_path / "loose"
+    metadata(root)
+    loose.mkdir()
+    with GameFileCache(root, use_index_cache=False) as cache:
+        cache.scan(load_keys=False)
+        with GameFileOverlay(loose, fallback=cache) as overlay:
+            assert overlay.resolve_vehicle_appearance("testcar").primary.srgb == (
+                1,
+                2,
+                3,
+                255,
+            )
+            metadata(root, color=0xFF040506)
+            cache.scan(load_keys=False)
+            assert overlay.resolve_vehicle_appearance("testcar").primary.srgb == (
+                4,
+                5,
+                6,
+                255,
+            )
+
+
+def test_remount_and_reopen_refresh_colors_without_touching_installation(tmp_path):
+    root, loose = tmp_path / "game", tmp_path / "loose"
+    metadata(root)
+    metadata(loose, color=0xFF040506)
+    with GameFileCache(root, use_index_cache=False) as cache:
+        cache.scan(load_keys=False)
+        with GameFileOverlay(loose, fallback=cache) as overlay:
+            assert overlay.resolve_vehicle_appearance("testcar").primary.srgb == (
+                4,
+                5,
+                6,
+                255,
+            )
+            metadata(loose, color=0xFF070809)
+            overlay.remount(loose)
+            appearance = overlay.resolve_vehicle_appearance("testcar")
+            assert appearance.primary.srgb == (7, 8, 9, 255)
+            assert appearance.primary.source.tier is AssetSourceTier.OVERLAY
+        with pytest.raises(ValueError, match="closed"):
+            overlay.resolve_vehicle_appearance("testcar")
+        with GameFileOverlay(loose, fallback=cache) as reopened:
+            assert reopened.resolve_vehicle_appearance("testcar") == appearance
+        assert cache.resolve_vehicle_appearance("testcar").primary.srgb == (
+            1,
+            2,
+            3,
+            255,
+        )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import ChainMap
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from ...cut.resolution.runtime import (
     CutsceneResolutionCancellation,
@@ -20,6 +20,10 @@ from ..cutscene_preparation import (
 from ..registrations import AssetRegistration
 from ..views import AssetRecord
 from .queries import OverlayQueries
+
+if TYPE_CHECKING:
+    from ...cut.payloads import CutVehicleVariationPayload
+    from ...vehiclemeta.appearance import ResolvedVehicleAppearance
 
 
 class _OverlayAssets(Mapping[str, AssetRecord]):
@@ -145,6 +149,15 @@ class GameFileOverlay(OverlayQueries, _TransientCache):
             self._loose.close()
         self._invalidate_views()
         self._closed = True
+
+    def resolve_vehicle_appearance(
+        self,
+        binding_or_model: Any,
+        *,
+        variation: CutVehicleVariationPayload | None = None,
+    ) -> ResolvedVehicleAppearance:
+        self._sync_sources()
+        return super().resolve_vehicle_appearance(binding_or_model, variation=variation)
 
     @property
     def asset_count(self) -> int:
