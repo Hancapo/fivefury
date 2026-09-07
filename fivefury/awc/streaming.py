@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import pairwise
 
+from ..binary import align
 from .mp3 import (
     MP3_SAMPLES_PER_FRAME,
     MP3_STREAMING_PACKET_SIZE,
@@ -103,7 +104,7 @@ def _read_block_tables(
             raise ValueError("AWC MP3 packet offsets must be monotonic")
         offsets_by_channel.append(tuple(offsets))
         cursor += table_size
-    return headers, offsets_by_channel, _align(cursor, MP3_STREAMING_PACKET_SIZE)
+    return headers, offsets_by_channel, align(cursor, MP3_STREAMING_PACKET_SIZE)
 
 
 def derive_mp3_streaming_seek_table(
@@ -114,19 +115,13 @@ def derive_mp3_streaming_seek_table(
     channel_count: int,
 ) -> tuple[int, ...]:
     return tuple(
-        _first_packet_sample_offset(
-            tuple(_read_block_tables(block, channel_count)[1])
-        )
+        _first_packet_sample_offset(tuple(_read_block_tables(block, channel_count)[1]))
         for block in _iter_streaming_blocks(
             data,
             block_count=block_count,
             block_size=block_size,
         )
     )
-
-
-def _align(value: int, alignment: int) -> int:
-    return value + (-value % alignment)
 
 
 def _frame_prefix(channel: EncodedMp3Channel) -> tuple[int, ...]:
@@ -163,11 +158,13 @@ def _block_size(
         )
         for channel in channels
     )
-    header_size = _align(
+    header_size = align(
         24 * len(channels) + 4 * packet_count,
         MP3_STREAMING_PACKET_SIZE,
     )
-    payload_size = sum(prefix[end_frame] - prefix[first_frame] for prefix in prefixes)
+    payload_size = sum(
+        align(prefix[end_frame] - prefix[first_frame], 16) for prefix in prefixes
+    )
     return header_size + payload_size
 
 
@@ -263,6 +260,7 @@ def build_mp3_streaming_data(
         block += bytes(-len(block) % MP3_STREAMING_PACKET_SIZE)
         for payload in payloads:
             block += payload
+            block += bytes(-len(payload) % 16)
         if len(block) > block_size:
             raise RuntimeError("AWC MP3 block planner exceeded the selected block size")
         # Retail AWC files pad every intermediate streaming block to block_size,
@@ -324,7 +322,7 @@ def inspect_mp3_streaming_data(
                     frames,
                 )
             )
-            cursor += encoded_size
+            cursor += align(encoded_size, 16)
         result.append(Mp3StreamingBlock(tuple(parsed_channels)))
     return tuple(result)
 

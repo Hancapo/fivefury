@@ -144,11 +144,12 @@ def test_native_multichannel_block_extraction() -> None:
     block += struct.pack("<2i", 0, 0)
     block += b"\x00" * ((-len(block)) % 0x800)
     block += left
+    block += bytes(-len(left) % 16)
     block += right
 
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=len(block), channel_count=2
-    ) == [[(2, left)], [(3, right)]]
+    ) == [[(2, 0, left)], [(3, 0, right)]]
 
 
 def test_native_multichannel_block_extraction_accepts_compact_final_block() -> None:
@@ -161,7 +162,7 @@ def test_native_multichannel_block_extraction_accepts_compact_final_block() -> N
 
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=8192, channel_count=1
-    ) == [[(2, payload)]]
+    ) == [[(2, 0, payload)]]
 
 
 def test_native_multichannel_block_extraction_accepts_compact_three_channel_final_block() -> None:
@@ -176,24 +177,24 @@ def test_native_multichannel_block_extraction_accepts_compact_three_channel_fina
     assert len(block) == 7760
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=524288, channel_count=3
-    ) == [[(7744, payload)] for payload in payloads]
+    ) == [[(7744, 0, payload)] for payload in payloads]
 
 
-def test_native_multichannel_block_extraction_uses_compact_strides_before_padding() -> None:
+def test_native_multichannel_block_extraction_uses_aligned_encoded_strides() -> None:
     payloads = [b"\xff\xfbA", b"\xff\xfbBBBB", b"\xff\xfbCCCCC"]
     block = bytearray()
     for channel, payload in enumerate(payloads):
         block += struct.pack("<6i", channel, 1, 0, 1152, 0, len(payload))
     block += struct.pack("<3i", 0, 0, 0)
     block += b"\x00" * ((-len(block)) % 0x800)
-    block += b"".join(payloads)
+    block += b"".join(payload + bytes(-len(payload) % 16) for payload in payloads)
     block += b"padding" * 800
 
     assert len(block) < 8192
     block += b"\x00" * (8192 - len(block))
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=8192, channel_count=3
-    ) == [[(1152, payload)] for payload in payloads]
+    ) == [[(1152, 0, payload)] for payload in payloads]
 
 
 def test_native_multichannel_block_extraction_falls_back_to_padded_stride() -> None:
@@ -207,7 +208,7 @@ def test_native_multichannel_block_extraction_falls_back_to_padded_stride() -> N
 
     assert _extract_multichannel_blocks(
         bytes(block), block_count=1, block_size=len(block), channel_count=2
-    ) == [[(1024, payloads[0])], [(1024, payloads[1])]]
+    ) == [[(1024, 0, payloads[0])], [(1024, 0, payloads[1])]]
 
 
 def test_native_multichannel_block_validation_rejects_compact_size_sum() -> None:

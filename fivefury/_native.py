@@ -419,7 +419,7 @@ def _awc_build_pcm_wav(
 
 def _awc_extract_multichannel_blocks(
     data: bytes, block_count: int, block_size: int, channel_count: int
-) -> list[list[tuple[int, bytes]]]:
+) -> list[list[tuple[int, int, bytes]]]:
     return _ffi.awc_extract_multichannel_blocks(
         data, int(block_count), int(block_size), int(channel_count)
     )
