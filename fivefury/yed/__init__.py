@@ -12,7 +12,7 @@ from .constants import (
     YED_FACIAL_ROOT_BONE_NAME,
 )
 from .enums import YedInstructionType, YedTrackFormat
-from .contract.frame import YedFrameDof
+from .contract.frame import YedFrameDof, YedFrameLayout
 from .evaluate import (
     DofKey,
     VariableKey,
@@ -81,6 +81,7 @@ __all__ = [
     "YedEvaluationResult",
     "YedExpression",
     "YedFrameDof",
+    "YedFrameLayout",
     "YedInstruction",
     "YedInstructionType",
     "YedPedExpressionBinding",

@@ -98,10 +98,41 @@ them anymore.
 
 ## Frame indices and CPU diagnostics
 
-`YedFrameDof` and `expression.resolve_frame_indices(...)` describe frame binding.
+`YedFrameLayout` describes the complete runtime frame, not a skeleton palette.
+Derive it from the union of actual frame channels (skeleton DOFs, animation and
+expression extras), or inspect a complete captured layout using `YedFrameDof`:
+
+```python
+from fivefury import YedFrameLayout, YedTrack
+
+frame = YedFrameLayout.derive([
+    YedTrack.vector3(7, 0),
+    YedTrack.quaternion(7, 1),
+    YedTrack.vector3(7, 25),
+])
+frame.validate().raise_for_errors()
+indices = expression.resolve_frame_indices(frame)
+```
+
+`derive` merges input/output references to the same physical DOF, rejects format
+conflicts, sorts channels by track and bone ID, and packs each format with its
+runtime padding. The final two 16-byte slots are reserved for read/write sentinels.
+`buffer_size` includes these slots and must fit uint16. Validation rejects
+misaligned, overlapping, noncanonical and out-of-frame DOFs rather than repairing
+them. An empty frame still occupies 32 bytes.
+
 A matching **typed** DOF supplies its frame offset; an absent or differently typed
 DOF uses `read_only_offset` for input tracks and `write_only_offset` for outputs.
 Those two sentinel roles must not be confused with bone-ID remapping.
+They are offsets of real storage, not `0xFFFF`. A missing channel does not by
+itself imply an invalid accelerator address. This API describes layout only;
+the runtime must initialize frame values and sentinel contents.
+
+`frame.signature` is the runtime checksum of the sorted DOFs. Its value is not
+proof of identity: caches must retain the full layout and invalidate on changes.
+Do not pass an incomplete dump as a complete layout or infer absent DOF records.
+The previous `resolve_frame_indices(dofs, read_only_offset=..., write_only_offset=...)`
+form is removed; pass a validated `YedFrameLayout` instead.
 
 `evaluate_yed(...).issues` describes numerical/VM problems.
 `evaluate_yed(...).native_diagnostics` separately reports the zero-signature

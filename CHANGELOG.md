@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- YED frame-index resolution requires a complete typed frame layout instead of independent offsets.
 - AWC export rejects incomplete playback contracts and unsupported codec authoring; unsupported original codecs can only be preserved unchanged.
 - Vehicle appearance provenance uses the shared `AssetSourceTier` enum instead of `VehicleAppearanceSourceTier`.
 - YED track direction uses `is_input` instead of `remap` or `remap_flag`; input and output bindings remain distinct for the same channel.
@@ -16,6 +17,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- Typed YED frame layouts with packed DOFs, reserved sentinel storage and runtime signatures.
 - Explicit ped metadata and expression-set registrations for custom file names, with typed XML and binary ped-init reading.
 - Scoped loose-asset overlays with installation fallback, explicit metadata registrations and atomic remounting.
 - YED runtime-contract derivation for signatures, directional tracks, accelerated operands and stream sizes, with typed frame-DOF resolution.
@@ -27,6 +29,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- YED frame binding rejects misaligned, overlapping and out-of-range offsets before resolving accelerated tracks.
 - Ordinary AWC sound banks sort stream hashes for runtime lookup without changing channel order.
 - AWC MP3 channels retain 16-byte alignment during writing and native extraction; block decoding honors skipped overlap samples.
 - PCM streaming uses extended block headers, absolute packet sample offsets and compact final blocks without truncating payloads.
