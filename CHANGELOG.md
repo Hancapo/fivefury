@@ -27,6 +27,8 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Fixed
 
 - Ordinary AWC sound banks sort stream hashes for runtime lookup without changing channel order.
+- AWC MP3 channels retain 16-byte alignment during writing and native extraction; block decoding honors skipped overlap samples.
+- PCM streaming uses extended block headers, absolute packet sample offsets and compact final blocks without truncating payloads.
 - Vehicle appearance resolution separates source provenance from overlay sorting priority, preserving fallback variations and overriding color definitions correctly.
 - Vehicle appearance overlays refresh cached colors and variations after installation rescans without modifying the borrowed cache.
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.

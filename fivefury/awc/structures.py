@@ -1038,7 +1038,8 @@ def _build_multichannel_data(
             start_byte = start_small_block * small_block_size
             data_size = small_blocks_per_large_block * small_block_size
             payload = bytes(data[start_byte : start_byte + data_size])
-            payload += b"\x00" * (data_size - len(payload))
+            packet_count = (len(payload) + small_block_size - 1) // small_block_size
+            payload += b"\x00" * (-len(payload) % small_block_size)
             remaining_samples = max(
                 0, (len(data) // 2) - (start_small_block * samples_per_small_block)
             )
@@ -1047,15 +1048,15 @@ def _build_multichannel_data(
                 remaining_samples,
             )
             offsets = [
-                index * samples_per_small_block
-                for index in range(small_blocks_per_large_block)
+                (start_small_block + index) * samples_per_small_block
+                for index in range(packet_count)
             ]
             channel_offsets.append(offsets)
             channel_payloads.append(payload)
             block += struct.pack(
                 "<iiiiii",
-                channel_index * small_blocks_per_large_block,
-                small_blocks_per_large_block,
+                -1,
+                packet_count,
                 0,
                 sample_count,
                 0,
@@ -1066,8 +1067,11 @@ def _build_multichannel_data(
         block += b"\x00" * ((-len(block)) % 0x800)
         for payload in channel_payloads:
             block += payload
-        block += b"\x00" * (block_size - len(block))
-        blocks.append(bytes(block[:block_size]))
+        if len(block) > block_size:
+            raise ValueError("PCM streaming block exceeds its planned size")
+        if block_index + 1 < block_count:
+            block += b"\x00" * (block_size - len(block))
+        blocks.append(bytes(block))
     return b"".join(blocks), seek_table, block_count
 
 
@@ -1091,7 +1095,9 @@ def _extract_multichannel_channel_pcm(source: AwcStream) -> list[bytes]:
         channel_count=len(stream_format.channels),
     )
     for channel_index, channel_blocks in enumerate(blocks):
-        for sample_count, payload in channel_blocks:
+        for sample_count, samples_to_skip, payload in channel_blocks:
+            if not 0 <= samples_to_skip <= sample_count:
+                raise ValueError("AWC skipped samples exceed block sample count")
             channel = stream_format.channels[channel_index]
             codec = channel.codec
             match codec:
@@ -1115,7 +1121,7 @@ def _extract_multichannel_channel_pcm(source: AwcStream) -> list[bytes]:
                     raise NotImplementedError(
                         f"AWC codec {codec.name} cannot be decoded to PCM"
                     )
-            outputs[channel_index].extend(decoded)
+            outputs[channel_index].extend(decoded[samples_to_skip * 2:])
     return [bytes(output) for output in outputs]
 
 

@@ -550,15 +550,18 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
         Py_ssize_t cursor = channel_count * 24;
         std::vector<std::int32_t> counts(static_cast<std::size_t>(channel_count));
         std::vector<std::int32_t> samples(static_cast<std::size_t>(channel_count));
+        std::vector<std::int32_t> skips(static_cast<std::size_t>(channel_count));
         std::vector<std::int32_t> encoded_sizes(static_cast<std::size_t>(channel_count));
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
             const char* header = block + channel * 24;
             counts[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 4));
             samples[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 12));
+            skips[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 8));
             encoded_sizes[static_cast<std::size_t>(channel)] = static_cast<std::int32_t>(binary::load<std::uint32_t>(header + 20));
             if (
                 counts[static_cast<std::size_t>(channel)] < 0
                 || samples[static_cast<std::size_t>(channel)] < 0
+                || skips[static_cast<std::size_t>(channel)] < 0
                 || encoded_sizes[static_cast<std::size_t>(channel)] < 0
             ) {
                 Py_DECREF(result);
@@ -610,6 +613,9 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
             }
             stored_payload_sizes[static_cast<std::size_t>(channel)] = stride;
             payload_cursor += stride;
+            if (channel + 1 < channel_count) {
+                payload_cursor += (16 - (payload_cursor % 16)) % 16;
+            }
         }
 
         for (Py_ssize_t channel = 0; channel < channel_count; ++channel) {
@@ -617,7 +623,7 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
                 stored_payload_sizes[static_cast<std::size_t>(channel)];
             auto* payload = PyBytes_FromStringAndSize(block + cursor, stored_payload_size);
             if (payload == nullptr) { Py_DECREF(result); return nullptr; }
-            PyObject* item = Py_BuildValue("(iN)", samples[static_cast<std::size_t>(channel)], payload);
+            PyObject* item = Py_BuildValue("(iiN)", samples[static_cast<std::size_t>(channel)], skips[static_cast<std::size_t>(channel)], payload);
             if (item == nullptr || PyList_Append(PyList_GetItem(result, channel), item) != 0) {
                 Py_XDECREF(item);
                 Py_DECREF(result);
@@ -625,6 +631,9 @@ PyObject* mod_awc_extract_multichannel_blocks(PyObject*, PyObject* args) {
             }
             Py_DECREF(item);
             cursor += stored_payload_size;
+            if (channel + 1 < channel_count) {
+                cursor += (16 - (cursor % 16)) % 16;
+            }
         }
     }
     return result;
