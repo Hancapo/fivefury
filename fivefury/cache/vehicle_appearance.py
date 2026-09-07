@@ -13,7 +13,6 @@ from ..vehiclemeta.appearance import (
     ResolvedVehicleAppearance,
     ResolvedVehicleColor,
     VehicleAppearanceSource,
-    VehicleAppearanceSourceTier,
 )
 from ..vehiclemeta.carcols import VehicleModelColor
 from ..vehiclemeta.resource import VehicleMeta
@@ -34,11 +33,10 @@ class _VehicleAppearanceIndex:
 
 
 def _source(asset: AssetRecord) -> VehicleAppearanceSource:
-    tier, _path = asset_source_rank(asset)
     return VehicleAppearanceSource(
         path=asset.path,
         kind=asset.kind,
-        tier=VehicleAppearanceSourceTier(tier),
+        tier=asset.source_tier,
     )
 
 

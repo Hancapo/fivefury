@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..common import hash_value
+from ..asset_source import AssetSourceTier, source_tier_from_path
 from ..gamefile import GameFileType
 from ..metahash import MetaHash
 from ..rpf import RpfArchive, RpfFileEntry
@@ -30,13 +31,20 @@ _FLAG_RESOURCE = 2
 _FLAG_ENCRYPTED = 4
 
 class AssetRecord:
-    __slots__ = ("_cache", "id", "_storage_id", "source_priority")
+    __slots__ = ("_cache", "id", "_storage_id", "source_priority", "_source_tier")
 
     def __init__(self, cache: GameFileCache, asset_id: int) -> None:
         self._cache = cache
         self.id = int(asset_id)
         self._storage_id = self.id
         self.source_priority: int | None = None
+        self._source_tier: AssetSourceTier | None = None
+
+    @property
+    def source_tier(self) -> AssetSourceTier:
+        if self._source_tier is not None:
+            return self._source_tier
+        return source_tier_from_path(self.path)
 
     def __repr__(self) -> str:
         return (

@@ -2,7 +2,6 @@ from .appearance import (
     ResolvedVehicleAppearance,
     ResolvedVehicleColor,
     VehicleAppearanceSource,
-    VehicleAppearanceSourceTier,
 )
 from .carcols import (
     VehicleCarCols,
@@ -110,7 +109,6 @@ __all__ = [
     "SubmarineHandlingData",
     "TrailerHandlingData",
     "VehicleAppearanceSource",
-    "VehicleAppearanceSourceTier",
     "VehicleCarCols",
     "VehicleClass",
     "VehicleColorIndices",

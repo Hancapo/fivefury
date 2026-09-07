@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..asset_source import source_tier_from_path
+
 if TYPE_CHECKING:
     from ..gamefile import GameFileType
     from .core import GameFileCache
@@ -13,15 +15,7 @@ def asset_source_rank(asset: AssetRecord) -> tuple[int, str]:
     priority = getattr(asset, "source_priority", None)
     if priority is not None:
         return priority, path
-    if path.startswith("mods/"):
-        tier = 0
-    elif "/dlcpacks/" in path:
-        tier = 1
-    elif path.startswith("update/"):
-        tier = 2
-    else:
-        tier = 3
-    return tier, path
+    return int(source_tier_from_path(path)), path
 
 
 def preferred_asset(

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...gamefile import GameFile, GameFileType
+from ...asset_source import AssetSourceTier
 from ...metahash import MetaHash
 from ...rpf import RpfEntry
 from ..precedence import asset_source_rank
@@ -27,6 +28,9 @@ class OverlayQueries:
                 result = AssetRecord(cache, record.id + offset)
                 result._storage_id = record.id
                 result.source_priority = layer * 4 + asset_source_rank(record)[0]
+                result._source_tier = (
+                    AssetSourceTier.OVERLAY if layer == 0 else record.source_tier
+                )
                 return result
             offset += cache.asset_count
         raise ValueError("Asset does not belong to the active overlay")

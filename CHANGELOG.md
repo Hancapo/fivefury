@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Breaking Changes
 
+- Vehicle appearance provenance uses the shared `AssetSourceTier` enum instead of `VehicleAppearanceSourceTier`.
 - YED track direction uses `is_input` instead of `remap` or `remap_flag`; input and output bindings remain distinct for the same channel.
 - Executable YED authoring requires an explicit runtime-contract recalculation before export; incomplete or stale contracts are rejected.
 
@@ -25,6 +26,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- Vehicle appearance resolution separates source provenance from overlay sorting priority, preserving fallback variations and overriding color definitions correctly.
 - Ped expression resolution includes registered XML metadata alongside binary init records and invalidates outdated ped indexes.
 - Loose ped metadata takes precedence over installation records without sharing asset IDs or retaining outdated expression and outfit data across mounts.
 - Rebuilding YED instruction buffers recalculates branch offsets across aligned data, parameter data and opcodes.

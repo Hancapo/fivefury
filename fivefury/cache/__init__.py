@@ -1,3 +1,4 @@
+from ..asset_source import AssetSourceTier
 from .assets import GameFileCacheAssetMixin, TextureRef
 from .core import GameFileCache
 from .overlay import GameFileOverlay
@@ -36,6 +37,7 @@ from .textures import TextureCatalog, TextureCatalogEntry
 from .views import AssetRecord, ScanStats
 
 __all__ = [
+    "AssetSourceTier",
     "AssetRecord",
     "AssetRegistration",
     "GameFileCache",
