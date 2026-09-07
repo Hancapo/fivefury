@@ -9,6 +9,7 @@ from ...metahash import MetaHash
 from ..enums import YedInstructionType as Op
 from ..enums import YedTrackFormat
 from ..model import ResourceListInfo, YedExpression, YedSpring, YedTrack
+from .access import validate_frame_accesses
 from .traversal import BLENDS, READS, WRITES, preorder
 
 
@@ -73,6 +74,7 @@ def _accesses(instruction, tracks):
 
 def derive_contract(expression: YedExpression) -> YedExpression:
     """Prepare a detached expression; failures never partially mutate authoring state."""
+    validate_frame_accesses(expression).raise_for_errors()
     result = copy.deepcopy(expression)
     result._original_contract_state = None
     old_tracks = result.tracks

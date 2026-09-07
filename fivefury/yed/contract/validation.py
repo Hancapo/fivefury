@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ...authoring.diagnostics import DiagnosticSeverity, ValidationReport
 from ..enums import YedInstructionType as Op
+from .access import validate_frame_accesses
 from .derive import derive_contract
 from .state import expression_state
 
@@ -15,7 +16,7 @@ def executable(expression) -> bool:
 
 
 def validate_expression_contract(expression) -> ValidationReport:
-    report = ValidationReport()
+    report = validate_frame_accesses(expression)
     if not 0 <= expression.signature <= 0xFFFFFFFF:
         report.issue(
             "yed.native.signature.range", "Signature must fit uint32", path="signature"
