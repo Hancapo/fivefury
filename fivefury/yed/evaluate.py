@@ -247,21 +247,7 @@ def _resolve_expressions(
 
 
 def _program_signature(expressions: tuple[Any, ...], skeleton: object | None) -> tuple[Any, ...]:
-    bones = getattr(skeleton, "bones", ())
-    return (
-        tuple(
-            (
-                id(expression),
-                tuple(
-                    (id(stream), id(stream.instructions), len(stream.instructions))
-                    for stream in expression.streams
-                ),
-            )
-            for expression in expressions
-        ),
-        id(bones),
-        len(bones),
-    )
+    return _program_spec(expressions), _skeleton_defaults(skeleton)
 
 
 def _get_program(
@@ -282,7 +268,7 @@ def _get_program(
     ):
         _PROGRAM_CACHE.move_to_end(cache_key)
         return cached.program
-    program = NativeYedProgram(_program_spec(expressions), _skeleton_defaults(skeleton))
+    program = NativeYedProgram(*signature)
     _PROGRAM_CACHE[cache_key] = _CachedProgram(
         yed=yed,
         skeleton=skeleton,
@@ -309,6 +295,46 @@ def _native_issues(values: Iterable[tuple[Any, ...]]) -> list[YedEvaluationIssue
     ]
 
 
+def _native_attachment_diagnostics(expressions) -> tuple[Diagnostic, ...]:
+    from .contract.validation import executable
+
+    return tuple(
+        Diagnostic("yed.native.signature.zero", "Numerical evaluation does not establish native attachment: this expression has a zero signature", path=expression.name)
+        for expression in expressions if not expression.signature and executable(expression)
+    )
+
+
+def _evaluate_program(
+    program: NativeYedProgram,
+    expression_names: tuple[str, ...],
+    resolution_issues: tuple[YedEvaluationIssue, ...],
+    native_diagnostics: tuple[Diagnostic, ...],
+    tracks: Mapping[DofKey, object],
+    *,
+    time: float = 0.0,
+    delta_time: float = 0.0,
+    variables: MutableMapping[VariableKey, Vector4] | None = None,
+) -> YedEvaluationResult:
+    result_tracks, outputs, result_variables, native_issues = program.evaluate(
+        tracks,
+        variables if variables is not None else {},
+        time,
+        delta_time,
+        vector_type=Vector4,
+    )
+    if variables is not None:
+        variables.clear()
+        variables.update(result_variables)
+    return YedEvaluationResult(
+        tracks=result_tracks,
+        output_tracks=outputs,
+        variables=result_variables,
+        evaluated_expressions=list(expression_names),
+        issues=[*resolution_issues, *_native_issues(native_issues)],
+        native_diagnostics=native_diagnostics,
+    )
+
+
 def evaluate_yed(
     yed: Any,
     expression_names: Iterable[str | int],
@@ -319,43 +345,14 @@ def evaluate_yed(
     delta_time: float = 0.0,
     variables: MutableMapping[VariableKey, Vector4] | None = None,
 ) -> YedEvaluationResult:
-    """Evaluate selected serialized RAGE expression streams against typed DOFs."""
-    from .contract.validation import executable
-
+    """Evaluate current editable expression state; compile for repeated playback."""
     names = tuple(expression_names)
     expressions, resolution_issues = _resolve_expressions(yed, names)
     program = _get_program(yed, skeleton, names, expressions)
-    variable_values: MutableMapping[VariableKey, Vector4] = (
-        variables if variables is not None else {}
-    )
-    native_tracks = {key: _native_vector(value) for key, value in tracks.items()}
-    native_variables = {
-        key: _native_vector(value) for key, value in variable_values.items()
-    }
-    result_tracks, outputs, result_variables, native_issues = program.evaluate(
-        native_tracks,
-        native_variables,
-        time,
-        delta_time,
-    )
-    typed_tracks = {key: Vector4.from_iterable(value) for key, value in result_tracks.items()}
-    typed_outputs = {key: Vector4.from_iterable(value) for key, value in outputs.items()}
-    typed_variables = {
-        key: Vector4.from_iterable(value) for key, value in result_variables.items()
-    }
-    if variables is not None:
-        variables.clear()
-        variables.update(typed_variables)
-    return YedEvaluationResult(
-        tracks=typed_tracks,
-        output_tracks=typed_outputs,
-        variables=typed_variables,
-        evaluated_expressions=[expression.short_name for expression in expressions],
-        issues=[*resolution_issues, *_native_issues(native_issues)],
-        native_diagnostics=tuple(
-            Diagnostic("yed.native.signature.zero", "Numerical evaluation does not establish native attachment: this expression has a zero signature", path=expression.name)
-            for expression in expressions if not expression.signature and executable(expression)
-        ),
+    return _evaluate_program(
+        program, tuple(expression.short_name for expression in expressions),
+        tuple(resolution_issues), _native_attachment_diagnostics(expressions),
+        tracks, time=time, delta_time=delta_time, variables=variables,
     )
 
 

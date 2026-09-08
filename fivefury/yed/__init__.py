@@ -11,8 +11,8 @@ from .constants import (
     YED_FACIAL_ROOT_BONE_ID,
     YED_FACIAL_ROOT_BONE_NAME,
 )
-from .enums import YedInstructionType, YedTrackFormat
 from .contract.frame import YedFrameDof, YedFrameLayout
+from .enums import YedInstructionType, YedTrackFormat
 from .evaluate import (
     DofKey,
     VariableKey,
@@ -47,6 +47,7 @@ from .ped import (
     set_ped_expression_binding,
     validate_ped_expression_binding,
 )
+from .playback import YedEvaluator
 from .reader import read_yed, read_yed_dictionary
 from .runtime_headers import (
     GEN9_YED_DICTIONARY_VFTS,
@@ -79,6 +80,7 @@ __all__ = [
     "YedDictionary",
     "YedEvaluationIssue",
     "YedEvaluationResult",
+    "YedEvaluator",
     "YedExpression",
     "YedFrameDof",
     "YedFrameLayout",

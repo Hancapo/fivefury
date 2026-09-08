@@ -58,11 +58,13 @@ Vec4 as_vec4(PyObject* object, const char* label) {
 }
 
 Vec4 as_track_vec4(PyObject* object) {
-    const auto size = PySequence_Size(object);
-    if (size < 0) {
-        PyErr_Clear();
+    if (PyFloat_Check(object) || PyLong_Check(object)) {
         return {as_double(object, "track value"), 0.0, 0.0, 0.0};
     }
+    PyHandle sequence(PySequence_Tuple(object));
+    if (!sequence) throw std::invalid_argument("track value must be numeric or iterable");
+    object = sequence.get();
+    const auto size = PyTuple_Size(object);
     if (size >= 4) return as_vec4(object, "track value");
     if (size == 3) {
         auto x = item(object, 0);
@@ -323,7 +325,7 @@ void parse_variable_mapping(PyObject* mapping, std::unordered_map<YedVariableKey
         auto variable_index = item(key.get(), 1);
         if (!hash || !variable_index) throw std::invalid_argument("invalid variable key");
         output[yed_variable_key(as_u64_mask(hash.get(), "variable"), as_u64_mask(variable_index.get(), "variable_index"))] =
-            as_vec4(value.get(), "variable value");
+            as_track_vec4(value.get());
     }
 }
 
@@ -353,12 +355,22 @@ PyObject* make_pair_key(std::uint32_t left, std::uint32_t right) {
 }
 
 template <typename Map>
-PyObject* make_mapping(const Map& values) {
+PyObject* make_mapping(const Map& values, PyObject* vector_type,
+                       const Map* shared_values = nullptr, PyObject* shared_objects = nullptr) {
     PyObject* result = PyDict_New();
     if (result == nullptr) return nullptr;
     for (const auto& [packed, vector] : values) {
         PyHandle key(make_pair_key(static_cast<std::uint32_t>(packed >> 32U), static_cast<std::uint32_t>(packed)));
-        PyHandle value(make_vec4(vector));
+        PyObject* shared = nullptr;
+        if (key && shared_values) {
+            const auto found = shared_values->find(packed);
+            if (found != shared_values->end() && vec_max_component_error(vector, found->second, 4) == 0.0) {
+                shared = PyDict_GetItemWithError(shared_objects, key.get());
+                if (!shared && PyErr_Occurred()) { Py_DECREF(result); return nullptr; }
+            }
+        }
+        PyHandle value(shared ? Py_NewRef(shared) : vector_type == Py_None ? make_vec4(vector)
+            : PyObject_CallFunction(vector_type, "dddd", vector.x, vector.y, vector.z, vector.w));
         if (!key || !value || PyDict_SetItem(result, key.get(), value.get()) < 0) {
             Py_DECREF(result);
             return nullptr;
@@ -426,7 +438,11 @@ PyObject* mod_yed_evaluate(PyObject*, PyObject* args) {
     PyObject* variables = nullptr;
     double time = 0.0;
     double delta_time = 0.0;
-    if (!PyArg_ParseTuple(args, "OOOdd", &capsule, &tracks, &variables, &time, &delta_time)) return nullptr;
+    PyObject* vector_type = Py_None;
+    if (!PyArg_ParseTuple(args, "OOOdd|O", &capsule, &tracks, &variables, &time, &delta_time, &vector_type)) return nullptr;
+    if (vector_type != Py_None && !PyCallable_Check(vector_type)) {
+        PyErr_SetString(PyExc_TypeError, "YED output vector type must be callable"); return nullptr;
+    }
     auto* program = require_yed_program(capsule);
     if (program == nullptr) return nullptr;
     try {
@@ -438,9 +454,10 @@ PyObject* mod_yed_evaluate(PyObject*, PyObject* args) {
             evaluate_yed_program(*program, frame, time, delta_time);
         }
 
-        PyHandle result_tracks(make_mapping(frame.tracks));
-        PyHandle result_outputs(make_mapping(frame.outputs));
-        PyHandle result_variables(make_mapping(frame.variables));
+        PyHandle result_tracks(make_mapping(frame.tracks, vector_type));
+        if (!result_tracks) return nullptr;
+        PyHandle result_outputs(make_mapping(frame.outputs, vector_type, &frame.tracks, result_tracks.get()));
+        PyHandle result_variables(make_mapping(frame.variables, vector_type));
         PyHandle result_issues(make_issues(frame.issues));
         if (!result_tracks || !result_outputs || !result_variables || !result_issues) return nullptr;
         PyObject* result = PyTuple_New(4);

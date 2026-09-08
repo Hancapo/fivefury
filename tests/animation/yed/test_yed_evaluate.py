@@ -800,7 +800,7 @@ def test_track_input_coercion_matches_the_public_vector_rules() -> None:
     assert result.output_tracks[(30, 0)] == Vector4(4.0, 5.0, 6.0, 0.0)
 
 
-def test_compiled_program_is_reused_and_invalidated_by_stream_replacement() -> None:
+def test_compiled_program_is_reused_by_content_and_invalidated_by_operand_edits() -> None:
     evaluator = importlib.import_module("fivefury.yed.evaluate")
     evaluator._PROGRAM_CACHE.clear()
     expression = YedExpression.create("cached")
@@ -820,6 +820,10 @@ def test_compiled_program_is_reused_and_invalidated_by_stream_replacement() -> N
 
     expression.streams[0].instructions = list(expression.streams[0].instructions)
     evaluate_yed(yed, ("cached",), {})
+    assert next(iter(evaluator._PROGRAM_CACHE.values())).program is first
+    expression.streams[0].instructions[1].operands["bone_id"] = 2
+    result = evaluate_yed(yed, ("cached",), {})
+    assert (2, 0) in result.output_tracks and (1, 0) not in result.output_tracks
     assert next(iter(evaluator._PROGRAM_CACHE.values())).program is not first
 
 

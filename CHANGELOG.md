@@ -9,16 +9,19 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- Immutable YED evaluators snapshot expression selection and skeleton defaults for repeated typed evaluation with explicit per-actor variable state.
 - Compiled YCD clip samplers preserve the public phase/time evaluation interface while sharing immutable animation plans.
 - Immutable compiled YCD animation samplers retain owned channel data for repeated native evaluation without stale caches after source edits.
 - Per-track quaternion encoding overrides allow explicit facial rotations while keeping body and camera packing unchanged.
 
 ### Fixed
 
+- YED program caches detect in-place operand and skeleton-default edits instead of relying on object identities and list lengths.
 - Explicit quaternion authoring stores all four static components instead of discarding W and reconstructing it from rounded XYZ values.
 
 ### Performance
 
+- Up to 2x faster repeated YED evaluation with compiled evaluators, avoiding repeated expression resolution and Python input/output conversions.
 - Up to 14x faster repeated YCD sampling with compiled animation samplers, keeping typed outputs and cached-quaternion interpolation order.
 - YCD precision diagnostics distinguish integer-frame and subframe component errors, report their frame locations and include quaternion angular error independently of component limits.
 - YCD precision limits cover scalar, vector and quaternion components at subframes, including physical sequence overlaps; component-only policies no longer omit between-frame quaternion checks.
