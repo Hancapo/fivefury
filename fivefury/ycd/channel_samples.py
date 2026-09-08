@@ -15,7 +15,7 @@ from .sequence_channels import (
 def decoded_channel_components(channel: YcdAnimChannel) -> np.ndarray:
     """Decoded component cycles; no quantization or interpolation is repeated."""
     if isinstance(channel, YcdCachedQuaternionChannel):
-        raise ValueError("Cached quaternion opcodes require a sequence context")
+        raise TypeError("Cached quaternion opcodes require a sequence context")
     if isinstance(channel, YcdIndirectQuantizeFloatChannel):
         if not len(channel.frames) or not len(channel.values):
             return np.array([[channel.offset]], dtype=np.float64)
