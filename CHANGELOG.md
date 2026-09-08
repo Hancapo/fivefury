@@ -18,14 +18,14 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 - YED program caches detect in-place operand and skeleton-default edits instead of relying on object identities and list lengths.
 - Explicit quaternion authoring stores all four static components instead of discarding W and reconstructing it from rounded XYZ values.
+- YCD precision diagnostics distinguish integer-frame and subframe component errors, report their frame locations and include quaternion angular error independently of component limits.
+- YCD precision limits cover scalar, vector and quaternion components at subframes, including physical sequence overlaps; component-only policies no longer omit between-frame quaternion checks.
+- Facial translation, rotation and scale honor the RETAIL channel policy with 16-bit compression, preserving static channels and per-track RAW_FLOAT overrides.
 
 ### Performance
 
 - Up to 2x faster repeated YED evaluation with compiled evaluators, avoiding repeated expression resolution and Python input/output conversions.
 - Up to 14x faster repeated YCD sampling with compiled animation samplers, keeping typed outputs and cached-quaternion interpolation order.
-- YCD precision diagnostics distinguish integer-frame and subframe component errors, report their frame locations and include quaternion angular error independently of component limits.
-- YCD precision limits cover scalar, vector and quaternion components at subframes, including physical sequence overlaps; component-only policies no longer omit between-frame quaternion checks.
-- Facial translation, rotation and scale honor the RETAIL channel policy with 16-bit compression, preserving static channels and per-track RAW_FLOAT overrides.
 
 ## [0.5.0] - 2026-09-07
 
