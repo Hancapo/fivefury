@@ -93,7 +93,9 @@ def validate_cutscene_section_precision(
             AuthoringProgress(AuthoringStage.VALIDATE, progress_asset, 0, total)
         )
     encoded = build_ycd_bytes(
-        asset if asset is not None else builder._build_section(section.index, operation=operation),
+        asset
+        if asset is not None
+        else builder._build_section(section.index, operation=operation),
         operation=operation,
     )
     decoded = read_ycd(encoded)
@@ -140,8 +142,8 @@ def validate_cutscene_section_precision(
             reference = np.zeros((section.frame_count, 4), dtype=np.float64)
             for index, values in enumerate(components):
                 reference[:, index] = values
-            maximum = [0.0, 0.0, 0.0]
-            worst_frame = 0.0
+            maximum = [0.0] * 4
+            worst_frames = [0.0] * 4
             covered = 0
             for block_index, (block, sequences) in enumerate(blocks):
                 if operation is not None:
@@ -174,12 +176,10 @@ def validate_cutscene_section_precision(
                     policy.requires_validation,
                 )
                 covered += integer_count
-                if errors[2] > maximum[2]:
-                    worst_frame = start + errors[3]
-                maximum = [
-                    max(previous, current)
-                    for previous, current in zip(maximum, errors[:3], strict=True)
-                ]
+                for index, error in enumerate(errors[:4]):
+                    if error > maximum[index]:
+                        maximum[index] = error
+                        worst_frames[index] = start + errors[4 + index]
             if covered != section.frame_count:
                 report.issue(
                     "ycd.channel_precision.track_missing",
@@ -191,21 +191,33 @@ def validate_cutscene_section_precision(
             limits = (
                 policy.maximum_error,
                 policy.maximum_angular_error_degrees,
+                policy.maximum_error,
                 policy.maximum_angular_error_degrees,
             )
             codes = (
                 "error_exceeded",
                 "angular_error_exceeded",
+                "subframe_error_exceeded",
                 "subframe_angular_error_exceeded",
             )
-            labels = ("read-back", "angular", "subframe angular")
+            labels = (
+                "integer component",
+                "integer angular",
+                "subframe component",
+                "subframe angular",
+            )
             for index, (error, limit) in enumerate(zip(maximum, limits, strict=True)):
                 if limit is not None and error > limit:
+                    angular = (
+                        f"; angular error {maximum[index + 1]:.9g} degrees"
+                        if dimensions == 4 and index in (0, 2)
+                        else ""
+                    )
                     report.issue(
                         f"ycd.channel_precision.{codes[index]}",
-                        f"Binary {labels[index]} error {error:.9g} exceeds the requested {limit:.9g}",
+                        f"Binary {labels[index]} error {error:.9g} exceeds the requested {limit:.9g}{angular}",
                         asset=builder.name,
-                        path=f"{path}.frames[{worst_frame:g}]" if index == 2 else path,
+                        path=f"{path}.frames[{worst_frames[index]:g}]",
                     )
             completed += 1
             if operation is not None:

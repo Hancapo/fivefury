@@ -50,18 +50,20 @@ def test_native_precision_matches_scalar_runtime_at_all_samples(layout):
     )
     if layout == -1:
         sequence.channels.pop()
-    component_error = angular_error = subframe_error = worst = 0.0
+    component_error = angular_error = subframe_component = subframe_error = 0.0
+    worst_frames = [0.0] * 4
     for frame in range(27):
         reference = Quaternion(*expected[frame])
         actual = sequence.evaluate_quaternion(frame)
-        component_error = max(
-            component_error,
-            min(
-                max(abs(a - b) for a, b in zip(reference, actual, strict=True)),
-                max(abs(a + b) for a, b in zip(reference, actual, strict=True)),
-            ),
+        error = min(
+            max(abs(a - b) for a, b in zip(reference, actual, strict=True)),
+            max(abs(a + b) for a, b in zip(reference, actual, strict=True)),
         )
-        angular_error = max(angular_error, reference.angular_error_degrees(actual))
+        if error > component_error:
+            component_error, worst_frames[0] = error, frame
+        error = reference.angular_error_degrees(actual)
+        if error > angular_error:
+            angular_error, worst_frames[1] = error, frame
         if frame == 26:
             continue
         for alpha in (0.25, 0.5, 0.75):
@@ -72,18 +74,24 @@ def test_native_precision_matches_scalar_runtime_at_all_samples(layout):
                 else sequence.evaluate_quaternion(frame + alpha)
             )
             error = target.angular_error_degrees(evaluated)
-            component_error = max(
-                component_error,
-                min(
-                    max(abs(a - b) for a, b in zip(target, evaluated, strict=True)),
-                    max(abs(a + b) for a, b in zip(target, evaluated, strict=True)),
-                ),
+            component_delta = min(
+                max(abs(a - b) for a, b in zip(target, evaluated, strict=True)),
+                max(abs(a + b) for a, b in zip(target, evaluated, strict=True)),
             )
+            if component_delta > subframe_component:
+                subframe_component, worst_frames[2] = component_delta, frame + alpha
             if error > subframe_error:
-                subframe_error, worst = error, frame + alpha
+                subframe_error, worst_frames[3] = error, frame + alpha
     result = _ffi.ycd_compare_samples(expected, packed, 4, layout, 27, True)
     assert result == pytest.approx(
-        (component_error, angular_error, subframe_error, worst), abs=1e-10
+        (
+            component_error,
+            angular_error,
+            subframe_component,
+            subframe_error,
+            *worst_frames,
+        ),
+        abs=1e-10,
     )
 
 
@@ -94,6 +102,10 @@ def test_native_precision_scalar_vector_contract(dimensions):
     packed[4, dimensions - 1] = 0.125
     assert _ffi.ycd_compare_samples(reference, packed, dimensions, -1, 13, False) == (
         0.125,
+        0,
+        0,
+        0,
+        4,
         0,
         0,
         0,
@@ -108,7 +120,7 @@ def test_native_component_precision_covers_physical_overlap_subframes(dimensions
     packed[:, dimensions:] = np.nan
     assert _ffi.ycd_compare_samples(reference, packed, dimensions, -1, 1, False)[0] == 0
     assert (
-        _ffi.ycd_compare_samples(reference, packed, dimensions, -1, 1, True)[0] == 0.75
+        _ffi.ycd_compare_samples(reference, packed, dimensions, -1, 1, True)[2] == 0.75
     )
 
 

@@ -75,6 +75,13 @@ every real-valued time. A component-only quaternion policy still checks subframe
 an angular bound is not required to enable those checks.
 
 `validate()` reports precision errors without weakening the requested limits.
+Integer component failures use `ycd.channel_precision.error_exceeded`; subframe
+component failures use `ycd.channel_precision.subframe_error_exceeded`. Each
+diagnostic identifies its worst frame within the generated section. Quaternion
+component failures also report the maximum angular error for the same sampling
+phase, even when that angular error meets its independent limit. The two maxima
+need not occur at the same frame.
+
 `build_ycds()` and `save()` reject violations before returning or publishing the
 outputs. There is no automatic fallback to RAW_FLOAT or lower precision: choose
 another policy explicitly if the requested codec cannot meet the limit.

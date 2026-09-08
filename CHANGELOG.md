@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Fixed
 
+- YCD precision diagnostics distinguish integer-frame and subframe component errors, report their frame locations and include quaternion angular error independently of component limits.
 - YCD precision limits cover scalar, vector and quaternion components at subframes, including physical sequence overlaps; component-only policies no longer omit between-frame quaternion checks.
 - Facial translation, rotation and scale honor the RETAIL channel policy with 16-bit compression, preserving static channels and per-track RAW_FLOAT overrides.
 

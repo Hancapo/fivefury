@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from fivefury import (
@@ -17,6 +19,30 @@ from fivefury import (
 from fivefury.ycd.sequence_channels import YcdRawFloatChannel
 from tests.animation.ycd.samples import PAIRS, packed_channels
 from tests.support.ycd import facial_rig_builder
+
+
+@pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
+@pytest.mark.parametrize("encoding", list(YcdChannelEncoding))
+def test_static_quaternion_precision_identifies_integer_loss(game, encoding):
+    builder = YcdCutsceneBuilder.create("static_precision", duration=1, game=game)
+    builder.track(
+        "actor_dual",
+        track=Track.FACIAL_ROTATION,
+        bone_id=7,
+        samples=Quaternion(math.sqrt(1 - 0.0002**2), 0, 0, 0.0002),
+        channel_policy=YcdChannelEncodingPolicy(encoding, 1e-5, 0.05),
+    )
+    report = builder.validate()
+    integer = next(
+        i for i in report.errors if i.code == "ycd.channel_precision.error_exceeded"
+    )
+    assert "integer component" in integer.message
+    assert "; angular error" in integer.message
+    assert integer.path.endswith(".frames[0]")
+    assert any(
+        i.code == "ycd.channel_precision.subframe_error_exceeded" for i in report.errors
+    )
+    assert not any("angular_error_exceeded" in i.code for i in report.errors)
 
 
 @pytest.mark.parametrize("game", [GameTarget.GTA5, GameTarget.GTA5_ENHANCED])
@@ -131,7 +157,9 @@ def test_component_precision_checks_physical_overlap_before_save(
         return ycd
 
     monkeypatch.setattr(builder, "_build_section", corrupted)
-    with pytest.raises(ValueError, match="ycd.channel_precision.error_exceeded"):
+    with pytest.raises(
+        ValueError, match="ycd.channel_precision.subframe_error_exceeded"
+    ):
         builder.save(tmp_path)
     assert not list(tmp_path.glob("*.ycd"))
 
@@ -161,5 +189,7 @@ def test_quaternion_component_bound_does_not_require_an_angular_bound(
         return ycd
 
     monkeypatch.setattr(builder, "_build_section", corrupted)
-    with pytest.raises(ValueError, match="ycd.channel_precision.error_exceeded"):
+    with pytest.raises(
+        ValueError, match="ycd.channel_precision.subframe_error_exceeded"
+    ):
         builder.build_ycds()
