@@ -9,6 +9,7 @@ import numpy as np
 from .._native import _ffi
 from ..vector import Quaternion, Vector4
 from .channel_samples import decoded_channel_components
+from .sampling import animation_frame_at_phase, animation_frame_at_time
 from .sequence_channels import YcdCachedQuaternionChannel, YcdChannelType
 from .sequence_tracks import YcdAnimationTrack, is_ycd_rotation_track
 
@@ -113,4 +114,51 @@ class YcdAnimationSampler:
             self.frames,
             self.sequence_frame_limit,
             None if track is None else int(track),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class YcdClipSampler:
+    """Clip timing snapshot; shares an explicitly owned immutable animation plan."""
+
+    animation: YcdAnimationSampler | None
+    duration: float
+    is_looped: bool = False
+
+    def get_animation_frame(self, phase: float) -> float:
+        return animation_frame_at_phase(
+            self.animation.frames if self.animation else 0, phase
+        )
+
+    def get_animation_frame_at_time(self, seconds: float) -> float:
+        return animation_frame_at_time(
+            self.animation.frames if self.animation else 0, self.duration, seconds
+        )
+
+    def evaluate_tracks_at_phase(
+        self,
+        phase: float,
+        *,
+        track: int | YcdAnimationTrack | None = None,
+        interpolate: bool = True,
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
+        if self.animation is None:
+            return {}
+        return self.animation.evaluate_tracks(
+            self.get_animation_frame(phase), track=track, interpolate=interpolate
+        )
+
+    def evaluate_tracks_at_time(
+        self,
+        seconds: float,
+        *,
+        track: int | YcdAnimationTrack | None = None,
+        interpolate: bool = True,
+    ) -> dict[tuple[int, int], Vector4 | Quaternion]:
+        if self.animation is None:
+            return {}
+        return self.animation.evaluate_tracks(
+            self.get_animation_frame_at_time(seconds),
+            track=track,
+            interpolate=interpolate,
         )

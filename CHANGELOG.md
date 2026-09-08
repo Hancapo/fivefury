@@ -9,6 +9,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Added
 
+- Compiled YCD clip samplers preserve the public phase/time evaluation interface while sharing immutable animation plans.
 - Immutable compiled YCD animation samplers retain owned channel data for repeated native evaluation without stale caches after source edits.
 - Per-track quaternion encoding overrides allow explicit facial rotations while keeping body and camera packing unchanged.
 

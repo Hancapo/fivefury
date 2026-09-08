@@ -18,6 +18,7 @@ from ..hashing import jenk_continue_hash, jenk_finalize_hash
 from ..metahash import MetaHash
 from ..resource import ResourceHeader
 from ..vector import Quaternion, Vector3, Vector4, interpolate_vector4_many
+from .sampling import animation_frame_at_phase, animation_frame_at_time
 from .sequences import (
     YcdAnimationTrack,
     YcdAnimSequence,
@@ -38,7 +39,7 @@ from .sequences import (
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
-    from .playback import YcdAnimationSampler
+    from .playback import YcdAnimationSampler, YcdClipSampler
 
 YCD_UV_CLIP_MARKER = "_uv_"
 YCD_UV_UNKNOWN1C = 0x6B002400
@@ -950,6 +951,15 @@ class YcdClipAnimation(YcdClip):
     reserved_68h: int = 0
     reserved_6ch: int = 0
 
+    def compile(self) -> YcdClipSampler:
+        """Snapshot clip timing and channels for stateless native playback."""
+        from .playback import YcdClipSampler
+
+        return YcdClipSampler(
+            self.animation.compile() if self.animation is not None else None,
+            self.duration, self.is_looped,
+        )
+
     @property
     def duration(self) -> float:
         return max(0.0, float(self.end_time) - float(self.start_time))
@@ -975,17 +985,10 @@ class YcdClipAnimation(YcdClip):
         return bool(self.animation and self.animation.has_facial_animation)
 
     def get_animation_frame(self, phase: float) -> float:
-        if self.animation is None or self.animation.frames <= 1:
-            return 0.0
-        phase_value = min(max(float(phase), 0.0), 1.0)
-        return phase_value * float(self.animation.frames - 1)
+        return animation_frame_at_phase(self.animation.frames if self.animation else 0, phase)
 
     def get_animation_frame_at_time(self, seconds: float) -> float:
-        clip_duration = max(float(self.duration), 0.0)
-        if clip_duration <= 0.0:
-            return 0.0
-        phase = min(max(float(seconds) / clip_duration, 0.0), 1.0)
-        return self.get_animation_frame(phase)
+        return animation_frame_at_time(self.animation.frames if self.animation else 0, self.duration, seconds)
 
     def evaluate_tracks_at_phase(
         self,

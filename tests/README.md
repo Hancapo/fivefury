@@ -81,6 +81,7 @@ game binaries or private samples:
 | `FIVEFURY_TEST_FACE_PROBE_ROOT` | External probe export with `probe-report.json` and `loose/` |
 | `FIVEFURY_TEST_YED_CONTRACT_CORPUS` | External `a_c_cat_01.yed`, `ambient.yed`, `player.yed` and `ig_natalia.yed` samples for the YED contract audit |
 | `FIVEFURY_TEST_YCD_FACIAL_CORPUS` | External lossless facial NPZ files, recursively discovered; `translations_tags`/`rotations_tags` identify arrays named `translations_N`/`rotations_N` containing time then XYZ/XYZW samples |
+| `FIVEFURY_TEST_YCD_PLAYBACK_CORPUS` | External loose YCD resources for differential compiled/mutable sampling at clip times and physical sequence overlaps |
 
 The face-probe integration test also requires `FIVEFURY_TEST_FACE_PROBE_METADATA`,
 the exact metadata registration path relative to `loose/`. It compares resolved

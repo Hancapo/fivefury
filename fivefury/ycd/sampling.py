@@ -11,6 +11,18 @@ from .sequence_tracks import YcdTrackFormat
 YcdTrackSample = float | Vector3 | Quaternion
 
 
+def animation_frame_at_phase(frames: int, phase: float) -> float:
+    if frames <= 1:
+        return 0.0
+    return min(max(float(phase), 0.0), 1.0) * float(frames - 1)
+
+
+def animation_frame_at_time(frames: int, duration: float, seconds: float) -> float:
+    if duration <= 0.0:
+        return 0.0
+    return animation_frame_at_phase(frames, float(seconds) / duration)
+
+
 @dataclass(frozen=True, slots=True)
 class YcdSampleWindow:
     components: tuple[Sequence[float], ...]
