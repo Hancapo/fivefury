@@ -51,8 +51,9 @@ PyObject* mod_ycd_compare_samples(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "YCD integer sample count exceeds its buffers");
         return nullptr;
     }
-    double maximum_error = 0.0, minimum_cosine = 1.0, minimum_subframe_cosine = 1.0;
-    double worst_frame = 0.0;
+    double maximum_error = 0.0, maximum_subframe_error = 0.0;
+    double minimum_cosine = 1.0, minimum_subframe_cosine = 1.0;
+    double worst_frames[4] = {};
     const auto component_error = [dimensions](const Vec4& expected, const Vec4& actual) {
         return dimensions == 4 ? quat_component_error(expected, actual)
                                : vec_max_component_error(expected, actual, dimensions);
@@ -64,8 +65,18 @@ PyObject* mod_ycd_compare_samples(PyObject*, PyObject* args) {
             const Vec4 raw = sample(packed, frame);
             const Vec4 actual = evaluate(raw, layout);
             if (frame < integer_count) {
-                maximum_error = std::max(maximum_error, component_error(expected, actual));
-                if (dimensions == 4) minimum_cosine = std::min(minimum_cosine, quat_angular_cosine(expected, actual));
+                const double error = component_error(expected, actual);
+                if (error > maximum_error) {
+                    maximum_error = error;
+                    worst_frames[0] = static_cast<double>(frame);
+                }
+                if (dimensions == 4) {
+                    const double cosine = quat_angular_cosine(expected, actual);
+                    if (cosine < minimum_cosine) {
+                        minimum_cosine = cosine;
+                        worst_frames[1] = static_cast<double>(frame);
+                    }
+                }
             }
             if (!subframes || frame + 1 == count) continue;
             const Vec4 next_reference = sample(reference, frame + 1);
@@ -79,16 +90,22 @@ PyObject* mod_ycd_compare_samples(PyObject*, PyObject* args) {
                     : layout == -1
                     ? quat_nlerp(raw, next_raw, alpha)
                     : evaluate(vec4_lerp(raw, next_raw, alpha), layout);
-                maximum_error = std::max(maximum_error, component_error(expected_subframe, actual_subframe));
+                const double error = component_error(expected_subframe, actual_subframe);
+                if (error > maximum_subframe_error) {
+                    maximum_subframe_error = error;
+                    worst_frames[2] = static_cast<double>(frame) + alpha;
+                }
                 if (dimensions != 4) continue;
                 const double cosine = quat_angular_cosine(expected_subframe, actual_subframe);
                 if (cosine < minimum_subframe_cosine) {
                     minimum_subframe_cosine = cosine;
-                    worst_frame = static_cast<double>(frame) + alpha;
+                    worst_frames[3] = static_cast<double>(frame) + alpha;
                 }
             }
         }
     }
-    return Py_BuildValue("(dddd)", maximum_error, angle(minimum_cosine), angle(minimum_subframe_cosine), worst_frame);
+    return Py_BuildValue("(dddddddd)", maximum_error, angle(minimum_cosine),
+                        maximum_subframe_error, angle(minimum_subframe_cosine),
+                        worst_frames[0], worst_frames[1], worst_frames[2], worst_frames[3]);
 }
 }

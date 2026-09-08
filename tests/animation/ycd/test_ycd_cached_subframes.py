@@ -185,6 +185,7 @@ def test_precision_validation_rejects_subframe_only_corruption(
     codes = {issue.code for issue in report.issues}
     assert "ycd.channel_precision.subframe_angular_error_exceeded" in codes
     assert "ycd.channel_precision.angular_error_exceeded" not in codes
-    assert "ycd.channel_precision.error_exceeded" in codes
+    assert "ycd.channel_precision.subframe_error_exceeded" in codes
+    assert "ycd.channel_precision.error_exceeded" not in codes
     with pytest.raises(ValueError, match="subframe_angular_error_exceeded"):
         builder.build_ycds()
