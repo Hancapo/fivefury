@@ -11,15 +11,12 @@ from ..authoring import (
     AuthoringStage,
     ValidationReport,
 )
+from .channel_samples import decoded_channel_components
 from .reader import read_ycd
 from .sequence_channels import (
     YcdAnimSequence,
     YcdCachedQuaternionChannel,
     YcdChannelType,
-    YcdIndirectQuantizeFloatChannel,
-    YcdLinearFloatChannel,
-    YcdQuantizeFloatChannel,
-    YcdRawFloatChannel,
 )
 from .write import build_ycd_bytes
 
@@ -43,26 +40,10 @@ def _packed_samples(sequence: YcdAnimSequence, count: int) -> tuple[np.ndarray, 
         width = channel.component_count
         if component + width > 4:
             raise ValueError("YCD sequence exceeds four stored components")
-        if isinstance(channel, YcdIndirectQuantizeFloatChannel):
-            if channel.frames and len(channel.values):
-                indices = np.resize(np.asarray(channel.frames, dtype=np.int64), count)
-                values = np.asarray(channel.values, dtype=np.float64)
-                samples[:, component] = values[indices]
-            else:
-                samples[:, component] = channel.offset
-        elif isinstance(
-            channel,
-            (YcdRawFloatChannel, YcdQuantizeFloatChannel, YcdLinearFloatChannel),
-        ):
-            values = np.asarray(channel.values, dtype=np.float64)
-            if len(values):
-                samples[:, component] = (
-                    values if len(values) == count else np.resize(values, count)
-                )
-            else:
-                samples[:, component] = channel.evaluate_float(0)
-        else:
-            samples[:, component : component + width] = channel.evaluate_components(0)
+        values = decoded_channel_components(channel)
+        samples[:, component : component + width] = (
+            values if len(values) in (1, count) else np.resize(values, (count, width))
+        )
         component += width
     return samples, layout
 

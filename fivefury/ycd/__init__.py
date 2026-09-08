@@ -52,6 +52,7 @@ from .model import (
     get_ycd_track_format,
     parse_ycd_uv_clip_binding,
 )
+from .playback import YcdAnimationSampler
 from .reader import read_ycd, read_ycd_embedded_resource
 from .runtime_headers import (
     GEN9_YCD_RUNTIME_PROFILE,
@@ -73,6 +74,7 @@ __all__ = [
     "Ycd",
     "YcdAnimSequence",
     "YcdAnimation",
+    "YcdAnimationSampler",
     "YcdAnimationBoneId",
     "YcdAnimationTrack",
     "YcdCameraAnimationSample",

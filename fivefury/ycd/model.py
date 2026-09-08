@@ -38,6 +38,7 @@ from .sequences import (
 
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
+    from .playback import YcdAnimationSampler
 
 YCD_UV_CLIP_MARKER = "_uv_"
 YCD_UV_UNKNOWN1C = 0x6B002400
@@ -545,6 +546,12 @@ class YcdAnimation:
         return YcdFramePosition(
             frame0=frame0, frame1=frame1, alpha0=alpha0, alpha1=alpha1
         )
+
+    def compile(self) -> YcdAnimationSampler:
+        """Snapshot channels for repeated, stateless native playback."""
+        from .playback import YcdAnimationSampler
+
+        return YcdAnimationSampler(self)
 
     def evaluate_tracks(
         self,
