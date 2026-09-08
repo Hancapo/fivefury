@@ -79,9 +79,16 @@ def test_serialized_facial_codecs_honor_track_policy(game, track, quaternion_enc
                 YcdChannelType.CACHED_QUATERNION2,
             }
     static = animation.find_sequences(bone_id=9, track=track)[0]
-    assert [channel.channel_type for channel in static.channels] == [
-        YcdChannelType.STATIC_QUATERNION if rotation else YcdChannelType.STATIC_VECTOR3
-    ]
+    expected_static = (
+        [YcdChannelType.STATIC_FLOAT] * 4
+        if rotation and quaternion_encoding is YcdQuaternionEncoding.EXPLICIT
+        else [
+            YcdChannelType.STATIC_QUATERNION
+            if rotation
+            else YcdChannelType.STATIC_VECTOR3
+        ]
+    )
+    assert [channel.channel_type for channel in static.channels] == expected_static
     for frame in range(31):
         value = animation.evaluate_tracks(frame)[(7, int(track))]
         if rotation:
