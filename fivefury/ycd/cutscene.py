@@ -223,6 +223,12 @@ def _make_channels(
                 )
             ]
         if component_count == 4:
+            if quaternion_encoding is YcdQuaternionEncoding.EXPLICIT:
+                return _make_component_channels(
+                    components,
+                    encoding=channel_encoding,
+                    retail_quantized=retail_quantized,
+                )
             return [
                 YcdStaticQuaternionChannel(
                     channel_type=YcdChannelType.STATIC_QUATERNION,
@@ -337,6 +343,7 @@ class YcdCutsceneTrack:
     format: YcdTrackFormat
     samples: YcdTrackSamples
     channel_policy: YcdChannelEncodingPolicy | None = None
+    quaternion_encoding: YcdQuaternionEncoding | None = None
 
 
 @dataclass(slots=True)
@@ -598,6 +605,7 @@ class YcdCutsceneBuilder:
         bone_id: int = 0,
         format: int | YcdTrackFormat | None = None,
         channel_policy: YcdChannelEncodingPolicy | None = None,
+        quaternion_encoding: YcdQuaternionEncoding | None = None,
     ) -> YcdCutsceneBuilder:
         if channel_policy is not None and not isinstance(
             channel_policy, YcdChannelEncodingPolicy
@@ -609,6 +617,11 @@ class YcdCutsceneBuilder:
             if format is None
             else YcdTrackFormat(int(format))
         )
+        if quaternion_encoding is not None:
+            if not isinstance(quaternion_encoding, YcdQuaternionEncoding):
+                raise TypeError("quaternion_encoding must be a YcdQuaternionEncoding")
+            if track_format is not YcdTrackFormat.QUATERNION:
+                raise ValueError("quaternion_encoding requires a quaternion track")
         clip = self._get_or_create_clip(name)
         if any(
             existing.track == track_value and existing.bone_id == int(bone_id)
@@ -629,6 +642,7 @@ class YcdCutsceneBuilder:
                     fps=self.fps,
                 ),
                 channel_policy=channel_policy,
+                quaternion_encoding=quaternion_encoding,
             )
         )
         return self
@@ -855,8 +869,11 @@ class YcdCutsceneBuilder:
                 for track_index, track_spec in enumerate(iter_authoring_units(
                     sorted_tracks, operation, AuthoringStage.BUILD, short_name
                 )):
+                    quaternion_encoding = (
+                        track_spec.quaternion_encoding or self.quaternion_encoding
+                    )
                     orient_cached = (
-                        self.quaternion_encoding
+                        quaternion_encoding
                         is YcdQuaternionEncoding.RETAIL_CACHED
                         and track_spec.format is YcdTrackFormat.QUATERNION
                         and is_ycd_rotation_track(track_spec.track)
@@ -873,7 +890,7 @@ class YcdCutsceneBuilder:
                                 window,
                                 track=track_spec.track,
                                 track_format=track_spec.format,
-                                quaternion_encoding=self.quaternion_encoding,
+                                quaternion_encoding=quaternion_encoding,
                                 channel_encoding=(
                                     track_spec.channel_policy or self.channel_policy
                                 ).encoding,
