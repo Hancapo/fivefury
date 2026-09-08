@@ -253,6 +253,7 @@ class NativeYedProgram:
         variables: object,
         time: float,
         delta_time: float,
+        vector_type: type | None = None,
     ) -> tuple[dict, dict, dict, list]:
         return _ffi.yed_evaluate(
             self._capsule,
@@ -260,6 +261,7 @@ class NativeYedProgram:
             variables,
             float(time),
             float(delta_time),
+            vector_type,
         )
 
 

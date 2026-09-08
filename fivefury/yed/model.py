@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import struct
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +23,7 @@ from .enums import YedInstructionType, YedTrackFormat
 if TYPE_CHECKING:
     from ..authoring.context import BuildContext
     from .contract.frame import YedFrameLayout
+    from .playback import YedEvaluator
 
 
 def _coerce_track_format(value: YedTrackFormat | int) -> YedTrackFormat:
@@ -429,6 +430,12 @@ class Yed:
         self.dictionary.expressions_info = ResourceListInfo()
         self._standalone_data = None
         return self
+
+    def compile(self, expression_names: Iterable[str | int], *, skeleton: object | None = None) -> YedEvaluator:
+        """Snapshot expression programs and skeleton defaults for repeated evaluation."""
+        from .playback import YedEvaluator
+
+        return YedEvaluator(self, expression_names, skeleton=skeleton)
 
     def validate_runtime_contract(self) -> ValidationReport:
         report = ValidationReport()

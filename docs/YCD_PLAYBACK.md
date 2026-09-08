@@ -66,5 +66,12 @@ sequence overlaps, out-of-range seeks, channel cycles and missing keys. They als
 cover edits, detached lifetime, concurrent evaluation and output construction.
 Performance cases are in `tests/performance/bench_ycd_playback.py`.
 
+An external comparison of YCD names associated with indexed vanilla CUTs covered
+10,275 Enhanced resources (195,904 animation clips) and 9,127 Legacy resources
+(179,030 animation clips), including archive variants. The tested integer,
+fractional, block-boundary and clip-time positions produced no numerical
+differences from the mutable sampler. This is sampled differential coverage, not
+a claim that every possible time or custom resource has been proven equivalent.
+
 Library sampling improvements are not viewer FPS predictions: rendering,
 skinning, expression evaluation and scheduling remain separate workloads.
