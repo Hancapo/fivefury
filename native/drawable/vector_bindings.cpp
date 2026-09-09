@@ -1,10 +1,76 @@
 #include "drawable/bindings.h"
 
 #include "math/vector.h"
+#include "python/vector_factory.h"
 
 #include <vector>
+#include <cstring>
 
 namespace fivefury_py {
+
+PyObject* mod_vector_component_buffer(PyObject*, PyObject* args) {
+    PyObject* values;
+    int dimensions;
+    if (!PyArg_ParseTuple(args, "Oi", &values, &dimensions)) return nullptr;
+    if (dimensions < 2 || dimensions > 4) {
+        PyErr_SetString(PyExc_ValueError, "Vectors require 2 to 4 components"); return nullptr;
+    }
+    PyHandle sequence(PySequence_Fast(values, "vectors must be a sequence"));
+    if (!sequence) return nullptr;
+    const auto count = PySequence_Size(sequence.get());
+    if (count < 0) return nullptr;
+    PyHandle result(PyBytes_FromStringAndSize(nullptr, checked_buffer_size(count, dimensions * sizeof(double))));
+    if (!result) return nullptr;
+    char* output = PyBytes_AsString(result.get());
+    if (!output) return nullptr;
+    const char* names[] = {"x", "y", "z", "w"};
+    for (Py_ssize_t row = 0; row < count; ++row) {
+        PyHandle value(PySequence_GetItem(sequence.get(), row));
+        if (!value) return nullptr;
+        for (int column = 0; column < dimensions; ++column) {
+            PyHandle component(PyObject_GetAttrString(value.get(), names[column]));
+            if (!component) return nullptr;
+            const double number = PyFloat_AsDouble(component.get());
+            if (PyErr_Occurred()) return nullptr;
+            std::memcpy(output + (row * dimensions + column) * sizeof(double), &number, sizeof(number));
+        }
+    }
+    return result.release();
+}
+
+PyObject* mod_vector_materialize(PyObject*, PyObject* args) {
+    PyObject *rows, *cls, *names;
+    if (!PyArg_ParseTuple(args, "OOO", &rows, &cls, &names)) return nullptr;
+    PyHandle fields(PySequence_Tuple(names));
+    PyHandle sequence(PySequence_Tuple(rows));
+    if (!fields || !sequence) return nullptr;
+    const auto dimensions = PyTuple_Size(fields.get());
+    if (dimensions < 2 || dimensions > 4) {
+        PyErr_SetString(PyExc_ValueError, "Vectors require 2 to 4 components"); return nullptr;
+    }
+    VectorFactory factory(cls, fields.get());
+    if (!factory) return nullptr;
+    const auto count = PyTuple_Size(sequence.get());
+    PyHandle result(PyList_New(count));
+    if (!result) return nullptr;
+    for (Py_ssize_t i = 0; i < count; ++i) {
+        PyHandle components(PySequence_Tuple(PyTuple_GetItem(sequence.get(), i)));
+        if (!components) return nullptr;
+        if (PyTuple_Size(components.get()) != dimensions) {
+            PyErr_SetString(PyExc_ValueError, "Incorrect vector component count"); return nullptr;
+        }
+        // The Python boundary supplies the nominal vector class. Match its
+        // float coercion while filling frozen slots before exposing the object.
+        PyHandle object(factory.create());
+        if (!object) return nullptr;
+        for (Py_ssize_t j = 0; j < dimensions; ++j) {
+            PyHandle value(PyNumber_Float(PyTuple_GetItem(components.get(), j)));
+            if (!factory.assign(object.get(), j, value.get())) return nullptr;
+        }
+        if (!list_take(result.get(), i, object.release())) return nullptr;
+    }
+    return result.release();
+}
 
 namespace {
 

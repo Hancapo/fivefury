@@ -20,7 +20,7 @@ from ..resource import (
     get_resource_total_page_count,
     layout_resource_sections,
 )
-from ..vector import Vector4
+from ..vector import Vector3, Vector4
 from ..ydr import Ydr, YdrBuild, YdrLight
 from ..ydr.builder import _prepare_embedded_texture_dictionary, _write_drawable_payload
 from ..ydr.gen9 import load_gen9_shader_library
@@ -89,6 +89,7 @@ class _PreparedFragmentDrawable:
     build: YdrBuild
     materials: list[PreparedMaterial]
     lods: PreparedLods
+    geometry_bounds: tuple[Vector3, Vector3, Vector3, float]
     texture_sections: ResourceSections | None = None
     fragment: YftFragmentDrawable | YftFragmentDrawableBuild | None = None
     source_id: int = 0
@@ -153,6 +154,10 @@ def _prepare_drawable(
         build=build,
         materials=materials,
         lods=lods,
+        geometry_bounds=compute_model_collection_bounds(
+            [model for models in lods.values() for model in models],
+            skeleton=build.skeleton,
+        ),
         fragment=(
             drawable
             if isinstance(drawable, (YftFragmentDrawable, YftFragmentDrawableBuild))
@@ -724,6 +729,7 @@ def _build_yft_payload(
             item.lods,
             page_counts,
             root_off=item.root_offset,
+            geometry_bounds=item.geometry_bounds,
             texture_sections=item.texture_sections,
             runtime_headers=runtime_headers.drawable,
             enhanced=runtime_headers.enhanced,
@@ -828,10 +834,7 @@ def build_yft_bytes(
     if prepared[0] is None:
         raise ValueError("YFT writer requires a common drawable")
     if source.bounding_sphere == Vector4():
-        _center, _bounds_min, _bounds_max, radius = compute_model_collection_bounds(
-            [model for lods in prepared[0].lods.values() for model in lods],
-            skeleton=prepared[0].build.skeleton,
-        )
+        _center, _bounds_min, _bounds_max, radius = prepared[0].geometry_bounds
         source = dataclasses.replace(
             source,
             bounding_sphere=Vector4(_center.x, _center.y, _center.z, radius),

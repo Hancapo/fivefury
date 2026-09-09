@@ -1,4 +1,5 @@
 #include "bounds/python_conversions.h"
+#include "python/float_rows.h"
 
 #include <array>
 #include <cstddef>
@@ -45,6 +46,19 @@ bool parse_vector3(PyObject* object, fivefury_native::bounds::Vec3& out, const c
 }
 
 bool parse_vertices(PyObject* object, std::vector<fivefury_native::bounds::Vec3>& out, const char* argument_name) {
+    if (PyObject_CheckBuffer(object)) {
+        FloatRows rows;
+        if (!rows.acquire(object, 3)) return false;
+        out.resize(static_cast<std::size_t>(rows.buffer.shape[0]));
+        for (Py_ssize_t index = 0; index < rows.buffer.shape[0]; ++index) {
+            out[index] = {
+                fivefury_native::bounds::canonical_zero(rows.value(index, 0)),
+                fivefury_native::bounds::canonical_zero(rows.value(index, 1)),
+                fivefury_native::bounds::canonical_zero(rows.value(index, 2)),
+            };
+        }
+        return true;
+    }
     PyHandle sequence_owner(PySequence_Fast(object, argument_name));
     PyObject* sequence = sequence_owner.get();
     if (sequence == nullptr) {

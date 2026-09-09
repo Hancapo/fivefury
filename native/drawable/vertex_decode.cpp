@@ -1,4 +1,5 @@
 #include "drawable/bindings.h"
+#include "python/vector_factory.h"
 
 #include <algorithm>
 #include <array>
@@ -221,19 +222,21 @@ bool parse_indices(PyObject* object, std::vector<std::uint32_t>& out) {
 PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
     PyObject* data_object = nullptr;
     PyObject* offsets_object = nullptr;
+    PyObject *vector2_type, *vector3_type, *vector4_type;
     Py_ssize_t vertex_count = 0;
     int stride = 0;
     unsigned long long flags = 0;
     unsigned long long types = 0;
     if (!PyArg_ParseTuple(
             args,
-            "OniKKO",
+            "OniKKOOOO",
             &data_object,
             &vertex_count,
             &stride,
             &flags,
             &types,
-            &offsets_object
+            &offsets_object,
+            &vector2_type, &vector3_type, &vector4_type
         )) {
         return nullptr;
     }
@@ -279,83 +282,112 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
     const auto data_size = static_cast<std::size_t>(buffer.len);
     DecodedVertices decoded;
     {
-    GilRelease gil_release;
-    for (Py_ssize_t vertex = 0; vertex < count; ++vertex) {
-        const auto base = static_cast<std::size_t>(vertex) * static_cast<std::size_t>(stride);
+        GilRelease gil_release;
+        // Resolve each declaration once, then walk its channel. Per-channel order
+        // is unchanged, including partial buffers and explicit Gen9 offsets.
         for (int semantic = 0; semantic < 16; ++semantic) {
             if (((flags >> semantic) & 1UL) == 0UL) {
                 continue;
             }
             const auto type = static_cast<int>((types >> (semantic * 4)) & 0xFULL);
             const auto size = component_size(type);
-            const auto source = base + static_cast<std::size_t>(offsets[semantic]);
-            if (size <= 0 || source + static_cast<std::size_t>(size) > data_size) {
+            if (size <= 0 || offsets[semantic] < 0 ||
+                static_cast<std::size_t>(offsets[semantic]) > data_size ||
+                static_cast<std::size_t>(size) > data_size - static_cast<std::size_t>(offsets[semantic])) {
                 continue;
             }
-            if (semantic == SEMANTIC_BLEND_INDICES && size == 4) {
-                decoded.blend_indices.push_back({
-                    data[source + 2], data[source + 1], data[source], data[source + 3]
-                });
-                continue;
+            const auto offset = static_cast<std::size_t>(offsets[semantic]);
+            const auto channel_count = std::min(
+                static_cast<std::size_t>(count),
+                (data_size - offset - size) / static_cast<std::size_t>(stride) + 1U
+            );
+            switch (semantic) {
+                case SEMANTIC_POSITION: decoded.positions.reserve(channel_count); break;
+                case SEMANTIC_NORMAL: decoded.normals.reserve(channel_count); break;
+                case SEMANTIC_TANGENT: decoded.tangents.reserve(channel_count); break;
+                case SEMANTIC_COLOUR0: decoded.colours0.reserve(channel_count); break;
+                case SEMANTIC_COLOUR1: decoded.colours1.reserve(channel_count); break;
+                case SEMANTIC_BLEND_WEIGHTS: decoded.blend_weights.reserve(channel_count); break;
+                case SEMANTIC_BLEND_INDICES: decoded.blend_indices.reserve(channel_count); break;
+                default:
+                    if (semantic >= SEMANTIC_TEXCOORD0 && semantic <= SEMANTIC_TEXCOORD7)
+                        decoded.texcoords[semantic - SEMANTIC_TEXCOORD0].reserve(channel_count);
             }
-            if (semantic == SEMANTIC_BLEND_WEIGHTS && type == COMPONENT_COLOUR) {
-                decoded.blend_weights.push_back({
-                    static_cast<double>(data[source + 2]) / 255.0,
-                    static_cast<double>(data[source + 1]) / 255.0,
-                    static_cast<double>(data[source]) / 255.0,
-                    static_cast<double>(data[source + 3]) / 255.0,
-                });
-                continue;
-            }
-            const auto value = decode_component(data + source, type);
-            if (value.count == 0) {
-                continue;
-            }
-            if (semantic == SEMANTIC_POSITION && value.count >= 3) {
-                decoded.positions.push_back({value.values[0], value.values[1], value.values[2]});
-            } else if (semantic == SEMANTIC_NORMAL && value.count >= 3) {
-                decoded.normals.push_back({value.values[0], value.values[1], value.values[2]});
-            } else if (semantic == SEMANTIC_TANGENT && value.count >= 4) {
-                decoded.tangents.push_back(value.values);
-            } else if (semantic == SEMANTIC_COLOUR0 && value.count >= 4) {
-                decoded.colours0.push_back(value.values);
-            } else if (semantic == SEMANTIC_COLOUR1 && value.count >= 4) {
-                decoded.colours1.push_back(value.values);
-            } else if (semantic == SEMANTIC_BLEND_INDICES && value.count >= 4) {
-                decoded.blend_indices.push_back({
-                    static_cast<std::uint32_t>(value.values[0]),
-                    static_cast<std::uint32_t>(value.values[1]),
-                    static_cast<std::uint32_t>(value.values[2]),
-                    static_cast<std::uint32_t>(value.values[3]),
-                });
-            } else if (semantic == SEMANTIC_BLEND_WEIGHTS && value.count >= 4) {
-                auto weights = value.values;
-                if (value.integral) {
-                    for (auto& component : weights) {
-                        component /= 255.0;
-                    }
+            for (std::size_t vertex = 0; vertex < channel_count; ++vertex) {
+                const auto source = vertex * static_cast<std::size_t>(stride) + offset;
+                if (semantic == SEMANTIC_BLEND_INDICES && size == 4) {
+                    decoded.blend_indices.push_back({
+                        data[source + 2], data[source + 1], data[source], data[source + 3]
+                    });
+                    continue;
                 }
-                decoded.blend_weights.push_back(weights);
-            } else if (
-                semantic >= SEMANTIC_TEXCOORD0 && semantic <= SEMANTIC_TEXCOORD7 &&
-                value.count >= 2
-            ) {
-                const auto index = semantic - SEMANTIC_TEXCOORD0;
-                decoded.max_texcoord = std::max(decoded.max_texcoord, index);
-                decoded.texcoords[static_cast<std::size_t>(index)].push_back({
-                    value.values[0], value.values[1]
-                });
+                if (semantic == SEMANTIC_BLEND_WEIGHTS && type == COMPONENT_COLOUR) {
+                    decoded.blend_weights.push_back({
+                        static_cast<double>(data[source + 2]) / 255.0,
+                        static_cast<double>(data[source + 1]) / 255.0,
+                        static_cast<double>(data[source]) / 255.0,
+                        static_cast<double>(data[source + 3]) / 255.0,
+                    });
+                    continue;
+                }
+                const auto value = decode_component(data + source, type);
+                if (value.count == 0) {
+                    continue;
+                }
+                if (semantic == SEMANTIC_POSITION && value.count >= 3) {
+                    decoded.positions.push_back({value.values[0], value.values[1], value.values[2]});
+                } else if (semantic == SEMANTIC_NORMAL && value.count >= 3) {
+                    decoded.normals.push_back({value.values[0], value.values[1], value.values[2]});
+                } else if (semantic == SEMANTIC_TANGENT && value.count >= 4) {
+                    decoded.tangents.push_back(value.values);
+                } else if (semantic == SEMANTIC_COLOUR0 && value.count >= 4) {
+                    decoded.colours0.push_back(value.values);
+                } else if (semantic == SEMANTIC_COLOUR1 && value.count >= 4) {
+                    decoded.colours1.push_back(value.values);
+                } else if (semantic == SEMANTIC_BLEND_INDICES && value.count >= 4) {
+                    decoded.blend_indices.push_back({
+                        static_cast<std::uint32_t>(value.values[0]),
+                        static_cast<std::uint32_t>(value.values[1]),
+                        static_cast<std::uint32_t>(value.values[2]),
+                        static_cast<std::uint32_t>(value.values[3]),
+                    });
+                } else if (semantic == SEMANTIC_BLEND_WEIGHTS && value.count >= 4) {
+                    auto weights = value.values;
+                    if (value.integral) {
+                        for (auto& component : weights) {
+                            component /= 255.0;
+                        }
+                    }
+                    decoded.blend_weights.push_back(weights);
+                } else if (
+                    semantic >= SEMANTIC_TEXCOORD0 && semantic <= SEMANTIC_TEXCOORD7 &&
+                    value.count >= 2
+                ) {
+                    const auto index = semantic - SEMANTIC_TEXCOORD0;
+                    decoded.max_texcoord = std::max(decoded.max_texcoord, index);
+                    decoded.texcoords[static_cast<std::size_t>(index)].push_back({
+                        value.values[0], value.values[1]
+                    });
+                }
             }
         }
     }
-    }
     buffer.release();
+
+    PyHandle names2(Py_BuildValue("(ss)", "x", "y"));
+    PyHandle names3(Py_BuildValue("(sss)", "x", "y", "z"));
+    PyHandle names4(Py_BuildValue("(ssss)", "x", "y", "z", "w"));
+    if (!names2 || !names3 || !names4) return nullptr;
+    VectorFactory vectors2(vector2_type, names2.get());
+    VectorFactory vectors3(vector3_type, names3.get());
+    VectorFactory vectors4(vector4_type, names4.get());
+    if (!vectors2 || !vectors3 || !vectors4) return nullptr;
 
     PyObject* result = PyDict_New();
     if (result == nullptr ||
-        !dict_set_owned(result, "positions", build_float_tuples(decoded.positions)) ||
-        !dict_set_owned(result, "normals", build_float_tuples(decoded.normals)) ||
-        !dict_set_owned(result, "tangents", build_float_tuples(decoded.tangents)) ||
+        !dict_set_owned(result, "positions", vectors3.materialize(decoded.positions)) ||
+        !dict_set_owned(result, "normals", vectors3.materialize(decoded.normals)) ||
+        !dict_set_owned(result, "tangents", vectors4.materialize(decoded.tangents)) ||
         !dict_set_owned(result, "colours0", build_float_tuples(decoded.colours0)) ||
         !dict_set_owned(result, "colours1", build_float_tuples(decoded.colours1)) ||
         !dict_set_owned(result, "blend_weights", build_float_tuples(decoded.blend_weights)) ||
@@ -369,7 +401,9 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
         return nullptr;
     }
     for (int index = 0; index <= decoded.max_texcoord; ++index) {
-        PyList_SetItem(texcoords, index, build_float_tuples(decoded.texcoords[index]));
+        if (!list_take(texcoords, index, vectors2.materialize(decoded.texcoords[index]))) {
+            Py_DECREF(texcoords); Py_DECREF(result); return nullptr;
+        }
     }
     if (!dict_set_owned(result, "texcoords", texcoords)) {
         Py_DECREF(result);

@@ -11,6 +11,8 @@
 namespace fivefury_py {
 
 PyMethodDef module_methods[] = {
+    {"vector_materialize", guarded_call<mod_vector_materialize>, METH_VARARGS, nullptr},
+    {"vector_component_buffer", guarded_call<mod_vector_component_buffer>, METH_VARARGS, nullptr},
     {"meta_scalars_new", guarded_call<mod_meta_scalars_new>, METH_VARARGS, nullptr},
     {"meta_scalars_read", guarded_call<mod_meta_scalars_read>, METH_VARARGS, nullptr},
     {"meta_scalars_write", guarded_call<mod_meta_scalars_write>, METH_VARARGS, nullptr},

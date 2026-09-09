@@ -572,6 +572,8 @@ def _ydr_decode_vertex_buffer(
     types_value: int,
     component_offsets: tuple[int, ...] | None,
 ) -> dict[str, object]:
+    from .vector import Vector2, Vector3, Vector4
+
     return _ffi.ydr_decode_vertex_buffer(
         data,
         int(vertex_count),
@@ -579,6 +581,9 @@ def _ydr_decode_vertex_buffer(
         int(flags),
         int(types_value),
         component_offsets,
+        Vector2,
+        Vector3,
+        Vector4,
     )
 
 

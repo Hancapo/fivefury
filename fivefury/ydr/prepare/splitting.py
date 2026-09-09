@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Sequence
 from typing import TypeVar
 
 from ... import _native as _native_backend
-from ...mesh_math import triangle_array
 from ...vector import Vector2
 from ..build_types import YdrMeshInput
 
@@ -54,18 +52,19 @@ def _build_split_mesh(
 def _split_mesh_by_vertex_limit(
     mesh: YdrMeshInput, *, max_vertices: int = _MAX_MESH_UNIQUE_VERTICES
 ) -> list[YdrMeshInput]:
-    indices = triangle_array(mesh.indices, len(mesh.positions)).reshape(-1).tolist()
-    normalized = dataclasses.replace(mesh, indices=indices)
+    # prepare_channels already normalized the topology. The native splitter
+    # validates its own index boundary without rebuilding every vector channel.
+    indices = mesh.indices
     if not indices:
-        return [normalized]
+        return [mesh]
     chunks = _native_backend._ydr_split_mesh_indices(
         indices,
         len(mesh.positions),
         max_vertices,
     )
     if chunks is None:
-        return [normalized]
+        return [mesh]
     return [
-        _build_split_mesh(normalized, vertex_indices, remapped_indices)
+        _build_split_mesh(mesh, vertex_indices, remapped_indices)
         for vertex_indices, remapped_indices in chunks
     ]

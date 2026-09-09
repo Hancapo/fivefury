@@ -13,7 +13,7 @@ from .gen9 import (
     build_gen9_vertex_declaration,
     build_shader_resource_view_g9,
 )
-from .prepare import PreparedMesh, compute_bounds
+from .prepare import PreparedMesh
 
 
 @dataclasses.dataclass(slots=True)
@@ -162,11 +162,10 @@ def build_mesh_buffer_pack(
         system.pack_into('I', index_buffer_off + 0x0C, 0)
         system.pack_into('Q', index_buffer_off + 0x10, virtual(index_data_off) if index_data_off else 0)
 
-    _center, bounds_min, bounds_max, _radius = compute_bounds(mesh.positions)
     return MeshBufferPack(
         mesh=mesh,
-        bounds_min=bounds_min,
-        bounds_max=bounds_max,
+        bounds_min=mesh.bounds.minimum,
+        bounds_max=mesh.bounds.maximum,
         declaration_off=declaration_off,
         vertex_data_off=vertex_data_off,
         index_data_off=index_data_off,

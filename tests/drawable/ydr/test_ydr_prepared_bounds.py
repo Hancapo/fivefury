@@ -8,16 +8,18 @@ from unittest.mock import patch
 import pytest
 
 from fivefury import Vector2, Vector3
+from fivefury import matrix as matrix_math
 from fivefury.resource import split_rsc7_sections
+from fivefury.vector import _PointCloud3
 from fivefury.ydr import (
     YdrBone,
     YdrMeshInput,
     YdrSkeleton,
     YdrSkeletonBinding,
+    builder,
     create_ydr,
 )
 from fivefury.ydr.prepare import (
-    bounds,
     compute_bounds,
     compute_model_collection_bounds,
     prepare_build,
@@ -77,6 +79,33 @@ def test_transformed_rigid_bounds_match_expected_float32_bytes(version: int) -> 
     assert build.skeleton.transformations == [matrix]
 
 
+@pytest.mark.parametrize("version", [165, 159])
+def test_geometry_is_prepared_once_per_save_and_refreshes_after_edits(version):
+    mesh = YdrMeshInput(
+        positions=[Vector3(), Vector3(1, 0, 0), Vector3(0, 1, 0)],
+        indices=[0, 1, 2],
+        normals=[Vector3(0, 0, 1)] * 3,
+        texcoords=[[Vector2(), Vector2(1, 0), Vector2(0, 1)]],
+    )
+    build = create_ydr(meshes=[mesh], version=version)
+    before = copy.deepcopy(build)
+    with (
+        patch.object(_PointCloud3, "from_points", wraps=_PointCloud3.from_points) as points,
+        patch.object(builder, "compute_model_collection_bounds", wraps=builder.compute_model_collection_bounds) as root_bounds,
+        patch.object(builder, "_build_system_payload", wraps=builder._build_system_payload) as payload,
+    ):
+        first = build.to_bytes()
+        assert points.call_count == root_bounds.call_count == 1
+        assert payload.call_count >= 2
+        assert build == before
+        mesh.positions[1] = Vector3(9, 0, 0)
+        second = build.to_bytes()
+        assert points.call_count == root_bounds.call_count == 2
+    assert first != second
+    _, system, _ = split_rsc7_sections(second)
+    assert struct.unpack_from("<3f", system, 0x40) == (9, 1, 0)
+
+
 @pytest.mark.parametrize(
     "matrix",
     [
@@ -132,7 +161,7 @@ def test_row_adapter_numerical_parity_and_input_preservation(matrix) -> None:
         for point in models[0].meshes[0].positions
     ]
     with patch.object(
-        bounds, "transform_positions", wraps=bounds.transform_positions
+        matrix_math, "transform_position_array", wraps=matrix_math.transform_position_array
     ) as transform:
         actual = compute_model_collection_bounds(models, skeleton=build.skeleton)
     expected = compute_bounds(expected_positions)
