@@ -14,6 +14,7 @@ from ..resource import (
     get_resource_total_page_count,
     layout_resource_sections,
 )
+from ..vector import Vector3
 from .build_types import (
     YdrBuild,
     YdrMaterialInput,
@@ -166,6 +167,7 @@ def _write_drawable_payload(
     page_counts: tuple[int, int],
     *,
     root_off: int,
+    geometry_bounds: tuple[Vector3, Vector3, Vector3, float],
     texture_sections: ResourceSections | None,
     drawable_file_vft: int | None = None,
     write_pages: bool = True,
@@ -263,10 +265,7 @@ def _write_drawable_payload(
         pages_info_off = system.alloc(pages_info_length(page_counts), 16)
         write_pages_info(system, pages_info_off, page_counts)
 
-    center, bounds_min, bounds_max, radius = compute_model_collection_bounds(
-        [model for lod_models in prepared_lods.values() for model in lod_models],
-        skeleton=source.skeleton,
-    )
+    center, bounds_min, bounds_max, radius = geometry_bounds
     write_drawable_root(
         system,
         root_offset=root_off,
@@ -317,6 +316,7 @@ def _build_system_payload(
     prepared_lods,
     page_counts: tuple[int, int],
     *,
+    geometry_bounds: tuple[Vector3, Vector3, Vector3, float],
     texture_sections: ResourceSections | None,
     recalculate_skeleton_hashes: bool = True,
 ) -> tuple[bytes, bytes, list[ResourceBlockSpan], list[ResourceBlockSpan]]:
@@ -331,6 +331,7 @@ def _build_system_payload(
         prepared_lods,
         page_counts,
         root_off=0,
+        geometry_bounds=geometry_bounds,
         texture_sections=texture_sections,
         write_pages=True,
         recalculate_skeleton_hashes=recalculate_skeleton_hashes,
@@ -395,6 +396,10 @@ def build_ydr_bytes(
         fill_vertex_colours=fill_vertex_colours,
     )
 
+    geometry_bounds = compute_model_collection_bounds(
+        [model for models in prepared_lods.values() for model in models],
+        skeleton=source.skeleton,
+    )
     texture_sections = _prepare_embedded_texture_dictionary(source, enhanced=enhanced)
     page_counts = (0, 0)
     system_data = b''
@@ -407,6 +412,7 @@ def build_ydr_bytes(
             prepared_materials,
             prepared_lods,
             page_counts,
+            geometry_bounds=geometry_bounds,
             texture_sections=texture_sections,
             recalculate_skeleton_hashes=recalculate_skeleton_hashes,
         )
@@ -436,6 +442,7 @@ def build_ydr_bytes(
         graphics_alignment=0x200,
         system_flags=system_flags,
         graphics_flags=graphics_flags,
+        compression_level=6,
     )
 
 

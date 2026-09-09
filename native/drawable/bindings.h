@@ -3,6 +3,8 @@
 #include "python/bridge.h"
 
 namespace fivefury_py {
+PyObject* mod_vector_materialize(PyObject*, PyObject*);
+PyObject* mod_vector_component_buffer(PyObject*, PyObject*);
 
 PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args);
 PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args);

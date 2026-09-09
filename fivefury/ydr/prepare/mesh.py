@@ -4,7 +4,7 @@ import dataclasses
 import struct
 from collections.abc import Mapping, Sequence
 
-from ...vector import Vector2, Vector3, Vector4
+from ...vector import Aabb3, Vector2, Vector3, Vector4, _PointCloud3
 from ..build_types import YdrMeshInput
 from ..model.skeleton import YdrSkeleton
 from ..shaders import ShaderLayoutDefinition
@@ -37,6 +37,8 @@ class PreparedMesh:
     vertex_bytes: bytes
     index_bytes: bytes
     layout: ShaderLayoutDefinition
+    bounds: Aabb3
+    points: _PointCloud3
 
 
 def prepare_meshes(
@@ -65,15 +67,17 @@ def prepare_meshes(
             skeleton=skeleton,
         )
         for mesh in _split_mesh_by_vertex_limit(normalized):
-            positions = list(mesh.positions)
-            indices = list(mesh.indices)
-            normals = list(mesh.normals or ())
-            texcoords = [list(channel) for channel in (mesh.texcoords or ())]
-            tangents = list(mesh.tangents or ())
-            colours0 = list(mesh.colours0 or ())
-            colours1 = list(mesh.colours1 or ())
-            blend_weights = list(mesh.blend_weights or ())
-            blend_indices = list(mesh.blend_indices or ())
+            # Channel preparation and splitting own these lists for this save.
+            positions = mesh.positions
+            indices = mesh.indices
+            normals = mesh.normals or []
+            texcoords = mesh.texcoords or []
+            tangents = mesh.tangents or []
+            colours0 = mesh.colours0 or []
+            colours1 = mesh.colours1 or []
+            blend_weights = mesh.blend_weights or []
+            blend_indices = mesh.blend_indices or []
+            points = _PointCloud3.from_points(positions)
 
             if (
                 mesh.declaration_flags is not None
@@ -91,6 +95,7 @@ def prepare_meshes(
                         colours1,
                         blend_weights=blend_weights or None,
                         blend_indices=blend_indices or None,
+                        position_buffer=points.rows if positions else None,
                     )
                 )
             else:
@@ -105,6 +110,7 @@ def prepare_meshes(
                         colours1,
                         blend_weights=blend_weights or None,
                         blend_indices=blend_indices or None,
+                        position_buffer=points.rows if positions else None,
                     )
                 )
             if max(indices, default=0) > 0xFFFF:
@@ -133,6 +139,8 @@ def prepare_meshes(
                     vertex_bytes=vertex_bytes,
                     index_bytes=index_bytes,
                     layout=layout,
+                    bounds=points.bounds,
+                    points=points,
                 )
             )
     return prepared

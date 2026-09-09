@@ -23,7 +23,6 @@ from ..resource import (
     split_rsc7_sections,
     virtual_to_offset,
 )
-from ..vector import Vector2, Vector3, Vector4
 from ..ytd import Ytd, read_embedded_texture_dictionary
 from .defs import (
     DAT_PHYSICAL_BASE,
@@ -219,13 +218,10 @@ def _parse_mesh(
         material_index=material_index,
         material=material,
         indices=indices,
-        positions=[Vector3.from_iterable(value) for value in decoded["positions"]],
-        normals=[Vector3.from_iterable(value) for value in decoded["normals"]],
-        tangents=[Vector4.from_iterable(value) for value in decoded["tangents"]],
-        texcoords=[
-            [Vector2.from_iterable(value) for value in channel]
-            for channel in decoded["texcoords"]
-        ],
+        positions=decoded["positions"],
+        normals=decoded["normals"],
+        tangents=decoded["tangents"],
+        texcoords=decoded["texcoords"],
         colours0=list(decoded["colours0"]),
         colours1=list(decoded["colours1"]),
         blend_weights=list(decoded["blend_weights"]),

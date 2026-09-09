@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ...matrix import matrix4, transform_positions
-from ...vector import Aabb3, Vector3, sphere_radius_from_points
+from ...matrix import matrix4
+from ...vector import Vector3, _PointCloud3
 from ..model.skeleton import YdrSkeleton
 from ..transforms import skeleton_absolute_transforms
 from .build import PreparedModel
@@ -15,9 +15,10 @@ def compute_bounds(
     if not positions:
         zero = Vector3()
         return zero, zero, zero, 0.0
-    bounds = Aabb3.from_points(positions)
+    points = _PointCloud3.from_points(positions)
+    bounds = points.bounds
     centre = bounds.center
-    radius = sphere_radius_from_points(centre, positions)
+    radius = points.sphere_radius(centre)
     return centre, bounds.minimum, bounds.maximum, radius
 
 
@@ -28,6 +29,7 @@ def compute_model_collection_bounds(
 ) -> tuple[Vector3, Vector3, Vector3, float]:
     absolute_transforms = skeleton_absolute_transforms(skeleton)
     position_groups = []
+    mesh_bounds = []
     for model in models:
         transform = None
         binding = model.skeleton_binding
@@ -40,22 +42,21 @@ def compute_model_collection_bounds(
         for mesh in model.meshes:
             if not mesh.positions:
                 continue
-            position_groups.append(
-                mesh.positions
+            points = (
+                mesh.points
                 if transform is None
                 # Serialized RAGE matrices act on row vectors; shared math uses columns.
-                else transform_positions(mesh.positions, matrix4(transform).T)
+                else mesh.points.transformed(matrix4(transform).T)
             )
+            position_groups.append(points)
+            mesh_bounds.append(mesh.bounds if transform is None else points.bounds)
     if not position_groups:
         return compute_bounds(())
-    mesh_bounds = [Aabb3.from_points(positions) for positions in position_groups]
     bounds = mesh_bounds[0]
     for mesh_bounds_value in mesh_bounds[1:]:
         bounds = bounds.merged(mesh_bounds_value)
     bb_min = bounds.minimum
     bb_max = bounds.maximum
     centre = bounds.center
-    radius = max(
-        sphere_radius_from_points(centre, positions) for positions in position_groups
-    )
+    radius = max(points.sphere_radius(centre) for points in position_groups)
     return centre, bb_min, bb_max, radius

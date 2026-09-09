@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections.abc import Callable, Iterable, Iterator
+from typing import Self
 
 from . import _native_abi3 as _ffi
 
@@ -21,6 +22,14 @@ def _components(value: Iterable[float], size: int, name: str) -> tuple[float, ..
 
 class _FloatValue:
     __slots__ = ()
+
+    @classmethod
+    def from_rows(cls, rows: Iterable[Iterable[float]]) -> list[Self]:
+        """Materialize decoded component rows as independent nominal vectors."""
+        if cls not in (Vector2, Vector3, Vector4, Quaternion):
+            raise TypeError("Batch construction requires a nominal vector class")
+        names = ("x", "y") if cls is Vector2 else ("x", "y", "z") if cls is Vector3 else ("x", "y", "z", "w")
+        return _ffi.vector_materialize(rows, cls, names)
 
     @property
     def components(self) -> tuple[float, ...]:
@@ -615,6 +624,41 @@ def interpolate_vector4_many(
         Quaternion.from_iterable(value) if is_rotation else Vector4.from_iterable(value)
         for value, is_rotation in zip(values, rotation_flags, strict=True)
     ]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _PointCloud3:
+    """Per-operation snapshot; bounds and packing share the same float64 data."""
+
+    data: bytes
+
+    @classmethod
+    def from_points(cls, points: Iterable[Vector3]) -> _PointCloud3:
+        return cls(_ffi.vector_component_buffer(points, 3))
+
+    @property
+    def rows(self) -> memoryview:
+        return memoryview(self.data).cast("d", shape=(len(self.data) // 24, 3))
+
+    @property
+    def bounds(self) -> Aabb3:
+        if not self.data:
+            return Aabb3(Vector3(), Vector3())
+        minimum, maximum = _ffi.bounds_from_vertices(self.rows)
+        return Aabb3(Vector3.from_iterable(minimum), Vector3.from_iterable(maximum))
+
+    def sphere_radius(self, center: Vector3) -> float:
+        if not self.data:
+            return 0.0
+        return float(_ffi.bounds_sphere_radius_from_vertices(center.as_tuple(), self.rows))
+
+    def transformed(self, transform: object) -> _PointCloud3:
+        import numpy as np
+
+        from .matrix import transform_position_array
+
+        rows = np.frombuffer(self.data, dtype=np.float64).reshape((-1, 3))
+        return _PointCloud3(transform_position_array(rows, transform).tobytes())
 
 
 def sphere_radius_from_points(center: Vector3, points: Iterable[Vector3]) -> float:

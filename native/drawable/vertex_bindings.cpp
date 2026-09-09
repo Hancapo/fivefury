@@ -1,4 +1,5 @@
 #include "drawable/bindings.h"
+#include "python/float_rows.h"
 
 #include <cmath>
 #include <cstdint>
@@ -225,6 +226,17 @@ bool flatten_channel(
     std::vector<double>& out
 ) {
     if (arity == 0) {
+        return true;
+    }
+    if (PyObject_CheckBuffer(channel)) {
+        FloatRows rows;
+        if (!rows.acquire(channel, static_cast<Py_ssize_t>(arity))) return false;
+        if (static_cast<std::size_t>(rows.buffer.shape[0]) < vertex_count) {
+            PyErr_Format(PyExc_ValueError, "vertex channel '%s' is shorter than the vertex count", channel_name);
+            return false;
+        }
+        out.resize(vertex_count * arity);
+        if (!out.empty()) std::memcpy(out.data(), rows.buffer.buf, out.size() * sizeof(double));
         return true;
     }
     PyHandle sequence_owner(PySequence_Fast(channel, "vertex channel must be a sequence"));
@@ -493,7 +505,11 @@ PyObject* mod_ydr_pack_vertex_buffer(PyObject*, PyObject* args) {
     }
 
     try {
-        const auto buffer = pack_buffer(specs, vertex_count);
+        std::string buffer;
+        {
+            GilRelease release;
+            buffer = pack_buffer(specs, vertex_count);
+        }
         return PyBytes_FromStringAndSize(buffer.data(), static_cast<Py_ssize_t>(buffer.size()));
     } catch (...) {
         return translate_cpp_exception();

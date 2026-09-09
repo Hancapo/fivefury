@@ -26,6 +26,7 @@ def _encode_vertex_bytes(
     colours1: Sequence[tuple[float, float, float, float]],
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
+    position_buffer: memoryview | None = None,
 ) -> tuple[int, int, int, bytes]:
     flags = 0
     types_value = _DEFAULT_DECLARATION_TYPES
@@ -49,6 +50,14 @@ def _encode_vertex_bytes(
                 arity = 3
             case _:
                 arity = 4
+        nominal_arity = (
+            3 if semantic in (VertexSemantic.POSITION, VertexSemantic.NORMAL)
+            else 4 if semantic is VertexSemantic.TANGENT
+            else 2 if VertexSemantic.TEXCOORD0 <= semantic <= VertexSemantic.TEXCOORD7
+            else None
+        )
+        if arity == nominal_arity:
+            return values
         expanded = []
         for value in values:
             components = tuple(value)
@@ -75,7 +84,12 @@ def _encode_vertex_bytes(
             (int(semantic), int(component_type))
             for semantic, component_type in semantics
         ],
-        positions,
+        position_buffer
+        if (
+            position_buffer is not None
+            and component_types.get(VertexSemantic.POSITION) == VertexComponentType.FLOAT3
+        )
+        else positions,
         normals,
         texcoords,
         tangents,
@@ -98,6 +112,7 @@ def _encode_vertex_bytes_from_layout(
     *,
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
+    position_buffer: memoryview | None = None,
 ) -> tuple[int, int, int, bytes]:
     component_by_semantic: dict[VertexSemantic, VertexComponentType] = {
         semantic: component_type
@@ -137,6 +152,7 @@ def _encode_vertex_bytes_from_layout(
         colours1,
         blend_weights=blend_weights,
         blend_indices=blend_indices,
+        position_buffer=position_buffer,
     )
 
 
@@ -152,6 +168,7 @@ def _encode_vertex_bytes_from_declaration(
     *,
     blend_weights: Sequence[tuple[float, float, float, float]] | None = None,
     blend_indices: Sequence[tuple[int, int, int, int]] | None = None,
+    position_buffer: memoryview | None = None,
 ) -> tuple[int, int, int, bytes]:
     component_types = {
         semantic: _canonical_component_type(semantic, component_type)
@@ -174,4 +191,5 @@ def _encode_vertex_bytes_from_declaration(
         colours1,
         blend_weights=blend_weights,
         blend_indices=blend_indices,
+        position_buffer=position_buffer,
     )

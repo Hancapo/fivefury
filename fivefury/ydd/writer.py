@@ -16,6 +16,7 @@ from ..resource import (
     get_resource_total_page_count,
     layout_resource_sections,
 )
+from ..vector import Vector3
 from ..ydr import YdrBuild
 from ..ydr.builder import (
     _ROOT_SIZE,
@@ -23,7 +24,12 @@ from ..ydr.builder import (
     _write_drawable_payload,
 )
 from ..ydr.gen9 import ShaderGen9Library, load_gen9_shader_library
-from ..ydr.prepare import PreparedLods, PreparedMaterial, prepare_build
+from ..ydr.prepare import (
+    PreparedLods,
+    PreparedMaterial,
+    compute_model_collection_bounds,
+    prepare_build,
+)
 from ..ydr.shaders import ShaderLibrary, load_shader_library
 from ..ydr.write_buffers import GraphicsWriter
 from ..ydr.write_drawable import pages_info_length, write_pages_info
@@ -51,6 +57,7 @@ class _PreparedYddDrawable:
     materials: list[PreparedMaterial]
     lods: PreparedLods
     texture_sections: ResourceSections | None
+    geometry_bounds: tuple[Vector3, Vector3, Vector3, float]
 
 
 def _drawable_build(entry: YddDrawable, *, version: int) -> YdrBuild:
@@ -103,6 +110,10 @@ def _prepare_ydd_drawables(
                 materials=materials,
                 lods=lods,
                 texture_sections=_prepare_embedded_texture_dictionary(build, enhanced=enhanced),
+                geometry_bounds=compute_model_collection_bounds(
+                    [model for models in lods.values() for model in models],
+                    skeleton=build.skeleton,
+                ),
             )
         )
     return prepared
@@ -164,6 +175,7 @@ def _build_ydd_payload(
             item.lods,
             page_counts,
             root_off=root_off,
+            geometry_bounds=item.geometry_bounds,
             texture_sections=item.texture_sections,
             drawable_file_vft=profile.drawable_headers.drawable,
             write_pages=False,
