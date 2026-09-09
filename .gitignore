@@ -17,6 +17,7 @@ release_dist_*/
 *.egg-info/
 
 references/
+docs/
 examples/
 .claude/
 fivefury-*/

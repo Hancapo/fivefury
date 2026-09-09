@@ -234,7 +234,7 @@ FiveFury keeps the authoring layer close to the data model:
 - Stable game-side values use enums for targets, shaders, LODs, flags, render masks, materials, and track formats.
 - Core writers use atomic replacement and reject known invalid references, ownership, pointers, or packed ranges before replacing the destination.
 
-The full naming, module-boundary, compatibility, performance, and review rules are normative in [`docs/STYLE_GUIDE.md`](docs/STYLE_GUIDE.md).
+Local development documentation is kept in `docs/`, which is excluded from version control.
 
 ## Scope and guarantees
 
