@@ -11,6 +11,9 @@
 namespace fivefury_py {
 
 PyMethodDef module_methods[] = {
+    {"meta_scalars_new", guarded_call<mod_meta_scalars_new>, METH_VARARGS, nullptr},
+    {"meta_scalars_read", guarded_call<mod_meta_scalars_read>, METH_VARARGS, nullptr},
+    {"meta_scalars_write", guarded_call<mod_meta_scalars_write>, METH_VARARGS, nullptr},
     {"index_new", guarded_call<mod_index_new>, METH_NOARGS, nullptr},
     {"index_clear", guarded_call<mod_index_clear>, METH_VARARGS, nullptr},
     {"index_count", guarded_call<mod_index_count>, METH_VARARGS, nullptr},
@@ -127,5 +130,9 @@ PyModuleDef module_def = {
 }  // namespace fivefury_py
 
 PyMODINIT_FUNC PyInit__native_abi3(void) {
-    return PyModule_Create(&fivefury_py::module_def);
+    fivefury_py::PyHandle module(PyModule_Create(&fivefury_py::module_def));
+    if (!module) return nullptr;
+    fivefury_py::PyHandle hash_fields(fivefury_py::create_hash_fields_type());
+    if (!hash_fields || PyModule_AddObjectRef(module.get(), "HashFields", hash_fields.get()) < 0) return nullptr;
+    return module.release();
 }

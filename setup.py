@@ -14,7 +14,7 @@ class NativeBuildExt(build_ext):
 
 
 NATIVE_SOURCE_GROUPS = {
-    "python": ("bridge.cpp", "module.cpp"),
+    "python": ("bridge.cpp", "module.cpp", "hash_fields.cpp"),
     "audio": ("bindings.cpp",),
     "animation": (
         "ycd_bindings.cpp",
@@ -44,7 +44,7 @@ NATIVE_SOURCE_GROUPS = {
         "texture_bindings.cpp",
         "texture_index.cpp",
     ),
-    "resource": ("binary_document.cpp", "bindings.cpp", "layout.cpp"),
+    "resource": ("binary_document.cpp", "bindings.cpp", "layout.cpp", "meta_codec.cpp"),
     "rpf": ("archive.cpp", "bindings.cpp", "crypto.cpp", "read.cpp", "read_session.cpp", "scan.cpp"),
     "spatial": ("bindings.cpp",),
 }

@@ -500,7 +500,7 @@ class Ymap(MetaHashFieldsMixin):
         builder = MetaBuilder(struct_infos=YMAP_STRUCT_INFOS, enum_infos=YMAP_ENUM_INFOS, name=self.meta_name or "")
         system = builder.build(root_name_hash=meta_name("CMapData"), root_value=self.to_meta_root())
         system_flags = builder.page_flags | (((version >> 4) & 0xF) << 28)
-        return build_rsc7(system, version=version, system_alignment=0x2000, system_flags=system_flags)
+        return build_rsc7(system, version=version, system_alignment=0x2000, system_flags=system_flags, compression_level=6)
 
     def save(
         self,

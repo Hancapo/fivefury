@@ -137,7 +137,7 @@ class EntityDef(MetaHashFieldsMixin, ExtensionContainer):
     def from_meta(cls, value: Any) -> EntityDef:
         return cls(
             archetype_name=value.get("archetypeName", 0),
-            flags=coerce_ymap_entity_flags(int(value.get("flags", 0))),
+            flags=value.get("flags", 0),
             guid=int(value.get("guid", 0)),
             position=Vector3.from_iterable(value.get("position", (0.0, 0.0, 0.0))),
             rotation=Quaternion.from_iterable(
@@ -148,11 +148,9 @@ class EntityDef(MetaHashFieldsMixin, ExtensionContainer):
             parent_index=int(value.get("parentIndex", -1)),
             lod_dist=float(value.get("lodDist", 0.0)),
             child_lod_dist=float(value.get("childLodDist", 0.0)),
-            lod_level=coerce_ymap_lod_level(int(value.get("lodLevel", 0))),
+            lod_level=value.get("lodLevel", 0),
             num_children=int(value.get("numChildren", 0)),
-            priority_level=coerce_ymap_priority_level(
-                int(value.get("priorityLevel", 0))
-            ),
+            priority_level=value.get("priorityLevel", 0),
             extensions=extensions_from_meta(value.get("extensions", []) or []),
             ambient_occlusion_multiplier=int(
                 value.get("ambientOcclusionMultiplier", 255)

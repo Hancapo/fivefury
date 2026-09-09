@@ -9,6 +9,7 @@ from fivefury.resource import (
     RSC7_MAGIC,
     ResourceBlockSpan,
     ResourceWriter,
+    build_rsc7,
     decompress_resource_stream,
     get_resource_flags_from_size,
     layout_resource_sections,
@@ -16,6 +17,17 @@ from fivefury.resource import (
     prepare_rsc7_sections,
     read_rsc7_header,
 )
+
+
+def test_compression_level_preserves_header_and_uncompressed_sections():
+    system = bytes(range(256)) * 100
+    graphics = b"texture" * 1000
+    default = build_rsc7(system, graphics_data=graphics)
+    compact = build_rsc7(system, graphics_data=graphics, compression_level=9)
+    balanced = build_rsc7(system, graphics_data=graphics, compression_level=6)
+    assert default == compact
+    assert parse_rsc7(balanced) == parse_rsc7(compact)
+    assert zlib.decompress(balanced[16:], wbits=-15) == parse_rsc7(compact)[1]
 
 
 @pytest.mark.parametrize("version", [5, 13, 165])

@@ -95,7 +95,7 @@ class BaseArchetypeDef(MetaHashFieldsMixin, ExtensionContainer):
             clip_dictionary=value.get("clipDictionary", 0),
             drawable_dictionary=value.get("drawableDictionary", 0),
             physics_dictionary=value.get("physicsDictionary", 0),
-            asset_type=coerce_archetype_asset_type(value.get("assetType", ArchetypeAssetType.UNINITIALIZED)),
+            asset_type=value.get("assetType", ArchetypeAssetType.UNINITIALIZED),
             asset_name=value.get("assetName", 0),
             extensions=extensions_from_meta(value.get("extensions", []) or []),
         )

@@ -12,7 +12,8 @@ def lerp(start: float, end: float, amount: float) -> float:
 
 
 def _components(value: Iterable[float], size: int, name: str) -> tuple[float, ...]:
-    result = tuple(float(component) for component in value)
+    # Constructors coerce each component; only materialize and check arity here.
+    result = tuple(value)
     if len(result) != size:
         raise ValueError(f"{name} requires exactly {size} components")
     return result
