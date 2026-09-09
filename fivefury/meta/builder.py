@@ -3,9 +3,9 @@ from __future__ import annotations
 import dataclasses
 import struct
 from collections.abc import Iterable, Mapping, Sequence
-from functools import cache
 from typing import Any
 
+from .. import _native_abi3
 from ..binary import align, pad_bytes
 from ..hashing import jenk_hash
 from ..metahash import MetaHash
@@ -24,6 +24,7 @@ from . import (
     MetaStructInfo,
     RawStruct,
 )
+from .codec import camel_to_snake, scalar_plan
 from .defs import (
     META_TYPE_NAME_ARRAYINFO,
     META_TYPE_NAME_BYTE,
@@ -74,6 +75,7 @@ class MetaBuilder:
         self.page_size: int = 0x2000
         self.page_count: int = 1
         self.page_flags: int = 0
+        self._scalar_plans: dict = {}
 
     def register_struct(self, info: MetaStructInfo) -> None:
         if info.name_hash not in self.struct_infos:
@@ -86,6 +88,7 @@ class MetaBuilder:
         self.enum_infos[info.name_hash] = info
 
     def build(self, root_name_hash: int = 0, root_value: Mapping[str, Any] | RawStruct | None = None) -> bytes:
+        self._scalar_plans.clear()
         self.blocks.clear()
         self._block_group.clear()
         self.used_struct_hashes.clear()
@@ -196,11 +199,14 @@ class MetaBuilder:
         if isinstance(value, RawStruct):
             return pad_bytes(value.data, 16)
         struct_info = self._lookup_struct_info(name_hash)
-        payload = bytearray(struct_info.structure_size)
-        for index, entry in enumerate(struct_info.entries):
-            if entry.name_hash == META_TYPE_NAME_ARRAYINFO:
-                continue
-            field_value = self._field_value(value, entry.name)
+        plan = self._scalar_plans.get(name_hash)
+        if plan is None:
+            plan = scalar_plan(struct_info.structure_size, tuple(struct_info.entries))
+            self._scalar_plans[name_hash] = plan
+        capsule, complex_fields = plan
+        payload = _native_abi3.meta_scalars_write(capsule, value, jenk_hash)
+        for index, entry, name in complex_fields:
+            field_value = self._field_value(value, name)
             encoded = self._encode_field(struct_info, index, entry, field_value)
             offset = entry.data_offset
             payload[offset : offset + len(encoded)] = encoded
@@ -209,44 +215,12 @@ class MetaBuilder:
     def _field_value(self, value: Mapping[str, Any], field_name: str) -> Any:
         if field_name in value:
             return value[field_name]
-        snake_name = _camel_to_snake(field_name)
+        snake_name = camel_to_snake(field_name)
         return value.get(snake_name)
 
     def _encode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, value: Any) -> bytes:
         data_type = field.data_type
         match data_type:
-            case MetaDataType.BOOLEAN:
-                return struct.pack("<?", bool(value))
-            case MetaDataType.SIGNED_BYTE:
-                return struct.pack("<b", int(value or 0))
-            case MetaDataType.UNSIGNED_BYTE:
-                return struct.pack("<B", int(value or 0))
-            case MetaDataType.SIGNED_SHORT:
-                return struct.pack("<h", int(value or 0))
-            case MetaDataType.UNSIGNED_SHORT:
-                return struct.pack("<H", int(value or 0))
-            case MetaDataType.SIGNED_INT:
-                return struct.pack("<i", int(value or 0))
-            case MetaDataType.UNSIGNED_INT:
-                return struct.pack("<I", int(value or 0))
-            case MetaDataType.FLOAT:
-                return struct.pack("<f", float(value or 0.0))
-            case MetaDataType.FLOAT_XYZ:
-                x, y, z = _coerce_vector(value, 3)
-                return struct.pack("<fff", x, y, z)
-            case MetaDataType.FLOAT_XYZW:
-                x, y, z, w = _coerce_vector(value, 4)
-                return struct.pack("<ffff", x, y, z, w)
-            case MetaDataType.HASH:
-                return struct.pack("<I", _coerce_hash(value))
-            case MetaDataType.BYTE_ENUM:
-                return struct.pack("<B", int(value or 0))
-            case MetaDataType.INT_ENUM:
-                return struct.pack("<i", int(value or 0))
-            case MetaDataType.SHORT_FLAGS:
-                return struct.pack("<h", int(value or 0))
-            case MetaDataType.INT_FLAGS_1 | MetaDataType.INT_FLAGS_2:
-                return struct.pack("<i", int(value or 0))
             case MetaDataType.ARRAY_OF_CHARS:
                 length = field.reference_key & 0xFFFF
                 text = (value or "").encode("ascii", errors="ignore")[:length]
@@ -309,6 +283,8 @@ class MetaBuilder:
                 raise NotImplementedError(f"Unsupported META field type {data_type}")
 
     def _encode_array(self, struct_info: MetaStructInfo, field_index: int, value: Any) -> bytes:
+        if not value:
+            return bytes(16)
         items = list(value or [])
         if field_index <= 0:
             return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
@@ -569,16 +545,6 @@ def _value_struct_hash(value: Any, *, fallback: int) -> int:
     if fallback:
         return fallback
     raise ValueError("Structure hash is required for pointer/inline structure encoding")
-
-
-@cache
-def _camel_to_snake(value: str) -> str:
-    chars: list[str] = []
-    for index, char in enumerate(value):
-        if char.isupper() and index > 0 and not value[index - 1].isupper():
-            chars.append("_")
-        chars.append(char.lower())
-    return "".join(chars)
 
 
 def _coerce_float_xyz(value: Any) -> tuple[float, float, float]:

@@ -4,6 +4,7 @@ import dataclasses
 import struct
 from typing import Any
 
+from .. import _native_abi3
 from ..binary import BinaryDocument, BinaryScalarType
 from ..resource import parse_rsc7
 from . import (
@@ -19,9 +20,9 @@ from . import (
     MetaStructInfo,
     RawStruct,
 )
+from .codec import scalar_plan
 from .defs import (
     GRAPHICS_BASE,
-    META_TYPE_NAME_ARRAYINFO,
     STRUCTS_BY_HASH,
     SYSTEM_BASE,
     MetaDataType,
@@ -44,6 +45,7 @@ class ParsedMeta:
     resource_version: int | None = None
     system_flags: int | None = None
     graphics_flags: int | None = None
+    _scalar_plans: dict = dataclasses.field(default_factory=dict, repr=False)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> ParsedMeta:
@@ -127,11 +129,14 @@ class ParsedMeta:
                 return RawStruct(name_hash, raw[: struct_def.size], None)
             return RawStruct(name_hash, raw, None)
 
-        values: dict[str, Any] = {}
-        for index, entry in enumerate(struct_info.entries):
-            if entry.name_hash == META_TYPE_NAME_ARRAYINFO:
-                continue
-            values[entry.name] = self._decode_field(struct_info, index, entry, raw)
+        plan = self._scalar_plans.get(name_hash)
+        if plan is None:
+            plan = scalar_plan(struct_info.structure_size, tuple(struct_info.entries))
+            self._scalar_plans[name_hash] = plan
+        capsule, complex_fields = plan
+        values = _native_abi3.meta_scalars_read(capsule, raw)
+        for index, entry, name in complex_fields:
+            values[name] = self._decode_field(struct_info, index, entry, raw)
         values["_meta_name_hash"] = name_hash
         values["_meta_name"] = struct_info.name
         return values
@@ -139,35 +144,14 @@ class ParsedMeta:
     def _decode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, raw: bytes) -> Any:
         offset = field.data_offset
         data_type = field.data_type
+        if data_type is MetaDataType.ARRAY:
+            pointer, count = struct.unpack_from("<QH", raw, offset)
+            if count == 0 or pointer & 0xFFF == 0:
+                return []
+            return self._resolve_array(
+                struct_info, field_index, MetaArrayRef.from_bytes(raw, offset)
+            )
         match data_type:
-            case MetaDataType.BOOLEAN:
-                return raw[offset] != 0
-            case MetaDataType.SIGNED_BYTE:
-                return struct.unpack_from("<b", raw, offset)[0]
-            case MetaDataType.UNSIGNED_BYTE:
-                return raw[offset]
-            case MetaDataType.SIGNED_SHORT:
-                return struct.unpack_from("<h", raw, offset)[0]
-            case MetaDataType.UNSIGNED_SHORT:
-                return struct.unpack_from("<H", raw, offset)[0]
-            case MetaDataType.SIGNED_INT:
-                return struct.unpack_from("<i", raw, offset)[0]
-            case MetaDataType.UNSIGNED_INT:
-                return struct.unpack_from("<I", raw, offset)[0]
-            case MetaDataType.FLOAT:
-                return struct.unpack_from("<f", raw, offset)[0]
-            case MetaDataType.FLOAT_XYZ:
-                return struct.unpack_from("<fff", raw, offset)
-            case MetaDataType.FLOAT_XYZW:
-                return struct.unpack_from("<ffff", raw, offset)
-            case MetaDataType.HASH:
-                return struct.unpack_from("<I", raw, offset)[0]
-            case MetaDataType.BYTE_ENUM:
-                return raw[offset]
-            case MetaDataType.SHORT_FLAGS:
-                return struct.unpack_from("<h", raw, offset)[0]
-            case MetaDataType.INT_ENUM | MetaDataType.INT_FLAGS_1 | MetaDataType.INT_FLAGS_2:
-                return struct.unpack_from("<i", raw, offset)[0]
             case MetaDataType.ARRAY_OF_CHARS:
                 length = field.reference_key & 0xFFFF
                 end = raw.find(b"\x00", offset, offset + length)
@@ -191,9 +175,6 @@ class ParsedMeta:
                 return self._resolve_struct_pointer(pointer)
             case MetaDataType.STRUCTURE:
                 return self._decode_inline_structure(field.reference_key, raw[offset:])
-            case MetaDataType.ARRAY:
-                array_ref = MetaArrayRef.from_bytes(raw, offset)
-                return self._resolve_array(struct_info, field_index, array_ref)
             case _:
                 return None
 

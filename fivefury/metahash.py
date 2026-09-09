@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any, ClassVar
+from typing import ClassVar
 
+from . import _native_abi3
 from .hashing import jenk_hash
 
 
@@ -21,20 +22,15 @@ class MetaHash:
         return cls(value)
 
     def __init__(self, value: HashLike | None = 0) -> None:
-        match value:
-            case MetaHash():
-                self._value = value.raw
-                self._cached_uint = value._cached_uint
-            case None | "":
-                self._value = 0
-                self._cached_uint = 0
-            case str():
-                self._value = value
-                self._cached_uint = None
-            case _:
-                int_val = int(value)
-                self._value = int_val
-                self._cached_uint = int_val
+        if isinstance(value, MetaHash):
+            raw, cached = value._value, value._cached_uint
+        elif isinstance(value, str):
+            raw, cached = (value, None) if value else (0, 0)
+        else:
+            raw = 0 if value is None else int(value)
+            cached = raw
+        self._value = raw
+        self._cached_uint = cached
 
     @property
     def raw(self) -> int | str:
@@ -133,20 +129,14 @@ def coerce_meta_hash_list(values: Iterable[HashLike] | None) -> list[MetaHash]:
     return [coerce_meta_hash(value) for value in values]
 
 
-class MetaHashFieldsMixin:
+class MetaHashFieldsMixin(_native_abi3.HashFields):
     __slots__ = ()
 
     _hash_fields: ClassVar[tuple[str, ...]] = ()
     _hash_list_fields: ClassVar[tuple[str, ...]] = ()
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name in type(self)._hash_fields:
-            object.__setattr__(self, name, coerce_meta_hash(value))
-            return
-        if name in type(self)._hash_list_fields:
-            object.__setattr__(self, name, coerce_meta_hash_list(value))
-            return
-        object.__setattr__(self, name, value)
+    _coerce_hash_field = staticmethod(coerce_meta_hash)
+    _coerce_hash_list_field = staticmethod(coerce_meta_hash_list)
 
 
 __all__ = [

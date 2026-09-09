@@ -3,6 +3,9 @@
 #include "python/bridge.h"
 
 namespace fivefury_py {
+PyObject* mod_meta_scalars_new(PyObject*, PyObject*);
+PyObject* mod_meta_scalars_read(PyObject*, PyObject*);
+PyObject* mod_meta_scalars_write(PyObject*, PyObject*);
 
 PyObject* mod_binary_document_new(PyObject*, PyObject* args);
 PyObject* mod_binary_document_size(PyObject*, PyObject* args);

@@ -387,8 +387,8 @@ def get_resource_flags_from_size_with_page_count(size: int, version: int, page_c
     return best_flags
 
 
-def compress_resource_stream(data: bytes) -> bytes:
-    return zlib.compress(data, level=9, wbits=-15)
+def compress_resource_stream(data: bytes, *, level: int = 9) -> bytes:
+    return zlib.compress(data, level=level, wbits=-15)
 
 
 def _decompress_raw_resource_stream(data: bytes, *, dictionary: bytes | None = None) -> bytes:
@@ -466,8 +466,10 @@ class ResourceSections:
     system_data: bytes
     graphics_data: bytes
 
-    def to_bytes(self) -> bytes:
-        return self.header.pack() + compress_resource_stream(self.system_data + self.graphics_data)
+    def to_bytes(self, *, compression_level: int = 9) -> bytes:
+        return self.header.pack() + compress_resource_stream(
+            self.system_data + self.graphics_data, level=compression_level
+        )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -770,6 +772,7 @@ def build_rsc7(
     graphics_alignment: int | None = None,
     system_flags: int | None = None,
     graphics_flags: int | None = None,
+    compression_level: int = 9,
 ) -> bytes:
     return prepare_rsc7_sections(
         system_data,
@@ -779,4 +782,4 @@ def build_rsc7(
         graphics_alignment=graphics_alignment,
         system_flags=system_flags,
         graphics_flags=graphics_flags,
-    ).to_bytes()
+    ).to_bytes(compression_level=compression_level)

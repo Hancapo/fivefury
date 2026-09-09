@@ -22,6 +22,7 @@ class TextureIndex;
 }
 
 namespace fivefury_py {
+PyObject* create_hash_fields_type();
 
 struct BytesView {
     char* data = nullptr;
