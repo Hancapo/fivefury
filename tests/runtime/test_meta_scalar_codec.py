@@ -87,3 +87,15 @@ def test_scalar_false_values_and_vector_negative_zero():
         plan, {"scalar": -0.0, "vector": (-0.0, 0, 0)}, jenk_hash
     )
     assert raw == struct.pack("<4f", 0, -0.0, 0, 0)
+
+
+def test_fixed_arrays_preserve_padding_wrapping_hashes_and_signed_zero():
+    plan = native.meta_scalars_new(24, [
+        ("position", "position", 0, 0x21, 3), ("colour", "colour", 12, 0x11, 4),
+        ("names", "names", 16, 0x4A, 2)])
+    raw = native.meta_scalars_write(plan,
+        {"position": (-0.0, 2), "colour": [-1, 256, 17, 18, 19], "names": ["prop_test"]}, jenk_hash)
+    assert raw == struct.pack("<3f4B2I", -0.0, 2, 0, 255, 0, 17, 18, jenk_hash("prop_test"), 0)
+    assert native.meta_scalars_read(plan, raw)["colour"] == (255, 0, 17, 18)
+    with pytest.raises(ValueError):
+        native.meta_scalars_new(4, [("array", "array", 0, 0x21, 2)])

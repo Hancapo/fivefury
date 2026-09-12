@@ -44,7 +44,7 @@ NATIVE_SOURCE_GROUPS = {
         "texture_bindings.cpp",
         "texture_index.cpp",
     ),
-    "resource": ("binary_document.cpp", "bindings.cpp", "layout.cpp", "meta_codec.cpp"),
+    "resource": ("binary_document.cpp", "bindings.cpp", "layout.cpp", "meta_codec.cpp", "meta_graph_write.cpp"),
     "rpf": ("archive.cpp", "bindings.cpp", "crypto.cpp", "read.cpp", "read_session.cpp", "scan.cpp"),
     "spatial": ("bindings.cpp",),
 }

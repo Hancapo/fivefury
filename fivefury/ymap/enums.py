@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 
-from ..common import FlexibleIntEnum
+from ..common import FlexibleIntEnum, coerce_int_enum
 
 
 class YmapFlags(enum.IntFlag):
@@ -121,39 +121,39 @@ class YmapLodLightCategory(FlexibleIntEnum):
 
 
 def coerce_ymap_lod_level(value: int | YmapLodLevel) -> YmapLodLevel:
-    return value if isinstance(value, YmapLodLevel) else YmapLodLevel(int(value))
+    return coerce_int_enum(YmapLodLevel, value)
 
 
 def coerce_ymap_priority_level(value: int | YmapPriorityLevel) -> YmapPriorityLevel:
-    return value if isinstance(value, YmapPriorityLevel) else YmapPriorityLevel(int(value))
+    return coerce_int_enum(YmapPriorityLevel, value)
 
 
 def coerce_ymap_flags(value: int | YmapFlags) -> YmapFlags:
-    return value if isinstance(value, YmapFlags) else YmapFlags(int(value))
+    return coerce_int_enum(YmapFlags, value)
 
 
 def coerce_ymap_content_flags(value: int | YmapContentFlags) -> YmapContentFlags:
-    return value if isinstance(value, YmapContentFlags) else YmapContentFlags(int(value))
+    return coerce_int_enum(YmapContentFlags, value)
 
 
 def coerce_ymap_entity_flags(value: int | YmapEntityFlags) -> YmapEntityFlags:
-    return value if isinstance(value, YmapEntityFlags) else YmapEntityFlags(int(value))
+    return coerce_int_enum(YmapEntityFlags, value)
 
 
 def coerce_ymap_cargen_flags(value: int | YmapCarGenFlags) -> YmapCarGenFlags:
-    return value if isinstance(value, YmapCarGenFlags) else YmapCarGenFlags(int(value))
+    return coerce_int_enum(YmapCarGenFlags, value)
 
 
 def coerce_ymap_mlo_instance_flags(value: int | YmapMloInstanceFlags) -> YmapMloInstanceFlags:
-    return value if isinstance(value, YmapMloInstanceFlags) else YmapMloInstanceFlags(int(value))
+    return coerce_int_enum(YmapMloInstanceFlags, value)
 
 
 def coerce_ymap_lod_light_type(value: int | YmapLodLightType) -> YmapLodLightType:
-    return value if isinstance(value, YmapLodLightType) else YmapLodLightType(int(value))
+    return coerce_int_enum(YmapLodLightType, value)
 
 
 def coerce_ymap_lod_light_category(value: int | YmapLodLightCategory) -> YmapLodLightCategory:
-    return value if isinstance(value, YmapLodLightCategory) else YmapLodLightCategory(int(value))
+    return coerce_int_enum(YmapLodLightCategory, value)
 
 
 __all__ = [

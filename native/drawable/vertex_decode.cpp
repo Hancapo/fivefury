@@ -1,5 +1,5 @@
 #include "drawable/bindings.h"
-#include "python/vector_factory.h"
+#include "python/record_factory.h"
 
 #include <algorithm>
 #include <array>
@@ -378,9 +378,9 @@ PyObject* mod_ydr_decode_vertex_buffer(PyObject*, PyObject* args) {
     PyHandle names3(Py_BuildValue("(sss)", "x", "y", "z"));
     PyHandle names4(Py_BuildValue("(ssss)", "x", "y", "z", "w"));
     if (!names2 || !names3 || !names4) return nullptr;
-    VectorFactory vectors2(vector2_type, names2.get());
-    VectorFactory vectors3(vector3_type, names3.get());
-    VectorFactory vectors4(vector4_type, names4.get());
+    RecordFactory vectors2(vector2_type, names2.get());
+    RecordFactory vectors3(vector3_type, names3.get());
+    RecordFactory vectors4(vector4_type, names4.get());
     if (!vectors2 || !vectors3 || !vectors4) return nullptr;
 
     PyObject* result = PyDict_New();

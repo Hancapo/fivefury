@@ -65,16 +65,16 @@ def build_mlo_instance(instance: MloInstanceDef, archetype: Any | None = None) -
 
 
 def validate_mlo_instance(instance: MloInstanceDef, archetype: Any | None = None) -> ValidationReport:
-    label = f"MLO instance {instance.archetype_name}"
     issues = ValidationReport()
     if not 0 <= int(instance.group_id) < 255:
-        issues.issue("ymap.mlo.group_id.range", f"{label} group_id must be between 0 and 254", path="group_id")
+        issues.issue("ymap.mlo.group_id.range", f"MLO instance {instance.archetype_name} group_id must be between 0 and 254", path="group_id")
     check_unsigned(issues, instance.floor_id, 32, code="ymap.mlo.floor_id.range", path="floor_id")
     check_unsigned(issues, instance.num_exit_portals, 32, code="ymap.mlo.exit_portals.range", path="num_exit_portals")
 
     if archetype is None:
         return issues
 
+    label = f"MLO instance {instance.archetype_name}"
     expected_exit_portals = exit_portal_count(archetype)
     if int(instance.num_exit_portals) != expected_exit_portals:
         issues.issue(

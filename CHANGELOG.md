@@ -7,15 +7,26 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-12
+
 ### Added
 
+- Batch construction through `Vector2.from_rows`, `Vector3.from_rows`, `Vector4.from_rows`, and `Quaternion.from_rows`, preserving nominal types and immutable, independent values.
+- Configurable zlib compression levels in `ResourceSections.to_bytes()` and `build_rsc7()`.
 - Immutable YED evaluators snapshot expression selection and skeleton defaults for repeated typed evaluation with explicit per-actor variable state.
 - Compiled YCD clip samplers preserve the public phase/time evaluation interface while sharing immutable animation plans.
 - Immutable compiled YCD animation samplers retain owned channel data for repeated native evaluation without stale caches after source edits.
 - Per-track quaternion encoding overrides allow explicit facial rotations while keeping body and camera packing unchanged.
 
+### Changed
+
+- Version 0.5.1 is the final planned feature release of the current Python implementation; new core development moves to .NET.
+- The README presents the library for research and education, with concise installation instructions, runnable examples, and a format overview.
+- YMAP, YTYP, and YDR writers use zlib level 6 to balance serialization speed and output size; compressed bytes and sizes may differ, while the general resource builder retains its level-9 default.
+
 ### Fixed
 
+- META root blocks stay separate from child blocks of the same structure type, preventing child data from being overwritten during graph construction.
 - YED program caches detect in-place operand and skeleton-default edits instead of relying on object identities and list lengths.
 - Explicit quaternion authoring stores all four static components instead of discarding W and reconstructing it from rounded XYZ values.
 - YCD precision diagnostics distinguish integer-frame and subframe component errors, report their frame locations and include quaternion angular error independently of component limits.
@@ -24,8 +35,12 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- Up to 2x faster repeated YED evaluation with compiled evaluators, avoiding repeated expression resolution and Python input/output conversions.
-- Up to 14x faster repeated YCD sampling with compiled animation samplers, keeping typed outputs and cached-quaternion interpolation order.
+- YMAP reads materialize nominal Python records through schema-checked native bindings, and writing uses the shared native META graph encoder. A measured 2,000-entity case improved by a further 5.6x for reading and 1.8x for writing over the preceding native field-codec implementation; results vary by workload. Unknown layouts and custom extension registrations retain generic conversion.
+- Up to 2.9x faster YTYP reading and 9x faster writing with native hash-field assignment and fewer Python conversions.
+- Faster YDR reading with lower memory usage by constructing typed vectors directly in C++ without intermediate tuple lists.
+- YDR, YDD, and YFT writing reuses float64 position buffers and calculates bounds once per save; vectorized transforms make rigid YDR models write up to 3.4x faster.
+- Up to 2x faster repeated YED evaluation with compiled evaluators that avoid repeated expression resolution.
+- Up to 14x faster repeated YCD sampling by reusing immutable native animation plans.
 
 ## [0.5.0] - 2026-09-07
 

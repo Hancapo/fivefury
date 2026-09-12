@@ -1,7 +1,7 @@
 #include "drawable/bindings.h"
 
 #include "math/vector.h"
-#include "python/vector_factory.h"
+#include "python/record_factory.h"
 
 #include <vector>
 #include <cstring>
@@ -48,26 +48,13 @@ PyObject* mod_vector_materialize(PyObject*, PyObject* args) {
     if (dimensions < 2 || dimensions > 4) {
         PyErr_SetString(PyExc_ValueError, "Vectors require 2 to 4 components"); return nullptr;
     }
-    VectorFactory factory(cls, fields.get());
+    RecordFactory factory(cls, fields.get());
     if (!factory) return nullptr;
     const auto count = PyTuple_Size(sequence.get());
     PyHandle result(PyList_New(count));
     if (!result) return nullptr;
     for (Py_ssize_t i = 0; i < count; ++i) {
-        PyHandle components(PySequence_Tuple(PyTuple_GetItem(sequence.get(), i)));
-        if (!components) return nullptr;
-        if (PyTuple_Size(components.get()) != dimensions) {
-            PyErr_SetString(PyExc_ValueError, "Incorrect vector component count"); return nullptr;
-        }
-        // The Python boundary supplies the nominal vector class. Match its
-        // float coercion while filling frozen slots before exposing the object.
-        PyHandle object(factory.create());
-        if (!object) return nullptr;
-        for (Py_ssize_t j = 0; j < dimensions; ++j) {
-            PyHandle value(PyNumber_Float(PyTuple_GetItem(components.get(), j)));
-            if (!factory.assign(object.get(), j, value.get())) return nullptr;
-        }
-        if (!list_take(result.get(), i, object.release())) return nullptr;
+        if (!list_take(result.get(), i, factory.numeric(PyTuple_GetItem(sequence.get(), i)))) return nullptr;
     }
     return result.release();
 }
