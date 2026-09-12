@@ -198,26 +198,67 @@ class MetaAndArchiveContractTests:
     def test_meta_builder_reuses_blocks_until_the_existing_group_reaches_the_limit(
         self,
     ) -> None:
-        from fivefury.meta.builder import MetaBuilder
+        from fivefury.meta import MetaBuilder, MetaPointer, MetaStructInfo, RawStruct
+        from fivefury.meta.defs import MetaDataType
+        from fivefury.meta.utils import meta_field_entry
 
-        builder = MetaBuilder()
-        first = builder._add_block(305419896, bytes(16368), group=True)
-        second = builder._add_block(305419896, bytes(48), group=True)
-        assert first.block_id == second.block_id
-        assert len(builder.blocks) == 1
-        assert len(builder.blocks[0].data) == 16416
+        info = MetaStructInfo(1, 0, 0, 16, [
+            meta_field_entry("first", 0, MetaDataType.STRUCTURE_POINTER),
+            meta_field_entry("second", 8, MetaDataType.STRUCTURE_POINTER),
+        ])
+        builder = MetaBuilder(struct_infos=[info])
+        builder.build(1, {
+            "first": RawStruct(305419896, bytes(16368)),
+            "second": RawStruct(305419896, bytes(48)),
+        })
+        first, second = (MetaPointer.from_uint64(value)
+                         for value in struct.unpack_from("<QQ", builder.blocks[0].data))
+        assert first.block_id == second.block_id == 2
+        assert (first.offset, second.offset) == (0, 16368)
+        assert len(builder.blocks) == 2
+        assert len(builder.blocks[1].data) == 16416
 
     def test_meta_builder_pages_info_uses_total_page_count(self) -> None:
-        from fivefury.meta.builder import MetaBuilder
+        from fivefury.meta import MetaBuilder, MetaStructInfo
+        from fivefury.meta.defs import MetaDataType
+        from fivefury.meta.utils import meta_field_entry
         from fivefury.resource import get_resource_total_page_count
 
-        builder = MetaBuilder()
-        for _ in range(3):
-            builder._add_block(305419896, bytes(12288), group=False)
-        system = builder._compose_system_stream(0)
+        info = MetaStructInfo(1, 0, 0, 24, [
+            meta_field_entry(name, index * 8, MetaDataType.DATA_BLOCK_POINTER)
+            for index, name in enumerate(("first", "second", "third"))
+        ])
+        builder = MetaBuilder(struct_infos=[info])
+        system = builder.build(1, {
+            name: bytes(12288) for name in ("first", "second", "third")
+        })
+        assert [len(block.data) for block in builder.blocks[1:]] == [12288] * 3
         pages_info = struct.unpack_from("<IIBBHI", system, 112)
         assert builder.page_count > 1
         assert pages_info[2] == get_resource_total_page_count(builder.page_flags)
+
+    @pytest.mark.parametrize("field_type, value, block_index, expected", [
+        ("ARRAY_OF_BYTES", 3, 0, bytes(16)),
+        ("DATA_BLOCK_POINTER", 3, 1, bytes(3)),
+        ("ARRAY_OF_CHARS", "a\u00e9bc", 0, b"!ab" + bytes(13)),
+    ])
+    def test_meta_builder_binary_fields_preserve_conversion_protocols(
+        self, field_type, value, block_index, expected,
+    ) -> None:
+        from fivefury.meta import MetaBuilder, MetaStructInfo
+        from fivefury.meta.defs import MetaDataType
+        from fivefury.meta.utils import meta_field_entry
+
+        info = MetaStructInfo(1, 0, 0, 8, [
+            meta_field_entry("data", 0, MetaDataType[field_type], ref_key=3),
+        ])
+        class Text(str):
+            def encode(self, encoding="utf-8", *, errors="strict"):
+                return b"!" + super().encode(encoding, errors=errors)
+
+        builder = MetaBuilder(struct_infos=[info])
+        builder.build(1, {"data": Text(value) if isinstance(value, str) else value})
+        assert builder.blocks[block_index].data == expected
 
     @pytest.mark.integration
     def test_good_ymap_roundtrip_preserves_meta_layout_contract(self) -> None:

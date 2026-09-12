@@ -18,6 +18,7 @@ release_dist_*/
 
 references/
 docs/
+/dotnet/
 examples/
 .claude/
 fivefury-*/

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 import struct
-from typing import Any
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .materialize import MetaModelCodec
 
 from .. import _native_abi3
 from ..binary import BinaryDocument, BinaryScalarType
@@ -46,9 +50,12 @@ class ParsedMeta:
     system_flags: int | None = None
     graphics_flags: int | None = None
     _scalar_plans: dict = dataclasses.field(default_factory=dict, repr=False)
+    _codec_matches: dict[MetaModelCodec, bool] = dataclasses.field(default_factory=dict, repr=False)
+    _data_buffers: tuple[bytes, ...] = dataclasses.field(default=(), repr=False)
+    _array_bindings: dict = dataclasses.field(default_factory=dict, repr=False)
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> ParsedMeta:
+    def from_bytes(cls, data: bytes, *, array_codecs=None, root_codec=None) -> ParsedMeta:
         resource_version = None
         system_flags = None
         graphics_flags = None
@@ -99,8 +106,14 @@ class ParsedMeta:
             resource_version=resource_version,
             system_flags=system_flags,
             graphics_flags=graphics_flags,
+            _data_buffers=tuple(block.data for block in data_blocks),
         )
-        parsed.decoded_root = parsed.decode_block_by_id(root_block_index)
+        if (block := parsed.block_by_id(root_block_index)) is not None:
+            info = parsed.struct_infos.get(block.struct_name_hash)
+            if root_codec is not None and info is not None and root_codec.matches(info):
+                parsed.decoded_root = root_codec.read(parsed, info, block.data)
+            else:
+                parsed.decoded_root = parsed.decode_struct(block.struct_name_hash, block.data, array_codecs=array_codecs)
         return parsed
 
     def struct_info_for_hash(self, name_hash: int) -> MetaStructInfo | None:
@@ -117,7 +130,7 @@ class ParsedMeta:
             return None
         return self.decode_struct(block.struct_name_hash, block.data)
 
-    def decode_struct(self, name_hash: int, raw: bytes) -> Any:
+    def decode_struct(self, name_hash: int, raw: bytes, *, array_codecs=None) -> Any:
         if name_hash == FLOAT_XYZ_NAME_HASH:
             return struct.unpack_from("<fff", raw, 0)
         struct_info = self.struct_infos.get(name_hash)
@@ -136,12 +149,13 @@ class ParsedMeta:
         capsule, complex_fields = plan
         values = _native_abi3.meta_scalars_read(capsule, raw)
         for index, entry, name in complex_fields:
-            values[name] = self._decode_field(struct_info, index, entry, raw)
+            codecs = array_codecs.get((name_hash, entry.name_hash)) if array_codecs else None
+            values[name] = self._decode_field(struct_info, index, entry, raw, codecs=codecs)
         values["_meta_name_hash"] = name_hash
         values["_meta_name"] = struct_info.name
         return values
 
-    def _decode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, raw: bytes) -> Any:
+    def _decode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, raw: bytes, *, codecs=None) -> Any:
         offset = field.data_offset
         data_type = field.data_type
         if data_type is MetaDataType.ARRAY:
@@ -149,7 +163,7 @@ class ParsedMeta:
             if count == 0 or pointer & 0xFFF == 0:
                 return []
             return self._resolve_array(
-                struct_info, field_index, MetaArrayRef.from_bytes(raw, offset)
+                struct_info, field_index, MetaArrayRef.from_bytes(raw, offset), codecs=codecs
             )
         match data_type:
             case MetaDataType.ARRAY_OF_CHARS:
@@ -196,7 +210,7 @@ class ParsedMeta:
             return b""
         return bytes(block.data[data_ref.pointer.offset :])
 
-    def _resolve_struct_pointer(self, pointer: MetaPointer) -> Any:
+    def _resolve_struct_pointer(self, pointer: MetaPointer, codecs=None) -> Any:
         if pointer.is_null:
             return None
         block = self.block_by_id(pointer.block_id)
@@ -210,20 +224,54 @@ class ParsedMeta:
             size = struct_def.size
             return RawStruct(block.struct_name_hash, block.data[pointer.offset : pointer.offset + size], None)
         size = struct_info.structure_size
-        return self.decode_struct(block.struct_name_hash, block.data[pointer.offset : pointer.offset + size])
+        raw = block.data[pointer.offset : pointer.offset + size]
+        return self._decode_model_or_struct(struct_info, raw, codecs)
 
-    def _decode_inline_structure(self, name_hash: int, raw: bytes) -> Any:
+    def _decode_model_or_struct(self, struct_info, raw, codecs):
+        if codecs and (codec := codecs.get(struct_info.name_hash)) is not None:
+            matches = self._codec_matches.get(codec)
+            if matches is None:
+                matches = codec.matches(struct_info)
+                self._codec_matches[codec] = matches
+            if matches:
+                return codec.read(self, struct_info, raw)
+        return self.decode_struct(struct_info.name_hash, raw)
+
+    def _resolve_pointer_value(self, pointer: int):
+        return self._resolve_struct_pointer(MetaPointer.from_uint64(pointer))
+
+    def _bindings_for_array(self, codecs):
+        key = tuple(codecs.items())
+        if (bindings := self._array_bindings.get(key)) is not None:
+            return bindings
+        bindings = []
+        for block in self.data_blocks:
+            codec = codecs.get(block.struct_name_hash)
+            info = self.struct_infos.get(block.struct_name_hash)
+            if codec is not None and info is not None:
+                matches = self._codec_matches.get(codec)
+                if matches is None:
+                    matches = codec.matches(info)
+                    self._codec_matches[codec] = matches
+                if matches:
+                    bindings.append((codec._plan, codec.complete, info))
+                    continue
+            bindings.append(None)
+        self._array_bindings[key] = result = tuple(bindings)
+        return result
+
+    def _decode_inline_structure(self, name_hash: int, raw: bytes, codecs=None) -> Any:
         struct_info = self.struct_infos.get(name_hash)
         struct_def = STRUCTS_BY_HASH.get(name_hash)
         if struct_info is not None:
-            return self.decode_struct(name_hash, raw[: struct_info.structure_size])
+            return self._decode_model_or_struct(struct_info, raw[: struct_info.structure_size], codecs)
         if struct_def is not None:
             if struct_def.opaque:
                 return RawStruct(name_hash, raw[: struct_def.size], None)
             return self.decode_struct(name_hash, raw[: struct_def.size])
         return raw
 
-    def _resolve_array(self, struct_info: MetaStructInfo, field_index: int, array_ref: MetaArrayRef) -> Any:
+    def _resolve_array(self, struct_info: MetaStructInfo, field_index: int, array_ref: MetaArrayRef, *, codecs=None) -> Any:
         if array_ref.pointer.is_null or array_ref.count == 0:
             return []
         if field_index >= len(struct_info.entries):
@@ -235,19 +283,18 @@ class ParsedMeta:
         if block is None:
             return []
         start = array_ref.pointer.offset
-        end = len(block.data)
-        data = block.data[start:end]
         element_type = array_info.data_type
-        document = BinaryDocument(block.data)
+        document = BinaryDocument(block.data) if element_type is not MetaDataType.STRUCTURE else None
         match element_type:
             case MetaDataType.STRUCTURE_POINTER:
+                pointers = document.read_array(start, array_ref.count, BinaryScalarType.UNSIGNED_LONG)
+                if codecs:
+                    return _native_abi3.meta_models_read(self._bindings_for_array(codecs), self._data_buffers, pointers, self)
                 return [
                     self._resolve_struct_pointer(
-                        MetaPointer.from_uint64(int(pointer_value))
+                        MetaPointer.from_uint64(int(pointer_value)), codecs
                     )
-                    for pointer_value in document.read_array(
-                        start, array_ref.count, BinaryScalarType.UNSIGNED_LONG
-                    )
+                    for pointer_value in pointers
                 ]
             case MetaDataType.STRUCTURE:
                 nested_hash = array_info.reference_key
@@ -261,10 +308,18 @@ class ParsedMeta:
                     else 0
                 )
                 if size <= 0:
-                    return [RawStruct(nested_hash, data, nested_info)]
+                    return [RawStruct(nested_hash, block.data[start:], nested_info)]
+                if codecs and (codec := codecs.get(nested_hash)) is not None and nested_info is not None:
+                    matches = self._codec_matches.get(codec)
+                    if matches is None:
+                        matches = codec.matches(nested_info)
+                        self._codec_matches[codec] = matches
+                    if matches:
+                        return _native_abi3.meta_model_array_read((codec._plan, codec.complete, nested_info),
+                            self._data_buffers, array_ref.pointer.value, size, array_ref.count, self)
                 return [
                     self._decode_inline_structure(
-                        nested_hash, data[index * size : (index + 1) * size]
+                        nested_hash, block.data[start + index * size : start + (index + 1) * size], codecs
                     )
                     for index in range(array_ref.count)
                 ]
@@ -293,7 +348,7 @@ class ParsedMeta:
                     components=3,
                 )
             case _:
-                return bytes(data)
+                return bytes(block.data[start:])
 
 
 def _absolute_to_offset(pointer: int) -> int:
@@ -317,10 +372,11 @@ def _read_struct_infos(data: bytes, pointer: int, count: int) -> dict[int, MetaS
             "<IIIIqihh", data, off
         )
         entries_offset = _absolute_to_offset(entries_pointer)
-        entries = [
-            MetaFieldInfo.from_bytes(data, entries_offset + entry_index * 16)
-            for entry_index in range(entries_count)
-        ]
+        entry_bytes = bytes(data[entries_offset : entries_offset + max(0, entries_count) * 16])
+        if len(entry_bytes) != max(0, entries_count) * 16:
+            raise struct.error("META structure entries are truncated")
+        # Entries are frozen values. Each file still owns its editable info and entry list.
+        entries = list(_read_schema_fields(entry_bytes))
         infos[name_hash] = MetaStructInfo(
             name_hash=name_hash,
             key=key,
@@ -331,6 +387,11 @@ def _read_struct_infos(data: bytes, pointer: int, count: int) -> dict[int, MetaS
             unknown_1ch=unknown_1ch,
         )
     return infos
+
+
+@lru_cache(maxsize=256)
+def _read_schema_fields(data: bytes) -> tuple[MetaFieldInfo, ...]:
+    return tuple(MetaFieldInfo.from_bytes(data, offset) for offset in range(0, len(data), 16))
 
 
 def _read_enum_infos(data: bytes, pointer: int, count: int) -> dict[int, MetaEnumInfo]:
@@ -374,8 +435,8 @@ def _read_string_absolute(data: bytes, pointer: int) -> str:
     return data[offset:end].decode("ascii", errors="ignore")
 
 
-def read_meta(data: bytes) -> ParsedMeta:
-    return ParsedMeta.from_bytes(data)
+def read_meta(data: bytes, *, array_codecs=None, root_codec=None) -> ParsedMeta:
+    return ParsedMeta.from_bytes(data, array_codecs=array_codecs, root_codec=root_codec)
 
 def _inline_array_format(data_type: MetaDataType) -> tuple[str, int] | None:
     if data_type is MetaDataType.FLOAT:

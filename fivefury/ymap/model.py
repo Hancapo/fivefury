@@ -18,7 +18,8 @@ from .defs import (
     YMAP_STRUCT_INFOS,
     _ensure_base_name,
 )
-from .entities import EntityDef, MloInstanceDef
+from .entities import EntityDef, MloInstanceDef, _entity_from_meta
+from .codec import entity_array_codecs, map_model_codec
 from .enums import (
     YmapContentFlags,
     YmapFlags,
@@ -58,6 +59,18 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..rpf import RpfArchive, RpfFileEntry
     from ..ybn import Ybn
     from ..ytyp import MloArchetypeDef, Ytyp
+
+
+_CONTENT_FLAGS_BY_LOD = {
+    int(YmapLodLevel.DEPTH_HD): int(YmapContentFlags.ENTITIES_HD),
+    int(YmapLodLevel.DEPTH_ORPHANHD): int(YmapContentFlags.ENTITIES_HD),
+    int(YmapLodLevel.DEPTH_LOD): int(YmapContentFlags.ENTITIES_LOD),
+    int(YmapLodLevel.DEPTH_SLOD1): int(YmapContentFlags.ENTITIES_CRITICAL),
+    **dict.fromkeys(
+        (int(YmapLodLevel.DEPTH_SLOD2), int(YmapLodLevel.DEPTH_SLOD3), int(YmapLodLevel.DEPTH_SLOD4)),
+        int(YmapContentFlags.ENTITIES_CONTAINER_LOD | YmapContentFlags.ENTITIES_CRITICAL),
+    ),
+}
 
 
 def _context_dependencies(
@@ -378,29 +391,14 @@ class Ymap(MetaHashFieldsMixin):
 
     def recalculate_flags(self) -> Ymap:
         flags = self.flags & (YmapFlags.MANUAL_STREAM_ONLY | YmapFlags.IS_PARENT)
-        content_flags = YmapContentFlags.NONE
+        content_flags = 0
 
         for entity in self.entities:
-            lod_level = YmapLodLevel(int(getattr(entity, "lod_level", YmapLodLevel.DEPTH_HD) or 0))
-            match lod_level:
-                case YmapLodLevel.DEPTH_HD | YmapLodLevel.DEPTH_ORPHANHD:
-                    content_flags |= YmapContentFlags.ENTITIES_HD
-                case YmapLodLevel.DEPTH_LOD:
-                    content_flags |= YmapContentFlags.ENTITIES_LOD
-                case YmapLodLevel.DEPTH_SLOD1:
-                    content_flags |= YmapContentFlags.ENTITIES_CRITICAL
-                case (
-                    YmapLodLevel.DEPTH_SLOD2
-                    | YmapLodLevel.DEPTH_SLOD3
-                    | YmapLodLevel.DEPTH_SLOD4
-                ):
-                    content_flags |= (
-                        YmapContentFlags.ENTITIES_CONTAINER_LOD
-                        | YmapContentFlags.ENTITIES_CRITICAL
-                    )
+            lod_level = int(getattr(entity, "lod_level", YmapLodLevel.DEPTH_HD) or 0)
+            content_flags |= _CONTENT_FLAGS_BY_LOD.get(lod_level, 0)
 
             if isinstance(entity, MloInstanceDef) or getattr(entity, "_meta_name", "") == "CMloInstanceDef":
-                content_flags |= YmapContentFlags.MLO
+                content_flags |= int(YmapContentFlags.MLO)
 
         if self.block.version or self.block.flags or self.block.name or self.block.exported_by or self.block.owner or self.block.time:
             content_flags |= YmapContentFlags.BLOCKINFO
@@ -417,7 +415,7 @@ class Ymap(MetaHashFieldsMixin):
             content_flags |= YmapContentFlags.OCCLUDER
 
         self.flags = flags
-        self.content_flags = content_flags
+        self.content_flags = coerce_ymap_content_flags(content_flags)
         return self
 
     def build(
@@ -554,18 +552,15 @@ class Ymap(MetaHashFieldsMixin):
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Ymap:
-        parsed = read_meta(data)
+        arrays = entity_array_codecs()
+        parsed = read_meta(data, array_codecs=arrays, root_codec=map_model_codec(arrays) if cls is Ymap else None)
         root = parsed.decoded_root
+        if isinstance(root, cls):
+            root.meta_name = parsed.name
+            return root
         if not isinstance(root, dict) or root.get("_meta_name") != "CMapData":
             raise ValueError("META payload is not a CMapData/YMAP")
-        entities: list[Any] = []
-        for item in root.get("entities", []) or []:
-            if isinstance(item, dict) and item.get("_meta_name") == "CMloInstanceDef":
-                entities.append(MloInstanceDef.from_meta(item))
-            elif isinstance(item, dict) and item.get("_meta_name") == "CEntityDef":
-                entities.append(EntityDef.from_meta(item))
-            else:
-                entities.append(item)
+        entities = [_entity_from_meta(item) for item in root.get("entities", []) or []]
         container_lods = [coerce_container_lod(item) for item in root.get("containerLods", []) or []]
         return cls(
             name=root.get("name", 0),

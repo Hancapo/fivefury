@@ -7,9 +7,10 @@ import shutil
 import tempfile
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
-from enum import IntEnum
+from enum import IntEnum, IntFlag
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TypeVar
 
 from .hashing import jenk_hash
 from .metahash import MetaHash
@@ -143,6 +144,19 @@ class FlexibleIntEnum(IntEnum):
         return member
 
 
+_IntEnumT = TypeVar("_IntEnumT", bound=IntEnum | IntFlag)
+
+
+@lru_cache(maxsize=1024)
+def _int_enum_member(enum_type: type[_IntEnumT], value: int) -> _IntEnumT:
+    return enum_type(value)
+
+
+def coerce_int_enum(enum_type: type[_IntEnumT], value: int | _IntEnumT) -> _IntEnumT:
+    """Reuse immutable enum values while bounding retention of unknown integers."""
+    return value if isinstance(value, enum_type) else _int_enum_member(enum_type, int(value))
+
+
 __all__ = [
     "ByteSource",
     "FlexibleIntEnum",
@@ -150,6 +164,7 @@ __all__ = [
     "atomic_write_bytes",
     "atomic_write_files",
     "clip_short_name",
+    "coerce_int_enum",
     "dataclass_init_values",
     "hash_value",
     "read_source_bytes",

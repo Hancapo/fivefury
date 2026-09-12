@@ -118,6 +118,9 @@ class MetaHash:
 HashString = MetaHash
 HashLike = MetaHash | int | str
 
+# A decoded uint establishes both constructor slots without resolving names.
+_NATIVE_HASH_BINDING = (MetaHash, ("_value", "_cached_uint"))
+
 
 def coerce_meta_hash(value: HashLike | None) -> MetaHash:
     return value if isinstance(value, MetaHash) else MetaHash(value)

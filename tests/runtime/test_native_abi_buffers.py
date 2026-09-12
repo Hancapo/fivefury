@@ -46,6 +46,10 @@ assert sys.version_info[:2] == (3, 11)
 spec = importlib.util.spec_from_file_location('_native_abi3', sys.argv[1])
 native = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(native)
+record = type('Record', (), {'__slots__': ('value',)})
+schema = native.meta_scalars_new(4, [('value', 'value', 0, 0x15)])
+plan = native.meta_model_new(schema, record, [('value', None)])
+assert native.meta_model_read(plan, bytes([42, 0, 0, 0])).value == 42
 reader = native.rpf_reader_new(sys.argv[2], bytes(range(256)), None)
 assert native.rpf_reader_read(reader, 'payload.bin', 2) == (b'\\x00binary\\xff',) * 2
 wav = native.awc_build_pcm_wav(bytes(64), 48000, 1, 16)

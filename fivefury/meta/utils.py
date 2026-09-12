@@ -5,13 +5,17 @@ from .defs import META_TYPE_NAME_ARRAYINFO, MetaDataType, meta_name
 
 
 def array_info_for_field(struct_info: MetaStructInfo, field_index: int) -> MetaFieldInfo | None:
-    if not (0 <= field_index < len(struct_info.entries)):
+    return _array_info_for_entries(struct_info.entries, field_index)
+
+
+def _array_info_for_entries(entries, field_index: int) -> MetaFieldInfo | None:
+    if not (0 <= field_index < len(entries)):
         return None
-    if field_index > 0 and struct_info.entries[field_index - 1].name_hash == META_TYPE_NAME_ARRAYINFO:
-        return struct_info.entries[field_index - 1]
-    ref_index = struct_info.entries[field_index].reference_type_index
-    if 0 <= ref_index < len(struct_info.entries):
-        candidate = struct_info.entries[ref_index]
+    if field_index > 0 and entries[field_index - 1].name_hash == META_TYPE_NAME_ARRAYINFO:
+        return entries[field_index - 1]
+    ref_index = entries[field_index].reference_type_index
+    if 0 <= ref_index < len(entries):
+        candidate = entries[ref_index]
         if candidate.name_hash == META_TYPE_NAME_ARRAYINFO:
             return candidate
     return None

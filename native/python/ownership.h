@@ -13,6 +13,13 @@ public:
     PyHandle(const PyHandle&) = delete;
     PyHandle& operator=(const PyHandle&) = delete;
     PyHandle(PyHandle&& other) noexcept : object_(other.release()) {}
+    PyHandle& operator=(PyHandle&& other) noexcept {
+        if (this != &other) {
+            auto* previous = std::exchange(object_, other.release());
+            Py_XDECREF(previous);
+        }
+        return *this;
+    }
     PyObject* get() const noexcept { return object_; }
     PyObject* release() noexcept { return std::exchange(object_, nullptr); }
     explicit operator bool() const noexcept { return object_ != nullptr; }

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import dataclasses
 import struct
+from functools import lru_cache
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from .. import _native_abi3
-from ..binary import align, pad_bytes
+from ..binary import align
 from ..hashing import jenk_hash
-from ..metahash import MetaHash
 from ..resource import get_resource_flags_from_blocks, get_resource_total_page_count
 from ..vector import Quaternion, Vector2, Vector3, Vector4
 from . import (
@@ -16,30 +16,18 @@ from . import (
     META_FILE_VFT,
     META_ROOT_SIZE,
     RESOURCE_FILE_BASE_SIZE,
-    MetaArrayRef,
-    MetaDataRef,
     MetaEnumInfo,
-    MetaFieldInfo,
-    MetaPointer,
     MetaStructInfo,
     RawStruct,
 )
-from .codec import camel_to_snake, scalar_plan
+from .codec import camel_to_snake, scalar_plan, schema_enum_bytes, schema_field_bytes
 from .defs import (
     META_TYPE_NAME_ARRAYINFO,
-    META_TYPE_NAME_BYTE,
-    META_TYPE_NAME_FLOAT,
-    META_TYPE_NAME_HASH,
-    META_TYPE_NAME_POINTER,
-    META_TYPE_NAME_STRING,
-    META_TYPE_NAME_UINT,
-    META_TYPE_NAME_USHORT,
-    META_TYPE_NAME_VECTOR4,
     STRUCTS_BY_HASH,
     SYSTEM_BASE,
     MetaDataType,
 )
-from .utils import array_info_for_field
+from .utils import _array_info_for_entries
 
 
 @dataclasses.dataclass(slots=True)
@@ -71,11 +59,9 @@ class MetaBuilder:
         self.used_struct_hashes: set[int] = set()
         self.used_enum_hashes: set[int] = set()
         self.blocks: list[_WritableBlock] = []
-        self._block_group: dict[int, list[int]] = {}
         self.page_size: int = 0x2000
         self.page_count: int = 1
         self.page_flags: int = 0
-        self._scalar_plans: dict = {}
 
     def register_struct(self, info: MetaStructInfo) -> None:
         if info.name_hash not in self.struct_infos:
@@ -88,15 +74,19 @@ class MetaBuilder:
         self.enum_infos[info.name_hash] = info
 
     def build(self, root_name_hash: int = 0, root_value: Mapping[str, Any] | RawStruct | None = None) -> bytes:
-        self._scalar_plans.clear()
         self.blocks.clear()
-        self._block_group.clear()
         self.used_struct_hashes.clear()
         self.used_enum_hashes.clear()
         if root_name_hash and root_value is not None:
-            root_block_id = self._reserve_block(root_name_hash)
-            root_payload = self._encode_struct_payload(root_name_hash, root_value)
-            self._set_block(root_block_id, root_payload)
+            blocks, used_hashes = _native_abi3.meta_graph_write(
+                root_name_hash, root_value, self._graph_schema, RawStruct, Mapping,
+                _coerce_float_xyz, self._inline_size, jenk_hash,
+                self.MAX_BLOCK_LENGTH, FLOAT_XYZ_NAME_HASH,
+            )
+            self.blocks.extend(_WritableBlock(name_hash, data) for name_hash, data in blocks)
+            for name_hash in used_hashes:
+                self._mark_struct_used(name_hash)
+            root_block_id = 1
         else:
             root_block_id = 0
         return self._compose_system_stream(root_block_id)
@@ -125,35 +115,18 @@ class MetaBuilder:
         total_size = align(offset, page_size)
         return page_size, offsets, total_size
 
-    def _reserve_block(self, name_hash: int) -> int:
-        self.blocks.append(_WritableBlock(name_hash=name_hash))
-        block_id = len(self.blocks)
-        self._block_group.setdefault(name_hash, []).append(block_id - 1)
-        return block_id
+    def _graph_schema(self, name_hash: int):
+        info = self._lookup_struct_info(name_hash)
+        return _graph_plan(info.structure_size, tuple(info.entries))
 
-    def _set_block(self, block_id: int, data: bytes) -> None:
-        self.blocks[block_id - 1].data = bytearray(pad_bytes(data, 16))
-
-    def _add_block(
-        self,
-        name_hash: int,
-        data: bytes,
-        *,
-        align_item: int = 16,
-        group: bool = True,
-    ) -> MetaPointer:
-        item = pad_bytes(data, align_item) if align_item > 1 else bytes(data)
-        if group:
-            for index in self._block_group.get(name_hash, ()):
-                block = self.blocks[index]
-                if len(block.data) >= self.MAX_BLOCK_LENGTH:
-                    continue
-                pointer = MetaPointer(block_id=index + 1, offset=len(block.data))
-                block.data.extend(item)
-                return pointer
-        block_id = self._reserve_block(name_hash)
-        self.blocks[block_id - 1].data.extend(item)
-        return MetaPointer(block_id=block_id, offset=0)
+    def _inline_size(self, name_hash: int) -> int:
+        info = self.struct_infos.get(name_hash)
+        if info is not None:
+            return info.structure_size
+        definition = STRUCTS_BY_HASH.get(name_hash)
+        if definition is not None:
+            return definition.size
+        raise KeyError(f"No size information available for inline structure 0x{name_hash:08X}")
 
     def _lookup_struct_info(self, name_hash: int) -> MetaStructInfo:
         info = self.struct_infos.get(name_hash)
@@ -191,131 +164,6 @@ class MetaBuilder:
             elif entry.data_type is MetaDataType.STRUCTURE and entry.reference_key:
                 self._mark_struct_used(entry.reference_key)
 
-    def _encode_struct_payload(self, name_hash: int, value: Mapping[str, Any] | RawStruct) -> bytes:
-        self._mark_struct_used(name_hash)
-        if name_hash == FLOAT_XYZ_NAME_HASH:
-            x, y, z = _coerce_float_xyz(value)
-            return struct.pack("<ffff", x, y, z, 0.0)
-        if isinstance(value, RawStruct):
-            return pad_bytes(value.data, 16)
-        struct_info = self._lookup_struct_info(name_hash)
-        plan = self._scalar_plans.get(name_hash)
-        if plan is None:
-            plan = scalar_plan(struct_info.structure_size, tuple(struct_info.entries))
-            self._scalar_plans[name_hash] = plan
-        capsule, complex_fields = plan
-        payload = _native_abi3.meta_scalars_write(capsule, value, jenk_hash)
-        for index, entry, name in complex_fields:
-            field_value = self._field_value(value, name)
-            encoded = self._encode_field(struct_info, index, entry, field_value)
-            offset = entry.data_offset
-            payload[offset : offset + len(encoded)] = encoded
-        return bytes(payload)
-
-    def _field_value(self, value: Mapping[str, Any], field_name: str) -> Any:
-        if field_name in value:
-            return value[field_name]
-        snake_name = camel_to_snake(field_name)
-        return value.get(snake_name)
-
-    def _encode_field(self, struct_info: MetaStructInfo, field_index: int, field: MetaFieldInfo, value: Any) -> bytes:
-        data_type = field.data_type
-        match data_type:
-            case MetaDataType.ARRAY_OF_CHARS:
-                length = field.reference_key & 0xFFFF
-                text = (value or "").encode("ascii", errors="ignore")[:length]
-                return text + (b"\x00" * (length - len(text)))
-            case MetaDataType.ARRAY_OF_BYTES:
-                count = field.reference_key & 0xFFFF
-                array_info = array_info_for_field(struct_info, field_index)
-                if array_info is None:
-                    raw = bytes(value or b"")[:count]
-                    return raw + (b"\x00" * (count - len(raw)))
-                return _pack_inline_array(array_info.data_type, value, count)
-            case MetaDataType.CHAR_POINTER:
-                if not value:
-                    return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
-                raw = str(value).encode("ascii", errors="ignore") + b"\x00"
-                pointer = self._add_block(
-                    META_TYPE_NAME_STRING, raw, align_item=1, group=True
-                )
-                return MetaArrayRef(pointer, len(raw) - 1, len(raw) - 1, 0).to_bytes()
-            case MetaDataType.DATA_BLOCK_POINTER:
-                raw = bytes(value or b"")
-                if not raw:
-                    return MetaDataRef(MetaPointer(0, 0)).to_bytes()
-                target_hash = (
-                    field.reference_key
-                    if field.reference_key not in (0, 2)
-                    else META_TYPE_NAME_BYTE
-                )
-                pointer = self._add_block(target_hash, raw, align_item=1, group=False)
-                return MetaDataRef(pointer).to_bytes()
-            case MetaDataType.STRUCTURE_POINTER:
-                if value is None:
-                    return MetaDataRef(MetaPointer(0, 0)).to_bytes()
-                target_hash = _value_struct_hash(value, fallback=field.reference_key)
-                self._mark_struct_used(target_hash)
-                pointer = self._add_block(
-                    target_hash, self._encode_struct_payload(target_hash, value)
-                )
-                return MetaDataRef(pointer).to_bytes()
-            case MetaDataType.STRUCTURE:
-                target_hash = field.reference_key or _value_struct_hash(
-                    value, fallback=0
-                )
-                self._mark_struct_used(target_hash)
-                if value is None:
-                    nested_info = self.struct_infos.get(field.reference_key)
-                    if nested_info is not None:
-                        return bytes(nested_info.structure_size)
-                    nested_def = STRUCTS_BY_HASH.get(field.reference_key)
-                    if nested_def is not None:
-                        return bytes(nested_def.size)
-                    raise KeyError(
-                        "No size information available for inline structure "
-                        f"0x{field.reference_key:08X}"
-                    )
-                return self._encode_struct_payload(target_hash, value)
-            case MetaDataType.ARRAY:
-                return self._encode_array(struct_info, field_index, value)
-            case _:
-                raise NotImplementedError(f"Unsupported META field type {data_type}")
-
-    def _encode_array(self, struct_info: MetaStructInfo, field_index: int, value: Any) -> bytes:
-        if not value:
-            return bytes(16)
-        items = list(value or [])
-        if field_index <= 0:
-            return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
-        array_info = array_info_for_field(struct_info, field_index)
-        if array_info is None:
-            return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
-        element_type = array_info.data_type
-        if not items:
-            return MetaArrayRef(MetaPointer(0, 0), 0, 0, 0).to_bytes()
-        if element_type is MetaDataType.STRUCTURE_POINTER:
-            raw = bytearray()
-            for item in items:
-                target_hash = _value_struct_hash(item, fallback=0)
-                self._mark_struct_used(target_hash)
-                pointer = self._add_block(target_hash, self._encode_struct_payload(target_hash, item))
-                raw.extend(struct.pack("<Q", pointer.value))
-            pointer = self._add_block(META_TYPE_NAME_POINTER, bytes(raw), align_item=16, group=True)
-            return MetaArrayRef(pointer, len(items), len(items), 0).to_bytes()
-        if element_type is MetaDataType.STRUCTURE:
-            target_hash = array_info.reference_key
-            self._mark_struct_used(target_hash)
-            raw = bytearray()
-            for item in items:
-                raw.extend(self._encode_struct_payload(target_hash, item))
-            pointer = self._add_block(target_hash, bytes(raw), align_item=16, group=True)
-            return MetaArrayRef(pointer, len(items), len(items), 0).to_bytes()
-        raw = _pack_primitive_array(element_type, items)
-        block_type = _primitive_block_hash(element_type)
-        pointer = self._add_block(block_type, raw, align_item=16, group=True)
-        return MetaArrayRef(pointer, len(items), len(items), 0).to_bytes()
-
     def _compose_system_stream(self, root_block_id: int) -> bytes:
         struct_infos = [self.struct_infos[name_hash] for name_hash in self.struct_info_order if name_hash in self.used_struct_hashes]
         enum_infos = [self.enum_infos[name_hash] for name_hash in self.enum_info_order if name_hash in self.used_enum_hashes]
@@ -328,18 +176,7 @@ class MetaBuilder:
         struct_entry_offsets: dict[int, int] = {}
         struct_entry_payloads: list[tuple[MetaStructInfo, bytes, int]] = []
         for info in struct_infos:
-            payload = b"".join(
-                struct.pack(
-                    "<IIBBHI",
-                    entry.name_hash,
-                    entry.data_offset,
-                    int(entry.data_type),
-                    entry.unknown_9h,
-                    entry.reference_type_index,
-                    entry.reference_key,
-                )
-                for entry in info.entries
-            )
+            payload = schema_field_bytes(tuple(info.entries))
             struct_entry_offsets[info.name_hash] = offset
             struct_entry_payloads.append((info, payload, offset))
             offset += len(payload)
@@ -351,7 +188,7 @@ class MetaBuilder:
         enum_entry_offsets: dict[int, int] = {}
         enum_entry_payloads: list[tuple[MetaEnumInfo, bytes, int]] = []
         for info in enum_infos:
-            payload = b"".join(struct.pack("<Ii", entry.name_hash, entry.value) for entry in info.entries)
+            payload = schema_enum_bytes(tuple((entry.name_hash, entry.value) for entry in info.entries))
             enum_entry_offsets[info.name_hash] = offset
             enum_entry_payloads.append((info, payload, offset))
             offset += len(payload)
@@ -474,79 +311,6 @@ def build_meta_system(
     )
 
 
-def _pack_primitive_array(data_type: MetaDataType, items: list[Any]) -> bytes:
-    if data_type is MetaDataType.FLOAT:
-        vals = [float(v) for v in items]
-        return struct.pack(f"<{len(vals)}f", *vals)
-    if data_type in (MetaDataType.UNSIGNED_INT, MetaDataType.HASH):
-        vals = [_coerce_hash(v) if data_type is MetaDataType.HASH else int(v) for v in items]
-        return struct.pack(f"<{len(vals)}I", *vals)
-    if data_type is MetaDataType.UNSIGNED_SHORT:
-        vals = [int(v) for v in items]
-        return struct.pack(f"<{len(vals)}H", *vals)
-    if data_type is MetaDataType.UNSIGNED_BYTE:
-        return bytes(int(item) & 0xFF for item in items)
-    if data_type is MetaDataType.FLOAT_XYZ:
-        flat: list[float] = []
-        for item in items:
-            flat.extend(_coerce_vector(item, 3))
-            flat.append(0.0)
-        return struct.pack(f"<{len(flat)}f", *flat)
-    raise NotImplementedError(f"Unsupported array element type {data_type}")
-
-
-def _primitive_block_hash(data_type: MetaDataType) -> int:
-    if data_type is MetaDataType.FLOAT:
-        return META_TYPE_NAME_FLOAT
-    if data_type is MetaDataType.HASH:
-        return META_TYPE_NAME_HASH
-    if data_type is MetaDataType.UNSIGNED_INT:
-        return META_TYPE_NAME_UINT
-    if data_type is MetaDataType.UNSIGNED_SHORT:
-        return META_TYPE_NAME_USHORT
-    if data_type is MetaDataType.UNSIGNED_BYTE:
-        return META_TYPE_NAME_BYTE
-    if data_type is MetaDataType.FLOAT_XYZ:
-        return META_TYPE_NAME_VECTOR4
-    raise NotImplementedError(f"No primitive block hash for {data_type}")
-
-
-def _coerce_hash(value: Any) -> int:
-    if value is None:
-        return 0
-    if isinstance(value, MetaHash):
-        return int(value)
-    if isinstance(value, str):
-        return jenk_hash(value)
-    return int(value)
-
-
-def _coerce_vector(value: Any, size: int) -> tuple[float, ...]:
-    if value is None:
-        return tuple(0.0 for _ in range(size))
-    if isinstance(value, (Vector2, Vector3, Vector4, Quaternion)):
-        components = value.components
-    elif isinstance(value, (str, bytes, bytearray)):
-        raise TypeError("Vector values must be numeric iterables")
-    else:
-        components = tuple(value)
-    if len(components) != size:
-        raise ValueError(f"Expected vector of length {size}")
-    return tuple(float(component) for component in components)
-
-
-def _value_struct_hash(value: Any, *, fallback: int) -> int:
-    if isinstance(value, RawStruct):
-        return value.name_hash
-    if isinstance(value, Mapping):
-        meta_name_hash = value.get("_meta_name_hash")
-        if meta_name_hash:
-            return int(meta_name_hash)
-    if fallback:
-        return fallback
-    raise ValueError("Structure hash is required for pointer/inline structure encoding")
-
-
 def _coerce_float_xyz(value: Any) -> tuple[float, float, float]:
     if isinstance(value, Mapping):
         return (
@@ -564,36 +328,16 @@ def _coerce_float_xyz(value: Any) -> tuple[float, float, float]:
     return tuple(float(component) for component in padded[:3])
 
 
-def _pack_inline_array(data_type: MetaDataType, value: Any, count: int) -> bytes:
-    if count <= 0:
-        return b""
-    items = list(value or [])
-    if len(items) < count:
-        items.extend(0 for _ in range(count - len(items)))
-    items = items[:count]
-    if data_type is MetaDataType.FLOAT:
-        return struct.pack(f"<{count}f", *(float(v) for v in items))
-    if data_type is MetaDataType.UNSIGNED_INT:
-        return struct.pack(f"<{count}I", *(int(v) for v in items))
-    if data_type is MetaDataType.HASH:
-        return struct.pack(f"<{count}I", *(_coerce_hash(v) for v in items))
-    if data_type is MetaDataType.SIGNED_INT:
-        return struct.pack(f"<{count}i", *(int(v) for v in items))
-    if data_type is MetaDataType.UNSIGNED_SHORT:
-        return struct.pack(f"<{count}H", *(int(v) for v in items))
-    if data_type is MetaDataType.SIGNED_SHORT:
-        return struct.pack(f"<{count}h", *(int(v) for v in items))
-    if data_type is MetaDataType.UNSIGNED_BYTE:
-        return bytes(int(item) & 0xFF for item in items)
-    if data_type is MetaDataType.SIGNED_BYTE:
-        return struct.pack(f"<{count}b", *(int(v) for v in items))
-    raw = bytes(value or b"")[:count]
-    return raw + (b"\x00" * (count - len(raw)))
-
-
-
-
-
-
-
-
+@lru_cache(maxsize=256)
+def _graph_plan(size, entries):
+    scalar, complex_fields = scalar_plan(size, entries)
+    fields = []
+    for index, entry, name in complex_fields:
+        array_info = _array_info_for_entries(entries, index)
+        # ARRAY's legacy contract ignores index zero even when its ref_index identifies ARRAYINFO.
+        if entry.data_type is MetaDataType.ARRAY and index == 0:
+            array_info = None
+        fields.append((name, camel_to_snake(name), entry.data_offset, int(entry.data_type),
+                       entry.reference_key, int(array_info.data_type) if array_info else -1,
+                       array_info.reference_key if array_info else 0))
+    return _native_abi3.meta_graph_new(scalar, fields)

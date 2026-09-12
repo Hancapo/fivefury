@@ -1,9 +1,15 @@
 """Compile immutable META field descriptions for the shared native scalar codec."""
 
 from functools import lru_cache
+import struct
 
 from .. import _native_abi3
 from .defs import META_TYPE_NAME_ARRAYINFO, MetaDataType
+from .utils import _array_info_for_entries
+
+_INLINE_SCALARS = frozenset((MetaDataType.FLOAT, MetaDataType.HASH,
+    MetaDataType.SIGNED_BYTE, MetaDataType.UNSIGNED_BYTE, MetaDataType.SIGNED_SHORT,
+    MetaDataType.UNSIGNED_SHORT, MetaDataType.SIGNED_INT, MetaDataType.UNSIGNED_INT))
 
 _SCALARS = frozenset(
     (
@@ -47,6 +53,24 @@ def scalar_plan(size, entries):
             scalars.append(
                 (name, camel_to_snake(name), entry.data_offset, int(entry.data_type))
             )
+        elif (entry.data_type is MetaDataType.ARRAY_OF_BYTES
+              and (array_info := _array_info_for_entries(entries, index)) is not None
+              and array_info.data_type in _INLINE_SCALARS):
+            scalars.append((name, camel_to_snake(name), entry.data_offset,
+                            int(array_info.data_type), entry.reference_key & 0xFFFF))
         else:
             complex_fields.append((index, entry, name))
     return _native_abi3.meta_scalars_new(size, scalars), tuple(complex_fields)
+
+
+@lru_cache(maxsize=256)
+def schema_field_bytes(entries):
+    """Encode an immutable field snapshot; owner headers and pointers remain per-file."""
+    return b"".join(struct.pack("<IIBBHI", entry.name_hash, entry.data_offset,
+        int(entry.data_type), entry.unknown_9h, entry.reference_type_index, entry.reference_key)
+        for entry in entries)
+
+
+@lru_cache(maxsize=256)
+def schema_enum_bytes(entries):
+    return b"".join(struct.pack("<Ii", name_hash, value) for name_hash, value in entries)

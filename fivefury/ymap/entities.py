@@ -221,3 +221,12 @@ class MloInstanceDef(EntityDef):
                 int(value.get("MLOInstflags", 0))
             ),
         )
+
+
+def _entity_from_meta(value: Any):
+    if isinstance(value, dict):
+        if value.get("_meta_name") == "CMloInstanceDef":
+            return MloInstanceDef.from_meta(value)
+        if value.get("_meta_name") == "CEntityDef":
+            return EntityDef.from_meta(value)
+    return value
