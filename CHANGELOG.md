@@ -21,6 +21,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 ### Changed
 
 - Version 0.5.1 is the final planned feature release of the current Python implementation; new core development moves to .NET.
+- The README presents the library for research and education, with concise installation instructions, runnable examples, and a format overview.
 - YMAP, YTYP, and YDR writers use zlib level 6 to balance serialization speed and output size; compressed bytes and sizes may differ, while the general resource builder retains its level-9 default.
 
 ### Fixed
