@@ -35,7 +35,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- Up to 5.6x faster YMAP reading and 1.8x faster writing.
+- Up to 5.6x faster YMAP reading and 1.8x faster writing with native entity decoding and shared META graph serialization.
 - Up to 2.9x faster YTYP reading and 9x faster writing with native hash-field assignment and fewer Python conversions.
 - Faster YDR reading with lower memory usage by constructing typed vectors directly in C++ without intermediate tuple lists.
 - YDR, YDD, and YFT writing reuses float64 position buffers and calculates bounds once per save; vectorized transforms make rigid YDR models write up to 3.4x faster.
