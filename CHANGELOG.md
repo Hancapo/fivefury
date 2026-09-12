@@ -35,7 +35,7 @@ The changelog is release-oriented and uses a small fixed set of categories:
 
 ### Performance
 
-- YMAP reads materialize nominal Python records through schema-checked native bindings, and writing uses the shared native META graph encoder. A measured 2,000-entity case improved by a further 5.6x for reading and 1.8x for writing over the preceding native field-codec implementation; results vary by workload. Unknown layouts and custom extension registrations retain generic conversion.
+- Faster YMAP reading and writing with native META codecs.
 - Up to 2.9x faster YTYP reading and 9x faster writing with native hash-field assignment and fewer Python conversions.
 - Faster YDR reading with lower memory usage by constructing typed vectors directly in C++ without intermediate tuple lists.
 - YDR, YDD, and YFT writing reuses float64 position buffers and calculates bounds once per save; vectorized transforms make rigid YDR models write up to 3.4x faster.
