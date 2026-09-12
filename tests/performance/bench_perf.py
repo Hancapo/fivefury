@@ -25,7 +25,14 @@ from fivefury import Quaternion, Vector3
 from fivefury.cache import GameFileCache
 from fivefury.gamefile import guess_game_file_type
 from fivefury.hashing import jenk_hash
-from fivefury.meta import MetaBuilder
+from fivefury.meta import (
+    META_TYPE_NAME_ARRAYINFO,
+    MetaBuilder,
+    MetaDataType,
+    MetaFieldInfo,
+    MetaStructInfo,
+    RawStruct,
+)
 from fivefury.metahash import MetaHash
 from fivefury.resolver import clear_hash_resolver, register_name, resolve_hash
 from fivefury.rpf import create_rpf
@@ -436,36 +443,31 @@ class TestCacheScanPerf:
 
 
 # ---------------------------------------------------------------------------
-# 11. MetaBuilder._add_block — linear scan bottleneck
+# 11. META graph construction and block grouping
 # ---------------------------------------------------------------------------
 
 
 class TestMetaBuilderBlockPerf:
-    def test_add_block_grouping_100(self, benchmark):
-        """Simulate adding 100 small data blocks with grouping enabled."""
+    @pytest.mark.parametrize("count", [100, 500])
+    def test_build_grouped_blocks(self, benchmark, count):
+        """Build grouped opaque records through the shared META graph writer."""
+        name_hash = jenk_hash("PerfBlock")
+        info = MetaStructInfo(jenk_hash("PerfRoot"), 0, 0, 16, [
+            MetaFieldInfo(META_TYPE_NAME_ARRAYINFO, 0, MetaDataType.STRUCTURE_POINTER, 0, 0, 0),
+            MetaFieldInfo(jenk_hash("entities"), 0, MetaDataType.ARRAY, 0, 0, 0),
+        ])
+        payloads = [struct.pack("<4f", 1.0, 2.0, 3.0, float(i)) for i in range(count)]
+        root = {"entities": [RawStruct(name_hash, payload) for payload in payloads]}
 
         def run():
-            builder = MetaBuilder(struct_infos={}, enum_infos={})
-            name_hash = jenk_hash("CEntityDef")
-            for i in range(100):
-                builder._add_block(
-                    name_hash, struct.pack("<4f", 1.0, 2.0, 3.0, float(i))
-                )
+            builder = MetaBuilder(struct_infos=[info])
+            builder.build(info.name_hash, root)
+            return builder
 
-        benchmark(run)
-
-    def test_add_block_grouping_500(self, benchmark):
-        """Simulate adding 500 small data blocks with grouping (O(n²) risk)."""
-
-        def run():
-            builder = MetaBuilder(struct_infos={}, enum_infos={})
-            name_hash = jenk_hash("CEntityDef")
-            for i in range(500):
-                builder._add_block(
-                    name_hash, struct.pack("<4f", 1.0, 2.0, 3.0, float(i))
-                )
-
-        benchmark(run)
+        builder = benchmark(run)
+        blocks = [block for block in builder.blocks if block.name_hash == name_hash]
+        assert len(blocks) == 1
+        assert blocks[0].data == b"".join(payloads)
 
 
 # ---------------------------------------------------------------------------
