@@ -255,10 +255,15 @@ def _layout_chunks(
     streams: list[AwcStream],
     data_offset: int,
     endian: str,
+    *,
+    compact_streams: bool = False,
 ) -> tuple[list[AwcChunk], dict[int, bytes], dict[int, AwcChunkInfo]]:
     all_chunks = [chunk for stream in streams for chunk in stream.chunks]
     owners = {id(chunk): stream for stream in streams for chunk in stream.chunks}
-    write_chunks = (
+    # A mono loader may read the entire span between a stream's chunks.
+    # Global type ordering spreads tiny metadata across other streams' DATA.
+    # Keep table order unchanged; only physical placement changes in this mode.
+    write_chunks = all_chunks if compact_streams else (
         sorted(all_chunks, key=lambda chunk: chunk.sort_order)
         if awc.multi_channel_flag or not awc.single_channel_encrypt_flag
         else all_chunks
@@ -309,13 +314,15 @@ def _write_awc_tables(
     return out
 
 
-def build_awc_bytes(awc: Awc) -> bytes:
+def build_awc_bytes(awc: Awc, *, compact_streams: bool = False) -> bytes:
     from .state import serialized_state
     from .validation import validate_awc
 
+    if compact_streams and awc.multi_channel_flag:
+        raise ValueError('Compact stream layout requires a mono bank; streaming blocks use another contract')
     report = validate_awc(awc)
     if report.errors:
-        if (all(issue.code == "awc.codec.unsupported" for issue in report.errors)
+        if (not compact_streams and all(issue.code == "awc.codec.unsupported" for issue in report.errors)
                 and awc._original_bytes is not None
                 and awc._original_state == serialized_state(awc)):
             return awc._original_bytes
@@ -332,7 +339,8 @@ def build_awc_bytes(awc: Awc) -> bytes:
         + sum(len(stream.chunks) * 8 for stream in streams)
     )
 
-    write_chunks, payload_by_chunk, info_by_chunk = _layout_chunks(awc, streams, data_offset, endian)
+    write_chunks, payload_by_chunk, info_by_chunk = _layout_chunks(
+        awc, streams, data_offset, endian, compact_streams=compact_streams)
     out = _write_awc_tables(awc, streams, info_by_chunk, data_offset, endian)
     for chunk in write_chunks:
         info = info_by_chunk[id(chunk)]
